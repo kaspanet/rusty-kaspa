@@ -87,6 +87,7 @@ mod tests {
         model::stores::ghostdag::GhostdagStoreReader, params::DEVNET_PARAMS, processes::transaction_validator::errors::TxRuleError,
     };
     use kaspa_consensus_core::{
+        api::ConsensusApi,
         merkle::calc_hash_merkle_root,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
@@ -100,7 +101,7 @@ mod tests {
             .skip_proof_of_work()
             .edit_consensus_params(|p| p.deflationary_phase_daa_score = 2)
             .build();
-        let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+        let consensus = TestConsensus::new(&config);
         let wait_handles = consensus.init();
         let body_processor = consensus.block_body_processor();
 

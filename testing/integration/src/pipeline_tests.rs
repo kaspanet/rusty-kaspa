@@ -1,12 +1,13 @@
 use futures_util::future::try_join_all;
 use kaspa_consensus::{
     config::ConfigBuilder,
-    consensus::test_consensus::{create_temp_db, TestConsensus},
+    consensus::test_consensus::TestConsensus,
     model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
-use kaspa_consensus_core::blockhash;
+use kaspa_consensus_core::{api::ConsensusApi, blockhash};
+use kaspa_database::utils::create_temp_db;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use rand_distr::{Distribution, Poisson};
@@ -79,7 +80,7 @@ fn test_reachability_staging() {
 #[tokio::test]
 async fn test_concurrent_pipeline() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis.hash = 1.into()).build();
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     let blocks = vec![
@@ -148,7 +149,7 @@ async fn test_concurrent_pipeline_random() {
     let mut thread_rng = rand::thread_rng();
 
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis.hash = genesis).build();
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     let mut tips = vec![genesis];
