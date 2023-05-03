@@ -1508,7 +1508,6 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "tempfile",
  "thiserror",
  "tokio",
 ]
@@ -1601,6 +1600,7 @@ dependencies = [
  "rand 0.8.5",
  "rocksdb",
  "serde",
+ "tempfile",
  "thiserror",
 ]
 
@@ -1734,6 +1734,7 @@ dependencies = [
  "kaspa-consensus-notify",
  "kaspa-consensusmanager",
  "kaspa-core",
+ "kaspa-database",
  "kaspa-hashes",
  "kaspa-index-core",
  "kaspa-notify",
@@ -3272,6 +3273,7 @@ dependencies = [
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
  "kaspa-core",
+ "kaspa-database",
  "kaspa-hashes",
  "log",
  "num_cpus",

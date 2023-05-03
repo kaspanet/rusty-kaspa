@@ -1,13 +1,10 @@
-use crate::{errors::BlockProcessResult, model::stores::ghostdag::GhostdagData};
+use crate::errors::BlockProcessResult;
 use kaspa_consensus_core::{block::Block, blockstatus::BlockStatus};
 use kaspa_hashes::Hash;
 use parking_lot::{Condvar, Mutex};
-use std::{
-    collections::{
-        hash_map::Entry::{Occupied, Vacant},
-        HashMap, VecDeque,
-    },
-    sync::Arc,
+use std::collections::{
+    hash_map::Entry::{Occupied, Vacant},
+    HashMap, VecDeque,
 };
 use tokio::sync::oneshot;
 
@@ -18,16 +15,45 @@ pub enum BlockProcessingMessage {
     Process(BlockTask, BlockResultSender),
 }
 
-pub struct BlockTask {
-    /// The block to process, possibly header-only
-    pub block: Block,
+impl BlockProcessingMessage {
+    pub fn is_processing_message(&self) -> bool {
+        matches!(self, BlockProcessingMessage::Process(_, _))
+    }
 
-    /// Possibly attached trusted ghostdag data - will be set only for
-    /// trusted blocks arriving as part of the pruning proof
-    pub trusted_ghostdag_data: Option<Arc<GhostdagData>>,
+    pub fn is_exit_message(&self) -> bool {
+        matches!(self, BlockProcessingMessage::Exit)
+    }
+}
 
-    /// A flag indicating whether to trigger virtual UTXO processing
-    pub update_virtual: bool,
+pub enum BlockTask {
+    /// Ordinary block processing task, requiring full validation. The block might be header-only
+    Ordinary { block: Block },
+
+    /// Trusted block processing task, only requiring partial validation.
+    /// Trusted blocks arrive as part of the pruning proof; the block might be header-only.
+    Trusted { block: Block },
+}
+
+impl BlockTask {
+    pub fn block(&self) -> &Block {
+        match self {
+            BlockTask::Ordinary { block } => block,
+            BlockTask::Trusted { block } => block,
+        }
+    }
+
+    pub fn is_ordinary(&self) -> bool {
+        matches!(self, BlockTask::Ordinary { .. })
+    }
+
+    pub fn is_trusted(&self) -> bool {
+        matches!(self, BlockTask::Trusted { .. })
+    }
+
+    pub fn requires_virtual_processing(&self) -> bool {
+        // Trusted blocks should not trigger virtual processing
+        self.is_ordinary()
+    }
 }
 
 /// An internal struct used to manage a block processing task
@@ -145,7 +171,7 @@ impl BlockTaskDependencyManager {
     /// controlling the reception of block processing tasks.
     pub fn register(&self, task: BlockTask, result_transmitter: BlockResultSender) -> Option<TaskId> {
         let mut pending = self.pending.lock();
-        let hash = task.block.hash();
+        let hash = task.block().hash();
         match pending.entry(hash) {
             Vacant(e) => {
                 e.insert(BlockTaskGroup::new(BlockTaskInternal::new(task, result_transmitter)));
@@ -170,7 +196,7 @@ impl BlockTaskDependencyManager {
         let mut pending = self.pending.lock();
         let group = pending.get(&task_id).expect("try_begin expects a task group");
         let internal_task = group.tasks.front().expect("try_begin expects a task");
-        let header = internal_task.task.as_ref().expect("task is expected to not be taken").block.header.clone();
+        let header = internal_task.task.as_ref().expect("task is expected to not be taken").block().header.clone();
         for parent in header.direct_parents().iter() {
             if let Some(parent_task) = pending.get_mut(parent) {
                 parent_task.dependent_tasks.push(task_id);
@@ -189,7 +215,7 @@ impl BlockTaskDependencyManager {
     where
         F: Fn(BlockTask, BlockResultSender),
     {
-        let task_id = task.block.hash();
+        let task_id = task.block().hash();
         // Re-lock for post-processing steps
         let mut pending = self.pending.lock();
 

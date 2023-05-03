@@ -41,7 +41,7 @@ impl DbUtxoDiffsStore {
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, utxo_diff: Arc<UtxoDiff>) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(BatchDbWriter::new(batch), hash, utxo_diff)?;
         Ok(())
@@ -57,7 +57,7 @@ impl UtxoDiffsStoreReader for DbUtxoDiffsStore {
 impl UtxoDiffsStore for DbUtxoDiffsStore {
     fn insert(&self, hash: Hash, utxo_diff: Arc<UtxoDiff>) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, utxo_diff)?;
         Ok(())

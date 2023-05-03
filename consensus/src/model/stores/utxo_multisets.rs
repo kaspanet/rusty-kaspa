@@ -36,7 +36,7 @@ impl DbUtxoMultisetsStore {
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, multiset: MuHash) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(BatchDbWriter::new(batch), hash, multiset.try_into().expect("multiset is expected to be finalized"))?;
         Ok(())
@@ -52,7 +52,7 @@ impl UtxoMultisetsStoreReader for DbUtxoMultisetsStore {
 impl UtxoMultisetsStore for DbUtxoMultisetsStore {
     fn insert(&self, hash: Hash, multiset: MuHash) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, multiset.try_into().expect("multiset is expected to be finalized"))?;
         Ok(())

@@ -19,7 +19,7 @@ use crate::{
         },
     },
     params::Params,
-    pipeline::deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId},
+    pipeline::deps_manager::{BlockProcessingMessage, BlockTask, BlockTaskDependencyManager, TaskId},
     processes::{
         block_depth::BlockDepthManager,
         difficulty::DifficultyManager,
@@ -34,14 +34,15 @@ use crate::{
 use crossbeam_channel::{Receiver, Sender};
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
+    blockhash::{BlockHashes, ORIGIN},
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
     config::genesis::GenesisBlock,
     header::Header,
     BlockHashSet, BlockLevel,
 };
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
+use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
@@ -49,11 +50,12 @@ use std::sync::{atomic::Ordering, Arc};
 
 use super::super::ProcessingCounters;
 
-pub struct HeaderProcessingContext<'a> {
+pub struct HeaderProcessingContext {
     pub hash: Hash,
-    pub header: &'a Arc<Header>,
+    pub header: Arc<Header>,
     pub pruning_info: PruningPointInfo,
-    pub non_pruned_parents: Vec<BlockHashes>,
+    pub block_level: BlockLevel,
+    pub known_parents: Vec<BlockHashes>,
 
     // Staging data
     pub ghostdag_data: Option<Vec<Arc<GhostdagData>>>,
@@ -62,36 +64,45 @@ pub struct HeaderProcessingContext<'a> {
     pub mergeset_non_daa: Option<BlockHashSet>,
     pub merge_depth_root: Option<Hash>,
     pub finality_point: Option<Hash>,
-    pub block_level: Option<BlockLevel>,
 }
 
-impl<'a> HeaderProcessingContext<'a> {
-    pub fn new(hash: Hash, header: &'a Arc<Header>, pruning_info: PruningPointInfo, non_pruned_parents: Vec<BlockHashes>) -> Self {
+impl HeaderProcessingContext {
+    pub fn new(
+        hash: Hash,
+        header: Arc<Header>,
+        block_level: BlockLevel,
+        pruning_info: PruningPointInfo,
+        known_parents: Vec<BlockHashes>,
+    ) -> Self {
         Self {
             hash,
             header,
+            block_level,
             pruning_info,
-            non_pruned_parents,
+            known_parents,
             ghostdag_data: None,
             block_window_for_difficulty: None,
             mergeset_non_daa: None,
             block_window_for_past_median_time: None,
             merge_depth_root: None,
             finality_point: None,
-            block_level: None,
         }
     }
 
-    pub fn get_non_pruned_parents(&mut self) -> BlockHashes {
-        self.non_pruned_parents[0].clone()
+    /// Returns the direct parents of this header after removal of unknown parents
+    pub fn direct_known_parents(&self) -> &[Hash] {
+        &self.known_parents[0]
     }
 
+    /// Returns the pruning point at the time this header began processing
     pub fn pruning_point(&self) -> Hash {
         self.pruning_info.pruning_point
     }
 
-    pub fn get_ghostdag_data(&self) -> Option<Arc<GhostdagData>> {
-        Some(self.ghostdag_data.as_ref()?[0].clone())
+    /// Returns the primary (level 0) GHOSTDAG data of this header.
+    /// NOTE: is expected to be called only after GHOSTDAG computation was pushed into the context
+    pub fn ghostdag_data(&self) -> &Arc<GhostdagData> {
+        &self.ghostdag_data.as_ref().unwrap()[0]
     }
 }
 
@@ -271,10 +282,10 @@ impl HeaderProcessor {
 
     fn queue_block(self: &Arc<HeaderProcessor>, task_id: TaskId) {
         if let Some(task) = self.task_manager.try_begin(task_id) {
-            let res = self.process_header(&task.block.header, &task.trusted_ghostdag_data);
+            let res = self.process_header(&task);
 
             let dependent_tasks = self.task_manager.end(task, |task, result_transmitter| {
-                if res.is_err() || task.block.is_header_only() {
+                if res.is_err() || task.block().is_header_only() {
                     // We don't care if receivers were dropped
                     let _ = result_transmitter.send(res.clone());
                 } else {
@@ -289,12 +300,8 @@ impl HeaderProcessor {
         }
     }
 
-    fn process_header(
-        self: &Arc<HeaderProcessor>,
-        header: &Arc<Header>,
-        optional_trusted_ghostdag_data: &Option<Arc<GhostdagData>>,
-    ) -> BlockProcessResult<BlockStatus> {
-        let is_trusted = optional_trusted_ghostdag_data.is_some();
+    fn process_header(&self, task: &BlockTask) -> BlockProcessResult<BlockStatus> {
+        let header = &task.block().header;
         let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
 
         match status_option {
@@ -303,89 +310,110 @@ impl HeaderProcessor {
             None => {}
         }
 
-        // Create processing context
-        let is_genesis = header.direct_parents().is_empty();
-        let pruning_point = self.pruning_store.read().get().unwrap();
-        let relations_read = self.relations_stores.read();
-        let non_pruned_parents = (0..=self.max_block_level)
-            .map(|level| {
-                Arc::new(if is_genesis {
-                    vec![ORIGIN]
-                } else {
-                    let filtered = self
-                        .parents_manager
-                        .parents_at_level(header, level)
-                        .iter()
-                        .copied()
-                        .filter(|parent| relations_read[level as usize].has(*parent).unwrap())
-                        .collect_vec();
-                    if filtered.is_empty() {
-                        vec![ORIGIN]
-                    } else {
-                        filtered
-                    }
-                })
-            })
-            .collect_vec();
-        drop(relations_read);
-        let mut ctx = HeaderProcessingContext::new(header.hash, header, pruning_point, non_pruned_parents);
-        if is_trusted {
-            ctx.mergeset_non_daa = Some(Default::default()); // TODO: Check that it's fine for coinbase calculations.
-        }
+        // Validate the header depending on task type
+        let ctx = match task {
+            BlockTask::Ordinary { .. } => self.validate_header(header)?,
+            BlockTask::Trusted { .. } => self.validate_trusted_header(header)?,
+        };
 
-        // Run all header validations for the new header
-        self.pre_ghostdag_validation(&mut ctx, header, is_trusted)?;
-        let ghostdag_data = (0..=ctx.block_level.unwrap())
-            .map(|level| {
-                if let Some(gd) = self.ghostdag_stores[level as usize].get_data(ctx.hash).unwrap_option() {
-                    gd
-                } else {
-                    Arc::new(self.ghostdag_managers[level as usize].ghostdag(&ctx.non_pruned_parents[level as usize]))
-                }
-            })
-            .collect_vec();
-        ctx.ghostdag_data = Some(ghostdag_data);
-        if is_trusted {
-            // let gd_data = ctx.get_ghostdag_data().unwrap();
-            // let merge_depth_root = self.depth_manager.calc_merge_depth_root(&gd_data, ctx.pruning_point());
-            // let finality_point = self.depth_manager.calc_finality_point(&gd_data, ctx.pruning_point());
-            ctx.merge_depth_root = Some(ORIGIN);
-            ctx.finality_point = Some(ORIGIN);
-        }
-
-        if !is_trusted {
-            // TODO: For now we skip all validations for trusted blocks, but in the future we should
-            // employ some validations to avoid spam etc.
-            self.pre_pow_validation(&mut ctx, header)?;
-            if let Err(e) = self.post_pow_validation(&mut ctx, header) {
-                self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
-                return Err(e);
-            }
-        }
-
+        // Commit the header to stores
         self.commit_header(ctx, header);
 
         // Report counters
         self.counters.header_counts.fetch_add(1, Ordering::Relaxed);
         self.counters.dep_counts.fetch_add(header.direct_parents().len() as u64, Ordering::Relaxed);
+
         Ok(StatusHeaderOnly)
     }
 
-    fn commit_header(self: &Arc<HeaderProcessor>, ctx: HeaderProcessingContext, header: &Arc<Header>) {
+    /// Runs full ordinary header validation
+    fn validate_header(&self, header: &Arc<Header>) -> BlockProcessResult<HeaderProcessingContext> {
+        let block_level = self.validate_header_in_isolation(header)?;
+        self.validate_parent_relations(header)?;
+        let mut ctx = self.build_processing_context(header, block_level);
+        self.ghostdag(&mut ctx);
+        self.pre_pow_validation(&mut ctx, header)?;
+        if let Err(e) = self.post_pow_validation(&mut ctx, header) {
+            self.statuses_store.write().set(ctx.hash, StatusInvalid).unwrap();
+            return Err(e);
+        }
+        Ok(ctx)
+    }
+
+    // Runs partial header validation for trusted blocks (currently validates only header-in-isolation and computes GHOSTDAG).
+    fn validate_trusted_header(&self, header: &Arc<Header>) -> BlockProcessResult<HeaderProcessingContext> {
+        // TODO: For now we skip most validations for trusted blocks, but in the future we should
+        // employ some validations to avoid spam etc.
+        let block_level = self.validate_header_in_isolation(header)?;
+        let mut ctx = self.build_processing_context(header, block_level);
+        self.ghostdag(&mut ctx);
+        ctx.mergeset_non_daa = Some(Default::default());
+        ctx.merge_depth_root = Some(ORIGIN);
+        ctx.finality_point = Some(ORIGIN);
+        Ok(ctx)
+    }
+
+    fn build_processing_context(&self, header: &Arc<Header>, block_level: u8) -> HeaderProcessingContext {
+        HeaderProcessingContext::new(
+            header.hash,
+            header.clone(),
+            block_level,
+            self.pruning_store.read().get().unwrap(),
+            self.collect_known_parents(header, block_level),
+        )
+    }
+
+    /// Collects the known parents for all block levels
+    fn collect_known_parents(&self, header: &Header, block_level: BlockLevel) -> Vec<Arc<Vec<Hash>>> {
+        let relations_read = self.relations_stores.read();
+        (0..=block_level)
+            .map(|level| {
+                Arc::new(
+                    self.parents_manager
+                        .parents_at_level(header, level)
+                        .iter()
+                        .copied()
+                        .filter(|parent| relations_read[level as usize].has(*parent).unwrap())
+                        .collect_vec()
+                        // This kicks-in only for trusted blocks or for level > 0. If an ordinary block is 
+                        // missing direct parents it will fail validation.
+                        .push_if_empty(ORIGIN),
+                )
+            })
+            .collect_vec()
+    }
+
+    /// Runs the GHOSTDAG algorithm for all block levels and writes the data into the context (if hasn't run already)
+    fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
+        let ghostdag_data = (0..=ctx.block_level as usize)
+            .map(|level| {
+                self.ghostdag_stores[level]
+                    .get_data(ctx.hash)
+                    .unwrap_option()
+                    .unwrap_or_else(|| Arc::new(self.ghostdag_managers[level].ghostdag(&ctx.known_parents[level])))
+            })
+            .collect_vec();
+        ctx.ghostdag_data = Some(ghostdag_data);
+    }
+
+    fn commit_header(&self, ctx: HeaderProcessingContext, header: &Header) {
         let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
         let pp = ctx.pruning_point();
 
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
 
-        // Write to append only stores: this requires no lock and hence done first
-        // TODO: Insert all levels data
+        //
+        // Append-only stores: these require no lock and hence done first in order to reduce locking time
+        //
+
+        // Note: for ghostdag, relations, reachability and header stores it is possible that data has
+        // been already written when applying the pruning proof, so we use `unwrap_or_exists`
+        // in these cases
+
         for (level, datum) in ghostdag_data.iter().enumerate() {
-            if self.ghostdag_stores[level].has(ctx.hash).unwrap() {
-                // The data might have been already written when applying the pruning proof.
-                continue;
-            }
-            self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap();
+            // The data might have been already written when applying the pruning proof.
+            self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap_or_exists();
         }
         if let Some(window) = ctx.block_window_for_difficulty {
             self.block_window_cache_for_difficulty.insert(ctx.hash, Arc::new(window));
@@ -396,103 +424,88 @@ impl HeaderProcessor {
         }
 
         self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa.unwrap())).unwrap();
-        if !self.headers_store.has(ctx.hash).unwrap() {
-            // The data might have been already written when applying the pruning proof.
-            self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header.clone(), ctx.block_level.unwrap()).unwrap();
-        }
+
+        self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header, ctx.block_level).unwrap_or_exists();
+
         if let Some(merge_depth_root) = ctx.merge_depth_root {
             self.depth_store.insert_batch(&mut batch, ctx.hash, merge_depth_root, ctx.finality_point.unwrap()).unwrap();
         }
+
+        //
+        // Reachability and header chain stores
+        //
 
         // Create staging reachability store. We use an upgradable read here to avoid concurrent
         // staging reachability operations. PERF: we assume that reachability processing time << header processing
         // time, and thus serializing this part will do no harm. However this should be benchmarked. The
         // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
-
-        let has_reachability = staging.has(ctx.hash).unwrap();
-        if !has_reachability {
+        if !staging.has(ctx.hash).unwrap() {
             // Add block to staging reachability
-            let reachability_parent = if ctx.non_pruned_parents[0].len() == 1 && ctx.non_pruned_parents[0][0].is_origin() {
-                ORIGIN
-            } else {
-                ghostdag_data[0].selected_parent
-            };
-
-            let mut reachability_mergeset = ghostdag_data[0]
-                .unordered_mergeset_without_selected_parent()
-                .filter(|hash| self.reachability_store.read().has(*hash).unwrap()); // TODO: Use read lock only once
+            let reachability_parent =
+                if ctx.known_parents[0].as_slice() == [ORIGIN] { ORIGIN } else { ghostdag_data[0].selected_parent };
+            let reachability_read = &self.reachability_store.read();
+            let mut reachability_mergeset =
+                ghostdag_data[0].unordered_mergeset_without_selected_parent().filter(|hash| reachability_read.has(*hash).unwrap());
             reachability::add_block(&mut staging, ctx.hash, reachability_parent, &mut reachability_mergeset).unwrap();
         }
 
         // Non-append only stores need to use write locks.
         // Note we need to keep the lock write guards until the batch is written.
-        let mut hst_write_guard = self.headers_selected_tip_store.write();
-        let mut sc_write_guard = self.selected_chain_store.write();
-        let prev_hst = hst_write_guard.get().unwrap();
+        let mut hst_write = self.headers_selected_tip_store.write();
+        let mut sc_write = self.selected_chain_store.write();
+        let prev_hst = hst_write.get().unwrap();
+        // We can't calculate chain path for blocks that do not have the pruning point in their chain, so we just skip them.
         if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst
             && reachability::is_chain_ancestor_of(&staging, pp, ctx.hash).unwrap()
-        // We can't calculate chain path for blocks that do not have the pruning point in their chain, so we just skip them.
         {
             // Hint reachability about the new tip.
             reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
-            hst_write_guard.set_batch(&mut batch, SortableBlock::new(ctx.hash, header.blue_work)).unwrap();
+            hst_write.set_batch(&mut batch, SortableBlock::new(ctx.hash, header.blue_work)).unwrap();
             if ctx.hash != pp {
                 let mut chain_path = self.dag_traversal_manager.calculate_chain_path(prev_hst.hash, ghostdag_data[0].selected_parent);
                 chain_path.added.push(ctx.hash);
-                sc_write_guard.apply_changes(&mut batch, chain_path).unwrap();
+                sc_write.apply_changes(&mut batch, chain_path).unwrap();
             }
         }
 
-        let is_genesis = header.direct_parents().is_empty();
-        let parents = (0..=ctx.block_level.unwrap()).map(|level| {
-            Arc::new(if is_genesis {
-                vec![ORIGIN]
-            } else {
-                self.parents_manager
-                    .parents_at_level(ctx.header, level)
-                    .iter()
-                    .copied()
-                    .filter(|parent| self.ghostdag_stores[level as usize].has(*parent).unwrap())
-                    .collect_vec()
-            })
+        //
+        // Relations and statuses
+        //
+
+        let mut relations_write = self.relations_stores.write();
+        ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
+            relations_write[level].insert_batch(&mut batch, header.hash, parents_by_level).unwrap_or_exists();
         });
 
-        let mut relations_write_guard = self.relations_stores.write();
-        parents.enumerate().for_each(|(level, parent_by_level)| {
-            if !relations_write_guard[level].has(header.hash).unwrap() {
-                relations_write_guard[level].insert_batch(&mut batch, header.hash, parent_by_level).unwrap();
-            }
-        });
-
-        let statuses_write_guard = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
+        let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
         // Write reachability data. Only at this brief moment the reachability store is locked for reads.
         // We take special care for this since reachability read queries are used throughout the system frequently.
         // Note we hold the lock until the batch is written
-        let reachability_write_guard = staging.commit(&mut batch).unwrap();
+        let reachability_write = staging.commit(&mut batch).unwrap();
 
         // Flush the batch to the DB
         self.db.write(batch).unwrap();
 
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
-        drop(reachability_write_guard);
-        drop(statuses_write_guard);
-        drop(relations_write_guard);
-        drop(hst_write_guard);
-        drop(sc_write_guard);
+        drop(reachability_write);
+        drop(statuses_write);
+        drop(relations_write);
+        drop(hst_write);
+        drop(sc_write);
     }
 
-    pub fn process_genesis(self: &Arc<HeaderProcessor>) {
+    pub fn process_genesis(&self) {
         // Init headers selected tip and selected chain stores
         let mut batch = WriteBatch::default();
-        let mut sc_write_guard = self.selected_chain_store.write();
-        sc_write_guard.init_with_pruning_point(&mut batch, self.genesis.hash).unwrap();
-        let mut hst_write_guard = self.headers_selected_tip_store.write();
-        hst_write_guard.set_batch(&mut batch, SortableBlock::new(self.genesis.hash, 0.into())).unwrap();
+        let mut sc_write = self.selected_chain_store.write();
+        sc_write.init_with_pruning_point(&mut batch, self.genesis.hash).unwrap();
+        let mut hst_write = self.headers_selected_tip_store.write();
+        hst_write.set_batch(&mut batch, SortableBlock::new(self.genesis.hash, 0.into())).unwrap();
         self.db.write(batch).unwrap();
-        drop(hst_write_guard);
-        drop(sc_write_guard);
+        drop(hst_write);
+        drop(sc_write);
 
         // Write the genesis header
         let mut genesis_header: Header = (&self.genesis).into();
@@ -500,36 +513,38 @@ impl HeaderProcessor {
         // Note that for official nets (mainnet, testnet etc) they are guaranteed to be equal as enforced by a test in genesis.rs
         genesis_header.hash = self.genesis.hash;
         let genesis_header = Arc::new(genesis_header);
+
         let mut ctx = HeaderProcessingContext::new(
             self.genesis.hash,
-            &genesis_header,
+            genesis_header.clone(),
+            self.max_block_level,
             PruningPointInfo::from_genesis(self.genesis.hash),
-            vec![BlockHashes::new(vec![ORIGIN])],
+            (0..=self.max_block_level).map(|_| BlockHashes::new(vec![ORIGIN])).collect(),
         );
-        ctx.ghostdag_data = Some(self.ghostdag_managers.iter().map(|m| Arc::new(m.genesis_ghostdag_data())).collect());
+        ctx.ghostdag_data =
+            Some(self.ghostdag_managers.iter().map(|manager_by_level| Arc::new(manager_by_level.genesis_ghostdag_data())).collect());
         ctx.block_window_for_difficulty = Some(Default::default());
         ctx.block_window_for_past_median_time = Some(Default::default());
         ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
-        ctx.block_level = Some(self.max_block_level);
+
         self.commit_header(ctx, &genesis_header);
     }
 
-    pub fn init(self: &Arc<HeaderProcessor>) {
+    pub fn init(&self) {
         if self.relations_stores.read()[0].has(ORIGIN).unwrap() {
             return;
         }
 
         let mut batch = WriteBatch::default();
-        let mut relations_write_guard = self.relations_stores.write();
-        (0..=self.max_block_level).for_each(|level| {
-            relations_write_guard[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap()
-        });
-        let mut hst_write_guard = self.headers_selected_tip_store.write();
-        hst_write_guard.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
+        let mut relations_write = self.relations_stores.write();
+        (0..=self.max_block_level)
+            .for_each(|level| relations_write[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap());
+        let mut hst_write = self.headers_selected_tip_store.write();
+        hst_write.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
         self.db.write(batch).unwrap();
-        drop(hst_write_guard);
-        drop(relations_write_guard);
+        drop(hst_write);
+        drop(relations_write);
     }
 }

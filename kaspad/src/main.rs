@@ -4,7 +4,9 @@ extern crate kaspa_hashes;
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
+use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
+use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::config::{ConfigError, ConfigResult};
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -28,9 +30,7 @@ use args::{Args, Defaults};
 // use clap::Parser;
 // ~~~
 
-use crate::monitor::ConsensusMonitor;
-use kaspa_consensus::config::{Config, ConfigBuilder};
-use kaspa_consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS};
+use kaspa_consensus::config::ConfigBuilder;
 use kaspa_utxoindex::UtxoIndex;
 
 use async_channel::unbounded;
@@ -40,15 +40,12 @@ use kaspa_p2p_flows::service::P2pService;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 
 mod args;
-mod monitor;
 
 const DEFAULT_DATA_DIR: &str = "datadir";
 const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
 const META_DB: &str = "meta";
 
-// TODO: add a Config
-// TODO: apply Args to Config
 // TODO: log to file
 // TODO: refactor the shutdown sequence into a predefined controlled sequence
 
@@ -154,16 +151,7 @@ pub fn main() {
         _ => panic!("only a single net should be activated"),
     };
 
-    let config = Arc::new(
-        match network_type {
-            NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS),
-            NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS),
-            NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS),
-            NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS),
-        }
-        .apply_args(|config| args.apply_to_config(config))
-        .build(),
-    );
+    let config = Arc::new(ConfigBuilder::new(network_type.into()).apply_args(|config| args.apply_to_config(config)).build());
 
     // Make sure config and args form a valid set of properties
     if let Err(err) = validate_config_and_args(&config, &args) {
