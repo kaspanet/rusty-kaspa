@@ -73,7 +73,6 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .short('t')
                 .long("async-threads")
                 .value_name("async_threads")
-                .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
                 .help(format!("Specify number of async threads (default: {}).", defaults.async_threads)),
@@ -84,7 +83,6 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .long("loglevel")
                 .value_name("LEVEL")
                 .default_value("info")
-                .num_args(0..=1)
                 .require_equals(true)
                 .help("Logging level for all subsystems {off, error, warn, info, debug, trace}\n-- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems.".to_string()),
         )
@@ -92,7 +90,6 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("rpclisten")
                 .long("rpclisten")
                 .value_name("IP[:PORT]")
-                .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Interface:port to listen for gRPC connections (default port: 16110, testnet: 16210)."),
@@ -101,7 +98,6 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("rpclisten-borsh")
                 .long("rpclisten-borsh")
                 .value_name("IP[:PORT]")
-                .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(defaults.rpclisten_borsh)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
@@ -114,7 +110,6 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("rpclisten-json")
                 .long("rpclisten-json")
                 .value_name("IP[:PORT]")
-                .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(defaults.rpclisten_json)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
@@ -126,7 +121,6 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .long("connect")
                 .value_name("IP[:PORT]")
                 .action(ArgAction::Append)
-                .num_args(0..=10) // TODO: define an upper bound
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Connect only to the specified peers at startup (maximum 10 peers)."),
@@ -136,7 +130,6 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .long("addpeer")
                 .value_name("IP[:PORT]")
                 .action(ArgAction::Append)
-                .num_args(0..=20)// TODO: define an upper bound
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Add peers to connect with at startup (maximum 20 peers)."),
@@ -145,7 +138,6 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("listen")
                 .long("listen")
                 .value_name("IP[:PORT]")
-                .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Add an interface:port to listen for connections (default all interfaces port: 16111, testnet: 16211)."),
@@ -154,7 +146,6 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("outpeers")
                 .long("outpeers")
                 .value_name("outpeers")
-                .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
                 .help("Target number of outbound peers (default: 8)."),
@@ -163,7 +154,6 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("maxinpeers")
                 .long("maxinpeers")
                 .value_name("maxinpeers")
-                .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
                 .help("Max number of inbound peers (default: 128)."),
@@ -177,7 +167,6 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("user_agent_comments")
                 .long("uacomment")
                 .action(ArgAction::Append)
-                .num_args(0..=10)// TODO: define an upper bound
                 .require_equals(true)
                 .help("Comment to add to the user agent -- See BIP 14 for more information."),
         )
