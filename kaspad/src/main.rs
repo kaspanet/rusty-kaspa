@@ -203,9 +203,13 @@ pub fn main() {
     // DB used for addresses store and for multi-consensus management
     let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
 
-    let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect();
+    let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
     let add_peers = args.add_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect();
-    let listen = args.listen.unwrap_or_default().normalize(config.default_rpc_port());
+    let p2p_server_addr = args.listen.unwrap_or_default().normalize(config.default_p2p_port());
+    // connect_peers means no DNS seeding and no outbound peers
+    let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
+    let dns_seeders = if connect_peers.is_empty() { config.dns_seeders } else { &[] };
+
     let grpc_server_addr = args.rpclisten.unwrap_or_default().normalize(config.default_rpc_port());
 
     let core = Arc::new(Core::new());
@@ -254,10 +258,10 @@ pub fn main() {
         flow_context.clone(),
         connect_peers,
         add_peers,
-        listen,
-        args.outbound_target,
+        p2p_server_addr,
+        outbound_target,
         args.inbound_limit,
-        config.dns_seeders,
+        dns_seeders,
         config.default_p2p_port(),
     ));
 
