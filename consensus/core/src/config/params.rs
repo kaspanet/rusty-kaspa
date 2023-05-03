@@ -85,6 +85,17 @@ impl Params {
     }
 }
 
+impl From<NetworkType> for Params {
+    fn from(value: NetworkType) -> Self {
+        match value {
+            NetworkType::Mainnet => MAINNET_PARAMS,
+            NetworkType::Testnet => TESTNET_PARAMS,
+            NetworkType::Devnet => DEVNET_PARAMS,
+            NetworkType::Simnet => SIMNET_PARAMS,
+        }
+    }
+}
+
 /// Highest proof of work difficulty value a Kaspa block can have for each network.
 /// It is the value 2^255 - 1.
 ///
