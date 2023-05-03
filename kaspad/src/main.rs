@@ -4,6 +4,7 @@ extern crate kaspa_hashes;
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
+use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -26,7 +27,6 @@ use args::{Args, Defaults};
 // use clap::Parser;
 // ~~~
 
-use crate::monitor::ConsensusMonitor;
 use kaspa_consensus::config::ConfigBuilder;
 use kaspa_utxoindex::UtxoIndex;
 
@@ -37,7 +37,6 @@ use kaspa_p2p_flows::service::P2pService;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 
 mod args;
-mod monitor;
 
 const DEFAULT_DATA_DIR: &str = "datadir";
 const CONSENSUS_DB: &str = "consensus";

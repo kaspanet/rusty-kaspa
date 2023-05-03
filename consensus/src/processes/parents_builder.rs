@@ -34,7 +34,9 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         Self { max_block_level, genesis_hash, headers_store, reachability_service, relations_service }
     }
 
-    pub fn calc_block_parents(&self, pruning_point: Hash, direct_parents: &[Hash]) -> Vec<Vec<Hash>> {
+    /// Calculates the parents for each level based on the direct parents. Expects the current
+    /// global pruning point s.t. at least one of the direct parents is in its inclusive future
+    pub fn calc_block_parents(&self, current_pruning_point: Hash, direct_parents: &[Hash]) -> Vec<Vec<Hash>> {
         let mut direct_parent_headers =
             direct_parents.iter().copied().map(|parent| self.headers_store.get_header_with_block_level(parent).unwrap()).collect_vec();
 
@@ -47,7 +49,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         let first_parent_in_future_of_pruning_point = direct_parents
             .iter()
             .copied()
-            .position(|parent| self.reachability_service.is_dag_ancestor_of(pruning_point, parent))
+            .position(|parent| self.reachability_service.is_dag_ancestor_of(current_pruning_point, parent))
             .expect("at least one of the parents is expected to be in the future of the pruning point");
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point);
 
@@ -58,7 +60,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         let mut parents = Vec::with_capacity(self.max_block_level as usize);
 
         for block_level in 0..self.max_block_level {
-            // Direct parents are guaranteed to be in one other's anticones so add them all to
+            // Direct parents are guaranteed to be in one another's anticones so add them all to
             // all the block levels they occupy.
             let mut level_candidates_to_reference_blocks = direct_parent_headers
                 .iter()
