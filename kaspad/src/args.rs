@@ -7,6 +7,7 @@ use kaspa_utils::networking::ContextualNetAddress;
 
 pub struct Defaults {
     pub appdir: &'static str,
+    pub no_log_files: bool,
     pub rpclisten_borsh: &'static str,
     pub rpclisten_json: &'static str,
     pub unsafe_rpc: bool,
@@ -24,6 +25,7 @@ impl Default for Defaults {
     fn default() -> Self {
         Defaults {
             appdir: "datadir",
+            no_log_files: false,
             rpclisten_borsh: "127.0.0.1:17110",
             rpclisten_json: "127.0.0.1:18110",
             unsafe_rpc: false,
@@ -44,6 +46,7 @@ pub struct Args {
     // NOTE: it is best if property names match config file fields
     pub appdir: Option<String>,
     pub logdir: Option<String>,
+    pub no_log_files: bool,
     pub rpclisten: Option<ContextualNetAddress>,
     pub rpclisten_borsh: Option<ContextualNetAddress>,
     pub rpclisten_json: Option<ContextualNetAddress>,
@@ -70,6 +73,7 @@ pub fn cli(defaults: &Defaults) -> Command {
         .version(env!("CARGO_PKG_VERSION"))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
         .arg(arg!(--logdir <LOG_DIR> "Directory to log output."))
+        .arg(arg!(--nologfiles "Disable logging to files."))
         .arg(
             Arg::new("async_threads")
                 .short('t')
@@ -180,6 +184,7 @@ impl Args {
         Args {
             appdir: m.get_one::<String>("appdir").cloned(),
             logdir: m.get_one::<String>("logdir").cloned(),
+            no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
             rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
             rpclisten_borsh: m.get_one::<ContextualNetAddress>("rpclisten-borsh").cloned(),
             rpclisten_json: m.get_one::<ContextualNetAddress>("rpclisten-json").cloned(),

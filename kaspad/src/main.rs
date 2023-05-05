@@ -130,6 +130,9 @@ fn validate_config_and_args(_config: &Arc<Config>, args: &Args) -> ConfigResult<
     if !args.connect_peers.is_empty() && !args.add_peers.is_empty() {
         return Err(ConfigError::MixedConnectAndAddPeers);
     }
+    if args.logdir.is_some() && args.no_log_files {
+        return Err(ConfigError::MixedLogDirAndNoLogFiles);
+    }
     Ok(())
 }
 
@@ -166,9 +169,10 @@ pub fn main() {
     // Logs directory is usually under the application directory, unless otherwise specified
     let log_dir = args.logdir.unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
     let log_dir = if log_dir.is_empty() { app_dir.join(config.network_name()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
+    let log_dir = if args.no_log_files { None } else { log_dir.to_str() };
 
     // Initialize the logger
-    kaspa_core::log::init_logger(log_dir.to_str(), &args.log_level);
+    kaspa_core::log::init_logger(log_dir, &args.log_level);
 
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), version());
@@ -176,7 +180,14 @@ pub fn main() {
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.display());
     info!("Data directory: {}", db_dir.display());
-    info!("Logs directory: {}", log_dir.display());
+    match log_dir {
+        Some(s) => {
+            info!("Logs directory: {}", s);
+        }
+        None => {
+            info!("Logs to console only");
+        }
+    }
 
     let consensus_db_dir = db_dir.join(CONSENSUS_DB);
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
