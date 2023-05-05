@@ -50,7 +50,7 @@ impl DbDepthStore {
         finality_point: Hash,
     ) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(BatchDbWriter::new(batch), hash, BlockDepthInfo { merge_depth_root, finality_point })?;
         Ok(())
@@ -70,7 +70,7 @@ impl DepthStoreReader for DbDepthStore {
 impl DepthStore for DbDepthStore {
     fn insert(&self, hash: Hash, merge_depth_root: Hash, finality_point: Hash) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, BlockDepthInfo { merge_depth_root, finality_point })?;
         Ok(())

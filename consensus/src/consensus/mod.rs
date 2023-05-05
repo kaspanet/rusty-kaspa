@@ -65,7 +65,7 @@ use kaspa_consensus_core::{
     },
     header::Header,
     muhash::MuHashExtensions,
-    pruning::{PruningPointProof, PruningPointsList},
+    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     sync_info::SyncInfo,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
@@ -491,6 +491,7 @@ impl Consensus {
             params.max_block_level,
             params.genesis.hash,
             params.pruning_proof_m,
+            params.anticone_finalization_depth(),
             params.difficulty_window_size,
             params.ghostdag_k,
         );
@@ -575,33 +576,11 @@ impl Consensus {
         ]
     }
 
-    fn validate_and_insert_block_impl(
-        &self,
-        block: Block,
-        update_virtual: bool,
-    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    fn validate_and_insert_block_impl(&self, task: BlockTask) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
-        self.block_sender
-            .send(BlockProcessingMessage::Process(BlockTask { block, trusted_ghostdag_data: None, update_virtual }, tx))
-            .unwrap();
+        self.block_sender.send(BlockProcessingMessage::Process(task, tx)).unwrap();
         self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
         async { rx.await.unwrap() }
-    }
-
-    fn validate_and_insert_trusted_block_impl(&self, tb: TrustedBlock) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        let (tx, rx): (BlockResultSender, _) = oneshot::channel();
-        self.block_sender
-            .send(BlockProcessingMessage::Process(
-                BlockTask { block: tb.block, trusted_ghostdag_data: Some(Arc::new(tb.ghostdag.into())), update_virtual: false },
-                tx,
-            ))
-            .unwrap();
-        self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
-        async { rx.await.unwrap() }
-    }
-
-    pub fn resolve_virtual(&self) {
-        self.virtual_processor.resolve_virtual()
     }
 
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
@@ -649,13 +628,13 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.build_block_template(miner_data, txs)
     }
 
-    fn validate_and_insert_block(&self, block: Block, update_virtual: bool) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        let result = self.validate_and_insert_block_impl(block, update_virtual);
+    fn validate_and_insert_block(&self, block: Block) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+        let result = self.validate_and_insert_block_impl(BlockTask::Ordinary { block });
         Box::pin(async move { result.await })
     }
 
     fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
-        let result = self.validate_and_insert_trusted_block_impl(tb);
+        let result = self.validate_and_insert_block_impl(BlockTask::Trusted { block: tb.block });
         Box::pin(async move { result.await })
     }
 
@@ -861,10 +840,7 @@ impl ConsensusApi for Consensus {
             .collect_vec()
     }
 
-    fn get_pruning_point_anticone_and_trusted_data(
-        &self,
-    ) -> Arc<(Vec<Hash>, Vec<kaspa_consensus_core::trusted::TrustedHeader>, Vec<kaspa_consensus_core::trusted::TrustedGhostdagData>)>
-    {
+    fn get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
         self.pruning_proof_manager.get_pruning_point_anticone_and_trusted_data()
     }
 

@@ -48,7 +48,7 @@ use crate::{
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     block::{BlockTemplate, MutableBlock},
-    blockstatus::BlockStatus::{self, StatusDisqualifiedFromChain, StatusUTXOValid},
+    blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::MinerData,
     config::genesis::GenesisBlock,
     header::Header,
@@ -67,7 +67,7 @@ use kaspa_consensus_notify::{
     },
     root::ConsensusNotificationRoot,
 };
-use kaspa_core::{debug, info, time::unix_now, trace};
+use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -75,15 +75,15 @@ use kaspa_notify::notifier::Notify;
 
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
+use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::{
-    cmp::{min, Reverse},
-    collections::VecDeque,
+    cmp::min,
+    collections::{BinaryHeap, VecDeque},
     ops::Deref,
     sync::{atomic::Ordering, Arc},
-    time::{Duration, SystemTime},
 };
 
 use super::errors::{PruningImportError, PruningImportResult};
@@ -241,25 +241,20 @@ impl VirtualStateProcessor {
         }
     }
 
-    #[inline(always)]
-    pub fn notification_root(self: &Arc<Self>) -> Arc<ConsensusNotificationRoot> {
-        self.notification_root.clone()
-    }
-
     pub fn worker(self: &Arc<Self>) {
-        'outer: while let Ok(first_msg) = self.receiver.recv() {
+        'outer: while let Ok(msg) = self.receiver.recv() {
+            if msg.is_exit_message() {
+                break;
+            }
+
             // Once a task arrived, collect all pending tasks from the channel.
             // This is done since virtual processing is not a per-block
             // operation, so it benefits from max available info
 
-            let update_virtual =
-                if let BlockProcessingMessage::Process(ref task, _) = first_msg { task.update_virtual } else { false };
-            let messages: Vec<BlockProcessingMessage> = std::iter::once(first_msg).chain(self.receiver.try_iter()).collect();
+            let messages: Vec<BlockProcessingMessage> = std::iter::once(msg).chain(self.receiver.try_iter()).collect();
             trace!("virtual processor received {} tasks", messages.len());
 
-            if update_virtual {
-                self.resolve_virtual();
-            }
+            self.resolve_virtual();
 
             let statuses_read = self.statuses_store.read();
             for msg in messages {
@@ -267,7 +262,7 @@ impl VirtualStateProcessor {
                     BlockProcessingMessage::Exit => break 'outer,
                     BlockProcessingMessage::Process(task, result_transmitter) => {
                         // We don't care if receivers were dropped
-                        let _ = result_transmitter.send(Ok(statuses_read.get(task.block.hash()).unwrap()));
+                        let _ = result_transmitter.send(Ok(statuses_read.get(task.block().hash()).unwrap()));
                     }
                 };
             }
@@ -277,60 +272,119 @@ impl VirtualStateProcessor {
         self.pruning_sender.send(PruningProcessingMessage::Exit).unwrap();
     }
 
-    pub fn resolve_virtual(self: &Arc<Self>) {
-        // TODO: check finality violation
-        // TODO: handle disqualified chain loop
-        // TODO: refactor this methods into multiple methods
-
+    fn resolve_virtual(self: &Arc<Self>) {
         let pruning_point = self.pruning_store.read().pruning_point().unwrap();
         let virtual_read = self.virtual_stores.upgradable_read();
         let prev_state = virtual_read.state.get().unwrap();
+        let finality_point = self.virtual_finality_point(&prev_state.ghostdag_data, pruning_point);
         let tips = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
-        let new_selected = self.ghostdag_manager.find_selected_parent(&mut tips.iter().copied());
-        let prev_selected = prev_state.ghostdag_data.selected_parent;
-
-        let mut split_point: Option<Hash> = None;
+        let prev_sink = prev_state.ghostdag_data.selected_parent;
         let mut accumulated_diff = prev_state.utxo_diff.clone().to_reversed();
 
+        let (new_sink, virtual_parent_candidates) =
+            self.sink_search_algorithm(&virtual_read, &mut accumulated_diff, prev_sink, tips, finality_point, pruning_point);
+        let (virtual_parents, virtual_ghostdag_data) = self.pick_virtual_parents(new_sink, virtual_parent_candidates, pruning_point);
+        assert_eq!(virtual_ghostdag_data.selected_parent, new_sink);
+
+        let sink_multiset = self.utxo_multisets_store.get(new_sink).unwrap();
+        let new_virtual_state = self
+            .calculate_and_commit_virtual_state(
+                virtual_read,
+                virtual_parents,
+                virtual_ghostdag_data,
+                sink_multiset,
+                &mut accumulated_diff,
+            )
+            .expect("all possible rule errors are unexpected here");
+
+        // Update the pruning processor about the virtual state change
+        let sink_ghostdag_data = self.ghostdag_store.get_compact_data(new_sink).unwrap();
+        self.pruning_sender.send(PruningProcessingMessage::Process { sink_ghostdag_data }).unwrap();
+
+        // Emit notifications
+        let accumulated_diff = Arc::new(accumulated_diff);
+        let virtual_parents = Arc::new(new_virtual_state.parents.clone());
+        let _ = self
+            .notification_root
+            .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
+        let _ = self
+            .notification_root
+            .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(sink_ghostdag_data.blue_score)));
+        let _ = self
+            .notification_root
+            .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)));
+        let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink);
+        // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
+        let added_chain_blocks_acceptance_data =
+            chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+        let _ = self.notification_root.notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+            chain_path.added.into(),
+            chain_path.removed.into(),
+            Arc::new(added_chain_blocks_acceptance_data),
+        )));
+    }
+
+    fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
+        let finality_point = self.depth_manager.calc_finality_point(virtual_ghostdag_data, pruning_point);
+        if self.reachability_service.is_chain_ancestor_of(pruning_point, finality_point) {
+            finality_point
+        } else {
+            // At the beginning of IBD when virtual finality point might be below the pruning point
+            // or disagreeing with the pruning point chain, we take the pruning point itself as the finality point
+            pruning_point
+        }
+    }
+
+    /// Calculates the UTXO state of `to` starting from the state of `from`.
+    /// The provided `diff` is assumed to initially hold the UTXO diff of `from` from virtual.
+    /// The function returns the top-most UTXO-valid block on `chain(to)` which is ideally
+    /// `to` itself (with the exception of returning `from` if `to` is already known to be UTXO disqualified).
+    /// When returning it is guaranteed that `diff` holds the diff of the returned block from virtual
+    fn calculate_utxo_state_relatively(&self, stores: &VirtualStores, diff: &mut UtxoDiff, from: Hash, to: Hash) -> Hash {
+        // Avoid reorging if disqualified status is already known
+        if self.statuses_store.read().get(to).unwrap() == StatusDisqualifiedFromChain {
+            return from;
+        }
+
+        let mut split_point: Option<Hash> = None;
+
         // Walk down to the reorg split point
-        for current in self.reachability_service.default_backward_chain_iterator(prev_selected) {
-            if self.reachability_service.is_chain_ancestor_of(current, new_selected) {
+        for current in self.reachability_service.default_backward_chain_iterator(from) {
+            if self.reachability_service.is_chain_ancestor_of(current, to) {
                 split_point = Some(current);
                 break;
             }
 
             let mergeset_diff = self.utxo_diffs_store.get(current).unwrap();
             // Apply the diff in reverse
-            accumulated_diff.with_diff_in_place(&mergeset_diff.as_reversed()).unwrap();
+            diff.with_diff_in_place(&mergeset_diff.as_reversed()).unwrap();
         }
 
         let split_point = split_point.expect("chain iterator was expected to reach the reorg split point");
-        debug!("resolve_virtual found split point: {split_point}");
+        debug!("VIRTUAL PROCESSOR, found split point: {split_point}");
+
+        // A variable holding the most recent UTXO-valid block on `chain(to)` (note that it's maintained such
+        // that 'diff' is always its UTXO diff from virtual)
+        let mut diff_point = split_point;
 
         // Walk back up to the new virtual selected parent candidate
-        let mut last_log_index = 0;
-        let mut last_log_time = SystemTime::now();
         let mut chain_block_counter = 0;
-        for (i, (selected_parent, current)) in
-            self.reachability_service.forward_chain_iterator(split_point, new_selected, true).tuple_windows().enumerate()
-        {
-            let now = SystemTime::now();
-            let passed = now.duration_since(last_log_time).unwrap();
-            if passed > Duration::new(10, 0) {
-                info!("UTXO validated {} chain blocks in the last {} seconds (total {})", i - last_log_index, passed.as_secs(), i);
-                last_log_time = now;
-                last_log_index = i;
+        for (selected_parent, current) in self.reachability_service.forward_chain_iterator(split_point, to, true).tuple_windows() {
+            if selected_parent != diff_point {
+                // This indicates that the selected parent is disqualified, propagate up and continue
+                self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
+                continue;
             }
 
-            debug!("UTXO validation for {current}");
             match self.utxo_diffs_store.get(current) {
                 Ok(mergeset_diff) => {
-                    accumulated_diff.with_diff_in_place(mergeset_diff.deref()).unwrap();
+                    diff.with_diff_in_place(mergeset_diff.deref()).unwrap();
+                    diff_point = current;
                 }
                 Err(StoreError::KeyNotFound(_)) => {
-                    if self.statuses_store.read().get(selected_parent).unwrap() == StatusDisqualifiedFromChain {
-                        self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
-                        continue; // TODO: optimize
+                    if self.statuses_store.read().get(current).unwrap() == StatusDisqualifiedFromChain {
+                        // Current block is already known to be disqualified
+                        continue;
                     }
 
                     let header = self.headers_store.get_header(current).unwrap();
@@ -338,7 +392,7 @@ impl VirtualStateProcessor {
                     let pov_daa_score = header.daa_score;
 
                     let selected_parent_multiset_hash = self.utxo_multisets_store.get(selected_parent).unwrap();
-                    let selected_parent_utxo_view = (&virtual_read.utxo_set).compose(&accumulated_diff);
+                    let selected_parent_utxo_view = (&stores.utxo_set).compose(&*diff);
 
                     let mut ctx = UtxoProcessingContext::new(mergeset_data.into(), selected_parent_multiset_hash);
 
@@ -346,14 +400,17 @@ impl VirtualStateProcessor {
                     let res = self.verify_expected_utxo_state(&mut ctx, &selected_parent_utxo_view, &header);
 
                     if let Err(rule_error) = res {
-                        info!("Block {} is disqualified from virtual chain: {:?}", current, rule_error);
+                        info!("Block {} is disqualified from virtual chain: {}", current, rule_error);
                         self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
                     } else {
-                        // Accumulate
-                        accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
+                        debug!("VIRTUAL PROCESSOR, UTXO validated for {current}");
+
+                        // Accumulate the diff
+                        diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
+                        // Update the diff point
+                        diff_point = current;
                         // Commit UTXO data for current chain block
                         self.commit_utxo_state(current, ctx.mergeset_diff, ctx.multiset_hash, ctx.mergeset_acceptance_data);
-
                         // Count the number of UTXO-processed chain blocks
                         chain_block_counter += 1;
                     }
@@ -361,61 +418,10 @@ impl VirtualStateProcessor {
                 Err(err) => panic!("unexpected error {err}"),
             }
         }
-
         // Report counters
         self.counters.chain_block_counts.fetch_add(chain_block_counter, Ordering::Relaxed);
 
-        // NOTE: inlining this within the match captures the statuses store lock and should be avoided.
-        // TODO: wrap statuses store lock within a service
-        let new_selected_status = self.statuses_store.read().get(new_selected).unwrap();
-        match new_selected_status {
-            BlockStatus::StatusUTXOValid => {
-                let (virtual_parents, virtual_ghostdag_data) = self.pick_virtual_parents(new_selected, tips, pruning_point);
-                assert_eq!(virtual_ghostdag_data.selected_parent, new_selected);
-
-                let selected_parent_multiset = self.utxo_multisets_store.get(virtual_ghostdag_data.selected_parent).unwrap();
-                let new_virtual_state = self
-                    .calculate_and_commit_virtual_state(
-                        virtual_read,
-                        virtual_parents,
-                        virtual_ghostdag_data,
-                        selected_parent_multiset,
-                        &mut accumulated_diff,
-                    )
-                    .expect("all possible rule errors are unexpected here");
-
-                // Update the pruning processor about the virtual state change
-                let sink_ghostdag_data = self.ghostdag_store.get_compact_data(new_selected).unwrap();
-                self.pruning_sender.send(PruningProcessingMessage::Process { sink_ghostdag_data }).unwrap();
-
-                // Emit notifications
-                let accumulated_diff = Arc::new(accumulated_diff);
-                let virtual_parents = Arc::new(new_virtual_state.parents.clone());
-                let _ = self
-                    .notification_root
-                    .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
-                let _ = self.notification_root().notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(
-                    new_virtual_state.ghostdag_data.blue_score,
-                )));
-                let _ = self.notification_root().notify(Notification::VirtualDaaScoreChanged(
-                    VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score),
-                ));
-                // TODO: As an optimization, calculate the chain path as part of the loop on the chain iterator above.
-                let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_selected, new_selected);
-                // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
-                let added_chain_blocks_acceptance_data =
-                    chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
-                let _ = self.notification_root().notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
-                    chain_path.added.into(),
-                    chain_path.removed.into(),
-                    Arc::new(added_chain_blocks_acceptance_data),
-                )));
-            }
-            BlockStatus::StatusDisqualifiedFromChain => {
-                // TODO: this means another chain needs to be checked
-            }
-            _ => panic!("expected utxo valid or disqualified {new_selected}"),
-        }
+        diff_point
     }
 
     fn commit_utxo_state(&self, current: Hash, mergeset_diff: UtxoDiff, multiset: MuHash, acceptance_data: AcceptanceData) {
@@ -486,24 +492,79 @@ impl VirtualStateProcessor {
         Ok(new_virtual_state)
     }
 
+    /// Returns the max number of tips to consider as virtual parents in a single virtual resolve operation
+    fn max_virtual_parent_candidates(&self) -> usize {
+        // Limit to max_block_parents x 3 candidates. This way we avoid going over thousands of tips when the network isn't healthy.
+        // There's no specific reason for a factor of 3, and its not a consensus rule, just an estimation for reducing the amount
+        // of candidates considered.
+        self.max_block_parents as usize * 3
+    }
+
+    /// Searches for the next valid sink block (SINK = Virtual selected parent). The search is performed
+    /// in the inclusive past of `tips`.
+    /// The provided `diff` is assumed to initially hold the UTXO diff of `prev_sink` from virtual.
+    /// The function returns with `diff` being the diff of the new sink from previous virtual.
+    /// In addition to the found sink the function also returns a queue of additional virtual
+    /// parent candidates ordered in descending blue work order.
+    fn sink_search_algorithm(
+        &self,
+        stores: &VirtualStores,
+        diff: &mut UtxoDiff,
+        prev_sink: Hash,
+        tips: Vec<Hash>,
+        finality_point: Hash,
+        pruning_point: Hash,
+    ) -> (Hash, VecDeque<Hash>) {
+        // TODO: tests
+
+        let mut heap = tips
+            .into_iter()
+            .map(|block| SortableBlock { hash: block, blue_work: self.ghostdag_store.get_blue_work(block).unwrap() })
+            .collect::<BinaryHeap<_>>();
+
+        // The initial diff point is the previous sink
+        let mut diff_point = prev_sink;
+
+        // We maintain the following invariant: `heap` is an antichain.
+        // It holds at step 0 since tips are an antichain, and remains through the loop
+        // since we check that every pushed block is not in the past of current heap
+        // (and it can't be in the future by induction)
+        loop {
+            let candidate = heap.pop().expect("valid sink must exist").hash;
+            if self.reachability_service.is_chain_ancestor_of(finality_point, candidate) {
+                diff_point = self.calculate_utxo_state_relatively(stores, diff, diff_point, candidate);
+                if diff_point == candidate {
+                    // This indicates that candidate has valid UTXO state and that `diff` represents its diff from virtual
+                    return (candidate, heap.into_sorted_iter().take(self.max_virtual_parent_candidates()).map(|s| s.hash).collect());
+                } else {
+                    debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
+                }
+            } else if finality_point != pruning_point {
+                // `finality_point == pruning_point` indicates we are at IBD start hence no warning required
+                warn!("Finality Violation Detected. Block {} violates finality and is ignored from Virtual chain.", candidate);
+            }
+            for parent in self.relations_service.get_parents(candidate).unwrap().iter().copied() {
+                if !self.reachability_service.is_dag_ancestor_of_any(parent, &mut heap.iter().map(|sb| sb.hash)) {
+                    heap.push(SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() });
+                }
+            }
+        }
+    }
+
     /// Picks the virtual parents according to virtual parent selection pruning constrains.
-    /// Assumes `selected_parent` is a UTXO-valid block, and that `candidates` are an antichain
-    /// containing `selected_parent` s.t. it is the block with highest blue work amongst them.  
-    fn pick_virtual_parents(&self, selected_parent: Hash, candidates: Vec<Hash>, pruning_point: Hash) -> (Vec<Hash>, GhostdagData) {
+    /// Assumes:
+    ///     1. `selected_parent` is a UTXO-valid block
+    ///     2. `candidates` are an antichain ordered in descending blue work order
+    ///     3. `candidates` do not contain `selected_parent` and `selected_parent.blue work > max(candidates.blue_work)`  
+    fn pick_virtual_parents(
+        &self,
+        selected_parent: Hash,
+        mut candidates: VecDeque<Hash>,
+        pruning_point: Hash,
+    ) -> (Vec<Hash>, GhostdagData) {
         // TODO: tests
         let max_block_parents = self.max_block_parents as usize;
 
-        // Limit to max_block_parents*3 candidates, that way we don't go over thousands of tips when the network isn't healthy.
-        // There's no specific reason for a factor of 3, and its not a consensus rule, just an estimation saying we probably
-        // don't want to consider and calculate 3 times the amount of candidates for the set of parents.
-        let max_candidates = max_block_parents * 3;
-        let mut candidates = candidates
-            .into_iter()
-            .filter(|&h| h != selected_parent) // Filter the selected parent since we already know it must be included
-            .map(|block| Reverse(SortableBlock { hash: block, blue_work: self.ghostdag_store.get_blue_work(block).unwrap() }))
-            .k_smallest(max_candidates) // Takes the k largest blocks by blue work in descending order
-            .map(|s| s.0.hash)
-            .collect::<VecDeque<_>>();
         // Prioritize half the blocks with highest blue work and half with lowest, so the network will merge splits faster.
         if candidates.len() >= max_block_parents {
             let max_additional_parents = max_block_parents - 1; // We already have the selected parent
@@ -661,9 +722,9 @@ impl VirtualStateProcessor {
         // At this point we can safely drop the read lock
         drop(virtual_read);
 
-        let pruning_point = self
-            .pruning_manager
-            .expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), self.pruning_store.read().get().unwrap());
+        let pruning_info = self.pruning_store.read().get().unwrap();
+        let header_pruning_point =
+            self.pruning_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);
         let coinbase = self
             .coinbase_manager
             .expected_coinbase_transaction(
@@ -676,7 +737,7 @@ impl VirtualStateProcessor {
             .unwrap();
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
-        let parents_by_level = self.parents_manager.calc_block_parents(pruning_point, &virtual_state.parents);
+        let parents_by_level = self.parents_manager.calc_block_parents(pruning_info.pruning_point, &virtual_state.parents);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
         let accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
@@ -694,7 +755,7 @@ impl VirtualStateProcessor {
             virtual_state.daa_score,
             virtual_state.ghostdag_data.blue_work,
             virtual_state.ghostdag_data.blue_score,
-            pruning_point,
+            header_pruning_point,
         );
         let selected_parent_timestamp = self.headers_store.get_timestamp(virtual_state.ghostdag_data.selected_parent).unwrap();
         Ok(BlockTemplate::new(MutableBlock::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp))
@@ -705,7 +766,7 @@ impl VirtualStateProcessor {
 
         // Ensure that some pruning point is registered
         if pp_read_guard.pruning_point().unwrap_option().is_none() {
-            self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_and_ignore_key_already_exists();
+            self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_or_exists();
             RwLockUpgradableReadGuard::upgrade(pp_read_guard).set(self.genesis.hash, self.genesis.hash, 0).unwrap();
         }
     }
@@ -717,7 +778,7 @@ impl VirtualStateProcessor {
             .state
             .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
             .unwrap();
-        self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_and_ignore_key_already_exists();
+        self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_or_exists();
         self.pruning_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
 
         // Write the UTXO state of genesis

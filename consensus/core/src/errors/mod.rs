@@ -1,5 +1,6 @@
 pub mod block;
 pub mod coinbase;
+pub mod config;
 pub mod consensus;
 pub mod difficulty;
 pub mod pruning;

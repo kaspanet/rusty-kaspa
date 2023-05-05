@@ -2,6 +2,7 @@ use crate::common::ProtocolError;
 use crate::core::hub::Hub;
 use crate::ConnectionError;
 use crate::{core::connection_handler::ConnectionHandler, Router};
+use kaspa_utils::networking::NetAddress;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
@@ -54,7 +55,7 @@ impl Adaptor {
 
     /// Creates a bidirectional P2P adaptor with a server serving at `serve_address` and with client support
     pub fn bidirectional(
-        serve_address: String,
+        serve_address: NetAddress,
         hub: Hub,
         initializer: Arc<dyn ConnectionInitializer>,
     ) -> Result<Arc<Self>, ConnectionError> {
