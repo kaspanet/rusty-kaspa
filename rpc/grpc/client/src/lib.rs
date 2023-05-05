@@ -69,14 +69,22 @@ impl GrpcClient {
         reconnect: bool,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
+        timeout_duration: Option<u64>,
     ) -> Result<GrpcClient> {
         let schema = Regex::new(r"^grpc://").unwrap();
         if !schema.is_match(&address) {
             return Err(Error::GrpcAddressSchema(address));
         }
         let notify_channel = NotificationChannel::default();
-        let inner =
-            Inner::connect(address, reconnect, notify_channel.sender(), connection_event_sender, override_handle_stop_notify).await?;
+        let inner = Inner::connect(
+            address,
+            reconnect,
+            notify_channel.sender(),
+            connection_event_sender,
+            override_handle_stop_notify,
+            timeout_duration.unwrap_or(REQUEST_TIMEOUT_DURATION),
+        )
+        .await?;
         let core_events = EVENT_TYPE_ARRAY[..].into();
         let converter = Arc::new(RpcCoreConverter::new());
         let collector = Arc::new(RpcCoreCollector::new(notify_channel.receiver(), converter));
@@ -194,7 +202,7 @@ impl RpcApi<ChannelConnection> for GrpcClient {
 pub const CONNECT_TIMEOUT_DURATION: u64 = 20_000;
 pub const KEEP_ALIVE_DURATION: u64 = 5_000;
 pub const REQUEST_TIMEOUT_DURATION: u64 = 5_000;
-pub const TIMEOUT_MONITORING_INTERVAL: u64 = 1_000;
+pub const TIMEOUT_MONITORING_INTERVAL: u64 = 10_000;
 pub const RECONNECT_INTERVAL: u64 = 2_000;
 
 type KaspadRequestSender = async_channel::Sender<KaspadRequest>;
@@ -286,6 +294,7 @@ impl Inner {
         request_receiver: KaspadRequestReceiver,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
+        timeout_duration: u64,
     ) -> Self {
         let resolver: DynResolver = match server_features.handle_message_id {
             true => Arc::new(IdResolver::new()),
@@ -302,7 +311,7 @@ impl Inner {
             receiver_shutdown: DuplexTrigger::new(),
             timeout_is_running: AtomicBool::new(false),
             timeout_shutdown: DuplexTrigger::new(),
-            timeout_duration: REQUEST_TIMEOUT_DURATION,
+            timeout_duration,
             timeout_timer_interval: TIMEOUT_MONITORING_INTERVAL,
             connector_is_running: AtomicBool::new(false),
             connector_shutdown: DuplexTrigger::new(),
@@ -319,12 +328,14 @@ impl Inner {
         notify_sender: NotificationSender,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
+        timeout_duration: u64,
     ) -> Result<Arc<Self>> {
         // Request channel
         let (request_sender, request_receiver) = async_channel::unbounded();
 
         // Try to connect to the server
-        let (stream, server_features) = Inner::try_connect(address.clone(), request_sender.clone(), request_receiver.clone()).await?;
+        let (stream, server_features) =
+            Inner::try_connect(address.clone(), request_sender.clone(), request_receiver.clone(), timeout_duration).await?;
 
         // create the inner object
         let inner = Arc::new(Inner::new(
@@ -335,6 +346,7 @@ impl Inner {
             request_receiver,
             connection_event_sender,
             override_handle_stop_notify,
+            timeout_duration,
         ));
 
         // Start the request timeout cleaner
@@ -355,10 +367,11 @@ impl Inner {
         address: String,
         request_sender: KaspadRequestSender,
         request_receiver: KaspadRequestReceiver,
+        request_timeout: u64,
     ) -> Result<(Streaming<KaspadResponse>, ServerFeatures)> {
         // gRPC endpoint
         let channel = Endpoint::from_shared(address.clone())?
-            .timeout(tokio::time::Duration::from_millis(REQUEST_TIMEOUT_DURATION))
+            .timeout(tokio::time::Duration::from_millis(request_timeout))
             .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
             .tcp_keepalive(Some(tokio::time::Duration::from_millis(KEEP_ALIVE_DURATION)))
             .connect()
@@ -408,7 +421,13 @@ impl Inner {
         // TODO: re-register to notifications
 
         // Try to connect to the server
-        let (stream, _) = Inner::try_connect(self.address.clone(), self.request_sender.clone(), self.request_receiver.clone()).await?;
+        let (stream, _) = Inner::try_connect(
+            self.address.clone(),
+            self.request_sender.clone(),
+            self.request_receiver.clone(),
+            self.timeout_duration,
+        )
+        .await?;
 
         // Start the response receiving task
         self.spawn_response_receiver_task(stream);

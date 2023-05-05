@@ -5,15 +5,16 @@ use crate::errors::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::{block::Block, merkle::calc_hash_merkle_root, tx::TransactionOutpoint};
 
 impl BlockBodyProcessor {
-    pub fn validate_body_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
+    pub fn validate_body_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<u64> {
         Self::check_has_transactions(block)?;
         Self::check_hash_merkle_root(block)?;
         Self::check_only_one_coinbase(block)?;
         self.check_transactions_in_isolation(block)?;
-        self.check_block_mass(block)?;
+        let mass = self.check_block_mass(block)?;
         self.check_duplicate_transactions(block)?;
         self.check_block_double_spends(block)?;
-        self.check_no_chained_transactions(block)
+        self.check_no_chained_transactions(block)?;
+        Ok(mass)
     }
 
     fn check_has_transactions(block: &Block) -> BlockProcessResult<()> {
@@ -54,7 +55,7 @@ impl BlockBodyProcessor {
         Ok(())
     }
 
-    fn check_block_mass(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
+    fn check_block_mass(self: &Arc<Self>, block: &Block) -> BlockProcessResult<u64> {
         let mut total_mass: u64 = 0;
         for tx in block.transactions.iter() {
             total_mass += self.mass_calculator.calc_tx_mass(tx);
@@ -62,7 +63,7 @@ impl BlockBodyProcessor {
                 return Err(RuleError::ExceedsMassLimit(self.max_block_mass));
             }
         }
-        Ok(())
+        Ok(total_mass)
     }
 
     fn check_block_double_spends(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {

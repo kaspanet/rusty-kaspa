@@ -42,6 +42,7 @@ members = [
     "crypto/txscript",
     "crypto/txscript/errors",
     "testing/integration",
+    "rothschild",
 ]
 
 [workspace.package]
@@ -119,7 +120,7 @@ futures-util = { version = "0.3", default-features = false, features = [
 ] }
 futures = { version = "0.3" }
 bincode = { version = "1", default-features = false }
-tokio = { version = "1", features = ["sync","rt-multi-thread"] }
+tokio = { version = "1", features = ["sync", "rt-multi-thread"] }
 wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 criterion = { version = "0.4", default-features = false }
 indexmap = "1.9.1"
@@ -128,7 +129,7 @@ smallvec = { version = "1.10.0", features = ["serde"] }
 borsh = { version = "0.9.1", features = ["rc"] } # please keep this fixed
 async-std = { version = "1.12.0", features = ['attributes'] }
 async-channel = "1.8.0"
-clap = { version = "4.0.23", features = ["derive", "string","cargo"] }
+clap = { version = "4.0.23", features = ["derive", "string", "cargo"] }
 derive_more = { version = "0.99" }
 log = "0.4"
 cfg-if = "1.0.0"
@@ -139,22 +140,22 @@ paste = "1.0.11"
 regex = "1.6.0"
 pad = "0.1.6"
 convert_case = "0.5.0"
-wasm-bindgen-futures="0.4.33"
+wasm-bindgen-futures = "0.4.33"
 js-sys = "0.3.56"
 getrandom = { version = "0.2.8", features = ["js"] }
 uuid = { version = "1.2.2", features = ["v4", "fast-rng", "serde"] }
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }
-bs58 = { version = "0.4", features = ["check"], default-features = false}
-hmac = {version = "0.12", default-features = false}
+bs58 = { version = "0.4", features = ["check"], default-features = false }
+hmac = { version = "0.12", default-features = false }
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 #sha2 = {version = "0.10", default-features = false}
-zeroize = {version = "1", default-features = false, features=["alloc"]}
-ripemd = {version = "0.1", default-features = false}
-subtle = {version = "2", default-features = false}
-once_cell = {version = "1"}
-pbkdf2 = {version = "0.11", default-features = false}
+zeroize = { version = "1", default-features = false, features = ["alloc"] }
+ripemd = { version = "0.1", default-features = false }
+subtle = { version = "2", default-features = false }
+once_cell = { version = "1" }
+pbkdf2 = { version = "0.11", default-features = false }
 
 # workflow dependencies
 workflow-log = { version = "0.3.10" }
