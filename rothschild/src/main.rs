@@ -11,7 +11,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::{api::rpc::RpcApi, RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
+use kaspa_rpc_core::{api::rpc::RpcApi};
 use kaspa_txscript::pay_to_address_script;
 use secp256k1::{rand::thread_rng, KeyPair};
 use tokio::time::{interval, MissedTickBehavior};
@@ -75,7 +75,7 @@ async fn main() {
     let args = Args::parse();
     let mut stats = Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 };
     let rpc_client =
-        GrpcClient::connect(format!("grpc://{}", args.rpc_server).into(), true, None, false, Some(500_000)).await.unwrap();
+        GrpcClient::connect(format!("grpc://{}", args.rpc_server), true, None, false, Some(500_000)).await.unwrap();
     info!("Connected to RPC");
     let mut pending = HashMap::new();
 
@@ -165,8 +165,8 @@ async fn refresh_utxos(
     kaspa_addr: Address,
     pending: &mut HashMap<TransactionOutpoint, u64>,
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
-    populate_pending_outpoints_from_mempool(&rpc_client, kaspa_addr.clone(), pending).await;
-    fetch_spendable_utxos(&rpc_client, kaspa_addr).await
+    populate_pending_outpoints_from_mempool(rpc_client, kaspa_addr.clone(), pending).await;
+    fetch_spendable_utxos(rpc_client, kaspa_addr).await
 }
 
 async fn populate_pending_outpoints_from_mempool(
@@ -291,7 +291,7 @@ fn generate_tx(
         .collect_vec();
 
     let outputs = (0..num_outs)
-        .map(|_| TransactionOutput { value: send_amount / (num_outs as u64), script_public_key: script_public_key.clone() })
+        .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone() })
         .collect_vec();
     let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
     let signed_tx =
