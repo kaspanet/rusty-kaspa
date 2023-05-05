@@ -9,11 +9,11 @@ use kaspa_consensus_core::{
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
-use kaspa_core::{info, time::unix_now, version::version, warn};
+use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::{api::rpc::RpcApi, RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
 use kaspa_txscript::pay_to_address_script;
-use secp256k1::KeyPair;
+use secp256k1::{rand::thread_rng, KeyPair};
 use tokio::time::{interval, MissedTickBehavior};
 
 const DEFAULT_SEND_AMOUNT: u64 = 10_000;
@@ -29,8 +29,7 @@ struct Stats {
 }
 
 pub struct Args {
-    pub private_key: String,
-    pub kaspa_address: String,
+    pub private_key: Option<String>,
     pub tps: u64,
     pub rpc_server: String,
 }
@@ -39,8 +38,7 @@ impl Args {
     fn parse() -> Self {
         let m = cli().get_matches();
         Args {
-            private_key: m.get_one::<String>("private-key").cloned().unwrap(),
-            kaspa_address: m.get_one::<String>("kaspa-address").cloned().unwrap(),
+            private_key: m.get_one::<String>("private-key").cloned(),
             tps: m.get_one::<u64>("tps").cloned().unwrap(),
             rpc_server: m.get_one::<String>("rpcserver").cloned().unwrap_or("localhost:16210".to_owned()),
         }
@@ -57,17 +55,7 @@ pub fn cli() -> Command {
                 .short('k')
                 .value_name("private-key")
                 .num_args(0..=1)
-                .default_value("3674b992068d6aa3ca47303d423df9be48a5b147da4884517ce8468a4b2c80a0")
                 .help("Private key in hex format"),
-        )
-        .arg(
-            Arg::new("kaspa-address")
-                .long("kaspa-address")
-                .short('a')
-                .value_name("kaspa-address")
-                .num_args(0..=1)
-                .default_value("kaspatest:qr0est6tpap7my72c9fw4layj4uhfuvxf4vgh3ypj5xwmcqqvr28zyp62x7kp")
-                .help("Kaspa address"),
         )
         .arg(
             Arg::new("tps")
@@ -98,13 +86,34 @@ async fn main() {
     let rpc_client =
         GrpcClient::connect(format!("grpc://{}", args.rpc_server).into(), true, None, false, Some(500_000)).await.unwrap();
     info!("Connected to RPC");
-    let kaspa_addr = Address::try_from(args.kaspa_address).unwrap();
     let mut pending = HashMap::new();
-    let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending).await;
 
-    let mut private_key_bytes = [0u8; 32];
-    faster_hex::hex_decode(args.private_key.as_bytes(), &mut private_key_bytes).unwrap();
-    let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap();
+    let schnorr_key = if let Some(private_key_hex) = args.private_key {
+        let mut private_key_bytes = [0u8; 32];
+        faster_hex::hex_decode(private_key_hex.as_bytes(), &mut private_key_bytes).unwrap();
+        secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
+    } else {
+        let (sk, pk) = &secp256k1::generate_keypair(&mut thread_rng());
+        let kaspa_addr =
+            Address::new(kaspa_addresses::Prefix::Testnet, kaspa_addresses::Version::PubKey, &pk.x_only_public_key().0.serialize());
+        info!(
+            "Generated private key {} and address {}. Send some funds to this address and rerun rothschild with `--private-key {}`",
+            sk.display_secret(),
+            String::from(&kaspa_addr),
+            sk.display_secret()
+        );
+        return;
+    };
+
+    let kaspa_addr = Address::new(
+        kaspa_addresses::Prefix::Testnet,
+        kaspa_addresses::Version::PubKey,
+        &schnorr_key.x_only_public_key().0.serialize(),
+    );
+
+    info!("Using Rothschild with private key {} and address {}", schnorr_key.display_secret(), String::from(&kaspa_addr));
+
+    let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending).await;
     let mut ticker = interval(Duration::from_secs_f64(1.0 / (args.tps as f64)));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Burst);
 
