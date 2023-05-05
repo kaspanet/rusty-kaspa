@@ -1,0 +1,25 @@
+[package]
+name = "rothschild"
+description = "Kaspa Transaction Generator"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+kaspa-core.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-grpc-client.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-addresses.workspace = true
+kaspa-txscript.workspace = true
+kaspa-utils.workspace = true
+
+itertools.workspace = true
+clap.workspace = true
+log.workspace = true
+faster-hex.workspace = true
+
+tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
+secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }

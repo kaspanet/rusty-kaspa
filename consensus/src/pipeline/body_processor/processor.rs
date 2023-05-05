@@ -187,23 +187,26 @@ impl BlockBodyProcessor {
             _ => panic!("unexpected block status {status:?}"),
         }
 
-        if let Err(e) = self.validate_body(block, is_trusted) {
-            // We mark invalid blocks with status StatusInvalid except in the
-            // case of the following errors:
-            // MissingParents - If we got MissingParents the block shouldn't be
-            // considered as invalid because it could be added later on when its
-            // parents are present.
-            // BadMerkleRoot - if we get BadMerkleRoot we shouldn't mark the
-            // block as invalid because later on we can get the block with
-            // transactions that fits the merkle root.
-            // PrunedBlock - PrunedBlock is an error that rejects a block body and
-            // not the block as a whole, so we shouldn't mark it as invalid.
-            // TODO: implement the last part.
-            if !matches!(e, RuleError::BadMerkleRoot(_, _) | RuleError::MissingParents(_)) {
-                self.statuses_store.write().set(block.hash(), BlockStatus::StatusInvalid).unwrap();
+        let mass = match self.validate_body(block, is_trusted) {
+            Ok(mass) => mass,
+            Err(e) => {
+                // We mark invalid blocks with status StatusInvalid except in the
+                // case of the following errors:
+                // MissingParents - If we got MissingParents the block shouldn't be
+                // considered as invalid because it could be added later on when its
+                // parents are present.
+                // BadMerkleRoot - if we get BadMerkleRoot we shouldn't mark the
+                // block as invalid because later on we can get the block with
+                // transactions that fits the merkle root.
+                // PrunedBlock - PrunedBlock is an error that rejects a block body and
+                // not the block as a whole, so we shouldn't mark it as invalid.
+                // TODO: implement the last part.
+                if !matches!(e, RuleError::BadMerkleRoot(_, _) | RuleError::MissingParents(_)) {
+                    self.statuses_store.write().set(block.hash(), BlockStatus::StatusInvalid).unwrap();
+                }
+                return Err(e);
             }
-            return Err(e);
-        }
+        };
 
         self.commit_body(block.hash(), block.header.direct_parents(), block.transactions.clone());
 
@@ -214,16 +217,17 @@ impl BlockBodyProcessor {
         // Report counters
         self.counters.body_counts.fetch_add(1, Ordering::Relaxed);
         self.counters.txs_counts.fetch_add(block.transactions.len() as u64, Ordering::Relaxed);
+        self.counters.mass_counts.fetch_add(mass, Ordering::Relaxed);
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 
-    fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<()> {
-        self.validate_body_in_isolation(block)?;
+    fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<u64> {
+        let mass = self.validate_body_in_isolation(block)?;
         if !is_trusted {
             // TODO: Check that it's safe to skip this check if the block is trusted.
-            return self.validate_body_in_context(block);
+            self.validate_body_in_context(block)?;
         }
-        Ok(())
+        Ok(mass)
     }
 
     fn commit_body(self: &Arc<BlockBodyProcessor>, hash: Hash, parents: &[Hash], transactions: Arc<Vec<Transaction>>) {
