@@ -49,20 +49,12 @@ pub fn cli() -> Command {
     Command::new("rothschild")
         .about(format!("{} (rothschild) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
-        .arg(
-            Arg::new("private-key")
-                .long("private-key")
-                .short('k')
-                .value_name("private-key")
-                .num_args(0..=1)
-                .help("Private key in hex format"),
-        )
+        .arg(Arg::new("private-key").long("private-key").short('k').value_name("private-key").help("Private key in hex format"))
         .arg(
             Arg::new("tps")
                 .long("tps")
                 .short('t')
                 .value_name("tps")
-                .num_args(0..=1)
                 .default_value("1")
                 .value_parser(clap::value_parser!(u64))
                 .help("Transactions per second"),
@@ -72,7 +64,6 @@ pub fn cli() -> Command {
                 .long("rpcserver")
                 .short('s')
                 .value_name("rpcserver")
-                .num_args(0..=1)
                 .default_value("localhost:16210")
                 .help("RPC server"),
         )
@@ -158,7 +149,7 @@ fn should_maximize_inputs(
 
 async fn pause_if_mempool_is_full(rpc_client: &GrpcClient) {
     loop {
-        let mempool_size = rpc_client.get_mempool_entries(true, false).await.unwrap().len();
+        let mempool_size = rpc_client.get_info().await.unwrap().mempool_size;
         if mempool_size < 100_000 {
             break;
         }
@@ -237,7 +228,7 @@ async fn maybe_send_tx(
         pending.insert(input.previous_outpoint, now);
     }
 
-    match rpc_client.submit_transaction(tx_to_rpc_tx(&tx), false).await {
+    match rpc_client.submit_transaction((&tx).into(), false).await {
         Ok(_) => {}
         Err(e) => {
             warn!("RPC error: {}", e);
@@ -284,33 +275,6 @@ fn required_fee(num_utxos: usize, num_outs: u64) -> u64 {
 
 fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {
     200 + 34 * num_outs + 1000 * (num_utxos as u64)
-}
-
-fn tx_to_rpc_tx(tx: &Transaction) -> RpcTransaction {
-    RpcTransaction {
-        version: tx.version,
-        inputs: tx
-            .inputs
-            .iter()
-            .map(|input| RpcTransactionInput {
-                previous_outpoint: input.previous_outpoint,
-                signature_script: input.signature_script.clone(),
-                sequence: input.sequence,
-                sig_op_count: input.sig_op_count,
-                verbose_data: None,
-            })
-            .collect_vec(),
-        outputs: tx
-            .outputs
-            .iter()
-            .map(|out| RpcTransactionOutput { value: out.value, script_public_key: out.script_public_key.clone(), verbose_data: None })
-            .collect_vec(),
-        lock_time: tx.lock_time,
-        subnetwork_id: tx.subnetwork_id.clone(),
-        gas: tx.gas,
-        payload: tx.payload.clone(),
-        verbose_data: None,
-    }
 }
 
 fn generate_tx(
