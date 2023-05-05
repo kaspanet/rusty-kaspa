@@ -17,13 +17,13 @@ use log4rs::{
 };
 use std::path::PathBuf;
 
-pub(super) struct AppenderSpecs {
+pub(super) struct AppenderSpec {
     pub name: &'static str,
     level: Option<LevelFilter>,
     append: Option<Box<dyn Append>>,
 }
 
-impl AppenderSpecs {
+impl AppenderSpec {
     pub fn console(name: &'static str, level: Option<LevelFilter>) -> Self {
         Self::new(
             name,
