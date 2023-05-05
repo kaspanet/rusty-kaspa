@@ -3,8 +3,17 @@
 //! For the macros to properly compile, the calling crate must add a dependency to
 //! crate log (ie. `log.workspace = true`) when target architecture is not wasm32.
 
+#[cfg(not(target_arch = "wasm32"))]
+use consts::*;
 #[allow(unused_imports)]
 use log::{Level, LevelFilter};
+
+#[cfg(not(target_arch = "wasm32"))]
+mod appender;
+#[cfg(not(target_arch = "wasm32"))]
+mod consts;
+#[cfg(not(target_arch = "wasm32"))]
+mod logger;
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
@@ -21,62 +30,33 @@ cfg_if::cfg_if! {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn init_logger(log_dir: Option<&str>, _filters: &str) {
-    use log4rs::{
-        append::{
-            console::ConsoleAppender,
-            rolling_file::{
-                policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
-                RollingFileAppender,
-            },
-            Append,
-        },
-        config::{Appender, Root},
-        encode::pattern::PatternEncoder,
-        Config,
-    };
-    use std::{iter::once, path::PathBuf};
+    use std::iter::once;
+
+    use crate::log::appender::AppenderSpecs;
+    use log4rs::{config::Root, Config};
 
     const CONSOLE_APPENDER: &str = "stdout";
-
     const LOG_FILE_APPENDER: &str = "log_file";
-    const LOG_FILE_NAME: &str = "rusty-kaspa.log";
-    const LOG_FILE_NAME_PATTERN: &str = "rusty-kaspa.log.{}.gz";
-
-    const LOG_LINE_PATTERN_COLORED: &str = "[{d(%Y-%m-%dT%H:%M:%S %Z)} {h({({l}):5.5})}] {m}{n}";
-    const LOG_LINE_PATTERN: &str = "[{d(%Y-%m-%dT%H:%M:%S %Z)} {({l}):5.5}] {m}{n}";
+    const ERR_LOG_FILE_APPENDER: &str = "err_log_file";
 
     let level = log::LevelFilter::Info;
 
-    let stdout_appender: (&'static str, Box<dyn Append>) = (
-        CONSOLE_APPENDER,
-        Box::new(ConsoleAppender::builder().encoder(Box::new(PatternEncoder::new(LOG_LINE_PATTERN_COLORED))).build()),
-    );
+    let mut stdout_appender = AppenderSpecs::console(CONSOLE_APPENDER, None);
+    let mut file_appender = log_dir.map(|x| AppenderSpecs::roller(LOG_FILE_APPENDER, None, x, LOG_FILE_NAME));
+    let mut err_file_appender =
+        log_dir.map(|x| AppenderSpecs::roller(ERR_LOG_FILE_APPENDER, Some(LevelFilter::Warn), x, ERR_LOG_FILE_NAME));
 
-    let file_appender: Option<(&'static str, Box<dyn Append>)> = log_dir.map(|x| {
-        let trigger_size: u64 = 10 * 1024 * 1024 * 1024;
-        let trigger = Box::new(SizeTrigger::new(trigger_size));
+    let appenders = once(&mut stdout_appender).chain(&mut file_appender).chain(&mut err_file_appender).map(|x| x.appender());
 
-        let file_path = PathBuf::from(x).join(LOG_FILE_NAME);
-        let roller_pattern = PathBuf::from(x).join(LOG_FILE_NAME_PATTERN);
-        let roller_count = 10;
-        let roller_base = 1;
-        let roller =
-            Box::new(FixedWindowRoller::builder().base(roller_base).build(roller_pattern.to_str().unwrap(), roller_count).unwrap());
-
-        let compound_policy = Box::new(CompoundPolicy::new(trigger, roller));
-        let file_appender = RollingFileAppender::builder()
-            .encoder(Box::new(PatternEncoder::new(LOG_LINE_PATTERN)))
-            .build(file_path, compound_policy)
-            .unwrap();
-
-        (LOG_FILE_APPENDER, Box::new(file_appender) as Box<dyn Append>)
-    });
-
-    let appender_names = once(&stdout_appender).chain(file_appender.iter()).map(|(name, _)| *name).collect::<Vec<_>>();
-    let appenders =
-        once(stdout_appender).chain(file_appender.into_iter()).map(|(name, appender)| Appender::builder().build(name, appender));
-
-    let config = Config::builder().appenders(appenders).build(Root::builder().appenders(appender_names).build(level)).unwrap();
+    // let root_appender_names = once(&stdout_appender).chain(&file_appender).map(|x| x.name);
+    let config = Config::builder()
+        .appenders(appenders)
+        .build(
+            Root::builder()
+                .appenders(once(&stdout_appender).chain(&file_appender).chain(&err_file_appender).map(|x| x.name))
+                .build(level),
+        )
+        .unwrap();
 
     let _handle = log4rs::init_config(config).unwrap();
 
