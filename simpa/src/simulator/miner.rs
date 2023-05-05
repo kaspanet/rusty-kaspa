@@ -114,6 +114,7 @@ impl Miner {
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
         let multiple_outputs = self.possible_unspent_outpoints.len() < 10_000;
+        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &self.secret_key.secret_bytes()).unwrap();
         let txs = self
             .possible_unspent_outpoints
             .iter()
@@ -125,7 +126,7 @@ impl Miner {
             .take(self.target_txs_per_block as usize)
             .collect::<Vec<_>>()
             .into_par_iter()
-            .map(|mutable_tx| sign(mutable_tx, self.secret_key.secret_bytes()).tx)
+            .map(|mutable_tx| sign(mutable_tx, schnorr_key).tx)
             .collect::<Vec<_>>();
 
         for outpoint in txs.iter().flat_map(|t| t.inputs.iter().map(|i| i.previous_outpoint)) {
