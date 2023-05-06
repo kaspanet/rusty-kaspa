@@ -111,7 +111,7 @@ macro_rules! opcode_list {
             )?
         )*
 
-        pub fn deserialize_opcode_data<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(it: &mut I) -> Option<Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>> {
+        pub fn deserialize_next_opcode<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(it: &mut I) -> Option<Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>> {
             match it.next() {
                 Some(opcode_num) => match opcode_num {
                     $(
