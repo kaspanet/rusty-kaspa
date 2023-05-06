@@ -409,13 +409,15 @@ impl Account {
         Ok(self.derivation.change_address_manager())
     }
 
-    pub async fn new_receive_address(&self) -> Result<String> {
+    pub async fn new_receive_address(self: &Arc<Self>) -> Result<String> {
         let address = self.receive_address_manager()?.new_address().await?;
+        self.subscribe_utxos_changed(&[address.clone()]).await?;
         Ok(address.into())
     }
 
     pub async fn new_change_address(self: &Arc<Self>) -> Result<String> {
         let address = self.change_address_manager()?.new_address().await?;
+        self.subscribe_utxos_changed(&[address.clone()]).await?;
         Ok(address.into())
     }
 
