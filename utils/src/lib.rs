@@ -2,6 +2,7 @@ pub mod arc;
 pub mod binary_heap;
 pub mod channel;
 pub mod hashmap;
+pub mod hex;
 pub mod networking;
 pub mod option;
 pub mod refs;

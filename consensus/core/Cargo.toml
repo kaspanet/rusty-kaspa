@@ -13,6 +13,7 @@ kaspa-muhash.workspace = true
 kaspa-merkle.workspace = true
 kaspa-math.workspace = true
 kaspa-txscript-errors.workspace = true
+kaspa-utils.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 faster-hex.workspace = true

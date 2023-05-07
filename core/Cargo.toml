@@ -15,8 +15,6 @@ cfg-if.workspace = true
 thiserror.workspace = true
 env_logger = "0.10"
 workflow-log.workspace = true
-faster-hex.workspace = true
-smallvec.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }

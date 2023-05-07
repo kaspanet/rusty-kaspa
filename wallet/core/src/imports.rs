@@ -7,7 +7,7 @@ pub use kaspa_consensus_core::subnets;
 pub use kaspa_consensus_core::subnets::SubnetworkId;
 pub use kaspa_consensus_core::tx as cctx;
 pub use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionId, TransactionIndexType};
-pub use kaspa_core::hex::ToHex;
+pub use kaspa_utils::hex::ToHex;
 pub use serde::{Deserialize, Deserializer, Serialize};
 pub use std::sync::{Arc, Mutex, MutexGuard};
 pub use wasm_bindgen::prelude::*;

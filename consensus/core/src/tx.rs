@@ -1,5 +1,5 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_core::hex::*;
+use kaspa_utils::hex::*;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::{collections::HashSet, fmt::Display, ops::Range};

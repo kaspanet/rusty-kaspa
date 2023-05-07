@@ -2,7 +2,7 @@ use crate::{
     wasm::{DerivationPath, XPub},
     ChildNumber, Error, ExtendedPrivateKey, Result, SecretKey,
 };
-use kaspa_core::hex::*;
+use kaspa_utils::hex::*;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]

@@ -2,7 +2,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::str::{self, FromStr};
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_core::hex::{FromHex, ToHex};
+use kaspa_utils::hex::{FromHex, ToHex};
 use serde::{Deserialize, Serialize};
 
 /// The size of the array used to store subnetwork IDs.

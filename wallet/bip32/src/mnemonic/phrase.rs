@@ -14,7 +14,7 @@ use zeroize::{Zeroize, Zeroizing};
 use wasm_bindgen::prelude::*;
 use {super::seed::Seed, hmac::Hmac, sha2::Sha512};
 
-use kaspa_core::hex::*;
+use kaspa_utils::hex::*;
 //use workflow_wasm::jsvalue::*;
 use crate::Result;
 /// Number of PBKDF2 rounds to perform when deriving the seed

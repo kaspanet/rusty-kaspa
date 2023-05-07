@@ -13,3 +13,5 @@ triggered = "0.1"
 uuid.workspace = true
 serde.workspace = true
 borsh.workspace = true
+faster-hex.workspace = true
+smallvec.workspace = true

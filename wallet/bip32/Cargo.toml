@@ -24,7 +24,7 @@ thiserror.workspace = true
 getrandom = { workspace = true, features = ["js"] }
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
-kaspa-core.workspace = true
+kaspa-utils.workspace = true
 rand.workspace = true
 js-sys.workspace = true
 
