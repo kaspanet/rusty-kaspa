@@ -208,7 +208,7 @@ fn test_v0_padding() {
     let s = "01234567890abcdefgh";
     for n in 0..s.len() {
         let s = &s[0..n + 1];
-        let text = get_v0_string(&data[n], &secret).unwrap();
+        let text = get_v0_string(data[n], &secret).unwrap();
         // println!("{}: s: {} text: {}", n, s, text);
         assert_eq!(text, s);
     }

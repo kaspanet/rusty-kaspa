@@ -276,7 +276,7 @@ mod tests {
         ];
 
         for [seed_words, xprv_str] in data {
-            let mnemonic = match Mnemonic::new(&seed_words, Language::English) {
+            let mnemonic = match Mnemonic::new(seed_words, Language::English) {
                 Ok(v) => v,
                 Err(err) => {
                     println!("Mnemonic::new:err {err:?}, seed_words: {seed_words}");
