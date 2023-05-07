@@ -48,7 +48,6 @@ const UTXOINDEX_DB: &str = "utxoindex";
 const META_DB: &str = "meta";
 const DEFAULT_LOG_DIR: &str = "logs";
 
-// TODO: log to file
 // TODO: refactor the shutdown sequence into a predefined controlled sequence
 
 /*

@@ -1,5 +1,9 @@
 use itertools::Itertools;
 
+/// Format all iterator elements, separated by `sep`.
+///
+/// Unlike the underlying `itertools::format`, **does not panic** if `fmt` is called more than once.
+/// Should be used for logging purposes since `itertools::format` will panic when used by multiple loggers.
 pub trait IterExtensions: Iterator {
     fn reusable_format(self, sep: &str) -> ReusableIterFormat<Self>
     where
