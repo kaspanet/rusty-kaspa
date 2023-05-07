@@ -344,12 +344,13 @@ impl Account {
         let priority_fee_sompi = Some(priority_fee_sompi);
         let payload = vec![];
         let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
+        let addresses = utxo_selection.selected_entries.iter().map(|u| u.utxo.address.clone().unwrap()).collect::<Vec<Address>>();
         //let mtx = create_transaction(utxo_selection, outputs, change_address, priority_fee, payload)?;
         let vt = VirtualTransaction::new(sig_op_count, utxo_selection, outputs, change_address, priority_fee_sompi, payload)?;
 
-        // TODO find path indexes by UTXOs/addresses;
-        let receive_indexes = vec![0];
-        let change_indexes = vec![0];
+        let indexes = self.derivation.addresses_indexes(&addresses)?;
+        let receive_indexes = indexes.0;
+        let change_indexes = indexes.1;
 
         let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
         let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
@@ -408,13 +409,15 @@ impl Account {
         Ok(self.derivation.change_address_manager())
     }
 
-    pub async fn new_receive_address(&self) -> Result<String> {
+    pub async fn new_receive_address(self: &Arc<Self>) -> Result<String> {
         let address = self.receive_address_manager()?.new_address().await?;
+        self.subscribe_utxos_changed(&[address.clone()]).await?;
         Ok(address.into())
     }
 
     pub async fn new_change_address(self: &Arc<Self>) -> Result<String> {
         let address = self.change_address_manager()?.new_address().await?;
+        self.subscribe_utxos_changed(&[address.clone()]).await?;
         Ok(address.into())
     }
 

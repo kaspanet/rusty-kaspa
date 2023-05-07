@@ -5,6 +5,7 @@ use crate::accounts::gen1::PubkeyDerivationManager;
 use crate::accounts::gen1::WalletDerivationManager;
 use crate::accounts::PubkeyDerivationManagerTrait;
 use crate::accounts::WalletDerivationManagerTrait;
+use crate::error::Error;
 use crate::storage::PubKeyData;
 use crate::Result;
 use futures::future::join_all;
@@ -121,7 +122,9 @@ impl AddressManager {
             for key in keys {
                 addresses.push(self.create_address(vec![key])?);
             }
-            self.update_address_to_index_map(indexes.start, &addresses)?;
+            if update_indexes {
+                self.update_address_to_index_map(indexes.start, &addresses)?;
+            }
             return Ok(addresses);
         }
 
@@ -210,6 +213,58 @@ impl AddressDerivationManager {
 
     pub fn change_address_manager(&self) -> Arc<AddressManager> {
         self.change_address_manager.clone()
+    }
+
+    pub fn addresses_indexes(&self, addresses: &Vec<Address>) -> Result<(Vec<u32>, Vec<u32>)> {
+        let mut receive_indexes = vec![];
+        let mut change_indexes = vec![];
+        let receive_map = &self.receive_address_manager.inner().address_to_index_map;
+        let change_map = &self.change_address_manager.inner().address_to_index_map;
+
+        for address in addresses {
+            if let Some(index) = receive_map.get(address) {
+                receive_indexes.push(*index);
+            } else if let Some(index) = change_map.get(address) {
+                change_indexes.push(*index);
+            } else {
+                return Err(Error::Custom(format!("Address ({address}) index not found.")));
+            }
+        }
+
+        Ok((receive_indexes, change_indexes))
+    }
+
+    pub fn receive_indexes_by_addresses(&self, addresses: &Vec<Address>) -> Result<Vec<u32>> {
+        self.indexes_by_addresses(addresses, &self.receive_address_manager)
+    }
+    pub fn change_indexes_by_addresses(&self, addresses: &Vec<Address>) -> Result<Vec<u32>> {
+        self.indexes_by_addresses(addresses, &self.change_address_manager)
+    }
+
+    pub fn indexes_by_addresses(&self, addresses: &Vec<Address>, manager: &Arc<AddressManager>) -> Result<Vec<u32>> {
+        let map = &manager.inner().address_to_index_map;
+        let mut indexes = vec![];
+        for address in addresses {
+            let index = map.get(address).ok_or(Error::Custom(format!("Address ({address}) index not found.")))?;
+            indexes.push(*index);
+        }
+
+        Ok(indexes)
+    }
+
+    pub fn receive_indexes(&self) -> Result<Vec<u32>> {
+        self.indexes(&self.receive_address_manager)
+    }
+    pub fn change_indexes(&self) -> Result<Vec<u32>> {
+        self.indexes(&self.change_address_manager)
+    }
+    pub fn indexes(&self, manager: &Arc<AddressManager>) -> Result<Vec<u32>> {
+        let map = &manager.inner().address_to_index_map;
+        let mut indexes = vec![];
+        for (_, index) in map.iter() {
+            indexes.push(*index);
+        }
+        Ok(indexes)
     }
 }
 
