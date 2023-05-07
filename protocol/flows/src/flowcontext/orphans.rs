@@ -1,10 +1,9 @@
 use futures::future::join_all;
 use indexmap::{map::Entry::Occupied, IndexMap};
-use itertools::Itertools;
 use kaspa_consensus_core::{api::ConsensusApi, block::Block};
 use kaspa_core::{debug, info, warn};
 use kaspa_hashes::Hash;
-use kaspa_utils::option::OptionExtensions;
+use kaspa_utils::{iter::IterExtensions, option::OptionExtensions};
 use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -98,7 +97,7 @@ impl OrphanBlocksPool {
                     .all(|p| processing.contains_key(&p) || consensus.get_block_status(p).has_value_and(|s| !s.is_header_only()));
                 if processable {
                     let orphan_block = entry.remove();
-                    processing.insert(orphan_hash, (orphan_block.clone(), consensus.validate_and_insert_block(orphan_block, true)));
+                    processing.insert(orphan_hash, (orphan_block.clone(), consensus.validate_and_insert_block(orphan_block)));
                     process_queue.enqueue_chunk(self.iterate_child_orphans(orphan_hash));
                 }
             }
@@ -115,7 +114,7 @@ impl OrphanBlocksPool {
         match unorphaned_blocks.len() {
             0 => {}
             1 => info!("Unorphaned block {}", unorphaned_blocks[0].hash()),
-            n => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).format(", ")),
+            n => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).reusable_format(", ")),
         }
         unorphaned_blocks
     }
@@ -155,7 +154,7 @@ mod tests {
     }
 
     impl ConsensusApi for MockProcessor {
-        fn validate_and_insert_block(&self, block: Block, _: bool) -> BlockValidationFuture {
+        fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
             self.processed.write().insert(block.hash());
             Box::pin(block_process_mock())
         }
@@ -182,8 +181,8 @@ mod tests {
 
         assert_eq!(pool.get_orphan_roots(consensus.as_ref(), d.hash()).unwrap(), roots);
 
-        consensus.validate_and_insert_block(a.clone(), true).await.unwrap();
-        consensus.validate_and_insert_block(b.clone(), true).await.unwrap();
+        consensus.validate_and_insert_block(a.clone()).await.unwrap();
+        consensus.validate_and_insert_block(b.clone()).await.unwrap();
 
         assert_eq!(
             pool.unorphan_blocks(consensus.as_ref(), 8.into()).await.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(),

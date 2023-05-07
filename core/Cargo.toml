@@ -13,12 +13,12 @@ wasm-bindgen.workspace = true
 log.workspace = true
 cfg-if.workspace = true
 thiserror.workspace = true
-env_logger = "0.10"
 workflow-log.workspace = true
 faster-hex.workspace = true
 smallvec.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+log4rs = { version = "1", features = ["all_components", "gzip", "background_rotation"] }
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 ctrlc = "3.2"
 intertrait = "0.2"

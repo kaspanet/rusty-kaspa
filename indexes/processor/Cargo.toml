@@ -13,6 +13,7 @@ kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true
+kaspa-database.workspace = true
 kaspa-notify.workspace = true
 kaspa-index-core.workspace = true
 kaspa-utxoindex.workspace = true

@@ -145,21 +145,22 @@ impl ConnectionInitializer for EchoFlowInitializer {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{str::FromStr, time::Duration};
 
     use super::*;
     use crate::{Adaptor, Hub};
     use kaspa_core::debug;
+    use kaspa_utils::networking::NetAddress;
 
     #[tokio::test]
     async fn test_handshake() {
         kaspa_core::log::try_init_logger("debug");
 
-        let address1 = String::from("[::1]:50053");
-        let adaptor1 = Adaptor::bidirectional(address1.clone(), Hub::new(), Arc::new(EchoFlowInitializer::new())).unwrap();
+        let address1 = NetAddress::from_str("[::1]:50053").unwrap();
+        let adaptor1 = Adaptor::bidirectional(address1, Hub::new(), Arc::new(EchoFlowInitializer::new())).unwrap();
 
-        let address2 = String::from("[::1]:50054");
-        let adaptor2 = Adaptor::bidirectional(address2.clone(), Hub::new(), Arc::new(EchoFlowInitializer::new())).unwrap();
+        let address2 = NetAddress::from_str("[::1]:50054").unwrap();
+        let adaptor2 = Adaptor::bidirectional(address2, Hub::new(), Arc::new(EchoFlowInitializer::new())).unwrap();
 
         // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
         let peer2_id = adaptor1

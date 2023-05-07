@@ -4,10 +4,7 @@ use futures::{future::try_join_all, Future};
 use itertools::Itertools;
 use kaspa_consensus::{
     config::ConfigBuilder,
-    consensus::{
-        test_consensus::{create_temp_db_with_parallelism, load_existing_db},
-        Consensus,
-    },
+    consensus::Consensus,
     constants::perf::{PerfParams, PERF_PARAMS},
     model::stores::{
         block_transactions::BlockTransactionsStoreReader,
@@ -24,6 +21,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{info, warn};
+use kaspa_database::utils::{create_temp_db_with_parallelism, load_existing_db};
 use kaspa_hashes::Hash;
 use simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, mem::size_of, sync::Arc};
@@ -106,7 +104,7 @@ fn main() {
     let args = Args::parse();
 
     // Initialize the logger
-    kaspa_core::log::init_logger(&args.log_level);
+    kaspa_core::log::init_logger(None, &args.log_level);
 
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
@@ -242,7 +240,7 @@ fn submit_chunk(
             src_consensus.headers_store.get_header(hash).unwrap(),
             src_consensus.block_transactions_store.get(hash).unwrap(),
         );
-        let f = dst_consensus.validate_and_insert_block(block, true);
+        let f = dst_consensus.validate_and_insert_block(block);
         futures.push(f);
     }
     futures

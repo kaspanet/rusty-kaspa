@@ -23,7 +23,6 @@ itertools.workspace = true
 futures-util.workspace = true
 tokio.workspace = true
 bincode.workspace = true
-tempfile.workspace = true
 rayon.workspace = true
 # rand.workspace = true
 indexmap.workspace = true

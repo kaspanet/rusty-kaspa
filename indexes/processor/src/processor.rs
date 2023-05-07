@@ -141,14 +141,10 @@ impl Collector<Notification> for Processor {
 mod tests {
     use super::*;
     use async_channel::{unbounded, Receiver, Sender};
-    use kaspa_consensus::{
-        config::Config,
-        consensus::test_consensus::{create_temp_db, TempDbLifetime, TestConsensus},
-        params::DEVNET_PARAMS,
-        test_helpers::*,
-    };
+    use kaspa_consensus::{config::Config, consensus::test_consensus::TestConsensus, params::DEVNET_PARAMS, test_helpers::*};
     use kaspa_consensus_core::utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff};
     use kaspa_consensusmanager::ConsensusManager;
+    use kaspa_database::utils::{create_temp_db, DbLifetime};
     use kaspa_notify::notifier::test_helpers::NotifyMock;
     use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
     use rand::{rngs::SmallRng, SeedableRng};
@@ -162,7 +158,7 @@ mod tests {
         processor: Arc<Processor>,
         processor_receiver: Receiver<Notification>,
         test_consensus: TestConsensus,
-        utxoindex_db_lifetime: TempDbLifetime,
+        utxoindex_db_lifetime: DbLifetime,
     }
 
     impl NotifyPipeline {
@@ -170,9 +166,9 @@ mod tests {
             let (consensus_sender, consensus_receiver) = unbounded();
             let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
             let config = Arc::new(Config::new(DEVNET_PARAMS));
-            let tc = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+            let tc = TestConsensus::new(&config);
             tc.init();
-            let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
+            let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
             let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap());
             let processor = Arc::new(Processor::new(utxoindex, consensus_receiver));
             let (processor_sender, processor_receiver) = unbounded();

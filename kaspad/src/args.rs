@@ -1,10 +1,13 @@
+use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
 use kaspa_consensus::config::Config;
 use kaspa_core::kaspad_env::version;
+use kaspa_utils::networking::ContextualNetAddress;
 
 pub struct Defaults {
     pub appdir: &'static str,
+    pub no_log_files: bool,
     pub rpclisten_borsh: &'static str,
     pub rpclisten_json: &'static str,
     pub unsafe_rpc: bool,
@@ -22,6 +25,7 @@ impl Default for Defaults {
     fn default() -> Self {
         Defaults {
             appdir: "datadir",
+            no_log_files: false,
             rpclisten_borsh: "127.0.0.1:17110",
             rpclisten_json: "127.0.0.1:18110",
             unsafe_rpc: false,
@@ -41,15 +45,19 @@ impl Default for Defaults {
 pub struct Args {
     // NOTE: it is best if property names match config file fields
     pub appdir: Option<String>,
-    pub rpclisten: Option<String>,
-    pub rpclisten_borsh: Option<String>,
-    pub rpclisten_json: Option<String>,
+    pub logdir: Option<String>,
+    pub no_log_files: bool,
+    pub rpclisten: Option<ContextualNetAddress>,
+    pub rpclisten_borsh: Option<ContextualNetAddress>,
+    pub rpclisten_json: Option<ContextualNetAddress>,
     pub unsafe_rpc: bool,
     pub wrpc_verbose: bool,
     pub log_level: String,
     pub async_threads: usize,
-    pub connect: Option<String>,
-    pub listen: Option<String>,
+    pub connect_peers: Vec<ContextualNetAddress>,
+    pub add_peers: Vec<ContextualNetAddress>,
+    pub listen: Option<ContextualNetAddress>,
+    pub user_agent_comments: Vec<String>,
     pub utxoindex: bool,
     pub reset_db: bool,
     pub outbound_target: usize,
@@ -64,12 +72,13 @@ pub fn cli(defaults: &Defaults) -> Command {
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
+        .arg(arg!(--logdir <LOG_DIR> "Directory to log output."))
+        .arg(arg!(--nologfiles "Disable logging to files."))
         .arg(
             Arg::new("async_threads")
                 .short('t')
                 .long("async-threads")
                 .value_name("async_threads")
-                .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
                 .help(format!("Specify number of async threads (default: {}).", defaults.async_threads)),
@@ -80,7 +89,6 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .long("loglevel")
                 .value_name("LEVEL")
                 .default_value("info")
-                .num_args(0..=1)
                 .require_equals(true)
                 .help("Logging level for all subsystems {off, error, warn, info, debug, trace}\n-- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems.".to_string()),
         )
@@ -88,17 +96,17 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("rpclisten")
                 .long("rpclisten")
                 .value_name("IP[:PORT]")
-                .num_args(0..=1)
                 .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Interface:port to listen for gRPC connections (default port: 16110, testnet: 16210)."),
         )
         .arg(
             Arg::new("rpclisten-borsh")
                 .long("rpclisten-borsh")
                 .value_name("IP[:PORT]")
-                .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(defaults.rpclisten_borsh)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help(format!(
                     "Interface:port to listen for wRPC Borsh connections (interop only; default: `{}`).",
                     defaults.rpclisten_borsh
@@ -108,33 +116,42 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("rpclisten-json")
                 .long("rpclisten-json")
                 .value_name("IP[:PORT]")
-                .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(defaults.rpclisten_json)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json)),
         )
         .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node"))
         .arg(
-            Arg::new("connect")
+            Arg::new("connect-peers")
                 .long("connect")
                 .value_name("IP[:PORT]")
-                .num_args(0..=1)
+                .action(ArgAction::Append)
                 .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Connect only to the specified peers at startup."),
+        )
+        .arg(
+            Arg::new("add-peers")
+                .long("addpeer")
+                .value_name("IP[:PORT]")
+                .action(ArgAction::Append)
+                .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
+                .help("Add peers to connect with at startup."),
         )
         .arg(
             Arg::new("listen")
                 .long("listen")
                 .value_name("IP[:PORT]")
-                .num_args(0..=1)
                 .require_equals(true)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Add an interface:port to listen for connections (default all interfaces port: 16111, testnet: 16211)."),
         )
         .arg(
             Arg::new("outpeers")
                 .long("outpeers")
                 .value_name("outpeers")
-                .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
                 .help("Target number of outbound peers (default: 8)."),
@@ -143,7 +160,6 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("maxinpeers")
                 .long("maxinpeers")
                 .value_name("maxinpeers")
-                .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
                 .help("Max number of inbound peers (default: 128)."),
@@ -153,6 +169,13 @@ pub fn cli(defaults: &Defaults) -> Command {
         .arg(arg!(--testnet "Use the test network"))
         .arg(arg!(--devnet "Use the development test network"))
         .arg(arg!(--simnet "Use the simulation test network"))
+        .arg(
+            Arg::new("user_agent_comments")
+                .long("uacomment")
+                .action(ArgAction::Append)
+                .require_equals(true)
+                .help("Comment to add to the user agent -- See BIP 14 for more information."),
+        )
 }
 
 impl Args {
@@ -160,15 +183,18 @@ impl Args {
         let m = cli(defaults).get_matches();
         Args {
             appdir: m.get_one::<String>("appdir").cloned(),
-            rpclisten: m.get_one::<String>("rpclisten").cloned(),
-            rpclisten_borsh: m.get_one::<String>("rpclisten-borsh").cloned(),
-            rpclisten_json: m.get_one::<String>("rpclisten-json").cloned(),
+            logdir: m.get_one::<String>("logdir").cloned(),
+            no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
+            rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
+            rpclisten_borsh: m.get_one::<ContextualNetAddress>("rpclisten-borsh").cloned(),
+            rpclisten_json: m.get_one::<ContextualNetAddress>("rpclisten-json").cloned(),
             unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
             wrpc_verbose: false,
             log_level: m.get_one::<String>("log_level").cloned().unwrap(),
             async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
-            connect: m.get_one::<String>("connect").cloned(),
-            listen: m.get_one::<String>("listen").cloned(),
+            connect_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
+            add_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
+            listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
             outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
             inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
             reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
@@ -176,12 +202,14 @@ impl Args {
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
             simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
+            user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
         }
     }
 
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
         config.unsafe_rpc = self.unsafe_rpc;
+        config.user_agent_comments = self.user_agent_comments.clone();
     }
 }
 

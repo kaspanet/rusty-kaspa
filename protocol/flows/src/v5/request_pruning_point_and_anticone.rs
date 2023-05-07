@@ -57,10 +57,10 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                 ))
                 .await?;
 
-            let trusted_data = session.get_pruning_point_anticone_and_trusted_data();
-            let pp_anticone = &trusted_data.0;
-            let daa_window = &trusted_data.1;
-            let ghostdag_data = &trusted_data.2;
+            let trusted_data = session.get_pruning_point_anticone_and_trusted_data()?;
+            let pp_anticone = &trusted_data.anticone;
+            let daa_window = &trusted_data.daa_window_blocks;
+            let ghostdag_data = &trusted_data.ghostdag_blocks;
             self.router
                 .enqueue(make_message!(
                     Payload::TrustedData,

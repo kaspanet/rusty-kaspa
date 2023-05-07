@@ -17,6 +17,9 @@ pub enum ConsensusError {
     #[error("got unexpected pruning point")]
     UnexpectedPruningPoint,
 
+    #[error("pruning point is not at sufficient depth from virtual, cannot obtain its final anticone at this stage")]
+    PruningPointInsufficientDepth,
+
     #[error("sync manager error")]
     SyncManagerError(#[from] SyncManagerError),
 

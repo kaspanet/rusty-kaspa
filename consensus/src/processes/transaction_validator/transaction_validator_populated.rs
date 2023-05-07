@@ -624,7 +624,8 @@ mod tests {
                 is_coinbase: false,
             },
         ];
-        let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), secret_key.secret_bytes());
+        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+        let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), schnorr_key);
         let populated_tx = signed_tx.as_verifiable();
         assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
         assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
