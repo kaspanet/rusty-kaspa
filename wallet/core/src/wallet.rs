@@ -87,6 +87,7 @@ pub struct Inner {
     pub notification_channel: Channel<Notification>,
     // ---
     pub address_to_account_map: Arc<Mutex<HashMap<Address, Arc<Account>>>>,
+    // ---
 }
 
 /// `Wallet` data structure
@@ -176,7 +177,7 @@ impl Wallet {
         // - TODO - RESET?
         self.reset().await?;
 
-        let store = storage::Store::new(crate::storage::DEFAULT_WALLET_FILE)?;
+        let store = storage::Store::default();
         let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
 
@@ -193,7 +194,7 @@ impl Wallet {
     pub async fn get_account_keydata(&self, id: KeyDataId, secret: Secret) -> Result<Option<PrvKeyData>> {
         // let id = if let Some(id) = id { id } else { return Ok(None) };
 
-        let store = storage::Store::new(crate::storage::DEFAULT_WALLET_FILE)?;
+        let store = storage::Store::default();
         let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
         let key = payload.as_ref().prv_key_data.iter().find(|k| k.id == id);
@@ -204,7 +205,7 @@ impl Wallet {
     pub async fn is_account_key_encrypted(&self, account: &Account, secret: Secret) -> Result<bool> {
         // let id = if let Some(id) = account.prv_key_data_id { id } else { return Ok(false) };
         let id = account.prv_key_data_id;
-        let store = storage::Store::new(crate::storage::DEFAULT_WALLET_FILE)?;
+        let store = storage::Store::default();
         let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
         let key = payload.as_ref().prv_key_data.iter().find(|k| k.id == id);
@@ -299,7 +300,7 @@ impl Wallet {
     // }
 
     pub async fn create_private_key(self: &Arc<Wallet>, wallet_secret: Secret, payment_secret: Option<Secret>) -> Result<Mnemonic> {
-        let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
+        let store = Store::default();
 
         let mnemonic = Mnemonic::create_random()?;
         let wallet = storage::Wallet::try_load(&store).await?;
@@ -318,7 +319,7 @@ impl Wallet {
         args: &AccountCreateArgs,
     ) -> Result<Arc<Account>> {
         let prefix: AddressPrefix = self.network().into();
-        let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
+        let store = Store::default();
 
         let wallet = storage::Wallet::try_load(&store).await?;
         let mut payload = wallet.payload.decrypt::<Payload>(wallet_secret.clone()).unwrap();
@@ -366,7 +367,8 @@ impl Wallet {
     }
 
     pub async fn create_wallet(self: &Arc<Wallet>, args: &AccountCreateArgs) -> Result<(PathBuf, Mnemonic)> {
-        let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
+        let store = Store::new(storage::DEFAULT_WALLET_FOLDER, storage::DEFAULT_WALLET_NAME)?;
+        // let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
         if !args.override_wallet && store.exists().await? {
             return Err(Error::WalletAlreadyExists);
         }
@@ -451,7 +453,7 @@ impl Wallet {
     pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<()> {
         let keydata = load_v0_keydata(&import_secret).await?;
 
-        let store = storage::Store::new(storage::DEFAULT_WALLET_FILE)?;
+        let store = storage::Store::new(storage::DEFAULT_WALLET_FOLDER, storage::DEFAULT_WALLET_NAME)?;
         let wallet = storage::Wallet::try_load(&store).await?;
         let mut payload = wallet.payload.decrypt::<Payload>(wallet_secret).unwrap();
         let payload = payload.as_mut();

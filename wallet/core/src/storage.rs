@@ -1,11 +1,13 @@
+use crate::account::AccountId;
 use crate::address::create_xpub_from_mnemonic;
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::{encryption::sha256_hash, imports::*};
+use async_trait::async_trait;
 use faster_hex::{hex_decode, hex_string};
 use kaspa_bip32::{ExtendedPublicKey, Language, Mnemonic};
 use serde::Serializer;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[allow(unused_imports)]
 use workflow_core::runtime;
 use workflow_store::fs;
@@ -372,12 +374,20 @@ impl Store {
     }
 }
 
+impl Default for Store {
+    fn default() -> Self {
+        Self::new(DEFAULT_WALLET_FOLDER, DEFAULT_WALLET_NAME).unwrap()
+    }
+}
+
 impl Store {
-    pub fn new(filename: &str) -> Result<Store> {
-        let filename = fs::resolve_path(filename);
+    pub fn new(folder: &str, name: &str) -> Result<Store> {
         let filename = if runtime::is_web() {
-            PathBuf::from(filename.file_name().ok_or(Error::InvalidFilename(format!("{}", filename.display())))?)
+            PathBuf::from(name) //filename.file_name().ok_or(Error::InvalidFilename(format!("{}", filename.display())))?)
         } else {
+            // let filename = Path::new(DEFAULT_WALLET_FOLDER).join(name);
+            let filename = Path::new(folder).join(name);
+            let filename = fs::resolve_path(filename.to_str().unwrap());
             filename
         };
 
@@ -410,6 +420,157 @@ impl Store {
     }
 }
 
+// pub struct Settings;
+
+#[async_trait]
+pub trait AccessContextT {
+    async fn wallet_secret(&self) -> Option<Secret>;
+    async fn payment_secret(&self, account: &Arc<Account>) -> Option<Secret>;
+}
+
+#[derive(Clone, Default)]
+pub struct AccessContext {
+    pub(crate) wallet_secret: Option<Secret>,
+    pub(crate) payment_secret: Option<Secret>,
+}
+
+impl AccessContext {
+    pub fn new_with_wallet_secret(wallet_secret: Secret) -> Self {
+        Self { wallet_secret: Some(wallet_secret), payment_secret: None }
+    }
+
+    pub fn new_with_args(wallet_secret: Option<Secret>, payment_secret: Option<Secret>) -> Self {
+        Self { wallet_secret, payment_secret }
+    }
+}
+
+#[async_trait]
+impl AccessContextT for AccessContext {
+    async fn wallet_secret(&self) -> Option<Secret> {
+        self.wallet_secret.clone()
+    }
+    async fn payment_secret(&self, _account: &Arc<Account>) -> Option<Secret> {
+        self.payment_secret.clone()
+    }
+}
+
+pub struct TransactionRecord;
+pub type TransactionRecordId = u64;
+
+#[async_trait]
+pub trait AccountAccessor {}
+
+#[async_trait]
+pub trait StoreTrait {
+    async fn prv_key_data_len(self: &Arc<Self>) -> Result<usize>;
+    async fn prv_key_data_ids(self: &Arc<Self>, range: std::ops::Range<usize>) -> Result<Vec<PrvKeyDataId>>;
+    async fn store_prv_key_data(self: &Arc<Self>, ctx: &Arc<dyn AccessContextT>, prv_key_data: &[&PrvKeyData]) -> Result<()>;
+    async fn load_prv_key_data(
+        self: &Arc<Self>,
+        ctx: &Arc<dyn AccessContextT>,
+        prv_key_data_id: &[PrvKeyDataId],
+    ) -> Result<Vec<PrvKeyData>>;
+
+    async fn account_len(self: &Arc<Self>) -> Result<usize>;
+    async fn account_ids(self: &Arc<Self>, range: std::ops::Range<usize>) -> Result<Vec<AccountId>>;
+    async fn store_account(self: &Arc<Self>, ctx: &Arc<dyn AccessContextT>, account: &[&Account]) -> Result<()>;
+    async fn load_account(self: &Arc<Self>, ctx: &Arc<dyn AccessContextT>, account_ids: &[AccountId]) -> Result<Vec<Account>>;
+
+    async fn metadata_len(self: &Arc<Self>) -> Result<usize>;
+    async fn metadata_ids(self: &Arc<Self>, range: std::ops::Range<usize>) -> Result<Vec<AccountId>>;
+    async fn store_metadata(self: &Arc<Self>, ctx: &Arc<dyn AccessContextT>, metadata: &[&Metadata]) -> Result<()>;
+    async fn load_metadata(self: &Arc<Self>, ctx: &Arc<dyn AccessContextT>, account_ids: &[AccountId]) -> Result<Vec<Metadata>>;
+
+    async fn transaction_record_len(self: &Arc<Self>) -> Result<usize>;
+    async fn transaction_record_ids(self: &Arc<Self>, range: std::ops::Range<usize>) -> Result<Vec<TransactionRecordId>>;
+    async fn store_transaction_record(&self, ctx: &Arc<dyn AccessContextT>, transaction_record: &[&TransactionRecord]) -> Result<()>;
+    async fn load_transaction_record(
+        &self,
+        ctx: &Arc<dyn AccessContextT>,
+        transaction_record_ids: &[TransactionRecordId],
+    ) -> Result<Vec<TransactionRecord>>;
+}
+
+pub struct LocalStore {
+    pub wallet: Store,
+    // pub transactions: Store,
+}
+
+impl LocalStore {
+    pub fn new(_folder: &Path, name: &str) -> Result<LocalStore> {
+        let wallet = Store::new(DEFAULT_WALLET_FOLDER, name)?;
+        // let transactions = Store::new(name)?;
+        Ok(LocalStore { wallet })
+    }
+}
+
+#[async_trait]
+impl StoreTrait for LocalStore {
+    async fn prv_key_data_len(self: &Arc<Self>) -> Result<usize> {
+        todo!();
+    }
+    async fn prv_key_data_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<PrvKeyDataId>> {
+        todo!();
+    }
+    async fn store_prv_key_data(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _prv_key_data: &[&PrvKeyData]) -> Result<()> {
+        todo!();
+    }
+    async fn load_prv_key_data(
+        self: &Arc<Self>,
+        _ctx: &Arc<dyn AccessContextT>,
+        _prv_key_data_id: &[PrvKeyDataId],
+    ) -> Result<Vec<PrvKeyData>> {
+        todo!();
+    }
+
+    async fn account_len(self: &Arc<Self>) -> Result<usize> {
+        todo!();
+    }
+    async fn account_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<AccountId>> {
+        todo!();
+    }
+    async fn store_account(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account: &[&Account]) -> Result<()> {
+        todo!();
+    }
+    async fn load_account(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account_ids: &[AccountId]) -> Result<Vec<Account>> {
+        todo!();
+    }
+
+    async fn metadata_len(self: &Arc<Self>) -> Result<usize> {
+        todo!();
+    }
+    async fn metadata_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<AccountId>> {
+        todo!();
+    }
+    async fn store_metadata(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _metadata: &[&Metadata]) -> Result<()> {
+        todo!();
+    }
+    async fn load_metadata(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account_ids: &[AccountId]) -> Result<Vec<Metadata>> {
+        todo!();
+    }
+
+    async fn transaction_record_len(self: &Arc<Self>) -> Result<usize> {
+        todo!();
+    }
+    async fn transaction_record_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<TransactionRecordId>> {
+        todo!();
+    }
+    async fn store_transaction_record(
+        &self,
+        _ctx: &Arc<dyn AccessContextT>,
+        _transaction_record: &[&TransactionRecord],
+    ) -> Result<()> {
+        todo!();
+    }
+    async fn load_transaction_record(
+        &self,
+        _ctx: &Arc<dyn AccessContextT>,
+        _transaction_record_ids: &[TransactionRecordId],
+    ) -> Result<Vec<TransactionRecord>> {
+        todo!();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,7 +582,7 @@ mod tests {
         // loading of account references and a wallet instance and confirms
         // that the serialized data is as expected.
 
-        let store = Store::new("test-wallet-store")?;
+        let store = Store::new(DEFAULT_WALLET_FOLDER, "test-wallet-store")?;
 
         let mut payload = Payload::default();
 
@@ -456,7 +617,7 @@ mod tests {
             1,
             0,
         );
-        let account_id = account1.id.clone();
+        // let account_id = account1.id.clone();
         payload.accounts.push(account1);
 
         let account2 = Account::new(
