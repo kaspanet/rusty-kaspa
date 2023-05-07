@@ -28,13 +28,13 @@ $ cd rusty-kaspa
 Run the node through the following command:
 
 ```bash
-$ (cargo run --release --bin kaspad) 2>&1 | tee ~/rusty-kaspa.log
+$ cargo run --release --bin kaspad
 ```
 
 And if you want to setup a test node, run the following command instead:
 
 ```bash
-$ (cargo run --release --bin kaspad -- --testnet) 2>&1 | tee ~/rusty-kaspa-testnet.log
+$ cargo run --release --bin kaspad -- --testnet
 ```
 
 ## Mining
