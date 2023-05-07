@@ -12,3 +12,4 @@ triggered = "0.1"
 uuid.workspace = true
 serde.workspace = true
 borsh.workspace = true
+itertools.workspace = true

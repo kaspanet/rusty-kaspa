@@ -1,10 +1,9 @@
 use futures::future::join_all;
 use indexmap::{map::Entry::Occupied, IndexMap};
-use itertools::Itertools;
 use kaspa_consensus_core::{api::ConsensusApi, block::Block};
 use kaspa_core::{debug, info, warn};
 use kaspa_hashes::Hash;
-use kaspa_utils::option::OptionExtensions;
+use kaspa_utils::{iter::IterExtensions, option::OptionExtensions};
 use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -115,7 +114,7 @@ impl OrphanBlocksPool {
         match unorphaned_blocks.len() {
             0 => {}
             1 => info!("Unorphaned block {}", unorphaned_blocks[0].hash()),
-            n => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).format(", ")),
+            n => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).reusable_format(", ")),
         }
         unorphaned_blocks
     }
