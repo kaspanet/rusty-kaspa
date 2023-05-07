@@ -236,6 +236,12 @@ pub fn sha256_hash(data: &[u8]) -> Result<Secret> {
     Ok(Secret::new(sha256.finalize().to_vec()))
 }
 
+pub fn sha256d_hash(data: &[u8]) -> Result<Secret> {
+    let mut sha256 = Sha256::new();
+    sha256.update(data);
+    sha256_hash(sha256.finalize().as_slice())
+}
+
 pub fn argon2_sha256iv_hash(data: &[u8], byte_length: usize) -> Result<Secret> {
     let salt = sha256_hash(data)?;
     let mut key = vec![0u8; byte_length];
