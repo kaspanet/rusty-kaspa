@@ -1,3 +1,4 @@
+use serde::{Deserialize, Deserializer, Serializer};
 // use consensus_core::BlueWorkType;
 use smallvec::{smallvec, SmallVec};
 use std::str;
@@ -6,8 +7,28 @@ pub trait ToHex {
     fn to_hex(&self) -> String;
 }
 
+pub fn serialize<S, T>(this: T, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: ToHex,
+{
+    let hex = this.to_hex();
+    serializer.serialize_str(&hex)
+}
+
 pub trait FromHex: Sized {
-    fn from_hex(hex_str: &str) -> Result<Self, faster_hex::Error>;
+    type Error: std::fmt::Display;
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error>;
+}
+
+pub fn deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: FromHex,
+{
+    use serde::de::Error;
+    let buff: &[u8] = Deserialize::deserialize(deserializer)?;
+    T::from_hex(str::from_utf8(buff).unwrap()).map_err(D::Error::custom)
 }
 
 /// Little endian format of full slice content
@@ -37,7 +58,8 @@ impl ToHex for Vec<u8> {
 /// Little endian format of full content
 /// (so string lengths must be even).
 impl FromHex for Vec<u8> {
-    fn from_hex(hex_str: &str) -> Result<Self, faster_hex::Error> {
+    type Error = faster_hex::Error;
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
         // an empty string is allowed
         if hex_str.is_empty() {
             return Ok(vec![]);
@@ -60,7 +82,8 @@ impl<A: smallvec::Array<Item = u8>> ToHex for SmallVec<A> {
 /// Little endian format of full content
 /// (so string lengths must be even).
 impl<A: smallvec::Array<Item = u8>> FromHex for SmallVec<A> {
-    fn from_hex(hex_str: &str) -> Result<Self, faster_hex::Error> {
+    type Error = faster_hex::Error;
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
         // an empty string is allowed
         if hex_str.is_empty() {
             return Ok(smallvec![]);
