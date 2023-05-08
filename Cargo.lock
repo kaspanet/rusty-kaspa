@@ -2025,6 +2025,7 @@ dependencies = [
  "faster-hex",
  "futures",
  "h2",
+ "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-notify",
  "kaspa-rpc-core",
@@ -2144,10 +2145,12 @@ dependencies = [
  "criterion",
  "faster-hex",
  "js-sys",
+ "kaspa-utils",
  "malachite-base",
  "malachite-nz",
  "rand_chacha 0.3.1",
  "serde",
+ "thiserror",
  "wasm-bindgen",
 ]
 
@@ -2304,6 +2307,7 @@ dependencies = [
  "kaspa-consensus-notify",
  "kaspa-hashes",
  "kaspa-index-core",
+ "kaspa-math",
  "kaspa-mining",
  "kaspa-notify",
  "kaspa-txscript",

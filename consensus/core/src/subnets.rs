@@ -84,7 +84,8 @@ impl FromStr for SubnetworkId {
 }
 
 impl FromHex for SubnetworkId {
-    fn from_hex(hex_str: &str) -> Result<Self, faster_hex::Error> {
+    type Error = faster_hex::Error;
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
         let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
         faster_hex::hex_decode(hex_str.as_bytes(), &mut bytes)?;
         Ok(SubnetworkId(bytes))

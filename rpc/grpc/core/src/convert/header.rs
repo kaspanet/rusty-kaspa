@@ -31,6 +31,7 @@ from!(item: &Vec<RpcHash>, protowire::RpcBlockLevelParents, { Self { parent_hash
 // ----------------------------------------------------------------------------
 
 try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
+    // TODO - review this: new() ctor re-hashes the block. is this the right thing to do?
     Self::new(
         item.version.try_into()?,
         item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
