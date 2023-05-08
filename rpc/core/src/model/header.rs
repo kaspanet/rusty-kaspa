@@ -114,12 +114,11 @@ impl From<&RpcHeader> for Header {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
+    use super::*;
     use kaspa_math::Uint192;
     use serde_json::Value;
-    use super::*;
 
     #[test]
     fn test_rpc_header() {
@@ -133,7 +132,7 @@ mod tests {
             23,
             567,
             0,
-            Uint192([0x1234567890abcfed,0xc0dec0ffeec0ffee,0x1234567890abcdef]),
+            Uint192([0x1234567890abcfed, 0xc0dec0ffeec0ffee, 0x1234567890abcdef]),
             u64::MAX,
             Default::default(),
         );
@@ -150,6 +149,5 @@ mod tests {
 
         let h = serde_json::from_str::<RpcHeader>(&json).unwrap();
         assert!(h.blue_score == header.blue_score && h.blue_work == header.blue_work);
-
     }
 }
