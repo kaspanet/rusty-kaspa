@@ -6,6 +6,7 @@ use crate::pb::{
 use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
 use kaspa_core::{debug, info};
+use kaspa_utils::networking::NetAddress;
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -53,10 +54,9 @@ impl ConnectionHandler {
     }
 
     /// Launches a P2P server listener loop
-    pub(crate) fn serve(&self, serve_address: String) -> Result<OneshotSender<()>, ConnectionError> {
+    pub(crate) fn serve(&self, serve_address: NetAddress) -> Result<OneshotSender<()>, ConnectionError> {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
-        let Some(socket_address) = serve_address.to_socket_addrs()?.next() else { return Err(ConnectionError::NoAddress); };
         info!("P2P Server starting on: {}", serve_address);
         tokio::spawn(async move {
             let proto_server = ProtoP2pServer::new(connection_handler)
@@ -67,7 +67,7 @@ impl ConnectionHandler {
             // TODO: check whether we should set tcp_keepalive
             let serve_result = TonicServer::builder()
                 .add_service(proto_server)
-                .serve_with_shutdown(socket_address, termination_receiver.map(drop))
+                .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
                 .await;
 
             match serve_result {

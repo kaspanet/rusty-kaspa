@@ -217,7 +217,7 @@ impl FlowContext {
             return Err(RuleError::NoTransactions)?;
         }
         let hash = block.hash();
-        if let Err(err) = self.consensus().session().await.validate_and_insert_block(block.clone(), true).await {
+        if let Err(err) = self.consensus().session().await.validate_and_insert_block(block.clone()).await {
             warn!("Validation failed for block {}: {}", hash, err);
             return Err(err)?;
         }
@@ -322,7 +322,7 @@ impl ConnectionInitializer for FlowContext {
         // Build the local version message
         // Subnets are not currently supported
         let mut self_version_message = Version::new(None, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
-        self_version_message.add_user_agent(name(), version(), &[]);
+        self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
         // TODO: full and accurate version info
         // TODO: get number of live services
         // TODO: disable_relay_tx from config/cmd

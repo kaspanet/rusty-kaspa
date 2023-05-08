@@ -53,7 +53,7 @@ impl DbRelationsStore {
 
     pub fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         if self.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
 
         // Insert a new entry for `hash`
@@ -97,7 +97,7 @@ impl RelationsStore for DbRelationsStore {
     /// TODO: use one function with DbWriter for both this function and insert_batch
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         if self.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
 
         // Insert a new entry for `hash`
@@ -171,7 +171,7 @@ impl RelationsStore for MemoryRelationsStore {
             self.children_map.insert(hash, BlockHashes::new(Vec::new()));
             Ok(())
         } else {
-            Err(StoreError::KeyAlreadyExists(hash.to_string()))
+            Err(StoreError::HashAlreadyExists(hash))
         }
     }
 }
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn test_db_relations_store() {
-        let db_tempdir = tempfile::tempdir().unwrap();
+        let db_tempdir = kaspa_database::utils::get_kaspa_tempdir();
         let db = Arc::new(DB::open_default(db_tempdir.path().to_owned().to_str().unwrap()).unwrap());
         test_relations_store(DbRelationsStore::new(db, 0, 2));
     }

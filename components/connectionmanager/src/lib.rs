@@ -208,7 +208,7 @@ impl ConnectionManager {
             }
         }
 
-        if missing_connections > 0 {
+        if missing_connections > 0 && !self.dns_seeders.is_empty() {
             let cmgr = self.clone();
             // DNS lookup is a blocking i/o operation, so we spawn it as a blocking task
             let _ = tokio::task::spawn_blocking(move || {
