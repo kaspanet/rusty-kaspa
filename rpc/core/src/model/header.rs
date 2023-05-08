@@ -3,13 +3,21 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_consensus_core::{header::Header, BlueWorkType};
 use kaspa_hashes::Hash;
+use kaspa_math::Uint192;
+use kaspa_utils::hex::*;
 use serde::{Deserialize, Serialize};
+use serde_wasm_bindgen::to_value;
+use wasm_bindgen::prelude::*;
+use workflow_wasm::jsvalue::*;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen(inspectable)]
 pub struct RpcHeader {
+    #[wasm_bindgen(skip)]
     pub hash: Hash, // Cached hash
     pub version: u16,
+    #[wasm_bindgen(skip)]
     pub parents_by_level: Vec<Vec<Hash>>,
     pub hash_merkle_root: Hash,
     pub accepted_id_merkle_root: Hash,
@@ -19,9 +27,39 @@ pub struct RpcHeader {
     pub nonce: u64,
     pub daa_score: u64,
     #[serde(with = "kaspa_utils::hex")]
+    #[wasm_bindgen(skip)]
     pub blue_work: BlueWorkType,
     pub blue_score: u64,
     pub pruning_point: Hash,
+}
+
+#[wasm_bindgen]
+impl RpcHeader {
+    #[wasm_bindgen(getter = hash)]
+    pub fn get_hash_as_hex(&self) -> String {
+        self.hash.to_hex()
+    }
+
+    #[wasm_bindgen(setter = hash)]
+    pub fn set_hash_from_js_value(&mut self, js_value: JsValue) {
+        self.hash = Hash::from_slice(&js_value.try_as_vec_u8().expect("invalid hash"));
+    }
+
+    #[wasm_bindgen(getter = parentsByLevel)]
+    pub fn get_parents_by_level_as_js_value(&self) -> JsValue {
+        to_value(&self.parents_by_level).expect("invalid parents_by_level")
+    }
+
+    #[wasm_bindgen(getter = blueWork)]
+    pub fn get_blue_work_as_hex(&self) -> String {
+        (&self.blue_work).to_hex()
+    }
+
+    #[wasm_bindgen(setter = blueWork)]
+    pub fn set_blue_work_from_js_value(&mut self, js_value: JsValue) {
+        let vec = js_value.try_as_vec_u8().expect("invalid blue work");
+        self.blue_work = Uint192::from_be_bytes(vec.as_slice().try_into().expect("invalid byte length"));
+    }
 }
 
 impl RpcHeader {
