@@ -2,6 +2,7 @@ mod hashers;
 mod pow_hashers;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use kaspa_utils::hex::{FromHex, ToHex};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash as StdHash, Hasher as StdHasher};
@@ -117,6 +118,19 @@ impl AsRef<[u8]> for Hash {
     #[inline(always)]
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl ToHex for Hash {
+    fn to_hex(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl FromHex for Hash {
+    type Error = faster_hex::Error;
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
+        Self::from_str(hex_str)
     }
 }
 
