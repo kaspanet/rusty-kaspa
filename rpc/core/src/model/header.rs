@@ -18,7 +18,6 @@ pub struct RpcHeader {
     pub bits: u32,
     pub nonce: u64,
     pub daa_score: u64,
-
     #[serde(with = "kaspa_utils::hex")]
     pub blue_work: BlueWorkType,
     pub blue_score: u64,
@@ -60,7 +59,6 @@ impl RpcHeader {
     }
 
     // TODO - review conversion handling and remove code below if not needed.
-
 
     // Finalizes the header and recomputes the header hash
     // pub fn finalize(&mut self) {
@@ -113,5 +111,45 @@ impl From<&RpcHeader> for Header {
             blue_score: header.blue_score,
             pruning_point: header.pruning_point,
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use kaspa_math::Uint192;
+    use serde_json::Value;
+    use super::*;
+
+    #[test]
+    fn test_rpc_header() {
+        let header = RpcHeader::new(
+            1,
+            vec![vec![1.into()]],
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            234,
+            23,
+            567,
+            0,
+            Uint192([0x1234567890abcfed,0xc0dec0ffeec0ffee,0x1234567890abcdef]),
+            u64::MAX,
+            Default::default(),
+        );
+        let json = serde_json::to_string(&header).unwrap();
+        println!("{}", json);
+
+        let v = serde_json::from_str::<Value>(&json).unwrap();
+        let blue_work = v.get("blueWork").expect("missing `blueWork` property");
+        let blue_work = blue_work.as_str().expect("`blueWork` is not a string");
+        assert_eq!(blue_work, "1234567890abcdefc0dec0ffeec0ffee1234567890abcfed");
+        let blue_score = v.get("blueScore").expect("missing `blueScore` property");
+        let blue_score: u64 = blue_score.as_u64().expect("blueScore is not a u64 compatible value");
+        assert_eq!(blue_score, u64::MAX);
+
+        let h = serde_json::from_str::<RpcHeader>(&json).unwrap();
+        assert!(h.blue_score == header.blue_score && h.blue_work == header.blue_work);
+
     }
 }

@@ -34,3 +34,6 @@ workflow-core.workspace = true
 paste.workspace = true
 downcast.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
