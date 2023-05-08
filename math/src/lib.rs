@@ -10,6 +10,15 @@ construct_uint!(Uint256, 4);
 construct_uint!(Uint320, 5);
 construct_uint!(Uint3072, 48);
 
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("Invalid hex string: {0}")]
+    Hex(#[from] faster_hex::Error),
+
+    #[error("The supplied large integer has an invalid byte length: {0}")]
+    TryFromSliceError(#[from] std::array::TryFromSliceError),
+}
+
 impl Uint256 {
     #[inline]
     pub fn from_compact_target_bits(bits: u32) -> Self {
