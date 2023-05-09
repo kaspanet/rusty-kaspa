@@ -130,7 +130,7 @@ pub struct HeaderProcessor {
     // Stores
     relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
-    ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
+    pub(super) ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
     pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,

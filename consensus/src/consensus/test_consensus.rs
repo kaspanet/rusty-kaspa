@@ -96,10 +96,11 @@ impl TestConsensus {
             .pruning_manager
             .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_store.read().get().unwrap());
         let window = self.consensus.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size).unwrap();
-        let (daa_score, _) = self
-            .consensus
-            .difficulty_manager
-            .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
+        let (daa_score, _) = self.consensus.difficulty_manager.calc_daa_score_and_non_daa_mergeset_blocks(
+            &window,
+            &ghostdag_data,
+            self.ghostdag_store().as_ref(),
+        );
         header.bits = self.consensus.difficulty_manager.calculate_difficulty_bits(&window);
         header.daa_score = daa_score;
         header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(&ghostdag_data).unwrap().0 + 1;

@@ -26,9 +26,11 @@ impl HeaderProcessor {
         let ghostdag_data = ctx.ghostdag_data();
         let window = self.dag_traversal_manager.block_window(ghostdag_data, self.difficulty_window_size)?;
 
-        let (daa_score, mergeset_non_daa) = self
-            .difficulty_manager
-            .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), ghostdag_data);
+        let (daa_score, mergeset_non_daa) = self.difficulty_manager.calc_daa_score_and_non_daa_mergeset_blocks(
+            &window,
+            ghostdag_data,
+            self.ghostdag_stores[0].as_ref(),
+        );
 
         if daa_score != header.daa_score {
             return Err(RuleError::UnexpectedHeaderDaaScore(daa_score, header.daa_score));

@@ -1,12 +1,16 @@
-use crate::model::stores::{block_window_cache::BlockWindowHeap, ghostdag::GhostdagData, headers::HeaderStoreReader};
+use crate::model::stores::{
+    block_window_cache::BlockWindowHeap,
+    ghostdag::{GhostdagData, GhostdagStoreReader},
+    headers::HeaderStoreReader,
+};
 use kaspa_consensus_core::{
     errors::difficulty::{DifficultyError, DifficultyResult},
     BlockHashSet, BlueWorkType,
 };
-use kaspa_hashes::Hash;
 use kaspa_math::{Uint256, Uint320};
 use std::{
     cmp::{max, Ordering},
+    iter::once_with,
     sync::Arc,
 };
 
@@ -31,17 +35,26 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         Self { headers_store, difficulty_adjustment_window_size, genesis_bits, target_time_per_block }
     }
 
-    pub fn calc_daa_score_and_non_daa_mergeset_blocks(
-        &self,
-        window_hashes: &mut impl ExactSizeIterator<Item = Hash>,
+    pub fn calc_daa_score_and_non_daa_mergeset_blocks<'a>(
+        &'a self,
+        window: &BlockWindowHeap,
         ghostdag_data: &GhostdagData,
+        store: &'a (impl GhostdagStoreReader + ?Sized),
     ) -> (u64, BlockHashSet) {
-        let mergeset: BlockHashSet = ghostdag_data.unordered_mergeset().collect();
-        let mergeset_daa: BlockHashSet = window_hashes.filter(|h| mergeset.contains(h)).take(mergeset.len()).collect();
-        let mergeset_non_daa: BlockHashSet = mergeset.difference(&mergeset_daa).copied().collect();
+        let default_lowest_block = SortableBlock { hash: Default::default(), blue_work: BlueWorkType::MAX };
+        let window_lowest_block = window.peek().map(|x| &x.0).unwrap_or_else(|| &default_lowest_block);
+        let mergeset_non_daa: BlockHashSet = ghostdag_data
+            .ascending_mergeset_without_selected_parent(store)
+            .chain(once_with(|| {
+                let selected_parent_hash = ghostdag_data.selected_parent;
+                SortableBlock { hash: selected_parent_hash, blue_work: store.get_blue_work(selected_parent_hash).unwrap_or_default() }
+            }))
+            .take_while(|sortable_block| sortable_block < window_lowest_block)
+            .map(|sortable_block| sortable_block.hash)
+            .collect();
         let sp_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
 
-        (sp_daa_score + mergeset_daa.len() as u64, mergeset_non_daa)
+        (sp_daa_score + (ghostdag_data.mergeset_size() - mergeset_non_daa.len()) as u64, mergeset_non_daa)
     }
 
     fn get_difficulty_blocks(&self, window: &BlockWindowHeap) -> Vec<DifficultyBlock> {
