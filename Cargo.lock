@@ -4932,7 +4932,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-core"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "async-channel",
  "async-std",
@@ -4957,7 +4957,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-core-macros"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -4971,7 +4971,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-dom"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "futures",
  "js-sys",
@@ -4986,7 +4986,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-log"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "cfg-if 1.0.0",
  "console",
@@ -5000,7 +5000,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-macro-tools"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -5011,7 +5011,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-node"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "futures",
  "js-sys",
@@ -5028,7 +5028,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-panic-hook"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "cfg-if 1.0.0",
  "wasm-bindgen",
@@ -5037,7 +5037,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "ahash 0.8.3",
  "async-std",
@@ -5065,7 +5065,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc-macros"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "parse-variants",
  "proc-macro-error",
@@ -5076,7 +5076,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-store"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "async-std",
  "base64 0.21.0",
@@ -5093,7 +5093,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-task"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "futures",
  "thiserror",
@@ -5103,7 +5103,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-task-macros"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -5117,7 +5117,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-terminal"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "async-std",
  "async-trait",
@@ -5139,7 +5139,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "cfg-if 1.0.0",
  "faster-hex",
@@ -5158,7 +5158,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm-macros"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "js-sys",
  "proc-macro-error",
@@ -5170,7 +5170,7 @@ dependencies = [
 
 [[package]]
 name = "workflow-websocket"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "ahash 0.8.3",
  "async-std",
