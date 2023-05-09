@@ -41,6 +41,7 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         ghostdag_data: &GhostdagData,
         store: &'a (impl GhostdagStoreReader + ?Sized),
     ) -> (u64, BlockHashSet) {
+        // If the window is empty, all the mergeset goes in the non-DAA set, hence a default lowest block with maximum blue work.
         let default_lowest_block = SortableBlock { hash: Default::default(), blue_work: BlueWorkType::MAX };
         let window_lowest_block = window.peek().map(|x| &x.0).unwrap_or_else(|| &default_lowest_block);
         let mergeset_non_daa: BlockHashSet = ghostdag_data

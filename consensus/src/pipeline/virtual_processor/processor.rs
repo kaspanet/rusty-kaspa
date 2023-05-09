@@ -451,7 +451,7 @@ impl VirtualStateProcessor {
         let (virtual_daa_score, mergeset_non_daa) = self.difficulty_manager.calc_daa_score_and_non_daa_mergeset_blocks(
             &window,
             &virtual_ghostdag_data,
-            self.ghostdag_store.as_ref(),
+            self.ghostdag_store.deref(),
         );
         let virtual_bits = self.difficulty_manager.calculate_difficulty_bits(&window);
         let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_ghostdag_data)?.0;
