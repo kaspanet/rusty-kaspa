@@ -15,8 +15,17 @@ pub enum Error {
     #[error("Invalid hex string: {0}")]
     Hex(#[from] faster_hex::Error),
 
-    #[error("The supplied large integer has an invalid byte length: {0}")]
-    TryFromSliceError(#[from] std::array::TryFromSliceError),
+    #[error(transparent)]
+    TryFromSliceError(#[from] uint::TryFromSliceError),
+    // TryFromSliceError(#[from] std::array::TryFromSliceError),
+    #[error("Utf8 error: {0}")]
+    Utf8(#[from] std::str::Utf8Error),
+
+    #[error(transparent)]
+    WorkflowWasm(#[from] workflow_wasm::error::Error),
+
+    #[error("Supplied value is not compatible with this type")]
+    NotCompatible,
 }
 
 impl Uint256 {

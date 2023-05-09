@@ -82,7 +82,7 @@ impl ConsensusConverter {
             vec![]
         };
 
-        Ok(RpcBlock { header: (&*block.header).into(), transactions, verbose_data })
+        Ok(RpcBlock { header: (*block.header).clone(), transactions, verbose_data })
     }
 
     pub fn get_mempool_entry(&self, consensus: &dyn ConsensusApi, transaction: &MutableTransaction) -> RpcMempoolEntry {

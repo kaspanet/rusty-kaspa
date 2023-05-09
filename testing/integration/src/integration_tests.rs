@@ -1021,7 +1021,7 @@ fn submit_body_chunk(
 }
 
 fn rpc_header_to_header(rpc_header: &RPCBlockHeader) -> Header {
-    Header::new(
+    Header::new_finalized(
         rpc_header.Version,
         rpc_header
             .Parents

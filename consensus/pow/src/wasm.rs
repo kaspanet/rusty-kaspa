@@ -1,4 +1,4 @@
-use kaspa_consensus_core::wasm::Header;
+use kaspa_consensus_core::header::Header;
 use kaspa_math::wasm::Uint256;
 use wasm_bindgen::prelude::*;
 
@@ -11,7 +11,7 @@ pub struct State {
 impl State {
     #[wasm_bindgen(constructor)]
     pub fn new(header: &Header) -> Self {
-        Self { inner: crate::State::new(header.inner()) }
+        Self { inner: crate::State::new(header) }
     }
 
     #[wasm_bindgen(js_name=checkPow)]

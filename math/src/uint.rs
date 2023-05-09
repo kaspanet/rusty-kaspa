@@ -428,10 +428,8 @@ macro_rules! construct_uint {
 
         impl kaspa_utils::hex::FromHex for $name {
             type Error = $crate::Error;
-            fn from_hex(s: &str) -> Result<$name, Self::Error> {
-                let v: Vec<u8> = kaspa_utils::hex::FromHex::from_hex(s)?;
-                let v = $name::from_be_bytes(v.as_slice().try_into()?);
-                Ok(v)
+            fn from_hex(hex: &str) -> Result<$name, Self::Error> {
+                Ok($name::from_hex(hex)?)
             }
         }
 
@@ -807,72 +805,140 @@ macro_rules! construct_uint {
         impl $crate::uint::serde::Serialize for $name {
             #[inline]
             fn serialize<S: $crate::uint::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                use $crate::uint::serde::ser::SerializeTuple;
-                let mut seq = serializer.serialize_tuple(Self::LIMBS)?;
-                for limb in &self.0 {
-                    seq.serialize_element(limb)?;
+                if serializer.is_human_readable() {
+                    let mut hex = [0u8; Self::BYTES * 2];
+                    let bytes = self.to_be_bytes();
+                    $crate::uint::faster_hex::hex_encode(&bytes, &mut hex).expect("The output is exactly twice the size of the input");
+                    let hex_str = unsafe { std::str::from_utf8_unchecked(&hex) };
+                    serializer.serialize_str(hex_str)
+                } else {
+                    use $crate::uint::serde::ser::SerializeTuple;
+                    let mut seq = serializer.serialize_tuple(Self::LIMBS)?;
+                    for limb in &self.0 {
+                        seq.serialize_element(limb)?;
+                    }
+                    seq.end()
                 }
-                seq.end()
             }
         }
 
         impl<'de> $crate::uint::serde::Deserialize<'de> for $name {
             #[inline]
             fn deserialize<D: $crate::uint::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-                use core::{fmt, marker::PhantomData};
-                use $crate::uint::serde::de::{Error, SeqAccess, Visitor};
-                struct EmptyVisitor(PhantomData<$name>);
-                impl<'de> Visitor<'de> for EmptyVisitor {
-                    type Value = $name;
-                    #[inline]
+                if deserializer.is_human_readable() {
+                    let hex = <std::string::String as serde::Deserialize>::deserialize(deserializer)?;
+                    Ok(Self::from_hex(&hex).map_err($crate::uint::serde::de::Error::custom)?)
+                } else {
+                    use core::{fmt, marker::PhantomData};
+                    use $crate::uint::serde::de::{Error, SeqAccess, Visitor};
+                    struct EmptyVisitor(PhantomData<$name>);
+                    impl<'de> Visitor<'de> for EmptyVisitor {
+                        type Value = $name;
+                        #[inline]
 
-                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                        formatter.write_str(concat!("an integer with ", $n_words, " limbs"))
-                    }
-
-                    #[inline]
-                    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
-                        let mut ret = $name::ZERO;
-                        for (i, limb) in ret.0.iter_mut().enumerate() {
-                            *limb = seq.next_element()?.ok_or_else(|| Error::invalid_length(i, &self))?;
+                        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str(concat!("an integer with ", $n_words, " limbs"))
                         }
-                        Ok(ret)
+
+                        #[inline]
+                        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                            let mut ret = $name::ZERO;
+                            for (i, limb) in ret.0.iter_mut().enumerate() {
+                                *limb = seq.next_element()?.ok_or_else(|| Error::invalid_length(i, &self))?;
+                            }
+                            Ok(ret)
+                        }
                     }
+                    deserializer.deserialize_tuple(Self::LIMBS, EmptyVisitor(PhantomData))
                 }
-                deserializer.deserialize_tuple(Self::LIMBS, EmptyVisitor(PhantomData))
             }
 
             #[inline]
             fn deserialize_in_place<D: $crate::uint::serde::Deserializer<'de>>(
-                    deserializer: D,
+                deserializer: D,
                 place: &mut Self,
             ) -> Result<(), D::Error> {
-                use core::fmt;
-                use $crate::uint::serde::de::{Error, SeqAccess, Visitor};
-                struct InPlaceVisitor<'a>(&'a mut $name);
+                if deserializer.is_human_readable() {
 
-                impl<'de, 'a> Visitor<'de> for InPlaceVisitor<'a> {
-                    type Value = ();
-                    #[inline]
-                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                        formatter.write_str(concat!("an integer with ", $n_words, " limbs"))
+                    use core::fmt;
+                    use $crate::uint::serde::de::{Error, Visitor};
+                    struct InPlaceVisitor<'a>(&'a mut $name);
+
+                    impl<'de, 'a> Visitor<'de> for InPlaceVisitor<'a> {
+                        type Value = ();
+                        #[inline]
+                        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str(concat!("a hex string"))
+                        }
+                        #[inline]
+                        fn visit_str<E>(self, hex: &str) -> Result<Self::Value, E>
+                        where
+                            E: Error,
+                        {
+                            if hex.len() > $name::BYTES * 2 {
+                                return Err($crate::uint::serde::de::Error::custom("invalid hex string length"));
+                            }
+                            let mut bytes = [0u8; $name::BYTES];
+                            let mut input = [b'0'; $name::BYTES * 2];
+                            let start = input.len() - hex.len();
+                            input[start..].copy_from_slice(hex.as_bytes());
+                            $crate::uint::faster_hex::hex_decode(&input, &mut bytes).map_err(Error::custom)?;
+
+                            self.0.0.iter_mut()
+                                .rev()
+                                .zip(bytes.chunks_exact(8))
+                                .for_each(|(word, bytes)| *word = u64::from_be_bytes(bytes.try_into().unwrap()));
+
+                            Ok(())
+                        }
                     }
-                    #[inline]
-                    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
-                        for (idx, dest) in self.0 .0[..].iter_mut().enumerate() {
-                            match seq.next_element()? {
-                                Some(elem) => *dest = elem,
-                                None => {
-                                    return Err(Error::invalid_length(idx, &self));
+                    deserializer.deserialize_str(InPlaceVisitor(place))
+
+                } else {
+                    use core::fmt;
+                    use $crate::uint::serde::de::{Error, SeqAccess, Visitor};
+                    struct InPlaceVisitor<'a>(&'a mut $name);
+
+                    impl<'de, 'a> Visitor<'de> for InPlaceVisitor<'a> {
+                        type Value = ();
+                        #[inline]
+                        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str(concat!("an integer with ", $n_words, " limbs"))
+                        }
+                        #[inline]
+                        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                            for (idx, dest) in self.0 .0[..].iter_mut().enumerate() {
+                                match seq.next_element()? {
+                                    Some(elem) => *dest = elem,
+                                    None => {
+                                        return Err(Error::invalid_length(idx, &self));
+                                    }
                                 }
                             }
+                            Ok(())
                         }
-                        Ok(())
                     }
+                    deserializer.deserialize_tuple(Self::LIMBS, InPlaceVisitor(place))
                 }
-                deserializer.deserialize_tuple(Self::LIMBS, InPlaceVisitor(place))
             }
         }
+
+        impl TryFrom<wasm_bindgen::JsValue> for $name {
+            type Error = $crate::Error;
+            fn try_from(js_value: wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+                use workflow_wasm::jsvalue::JsValueTrait;
+                if js_value.is_string() || js_value.is_array() {
+                    let bytes = js_value.try_as_vec_u8()?;
+                    Ok(Self::from_be_bytes_var(&bytes)?)
+                } else if js_value.is_object() {
+                    // ref_from_abi!($name, &js_value).map_err(|_| TryFromError::WrongType(concat!("", $name, " limbs").to_string()))?
+                    return Err(Self::Error::NotCompatible);
+                } else {
+                    return Err(Self::Error::NotCompatible);
+                }
+            }
+        }
+
     };
 }
 

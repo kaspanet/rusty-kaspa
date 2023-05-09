@@ -3,7 +3,8 @@ mod pow_hashers;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_utils::hex::{FromHex, ToHex};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::Error as DeserializeError, Deserialize, Deserializer, Serialize, Serializer};
+use std::array::TryFromSliceError;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash as StdHash, Hasher as StdHasher};
 use std::str::{self, FromStr};
@@ -36,6 +37,11 @@ impl Hash {
     /// Panics if `bytes` length is not exactly `HASH_SIZE`.
     pub fn from_slice(bytes: &[u8]) -> Self {
         Self(<[u8; HASH_SIZE]>::try_from(bytes).expect("Slice must have the length of Hash"))
+    }
+
+    #[inline(always)]
+    pub fn try_from_slice(bytes: &[u8]) -> Result<Self, TryFromSliceError> {
+        Ok(Self(<[u8; HASH_SIZE]>::try_from(bytes)?))
     }
 
     #[inline(always)]
@@ -139,7 +145,11 @@ impl Serialize for Hash {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&self.to_string())
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.to_string())
+        } else {
+            serializer.serialize_bytes(&self.0)
+        }
     }
 }
 
@@ -148,8 +158,13 @@ impl<'de> Deserialize<'de> for Hash {
     where
         D: Deserializer<'de>,
     {
-        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-        FromStr::from_str(&s).map_err(serde::de::Error::custom)
+        if deserializer.is_human_readable() {
+            let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
+            FromStr::from_str(&s).map_err(serde::de::Error::custom)
+        } else {
+            let s = <Vec<u8> as Deserialize>::deserialize(deserializer)?;
+            Ok(Self::try_from_slice(&s).map_err(D::Error::custom)?)
+        }
     }
 }
 

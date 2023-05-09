@@ -17,6 +17,7 @@ wasm-bindgen.workspace = true
 js-sys.workspace = true
 kaspa-utils.workspace = true
 thiserror.workspace = true
+workflow-wasm.workspace = true
 
 [dev-dependencies]
 rand_chacha.workspace = true

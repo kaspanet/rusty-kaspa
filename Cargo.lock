@@ -2153,6 +2153,7 @@ dependencies = [
  "serde",
  "thiserror",
  "wasm-bindgen",
+ "workflow-wasm",
 ]
 
 [[package]]
