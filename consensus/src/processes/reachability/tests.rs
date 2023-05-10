@@ -6,6 +6,7 @@ use crate::{
     model::stores::reachability::{ReachabilityStore, ReachabilityStoreReader},
     processes::reachability::interval::Interval,
 };
+use itertools::{any, Itertools};
 use kaspa_consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, BlockHashSet, HashMapCustomHasher};
 use kaspa_database::prelude::StoreError;
 use kaspa_hashes::Hash;
@@ -93,8 +94,43 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
         Self { store, map: BlockHashMap::new() }
     }
 
+    pub fn from_map(store: &'a mut T, map: BlockHashMap<DagBlock>) -> Self {
+        Self { store, map }
+    }
+
     pub fn init(&mut self) -> &mut Self {
         init(self.store).unwrap();
+        self
+    }
+
+    pub fn drop(self) -> BlockHashMap<DagBlock> {
+        self.map
+    }
+
+    pub fn delete_block(&mut self, hash: Hash) -> &mut Self {
+        let selected_parent = self.store.get_parent(hash).unwrap();
+        let block = self.map.remove(&hash).unwrap();
+        let mergeset = self.mergeset(&block, selected_parent);
+        for (_, v) in self.map.iter_mut() {
+            if let Some(index) = v.parents.iter().copied().position(|h| h == hash) {
+                // `v` is a child of `block`
+                let needed_grandparents = block
+                    .parents
+                    .iter()
+                    .copied()
+                    .filter(|&grandparent| {
+                        // Find grandparents of `v` which are not in the past of any of current parents of `v`
+                        !any(v.parents.iter().copied(), |existing_parent| {
+                            is_dag_ancestor_of(self.store, grandparent, existing_parent).unwrap()
+                        })
+                    })
+                    .collect_vec();
+                // Replace `block` with needed grandparents
+                let replaced = v.parents.splice(index..index + 1, needed_grandparents);
+                assert!(replaced.eq(std::iter::once(hash)));
+            }
+        }
+        delete_block(self.store, hash, &mut mergeset.iter().cloned()).unwrap();
         self
     }
 

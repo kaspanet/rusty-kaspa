@@ -57,6 +57,76 @@ fn add_dag_block(store: &mut (impl ReachabilityStore + ?Sized), new_block: Hash,
     Ok(())
 }
 
+/// Deletes a block permanently from the DAG reachability structures while keeping full reachability info for all other blocks.
+/// That is, for any other B, C blocks, all DAG/chain queries are guaranteed to return the same results as before the deletion.
+pub fn delete_block(store: &mut (impl ReachabilityStore + ?Sized), block: Hash, mergeset_iterator: HashIterator) -> Result<()> {
+    let interval = store.get_interval(block)?;
+    let parent = store.get_parent(block)?;
+    let children = store.get_children(block)?;
+
+    /* Algo:
+        1. Find child index of block at parent
+        2. Replace child with its children
+        3. Update parent as new parent of children
+        4. Extend interval of first and last children as much as possible
+        5. For each block in the mergeset, find index of `block` in the future-covering-set and replace it with its children
+        6. Delete block
+    */
+
+    let block_index = match binary_search_descendant(store, store.get_children(parent)?.as_slice(), block)? {
+        SearchOutput::NotFound(_) => return Err(ReachabilityError::DataInconsistency),
+        SearchOutput::Found(hash, i) => {
+            debug_assert_eq!(hash, block);
+            i
+        }
+    };
+
+    store.replace_child(parent, block_index, &children)?;
+
+    for child in children.iter().copied() {
+        store.set_parent(child, parent)?;
+    }
+
+    match children.len() {
+        0 => {
+            // No children, give the capacity to the sibling on the left
+            if block_index > 0 {
+                let sibling = store.get_children(parent)?[block_index - 1];
+                let sibling_interval = store.get_interval(sibling)?;
+                store.set_interval(sibling, Interval::new(sibling_interval.start, interval.end))?;
+            }
+        }
+        1 => {
+            // Give full interval capacity to the only child
+            store.set_interval(children[0], interval)?;
+        }
+        _ => {
+            // Split the extra capacity between the first and last children
+            let first_child = children[0];
+            let first_interval = store.get_interval(first_child)?;
+            store.set_interval(first_child, Interval::new(interval.start, first_interval.end))?;
+
+            let last_child = children.last().copied().expect("len > 1");
+            let last_interval = store.get_interval(last_child)?;
+            store.set_interval(last_child, Interval::new(last_interval.start, interval.end))?;
+        }
+    }
+
+    for merged_block in mergeset_iterator {
+        match binary_search_descendant(store, store.get_future_covering_set(merged_block)?.as_slice(), block)? {
+            SearchOutput::NotFound(_) => return Err(ReachabilityError::DataInconsistency),
+            SearchOutput::Found(hash, i) => {
+                debug_assert_eq!(hash, block);
+                store.replace_future_covering_item(merged_block, i, &children)?;
+            }
+        }
+    }
+
+    store.delete(block)?;
+
+    Ok(())
+}
+
 fn insert_to_future_covering_set(store: &mut (impl ReachabilityStore + ?Sized), merged_block: Hash, new_block: Hash) -> Result<()> {
     match binary_search_descendant(store, store.get_future_covering_set(merged_block)?.as_slice(), new_block)? {
         // We expect the query to not succeed, and to only return the correct insertion index.
@@ -235,7 +305,8 @@ mod tests {
         let mut store = MemoryReachabilityStore::new();
 
         // Act
-        DagBuilder::new(&mut store)
+        let mut builder = DagBuilder::new(&mut store);
+        builder
             .init()
             .add_block(DagBlock::new(1.into(), vec![blockhash::ORIGIN]))
             .add_block(DagBlock::new(2.into(), vec![1.into()]))
@@ -249,6 +320,7 @@ mod tests {
             .add_block(DagBlock::new(10.into(), vec![7.into(), 8.into(), 9.into()]))
             .add_block(DagBlock::new(11.into(), vec![1.into()]))
             .add_block(DagBlock::new(12.into(), vec![11.into(), 10.into()]));
+        let mut map = builder.drop();
 
         // Assert intervals
         store.validate_intervals(blockhash::ORIGIN).unwrap();
@@ -277,5 +349,15 @@ mod tests {
         assert!(store.are_anticone(11, 4));
         assert!(store.are_anticone(11, 6));
         assert!(store.are_anticone(11, 9));
+
+        for i in 2u64..=11 {
+            let mut builder = DagBuilder::from_map(&mut store, map);
+            builder.delete_block(i.into());
+            map = builder.drop();
+            store.validate_intervals(blockhash::ORIGIN).unwrap();
+        }
+
+        // Assert intervals
+        store.validate_intervals(blockhash::ORIGIN).unwrap();
     }
 }
