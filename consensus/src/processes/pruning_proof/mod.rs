@@ -18,7 +18,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::{info, trace};
-use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use parking_lot::RwLock;
@@ -51,8 +51,12 @@ use crate::{
 };
 use std::collections::hash_map::Entry::Vacant;
 
-use super::{ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, traversal_manager::DagTraversalManager};
-use kaspa_utils::binary_heap::BinaryHeapExtensions;
+use super::{
+    ghostdag::{mergeset::unordered_mergeset_without_selected_parent, protocol::GhostdagManager},
+    parents_builder::ParentsManager,
+    traversal_manager::DagTraversalManager,
+};
+use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -94,86 +98,6 @@ pub struct PruningProofManager {
     anticone_finalization_depth: u64,
     difficulty_adjustment_window_size: usize,
     ghostdag_k: KType,
-}
-
-struct HeaderStoreMock {}
-
-#[allow(unused_variables)]
-impl HeaderStoreReader for HeaderStoreMock {
-    fn get_daa_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_blue_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_timestamp(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_bits(&self, hash: kaspa_hashes::Hash) -> Result<u32, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_header(&self, hash: kaspa_hashes::Hash) -> Result<Arc<Header>, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_header_with_block_level(
-        &self,
-        hash: kaspa_hashes::Hash,
-    ) -> Result<crate::model::stores::headers::HeaderWithBlockLevel, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_compact_header_data(
-        &self,
-        hash: kaspa_hashes::Hash,
-    ) -> Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
-        unimplemented!()
-    }
-}
-
-struct GhostdagStoreMock {}
-
-#[allow(unused_variables)]
-impl GhostdagStoreReader for GhostdagStoreMock {
-    fn get_blue_score(&self, hash: kaspa_hashes::Hash) -> Result<u64, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_blue_work(&self, hash: kaspa_hashes::Hash) -> Result<kaspa_consensus_core::BlueWorkType, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_selected_parent(&self, hash: kaspa_hashes::Hash) -> Result<kaspa_hashes::Hash, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_mergeset_blues(&self, hash: kaspa_hashes::Hash) -> Result<BlockHashes, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_mergeset_reds(&self, hash: kaspa_hashes::Hash) -> Result<BlockHashes, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_blues_anticone_sizes(&self, hash: kaspa_hashes::Hash) -> Result<crate::model::stores::ghostdag::HashKTypeMap, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_data(&self, hash: kaspa_hashes::Hash) -> Result<Arc<crate::model::stores::ghostdag::GhostdagData>, StoreError> {
-        unimplemented!()
-    }
-
-    fn get_compact_data(&self, hash: kaspa_hashes::Hash) -> Result<crate::model::stores::ghostdag::CompactGhostdagData, StoreError> {
-        unimplemented!()
-    }
-
-    fn has(&self, hash: kaspa_hashes::Hash) -> Result<bool, StoreError> {
-        unimplemented!()
-    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -278,15 +202,15 @@ impl PruningProofManager {
             trace!("Applying level {} in pruning point proof", level);
             self.ghostdag_stores[level].insert(ORIGIN, self.ghostdag_managers[level].origin_ghostdag_data()).unwrap();
             for header in headers.iter() {
-                let parents = self
-                    .parents_manager
-                    .parents_at_level(header, level as BlockLevel)
-                    .iter()
-                    .copied()
-                    .filter(|parent| self.ghostdag_stores[level].has(*parent).unwrap())
-                    .collect_vec();
-
-                let parents = Arc::new(if parents.is_empty() { vec![ORIGIN] } else { parents });
+                let parents = Arc::new(
+                    self.parents_manager
+                        .parents_at_level(header, level as BlockLevel)
+                        .iter()
+                        .copied()
+                        .filter(|parent| self.ghostdag_stores[level].has(*parent).unwrap())
+                        .collect_vec()
+                        .push_if_empty(ORIGIN),
+                );
 
                 self.relations_stores.write()[level].insert(header.hash, parents.clone()).unwrap();
                 let gd = if header.hash == self.genesis_hash {
@@ -328,7 +252,6 @@ impl PruningProofManager {
             .set_batch(&mut batch, SortableBlock { hash: pruning_point, blue_work: pruning_point_header.blue_work })
             .unwrap();
         self.selected_chain_store.write().init_with_pruning_point(&mut batch, pruning_point).unwrap();
-        // self.depth_store.insert_batch(&mut batch, pruning_point, pruning_point, pruning_point).unwrap();
         self.db.write(batch).unwrap();
     }
 
@@ -363,16 +286,7 @@ impl PruningProofManager {
         let relations_store = Arc::new(RwLock::new(vec![MemoryRelationsStore::new()]));
         relations_store.write()[0].insert(ORIGIN, Arc::new(vec![])).unwrap();
         let relations_service = MTRelationsService::new(relations_store.clone(), 0);
-        let gm = GhostdagManager::new(
-            0.into(),
-            0,
-            Arc::new(GhostdagStoreMock {}),
-            relations_service,
-            Arc::new(HeaderStoreMock {}),
-            self.reachability_service.clone(),
-        ); // Nothing except reachability and relations should be used, so all other arguments can be fake.
 
-        let mut selected_tip = up_heap.peek().unwrap().clone().0;
         for reverse_sortable_block in up_heap.into_sorted_iter() {
             // TODO: Convert to into_iter_sorted once it gets stable
             let hash = reverse_sortable_block.0.hash;
@@ -398,22 +312,22 @@ impl PruningProofManager {
                 fake_direct_parents.push(parent);
             }
 
-            let fake_direct_parents_hashes = BlockHashes::new(if fake_direct_parents.is_empty() {
-                vec![ORIGIN]
-            } else {
-                fake_direct_parents.iter().map(|parent| &parent.hash).cloned().collect_vec()
-            });
+            let fake_direct_parents_hashes =
+                BlockHashes::new(fake_direct_parents.iter().map(|parent| &parent.hash).cloned().collect_vec().push_if_empty(ORIGIN));
 
             let selected_parent = fake_direct_parents.iter().max().map(|parent| parent.hash).unwrap_or(ORIGIN);
 
             relations_store.write()[0].insert(hash, fake_direct_parents_hashes.clone()).unwrap();
-            let mergeset = gm.unordered_mergeset_without_selected_parent(selected_parent, &fake_direct_parents_hashes);
+            let mergeset = unordered_mergeset_without_selected_parent(
+                &relations_service,
+                &self.reachability_service,
+                selected_parent,
+                &fake_direct_parents_hashes,
+            );
             let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
             reachability::add_block(&mut staging, hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();
             let reachability_write_guard = staging.commit(&mut WriteBatch::default()).unwrap();
             drop(reachability_write_guard);
-
-            selected_tip = max(selected_tip, reverse_sortable_block.0);
         }
     }
 
