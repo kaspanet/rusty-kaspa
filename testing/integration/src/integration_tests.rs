@@ -14,7 +14,7 @@ use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as Gho
 use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{Params, DEVNET_PARAMS, POW_MAX, POW_MAX_AS_F64, MAINNET_PARAMS};
+use kaspa_consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS, POW_MAX, POW_MAX_AS_F64}};
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
