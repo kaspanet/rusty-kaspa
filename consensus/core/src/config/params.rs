@@ -308,7 +308,7 @@ mod tests {
     use kaspa_math::Uint256;
 
     #[test]
-    fn test_POW_max_consts() {
+    fn test_pow_max_consts() {
         assert_eq!(POW_MAX, Uint256::from_u64(1).wrapping_shl(255) - 1.into());
         assert_eq!(POW_MAX_AS_F64, POW_MAX.as_f64());
     }
