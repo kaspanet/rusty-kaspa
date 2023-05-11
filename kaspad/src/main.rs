@@ -4,20 +4,25 @@ extern crate kaspa_hashes;
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
+use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
+use kaspa_consensus_core::config::Config;
+use kaspa_consensus_core::errors::config::{ConfigError, ConfigResult};
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::version::version;
+use kaspa_core::kaspad_env::version;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::manager::MiningManager;
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_rpc_service::RpcCoreServer;
+use kaspa_utils::networking::ContextualNetAddress;
 
 use std::fs;
 use std::path::PathBuf;
+use std::process::exit;
 use std::sync::Arc;
 
 // ~~~
@@ -26,9 +31,7 @@ use args::{Args, Defaults};
 // use clap::Parser;
 // ~~~
 
-use crate::monitor::ConsensusMonitor;
 use kaspa_consensus::config::ConfigBuilder;
-use kaspa_consensus::params::{DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS};
 use kaspa_utxoindex::UtxoIndex;
 
 use async_channel::unbounded;
@@ -38,16 +41,13 @@ use kaspa_p2p_flows::service::P2pService;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 
 mod args;
-mod monitor;
 
 const DEFAULT_DATA_DIR: &str = "datadir";
 const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
 const META_DB: &str = "meta";
+const DEFAULT_LOG_DIR: &str = "logs";
 
-// TODO: add a Config
-// TODO: apply Args to Config
-// TODO: log to file
 // TODO: refactor the shutdown sequence into a predefined controlled sequence
 
 /*
@@ -125,20 +125,18 @@ fn get_app_dir() -> PathBuf {
     return get_home_dir().join(".rusty-kaspa");
 }
 
+fn validate_config_and_args(_config: &Arc<Config>, args: &Args) -> ConfigResult<()> {
+    if !args.connect_peers.is_empty() && !args.add_peers.is_empty() {
+        return Err(ConfigError::MixedConnectAndAddPeers);
+    }
+    if args.logdir.is_some() && args.no_log_files {
+        return Err(ConfigError::MixedLogDirAndNoLogFiles);
+    }
+    Ok(())
+}
+
 pub fn main() {
-    let defaults = Defaults {
-        // --async-threads N
-        async_threads: num_cpus::get() / 2,
-        ..Defaults::default()
-    };
-
-    let args = Args::parse(&defaults);
-
-    // Initialize the logger
-    kaspa_core::log::init_logger(&args.log_level);
-
-    // Print package name and version
-    info!("{} v{}", env!("CARGO_PKG_NAME"), version());
+    let args = Args::parse(&Defaults::default());
 
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
@@ -151,16 +149,13 @@ pub fn main() {
         _ => panic!("only a single net should be activated"),
     };
 
-    let config = Arc::new(
-        match network_type {
-            NetworkType::Mainnet => ConfigBuilder::new(MAINNET_PARAMS),
-            NetworkType::Testnet => ConfigBuilder::new(TESTNET_PARAMS),
-            NetworkType::Devnet => ConfigBuilder::new(DEVNET_PARAMS),
-            NetworkType::Simnet => ConfigBuilder::new(SIMNET_PARAMS),
-        }
-        .apply_args(|config| args.apply_to_config(config))
-        .build(),
-    );
+    let config = Arc::new(ConfigBuilder::new(network_type.into()).apply_args(|config| args.apply_to_config(config)).build());
+
+    // Make sure config and args form a valid set of properties
+    if let Err(err) = validate_config_and_args(&config, &args) {
+        println!("{}", err);
+        exit(1);
+    }
 
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
@@ -170,9 +165,28 @@ pub fn main() {
     let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
     let db_dir = app_dir.join(config.network_name()).join(DEFAULT_DATA_DIR);
 
+    // Logs directory is usually under the application directory, unless otherwise specified
+    let log_dir = args.logdir.unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
+    let log_dir = if log_dir.is_empty() { app_dir.join(config.network_name()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
+    let log_dir = if args.no_log_files { None } else { log_dir.to_str() };
+
+    // Initialize the logger
+    kaspa_core::log::init_logger(log_dir, &args.log_level);
+
+    // Print package name and version
+    info!("{} v{}", env!("CARGO_PKG_NAME"), version());
+
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.display());
     info!("Data directory: {}", db_dir.display());
+    match log_dir {
+        Some(s) => {
+            info!("Logs directory: {}", s);
+        }
+        None => {
+            info!("Logs to console only");
+        }
+    }
 
     let consensus_db_dir = db_dir.join(CONSENSUS_DB);
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
@@ -194,7 +208,14 @@ pub fn main() {
     // DB used for addresses store and for multi-consensus management
     let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
 
-    let grpc_server_addr = args.rpclisten.unwrap_or_else(|| format!("0.0.0.0:{}", config.default_rpc_port())).parse().unwrap();
+    let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
+    let add_peers = args.add_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect();
+    let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
+    // connect_peers means no DNS seeding and no outbound peers
+    let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
+    let dns_seeders = if connect_peers.is_empty() { config.dns_seeders } else { &[] };
+
+    let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_rpc_port());
 
     let core = Arc::new(Core::new());
 
@@ -240,11 +261,12 @@ pub fn main() {
     ));
     let p2p_service = Arc::new(P2pService::new(
         flow_context.clone(),
-        args.connect,
-        args.listen,
-        args.outbound_target,
+        connect_peers,
+        add_peers,
+        p2p_server_addr,
+        outbound_target,
         args.inbound_limit,
-        config.dns_seeders,
+        dns_seeders,
         config.default_p2p_port(),
     ));
 
@@ -256,6 +278,7 @@ pub fn main() {
         flow_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
         config,
+        core.clone(),
     ));
     let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
 
@@ -281,7 +304,7 @@ pub fn main() {
                     rpc_core_server.service(),
                     encoding,
                     WrpcServerOptions {
-                        listen_address: listen_address.to_string(),
+                        listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
                         verbose: args.wrpc_verbose,
                         ..WrpcServerOptions::default()
                     },

@@ -1,7 +1,7 @@
 use std::{
     cmp::min,
     collections::{HashMap, HashSet},
-    net::{SocketAddr, ToSocketAddrs},
+    net::{IpAddr, SocketAddr, ToSocketAddrs},
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -29,7 +29,7 @@ pub struct ConnectionManager {
     inbound_limit: usize,
     dns_seeders: &'static [&'static str],
     default_port: u16,
-    amgr: Arc<ParkingLotMutex<AddressManager>>,
+    address_manager: Arc<ParkingLotMutex<AddressManager>>,
     connection_requests: TokioMutex<HashMap<SocketAddr, ConnectionRequest>>,
     force_next_iteration: UnboundedSender<()>,
     shutdown_signal: UnboundedSender<()>,
@@ -42,6 +42,12 @@ struct ConnectionRequest {
     attempts: u32,
 }
 
+impl ConnectionRequest {
+    fn new(is_permanent: bool) -> Self {
+        Self { next_attempt: SystemTime::now(), is_permanent, attempts: 0 }
+    }
+}
+
 impl ConnectionManager {
     pub fn new(
         p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
@@ -49,7 +55,7 @@ impl ConnectionManager {
         inbound_limit: usize,
         dns_seeders: &'static [&'static str],
         default_port: u16,
-        amgr: Arc<ParkingLotMutex<AddressManager>>,
+        address_manager: Arc<ParkingLotMutex<AddressManager>>,
     ) -> Arc<Self> {
         let (tx, rx) = unbounded_channel::<()>();
         let (shutdown_signal_tx, shutdown_signal_rx) = unbounded_channel();
@@ -57,7 +63,7 @@ impl ConnectionManager {
             p2p_adaptor,
             outbound_target,
             inbound_limit,
-            amgr,
+            address_manager,
             connection_requests: Default::default(),
             force_next_iteration: tx,
             shutdown_signal: shutdown_signal_tx,
@@ -96,10 +102,7 @@ impl ConnectionManager {
 
     pub async fn add_connection_request(&self, address: SocketAddr, is_permanent: bool) {
         // If the request already exists, it resets the attempts count and overrides the `is_permanent` setting.
-        self.connection_requests
-            .lock()
-            .await
-            .insert(address, ConnectionRequest { next_attempt: SystemTime::now(), is_permanent, attempts: 0 });
+        self.connection_requests.lock().await.insert(address, ConnectionRequest::new(is_permanent));
         self.force_next_iteration.send(()).unwrap(); // We force the next iteration of the connection loop.
     }
 
@@ -120,13 +123,13 @@ impl ConnectionManager {
             }
 
             if !is_connected && request.next_attempt <= SystemTime::now() {
-                debug!("Connecting to a connection request to {}", address);
+                debug!("Connecting to peer request {}", address);
                 if self.p2p_adaptor.connect_peer(address.to_string()).await.is_none() {
-                    debug!("Failed connecting to a connection request to {}", address);
+                    debug!("Failed connecting to peer request {}", address);
                     if request.is_permanent {
-                        const MAX_RETRY_DURATION: Duration = Duration::from_secs(600);
-                        let retry_duration = min(Duration::from_secs(30u64 * 2u64.pow(request.attempts)), MAX_RETRY_DURATION);
-                        debug!("Will retry to connect to {} in {}", address, DurationString::from(retry_duration));
+                        const MAX_ACCOUNTABLE_ATTEMPTS: u32 = 4;
+                        let retry_duration = Duration::from_secs(30u64 * 2u64.pow(min(request.attempts, MAX_ACCOUNTABLE_ATTEMPTS)));
+                        debug!("Will retry peer request {} in {}", address, DurationString::from(retry_duration));
                         new_requests.insert(
                             address,
                             ConnectionRequest {
@@ -136,6 +139,9 @@ impl ConnectionManager {
                             },
                         );
                     }
+                } else if request.is_permanent {
+                    // Permanent requests are kept forever
+                    new_requests.insert(address, ConnectionRequest::new(true));
                 }
             } else {
                 new_requests.insert(address, request);
@@ -153,7 +159,7 @@ impl ConnectionManager {
         }
 
         let mut missing_connections = self.outbound_target - active_outbound.len();
-        let mut addr_iter = self.amgr.lock().iterate_prioritized_random_addresses(active_outbound);
+        let mut addr_iter = self.address_manager.lock().iterate_prioritized_random_addresses(active_outbound);
 
         let mut progressing = true;
         let mut connecting = true;
@@ -165,7 +171,7 @@ impl ConnectionManager {
                     connecting = false;
                     break;
                 };
-                let socket_addr = SocketAddr::new(net_addr.ip, net_addr.port).to_string();
+                let socket_addr = SocketAddr::new(net_addr.ip.into(), net_addr.port).to_string();
                 debug!("Connecting to {}", &socket_addr);
                 addrs_to_connect.push(net_addr);
                 jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone()));
@@ -180,22 +186,35 @@ impl ConnectionManager {
                     jobs.len(),
                 );
                 progressing = false;
+            } else {
+                debug!(
+                    "Connection manager: outgoing: {}/{} , connecting: {}, iterator: {}",
+                    self.outbound_target - missing_connections,
+                    self.outbound_target,
+                    jobs.len(),
+                    addr_iter.len(),
+                );
             }
 
             for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addrs_to_connect) {
                 if res.is_none() {
                     debug!("Failed connecting to {:?}", net_addr);
-                    self.amgr.lock().mark_connection_failure(net_addr);
+                    self.address_manager.lock().mark_connection_failure(net_addr);
                 } else {
-                    self.amgr.lock().mark_connection_success(net_addr);
+                    self.address_manager.lock().mark_connection_success(net_addr);
                     missing_connections -= 1;
                     progressing = true;
                 }
             }
         }
 
-        if missing_connections > 0 {
-            self.dns_seed(missing_connections); //TODO: Consider putting a number higher than `missing_connections`.
+        if missing_connections > 0 && !self.dns_seeders.is_empty() {
+            let cmgr = self.clone();
+            // DNS lookup is a blocking i/o operation, so we spawn it as a blocking task
+            let _ = tokio::task::spawn_blocking(move || {
+                cmgr.dns_seed(missing_connections); //TODO: Consider putting a number higher than `missing_connections`.
+            })
+            .await;
         }
     }
 
@@ -209,7 +228,7 @@ impl ConnectionManager {
         let mut futures = Vec::with_capacity(active_inbound_len - self.inbound_limit);
         for peer in active_inbound.choose_multiple(&mut thread_rng(), active_inbound_len - self.inbound_limit) {
             debug!("Disconnecting from {} because we're above the inbound limit", peer.net_address());
-            futures.push(self.p2p_adaptor.terminate(peer.identity()));
+            futures.push(self.p2p_adaptor.terminate(peer.key()));
         }
         join_all(futures).await;
     }
@@ -222,16 +241,16 @@ impl ConnectionManager {
             let addrs = match (seeder, self.default_port).to_socket_addrs() {
                 Ok(addrs) => addrs,
                 Err(e) => {
-                    warn!("error connecting to DNS seeder {}: {}", seeder, e);
+                    warn!("Error connecting to DNS seeder {}: {}", seeder, e);
                     continue;
                 }
             };
 
             let addrs_len = addrs.len();
             info!("Retrieved {} addresses from DNS seeder {}", addrs_len, seeder);
-            let mut amgr_lock = self.amgr.lock();
+            let mut amgr_lock = self.address_manager.lock();
             for addr in addrs {
-                amgr_lock.add_address(NetAddress::new(addr.ip(), addr.port()));
+                amgr_lock.add_address(NetAddress::new(addr.ip().into(), addr.port()));
             }
 
             if addrs_len >= min_addresses_to_fetch {
@@ -240,5 +259,35 @@ impl ConnectionManager {
                 min_addresses_to_fetch -= addrs_len;
             }
         }
+    }
+
+    /// Bans the given IP and disconnects from all the peers with that IP.
+    ///
+    /// _GO-KASPAD: BanByIP_
+    pub async fn ban(&self, ip: IpAddr) {
+        if self.ip_has_permanent_connection(ip).await {
+            return;
+        }
+        for peer in self.p2p_adaptor.active_peers() {
+            if peer.net_address().ip() == ip {
+                self.p2p_adaptor.terminate(peer.key()).await;
+            }
+        }
+        self.address_manager.lock().ban(ip.into());
+    }
+
+    /// Returns whether the given address is banned.
+    pub async fn is_banned(&self, address: &SocketAddr) -> bool {
+        !self.is_permanent(address).await && self.address_manager.lock().is_banned(address.ip().into())
+    }
+
+    /// Returns whether the given address is a permanent request.
+    pub async fn is_permanent(&self, address: &SocketAddr) -> bool {
+        self.connection_requests.lock().await.contains_key(address)
+    }
+
+    /// Returns whether the given IP has some permanent request.
+    pub async fn ip_has_permanent_connection(&self, ip: IpAddr) -> bool {
+        self.connection_requests.lock().await.iter().any(|(address, request)| request.is_permanent && address.ip() == ip)
     }
 }

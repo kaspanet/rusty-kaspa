@@ -1,6 +1,6 @@
-use thiserror::Error;
-
 use crate::prelude::DbKey;
+use kaspa_hashes::Hash;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum StoreError {
@@ -9,6 +9,11 @@ pub enum StoreError {
 
     #[error("key {0} already exists in store")]
     KeyAlreadyExists(String),
+
+    /// Specialization of key not found for the common `Hash` case.
+    /// Added for avoiding the `String` allocation
+    #[error("hash {0} already exists in store")]
+    HashAlreadyExists(Hash),
 
     #[error("rocksdb error {0}")]
     DbError(#[from] rocksdb::Error),
@@ -20,6 +25,7 @@ pub enum StoreError {
 pub type StoreResult<T> = std::result::Result<T, StoreError>;
 
 pub trait StoreResultExtensions<T> {
+    /// Unwrap or assert that the error is key not fund in which case `None` is returned
     fn unwrap_option(self) -> Option<T>;
 }
 
@@ -34,14 +40,15 @@ impl<T> StoreResultExtensions<T> for StoreResult<T> {
 }
 
 pub trait StoreResultEmptyTuple {
-    fn unwrap_and_ignore_key_already_exists(self);
+    /// Unwrap or assert that the error is key already exists
+    fn unwrap_or_exists(self);
 }
 
 impl StoreResultEmptyTuple for StoreResult<()> {
-    fn unwrap_and_ignore_key_already_exists(self) {
+    fn unwrap_or_exists(self) {
         match self {
             Ok(_) => (),
-            Err(StoreError::KeyAlreadyExists(_)) => (),
+            Err(StoreError::KeyAlreadyExists(_)) | Err(StoreError::HashAlreadyExists(_)) => (),
             Err(err) => panic!("Unexpected store error: {err:?}"),
         }
     }

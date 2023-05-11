@@ -1,5 +1,7 @@
 use crate::protowire::{self, submit_block_response_message::RejectReason};
-use kaspa_rpc_core::{RpcError, RpcExtraData, RpcHash, RpcNetworkType, RpcPeerAddress, RpcResult};
+use kaspa_rpc_core::{
+    RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
+};
 use std::str::FromStr;
 
 macro_rules! from {
@@ -200,7 +202,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetConnectedPeerInfoResponse>, protowire:
 });
 
 from!(item: &kaspa_rpc_core::AddPeerRequest, protowire::AddPeerRequestMessage, {
-    Self { address: item.peer_address.address.clone(), is_permanent: item.is_permanent }
+    Self { address: item.peer_address.to_string(), is_permanent: item.is_permanent }
 });
 from!(RpcResult<&kaspa_rpc_core::AddPeerResponse>, protowire::AddPeerResponseMessage);
 
@@ -311,14 +313,14 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSinkBlueScoreResponse>, protowire::Get
     Self { blue_score: item.blue_score, error: None }
 });
 
-from!(item: &kaspa_rpc_core::BanRequest, protowire::BanRequestMessage, { Self { ip: item.address.address.clone() } });
+from!(item: &kaspa_rpc_core::BanRequest, protowire::BanRequestMessage, { Self { ip: item.ip.to_string() } });
 from!(_item: RpcResult<&kaspa_rpc_core::BanResponse>, protowire::BanResponseMessage, { Self { error: None } });
 
-from!(item: &kaspa_rpc_core::UnbanRequest, protowire::UnbanRequestMessage, { Self { ip: item.address.address.clone() } });
+from!(item: &kaspa_rpc_core::UnbanRequest, protowire::UnbanRequestMessage, { Self { ip: item.ip.to_string() } });
 from!(_item: RpcResult<&kaspa_rpc_core::UnbanResponse>, protowire::UnbanResponseMessage, { Self { error: None } });
 
 from!(item: &kaspa_rpc_core::EstimateNetworkHashesPerSecondRequest, protowire::EstimateNetworkHashesPerSecondRequestMessage, {
-    Self { window_size: item.window_size, start_hash: item.start_hash.to_string() }
+    Self { window_size: item.window_size, start_hash: item.start_hash.map_or(Default::default(), |x| x.to_string()) }
 });
 from!(
     item: RpcResult<&kaspa_rpc_core::EstimateNetworkHashesPerSecondResponse>,
@@ -479,7 +481,7 @@ try_from!(&protowire::GetPeerAddressesRequestMessage, kaspa_rpc_core::GetPeerAdd
 try_from!(item: &protowire::GetPeerAddressesResponseMessage, RpcResult<kaspa_rpc_core::GetPeerAddressesResponse>, {
     Self {
         known_addresses: item.addresses.iter().map(RpcPeerAddress::try_from).collect::<Result<Vec<_>, _>>()?,
-        banned_addresses: item.banned_addresses.iter().map(RpcPeerAddress::try_from).collect::<Result<Vec<_>, _>>()?,
+        banned_addresses: item.banned_addresses.iter().map(RpcIpAddress::try_from).collect::<Result<Vec<_>, _>>()?,
     }
 });
 
@@ -518,7 +520,7 @@ try_from!(item: &protowire::GetConnectedPeerInfoResponseMessage, RpcResult<kaspa
 });
 
 try_from!(item: &protowire::AddPeerRequestMessage, kaspa_rpc_core::AddPeerRequest, {
-    Self { peer_address: RpcPeerAddress { address: item.address.clone() }, is_permanent: item.is_permanent }
+    Self { peer_address: RpcContextualPeerAddress::from_str(&item.address)?, is_permanent: item.is_permanent }
 });
 try_from!(&protowire::AddPeerResponseMessage, RpcResult<kaspa_rpc_core::AddPeerResponse>);
 
@@ -634,18 +636,17 @@ try_from!(item: &protowire::GetSinkBlueScoreResponseMessage, RpcResult<kaspa_rpc
     Self { blue_score: item.blue_score }
 });
 
-try_from!(item: &protowire::BanRequestMessage, kaspa_rpc_core::BanRequest, {
-    Self { address: RpcPeerAddress { address: item.ip.clone() } }
-});
+try_from!(item: &protowire::BanRequestMessage, kaspa_rpc_core::BanRequest, { Self { ip: RpcIpAddress::from_str(&item.ip)? } });
 try_from!(&protowire::BanResponseMessage, RpcResult<kaspa_rpc_core::BanResponse>);
 
-try_from!(item: &protowire::UnbanRequestMessage, kaspa_rpc_core::UnbanRequest, {
-    Self { address: RpcPeerAddress { address: item.ip.clone() } }
-});
+try_from!(item: &protowire::UnbanRequestMessage, kaspa_rpc_core::UnbanRequest, { Self { ip: RpcIpAddress::from_str(&item.ip)? } });
 try_from!(&protowire::UnbanResponseMessage, RpcResult<kaspa_rpc_core::UnbanResponse>);
 
 try_from!(item: &protowire::EstimateNetworkHashesPerSecondRequestMessage, kaspa_rpc_core::EstimateNetworkHashesPerSecondRequest, {
-    Self { window_size: item.window_size, start_hash: RpcHash::from_str(&item.start_hash)? }
+    Self {
+        window_size: item.window_size,
+        start_hash: if item.start_hash.is_empty() { None } else { Some(RpcHash::from_str(&item.start_hash)?) },
+    }
 });
 try_from!(
     item: &protowire::EstimateNetworkHashesPerSecondResponseMessage,

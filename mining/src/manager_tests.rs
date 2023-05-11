@@ -12,7 +12,7 @@ mod tests {
         model::candidate_tx::CandidateTransaction,
         testutils::consensus_mock::ConsensusMock,
     };
-    use kaspa_addresses::Prefix;
+    use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
         api::ConsensusApi,
         coinbase::MinerData,
@@ -21,13 +21,13 @@ mod tests {
         mass::transaction_estimated_serialized_size,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{
-            scriptvec, MutableTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionId, TransactionInput,
-            TransactionOutpoint, TransactionOutput, UtxoEntry,
+            scriptvec, MutableTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
+            TransactionOutput, UtxoEntry,
         },
     };
     use kaspa_hashes::Hash;
     use kaspa_txscript::{
-        pay_to_script_hash_signature_script,
+        pay_to_address_script, pay_to_script_hash_signature_script,
         test_helpers::{create_transaction, op_true_script},
     };
     use std::sync::Arc;
@@ -936,15 +936,12 @@ mod tests {
         block_transactions
     }
 
-    fn get_miner_data(_address_prefix: Prefix) -> MinerData {
+    fn get_miner_data(prefix: Prefix) -> MinerData {
         let secp = secp256k1::Secp256k1::new();
         let mut rng = rand::thread_rng();
         let (_sk, pk) = secp.generate_keypair(&mut rng);
-
-        //let addr = Address { prefix: address_prefix, payload: Vec::from(pk.serialize()), version: 0};
-        // TODO: call txscript.PayToAddrScript(addr) instead of this:
-        let script = ScriptVec::from_slice(&pk.serialize());
-
-        MinerData::new(ScriptPublicKey::new(0, script), vec![])
+        let address = Address::new(prefix, Version::PubKeyECDSA, &pk.serialize());
+        let script = pay_to_address_script(&address);
+        MinerData::new(script, vec![])
     }
 }

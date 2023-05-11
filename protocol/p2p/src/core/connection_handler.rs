@@ -1,10 +1,12 @@
+use crate::common::ProtocolError;
 use crate::core::hub::HubEvent;
 use crate::pb::{
     p2p_client::P2pClient as ProtoP2pClient, p2p_server::P2p as ProtoP2p, p2p_server::P2pServer as ProtoP2pServer, KaspadMessage,
 };
-use crate::Router;
+use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
 use kaspa_core::{debug, info};
+use kaspa_utils::networking::NetAddress;
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -30,6 +32,9 @@ pub enum ConnectionError {
 
     #[error("{0}")]
     TonicStatus(#[from] TonicStatus),
+
+    #[error("{0}")]
+    ProtocolError(#[from] ProtocolError),
 }
 
 /// Maximum P2P decoded gRPC message size to send and receive
@@ -40,18 +45,18 @@ const P2P_MAX_MESSAGE_SIZE: usize = 1024 * 1024 * 1024; // 1GB
 pub struct ConnectionHandler {
     /// Cloned on each new connection so that routers can communicate with a central hub
     hub_sender: MpscSender<HubEvent>,
+    initializer: Arc<dyn ConnectionInitializer>,
 }
 
 impl ConnectionHandler {
-    pub(crate) fn new(hub_sender: MpscSender<HubEvent>) -> Self {
-        Self { hub_sender }
+    pub(crate) fn new(hub_sender: MpscSender<HubEvent>, initializer: Arc<dyn ConnectionInitializer>) -> Self {
+        Self { hub_sender, initializer }
     }
 
     /// Launches a P2P server listener loop
-    pub(crate) fn serve(&self, serve_address: String) -> Result<OneshotSender<()>, ConnectionError> {
+    pub(crate) fn serve(&self, serve_address: NetAddress) -> Result<OneshotSender<()>, ConnectionError> {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
-        let Some(socket_address) = serve_address.to_socket_addrs()?.next() else { return Err(ConnectionError::NoAddress); };
         info!("P2P Server starting on: {}", serve_address);
         tokio::spawn(async move {
             let proto_server = ProtoP2pServer::new(connection_handler)
@@ -62,7 +67,7 @@ impl ConnectionHandler {
             // TODO: check whether we should set tcp_keepalive
             let serve_result = TonicServer::builder()
                 .add_service(proto_server)
-                .serve_with_shutdown(socket_address, termination_receiver.map(drop))
+                .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
                 .await;
 
             match serve_result {
@@ -93,7 +98,24 @@ impl ConnectionHandler {
         let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_network_channel_size());
         let incoming_stream = client.message_stream(ReceiverStream::new(outgoing_receiver)).await?.into_inner();
 
-        Ok(Router::new(socket_address, true, self.hub_sender.clone(), incoming_stream, outgoing_route).await)
+        let router = Router::new(socket_address, true, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
+
+        // For outbound peers, we perform the initialization as part of the connect logic
+        match self.initializer.initialize_connection(router.clone()).await {
+            Ok(()) => {
+                // Notify the central Hub about the new peer
+                self.hub_sender.send(HubEvent::NewPeer(router.clone())).await.expect("hub receiver should never drop before senders");
+            }
+
+            Err(err) => {
+                // Ignoring the router
+                router.close().await;
+                debug!("P2P, handshake failed for outbound peer {}: {}", router, err);
+                return Err(ConnectionError::ProtocolError(err));
+            }
+        }
+
+        Ok(router)
     }
 
     /// Connect to a new peer with `retry_attempts` retries and `retry_interval` duration between each attempt
@@ -106,11 +128,16 @@ impl ConnectionHandler {
         for counter in 0..retry_attempts {
             match self.connect(address.clone()).await {
                 Ok(router) => {
-                    debug!("P2P, Client connected, ip & port: {:?}", address);
+                    debug!("P2P, Client connected, peer: {:?}", address);
                     return Some(router);
                 }
+                Err(ConnectionError::ProtocolError(err)) => {
+                    // On protocol errors we avoid retrying
+                    debug!("P2P, connect retry #{} failed with error {:?}, peer: {:?}, aborting retries", counter, err, address);
+                    break;
+                }
                 Err(err) => {
-                    debug!("P2P, Client connect retry #{} failed with error {:?}, ip & port: {:?}", counter, err, address);
+                    debug!("P2P, connect retry #{} failed with error {:?}, peer: {:?}", counter, err, address);
                     // Await `retry_interval` time before retrying
                     tokio::time::sleep(retry_interval).await;
                 }
@@ -122,7 +149,8 @@ impl ConnectionHandler {
 
     // TODO: revisit the below constants
     fn outgoing_network_channel_size() -> usize {
-        128
+        // TODO: this number is taken from go-kaspad and should be re-evaluated
+        (1 << 17) + 256
     }
 
     fn communication_timeout() -> u64 {
@@ -156,8 +184,10 @@ impl ProtoP2p for ConnectionHandler {
         let incoming_stream = request.into_inner();
 
         // Build the router object
-        // NOTE: No need to explicitly handle the returned router, it will internally be sent to the central Hub
-        let _router = Router::new(remote_address, false, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
+        let router = Router::new(remote_address, false, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
+
+        // Notify the central Hub about the new peer
+        self.hub_sender.send(HubEvent::NewPeer(router)).await.expect("hub receiver should never drop before senders");
 
         // Give tonic a receiver stream (messages sent to it will be forwarded to the network peer)
         Ok(Response::new(Box::pin(ReceiverStream::new(outgoing_receiver).map(Ok)) as Self::MessageStreamStream))

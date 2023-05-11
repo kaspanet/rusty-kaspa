@@ -1,21 +1,24 @@
 use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Peer, Router};
-use kaspa_core::{debug, info};
+use kaspa_core::{debug, info, warn};
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc::Receiver as MpscReceiver;
-use uuid::Uuid;
+
+use super::peer::PeerKey;
 
 #[derive(Debug)]
 pub(crate) enum HubEvent {
     NewPeer(Arc<Router>),
-    PeerClosing(Uuid),
+    PeerClosing(PeerKey),
 }
 
 /// Hub of active peers (represented as Router objects). Note that all public methods of this type are exposed through the Adaptor
 #[derive(Debug, Clone)]
 pub struct Hub {
     /// Map of currently active peers
-    pub(crate) peers: Arc<RwLock<HashMap<Uuid, Arc<Router>>>>,
+    ///
+    /// Note: the map key holds the node id and IP to prevent node impersonating.
+    pub(crate) peers: Arc<RwLock<HashMap<PeerKey, Arc<Router>>>>,
 }
 
 impl Hub {
@@ -30,20 +33,31 @@ impl Hub {
             while let Some(new_event) = hub_receiver.recv().await {
                 match new_event {
                     HubEvent::NewPeer(new_router) => {
-                        match initializer.initialize_connection(new_router.clone()).await {
-                            Ok(_) => {
-                                info!("P2P Connected to {}", new_router);
-                                self.peers.write().insert(new_router.identity(), new_router);
+                        // If peer is outbound then connection initialization was already performed as part of the connect logic
+                        if new_router.is_outbound() {
+                            info!("P2P Connected to outgoing peer {}", new_router);
+                            let prev = self.peers.write().insert(new_router.key(), new_router);
+                            if let Some(previous_router) = prev {
+                                // This is not supposed to ever happen
+                                previous_router.close().await;
+                                debug!("P2P, Hub event loop, removing peer with duplicate key: {}", previous_router.key());
                             }
-                            Err(err) => {
-                                // Ignoring the router
-                                new_router.close().await;
-                                debug!("P2P, flow initialization for router-id {:?} failed: {}", new_router.identity(), err);
+                        } else {
+                            match initializer.initialize_connection(new_router.clone()).await {
+                                Ok(()) => {
+                                    info!("P2P Connected to incoming peer {}", new_router);
+                                    self.peers.write().insert(new_router.key(), new_router);
+                                }
+                                Err(err) => {
+                                    // Ignoring the router
+                                    new_router.close().await;
+                                    warn!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
+                                }
                             }
                         }
                     }
-                    HubEvent::PeerClosing(peer_id) => {
-                        if let Some(router) = self.peers.write().remove(&peer_id) {
+                    HubEvent::PeerClosing(peer_key) => {
+                        if let Some(router) = self.peers.write().remove(&peer_key) {
                             debug!("P2P, Hub event loop, removing peer, router-id: {}", router.identity());
                         }
                     }
@@ -54,8 +68,8 @@ impl Hub {
     }
 
     /// Send a message to a specific peer
-    pub async fn send(&self, peer_id: Uuid, msg: KaspadMessage) -> Result<bool, ProtocolError> {
-        let op = self.peers.read().get(&peer_id).cloned();
+    pub async fn send(&self, peer_key: PeerKey, msg: KaspadMessage) -> Result<bool, ProtocolError> {
+        let op = self.peers.read().get(&peer_key).cloned();
         if let Some(router) = op {
             router.enqueue(msg).await?;
             Ok(true)
@@ -74,8 +88,8 @@ impl Hub {
     }
 
     /// Terminate a specific peer
-    pub async fn terminate(&self, peer_id: Uuid) {
-        let op = self.peers.read().get(&peer_id).cloned();
+    pub async fn terminate(&self, peer_key: PeerKey) {
+        let op = self.peers.read().get(&peer_key).cloned();
         if let Some(router) = op {
             // This will eventually lead to peer removal through the Hub event loop
             router.close().await;
@@ -98,6 +112,11 @@ impl Hub {
     /// Returns whether there are currently active peers
     pub fn has_peers(&self) -> bool {
         !self.peers.read().is_empty()
+    }
+
+    /// Returns whether a peer matching `peer_key` is registered
+    pub fn has_peer(&self, peer_key: PeerKey) -> bool {
+        self.peers.read().contains_key(&peer_key)
     }
 }
 

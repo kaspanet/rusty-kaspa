@@ -1,6 +1,7 @@
 use crate::{
     flow_context::{FlowContext, RequestScope},
     flow_trait::Flow,
+    flowcontext::transactions::MAX_INV_PER_TX_INV_MSG,
 };
 use kaspa_consensus_core::{
     api::ConsensusApi,
@@ -69,15 +70,26 @@ impl RelayTransactionsFlow {
 
     pub fn invs_channel_size() -> usize {
         // TODO: reevaluate when the node is fully functional and later when the network tx rate increases
-        256
+        // Note: in go-kaspad we have 10,000 for this channel combined with tx channel.
+        8192
+    }
+
+    pub fn txs_channel_size() -> usize {
+        // Incoming tx flow capacity must correlate with the max number of invs per tx inv
+        // message, since this effectively becomes the upper-bound on number of tx requests
+        MAX_INV_PER_TX_INV_MSG
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         // trace!("Starting relay transactions flow with {}", self.router.identity());
         loop {
             // Loop over incoming block inv messages
-            let inv = dequeue!(self.invs_route, Payload::InvTransactions)?.try_into()?;
+            let inv: Vec<TransactionId> = dequeue!(self.invs_route, Payload::InvTransactions)?.try_into()?;
             // trace!("Receive an inv message from {} with {} transaction ids", self.router.identity(), inv.len());
+
+            if inv.len() > MAX_INV_PER_TX_INV_MSG {
+                return Err(ProtocolError::Other("Number of invs in tx inv message is over the limit"));
+            }
 
             let consensus = self.ctx.consensus();
             let session = consensus.session().await;

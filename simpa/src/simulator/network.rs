@@ -7,11 +7,11 @@ use super::infra::Simulation;
 use super::miner::Miner;
 
 use kaspa_consensus::config::Config;
-use kaspa_consensus::consensus::test_consensus::{create_permanent_db, create_temp_db, TempDbLifetime};
 use kaspa_consensus::consensus::Consensus;
 use kaspa_consensus_core::block::Block;
+use kaspa_database::utils::{create_permanent_db, create_temp_db, DbLifetime};
 
-type ConsensusWrapper = (Arc<Consensus>, Vec<JoinHandle<()>>, TempDbLifetime);
+type ConsensusWrapper = (Arc<Consensus>, Vec<JoinHandle<()>>, DbLifetime);
 
 pub struct KaspaNetworkSimulator {
     // Internal simulation env

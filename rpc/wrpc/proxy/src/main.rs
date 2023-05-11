@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
     let proxy_port: u16 = 17110;
 
     let encoding: Encoding = encoding.unwrap_or_else(|| "borsh".to_owned()).parse()?;
-    let kaspad_port = network_type.port();
+    let kaspad_port = network_type.default_rpc_port();
 
     let options = Arc::new(Options {
         listen_address: interface.unwrap_or_else(|| format!("wrpc://127.0.0.1:{proxy_port}")),
@@ -61,7 +61,7 @@ async fn main() -> Result<()> {
     log_info!("Proxy routing to `{}` on {}", network_type, options.grpc_proxy_address.as_ref().unwrap());
 
     //log_info!("Routing wrpc://{peer} -> {grpc_proxy_address}");
-    let grpc_client: GrpcClient = GrpcClient::connect(options.grpc_proxy_address.as_ref().unwrap().clone(), true, None, true)
+    let grpc_client: GrpcClient = GrpcClient::connect(options.grpc_proxy_address.as_ref().unwrap().clone(), true, None, true, None)
         .await
         .map_err(|e| WebSocketError::Other(e.to_string()))?;
     // log_trace!("gRPC started...");

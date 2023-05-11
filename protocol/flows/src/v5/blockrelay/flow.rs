@@ -1,4 +1,8 @@
-use crate::{flow_context::FlowContext, flow_trait::Flow, flowcontext::orphans::ORPHAN_RESOLUTION_RANGE};
+use crate::{
+    flow_context::{FlowContext, RequestScope},
+    flow_trait::Flow,
+    flowcontext::orphans::ORPHAN_RESOLUTION_RANGE,
+};
 use kaspa_consensus_core::{api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
@@ -113,7 +117,8 @@ impl HandleRelayInvsFlow {
                 continue;
             }
 
-            let Some(block) = self.request_block(inv.hash).await? else {
+            // We keep the request scope alive until consensus processes the block
+            let Some((block, _request_scope)) = self.request_block(inv.hash).await? else {
                 debug!("Relay block {} was already requested from another peer, continuing...", inv.hash);
                 continue;
             };
@@ -145,7 +150,7 @@ impl HandleRelayInvsFlow {
 
             // TODO: consider storing the future in a task queue and polling it (without awaiting) in order to continue
             // queueing the following relay blocks. On the other hand we might have sufficient concurrency from all parallel relay flows
-            match session.validate_and_insert_block(block.clone(), true).await {
+            match session.validate_and_insert_block(block.clone()).await {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
@@ -181,9 +186,9 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn request_block(&mut self, requested_hash: Hash) -> Result<Option<Block>, ProtocolError> {
-        // TODO: perhaps the request scope should be captured until block processing is completed
-        let Some(_request_scope) = self.ctx.try_adding_block_request(requested_hash) else { return Ok(None); };
+    async fn request_block(&mut self, requested_hash: Hash) -> Result<Option<(Block, RequestScope<Hash>)>, ProtocolError> {
+        // Note: the request scope is returned and should be captured until block processing is completed
+        let Some(request_scope) = self.ctx.try_adding_block_request(requested_hash) else { return Ok(None); };
         self.router
             .enqueue(make_message!(Payload::RequestRelayBlocks, RequestRelayBlocksMessage { hashes: vec![requested_hash.into()] }))
             .await?;
@@ -192,7 +197,7 @@ impl HandleRelayInvsFlow {
         if block.hash() != requested_hash {
             Err(ProtocolError::OtherOwned(format!("requested block hash {} but got block {}", requested_hash, block.hash())))
         } else {
-            Ok(Some(block))
+            Ok(Some((block, request_scope)))
         }
     }
 

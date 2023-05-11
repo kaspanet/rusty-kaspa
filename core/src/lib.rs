@@ -2,10 +2,10 @@ extern crate self as kaspa_core;
 
 pub mod assert;
 pub mod console;
+pub mod kaspad_env;
 pub mod log;
 pub mod panic;
 pub mod time;
-pub mod version;
 
 cfg_if::cfg_if! {
     if #[cfg(not(target_arch = "wasm32"))] {

@@ -9,3 +9,7 @@ license.workspace = true
 [dependencies]
 async-channel.workspace = true
 triggered = "0.1"
+uuid.workspace = true
+serde.workspace = true
+borsh.workspace = true
+itertools.workspace = true

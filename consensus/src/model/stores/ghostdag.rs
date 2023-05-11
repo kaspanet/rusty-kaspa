@@ -258,7 +258,7 @@ impl DbGhostdagStore {
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(BatchDbWriter::new(batch), hash, data.clone())?;
         self.compact_access.write(
@@ -311,11 +311,11 @@ impl GhostdagStoreReader for DbGhostdagStore {
 impl GhostdagStore for DbGhostdagStore {
     fn insert(&self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, data.clone())?;
         if self.compact_access.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.compact_access.write(
             DirectDbWriter::new(&self.db),
@@ -360,7 +360,7 @@ impl Default for MemoryGhostdagStore {
 impl GhostdagStore for MemoryGhostdagStore {
     fn insert(&self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError> {
         if self.has(hash)? {
-            return Err(StoreError::KeyAlreadyExists(hash.to_string()));
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.blue_score_map.borrow_mut().insert(hash, data.blue_score);
         self.blue_work_map.borrow_mut().insert(hash, data.blue_work);

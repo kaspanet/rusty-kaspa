@@ -1,7 +1,7 @@
 use kaspa_hashes::Hash;
 use thiserror::Error;
 
-use super::{sync::SyncManagerError, traversal::TraversalError};
+use super::{difficulty::DifficultyError, sync::SyncManagerError, traversal::TraversalError};
 
 #[derive(Error, Debug, Clone)]
 pub enum ConsensusError {
@@ -17,11 +17,17 @@ pub enum ConsensusError {
     #[error("got unexpected pruning point")]
     UnexpectedPruningPoint,
 
+    #[error("pruning point is not at sufficient depth from virtual, cannot obtain its final anticone at this stage")]
+    PruningPointInsufficientDepth,
+
     #[error("sync manager error")]
     SyncManagerError(#[from] SyncManagerError),
 
     #[error("traversal error")]
     TraversalError(#[from] TraversalError),
+
+    #[error("difficulty error: {0}")]
+    DifficultyError(#[from] DifficultyError),
 
     #[error("{0}")]
     General(&'static str),

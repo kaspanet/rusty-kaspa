@@ -15,9 +15,9 @@ use crate::{
         tx::TxResult,
     },
     header::Header,
-    pruning::{PruningPointProof, PruningPointsList},
+    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     sync_info::SyncInfo,
-    trusted::{ExternalGhostdagData, TrustedBlock, TrustedGhostdagData, TrustedHeader},
+    trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
 };
@@ -31,7 +31,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn validate_and_insert_block(&self, block: Block, update_virtual: bool) -> BlockValidationFuture {
+    fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
         unimplemented!()
     }
 
@@ -176,7 +176,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_pruning_point_anticone_and_trusted_data(&self) -> Arc<(Vec<Hash>, Vec<TrustedHeader>, Vec<TrustedGhostdagData>)> {
+    fn get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
         unimplemented!()
     }
 
@@ -245,6 +245,10 @@ pub trait ConsensusApi: Send + Sync {
     // TODO: Think of a better name.
     // TODO: Delete this function once there's no need for go-kaspad backward compatability.
     fn get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        unimplemented!()
+    }
+
+    fn estimate_network_hashes_per_second(&self, start_hash: Option<Hash>, window_size: usize) -> ConsensusResult<u64> {
         unimplemented!()
     }
 }

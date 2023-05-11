@@ -4,7 +4,7 @@ use kaspa_database::{
 };
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv6Addr};
-use std::{fmt::Display, sync::Arc};
+use std::{error::Error, fmt::Display, sync::Arc};
 
 const STORE_PREFIX: &[u8] = b"banned-addresses";
 
@@ -54,6 +54,16 @@ impl From<AddressKey> for Ipv6Addr {
     }
 }
 
+impl From<AddressKey> for IpAddr {
+    fn from(k: AddressKey) -> Self {
+        let ipv6: Ipv6Addr = k.0.into();
+        match ipv6.to_ipv4_mapped() {
+            Some(ipv4) => IpAddr::V4(ipv4),
+            None => IpAddr::V6(ipv6),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct DbBannedAddressesStore {
     db: Arc<DB>,
@@ -63,6 +73,20 @@ pub struct DbBannedAddressesStore {
 impl DbBannedAddressesStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX.to_vec()) }
+    }
+
+    pub fn iterator(&self) -> impl Iterator<Item = Result<(IpAddr, ConnectionBanTimestamp), Box<dyn Error>>> + '_ {
+        self.access.iterator().map(|iter_result| match iter_result {
+            Ok((key_bytes, connection_ban_timestamp)) => match <[u8; ADDRESS_KEY_SIZE]>::try_from(&key_bytes[..]) {
+                Ok(address_key_slice) => {
+                    let addr_key = AddressKey(address_key_slice);
+                    let address: IpAddr = addr_key.into();
+                    Ok((address, connection_ban_timestamp))
+                }
+                Err(e) => Err(e.into()),
+            },
+            Err(e) => Err(e),
+        })
     }
 }
 
