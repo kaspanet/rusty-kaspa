@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use kaspa_consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
+use kaspa_database::prelude::DbWriter;
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
@@ -20,6 +21,7 @@ pub trait RelationsStoreReader {
 pub trait RelationsStore: RelationsStoreReader {
     /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
+    fn replace_parent(&mut self, hash: Hash, replaced_parent: Hash, replace_with: &[Hash]) -> Result<(), StoreError>;
 }
 
 const PARENTS_PREFIX: &[u8] = b"block-parents";
@@ -51,25 +53,62 @@ impl DbRelationsStore {
         Self::new(Arc::clone(&self.db), self.level, cache_size)
     }
 
-    pub fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+    fn insert_with_writer(&self, mut writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         if self.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
 
         // Insert a new entry for `hash`
-        self.parents_access.write(BatchDbWriter::new(batch), hash, parents.clone())?;
+        self.parents_access.write(&mut writer, hash, parents.clone())?;
 
         // The new hash has no children yet
-        self.children_access.write(BatchDbWriter::new(batch), hash, BlockHashes::new(Vec::new()))?;
+        self.children_access.write(&mut writer, hash, BlockHashes::new(Vec::new()))?;
 
         // Update `children` for each parent
         for parent in parents.iter().cloned() {
             let mut children = (*self.get_children(parent)?).clone();
             children.push(hash);
-            self.children_access.write(BatchDbWriter::new(batch), parent, BlockHashes::new(children))?;
+            self.children_access.write(&mut writer, parent, BlockHashes::new(children))?;
         }
 
         Ok(())
+    }
+
+    fn replace_parent_with_writer(
+        &self,
+        mut writer: impl DbWriter,
+        hash: Hash,
+        replaced_parent: Hash,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError> {
+        let mut parents = (*self.get_parents(hash)?).clone();
+        let replaced_index =
+            parents.iter().copied().position(|h| h == replaced_parent).expect("callers must ensure replaced is a parent");
+        parents.swap_remove(replaced_index);
+        parents.extend(replace_with);
+        self.parents_access.write(&mut writer, hash, BlockHashes::new(parents))?;
+
+        for parent in replace_with.iter().cloned() {
+            let mut children = (*self.get_children(parent)?).clone();
+            children.push(hash);
+            self.children_access.write(&mut writer, parent, BlockHashes::new(children))?;
+        }
+
+        Ok(())
+    }
+
+    pub fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+        self.insert_with_writer(BatchDbWriter::new(batch), hash, parents)
+    }
+
+    pub fn replace_parent_batch(
+        &mut self,
+        batch: &mut WriteBatch,
+        hash: Hash,
+        replaced_parent: Hash,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError> {
+        self.replace_parent_with_writer(BatchDbWriter::new(batch), hash, replaced_parent, replace_with)
     }
 }
 
@@ -93,27 +132,12 @@ impl RelationsStoreReader for DbRelationsStore {
 }
 
 impl RelationsStore for DbRelationsStore {
-    /// See `insert_batch` as well
-    /// TODO: use one function with DbWriter for both this function and insert_batch
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
-        if self.has(hash)? {
-            return Err(StoreError::HashAlreadyExists(hash));
-        }
+        self.insert_with_writer(DirectDbWriter::new(&self.db), hash, parents)
+    }
 
-        // Insert a new entry for `hash`
-        self.parents_access.write(DirectDbWriter::new(&self.db), hash, parents.clone())?;
-
-        // The new hash has no children yet
-        self.children_access.write(DirectDbWriter::new(&self.db), hash, BlockHashes::new(Vec::new()))?;
-
-        // Update `children` for each parent
-        for parent in parents.iter().cloned() {
-            let mut children = (*self.get_children(parent)?).clone();
-            children.push(hash);
-            self.children_access.write(DirectDbWriter::new(&self.db), parent, BlockHashes::new(children))?;
-        }
-
-        Ok(())
+    fn replace_parent(&mut self, hash: Hash, replaced_parent: Hash, replace_with: &[Hash]) -> Result<(), StoreError> {
+        self.replace_parent_with_writer(DirectDbWriter::new(&self.db), hash, replaced_parent, replace_with)
     }
 }
 
@@ -173,6 +197,23 @@ impl RelationsStore for MemoryRelationsStore {
         } else {
             Err(StoreError::HashAlreadyExists(hash))
         }
+    }
+
+    fn replace_parent(&mut self, hash: Hash, replaced_parent: Hash, replace_with: &[Hash]) -> Result<(), StoreError> {
+        let mut parents = (*self.get_parents(hash)?).clone();
+        let replaced_index =
+            parents.iter().copied().position(|h| h == replaced_parent).expect("callers must ensure replaced is a parent");
+        parents.swap_remove(replaced_index);
+        parents.extend(replace_with);
+        self.parents_map.insert(hash, BlockHashes::new(parents));
+
+        for parent in replace_with.iter().cloned() {
+            let mut children = (*self.get_children(parent)?).clone();
+            children.push(hash);
+            self.children_map.insert(parent, BlockHashes::new(children));
+        }
+
+        Ok(())
     }
 }
 
