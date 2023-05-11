@@ -17,7 +17,7 @@ pub struct Params {
     pub timestamp_deviation_tolerance: u64,
     pub target_time_per_block: u64,
     pub max_block_parents: u8,
-    /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
+    /// Defines the highest allowed proof of work value for a block as a [`Uint256`]
     pub max_pow: Uint256,
     pub max_pow_f64: f64,
     /// Size of window that is inspected to calculate the required difficulty of each block
