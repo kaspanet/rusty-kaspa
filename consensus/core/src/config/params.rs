@@ -18,8 +18,8 @@ pub struct Params {
     pub target_time_per_block: u64,
     pub max_block_parents: u8,
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
-    pub max_difficulty: Uint256,
-    pub max_difficulty_f64: f64,
+    pub max_pow: Uint256,
+    pub max_pow_f64: f64,
     /// Size of window that is inspected to calculate the required difficulty of each block
     pub difficulty_window_size: usize,
     pub mergeset_size_limit: u64,
@@ -87,8 +87,8 @@ impl Params {
 /// It is the value 2^255 - 1.
 ///
 /// Computed value: `Uint256::from_u64(1).wrapping_shl(255) - 1.into()`
-pub const DIFFICULTY_MAX: Uint256 = Uint256([18446744073709551615, 18446744073709551615, 18446744073709551615, 9223372036854775807]);
-pub const DIFFICULTY_MAX_AS_F64: f64 = 5.78960446186581e76;
+pub const POW_MAX: Uint256 = Uint256([18446744073709551615, 18446744073709551615, 18446744073709551615, 9223372036854775807]);
+pub const POW_MAX_AS_F64: f64 = 5.78960446186581e76;
 
 const DEFAULT_GHOSTDAG_K: KType = 18;
 pub const MAINNET_PARAMS: Params = Params {
@@ -119,8 +119,8 @@ pub const MAINNET_PARAMS: Params = Params {
     timestamp_deviation_tolerance: 132,
     target_time_per_block: 1000,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
+    max_pow: POW_MAX,
+    max_pow_f64: POW_MAX_AS_F64,
     difficulty_window_size: 2641,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
@@ -170,8 +170,8 @@ pub const TESTNET_PARAMS: Params = Params {
     timestamp_deviation_tolerance: 132,
     target_time_per_block: 1000,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
+    max_pow: POW_MAX,
+    max_pow_f64: POW_MAX_AS_F64,
     difficulty_window_size: 2641,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
@@ -217,8 +217,8 @@ pub const SIMNET_PARAMS: Params = Params {
     timestamp_deviation_tolerance: 132,
     target_time_per_block: 1000,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
+    max_pow: POW_MAX,
+    max_pow_f64: POW_MAX_AS_F64,
     difficulty_window_size: 2641,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
@@ -264,8 +264,8 @@ pub const DEVNET_PARAMS: Params = Params {
     timestamp_deviation_tolerance: 132,
     target_time_per_block: 1000,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
+    max_pow: POW_MAX,
+    max_pow_f64: POW_MAX_AS_F64,
     difficulty_window_size: 2641,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
@@ -304,12 +304,12 @@ pub const DEVNET_PARAMS: Params = Params {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::params::{DIFFICULTY_MAX, DIFFICULTY_MAX_AS_F64};
+    use crate::config::params::{POW_MAX, POW_MAX_AS_F64};
     use kaspa_math::Uint256;
 
     #[test]
-    fn test_difficulty_max_consts() {
-        assert_eq!(DIFFICULTY_MAX, Uint256::from_u64(1).wrapping_shl(255) - 1.into());
-        assert_eq!(DIFFICULTY_MAX_AS_F64, DIFFICULTY_MAX.as_f64());
+    fn test_POW_max_consts() {
+        assert_eq!(POW_MAX, Uint256::from_u64(1).wrapping_shl(255) - 1.into());
+        assert_eq!(POW_MAX_AS_F64, POW_MAX.as_f64());
     }
 }
