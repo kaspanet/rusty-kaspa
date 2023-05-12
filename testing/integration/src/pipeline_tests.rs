@@ -7,7 +7,7 @@ use kaspa_consensus::{
         relations::DbRelationsStore,
     },
     params::MAINNET_PARAMS,
-    processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
+    processes::reachability::tests::{validate_relations, DagBlock, DagBuilder, StoreValidationExtensions},
 };
 use kaspa_consensus_core::{api::ConsensusApi, blockhash};
 use kaspa_database::utils::create_temp_db;
@@ -50,10 +50,12 @@ fn test_reachability_staging() {
     }
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = store.read().clone_with_new_cache(10000);
+    let mut store = store.read().clone_with_new_cache(10000);
+    let mut relations = relations.clone_with_new_cache(10000);
 
-    // Assert intervals
+    // Assert tree intervals and DAG relations
     store.validate_intervals(blockhash::ORIGIN).unwrap();
+    validate_relations(&relations).unwrap();
 
     // Assert genesis
     for i in 2u64..=12 {
@@ -79,6 +81,12 @@ fn test_reachability_staging() {
     assert!(store.are_anticone(11, 4));
     assert!(store.are_anticone(11, 6));
     assert!(store.are_anticone(11, 9));
+
+    for i in 2u64..=11 {
+        DagBuilder::new(&mut store, &mut relations).delete_block(i.into());
+        store.validate_intervals(blockhash::ORIGIN).unwrap();
+        validate_relations(&relations).unwrap();
+    }
 }
 
 #[tokio::test]
