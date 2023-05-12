@@ -5,7 +5,7 @@ use super::{inquirer::*, tree::*};
 use crate::{
     model::stores::{
         reachability::{ReachabilityStore, ReachabilityStoreReader},
-        relations::RelationsStore,
+        relations::{RelationsStore, RelationsStoreReader},
     },
     processes::{
         ghostdag::mergeset::unordered_mergeset_without_selected_parent,
@@ -13,7 +13,11 @@ use crate::{
         relations::{delete_reachability_relations, init as relations_init},
     },
 };
-use kaspa_consensus_core::blockhash::{BlockHashExtensions, BlockHashes};
+use itertools::Itertools;
+use kaspa_consensus_core::{
+    blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
+    BlockHashSet,
+};
 use kaspa_database::prelude::StoreError;
 use kaspa_hashes::Hash;
 use std::collections::VecDeque;
@@ -125,6 +129,29 @@ impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ?Sized> DagBuilder<'
     pub fn store(&self) -> &&'a mut T {
         &self.store
     }
+}
+
+/// Validates that relations are consistent and do not contain any dangling hash etc
+pub fn validate_relations<S: RelationsStoreReader + ?Sized>(relations: &S) -> std::result::Result<(), TestError> {
+    let mut queue = VecDeque::<Hash>::from([ORIGIN]);
+    let mut visited: BlockHashSet = queue.iter().copied().collect();
+    while let Some(current) = queue.pop_front() {
+        let parents = relations.get_parents(current)?;
+        assert_eq!(parents.len(), parents.iter().copied().unique_by(|&h| h).count(), "duplicate hashes in parents array");
+        for parent in parents.iter().copied() {
+            let parent_children = relations.get_children(parent)?;
+            assert!(parent_children.contains(&current), "missing child entry");
+        }
+        let children = relations.get_children(current)?;
+        assert_eq!(children.len(), children.iter().copied().unique_by(|&h| h).count(), "duplicate hashes in children array");
+        for child in children.iter().copied() {
+            if visited.insert(child) {
+                queue.push_back(child);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Error, Debug)]

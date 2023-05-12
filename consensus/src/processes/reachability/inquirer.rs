@@ -324,8 +324,9 @@ mod tests {
             .add_block(DagBlock::new(11.into(), vec![1.into()]))
             .add_block(DagBlock::new(12.into(), vec![11.into(), 10.into()]));
 
-        // Assert intervals
+        // Assert tree intervals and DAG relations
         store.validate_intervals(blockhash::ORIGIN).unwrap();
+        validate_relations(&relations).unwrap();
 
         // Assert genesis
         for i in 2u64..=12 {
@@ -355,6 +356,7 @@ mod tests {
         for i in 2u64..=11 {
             DagBuilder::new(&mut store, &mut relations).delete_block(i.into());
             store.validate_intervals(blockhash::ORIGIN).unwrap();
+            validate_relations(&relations).unwrap();
         }
 
         // Assert intervals
