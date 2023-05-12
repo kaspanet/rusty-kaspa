@@ -7,20 +7,33 @@ use kaspa_consensus_core::{
 };
 use kaspa_hashes::Hash;
 
+/// Initializes this relations store with an `origin` root
 pub fn init<S: RelationsStore + ?Sized>(relations: &mut S) {
     if !relations.has(ORIGIN).unwrap() {
         relations.insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
     }
 }
 
+/// Delete relations of `hash` for the case where the relations store represents a specific level.
+/// In this case we simply remove the entry locally, relying on the fact that level relations are
+/// kept topologically continuous. If any child of this `hash` will remain with no parent, we make
+/// sure to connect it to `origin`. Note that apart from the special case of `origin`, these relations
+/// are always a subset of the original header relations for this level.
 pub fn delete_level_relations<S: RelationsStore + ?Sized>(relations: &mut S, hash: Hash) {
     let children = relations.get_children(hash).unwrap();
     for child in children.iter().copied() {
-        relations.replace_parent(child, hash, &[]).unwrap();
+        let child_parents = relations.get_parents(child).unwrap();
+        // If the removed hash is the only parent of child, then replace it with `origin`
+        let replace_with: &[Hash] = if child_parents.as_slice() == [hash] { &[ORIGIN] } else { &[] };
+        relations.replace_parent(child, hash, replace_with).unwrap();
     }
     relations.delete(hash).unwrap();
 }
 
+/// Delete relations of `hash` for the case where relations represent the maximally known reachability
+/// relations. In this case we preserve all topological info by connecting parents of `hash` as parents
+/// of its children if necessary. This means that these relations do not correlate with header data and
+/// can contain links which didn't appear in the original DAG (but yet follow from it)
 pub fn delete_reachability_relations<S: RelationsStore + ?Sized, U: ReachabilityService + ?Sized>(
     relations: &mut S,
     reachability: &U,
