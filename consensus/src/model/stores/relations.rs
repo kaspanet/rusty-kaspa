@@ -21,6 +21,7 @@ pub trait RelationsStoreReader {
 pub trait RelationsStore: RelationsStoreReader {
     /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
+    fn delete(&mut self, hash: Hash) -> Result<(), StoreError>;
     fn replace_parent(&mut self, hash: Hash, replaced_parent: Hash, replace_with: &[Hash]) -> Result<(), StoreError>;
 }
 
@@ -74,6 +75,24 @@ impl DbRelationsStore {
         Ok(())
     }
 
+    /// Delete children and parents entries of `hash` and remove `hash` from `children` of each of its parents
+    /// Note: the removal from parents of each child must be done beforehand by calling `replace_parent` for each child
+    fn delete_with_writer(&self, mut writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
+        let parents = self.parents_access.read(hash)?;
+        self.parents_access.delete(&mut writer, hash)?;
+        self.children_access.delete(&mut writer, hash)?;
+
+        // Remove `hash` from `children` of each parent
+        for parent in parents.iter().cloned() {
+            let mut children = (*self.get_children(parent)?).clone();
+            let index = children.iter().copied().position(|h| h == hash).expect("inconsistent child-parent relation");
+            children.swap_remove(index);
+            self.children_access.write(&mut writer, parent, BlockHashes::new(children))?;
+        }
+
+        Ok(())
+    }
+
     fn replace_parent_with_writer(
         &self,
         mut writer: impl DbWriter,
@@ -99,6 +118,10 @@ impl DbRelationsStore {
 
     pub fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         self.insert_with_writer(BatchDbWriter::new(batch), hash, parents)
+    }
+
+    pub fn delete_batch(&mut self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.delete_with_writer(BatchDbWriter::new(batch), hash)
     }
 
     pub fn replace_parent_batch(
@@ -134,6 +157,10 @@ impl RelationsStoreReader for DbRelationsStore {
 impl RelationsStore for DbRelationsStore {
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         self.insert_with_writer(DirectDbWriter::new(&self.db), hash, parents)
+    }
+
+    fn delete(&mut self, hash: Hash) -> Result<(), StoreError> {
+        self.delete_with_writer(DirectDbWriter::new(&self.db), hash)
     }
 
     fn replace_parent(&mut self, hash: Hash, replaced_parent: Hash, replace_with: &[Hash]) -> Result<(), StoreError> {
@@ -197,6 +224,22 @@ impl RelationsStore for MemoryRelationsStore {
         } else {
             Err(StoreError::HashAlreadyExists(hash))
         }
+    }
+
+    fn delete(&mut self, hash: Hash) -> Result<(), StoreError> {
+        let parents = self.get_parents(hash)?;
+        self.parents_map.remove(&hash);
+        self.children_map.remove(&hash);
+
+        // Remove `hash` from `children` of each parent
+        for parent in parents.iter().cloned() {
+            let mut children = (*self.get_children(parent)?).clone();
+            let index = children.iter().copied().position(|h| h == hash).expect("inconsistent child-parent relation");
+            children.swap_remove(index);
+            self.children_map.insert(parent, BlockHashes::new(children));
+        }
+
+        Ok(())
     }
 
     fn replace_parent(&mut self, hash: Hash, replaced_parent: Hash, replace_with: &[Hash]) -> Result<(), StoreError> {

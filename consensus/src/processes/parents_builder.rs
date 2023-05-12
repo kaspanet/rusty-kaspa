@@ -192,7 +192,7 @@ mod tests {
             stores::{
                 headers::{HeaderStoreReader, HeaderWithBlockLevel},
                 reachability::MemoryReachabilityStore,
-                relations::RelationsStoreReader,
+                relations::{MemoryRelationsStore, RelationsStoreReader},
             },
         },
         processes::reachability::tests::{DagBlock, DagBuilder},
@@ -282,6 +282,7 @@ mod tests {
     #[test]
     fn test_calc_block_parents() {
         let mut reachability_store = MemoryReachabilityStore::new();
+        let mut relations_store = MemoryRelationsStore::new();
         let headers_store = Arc::new(HeaderStoreMock::new());
 
         let genesis_hash = 3000.into();
@@ -435,7 +436,7 @@ mod tests {
             },
         ];
 
-        let mut dag_builder = DagBuilder::new(&mut reachability_store);
+        let mut dag_builder = DagBuilder::new(&mut reachability_store, &mut relations_store);
         dag_builder
             .init()
             .add_block(DagBlock::new(pruning_point, vec![ORIGIN]))
@@ -509,6 +510,7 @@ mod tests {
         */
 
         let mut reachability_store = MemoryReachabilityStore::new();
+        let mut relations_store = MemoryRelationsStore::new();
         let headers_store = Arc::new(HeaderStoreMock::new());
 
         let genesis_hash = 3000.into();
@@ -541,7 +543,7 @@ mod tests {
             TestBlock { id: 4, block_level: 0, direct_parents: vec![2, 3], expected_parents: vec![vec![2, 3], vec![1001, 1002]] },
         ];
 
-        let mut dag_builder = DagBuilder::new(&mut reachability_store);
+        let mut dag_builder = DagBuilder::new(&mut reachability_store, &mut relations_store);
         dag_builder.init().add_block(DagBlock::new(pruning_point, vec![ORIGIN]));
 
         for test_block in test_blocks.iter() {

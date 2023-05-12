@@ -13,6 +13,7 @@ use kaspa_consensus::model::stores::block_transactions::{
 use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
+use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
 use kaspa_consensus::params::{Params, DEVNET_PARAMS, DIFFICULTY_MAX, DIFFICULTY_MAX_AS_F64, MAINNET_PARAMS};
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
@@ -108,8 +109,9 @@ fn reachability_stretch_test(use_attack_json: bool) {
 
     // Act
     let (_temp_db_lifetime, db) = create_temp_db();
-    let mut store = DbReachabilityStore::new(db, 100000);
-    let mut builder = DagBuilder::new(&mut store);
+    let mut store = DbReachabilityStore::new(db.clone(), 100000);
+    let mut relations = DbRelationsStore::new(db, 0, 100000); // TODO: remove level
+    let mut builder = DagBuilder::new(&mut store, &mut relations);
 
     builder.init();
 

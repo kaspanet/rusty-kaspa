@@ -255,7 +255,10 @@ fn assert_hashes_ordered(store: &(impl ReachabilityStoreReader + ?Sized), ordere
 mod tests {
     use super::super::tests::*;
     use super::*;
-    use crate::{model::stores::reachability::MemoryReachabilityStore, processes::reachability::interval::Interval};
+    use crate::{
+        model::stores::{reachability::MemoryReachabilityStore, relations::MemoryRelationsStore},
+        processes::reachability::interval::Interval,
+    };
 
     #[test]
     fn test_add_tree_blocks() {
@@ -303,10 +306,10 @@ mod tests {
     fn test_add_dag_blocks() {
         // Arrange
         let mut store = MemoryReachabilityStore::new();
+        let mut relations = MemoryRelationsStore::new();
 
         // Act
-        let mut builder = DagBuilder::new(&mut store);
-        builder
+        DagBuilder::new(&mut store, &mut relations)
             .init()
             .add_block(DagBlock::new(1.into(), vec![blockhash::ORIGIN]))
             .add_block(DagBlock::new(2.into(), vec![1.into()]))
@@ -320,7 +323,6 @@ mod tests {
             .add_block(DagBlock::new(10.into(), vec![7.into(), 8.into(), 9.into()]))
             .add_block(DagBlock::new(11.into(), vec![1.into()]))
             .add_block(DagBlock::new(12.into(), vec![11.into(), 10.into()]));
-        let mut map = builder.drop();
 
         // Assert intervals
         store.validate_intervals(blockhash::ORIGIN).unwrap();
@@ -351,9 +353,7 @@ mod tests {
         assert!(store.are_anticone(11, 9));
 
         for i in 2u64..=11 {
-            let mut builder = DagBuilder::from_map(&mut store, map);
-            builder.delete_block(i.into());
-            map = builder.drop();
+            DagBuilder::new(&mut store, &mut relations).delete_block(i.into());
             store.validate_intervals(blockhash::ORIGIN).unwrap();
         }
 

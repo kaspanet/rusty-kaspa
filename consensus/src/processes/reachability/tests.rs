@@ -3,11 +3,17 @@
 //!
 use super::{inquirer::*, tree::*};
 use crate::{
-    model::stores::reachability::{ReachabilityStore, ReachabilityStoreReader},
-    processes::reachability::interval::Interval,
+    model::stores::{
+        reachability::{ReachabilityStore, ReachabilityStoreReader},
+        relations::RelationsStore,
+    },
+    processes::{
+        ghostdag::mergeset::unordered_mergeset_without_selected_parent,
+        reachability::interval::Interval,
+        relations::{delete_reachability_relations, init as relations_init},
+    },
 };
-use itertools::{any, Itertools};
-use kaspa_consensus_core::{blockhash::BlockHashExtensions, BlockHashMap, BlockHashSet, HashMapCustomHasher};
+use kaspa_consensus_core::blockhash::{BlockHashExtensions, BlockHashes};
 use kaspa_database::prelude::StoreError;
 use kaspa_hashes::Hash;
 use std::collections::VecDeque;
@@ -84,52 +90,24 @@ impl DagBlock {
 }
 
 /// A struct with fluent API to streamline DAG building
-pub struct DagBuilder<'a, T: ReachabilityStore + ?Sized> {
+pub struct DagBuilder<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ?Sized> {
     store: &'a mut T,
-    map: BlockHashMap<DagBlock>,
+    relations: &'a mut S,
 }
 
-impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
-    pub fn new(store: &'a mut T) -> Self {
-        Self { store, map: BlockHashMap::new() }
-    }
-
-    pub fn from_map(store: &'a mut T, map: BlockHashMap<DagBlock>) -> Self {
-        Self { store, map }
+impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ?Sized> DagBuilder<'a, T, S> {
+    pub fn new(store: &'a mut T, relations: &'a mut S) -> Self {
+        Self { store, relations }
     }
 
     pub fn init(&mut self) -> &mut Self {
         init(self.store).unwrap();
+        relations_init(self.relations);
         self
     }
 
-    pub fn drop(self) -> BlockHashMap<DagBlock> {
-        self.map
-    }
-
     pub fn delete_block(&mut self, hash: Hash) -> &mut Self {
-        let selected_parent = self.store.get_parent(hash).unwrap();
-        let block = self.map.remove(&hash).unwrap();
-        let mergeset = self.mergeset(&block, selected_parent);
-        for (_, v) in self.map.iter_mut() {
-            if let Some(index) = v.parents.iter().copied().position(|h| h == hash) {
-                // `v` is a child of `block`
-                let needed_grandparents = block
-                    .parents
-                    .iter()
-                    .copied()
-                    .filter(|&grandparent| {
-                        // Find grandparents of `v` which are not in the past of any of current parents of `v`
-                        !any(v.parents.iter().copied(), |existing_parent| {
-                            is_dag_ancestor_of(self.store, grandparent, existing_parent).unwrap()
-                        })
-                    })
-                    .collect_vec();
-                // Replace `block` with needed grandparents
-                let replaced = v.parents.splice(index..index + 1, needed_grandparents);
-                assert!(replaced.eq(std::iter::once(hash)));
-            }
-        }
+        let mergeset = delete_reachability_relations(self.relations, self.store, hash);
         delete_block(self.store, hash, &mut mergeset.iter().cloned()).unwrap();
         self
     }
@@ -137,34 +115,11 @@ impl<'a, T: ReachabilityStore + ?Sized> DagBuilder<'a, T> {
     pub fn add_block(&mut self, block: DagBlock) -> &mut Self {
         // Select by height (longest chain) just for the sake of internal isolated tests
         let selected_parent = block.parents.iter().cloned().max_by_key(|p| self.store.get_height(*p).unwrap()).unwrap();
-        let mergeset = self.mergeset(&block, selected_parent);
+        let mergeset = unordered_mergeset_without_selected_parent(self.relations, self.store, selected_parent, &block.parents);
         add_block(self.store, block.hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();
         hint_virtual_selected_parent(self.store, block.hash).unwrap();
-        self.map.insert(block.hash, block);
+        self.relations.insert(block.hash, BlockHashes::new(block.parents)).unwrap();
         self
-    }
-
-    fn mergeset(&self, block: &DagBlock, selected_parent: Hash) -> Vec<Hash> {
-        let mut queue: VecDeque<Hash> = block.parents.iter().copied().filter(|p| *p != selected_parent).collect();
-        let mut mergeset: BlockHashSet = queue.iter().copied().collect();
-        let mut past = BlockHashSet::new();
-
-        while let Some(current) = queue.pop_front() {
-            for parent in self.map[&current].parents.iter() {
-                if mergeset.contains(parent) || past.contains(parent) {
-                    continue;
-                }
-
-                if is_dag_ancestor_of(self.store, *parent, selected_parent).unwrap() {
-                    past.insert(*parent);
-                    continue;
-                }
-
-                mergeset.insert(*parent);
-                queue.push_back(*parent);
-            }
-        }
-        mergeset.into_iter().collect()
     }
 
     pub fn store(&self) -> &&'a mut T {

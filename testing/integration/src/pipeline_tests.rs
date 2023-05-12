@@ -2,7 +2,10 @@ use futures_util::future::try_join_all;
 use kaspa_consensus::{
     config::ConfigBuilder,
     consensus::test_consensus::TestConsensus,
-    model::stores::reachability::{DbReachabilityStore, StagingReachabilityStore},
+    model::stores::{
+        reachability::{DbReachabilityStore, StagingReachabilityStore},
+        relations::DbRelationsStore,
+    },
     params::MAINNET_PARAMS,
     processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions},
 };
@@ -20,10 +23,11 @@ fn test_reachability_staging() {
     // Arrange
     let (_temp_db_lifetime, db) = create_temp_db();
     let store = RwLock::new(DbReachabilityStore::new(db.clone(), 10000));
+    let mut relations = DbRelationsStore::new(db.clone(), 0, 100000); // TODO: remove level
     let mut staging = StagingReachabilityStore::new(store.upgradable_read());
 
     // Act
-    DagBuilder::new(&mut staging)
+    DagBuilder::new(&mut staging, &mut relations)
         .init()
         .add_block(DagBlock::new(1.into(), vec![blockhash::ORIGIN]))
         .add_block(DagBlock::new(2.into(), vec![1.into()]))
