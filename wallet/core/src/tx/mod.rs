@@ -47,9 +47,10 @@ pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_ha
 
 #[wasm_bindgen(js_name=createTransaction)]
 pub fn create_transaction(
-    utxo_selection: SelectionContext,
-    outputs: PaymentOutputs,
-    change_address: Address,
+    sig_op_count: u8,
+    utxo_selection: &SelectionContext,
+    outputs: &PaymentOutputs,
+    change_address: &Address,
     priority_fee: Option<u64>,
     payload: Option<Vec<u8>>,
 ) -> crate::Result<MutableTransaction> {
@@ -67,7 +68,7 @@ pub fn create_transaction(
         .map(|(sequence, utxo)| {
             total_input_amount += utxo.utxo_entry.amount;
             entries.push(utxo.as_ref().clone());
-            TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, 0)
+            TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, sig_op_count)
         })
         .collect::<Vec<TransactionInput>>();
 
@@ -100,7 +101,7 @@ pub fn create_transaction(
 #[wasm_bindgen(js_name=adjustTransactionForFee)]
 pub fn adjust_transaction_for_fee(
     mtx: &MutableTransaction,
-    change_address: Address,
+    change_address: &Address,
     priority_fee: Option<u64>,
 ) -> crate::Result<bool> {
     let total_input_amount = mtx.total_input_amount()?;
@@ -117,7 +118,7 @@ pub fn adjust_transaction_for_fee(
     let change = amount_after_priority_fee - total_output_amount;
     let mut change_output_opt = None;
     if change > 0 {
-        let change_output = TransactionOutput::new(change, &pay_to_address_script(&change_address));
+        let change_output = TransactionOutput::new(change, &pay_to_address_script(change_address));
         if !change_output.is_dust() {
             total_output_amount += change;
             change_output_opt = Some(change_output.clone());
@@ -125,7 +126,7 @@ pub fn adjust_transaction_for_fee(
         }
     }
 
-    let params = get_consensus_params_by_address(&change_address);
+    let params = get_consensus_params_by_address(change_address);
     let minimum_fee = calculate_minimum_transaction_fee(&tx, &params, true);
     let total_fee = minimum_fee + priority_fee;
     log_trace!("minimum_fee: {minimum_fee}");

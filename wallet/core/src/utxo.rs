@@ -241,7 +241,7 @@ impl UtxoSet {
     pub fn extend(&self, utxo_entries: &[UtxoEntryReference]) {
         let mut inner = self.inner();
         for entry in utxo_entries {
-            if inner.map.insert(entry.utxo.outpoint.inner().clone(), entry.clone()).is_none() {
+            if inner.map.insert(entry.id(), entry.clone()).is_none() {
                 inner.entries.push(entry.clone());
             }
         }
