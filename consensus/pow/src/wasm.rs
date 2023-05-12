@@ -18,7 +18,6 @@ impl State {
 
     #[wasm_bindgen(js_name=checkPow)]
     pub fn check_pow(&self, nonce_jsv: JsValue) -> Result<js_sys::Array> {
-
         // let nonce = nonce_jsv.try_as_u64()?;
         let nonce = try_as_u64_local(nonce_jsv)?;
 
@@ -31,7 +30,7 @@ impl State {
     }
 }
 
-fn try_as_u64_local(v:JsValue) -> Result<u64> {
+fn try_as_u64_local(v: JsValue) -> Result<u64> {
     use workflow_wasm::error::Error;
     if v.is_string() {
         let hex_str = v.as_string().unwrap();
@@ -46,14 +45,10 @@ fn try_as_u64_local(v:JsValue) -> Result<u64> {
             Ok(u64::from_be_bytes(out))
         }
     } else if v.is_bigint() {
-        Ok(v.clone().try_into().map_err(|err| {
-            Error::Convert(format!(
-                "try_as_u64(): unable to convert BigInt value to u64: `{v:?}`: {err:?}"
-            ))
-        })?)
+        Ok(v.clone()
+            .try_into()
+            .map_err(|err| Error::Convert(format!("try_as_u64(): unable to convert BigInt value to u64: `{v:?}`: {err:?}")))?)
     } else {
-        Ok(v.as_f64()
-            .ok_or_else(|| Error::WrongType(format!("value is not a number ({v:?})")))?
-            as u64)
+        Ok(v.as_f64().ok_or_else(|| Error::WrongType(format!("value is not a number ({v:?})")))? as u64)
     }
 }
