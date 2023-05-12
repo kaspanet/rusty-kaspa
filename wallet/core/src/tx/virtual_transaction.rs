@@ -147,7 +147,7 @@ impl VirtualTransaction {
         log_trace!("outputs.outputs: {:?}", outputs.outputs);
         log_trace!("change_address: {:?}", change_address.to_string());
 
-        let consensus_params = get_consensus_params_by_address(&change_address);
+        let consensus_params = get_consensus_params_by_address(change_address);
 
         let entries = &utxo_selection.selected_entries;
 
@@ -162,9 +162,9 @@ impl VirtualTransaction {
                 //into multiple transactions
                 let mtx = create_transaction(
                     sig_op_count,
-                    &utxo_selection,
-                    &outputs,
-                    &change_address,
+                    utxo_selection,
+                    outputs,
+                    change_address,
                     priority_fee_sompi,
                     Some(payload.clone()),
                 )?;
@@ -177,14 +177,14 @@ impl VirtualTransaction {
                 }
 
                 let max_inputs = calculate_chunk_size(&tx, mass, &consensus_params, true).await as usize;
-                let mut txs = Self::split_utxos(entries, max_inputs, max_inputs, &change_address, sig_op_count).await?;
-                txs.merge(&outputs, &change_address, priority_fee, payload.clone()).await?;
+                let mut txs = Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count).await?;
+                txs.merge(outputs, change_address, priority_fee, payload.clone()).await?;
                 Ok(VirtualTransaction { transactions: txs.transactions, payload })
             }
             LimitStrategy::Inputs(inputs) => {
                 let max_inputs = inputs as usize;
-                let mut txs = Self::split_utxos(entries, max_inputs, max_inputs, &change_address, sig_op_count).await?;
-                txs.merge(&outputs, &change_address, priority_fee, payload.clone()).await?;
+                let mut txs = Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count).await?;
+                txs.merge(outputs, change_address, priority_fee, payload.clone()).await?;
                 Ok(VirtualTransaction { transactions: txs.transactions, payload })
             }
         }
