@@ -2292,6 +2292,7 @@ dependencies = [
  "kaspa-hashes",
  "kaspa-math",
  "wasm-bindgen",
+ "workflow-wasm",
 ]
 
 [[package]]
