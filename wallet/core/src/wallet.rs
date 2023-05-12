@@ -563,7 +563,8 @@ impl Wallet {
                     // self.utxos.remove(UtxoEntryReference::from(entry.clone()).id());
                     if let Some(address) = entry.address.as_ref() {
                         if let Some(account) = self.address_to_account(address) {
-                            account.handle_utxo_removed(UtxoEntryReference::from(entry.clone()).id()).await?;
+                            let removed = account.handle_utxo_removed(UtxoEntryReference::from(entry.clone()).id()).await?;
+                            log_info!("utxo removed: {removed}, {}", entry.outpoint.transaction_id);
                         } else {
                             log_error!("receiving UTXO Changed notification for an unknown address: {}", address);
                         }

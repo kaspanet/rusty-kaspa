@@ -544,21 +544,44 @@ struct LocalStoreFactory {
     pub transaction: Arc<PrvKeyDataInterface>,
 }
 
-#[async_trait]
-impl Factory for LocalStoreFactory {
-    async fn prv_key_data(&self) -> Arc<dyn Interface<Id = PrvKeyDataId, Data = PrvKeyData>> {
-        todo!()
-    }
-    async fn account(&self) -> Arc<dyn Interface<Id = AccountId, Data = Account>> {
-        todo!()
-    }
-    async fn metadata(&self) -> Arc<dyn Interface<Id = AccountId, Data = Metadata>> {
-        todo!()
-    }
-    async fn transaction(&self) -> Arc<dyn Interface<Id = TransactionRecordId, Data = TransactionRecord>> {
-        todo!()
-    }
-}
+// #[async_trait]
+// impl Factory for LocalStoreFactory {
+//     async fn prv_key_data(&self) -> Arc<dyn Interface<Id = PrvKeyDataId, Data = PrvKeyData>> {
+//         todo!();
+//     }
+
+//     async fn get_ids(&self, _range: std::ops::Range<u64>) -> Result<Vec<Self::Id>>
+//      {
+//         todo!();
+//     }
+
+//     async fn store(&self, _ctx: Arc<dyn AccessContextT>, _data: &[&Self::Data]) -> Result<()>
+//      {
+//         todo!();
+//         // Ok(())
+//     }
+
+//     async fn load(&self, _ctx: &Arc<dyn AccessContextT>, _id: &[Self::Id]) -> Result<Vec<Self::Data>>
+//      {
+//         todo!();
+//     }
+// }
+
+// #[async_trait]
+// impl StoreTrait for LocalStore {
+//     async fn prv_key_data_len(self: &Arc<Self>) -> Result<usize> {
+//         todo!();
+//     }
+//     async fn account(&self) -> Arc<dyn Interface<Id = AccountId, Data = Account>> {
+//         todo!()
+//     }
+//     async fn metadata(&self) -> Arc<dyn Interface<Id = AccountId, Data = Metadata>> {
+//         todo!()
+//     }
+//     async fn transaction(&self) -> Arc<dyn Interface<Id = TransactionRecordId, Data = TransactionRecord>> {
+//         todo!()
+//     }
+// }
 
 // #[async_trait]
 // impl StoreTrait for LocalStore {

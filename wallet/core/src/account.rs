@@ -5,7 +5,7 @@ use crate::result::Result;
 use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
 use crate::storage::{self, PrvKeyData, PrvKeyDataId, PubKeyData};
-use crate::tx::{PaymentOutput, PaymentOutputs, VirtualTransaction};
+use crate::tx::{LimitCalcStrategy, PaymentOutput, PaymentOutputs, VirtualTransaction};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoOrdering, UtxoSet};
 use crate::wallet::{BalanceUpdate, Events};
 use crate::AddressDerivationManager;
@@ -346,7 +346,16 @@ impl Account {
         let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
         let addresses = utxo_selection.selected_entries.iter().map(|u| u.utxo.address.clone().unwrap()).collect::<Vec<Address>>();
         //let mtx = create_transaction(utxo_selection, outputs, change_address, priority_fee, payload)?;
-        let vt = VirtualTransaction::new(sig_op_count, utxo_selection, outputs, change_address, priority_fee_sompi, payload)?;
+        let vt = VirtualTransaction::new(
+            sig_op_count,
+            &utxo_selection,
+            &outputs,
+            &change_address,
+            priority_fee_sompi,
+            payload,
+            LimitCalcStrategy::inputs(80),
+        )
+        .await?;
 
         let indexes = self.derivation.addresses_indexes(&addresses)?;
         let receive_indexes = indexes.0;
@@ -497,10 +506,8 @@ impl Account {
         Ok(())
     }
 
-    pub(crate) async fn handle_utxo_removed(&self, utxo_id: UtxoEntryId) -> Result<()> {
-        self.utxos.remove(utxo_id);
-
-        Ok(())
+    pub(crate) async fn handle_utxo_removed(&self, utxo_id: UtxoEntryId) -> Result<bool> {
+        Ok(self.utxos.remove(utxo_id))
     }
 }
 
