@@ -423,7 +423,7 @@ impl Store {
 // pub struct Settings;
 
 #[async_trait]
-pub trait AccessContextT {
+pub trait AccessContextT : Send + Sync {
     async fn wallet_secret(&self) -> Option<Secret>;
     async fn payment_secret(&self, account: &Arc<Account>) -> Option<Secret>;
 }
@@ -502,6 +502,47 @@ impl LocalStore {
         // let transactions = Store::new(name)?;
         Ok(LocalStore { wallet })
     }
+}
+
+#[async_trait]
+pub trait Interface : Sized + Send + Sync {
+    type Data;
+    type Id;
+
+    async fn len(&self) -> Result<u64>;
+    //  {
+    //     todo!();
+    // }
+    
+    async fn get_ids(&self, _range: std::ops::Range<u64>) -> Result<Vec<Self::Id>>;
+    //  {
+    //     todo!();
+    // }
+    
+    async fn store(
+        &self, 
+        _ctx: Arc<dyn AccessContextT>, 
+        _data: &[&Self::Data]
+    ) -> Result<()>;
+    //  {
+    //     todo!();
+    //     // Ok(())
+    // }
+
+    async fn load(
+        &self,
+        _ctx: &Arc<dyn AccessContextT>,
+        _id: &[Self::Id],
+    ) -> Result<Vec<Self::Data>>;
+    //  {
+    //     todo!();
+    // }
+
+}
+
+#[async_trait]
+pub trait Factory : Sized + Send + Sync {
+    async fn prv_key_data(&self) -> Arc<dyn Interface<Id = PrvKeyDataId, Data = PrvKeyData>>;
 }
 
 #[async_trait]
