@@ -270,6 +270,10 @@ mod tests {
         fn has(&self, hash: Hash) -> Result<bool, StoreError> {
             unimplemented!()
         }
+
+        fn counts(&self) -> Result<(usize, usize), StoreError> {
+            unimplemented!()
+        }
     }
 
     struct TestBlock {

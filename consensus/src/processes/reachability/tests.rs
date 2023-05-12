@@ -150,7 +150,7 @@ pub fn validate_relations<S: RelationsStoreReader + ?Sized>(relations: &S) -> st
             }
         }
     }
-
+    assert_eq!(relations.counts().unwrap(), (visited.len(), visited.len()));
     Ok(())
 }
 

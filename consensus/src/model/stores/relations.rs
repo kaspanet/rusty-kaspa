@@ -13,6 +13,9 @@ pub trait RelationsStoreReader {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
+
+    /// Returns the counts of entries in parents/children stores. To be used for tests only
+    fn counts(&self) -> Result<(usize, usize), StoreError>;
 }
 
 /// Write API for `RelationsStore`. The insert function is deliberately `mut`
@@ -152,6 +155,10 @@ impl RelationsStoreReader for DbRelationsStore {
             Ok(false)
         }
     }
+
+    fn counts(&self) -> Result<(usize, usize), StoreError> {
+        Ok((self.parents_access.iterator().count(), self.children_access.iterator().count()))
+    }
 }
 
 impl RelationsStore for DbRelationsStore {
@@ -202,6 +209,10 @@ impl RelationsStoreReader for MemoryRelationsStore {
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
         Ok(self.parents_map.contains_key(&hash))
+    }
+
+    fn counts(&self) -> Result<(usize, usize), StoreError> {
+        Ok((self.parents_map.len(), self.children_map.len()))
     }
 }
 
