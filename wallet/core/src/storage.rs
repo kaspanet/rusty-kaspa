@@ -423,7 +423,7 @@ impl Store {
 // pub struct Settings;
 
 #[async_trait]
-pub trait AccessContextT : Send + Sync {
+pub trait AccessContextT: Send + Sync {
     async fn wallet_secret(&self) -> Option<Secret>;
     async fn payment_secret(&self, account: &Arc<Account>) -> Option<Secret>;
 }
@@ -504,113 +504,128 @@ impl LocalStore {
     }
 }
 
+#[allow(clippy::len_without_is_empty)]
 #[async_trait]
-pub trait Interface : Sized + Send + Sync {
+pub trait Interface: Send + Sync {
     type Data;
     type Id;
 
     async fn len(&self) -> Result<u64>;
-    //  {
-    //     todo!();
-    // }
-    
+
     async fn get_ids(&self, _range: std::ops::Range<u64>) -> Result<Vec<Self::Id>>;
-    //  {
-    //     todo!();
-    // }
-    
-    async fn store(
-        &self, 
-        _ctx: Arc<dyn AccessContextT>, 
-        _data: &[&Self::Data]
-    ) -> Result<()>;
-    //  {
-    //     todo!();
-    //     // Ok(())
-    // }
 
-    async fn load(
-        &self,
-        _ctx: &Arc<dyn AccessContextT>,
-        _id: &[Self::Id],
-    ) -> Result<Vec<Self::Data>>;
-    //  {
-    //     todo!();
-    // }
+    async fn store(&self, _ctx: Arc<dyn AccessContextT>, _data: &[&Self::Data]) -> Result<()>;
 
+    async fn load(&self, _ctx: &Arc<dyn AccessContextT>, _id: &[Self::Id]) -> Result<Vec<Self::Data>>;
+}
+
+pub type PrvKeyDataInterface = dyn Interface<Id = PrvKeyDataId, Data = PrvKeyData>;
+pub type AccountInterface = dyn Interface<Id = AccountId, Data = Account>;
+pub type MetadataInterface = dyn Interface<Id = AccountId, Data = Metadata>;
+pub type TransactionInterface = dyn Interface<Id = TransactionRecordId, Data = TransactionRecord>;
+
+#[async_trait]
+pub trait Factory: Sized + Send + Sync {
+    async fn prv_key_data(&self) -> Arc<PrvKeyDataInterface>;
+    async fn account(&self) -> Arc<AccountInterface>;
+    async fn metadata(&self) -> Arc<MetadataInterface>;
+    async fn transaction(&self) -> Arc<TransactionInterface>;
+    // async fn prv_key_data(&self) -> Arc<dyn Interface<Id = PrvKeyDataId, Data = PrvKeyData>>;
+    // async fn account(&self) -> Arc<dyn Interface<Id = AccountId, Data = Account>>;
+    // async fn metadata(&self) -> Arc<dyn Interface<Id = AccountId, Data = Metadata>>;
+    // async fn transaction(&self) -> Arc<dyn Interface<Id = TransactionRecordId, Data = TransactionRecord>>;
+}
+
+#[allow(dead_code)]
+struct LocalStoreFactory {
+    pub prv_key_data: Arc<PrvKeyDataInterface>,
+    pub account: Arc<PrvKeyDataInterface>,
+    pub metadata: Arc<PrvKeyDataInterface>,
+    pub transaction: Arc<PrvKeyDataInterface>,
 }
 
 #[async_trait]
-pub trait Factory : Sized + Send + Sync {
-    async fn prv_key_data(&self) -> Arc<dyn Interface<Id = PrvKeyDataId, Data = PrvKeyData>>;
-}
-
-#[async_trait]
-impl StoreTrait for LocalStore {
-    async fn prv_key_data_len(self: &Arc<Self>) -> Result<usize> {
-        todo!();
+impl Factory for LocalStoreFactory {
+    async fn prv_key_data(&self) -> Arc<dyn Interface<Id = PrvKeyDataId, Data = PrvKeyData>> {
+        todo!()
     }
-    async fn prv_key_data_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<PrvKeyDataId>> {
-        todo!();
+    async fn account(&self) -> Arc<dyn Interface<Id = AccountId, Data = Account>> {
+        todo!()
     }
-    async fn store_prv_key_data(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _prv_key_data: &[&PrvKeyData]) -> Result<()> {
-        todo!();
+    async fn metadata(&self) -> Arc<dyn Interface<Id = AccountId, Data = Metadata>> {
+        todo!()
     }
-    async fn load_prv_key_data(
-        self: &Arc<Self>,
-        _ctx: &Arc<dyn AccessContextT>,
-        _prv_key_data_id: &[PrvKeyDataId],
-    ) -> Result<Vec<PrvKeyData>> {
-        todo!();
-    }
-
-    async fn account_len(self: &Arc<Self>) -> Result<usize> {
-        todo!();
-    }
-    async fn account_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<AccountId>> {
-        todo!();
-    }
-    async fn store_account(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account: &[&Account]) -> Result<()> {
-        todo!();
-    }
-    async fn load_account(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account_ids: &[AccountId]) -> Result<Vec<Account>> {
-        todo!();
-    }
-
-    async fn metadata_len(self: &Arc<Self>) -> Result<usize> {
-        todo!();
-    }
-    async fn metadata_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<AccountId>> {
-        todo!();
-    }
-    async fn store_metadata(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _metadata: &[&Metadata]) -> Result<()> {
-        todo!();
-    }
-    async fn load_metadata(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account_ids: &[AccountId]) -> Result<Vec<Metadata>> {
-        todo!();
-    }
-
-    async fn transaction_record_len(self: &Arc<Self>) -> Result<usize> {
-        todo!();
-    }
-    async fn transaction_record_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<TransactionRecordId>> {
-        todo!();
-    }
-    async fn store_transaction_record(
-        &self,
-        _ctx: &Arc<dyn AccessContextT>,
-        _transaction_record: &[&TransactionRecord],
-    ) -> Result<()> {
-        todo!();
-    }
-    async fn load_transaction_record(
-        &self,
-        _ctx: &Arc<dyn AccessContextT>,
-        _transaction_record_ids: &[TransactionRecordId],
-    ) -> Result<Vec<TransactionRecord>> {
-        todo!();
+    async fn transaction(&self) -> Arc<dyn Interface<Id = TransactionRecordId, Data = TransactionRecord>> {
+        todo!()
     }
 }
+
+// #[async_trait]
+// impl StoreTrait for LocalStore {
+//     async fn prv_key_data_len(self: &Arc<Self>) -> Result<usize> {
+//         todo!();
+//     }
+//     async fn prv_key_data_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<PrvKeyDataId>> {
+//         todo!();
+//     }
+//     async fn store_prv_key_data(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _prv_key_data: &[&PrvKeyData]) -> Result<()> {
+//         todo!();
+//     }
+//     async fn load_prv_key_data(
+//         self: &Arc<Self>,
+//         _ctx: &Arc<dyn AccessContextT>,
+//         _prv_key_data_id: &[PrvKeyDataId],
+//     ) -> Result<Vec<PrvKeyData>> {
+//         todo!();
+//     }
+
+//     async fn account_len(self: &Arc<Self>) -> Result<usize> {
+//         todo!();
+//     }
+//     async fn account_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<AccountId>> {
+//         todo!();
+//     }
+//     async fn store_account(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account: &[&Account]) -> Result<()> {
+//         todo!();
+//     }
+//     async fn load_account(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account_ids: &[AccountId]) -> Result<Vec<Account>> {
+//         todo!();
+//     }
+
+//     async fn metadata_len(self: &Arc<Self>) -> Result<usize> {
+//         todo!();
+//     }
+//     async fn metadata_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<AccountId>> {
+//         todo!();
+//     }
+//     async fn store_metadata(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _metadata: &[&Metadata]) -> Result<()> {
+//         todo!();
+//     }
+//     async fn load_metadata(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account_ids: &[AccountId]) -> Result<Vec<Metadata>> {
+//         todo!();
+//     }
+
+//     async fn transaction_record_len(self: &Arc<Self>) -> Result<usize> {
+//         todo!();
+//     }
+//     async fn transaction_record_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<TransactionRecordId>> {
+//         todo!();
+//     }
+//     async fn store_transaction_record(
+//         &self,
+//         _ctx: &Arc<dyn AccessContextT>,
+//         _transaction_record: &[&TransactionRecord],
+//     ) -> Result<()> {
+//         todo!();
+//     }
+//     async fn load_transaction_record(
+//         &self,
+//         _ctx: &Arc<dyn AccessContextT>,
+//         _transaction_record_ids: &[TransactionRecordId],
+//     ) -> Result<Vec<TransactionRecord>> {
+//         todo!();
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
