@@ -14,7 +14,7 @@ kaspa-math.workspace = true
 kaspa-consensus-core.workspace = true
 wasm-bindgen.workspace = true
 js-sys.workspace = true
-
+workflow-wasm.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
