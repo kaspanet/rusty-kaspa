@@ -259,13 +259,14 @@ impl Consensus {
             block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time.clone(),
             params.difficulty_window_size,
-            (2 * params.timestamp_deviation_tolerance - 1) as usize, // TODO: incorporate target_time_per_block to this calculation
+            params.past_median_time_window_size(),
             reachability_service.clone(),
         );
         let past_median_time_manager = PastMedianTimeManager::new(
             headers_store.clone(),
             dag_traversal_manager.clone(),
-            params.timestamp_deviation_tolerance as usize,
+            params.past_median_time_window_size(),
+            params.past_median_time_sample_rate,
             params.genesis.timestamp,
         );
         let difficulty_manager = DifficultyManager::new(

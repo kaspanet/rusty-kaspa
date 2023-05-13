@@ -22,7 +22,8 @@ pub struct PastMedianTimeManager<
 > {
     headers_store: Arc<T>,
     dag_traversal_manager: DagTraversalManager<U, V, W, X>,
-    timestamp_deviation_tolerance: usize,
+    past_median_time_window_size: usize,
+    past_median_time_sample_rate: u64,
     genesis_timestamp: u64,
 }
 
@@ -32,14 +33,15 @@ impl<T: HeaderStoreReader, U: GhostdagStoreReader, V: BlockWindowCacheReader, W:
     pub fn new(
         headers_store: Arc<T>,
         dag_traversal_manager: DagTraversalManager<U, V, W, X>,
-        timestamp_deviation_tolerance: usize,
+        past_median_time_window_size: usize,
+        past_median_time_sample_rate: u64,
         genesis_timestamp: u64,
     ) -> Self {
-        Self { headers_store, dag_traversal_manager, timestamp_deviation_tolerance, genesis_timestamp }
+        Self { headers_store, dag_traversal_manager, past_median_time_window_size, past_median_time_sample_rate, genesis_timestamp }
     }
 
     pub fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, BlockWindowHeap), RuleError> {
-        let window = self.dag_traversal_manager.block_window(ghostdag_data, 2 * self.timestamp_deviation_tolerance - 1)?;
+        let window = self.dag_traversal_manager.block_window(ghostdag_data, self.past_median_time_window_size)?;
 
         if window.is_empty() {
             return Ok((self.genesis_timestamp, Default::default()));

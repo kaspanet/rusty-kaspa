@@ -14,15 +14,18 @@ pub struct Params {
     pub net_suffix: Option<u32>,
     pub genesis: GenesisBlock,
     pub ghostdag_k: KType,
+    /// Timestamp deviation tolerance expressed in number of blocks
     pub timestamp_deviation_tolerance: u64,
+    /// Block sample rate for filling the past median time window (selects one every N blocks)
+    pub past_median_time_sample_rate: u64,
     pub target_time_per_block: u64,
     pub max_block_parents: u8,
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
     pub max_difficulty: Uint256,
     pub max_difficulty_f64: f64,
-    /// Block sample rate for filling the difficulty window (select on average one every N blocks)
+    /// Block sample rate for filling the difficulty window (selects one every N blocks)
     pub difficulty_sample_rate: u64,
-    /// Size of window that is inspected to calculate the required difficulty of each block
+    /// Size of sampled blocks window that is inspected to calculate the required difficulty of each block
     pub difficulty_window_size: usize,
     pub mergeset_size_limit: u64,
     pub merge_depth: u64,
@@ -51,6 +54,16 @@ fn unix_now() -> u64 {
 }
 
 impl Params {
+    /// Returns the size of window that is inspected to calculate the past median time
+    #[inline]
+    #[must_use]
+    pub fn past_median_time_window_size(&self) -> usize {
+        // FIXME: KIP-0003 suggests to extend the window size to 2*self.timestamp_deviation_tolerance+1, instead of -1
+        let deviation_tolerance_sample_blocks =
+            (self.timestamp_deviation_tolerance + self.past_median_time_sample_rate / 2) / self.past_median_time_sample_rate;
+        (2 * deviation_tolerance_sample_blocks - 1) as usize
+    }
+
     pub fn expected_daa_window_duration_in_milliseconds(&self) -> u64 {
         self.target_time_per_block * self.difficulty_sample_rate * (self.difficulty_window_size as u64 - 1)
     }
@@ -98,6 +111,9 @@ impl From<NetworkType> for Params {
     }
 }
 
+pub const TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132; // KIP-003: 20/2 = 10 minutes, so 600 @ current BPS
+pub const PAST_MEDIAN_TIME_SAMPLE_RATE: u64 = 1; // KIP-003: every 10 seconds, so 10 @ current BPS
+
 /// Highest proof of work difficulty value a Kaspa block can have for each network.
 /// It is the value 2^255 - 1.
 ///
@@ -105,8 +121,8 @@ impl From<NetworkType> for Params {
 pub const DIFFICULTY_MAX: Uint256 = Uint256([18446744073709551615, 18446744073709551615, 18446744073709551615, 9223372036854775807]);
 pub const DIFFICULTY_MAX_AS_F64: f64 = 5.78960446186581e76;
 
-pub const DIFFICULTY_SAMPLE_RATE: u64 = 1; // 30;
-pub const DIFFICULTY_WINDOW_SIZE: usize = 2641; // 1001;
+pub const DIFFICULTY_SAMPLE_RATE: u64 = 1; // KIP-003: every 30 seconds, so 30 @ current BPS
+pub const DIFFICULTY_WINDOW_SIZE: usize = 2641; // KIP-003: 500 minutes, so 1000 + 1;
 
 const DEFAULT_GHOSTDAG_K: KType = 18;
 pub const MAINNET_PARAMS: Params = Params {
@@ -134,7 +150,8 @@ pub const MAINNET_PARAMS: Params = Params {
     net_suffix: None,
     genesis: GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
-    timestamp_deviation_tolerance: 132,
+    timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
+    past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,
@@ -186,7 +203,8 @@ pub const TESTNET_PARAMS: Params = Params {
     net_suffix: Some(10),
     genesis: TESTNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
-    timestamp_deviation_tolerance: 132,
+    timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
+    past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,
@@ -234,7 +252,8 @@ pub const SIMNET_PARAMS: Params = Params {
     net_suffix: None,
     genesis: SIMNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
-    timestamp_deviation_tolerance: 132,
+    timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
+    past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,
@@ -282,7 +301,8 @@ pub const DEVNET_PARAMS: Params = Params {
     net_suffix: None,
     genesis: DEVNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
-    timestamp_deviation_tolerance: 132,
+    timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
+    past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,

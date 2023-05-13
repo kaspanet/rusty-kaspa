@@ -513,7 +513,7 @@ async fn median_time_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
-    let num_blocks = 2 * config.timestamp_deviation_tolerance - 1;
+    let num_blocks = config.past_median_time_window_size() as u64;
     for i in 1..(num_blocks + 1) {
         let parent = if i == 1 { config.genesis.hash } else { (i - 1).into() };
         let mut block = consensus.build_block_with_parents(i.into(), vec![parent]);
@@ -739,6 +739,7 @@ impl KaspadGoParams {
             genesis: GENESIS,
             ghostdag_k: self.K,
             timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
+            past_median_time_sample_rate: 1,
             target_time_per_block: self.TargetTimePerBlock / 1_000_000,
             max_block_parents: self.MaxBlockParents,
             max_difficulty: DIFFICULTY_MAX,
