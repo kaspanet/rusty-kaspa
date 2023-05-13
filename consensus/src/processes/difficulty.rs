@@ -21,6 +21,7 @@ use itertools::Itertools;
 pub struct DifficultyManager<T: HeaderStoreReader> {
     headers_store: Arc<T>,
     genesis_bits: u32,
+    difficulty_sample_rate: u64,
     difficulty_adjustment_window_size: usize,
     target_time_per_block: u64,
 }
@@ -29,10 +30,11 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
     pub fn new(
         headers_store: Arc<T>,
         genesis_bits: u32,
+        difficulty_sample_rate: u64,
         difficulty_adjustment_window_size: usize,
         target_time_per_block: u64,
     ) -> Self {
-        Self { headers_store, difficulty_adjustment_window_size, genesis_bits, target_time_per_block }
+        Self { headers_store, difficulty_sample_rate, difficulty_adjustment_window_size, genesis_bits, target_time_per_block }
     }
 
     pub fn calc_daa_score_and_non_daa_mergeset_blocks<'a>(
@@ -86,11 +88,12 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
 
         // We need Uint320 to avoid overflow when summing and multiplying by the window size.
         // TODO: Try to see if we can use U256 instead, by modifying the algorithm.
-        let difficulty_blocks_len = difficulty_blocks.len();
+        let difficulty_blocks_len = difficulty_blocks.len() as u64;
         let targets_sum: Uint320 =
             difficulty_blocks.into_iter().map(|diff_block| Uint320::from(Uint256::from_compact_target_bits(diff_block.bits))).sum();
-        let average_target = targets_sum / (difficulty_blocks_len as u64);
-        let new_target = average_target * max(max_ts - min_ts, 1) / self.target_time_per_block / difficulty_blocks_len as u64;
+        let average_target = targets_sum / (difficulty_blocks_len);
+        let new_target = average_target * max(max_ts - min_ts, 1)
+            / (self.target_time_per_block * self.difficulty_sample_rate * difficulty_blocks_len);
         Uint256::try_from(new_target).expect("Expected target should be less than 2^256").compact_target_bits()
     }
 

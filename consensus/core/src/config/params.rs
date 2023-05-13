@@ -20,6 +20,8 @@ pub struct Params {
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
     pub max_difficulty: Uint256,
     pub max_difficulty_f64: f64,
+    /// Block sample rate for filling the difficulty window (select on average one every N blocks)
+    pub difficulty_sample_rate: u64,
     /// Size of window that is inspected to calculate the required difficulty of each block
     pub difficulty_window_size: usize,
     pub mergeset_size_limit: u64,
@@ -50,7 +52,7 @@ fn unix_now() -> u64 {
 
 impl Params {
     pub fn expected_daa_window_duration_in_milliseconds(&self) -> u64 {
-        self.target_time_per_block * self.difficulty_window_size as u64
+        self.target_time_per_block * self.difficulty_sample_rate * (self.difficulty_window_size as u64 - 1)
     }
 
     /// Returns the depth at which the anticone of a chain block is final (i.e., is a permanently closed set).
@@ -103,6 +105,9 @@ impl From<NetworkType> for Params {
 pub const DIFFICULTY_MAX: Uint256 = Uint256([18446744073709551615, 18446744073709551615, 18446744073709551615, 9223372036854775807]);
 pub const DIFFICULTY_MAX_AS_F64: f64 = 5.78960446186581e76;
 
+pub const DIFFICULTY_SAMPLE_RATE: u64 = 1; // 30;
+pub const DIFFICULTY_WINDOW_SIZE: usize = 2641; // 1001;
+
 const DEFAULT_GHOSTDAG_K: KType = 18;
 pub const MAINNET_PARAMS: Params = Params {
     dns_seeders: &[
@@ -134,7 +139,8 @@ pub const MAINNET_PARAMS: Params = Params {
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,
     max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
-    difficulty_window_size: 2641,
+    difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
+    difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -185,7 +191,8 @@ pub const TESTNET_PARAMS: Params = Params {
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,
     max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
-    difficulty_window_size: 2641,
+    difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
+    difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -232,7 +239,8 @@ pub const SIMNET_PARAMS: Params = Params {
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,
     max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
-    difficulty_window_size: 2641,
+    difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
+    difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -279,7 +287,8 @@ pub const DEVNET_PARAMS: Params = Params {
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,
     max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
-    difficulty_window_size: 2641,
+    difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
+    difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,

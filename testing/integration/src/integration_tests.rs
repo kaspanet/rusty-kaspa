@@ -743,6 +743,7 @@ impl KaspadGoParams {
             max_block_parents: self.MaxBlockParents,
             max_difficulty: DIFFICULTY_MAX,
             max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
+            difficulty_sample_rate: 1,
             difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             mergeset_size_limit: self.MergeSetSizeLimit,
             merge_depth: self.MergeDepth,

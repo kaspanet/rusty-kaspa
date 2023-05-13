@@ -271,6 +271,7 @@ impl Consensus {
         let difficulty_manager = DifficultyManager::new(
             headers_store.clone(),
             params.genesis.bits,
+            params.difficulty_sample_rate,
             params.difficulty_window_size,
             params.target_time_per_block,
         );
