@@ -259,6 +259,8 @@ mod tests {
         model::stores::{reachability::MemoryReachabilityStore, relations::MemoryRelationsStore},
         processes::reachability::interval::Interval,
     };
+    use itertools::Itertools;
+    use kaspa_consensus_core::blockhash::ORIGIN;
 
     #[test]
     fn test_add_tree_blocks() {
@@ -353,13 +355,26 @@ mod tests {
         assert!(store.are_anticone(11, 6));
         assert!(store.are_anticone(11, 9));
 
+        let hashes = subtree(&store, ORIGIN).into_iter().collect_vec();
+        assert_eq!(12, hashes.len());
+        let chain_closure = build_chain_closure(&store, &hashes);
+        let dag_closure = build_transitive_closure(&relations, &store, &hashes);
+
+        // TODO:
+        //      - build DAG + chain reachability matrixes and assert remaining pairs give the same results
+        //      - check future covering sets for consistency and dangling data
+
         for i in 2u64..=11 {
             DagBuilder::new(&mut store, &mut relations).delete_block(i.into());
             store.validate_intervals(blockhash::ORIGIN).unwrap();
             validate_relations(&relations).unwrap();
-        }
 
-        // Assert intervals
-        store.validate_intervals(blockhash::ORIGIN).unwrap();
+            let hashes2 = subtree(&store, ORIGIN).into_iter().collect_vec();
+            assert_eq!(12 - i as usize + 1, hashes2.len());
+            let chain_closure2 = build_chain_closure(&store, &hashes2);
+            let dag_closure2 = build_transitive_closure(&relations, &store, &hashes2);
+            assert!(chain_closure2.subset_of(&chain_closure));
+            assert!(dag_closure2.subset_of(&dag_closure));
+        }
     }
 }

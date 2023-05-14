@@ -16,11 +16,14 @@ use crate::{
 use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
-    BlockHashSet,
+    BlockHashMap, BlockHashSet,
 };
 use kaspa_database::prelude::StoreError;
 use kaspa_hashes::Hash;
-use std::collections::VecDeque;
+use std::collections::{
+    hash_map::Entry::{Occupied, Vacant},
+    VecDeque,
+};
 use thiserror::Error;
 
 /// A struct with fluent API to streamline reachability store building
@@ -152,6 +155,127 @@ pub fn validate_relations<S: RelationsStoreReader + ?Sized>(relations: &S) -> st
     }
     assert_eq!(relations.counts().unwrap(), (visited.len(), visited.len()));
     Ok(())
+}
+
+pub fn subtree<S: ReachabilityStoreReader + ?Sized>(reachability: &S, root: Hash) -> BlockHashSet {
+    let mut queue = VecDeque::<Hash>::from([root]);
+    let mut vec = Vec::new();
+    while let Some(parent) = queue.pop_front() {
+        let children = reachability.get_children(parent).unwrap();
+        queue.extend(children.iter());
+        vec.extend(children.iter());
+    }
+    let len = vec.len();
+    let set: BlockHashSet = vec.into_iter().collect();
+    assert_eq!(len, set.len());
+    set
+}
+
+pub fn inclusive_past<S: RelationsStoreReader + ?Sized>(relations: &S, hash: Hash) -> BlockHashSet {
+    let mut queue = VecDeque::<Hash>::from([hash]);
+    let mut visited: BlockHashSet = queue.iter().copied().collect();
+    while let Some(current) = queue.pop_front() {
+        let parents = relations.get_parents(current).unwrap();
+        for parent in parents.iter().copied() {
+            if parent != ORIGIN && visited.insert(parent) {
+                queue.push_back(parent);
+            }
+        }
+    }
+    visited
+}
+
+pub fn build_transitive_closure_ref<S: RelationsStoreReader + ?Sized>(relations: &S, hashes: &[Hash]) -> TransitiveClosure {
+    let mut closure = TransitiveClosure::new();
+    for x in hashes.iter().copied() {
+        let past = inclusive_past(relations, x);
+        for y in hashes.iter().copied() {
+            closure.set(x, y, past.contains(&y));
+        }
+    }
+    closure
+}
+
+pub fn build_transitive_closure<S: RelationsStoreReader + ?Sized, V: ReachabilityStoreReader + ?Sized>(
+    relations: &S,
+    reachability: &V,
+    hashes: &[Hash],
+) -> TransitiveClosure {
+    let mut closure = TransitiveClosure::new();
+    for x in hashes.iter().copied() {
+        for y in hashes.iter().copied() {
+            closure.set(x, y, is_dag_ancestor_of(reachability, y, x).unwrap());
+        }
+    }
+    let expected_closure = build_transitive_closure_ref(relations, hashes);
+    assert_eq!(expected_closure, closure);
+    closure
+}
+
+pub fn build_chain_closure_ref<S: ReachabilityStoreReader + ?Sized>(reachability: &S, hashes: &[Hash]) -> TransitiveClosure {
+    let mut closure = TransitiveClosure::new();
+    for x in hashes.iter().copied() {
+        let subtree = subtree(reachability, x);
+        for y in hashes.iter().copied() {
+            closure.set(x, y, x == y || subtree.contains(&y));
+        }
+    }
+    closure
+}
+
+pub fn build_chain_closure<V: ReachabilityStoreReader + ?Sized>(reachability: &V, hashes: &[Hash]) -> TransitiveClosure {
+    let mut closure = TransitiveClosure::new();
+    for x in hashes.iter().copied() {
+        for y in hashes.iter().copied() {
+            closure.set(x, y, is_chain_ancestor_of(reachability, x, y).unwrap());
+        }
+    }
+    let expected_closure = build_chain_closure_ref(reachability, hashes);
+    assert_eq!(expected_closure, closure);
+    closure
+}
+
+#[derive(PartialEq, Eq, Debug, Default)]
+pub struct TransitiveClosure {
+    matrix: BlockHashMap<BlockHashMap<bool>>,
+}
+
+impl TransitiveClosure {
+    pub fn new() -> Self {
+        Self { matrix: Default::default() }
+    }
+
+    pub fn set(&mut self, x: Hash, y: Hash, b: bool) {
+        let row = match self.matrix.entry(x) {
+            Occupied(e) => e.into_mut(),
+            Vacant(e) => e.insert(Default::default()),
+        };
+
+        if let Vacant(e) = row.entry(y) {
+            e.insert(b);
+        } else {
+            panic!()
+        }
+    }
+
+    pub fn get(&self, x: Hash, y: Hash) -> Option<bool> {
+        Some(*self.matrix.get(&x)?.get(&y)?)
+    }
+
+    pub fn subset_of(&self, other: &TransitiveClosure) -> bool {
+        for (x, row) in self.matrix.iter() {
+            for (y, val) in row.iter() {
+                if let Some(other_val) = other.get(*x, *y) {
+                    if other_val != *val {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+        }
+        true
+    }
 }
 
 #[derive(Error, Debug)]
