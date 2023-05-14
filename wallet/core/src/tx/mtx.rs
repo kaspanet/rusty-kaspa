@@ -1,5 +1,8 @@
 use crate::imports::*;
+use crate::tx::NetworkType;
 use crate::tx::{script_hashes, Transaction, TransactionInput, TransactionOutput};
+use crate::utils::calculate_mass;
+use crate::utils::get_consensus_params_by_network;
 use crate::utxo::UtxoEntries;
 use kaspa_consensus_core::tx;
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
@@ -85,6 +88,11 @@ impl MutableTransaction {
     pub fn get_outputs(&self) -> Result<js_sys::Array, JsError> {
         let outputs = self.tx.lock()?.get_outputs_as_js_array();
         Ok(outputs)
+    }
+
+    pub fn mass(&self, network_type: NetworkType, estimate_signature_mass: bool, minimum_signatures: u16) -> Result<u64, JsError> {
+        let params = get_consensus_params_by_network(&network_type);
+        Ok(calculate_mass(&self.tx(), &params, estimate_signature_mass, minimum_signatures))
     }
 }
 

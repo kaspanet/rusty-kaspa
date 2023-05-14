@@ -51,6 +51,7 @@ pub fn create_transaction(
     utxo_selection: &SelectionContext,
     outputs: &PaymentOutputs,
     change_address: &Address,
+    minimum_signatures: u16,
     priority_fee: Option<u64>,
     payload: Option<Vec<u8>>,
 ) -> crate::Result<MutableTransaction> {
@@ -93,7 +94,7 @@ pub fn create_transaction(
     )?;
 
     let mtx = MutableTransaction::new(&tx, &entries.into());
-    adjust_transaction_for_fee(&mtx, change_address, Some(priority_fee))?;
+    adjust_transaction_for_fee(&mtx, change_address, minimum_signatures, Some(priority_fee))?;
 
     Ok(mtx)
 }
@@ -102,6 +103,7 @@ pub fn create_transaction(
 pub fn adjust_transaction_for_fee(
     mtx: &MutableTransaction,
     change_address: &Address,
+    minimum_signatures: u16,
     priority_fee: Option<u64>,
 ) -> crate::Result<bool> {
     let total_input_amount = mtx.total_input_amount()?;
@@ -127,7 +129,7 @@ pub fn adjust_transaction_for_fee(
     }
 
     let params = get_consensus_params_by_address(change_address);
-    let minimum_fee = calculate_minimum_transaction_fee(&tx, &params, true);
+    let minimum_fee = calculate_minimum_transaction_fee(&tx, &params, true, minimum_signatures);
     let total_fee = minimum_fee + priority_fee;
     log_trace!("minimum_fee: {minimum_fee}");
     log_trace!("priority_fee: {priority_fee}");
@@ -161,14 +163,19 @@ pub fn adjust_transaction_for_fee(
 /// Calculate the minimum transaction fee. Transaction fee is derived from the
 ///
 #[wasm_bindgen(js_name = "minimumTransactionFee")]
-pub fn minimum_transaction_fee(tx: &Transaction, network_type: NetworkType) -> u64 {
+pub fn minimum_transaction_fee(tx: &Transaction, network_type: NetworkType, minimum_signatures: u16) -> u64 {
     let params = get_consensus_params_by_network(&network_type);
-    calculate_minimum_transaction_fee(tx, &params, true)
+    calculate_minimum_transaction_fee(tx, &params, true, minimum_signatures)
 }
 
 /// Calculate transaction mass. Transaction mass is used in the fee calculation.
 #[wasm_bindgen(js_name = "calculateTransactionMass")]
-pub fn calculate_mass_js(tx: &Transaction, network_type: NetworkType, estimate_signature_mass: bool) -> Result<u64> {
+pub fn calculate_mass_js(
+    tx: &Transaction,
+    network_type: NetworkType,
+    estimate_signature_mass: bool,
+    minimum_signatures: u16,
+) -> Result<u64> {
     let params = get_consensus_params_by_network(&network_type);
-    Ok(calculate_mass(tx, &params, estimate_signature_mass))
+    Ok(calculate_mass(tx, &params, estimate_signature_mass, minimum_signatures))
 }

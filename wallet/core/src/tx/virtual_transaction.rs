@@ -4,14 +4,14 @@ use crate::imports::*;
 use crate::tx::{
     create_transaction, MutableTransaction, PaymentOutputs, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
 };
-use crate::utils::{calculate_mass, calculate_minimum_transaction_fee, get_consensus_params_by_address};
+use crate::utils::{
+    calculate_mass, calculate_minimum_transaction_fee, get_consensus_params_by_address, MAXIMUM_STANDARD_TRANSACTION_MASS,
+};
 use crate::utxo::{SelectionContext, UtxoEntry, UtxoEntryReference};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::{subnets::SubnetworkId, tx};
 use kaspa_txscript::pay_to_address_script;
-
-const TX_MAX_MASS: u64 = 100_000;
 
 #[wasm_bindgen]
 pub struct LimitCalcStrategy {
@@ -58,6 +58,7 @@ impl Transactions {
         change_address: &Address,
         priority_fee: u64,
         payload: Vec<u8>,
+        minimum_signatures: u16,
     ) -> crate::Result<bool> {
         if self.amount < priority_fee {
             return Err(format!("final amount({}) < priority fee({priority_fee})", self.amount).into());
@@ -98,7 +99,7 @@ impl Transactions {
 
         let consensus_params = get_consensus_params_by_address(change_address);
 
-        let fee = calculate_minimum_transaction_fee(&tx, &consensus_params, true);
+        let fee = calculate_minimum_transaction_fee(&tx, &consensus_params, true, minimum_signatures);
         if change < fee {
             return Err(format!("change({change}) <= minimum fee ({fee})").into());
         }
@@ -134,6 +135,7 @@ impl VirtualTransaction {
     #[wasm_bindgen(constructor)]
     pub async fn new(
         sig_op_count: u8,
+        minimum_signatures: u16,
         utxo_selection: &SelectionContext,
         outputs: &PaymentOutputs,
         change_address: &Address,
@@ -165,37 +167,46 @@ impl VirtualTransaction {
                     utxo_selection,
                     outputs,
                     change_address,
+                    minimum_signatures,
                     priority_fee_sompi,
                     Some(payload.clone()),
                 )?;
 
                 let tx = mtx.tx().clone();
 
-                let mass = calculate_mass(&tx, &consensus_params, true);
-                if mass <= TX_MAX_MASS {
+                let mass = calculate_mass(&tx, &consensus_params, true, minimum_signatures);
+                if mass <= MAXIMUM_STANDARD_TRANSACTION_MASS {
                     return Ok(VirtualTransaction { transactions: vec![mtx], payload });
                 }
 
-                let max_inputs = calculate_chunk_size(&tx, mass, &consensus_params, true).await as usize;
-                let mut txs = Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count).await?;
-                txs.merge(outputs, change_address, priority_fee, payload.clone()).await?;
+                let max_inputs = calculate_chunk_size(&tx, mass, &consensus_params, true, minimum_signatures).await as usize;
+                let mut txs =
+                    Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count, minimum_signatures).await?;
+                txs.merge(outputs, change_address, priority_fee, payload.clone(), minimum_signatures).await?;
                 Ok(VirtualTransaction { transactions: txs.transactions, payload })
             }
             LimitStrategy::Inputs(inputs) => {
                 let max_inputs = inputs as usize;
-                let mut txs = Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count).await?;
-                txs.merge(outputs, change_address, priority_fee, payload.clone()).await?;
+                let mut txs =
+                    Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count, minimum_signatures).await?;
+                txs.merge(outputs, change_address, priority_fee, payload.clone(), minimum_signatures).await?;
                 Ok(VirtualTransaction { transactions: txs.transactions, payload })
             }
         }
     }
 }
 
-pub async fn calculate_chunk_size(tx: &Transaction, total_mass: u64, params: &Params, estimate_signature_mass: bool) -> u64 {
+pub async fn calculate_chunk_size(
+    tx: &Transaction,
+    total_mass: u64,
+    params: &Params,
+    estimate_signature_mass: bool,
+    minimum_signatures: u16,
+) -> u64 {
     let (mass_per_input, mass_without_inputs) =
-        mass_per_input_and_mass_without_inputs(tx, total_mass, params, estimate_signature_mass);
+        mass_per_input_and_mass_without_inputs(tx, total_mass, params, estimate_signature_mass, minimum_signatures);
 
-    let inputs_max_mass = TX_MAX_MASS - mass_without_inputs;
+    let inputs_max_mass = MAXIMUM_STANDARD_TRANSACTION_MASS - mass_without_inputs;
 
     inputs_max_mass / mass_per_input
 }
@@ -205,13 +216,14 @@ pub fn mass_per_input_and_mass_without_inputs(
     total_mass: u64,
     params: &Params,
     estimate_signature_mass: bool,
+    minimum_signatures: u16,
 ) -> (u64, u64) {
     //let total_mass = calculate_mass(tx, params, estimate_signature_mass);
     let mut tx_inner_clone = tx.inner().clone();
     tx_inner_clone.inputs = vec![];
     let tx_clone = Transaction::new_with_inner(tx_inner_clone);
 
-    let mass_without_inputs = calculate_mass(&tx_clone, params, estimate_signature_mass);
+    let mass_without_inputs = calculate_mass(&tx_clone, params, estimate_signature_mass, minimum_signatures);
 
     let input_mass = total_mass - mass_without_inputs;
     let input_count = tx.inner().inputs.len() as u64;
@@ -234,6 +246,7 @@ impl VirtualTransaction {
         max_inputs: usize,
         change_address: &Address,
         sig_op_count: u8,
+        minimum_signatures: u16,
     ) -> crate::Result<Transactions> {
         let mut final_inputs = vec![];
         let mut final_utxos = vec![];
@@ -283,7 +296,7 @@ impl VirtualTransaction {
             )
             .unwrap();
 
-            let fee = calculate_minimum_transaction_fee(&tx, &consensus_params, true);
+            let fee = calculate_minimum_transaction_fee(&tx, &consensus_params, true, minimum_signatures);
             if amount <= fee {
                 log_debug!("amount<=fee: {amount}, {fee}\r\n");
                 continue;

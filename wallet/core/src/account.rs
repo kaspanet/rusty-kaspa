@@ -287,6 +287,8 @@ impl Account {
             }
         }
 
+        scan.address_manager.set_index(last_address_index)?;
+
         Ok(())
     }
 
@@ -344,10 +346,12 @@ impl Account {
         let priority_fee_sompi = Some(priority_fee_sompi);
         let payload = vec![];
         let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
+        let minimum_signatures = self.inner().stored.minimum_signatures;
         let addresses = utxo_selection.selected_entries.iter().map(|u| u.utxo.address.clone().unwrap()).collect::<Vec<Address>>();
         //let mtx = create_transaction(utxo_selection, outputs, change_address, priority_fee, payload)?;
         let vt = VirtualTransaction::new(
             sig_op_count,
+            minimum_signatures,
             &utxo_selection,
             &outputs,
             &change_address,
@@ -409,12 +413,11 @@ impl Account {
         self.change_address_manager()?.current_address().await
     }
 
-    #[allow(dead_code)]
-    fn receive_address_manager(&self) -> Result<Arc<AddressManager>> {
+    pub fn receive_address_manager(&self) -> Result<Arc<AddressManager>> {
         Ok(self.derivation.receive_address_manager())
     }
 
-    fn change_address_manager(&self) -> Result<Arc<AddressManager>> {
+    pub fn change_address_manager(&self) -> Result<Arc<AddressManager>> {
         Ok(self.derivation.change_address_manager())
     }
 

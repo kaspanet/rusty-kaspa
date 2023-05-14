@@ -127,7 +127,20 @@ impl WalletCli {
                 account.create_unsigned_transaction().await?;
             }
             Action::DumpUnencrypted => {
-                self.wallet.dump_unencrypted().await?;
+                let account = self.wallet.account()?;
+                let password = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
+                let mut payment_secret = Option::<Secret>::None;
+
+                if self.wallet.is_account_key_encrypted(&account, password.clone()).await? {
+                    payment_secret = Some(Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec()));
+                }
+                let keydata = self.wallet.get_account_keydata(account.prv_key_data_id, password.clone()).await?;
+                if keydata.is_none() {
+                    return Err("It is read only wallet.".into());
+                }
+                let (mnemonic, xprv) = self.wallet.dump_unencrypted(account, password, payment_secret).await?;
+                term.writeln(format!("mnemonic: {mnemonic}"));
+                term.writeln(format!("xprv: {xprv}"));
             }
             Action::NewAddress => {
                 let account = self.wallet.account()?;
@@ -172,6 +185,19 @@ impl WalletCli {
             Action::Address => {
                 let address = self.wallet.account()?.address().await?.to_string();
                 term.writeln(address);
+            }
+            Action::ShowAddresses => {
+                let manager = self.wallet.account()?.receive_address_manager()?;
+                let index = manager.index()?;
+                let addresses = manager.get_range_with_args(0..index, false).await?;
+                term.writeln(format!("Receive addresses: 0..{index}"));
+                term.writeln(format!("{}\r\n", addresses.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\r\n")));
+
+                let manager = self.wallet.account()?.change_address_manager()?;
+                let index = manager.index()?;
+                let addresses = manager.get_range_with_args(0..index, false).await?;
+                term.writeln(format!("Change addresses: 0..{index}"));
+                term.writeln(format!("{}\r\n", addresses.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\r\n")));
             }
             Action::Sign => {
                 self.wallet.account()?.sign().await?;

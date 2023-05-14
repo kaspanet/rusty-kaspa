@@ -8,13 +8,17 @@ use kaspa_consensus_core::{
 };
 use wasm_bindgen::prelude::*;
 
+// pub const ECDSA_SIGNATURE_SIZE: u64 = 64;
+// pub const SCHNORR_SIGNATURE_SIZE: u64 = 64;
+pub const SIGNATURE_SIZE: u64 = 1 + 64 + 1; //1 byte for OP_DATA_65 + 64 (length of signature) + 1 byte for sig hash type
+
 /// MINIMUM_RELAY_TRANSACTION_FEE specifies the minimum transaction fee for a transaction to be accepted to
 /// the mempool and relayed. It is specified in sompi per 1kg (or 1000 grams) of transaction mass.
 pub(crate) const MINIMUM_RELAY_TRANSACTION_FEE: u64 = 1000;
 
-// /// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
-// /// are considered standard and will therefore be relayed and considered for mining.
-// const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 100_000;
+/// MAXIMUM_STANDARD_TRANSACTION_MASS is the maximum mass allowed for transactions that
+/// are considered standard and will therefore be relayed and considered for mining.
+pub const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 100_000;
 
 /// minimum_required_transaction_relay_fee returns the minimum transaction fee required
 /// for a transaction with the passed mass to be accepted into the mempool and relayed.
@@ -100,7 +104,7 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
     }
 }
 
-pub fn calculate_mass(tx: &Transaction, params: &Params, estimate_signature_mass: bool) -> u64 {
+pub fn calculate_mass(tx: &Transaction, params: &Params, estimate_signature_mass: bool, minimum_signatures: u16) -> u64 {
     let mass_calculator = MassCalculator::new(params.mass_per_tx_byte, params.mass_per_script_pub_key_byte, params.mass_per_sig_op);
     let mass = mass_calculator.calc_tx_mass(&tx.try_into().unwrap());
 
@@ -112,17 +116,31 @@ pub fn calculate_mass(tx: &Transaction, params: &Params, estimate_signature_mass
     // let sig_op_count = 1;
     // mass += (sig_op_count * tx.inner().inputs.len() as u64) * params.mass_per_sig_op;
 
-    let signature_mass = transaction_estimate_signature_mass(tx, params);
+    let signature_mass = transaction_estimate_signature_mass(tx, params, minimum_signatures);
     mass + signature_mass
 }
 
-pub fn transaction_estimate_signature_mass(tx: &Transaction, params: &Params) -> u64 {
-    let signature_script_size = 66; //params.max_signature_script_len;
-    tx.inner().inputs.len() as u64 * signature_script_size * params.mass_per_tx_byte
+pub fn transaction_estimate_signature_mass(tx: &Transaction, params: &Params, mut minimum_signatures: u16) -> u64 {
+    //let signature_script_size = 66; //params.max_signature_script_len;
+    // let size = if ecdsa {
+    //     ECDSA_SIGNATURE_SIZE
+    // }else{
+    //     SCHNORR_SIGNATURE_SIZE
+    // };
+    if minimum_signatures < 1 {
+        minimum_signatures = 1;
+    }
+    //TODO create redeem script to calculate mass
+    tx.inner().inputs.len() as u64 * SIGNATURE_SIZE * params.mass_per_tx_byte * minimum_signatures as u64
 }
 
-pub fn calculate_minimum_transaction_fee(tx: &Transaction, params: &Params, estimate_signature_mass: bool) -> u64 {
-    minimum_required_transaction_relay_fee(calculate_mass(tx, params, estimate_signature_mass))
+pub fn calculate_minimum_transaction_fee(
+    tx: &Transaction,
+    params: &Params,
+    estimate_signature_mass: bool,
+    minimum_signatures: u16,
+) -> u64 {
+    minimum_required_transaction_relay_fee(calculate_mass(tx, params, estimate_signature_mass, minimum_signatures))
 }
 
 /// find Consensus parameters for given Address
