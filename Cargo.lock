@@ -3509,6 +3509,7 @@ dependencies = [
  "kaspa-core",
  "kaspa-database",
  "kaspa-hashes",
+ "kaspa-utils",
  "log",
  "num_cpus",
  "rand 0.8.5",

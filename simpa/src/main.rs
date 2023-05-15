@@ -134,7 +134,7 @@ fn main() {
         let consensus = Arc::new(Consensus::new(db, config.clone(), notification_root, Default::default()));
         (consensus, lifetime)
     } else {
-        let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
+        let until = if args.target_blocks.is_none() { config.genesis.timestamp + args.sim_time * 1000 } else { u64::MAX }; // milliseconds
         let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, config.clone(), args.output_dir);
         let (consensus, handles, lifetime) = sim.init(args.miners, args.tpb).run(until);
         consensus.shutdown(handles);

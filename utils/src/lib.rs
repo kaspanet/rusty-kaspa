@@ -6,5 +6,6 @@ pub mod iter;
 pub mod networking;
 pub mod option;
 pub mod refs;
+pub mod sim;
 pub mod triggers;
 pub mod vec;
