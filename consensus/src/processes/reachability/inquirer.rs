@@ -307,11 +307,11 @@ mod tests {
     #[test]
     fn test_add_dag_blocks() {
         // Arrange
-        let mut store = MemoryReachabilityStore::new();
+        let mut reachability = MemoryReachabilityStore::new();
         let mut relations = MemoryRelationsStore::new();
 
         // Act
-        DagBuilder::new(&mut store, &mut relations)
+        DagBuilder::new(&mut reachability, &mut relations)
             .init()
             .add_block(DagBlock::new(1.into(), vec![blockhash::ORIGIN]))
             .add_block(DagBlock::new(2.into(), vec![1.into()]))
@@ -327,54 +327,51 @@ mod tests {
             .add_block(DagBlock::new(12.into(), vec![11.into(), 10.into()]));
 
         // Assert tree intervals and DAG relations
-        store.validate_intervals(blockhash::ORIGIN).unwrap();
+        reachability.validate_intervals(blockhash::ORIGIN).unwrap();
         validate_relations(&relations).unwrap();
 
         // Assert genesis
         for i in 2u64..=12 {
-            assert!(store.in_past_of(1, i));
+            assert!(reachability.in_past_of(1, i));
         }
 
         // Assert some futures
-        assert!(store.in_past_of(2, 4));
-        assert!(store.in_past_of(2, 5));
-        assert!(store.in_past_of(2, 7));
-        assert!(store.in_past_of(5, 10));
-        assert!(store.in_past_of(6, 10));
-        assert!(store.in_past_of(10, 12));
-        assert!(store.in_past_of(11, 12));
+        assert!(reachability.in_past_of(2, 4));
+        assert!(reachability.in_past_of(2, 5));
+        assert!(reachability.in_past_of(2, 7));
+        assert!(reachability.in_past_of(5, 10));
+        assert!(reachability.in_past_of(6, 10));
+        assert!(reachability.in_past_of(10, 12));
+        assert!(reachability.in_past_of(11, 12));
 
         // Assert some anticones
-        assert!(store.are_anticone(2, 3));
-        assert!(store.are_anticone(2, 6));
-        assert!(store.are_anticone(3, 6));
-        assert!(store.are_anticone(5, 6));
-        assert!(store.are_anticone(3, 8));
-        assert!(store.are_anticone(11, 2));
-        assert!(store.are_anticone(11, 4));
-        assert!(store.are_anticone(11, 6));
-        assert!(store.are_anticone(11, 9));
+        assert!(reachability.are_anticone(2, 3));
+        assert!(reachability.are_anticone(2, 6));
+        assert!(reachability.are_anticone(3, 6));
+        assert!(reachability.are_anticone(5, 6));
+        assert!(reachability.are_anticone(3, 8));
+        assert!(reachability.are_anticone(11, 2));
+        assert!(reachability.are_anticone(11, 4));
+        assert!(reachability.are_anticone(11, 6));
+        assert!(reachability.are_anticone(11, 9));
 
-        let hashes = subtree(&store, ORIGIN).into_iter().collect_vec();
+        let mut hashes_ref = subtree(&reachability, ORIGIN);
+        let hashes = hashes_ref.iter().copied().collect_vec();
         assert_eq!(12, hashes.len());
-        let chain_closure = build_chain_closure(&store, &hashes);
-        let dag_closure = build_transitive_closure(&relations, &store, &hashes);
+        let chain_closure_ref = build_chain_closure(&reachability, &hashes);
+        let dag_closure_ref = build_transitive_closure(&relations, &reachability, &hashes);
 
         // TODO:
-        //      - build DAG + chain reachability matrixes and assert remaining pairs give the same results
         //      - check future covering sets for consistency and dangling data
+        //      - test all store types
+        //      - test complex DAGs
 
         for i in 2u64..=11 {
-            DagBuilder::new(&mut store, &mut relations).delete_block(i.into());
-            store.validate_intervals(blockhash::ORIGIN).unwrap();
+            DagBuilder::new(&mut reachability, &mut relations).delete_block(i.into());
+            hashes_ref.remove(&i.into());
+            reachability.validate_intervals(blockhash::ORIGIN).unwrap();
             validate_relations(&relations).unwrap();
-
-            let hashes2 = subtree(&store, ORIGIN).into_iter().collect_vec();
-            assert_eq!(12 - i as usize + 1, hashes2.len());
-            let chain_closure2 = build_chain_closure(&store, &hashes2);
-            let dag_closure2 = build_transitive_closure(&relations, &store, &hashes2);
-            assert!(chain_closure2.subset_of(&chain_closure));
-            assert!(dag_closure2.subset_of(&dag_closure));
+            validate_closures(&relations, &reachability, &chain_closure_ref, &dag_closure_ref, &hashes_ref);
         }
     }
 }

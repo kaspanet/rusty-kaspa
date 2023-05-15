@@ -98,39 +98,39 @@ impl DagBlock {
 
 /// A struct with fluent API to streamline DAG building
 pub struct DagBuilder<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ?Sized> {
-    store: &'a mut T,
+    reachability: &'a mut T,
     relations: &'a mut S,
 }
 
 impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ?Sized> DagBuilder<'a, T, S> {
-    pub fn new(store: &'a mut T, relations: &'a mut S) -> Self {
-        Self { store, relations }
+    pub fn new(reachability: &'a mut T, relations: &'a mut S) -> Self {
+        Self { reachability, relations }
     }
 
     pub fn init(&mut self) -> &mut Self {
-        init(self.store).unwrap();
+        init(self.reachability).unwrap();
         relations_init(self.relations);
         self
     }
 
     pub fn delete_block(&mut self, hash: Hash) -> &mut Self {
-        let mergeset = delete_reachability_relations(self.relations, self.store, hash);
-        delete_block(self.store, hash, &mut mergeset.iter().cloned()).unwrap();
+        let mergeset = delete_reachability_relations(self.relations, self.reachability, hash);
+        delete_block(self.reachability, hash, &mut mergeset.iter().cloned()).unwrap();
         self
     }
 
     pub fn add_block(&mut self, block: DagBlock) -> &mut Self {
         // Select by height (longest chain) just for the sake of internal isolated tests
-        let selected_parent = block.parents.iter().cloned().max_by_key(|p| self.store.get_height(*p).unwrap()).unwrap();
-        let mergeset = unordered_mergeset_without_selected_parent(self.relations, self.store, selected_parent, &block.parents);
-        add_block(self.store, block.hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();
-        hint_virtual_selected_parent(self.store, block.hash).unwrap();
+        let selected_parent = block.parents.iter().cloned().max_by_key(|p| self.reachability.get_height(*p).unwrap()).unwrap();
+        let mergeset = unordered_mergeset_without_selected_parent(self.relations, self.reachability, selected_parent, &block.parents);
+        add_block(self.reachability, block.hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();
+        hint_virtual_selected_parent(self.reachability, block.hash).unwrap();
         self.relations.insert(block.hash, BlockHashes::new(block.parents)).unwrap();
         self
     }
 
     pub fn store(&self) -> &&'a mut T {
-        &self.store
+        &self.reachability
     }
 }
 
@@ -157,6 +157,7 @@ pub fn validate_relations<S: RelationsStoreReader + ?Sized>(relations: &S) -> st
     Ok(())
 }
 
+/// Returns the reachability subtree of `root`, i.e., all blocks B ∈ G s.t. `root` ∈ `chain(B)`
 pub fn subtree<S: ReachabilityStoreReader + ?Sized>(reachability: &S, root: Hash) -> BlockHashSet {
     let mut queue = VecDeque::<Hash>::from([root]);
     let mut vec = Vec::new();
@@ -171,6 +172,9 @@ pub fn subtree<S: ReachabilityStoreReader + ?Sized>(reachability: &S, root: Hash
     set
 }
 
+/// Returns the inclusive DAG past of `hash`, i.e., all blocks which are reachable from `hash` via some parent path.
+/// Note that the `past` is built using a BFS traversal so it can be used as reference for testing the reachability
+/// oracle   
 pub fn inclusive_past<S: RelationsStoreReader + ?Sized>(relations: &S, hash: Hash) -> BlockHashSet {
     let mut queue = VecDeque::<Hash>::from([hash]);
     let mut visited: BlockHashSet = queue.iter().copied().collect();
@@ -185,6 +189,8 @@ pub fn inclusive_past<S: RelationsStoreReader + ?Sized>(relations: &S, hash: Has
     visited
 }
 
+/// Builds a full DAG reachability matrix of all block pairs (B, C) ∈ G x G. The returned matrix is built
+/// using explicit past traversals so it can be used as reference for testing the reachability oracle
 pub fn build_transitive_closure_ref<S: RelationsStoreReader + ?Sized>(relations: &S, hashes: &[Hash]) -> TransitiveClosure {
     let mut closure = TransitiveClosure::new();
     for x in hashes.iter().copied() {
@@ -196,6 +202,8 @@ pub fn build_transitive_closure_ref<S: RelationsStoreReader + ?Sized>(relations:
     closure
 }
 
+/// Builds a full DAG reachability matrix of all block pairs (B, C) ∈ G x G by querying the reachability oracle.
+/// The function also asserts this matrix against a closure reference obtained by explicit past traversals
 pub fn build_transitive_closure<S: RelationsStoreReader + ?Sized, V: ReachabilityStoreReader + ?Sized>(
     relations: &S,
     reachability: &V,
@@ -212,6 +220,8 @@ pub fn build_transitive_closure<S: RelationsStoreReader + ?Sized, V: Reachabilit
     closure
 }
 
+/// Builds a full chain reachability matrix of all block pairs (B, C) ∈ G x G. The returned matrix is built
+/// using explicit subtree traversals so it can be used as reference for testing the reachability oracle
 pub fn build_chain_closure_ref<S: ReachabilityStoreReader + ?Sized>(reachability: &S, hashes: &[Hash]) -> TransitiveClosure {
     let mut closure = TransitiveClosure::new();
     for x in hashes.iter().copied() {
@@ -223,6 +233,8 @@ pub fn build_chain_closure_ref<S: ReachabilityStoreReader + ?Sized>(reachability
     closure
 }
 
+/// Builds a full chain reachability matrix of all block pairs (B, C) ∈ G x G by querying the reachability oracle.
+/// The function also asserts this matrix against a chain closure reference obtained by explicit subtree traversals
 pub fn build_chain_closure<V: ReachabilityStoreReader + ?Sized>(reachability: &V, hashes: &[Hash]) -> TransitiveClosure {
     let mut closure = TransitiveClosure::new();
     for x in hashes.iter().copied() {
@@ -235,6 +247,27 @@ pub fn build_chain_closure<V: ReachabilityStoreReader + ?Sized>(reachability: &V
     closure
 }
 
+/// Builds full chain and DAG closures for all block pairs (B, C) ∈ G x G and asserts them against
+/// the provided references. The provided references might contain more information (of blocks already
+/// deleted), hence we only verify a subset relation   
+pub fn validate_closures<S: RelationsStoreReader + ?Sized, V: ReachabilityStoreReader + ?Sized>(
+    relations: &S,
+    reachability: &V,
+    chain_closure_ref: &TransitiveClosure,
+    dag_closure_ref: &TransitiveClosure,
+    hashes_ref: &BlockHashSet,
+) {
+    let hashes = subtree(reachability, ORIGIN).into_iter().collect_vec();
+    assert_eq!(hashes_ref, &hashes.iter().copied().collect::<BlockHashSet>());
+    let chain_closure = build_chain_closure(reachability, &hashes);
+    let dag_closure = build_transitive_closure(relations, reachability, &hashes);
+    assert!(chain_closure.subset_of(chain_closure_ref));
+    assert!(dag_closure.subset_of(dag_closure_ref));
+}
+
+/// A struct for holding full quadratic reachability information. Can be used for chain or DAG
+/// reachability closures. Note this should only be used for relatively small DAGs due to its
+/// quadratic space requirement
 #[derive(PartialEq, Eq, Debug, Default)]
 pub struct TransitiveClosure {
     matrix: BlockHashMap<BlockHashMap<bool>>,
@@ -262,6 +295,7 @@ impl TransitiveClosure {
         Some(*self.matrix.get(&x)?.get(&y)?)
     }
 
+    /// Checks if this matrix is a subset of `other`
     pub fn subset_of(&self, other: &TransitiveClosure) -> bool {
         for (x, row) in self.matrix.iter() {
             for (y, val) in row.iter() {
