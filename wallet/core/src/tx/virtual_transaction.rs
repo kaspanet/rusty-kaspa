@@ -19,6 +19,7 @@ pub struct LimitCalcStrategy {
     pub strategy: LimitStrategy,
 }
 
+#[wasm_bindgen]
 impl LimitCalcStrategy {
     pub fn calculated() -> LimitCalcStrategy {
         LimitStrategy::Calculated.into()
@@ -120,6 +121,70 @@ impl Transactions {
     }
 }
 
+pub async fn calculate_chunk_size(
+    tx: &Transaction,
+    total_mass: u64,
+    params: &Params,
+    estimate_signature_mass: bool,
+    minimum_signatures: u16,
+) -> crate::Result<u64> {
+    let (mass_per_input, mass_without_inputs) =
+        mass_per_input_and_mass_without_inputs(tx, total_mass, params, estimate_signature_mass, minimum_signatures);
+
+    let output = match tx.inner().outputs.get(0).cloned(){
+        Some(output) => output,
+        None=>{
+            return Err("Minimum one output is require to calculate chunk size".to_string().into());
+        }
+    };
+
+    let split_tx_without_inputs = Transaction::new(
+        0,
+        vec![],
+        vec![output],
+        0,
+        SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        0,
+        vec![],
+    )
+    .unwrap();
+
+    let split_tx_mass_without_inputs = calculate_mass(&split_tx_without_inputs, params, estimate_signature_mass, minimum_signatures);
+    
+    log_trace!("mass_per_input: {mass_per_input}");
+    log_trace!("total_mass: {total_mass}");
+    log_trace!("mass_without_inputs: {mass_without_inputs}");
+    log_trace!("split_tx_mass_without_inputs: {split_tx_mass_without_inputs}");
+    let inputs_max_mass = MAXIMUM_STANDARD_TRANSACTION_MASS - split_tx_mass_without_inputs;
+    log_trace!("inputs_max_mass: {inputs_max_mass}");
+    log_trace!("chunk_size: {}", inputs_max_mass / mass_per_input);
+    Ok(inputs_max_mass / mass_per_input)
+}
+
+pub fn mass_per_input_and_mass_without_inputs(
+    tx: &Transaction,
+    total_mass: u64,
+    params: &Params,
+    estimate_signature_mass: bool,
+    minimum_signatures: u16,
+) -> (u64, u64) {
+    //let total_mass = calculate_mass(tx, params, estimate_signature_mass);
+    let mut tx_inner_clone = tx.inner().clone();
+    tx_inner_clone.inputs = vec![];
+    let tx_clone = Transaction::new_with_inner(tx_inner_clone);
+
+    let mass_without_inputs = calculate_mass(&tx_clone, params, estimate_signature_mass, minimum_signatures);
+
+    let input_mass = total_mass - mass_without_inputs;
+    let input_count = tx.inner().inputs.len() as u64;
+    let mut mass_per_input = input_mass / input_count;
+    if input_mass % input_count > 0 {
+        mass_per_input += 1;
+    }
+
+    (mass_per_input, mass_without_inputs)
+}
+
 /// `VirtualTransaction` envelops a collection of multiple related `kaspa_wallet_core::MutableTransaction` instances.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -179,7 +244,7 @@ impl VirtualTransaction {
                     return Ok(VirtualTransaction { transactions: vec![mtx], payload });
                 }
 
-                let max_inputs = calculate_chunk_size(&tx, mass, &consensus_params, true, minimum_signatures).await as usize;
+                let max_inputs = calculate_chunk_size(&tx, mass, &consensus_params, true, minimum_signatures).await? as usize;
                 let mut txs =
                     Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count, minimum_signatures).await?;
                 txs.merge(outputs, change_address, priority_fee, payload.clone(), minimum_signatures).await?;
@@ -194,50 +259,15 @@ impl VirtualTransaction {
             }
         }
     }
-}
-
-pub async fn calculate_chunk_size(
-    tx: &Transaction,
-    total_mass: u64,
-    params: &Params,
-    estimate_signature_mass: bool,
-    minimum_signatures: u16,
-) -> u64 {
-    let (mass_per_input, mass_without_inputs) =
-        mass_per_input_and_mass_without_inputs(tx, total_mass, params, estimate_signature_mass, minimum_signatures);
-
-    let inputs_max_mass = MAXIMUM_STANDARD_TRANSACTION_MASS - mass_without_inputs;
-
-    inputs_max_mass / mass_per_input
-}
-
-pub fn mass_per_input_and_mass_without_inputs(
-    tx: &Transaction,
-    total_mass: u64,
-    params: &Params,
-    estimate_signature_mass: bool,
-    minimum_signatures: u16,
-) -> (u64, u64) {
-    //let total_mass = calculate_mass(tx, params, estimate_signature_mass);
-    let mut tx_inner_clone = tx.inner().clone();
-    tx_inner_clone.inputs = vec![];
-    let tx_clone = Transaction::new_with_inner(tx_inner_clone);
-
-    let mass_without_inputs = calculate_mass(&tx_clone, params, estimate_signature_mass, minimum_signatures);
-
-    let input_mass = total_mass - mass_without_inputs;
-    let input_count = tx.inner().inputs.len() as u64;
-    let mut mass_per_input = input_mass / input_count;
-    if input_mass % input_count > 0 {
-        mass_per_input += 1;
+    #[wasm_bindgen(js_name="transactions")]
+    pub fn transaction_array(&self) -> Array {
+        Array::from_iter(self.transactions.clone().into_iter().map(JsValue::from))
     }
-
-    (mass_per_input, mass_without_inputs)
 }
 
 impl VirtualTransaction {
-    pub fn transactions(&self) -> Vec<MutableTransaction> {
-        self.transactions.clone()
+    pub fn transactions(&self) -> &Vec<MutableTransaction> {
+        &self.transactions
     }
 
     pub async fn split_utxos(

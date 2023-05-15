@@ -24,13 +24,13 @@ kaspa.init_console_panic_hook();
     console.log(`# connecting to ${URL}`)
     await rpc.connect();
 
-    let res = await rpc.getBlockTemplate({
-        extraData:[],
-        payAddress:"kaspa:qrwee7xc2qw5whq8qzv82qjld6zunwy46lsy3hueej5kvgfwvamhswy03lsyh"
-    });
-    console.log("res", res.block.header.blueWork);
+    // let res = await rpc.getBlockTemplate({
+    //     extraData:[],
+    //     payAddress:"kaspa:qrwee7xc2qw5whq8qzv82qjld6zunwy46lsy3hueej5kvgfwvamhswy03lsyh"
+    // });
+    // console.log("res", res.block.header.blueWork);
 
-    return
+    // return
     
     let info = await rpc.getInfo();
     console.log("info", info);

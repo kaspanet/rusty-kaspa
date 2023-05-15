@@ -368,7 +368,7 @@ impl Account {
         let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
         let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
         let mut tx_ids = vec![];
-        for mtx in vt.transactions() {
+        for mtx in vt.transactions().clone() {
             let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
             let id = self.wallet.rpc().submit_transaction(mtx.try_into()?, false).await?;
             //println!("id: {id}\r\n");
