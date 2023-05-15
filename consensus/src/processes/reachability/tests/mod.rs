@@ -26,6 +26,9 @@ use std::collections::{
 };
 use thiserror::Error;
 
+#[cfg(test)]
+pub mod gen;
+
 /// A struct with fluent API to streamline reachability store building
 pub struct StoreBuilder<'a, T: ReachabilityStore + ?Sized> {
     store: &'a mut T,

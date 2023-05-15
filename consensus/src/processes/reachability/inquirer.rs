@@ -260,7 +260,7 @@ mod tests {
             reachability::{DbReachabilityStore, MemoryReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore},
         },
-        processes::reachability::interval::Interval,
+        processes::reachability::{interval::Interval, tests::gen::generate_complex_dag},
     };
     use itertools::Itertools;
     use kaspa_consensus_core::blockhash::ORIGIN;
@@ -466,7 +466,7 @@ mod tests {
 
     #[test]
     fn test_dag_building_and_removal() {
-        let test = DagTestCase {
+        let manual_test = DagTestCase {
             genesis: 1,
             blocks: vec![
                 (2, vec![1]),
@@ -485,20 +485,33 @@ mod tests {
             expected_anticone_relations: vec![(2, 3), (2, 6), (3, 6), (5, 6), (3, 8), (11, 2), (11, 4), (11, 6), (11, 9)],
         };
 
-        let mut reachability = MemoryReachabilityStore::new();
-        let mut relations = MemoryRelationsStore::new();
-        run_dag_test_case(&mut relations, &mut reachability, &test);
+        let generate_complex = |bps| {
+            let target_blocks = 50;
+            let (genesis, blocks) = generate_complex_dag(2.0, bps, target_blocks);
+            assert_eq!(target_blocks as usize, blocks.len());
+            DagTestCase {
+                genesis,
+                blocks,
+                expected_past_relations: Default::default(),
+                expected_anticone_relations: Default::default(),
+            }
+        };
 
-        let (_lifetime, db) = create_temp_db();
-        let cache_size = test.blocks.len() as u64 / 3;
-        let mut reachability = DbReachabilityStore::new(db.clone(), cache_size);
-        let mut relations = DbRelationsStore::new(db, 0, cache_size);
-        run_dag_test_case(&mut relations, &mut reachability, &test);
+        for test in once(manual_test).chain([2.0, 3.0, 4.0].map(generate_complex)) {
+            let mut reachability = MemoryReachabilityStore::new();
+            let mut relations = MemoryRelationsStore::new();
+            run_dag_test_case(&mut relations, &mut reachability, &test);
 
-        run_dag_test_case_with_staging(&test);
+            let (_lifetime, db) = create_temp_db();
+            let cache_size = test.blocks.len() as u64 / 3;
+            let mut reachability = DbReachabilityStore::new(db.clone(), cache_size);
+            let mut relations = DbRelationsStore::new(db, 0, cache_size);
+            run_dag_test_case(&mut relations, &mut reachability, &test);
+
+            run_dag_test_case_with_staging(&test);
+        }
 
         // TODO:
-        //      - test complex DAGs
         //      - test random removal order
     }
 }
