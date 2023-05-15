@@ -404,7 +404,6 @@ mod tests {
         run_dag_test_case(&mut relations, &mut reachability, &test);
 
         // TODO:
-        //      - check future covering sets for consistency and dangling data
         //      - test all store types
         //      - test complex DAGs
     }

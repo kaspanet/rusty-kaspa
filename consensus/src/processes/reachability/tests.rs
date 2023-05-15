@@ -323,6 +323,9 @@ pub enum TestError {
     #[error("sibling intervals are expected to be consecutive")]
     NonConsecutiveSiblingIntervals(Interval, Interval),
 
+    #[error("future covering set intervals are expected to be ordered")]
+    NonOrderedFutureCoveringItems(Interval, Interval),
+
     #[error("child interval out of parent bounds")]
     IntervalOutOfParentBounds { parent: Hash, child: Hash, parent_interval: Interval, child_interval: Interval },
 }
@@ -382,6 +385,22 @@ impl<T: ReachabilityStoreReader + ?Sized> StoreValidationExtensions for T {
                 let current_interval = self.get_interval(siblings[1])?;
                 if sibling_interval.end + 1 != current_interval.start {
                     return Err(TestError::NonConsecutiveSiblingIntervals(sibling_interval, current_interval));
+                }
+            }
+
+            // Assert future covering set exists and is ordered correctly
+            let future_covering_set = self.get_future_covering_set(parent)?;
+            for neighbors in future_covering_set.windows(2) {
+                let left_interval = self.get_interval(neighbors[0])?;
+                let right_interval = self.get_interval(neighbors[1])?;
+                if left_interval.is_empty() {
+                    return Err(TestError::EmptyInterval(neighbors[0], left_interval));
+                }
+                if right_interval.is_empty() {
+                    return Err(TestError::EmptyInterval(neighbors[1], right_interval));
+                }
+                if left_interval.end >= right_interval.start {
+                    return Err(TestError::NonOrderedFutureCoveringItems(left_interval, right_interval));
                 }
             }
         }
