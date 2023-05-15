@@ -1,6 +1,8 @@
 // work in progress
 
 use crate::imports::*;
+use crate::keypair::PrivateKey;
+use crate::signer::{sign_mutable_transaction, PrivateKeyArrayOrSigner};
 use crate::tx::{
     create_transaction, MutableTransaction, PaymentOutputs, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
 };
@@ -8,10 +10,14 @@ use crate::utils::{
     calculate_mass, calculate_minimum_transaction_fee, get_consensus_params_by_address, MAXIMUM_STANDARD_TRANSACTION_MASS,
 };
 use crate::utxo::{SelectionContext, UtxoEntry, UtxoEntryReference};
+use crate::Signer;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::{subnets::SubnetworkId, tx};
+use kaspa_rpc_core::SubmitTransactionRequest;
 use kaspa_txscript::pay_to_address_script;
+use kaspa_wrpc_client::wasm::RpcClient;
+use workflow_wasm::tovalue::to_value;
 
 #[wasm_bindgen]
 pub struct LimitCalcStrategy {
@@ -256,13 +262,61 @@ impl VirtualTransaction {
             }
         }
     }
+
     #[wasm_bindgen(js_name = "transactions")]
     pub fn transaction_array(&self) -> Array {
         Array::from_iter(self.transactions.clone().into_iter().map(JsValue::from))
     }
+
+    #[wasm_bindgen(js_name = "sign")]
+    pub fn js_sign(&mut self, signer: PrivateKeyArrayOrSigner, verify_sig: bool) -> crate::Result<()> {
+        if signer.is_array() {
+            let mut private_keys: Vec<[u8; 32]> = vec![];
+            for key in Array::from(&signer).iter() {
+                let key = PrivateKey::try_from(&key).map_err(|_| Error::Custom("Unable to cast PrivateKey".to_string()))?;
+                private_keys.push(key.secret_bytes());
+            }
+            self.sign(&private_keys, verify_sig)?;
+        } else {
+            let signer = Signer::try_from(&JsValue::from(signer)).map_err(|_| Error::Custom("Unable to cast Signer".to_string()))?;
+            log_trace!("\nSigning via Signer: {signer:?}....\n");
+            self.sign_with_signer(&signer, verify_sig)?;
+        }
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "submit")]
+    pub async fn js_submit(&mut self, rpc: &RpcClient, allow_orphan: bool) -> crate::Result<Array> {
+        let result = Array::new();
+        for transaction in self.transactions.clone() {
+            result.push(&to_value(
+                &rpc.submit_transaction(SubmitTransactionRequest { transaction: transaction.try_into()?, allow_orphan }).await?,
+            )?);
+        }
+
+        Ok(result)
+    }
 }
 
 impl VirtualTransaction {
+    pub fn sign_with_signer(&mut self, signer: &Signer, verify_sig: bool) -> crate::Result<()> {
+        let mut transactions = vec![];
+        for mtx in self.transactions.clone() {
+            transactions.push(signer.sign_transaction(mtx, verify_sig)?);
+        }
+        self.transactions = transactions;
+        Ok(())
+    }
+
+    pub fn sign(&mut self, private_keys: &Vec<[u8; 32]>, verify_sig: bool) -> crate::Result<()> {
+        let mut transactions = vec![];
+        for mtx in self.transactions.clone() {
+            transactions.push(sign_mutable_transaction(mtx, private_keys, verify_sig)?);
+        }
+        self.transactions = transactions;
+        Ok(())
+    }
+
     pub fn transactions(&self) -> &Vec<MutableTransaction> {
         &self.transactions
     }
