@@ -131,9 +131,9 @@ pub async fn calculate_chunk_size(
     let (mass_per_input, mass_without_inputs) =
         mass_per_input_and_mass_without_inputs(tx, total_mass, params, estimate_signature_mass, minimum_signatures);
 
-    let output = match tx.inner().outputs.get(0).cloned(){
+    let output = match tx.inner().outputs.get(0).cloned() {
         Some(output) => output,
-        None=>{
+        None => {
             return Err("Minimum one output is require to calculate chunk size".to_string().into());
         }
     };
@@ -150,7 +150,7 @@ pub async fn calculate_chunk_size(
     .unwrap();
 
     let split_tx_mass_without_inputs = calculate_mass(&split_tx_without_inputs, params, estimate_signature_mass, minimum_signatures);
-    
+
     log_trace!("mass_per_input: {mass_per_input}");
     log_trace!("total_mass: {total_mass}");
     log_trace!("mass_without_inputs: {mass_without_inputs}");
@@ -224,9 +224,6 @@ impl VirtualTransaction {
 
         match limit_calc_strategy.strategy {
             LimitStrategy::Calculated => {
-                //create tx
-                //check if tx mass is greator than limit then split
-                //into multiple transactions
                 let mtx = create_transaction(
                     sig_op_count,
                     utxo_selection,
@@ -259,7 +256,7 @@ impl VirtualTransaction {
             }
         }
     }
-    #[wasm_bindgen(js_name="transactions")]
+    #[wasm_bindgen(js_name = "transactions")]
     pub fn transaction_array(&self) -> Array {
         Array::from_iter(self.transactions.clone().into_iter().map(JsValue::from))
     }
