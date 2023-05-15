@@ -257,7 +257,7 @@ mod tests {
     use super::*;
     use crate::{
         model::stores::{
-            reachability::{DbReachabilityStore, MemoryReachabilityStore},
+            reachability::{DbReachabilityStore, MemoryReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore},
         },
         processes::reachability::interval::Interval,
@@ -265,7 +265,9 @@ mod tests {
     use itertools::Itertools;
     use kaspa_consensus_core::blockhash::ORIGIN;
     use kaspa_database::utils::create_temp_db;
-    use std::iter::once;
+    use parking_lot::RwLock;
+    use rocksdb::WriteBatch;
+    use std::{iter::once, ops::Deref};
 
     #[test]
     fn test_add_tree_blocks() {
@@ -324,6 +326,8 @@ mod tests {
         }
     }
 
+    /// Runs a DAG test-case by adding all blocks and then removing them while verifying full
+    /// reachability and relations state frequently between operations
     fn run_dag_test_case<S: RelationsStore + ?Sized, V: ReachabilityStore + ?Sized>(
         relations: &mut S,
         reachability: &mut V,
@@ -373,6 +377,93 @@ mod tests {
         }
     }
 
+    /// Runs a DAG test-case with full verification using the staging store mechanism
+    fn run_dag_test_case_with_staging(test: &DagTestCase) {
+        let (_lifetime, db) = create_temp_db();
+        let cache_size = test.blocks.len() as u64 / 3;
+        let reachability = RwLock::new(DbReachabilityStore::new(db.clone(), cache_size));
+        let mut relations = DbRelationsStore::new(db.clone(), 0, cache_size);
+
+        // Add blocks via a staging store
+        {
+            let mut staging = StagingReachabilityStore::new(reachability.upgradable_read());
+            let mut builder = DagBuilder::new(&mut staging, &mut relations);
+            builder.init();
+            builder.add_block(DagBlock::new(test.genesis.into(), vec![ORIGIN]));
+            for (block, parents) in test.blocks.iter() {
+                builder.add_block(DagBlock::new((*block).into(), parents.iter().map(|&i| i.into()).collect()));
+            }
+
+            // Commit the staging changes
+            {
+                let mut batch = WriteBatch::default();
+                let write_guard = staging.commit(&mut batch).unwrap();
+                db.write(batch).unwrap();
+                drop(write_guard);
+            }
+        }
+
+        let reachability_read = reachability.read();
+
+        // Assert tree intervals and DAG relations
+        reachability_read.validate_intervals(ORIGIN).unwrap();
+        validate_relations(&relations).unwrap();
+
+        // Assert genesis future
+        for block in test.ids() {
+            assert!(reachability_read.in_past_of(test.genesis, block));
+        }
+
+        // Assert expected futures
+        for (x, y) in test.expected_past_relations.iter().copied() {
+            assert!(reachability_read.in_past_of(x, y));
+        }
+
+        // Assert expected anticones
+        for (x, y) in test.expected_anticone_relations.iter().copied() {
+            assert!(reachability_read.are_anticone(x, y));
+        }
+
+        let mut hashes_ref = subtree(reachability_read.deref(), ORIGIN);
+        let hashes = hashes_ref.iter().copied().collect_vec();
+        assert_eq!(test.blocks.len() + 1, hashes.len());
+        let chain_closure_ref = build_chain_closure(reachability_read.deref(), &hashes);
+        let dag_closure_ref = build_transitive_closure(&relations, reachability_read.deref(), &hashes);
+
+        drop(reachability_read);
+
+        let mut staging = StagingReachabilityStore::new(reachability.upgradable_read());
+        for (i, block) in test.ids().chain(once(test.genesis)).enumerate() {
+            DagBuilder::new(&mut staging, &mut relations).delete_block(block.into());
+            hashes_ref.remove(&block.into());
+            staging.validate_intervals(ORIGIN).unwrap();
+            validate_relations(&relations).unwrap();
+            validate_closures(&relations, &staging, &chain_closure_ref, &dag_closure_ref, &hashes_ref);
+
+            // Once in a while verify the underlying store
+            if i % (test.blocks.len() / 3) == 0 || i == test.blocks.len() - 1 {
+                // Commit the staging changes
+                {
+                    let mut batch = WriteBatch::default();
+                    let write_guard = staging.commit(&mut batch).unwrap();
+                    db.write(batch).unwrap();
+                    drop(write_guard);
+                }
+
+                // Verify the underlying store
+                {
+                    let reachability_read = reachability.read();
+                    reachability_read.validate_intervals(ORIGIN).unwrap();
+                    validate_relations(&relations).unwrap();
+                    validate_closures(&relations, reachability_read.deref(), &chain_closure_ref, &dag_closure_ref, &hashes_ref);
+                }
+
+                // Recapture staging
+                staging = StagingReachabilityStore::new(reachability.upgradable_read());
+            }
+        }
+    }
+
     #[test]
     fn test_dag_building_and_removal() {
         let test = DagTestCase {
@@ -399,12 +490,15 @@ mod tests {
         run_dag_test_case(&mut relations, &mut reachability, &test);
 
         let (_lifetime, db) = create_temp_db();
-        let mut reachability = DbReachabilityStore::new(db.clone(), 3);
-        let mut relations = DbRelationsStore::new(db, 0, 3);
+        let cache_size = test.blocks.len() as u64 / 3;
+        let mut reachability = DbReachabilityStore::new(db.clone(), cache_size);
+        let mut relations = DbRelationsStore::new(db, 0, cache_size);
         run_dag_test_case(&mut relations, &mut reachability, &test);
 
+        run_dag_test_case_with_staging(&test);
+
         // TODO:
-        //      - test all store types
         //      - test complex DAGs
+        //      - test random removal order
     }
 }
