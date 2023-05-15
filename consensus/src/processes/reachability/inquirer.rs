@@ -266,6 +266,7 @@ mod tests {
     use kaspa_consensus_core::blockhash::ORIGIN;
     use kaspa_database::utils::create_temp_db;
     use parking_lot::RwLock;
+    use rand::seq::IteratorRandom;
     use rocksdb::WriteBatch;
     use std::{iter::once, ops::Deref};
 
@@ -368,7 +369,7 @@ mod tests {
         let chain_closure_ref = build_chain_closure(reachability, &hashes);
         let dag_closure_ref = build_transitive_closure(relations, reachability, &hashes);
 
-        for block in test.ids().chain(once(test.genesis)) {
+        for block in test.ids().choose_multiple(&mut rand::thread_rng(), test.blocks.len()).into_iter().chain(once(test.genesis)) {
             DagBuilder::new(reachability, relations).delete_block(block.into());
             hashes_ref.remove(&block.into());
             reachability.validate_intervals(ORIGIN).unwrap();
@@ -433,7 +434,10 @@ mod tests {
         drop(reachability_read);
 
         let mut staging = StagingReachabilityStore::new(reachability.upgradable_read());
-        for (i, block) in test.ids().chain(once(test.genesis)).enumerate() {
+
+        for (i, block) in
+            test.ids().choose_multiple(&mut rand::thread_rng(), test.blocks.len()).into_iter().chain(once(test.genesis)).enumerate()
+        {
             DagBuilder::new(&mut staging, &mut relations).delete_block(block.into());
             hashes_ref.remove(&block.into());
             staging.validate_intervals(ORIGIN).unwrap();
@@ -498,20 +502,20 @@ mod tests {
         };
 
         for test in once(manual_test).chain([2.0, 3.0, 4.0].map(generate_complex)) {
+            // Run the test case with memory stores
             let mut reachability = MemoryReachabilityStore::new();
             let mut relations = MemoryRelationsStore::new();
             run_dag_test_case(&mut relations, &mut reachability, &test);
 
+            // Run with direct DB stores
             let (_lifetime, db) = create_temp_db();
             let cache_size = test.blocks.len() as u64 / 3;
             let mut reachability = DbReachabilityStore::new(db.clone(), cache_size);
             let mut relations = DbRelationsStore::new(db, 0, cache_size);
             run_dag_test_case(&mut relations, &mut reachability, &test);
 
+            // Run with a staging process
             run_dag_test_case_with_staging(&test);
         }
-
-        // TODO:
-        //      - test random removal order
     }
 }
