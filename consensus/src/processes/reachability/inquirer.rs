@@ -261,6 +261,7 @@ mod tests {
     };
     use itertools::Itertools;
     use kaspa_consensus_core::blockhash::ORIGIN;
+    use std::iter::once;
 
     #[test]
     fn test_add_tree_blocks() {
@@ -304,74 +305,96 @@ mod tests {
         store.validate_intervals(root).unwrap();
     }
 
-    #[test]
-    fn test_add_dag_blocks() {
+    #[derive(Clone)]
+    pub struct DagTestCase {
+        genesis: u64,
+        blocks: Vec<(u64, Vec<u64>)>, // All blocks other than genesis
+        expected_past_relations: Vec<(u64, u64)>,
+        expected_anticone_relations: Vec<(u64, u64)>,
+    }
+
+    impl DagTestCase {
+        /// Returns all block ids other than genesis
+        pub fn ids(&self) -> impl Iterator<Item = u64> + '_ {
+            self.blocks.iter().map(|(i, _)| *i)
+        }
+    }
+
+    fn run_dag_test_case(test: &DagTestCase) {
         // Arrange
         let mut reachability = MemoryReachabilityStore::new();
         let mut relations = MemoryRelationsStore::new();
 
-        // Act
-        DagBuilder::new(&mut reachability, &mut relations)
-            .init()
-            .add_block(DagBlock::new(1.into(), vec![blockhash::ORIGIN]))
-            .add_block(DagBlock::new(2.into(), vec![1.into()]))
-            .add_block(DagBlock::new(3.into(), vec![1.into()]))
-            .add_block(DagBlock::new(4.into(), vec![2.into(), 3.into()]))
-            .add_block(DagBlock::new(5.into(), vec![4.into()]))
-            .add_block(DagBlock::new(6.into(), vec![1.into()]))
-            .add_block(DagBlock::new(7.into(), vec![5.into(), 6.into()]))
-            .add_block(DagBlock::new(8.into(), vec![1.into()]))
-            .add_block(DagBlock::new(9.into(), vec![1.into()]))
-            .add_block(DagBlock::new(10.into(), vec![7.into(), 8.into(), 9.into()]))
-            .add_block(DagBlock::new(11.into(), vec![1.into()]))
-            .add_block(DagBlock::new(12.into(), vec![11.into(), 10.into()]));
-
-        // Assert tree intervals and DAG relations
-        reachability.validate_intervals(blockhash::ORIGIN).unwrap();
-        validate_relations(&relations).unwrap();
-
-        // Assert genesis
-        for i in 2u64..=12 {
-            assert!(reachability.in_past_of(1, i));
+        // Add blocks
+        {
+            let mut builder = DagBuilder::new(&mut reachability, &mut relations);
+            builder.init();
+            builder.add_block(DagBlock::new(test.genesis.into(), vec![ORIGIN]));
+            for (block, parents) in test.blocks.iter() {
+                builder.add_block(DagBlock::new((*block).into(), parents.iter().map(|&i| i.into()).collect()));
+            }
         }
 
-        // Assert some futures
-        assert!(reachability.in_past_of(2, 4));
-        assert!(reachability.in_past_of(2, 5));
-        assert!(reachability.in_past_of(2, 7));
-        assert!(reachability.in_past_of(5, 10));
-        assert!(reachability.in_past_of(6, 10));
-        assert!(reachability.in_past_of(10, 12));
-        assert!(reachability.in_past_of(11, 12));
+        // Assert tree intervals and DAG relations
+        reachability.validate_intervals(ORIGIN).unwrap();
+        validate_relations(&relations).unwrap();
 
-        // Assert some anticones
-        assert!(reachability.are_anticone(2, 3));
-        assert!(reachability.are_anticone(2, 6));
-        assert!(reachability.are_anticone(3, 6));
-        assert!(reachability.are_anticone(5, 6));
-        assert!(reachability.are_anticone(3, 8));
-        assert!(reachability.are_anticone(11, 2));
-        assert!(reachability.are_anticone(11, 4));
-        assert!(reachability.are_anticone(11, 6));
-        assert!(reachability.are_anticone(11, 9));
+        // Assert genesis future
+        for block in test.ids() {
+            assert!(reachability.in_past_of(test.genesis, block));
+        }
+
+        // Assert expected futures
+        for (x, y) in test.expected_past_relations.iter().copied() {
+            assert!(reachability.in_past_of(x, y));
+        }
+
+        // Assert expected anticones
+        for (x, y) in test.expected_anticone_relations.iter().copied() {
+            assert!(reachability.are_anticone(x, y));
+        }
 
         let mut hashes_ref = subtree(&reachability, ORIGIN);
         let hashes = hashes_ref.iter().copied().collect_vec();
-        assert_eq!(12, hashes.len());
+        assert_eq!(test.blocks.len() + 1, hashes.len());
         let chain_closure_ref = build_chain_closure(&reachability, &hashes);
         let dag_closure_ref = build_transitive_closure(&relations, &reachability, &hashes);
+
+        for block in test.ids().chain(once(test.genesis)) {
+            DagBuilder::new(&mut reachability, &mut relations).delete_block(block.into());
+            hashes_ref.remove(&block.into());
+            reachability.validate_intervals(ORIGIN).unwrap();
+            validate_relations(&relations).unwrap();
+            validate_closures(&relations, &reachability, &chain_closure_ref, &dag_closure_ref, &hashes_ref);
+        }
+    }
+
+    #[test]
+    fn test_dag_building_and_removal() {
+        let test = DagTestCase {
+            genesis: 1,
+            blocks: vec![
+                (2, vec![1]),
+                (3, vec![1]),
+                (4, vec![2, 3]),
+                (5, vec![4]),
+                (6, vec![1]),
+                (7, vec![5, 6]),
+                (8, vec![1]),
+                (9, vec![1]),
+                (10, vec![7, 8, 9]),
+                (11, vec![1]),
+                (12, vec![11, 10]),
+            ],
+            expected_past_relations: vec![(2, 4), (2, 5), (2, 7), (5, 10), (6, 10), (10, 12), (11, 12)],
+            expected_anticone_relations: vec![(2, 3), (2, 6), (3, 6), (5, 6), (3, 8), (11, 2), (11, 4), (11, 6), (11, 9)],
+        };
+
+        run_dag_test_case(&test);
 
         // TODO:
         //      - check future covering sets for consistency and dangling data
         //      - test all store types
         //      - test complex DAGs
-
-        for i in 2u64..=11 {
-            DagBuilder::new(&mut reachability, &mut relations).delete_block(i.into());
-            hashes_ref.remove(&i.into());
-            reachability.validate_intervals(blockhash::ORIGIN).unwrap();
-            validate_relations(&relations).unwrap();
-            validate_closures(&relations, &reachability, &chain_closure_ref, &dag_closure_ref, &hashes_ref);
-        }
     }
 }
