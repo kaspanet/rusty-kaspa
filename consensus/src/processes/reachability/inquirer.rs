@@ -256,11 +256,15 @@ mod tests {
     use super::super::tests::*;
     use super::*;
     use crate::{
-        model::stores::{reachability::MemoryReachabilityStore, relations::MemoryRelationsStore},
+        model::stores::{
+            reachability::{DbReachabilityStore, MemoryReachabilityStore},
+            relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore},
+        },
         processes::reachability::interval::Interval,
     };
     use itertools::Itertools;
     use kaspa_consensus_core::blockhash::ORIGIN;
+    use kaspa_database::utils::create_temp_db;
     use std::iter::once;
 
     #[test]
@@ -320,14 +324,14 @@ mod tests {
         }
     }
 
-    fn run_dag_test_case(test: &DagTestCase) {
-        // Arrange
-        let mut reachability = MemoryReachabilityStore::new();
-        let mut relations = MemoryRelationsStore::new();
-
+    fn run_dag_test_case<S: RelationsStore + ?Sized, V: ReachabilityStore + ?Sized>(
+        relations: &mut S,
+        reachability: &mut V,
+        test: &DagTestCase,
+    ) {
         // Add blocks
         {
-            let mut builder = DagBuilder::new(&mut reachability, &mut relations);
+            let mut builder = DagBuilder::new(reachability, relations);
             builder.init();
             builder.add_block(DagBlock::new(test.genesis.into(), vec![ORIGIN]));
             for (block, parents) in test.blocks.iter() {
@@ -337,7 +341,7 @@ mod tests {
 
         // Assert tree intervals and DAG relations
         reachability.validate_intervals(ORIGIN).unwrap();
-        validate_relations(&relations).unwrap();
+        validate_relations(relations).unwrap();
 
         // Assert genesis future
         for block in test.ids() {
@@ -354,18 +358,18 @@ mod tests {
             assert!(reachability.are_anticone(x, y));
         }
 
-        let mut hashes_ref = subtree(&reachability, ORIGIN);
+        let mut hashes_ref = subtree(reachability, ORIGIN);
         let hashes = hashes_ref.iter().copied().collect_vec();
         assert_eq!(test.blocks.len() + 1, hashes.len());
-        let chain_closure_ref = build_chain_closure(&reachability, &hashes);
-        let dag_closure_ref = build_transitive_closure(&relations, &reachability, &hashes);
+        let chain_closure_ref = build_chain_closure(reachability, &hashes);
+        let dag_closure_ref = build_transitive_closure(relations, reachability, &hashes);
 
         for block in test.ids().chain(once(test.genesis)) {
-            DagBuilder::new(&mut reachability, &mut relations).delete_block(block.into());
+            DagBuilder::new(reachability, relations).delete_block(block.into());
             hashes_ref.remove(&block.into());
             reachability.validate_intervals(ORIGIN).unwrap();
-            validate_relations(&relations).unwrap();
-            validate_closures(&relations, &reachability, &chain_closure_ref, &dag_closure_ref, &hashes_ref);
+            validate_relations(relations).unwrap();
+            validate_closures(relations, reachability, &chain_closure_ref, &dag_closure_ref, &hashes_ref);
         }
     }
 
@@ -390,7 +394,14 @@ mod tests {
             expected_anticone_relations: vec![(2, 3), (2, 6), (3, 6), (5, 6), (3, 8), (11, 2), (11, 4), (11, 6), (11, 9)],
         };
 
-        run_dag_test_case(&test);
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations = MemoryRelationsStore::new();
+        run_dag_test_case(&mut relations, &mut reachability, &test);
+
+        let (_lifetime, db) = create_temp_db();
+        let mut reachability = DbReachabilityStore::new(db.clone(), 3);
+        let mut relations = DbRelationsStore::new(db, 0, 3);
+        run_dag_test_case(&mut relations, &mut reachability, &test);
 
         // TODO:
         //      - check future covering sets for consistency and dangling data
