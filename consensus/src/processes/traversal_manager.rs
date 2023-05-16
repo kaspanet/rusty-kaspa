@@ -161,8 +161,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: ReachabilityStoreRead
                 break;
             }
         }
-
-        let mut added = self.reachability_service.backward_chain_iterator(to, common_ancestor, false).collect_vec(); // It is more intuitive to use forward iterator here, but going downwards the selected chain is faster.
+        // It is more intuitive to use forward iterator here, but going downwards the selected chain is faster.
+        let mut added = self.reachability_service.backward_chain_iterator(to, common_ancestor, false).collect_vec();
         added.reverse();
         ChainPath { added, removed }
     }
