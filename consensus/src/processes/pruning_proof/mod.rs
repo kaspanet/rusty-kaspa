@@ -1,7 +1,7 @@
 use std::{
     cmp::{max, Reverse},
     collections::BinaryHeap,
-    ops::DerefMut,
+    ops::{Deref, DerefMut},
     sync::Arc,
 };
 
@@ -283,9 +283,8 @@ impl PruningProofManager {
             }
         }
 
-        let relations_store = Arc::new(RwLock::new(vec![MemoryRelationsStore::new()]));
-        relations_store.write()[0].insert(ORIGIN, Arc::new(vec![])).unwrap();
-        let relations_service = MTRelationsService::new(relations_store.clone(), 0);
+        let relations_store = Arc::new(RwLock::new(MemoryRelationsStore::new()));
+        relations_store.write().insert(ORIGIN, Arc::new(vec![])).unwrap();
 
         for reverse_sortable_block in up_heap.into_sorted_iter() {
             // TODO: Convert to into_iter_sorted once it gets stable
@@ -317,9 +316,9 @@ impl PruningProofManager {
 
             let selected_parent = fake_direct_parents.iter().max().map(|parent| parent.hash).unwrap_or(ORIGIN);
 
-            relations_store.write()[0].insert(hash, fake_direct_parents_hashes.clone()).unwrap();
+            relations_store.write().insert(hash, fake_direct_parents_hashes.clone()).unwrap();
             let mergeset = unordered_mergeset_without_selected_parent(
-                &relations_service,
+                relations_store.read().deref(),
                 &self.reachability_service,
                 selected_parent,
                 &fake_direct_parents_hashes,
