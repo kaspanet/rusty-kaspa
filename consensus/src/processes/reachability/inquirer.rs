@@ -328,7 +328,8 @@ mod tests {
     }
 
     /// Runs a DAG test-case by adding all blocks and then removing them while verifying full
-    /// reachability and relations state frequently between operations
+    /// reachability and relations state frequently between operations.
+    /// Note: runtime is quadratic in the number of blocks so should be used with mildly small DAGs (~50)
     fn run_dag_test_case<S: RelationsStore + ?Sized, V: ReachabilityStore + ?Sized>(
         relations: &mut S,
         reachability: &mut V,
@@ -378,7 +379,8 @@ mod tests {
         }
     }
 
-    /// Runs a DAG test-case with full verification using the staging store mechanism
+    /// Runs a DAG test-case with full verification using the staging store mechanism.
+    /// Note: runtime is quadratic in the number of blocks so should be used with mildly small DAGs (~50)
     fn run_dag_test_case_with_staging(test: &DagTestCase) {
         let (_lifetime, db) = create_temp_db();
         let cache_size = test.blocks.len() as u64 / 3;
@@ -490,7 +492,7 @@ mod tests {
         };
 
         let generate_complex = |bps| {
-            let target_blocks = 50;
+            let target_blocks = 50; // verification is quadratic so a larger target takes relatively long
             let (genesis, blocks) = generate_complex_dag(2.0, bps, target_blocks);
             assert_eq!(target_blocks as usize, blocks.len());
             DagTestCase {

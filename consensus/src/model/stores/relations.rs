@@ -35,7 +35,6 @@ const CHILDREN_PREFIX: &[u8] = b"block-children";
 #[derive(Clone)]
 pub struct DbRelationsStore {
     db: Arc<DB>,
-    level: BlockLevel,
     parents_access: CachedDbAccess<Hash, Arc<Vec<Hash>>, BlockHasher>,
     children_access: CachedDbAccess<Hash, Arc<Vec<Hash>>, BlockHasher>,
 }
@@ -47,14 +46,19 @@ impl DbRelationsStore {
         let children_prefix = CHILDREN_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
         Self {
             db: Arc::clone(&db),
-            level,
             parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, parents_prefix),
             children_access: CachedDbAccess::new(db, cache_size, children_prefix),
         }
     }
 
-    pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), self.level, cache_size)
+    pub fn with_prefix(db: Arc<DB>, prefix: &[u8], cache_size: u64) -> Self {
+        let parents_prefix = prefix.iter().copied().chain(PARENTS_PREFIX.iter().copied()).collect_vec();
+        let children_prefix = prefix.iter().copied().chain(CHILDREN_PREFIX.iter().copied()).collect_vec();
+        Self {
+            db: Arc::clone(&db),
+            parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, parents_prefix),
+            children_access: CachedDbAccess::new(db, cache_size, children_prefix),
+        }
     }
 
     fn insert_with_writer(&self, mut writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {

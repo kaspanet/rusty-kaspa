@@ -130,6 +130,7 @@ pub struct HeaderProcessor {
     // Stores
     relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
+    reachability_relations: Arc<RwLock<DbRelationsStore>>,
     ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
@@ -182,6 +183,7 @@ impl HeaderProcessor {
         db: Arc<DB>,
         relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
         reachability_store: Arc<RwLock<DbReachabilityStore>>,
+        reachability_relations: Arc<RwLock<DbRelationsStore>>,
         ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
         headers_store: Arc<DbHeadersStore>,
         daa_store: Arc<DbDaaStore>,
@@ -229,6 +231,7 @@ impl HeaderProcessor {
             db,
             relations_stores,
             reachability_store,
+            reachability_relations,
             ghostdag_stores,
             statuses_store,
             pruning_store,
@@ -473,10 +476,16 @@ impl HeaderProcessor {
         // Relations and statuses
         //
 
+        let reachability_parents = ctx.known_parents[0].clone();
+
         let mut relations_write = self.relations_stores.write();
         ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
             relations_write[level].insert_batch(&mut batch, header.hash, parents_by_level).unwrap_or_exists();
         });
+
+        // Write reachability relations. These relations are only needed during header pruning
+        let mut reachability_relations_write = self.reachability_relations.write();
+        reachability_relations_write.insert_batch(&mut batch, ctx.hash, reachability_parents).unwrap_or_exists();
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
@@ -491,6 +500,7 @@ impl HeaderProcessor {
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
         drop(reachability_write);
         drop(statuses_write);
+        drop(reachability_relations_write);
         drop(relations_write);
         drop(hst_write);
         drop(sc_write);

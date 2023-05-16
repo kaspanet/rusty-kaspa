@@ -9,6 +9,7 @@ use crate::{
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
+            relations::DbRelationsStore,
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_set::{DbUtxoSetStore, UtxoSetStore},
         },
@@ -45,12 +46,17 @@ pub struct PruningProcessor {
     utxo_diffs_store: Arc<DbUtxoDiffsStore>,
     headers_store: Arc<DbHeadersStore>,
 
+    // Reachability stores
+    reachability_store: Arc<RwLock<DbReachabilityStore>>,
+    reachability_relations: Arc<RwLock<DbRelationsStore>>,
+
     // Managers and Services
     pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
 }
 
 impl PruningProcessor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: CrossbeamReceiver<PruningProcessingMessage>,
         db: Arc<DB>,
@@ -59,6 +65,8 @@ impl PruningProcessor {
         pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
         utxo_diffs_store: Arc<DbUtxoDiffsStore>,
         headers_store: Arc<DbHeadersStore>,
+        reachability_store: Arc<RwLock<DbReachabilityStore>>,
+        reachability_relations: Arc<RwLock<DbRelationsStore>>,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
     ) -> Self {
@@ -70,6 +78,8 @@ impl PruningProcessor {
             pruning_point_utxo_set_store,
             utxo_diffs_store,
             headers_store,
+            reachability_store,
+            reachability_relations,
             pruning_manager,
             reachability_service,
         }

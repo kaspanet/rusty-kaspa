@@ -1,7 +1,7 @@
 use std::{
     cmp::{max, Reverse},
     collections::BinaryHeap,
-    ops::{Deref, DerefMut},
+    ops::DerefMut,
     sync::Arc,
 };
 
@@ -40,7 +40,7 @@ use crate::{
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
-            relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore, RelationsStoreReader},
+            relations::{DbRelationsStore, RelationsStore, RelationsStoreReader},
             selected_chain::{DbSelectedChainStore, SelectedChainStore},
             tips::DbTipsStore,
             virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader},
@@ -73,6 +73,7 @@ pub struct PruningProofManager {
     db: Arc<DB>,
     headers_store: Arc<DbHeadersStore>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
+    reachability_relations: Arc<RwLock<DbRelationsStore>>,
     parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
@@ -106,6 +107,7 @@ impl PruningProofManager {
         db: Arc<DB>,
         headers_store: Arc<DbHeadersStore>,
         reachability_store: Arc<RwLock<DbReachabilityStore>>,
+        reachability_relations: Arc<RwLock<DbRelationsStore>>,
         parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
@@ -135,6 +137,7 @@ impl PruningProofManager {
             db,
             headers_store,
             reachability_store,
+            reachability_relations,
             parents_manager,
             reachability_service,
             ghostdag_stores,
@@ -283,8 +286,7 @@ impl PruningProofManager {
             }
         }
 
-        let relations_store = Arc::new(RwLock::new(MemoryRelationsStore::new()));
-        relations_store.write().insert(ORIGIN, Arc::new(vec![])).unwrap();
+        let mut reachability_relations_write = self.reachability_relations.write();
 
         for reverse_sortable_block in up_heap.into_sorted_iter() {
             // TODO: Convert to into_iter_sorted once it gets stable
@@ -299,29 +301,27 @@ impl PruningProofManager {
                     .map(|parent| SortableBlock { hash: parent, blue_work: dag.get(&parent).unwrap().header.blue_work }),
             );
 
-            let mut fake_direct_parents: Vec<SortableBlock> = Vec::new();
+            let mut reachability_parents: Vec<SortableBlock> = Vec::new();
             for parent in parents_in_dag.into_sorted_iter() {
                 if self
                     .reachability_service
-                    .is_dag_ancestor_of_any(parent.hash, &mut fake_direct_parents.iter().map(|parent| &parent.hash).cloned())
+                    .is_dag_ancestor_of_any(parent.hash, &mut reachability_parents.iter().map(|parent| &parent.hash).cloned())
                 {
                     continue;
                 }
 
-                fake_direct_parents.push(parent);
+                reachability_parents.push(parent);
             }
+            let reachability_parents_hashes =
+                BlockHashes::new(reachability_parents.iter().map(|parent| &parent.hash).cloned().collect_vec().push_if_empty(ORIGIN));
 
-            let fake_direct_parents_hashes =
-                BlockHashes::new(fake_direct_parents.iter().map(|parent| &parent.hash).cloned().collect_vec().push_if_empty(ORIGIN));
-
-            let selected_parent = fake_direct_parents.iter().max().map(|parent| parent.hash).unwrap_or(ORIGIN);
-
-            relations_store.write().insert(hash, fake_direct_parents_hashes.clone()).unwrap();
+            let selected_parent = reachability_parents.iter().max().map(|parent| parent.hash).unwrap_or(ORIGIN);
+            reachability_relations_write.insert(hash, reachability_parents_hashes.clone()).unwrap();
             let mergeset = unordered_mergeset_without_selected_parent(
-                relations_store.read().deref(),
+                &*reachability_relations_write,
                 &self.reachability_service,
                 selected_parent,
-                &fake_direct_parents_hashes,
+                &reachability_parents_hashes,
             );
             let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
             reachability::add_block(&mut staging, hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();

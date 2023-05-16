@@ -46,7 +46,7 @@ use crate::{
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
         mass::MassCalculator, parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningManager,
-        pruning_proof::PruningProofManager, reachability::inquirer as reachability, sync::SyncManager,
+        pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations, sync::SyncManager,
         transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
     },
 };
@@ -207,6 +207,9 @@ impl Consensus {
                 .collect_vec(),
         ));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
+        // Reachability relations are only read during pruning, so finality depth is sufficient for cache size
+        let reachability_relations =
+            Arc::new(RwLock::new(DbRelationsStore::with_prefix(db.clone(), b"reachability-", config.finality_depth)));
         let ghostdag_stores = (0..=params.max_block_level)
             .map(|level| {
                 let cache_size =
@@ -383,6 +386,7 @@ impl Consensus {
             db.clone(),
             relations_stores.clone(),
             reachability_store.clone(),
+            reachability_relations.clone(),
             ghostdag_stores.clone(),
             headers_store.clone(),
             daa_excluded_store.clone(),
@@ -467,6 +471,8 @@ impl Consensus {
             pruning_point_utxo_set_store.clone(),
             utxo_diffs_store,
             headers_store.clone(),
+            reachability_store.clone(),
+            reachability_relations.clone(),
             pruning_manager.clone(),
             reachability_service.clone(),
         ));
@@ -475,6 +481,7 @@ impl Consensus {
             db.clone(),
             headers_store.clone(),
             reachability_store.clone(),
+            reachability_relations.clone(),
             parents_manager,
             reachability_service.clone(),
             ghostdag_stores,
@@ -509,6 +516,7 @@ impl Consensus {
 
         // Ensure that reachability store is initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
+        relations::init(reachability_relations.write().deref_mut());
 
         // Ensure the relations stores are initialized
         header_processor.init();
