@@ -418,6 +418,17 @@ macro_rules! construct_uint {
                 out[start..].copy_from_slice(bytes);
                 Ok(Self::from_be_bytes(out))
             }
+
+            pub fn to_bigint(&self) -> Result<js_sys::BigInt, $crate::Error> {
+                self.try_into()
+            }
+
+        }
+
+        impl kaspa_utils::hex::ToHex for $name {
+            fn to_hex(&self) -> String {
+                self.to_be_bytes().as_slice().to_hex()
+            }
         }
 
         impl kaspa_utils::hex::ToHex for &$name {
@@ -921,18 +932,52 @@ macro_rules! construct_uint {
                     deserializer.deserialize_tuple(Self::LIMBS, InPlaceVisitor(place))
                 }
             }
+
+        }
+
+        impl TryFrom<&$name> for js_sys::BigInt {
+            type Error = $crate::Error;
+            #[inline]
+            fn try_from(value: &$name) -> Result<js_sys::BigInt, Self::Error> {
+                use $crate::wasm::*;
+                BigInt::new(&JsValue::from_str(&format!("0x{value:x}"))).map_err(|err|$crate::Error::JsSys(Sendable(err)))
+            }
+        }
+
+        impl TryFrom<$name> for js_sys::BigInt {
+            type Error = $crate::Error;
+            #[inline]
+            fn try_from(value: $name) -> Result<js_sys::BigInt, Self::Error> {
+                use $crate::wasm::*;
+                BigInt::new(&JsValue::from_str(&format!("0x{value:x}"))).map_err(|err|$crate::Error::JsSys(Sendable(err)))
+            }
         }
 
         impl TryFrom<wasm_bindgen::JsValue> for $name {
             type Error = $crate::Error;
             fn try_from(js_value: wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-                use workflow_wasm::jsvalue::JsValueTrait;
+                use $crate::wasm::*;
+
                 if js_value.is_string() || js_value.is_array() {
                     let bytes = js_value.try_as_vec_u8()?;
                     Ok(Self::from_be_bytes_var(&bytes)?)
-                } else if js_value.is_object() {
-                    // ref_from_abi!($name, &js_value).map_err(|_| TryFromError::WrongType(concat!("", $name, " limbs").to_string()))?
-                    return Err(Self::Error::NotCompatible);
+                } else if js_value.is_bigint() {
+
+                    if false {
+                        let mut limbs = [0u64; Self::LIMBS];
+                        for (idx, limb) in limbs.iter_mut().enumerate() {
+                            let v = js_value.clone() >> JsValue::from(idx as u64 * 64u64);
+                            let mask = JsValue::from(BigInt::new(&JsValue::from_str(&format!("0xffffffffffffffff"))).unwrap());
+                            let v: JsValue = v & mask;
+                            *limb = u64::try_from(v).map_err(|e|$crate::Error::JsValue(Sendable(e)))?;
+                        }
+                        Ok(Self(limbs))
+                    } else {
+                        let v: &BigInt = js_value.dyn_ref().unwrap();
+                        let hex = String::from(v.to_string(16)?);
+                        Ok(Self::from_hex(hex.as_str())?)
+                    }
+
                 } else {
                     return Err(Self::Error::NotCompatible);
                 }

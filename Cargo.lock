@@ -2151,8 +2151,10 @@ dependencies = [
  "malachite-nz",
  "rand_chacha 0.3.1",
  "serde",
+ "serde-wasm-bindgen",
  "thiserror",
  "wasm-bindgen",
+ "workflow-log",
  "workflow-wasm",
 ]
 
@@ -2291,6 +2293,7 @@ dependencies = [
  "kaspa-consensus-core",
  "kaspa-hashes",
  "kaspa-math",
+ "kaspa-utils",
  "wasm-bindgen",
  "workflow-wasm",
 ]

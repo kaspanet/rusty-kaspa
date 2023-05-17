@@ -10,6 +10,7 @@ use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoOrdering, UtxoSet};
 use crate::wallet::{BalanceUpdate, Events};
 use crate::AddressDerivationManager;
 use crate::{imports::*, Wallet};
+use faster_hex::hex_string;
 use futures::future::join_all;
 use itertools::Itertools;
 use kaspa_addresses::Prefix as AddressPrefix;
@@ -17,6 +18,7 @@ use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, Language, Mnemonic, PrivateKe
 use kaspa_notify::listener::ListenerId;
 use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
+use serde::Serializer;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -79,10 +81,40 @@ struct AccountIdHashData {
 pub struct AccountId(pub(crate) u64);
 
 impl AccountId {
-    fn new(prv_key_data_id: &PrvKeyDataId, ecdsa: bool, account_kind: &AccountKind, account_index: u64) -> AccountId {
+    pub(crate) fn new(prv_key_data_id: &PrvKeyDataId, ecdsa: bool, account_kind: &AccountKind, account_index: u64) -> AccountId {
         let mut hasher = DefaultHasher::new();
         AccountIdHashData { prv_key_data_id: *prv_key_data_id, ecdsa, account_kind: *account_kind, account_index }.hash(&mut hasher);
         AccountId(hasher.finish())
+    }
+}
+
+impl Serialize for AccountId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&hex_string(&self.0.to_be_bytes()))
+    }
+}
+
+impl<'de> Deserialize<'de> for AccountId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let hex_str = <std::string::String as Deserialize>::deserialize(deserializer)?;
+        let mut out = [0u8; 8];
+        let mut input = [b'0'; 16];
+        let start = input.len() - hex_str.len();
+        input[start..].copy_from_slice(hex_str.as_bytes());
+        faster_hex::hex_decode(&input, &mut out).map_err(serde::de::Error::custom)?;
+        Ok(AccountId(u64::from_be_bytes(out)))
+    }
+}
+
+impl std::fmt::Display for AccountId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", hex_string(&self.0.to_be_bytes()))
     }
 }
 
