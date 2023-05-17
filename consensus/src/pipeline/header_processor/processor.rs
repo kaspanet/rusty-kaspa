@@ -129,10 +129,10 @@ pub struct HeaderProcessor {
     db: Arc<DB>,
 
     // Stores
-    relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
-    reachability_store: Arc<RwLock<DbReachabilityStore>>,
-    reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
-    ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
+    pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
+    pub(super) reachability_store: Arc<RwLock<DbReachabilityStore>>,
+    pub(super) reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
+    pub(super) ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
@@ -140,11 +140,11 @@ pub struct HeaderProcessor {
     pub(super) daa_excluded_store: Arc<DbDaaStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
-    pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
-    depth_store: Arc<DbDepthStore>,
+    pub(super) selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
+    pub(super) depth_store: Arc<DbDepthStore>,
 
     // Managers and services
-    ghostdag_managers: Vec<
+    pub(super) ghostdag_managers: Vec<
         GhostdagManager<
             DbGhostdagStore,
             MTRelationsService<DbRelationsStore>,

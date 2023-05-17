@@ -101,18 +101,18 @@ pub struct Consensus {
     block_sender: CrossbeamSender<BlockProcessingMessage>,
 
     // Processors
-    pub header_processor: Arc<HeaderProcessor>,
+    pub(super) header_processor: Arc<HeaderProcessor>,
     pub(super) body_processor: Arc<BlockBodyProcessor>,
-    pub virtual_processor: Arc<VirtualStateProcessor>,
-    pub pruning_processor: Arc<PruningProcessor>,
+    pub(super) virtual_processor: Arc<VirtualStateProcessor>,
+    pub(super) pruning_processor: Arc<PruningProcessor>,
 
     // Storage
     pub(super) storage: Arc<ConsensusStorage>,
 
     // Services and managers
-    statuses_service: MTStatusesService<DbStatusesStore>,
-    relations_service: MTRelationsService<DbRelationsStore>,
-    reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) statuses_service: MTStatusesService<DbStatusesStore>,
+    pub(super) relations_service: MTRelationsService<DbRelationsStore>,
+    pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
     pub(super) dag_traversal_manager:
         DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
@@ -127,7 +127,7 @@ pub struct Consensus {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) pruning_proof_manager: Arc<PruningProofManager>,
-    sync_manager: SyncManager<
+    pub(super) sync_manager: SyncManager<
         MTRelationsService<DbRelationsStore>,
         DbReachabilityStore,
         DbGhostdagStore,
@@ -137,7 +137,7 @@ pub struct Consensus {
         DbStatusesStore,
         BlockWindowCacheStore,
     >,
-    depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+    pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
     // Pruning lock
     pruning_lock: Arc<TokioRwLock<()>>,
@@ -146,7 +146,7 @@ pub struct Consensus {
     notification_root: Arc<ConsensusNotificationRoot>,
 
     // Counters
-    pub counters: Arc<ProcessingCounters>,
+    counters: Arc<ProcessingCounters>,
 
     // Config
     config: Arc<Config>,
@@ -535,22 +535,22 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_virtual_daa_score(&self) -> u64 {
-        self.virtual_processor.virtual_stores.read().state.get().unwrap().daa_score
+        self.virtual_stores.read().state.get().unwrap().daa_score
     }
 
     fn get_virtual_bits(&self) -> u32 {
-        self.virtual_processor.virtual_stores.read().state.get().unwrap().bits
+        self.virtual_stores.read().state.get().unwrap().bits
     }
 
     fn get_virtual_past_median_time(&self) -> u64 {
-        self.virtual_processor.virtual_stores.read().state.get().unwrap().past_median_time
+        self.virtual_stores.read().state.get().unwrap().past_median_time
     }
 
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
         // TODO: consider saving the merge depth root as part of virtual state
         // TODO: unwrap on pruning_point and virtual state reads when staging consensus is implemented
         let Some(pruning_point) = self.pruning_point_store.read().pruning_point().unwrap_option() else { return None; };
-        let Some(virtual_state) = self.virtual_processor.virtual_stores.read().state.get().unwrap_option() else { return None; };
+        let Some(virtual_state) = self.virtual_stores.read().state.get().unwrap_option() else { return None; };
         let virtual_ghostdag_data = &virtual_state.ghostdag_data;
         let root = self.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
         if root.is_origin() {
@@ -561,7 +561,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_sink(&self) -> Hash {
-        self.virtual_processor.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent
+        self.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent
     }
 
     fn get_sink_timestamp(&self) -> u64 {
@@ -588,7 +588,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
-        self.virtual_processor.virtual_stores.read().state.get().unwrap().parents.iter().copied().collect()
+        self.virtual_stores.read().state.get().unwrap().parents.iter().copied().collect()
     }
 
     fn get_virtual_utxos(
@@ -597,7 +597,7 @@ impl ConsensusApi for Consensus {
         chunk_size: usize,
         skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
-        let virtual_stores = self.virtual_processor.virtual_stores.read();
+        let virtual_stores = self.virtual_stores.read();
         let iter = virtual_stores.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
         iter.map(|item| item.unwrap()).collect()
     }
@@ -844,11 +844,8 @@ impl ConsensusApi for Consensus {
     }
 
     fn estimate_network_hashes_per_second(&self, start_hash: Option<Hash>, window_size: usize) -> ConsensusResult<u64> {
-        let virtual_ghostdag_data = if start_hash.is_none() {
-            Some(self.virtual_processor.virtual_stores.read().state.get().unwrap().ghostdag_data.clone())
-        } else {
-            None
-        };
+        let virtual_ghostdag_data =
+            if start_hash.is_none() { Some(self.virtual_stores.read().state.get().unwrap().ghostdag_data.clone()) } else { None };
         let high_ghostdag_data: Refs<_> = match start_hash {
             Some(hash) => {
                 self.validate_block_exists(hash)?;

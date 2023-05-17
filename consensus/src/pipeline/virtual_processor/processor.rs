@@ -121,9 +121,8 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
-    pub virtual_stores: Arc<RwLock<VirtualStores>>,
-    pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
-    // TODO: remove all pub from stores when StoreManager is implemented
+    pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
+    pub(super) pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
@@ -145,7 +144,8 @@ pub struct VirtualStateProcessor {
     pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
-    pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
+    // Notifier
+    notification_root: Arc<ConsensusNotificationRoot>,
 
     // Counters
     counters: Arc<ProcessingCounters>,

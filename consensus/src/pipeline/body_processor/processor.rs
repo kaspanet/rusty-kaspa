@@ -79,7 +79,8 @@ pub struct BlockBodyProcessor {
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
 
-    pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
+    // Notifier
+    notification_root: Arc<ConsensusNotificationRoot>,
 
     // Counters
     counters: Arc<ProcessingCounters>,

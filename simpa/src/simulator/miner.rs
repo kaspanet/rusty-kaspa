@@ -110,7 +110,7 @@ impl Miner {
     }
 
     fn build_txs(&mut self) -> Vec<Transaction> {
-        let virtual_read = self.consensus.virtual_processor.virtual_stores.read();
+        let virtual_read = self.consensus.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
         let multiple_outputs = self.possible_unspent_outpoints.len() < 10_000;

@@ -172,7 +172,7 @@ impl TestConsensus {
     }
 
     pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {
-        &self.consensus.counters
+        self.consensus.processing_counters()
     }
 
     pub fn block_body_processor(&self) -> &Arc<BlockBodyProcessor> {
