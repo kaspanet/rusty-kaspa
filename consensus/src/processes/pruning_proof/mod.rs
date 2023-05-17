@@ -25,7 +25,7 @@ use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 
 use crate::{
-    consensus::{DbGhostdagManager, VirtualStores},
+    consensus::{storage::ConsensusStorage, DbGhostdagManager},
     model::{
         services::{
             reachability::{MTReachabilityService, ReachabilityService},
@@ -43,7 +43,7 @@ use crate::{
             relations::{DbRelationsStore, RelationsStore, RelationsStoreReader},
             selected_chain::{DbSelectedChainStore, SelectedChainStore},
             tips::DbTipsStore,
-            virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader},
+            virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader, VirtualStores},
             DB,
         },
     },
@@ -73,12 +73,12 @@ pub struct PruningProofManager {
     db: Arc<DB>,
     headers_store: Arc<DbHeadersStore>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
-    reachability_relations: Arc<RwLock<DbRelationsStore>>,
+    reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
     relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
-    pruning_store: Arc<RwLock<DbPruningStore>>,
+    pruning_point_store: Arc<RwLock<DbPruningStore>>,
     past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     virtual_stores: Arc<RwLock<VirtualStores>>,
     body_tips_store: Arc<RwLock<DbTipsStore>>,
@@ -101,24 +101,13 @@ pub struct PruningProofManager {
     ghostdag_k: KType,
 }
 
-#[allow(clippy::too_many_arguments)]
 impl PruningProofManager {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Arc<DB>,
-        headers_store: Arc<DbHeadersStore>,
-        reachability_store: Arc<RwLock<DbReachabilityStore>>,
-        reachability_relations: Arc<RwLock<DbRelationsStore>>,
+        storage: &Arc<ConsensusStorage>,
         parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
-        ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
-        relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
-        pruning_store: Arc<RwLock<DbPruningStore>>,
-        past_pruning_points_store: Arc<DbPastPruningPointsStore>,
-        virtual_stores: Arc<RwLock<VirtualStores>>,
-        body_tips_store: Arc<RwLock<DbTipsStore>>,
-        headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
-        depth_store: Arc<DbDepthStore>,
-        selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
         ghostdag_managers: Vec<DbGhostdagManager>,
         traversal_manager: DagTraversalManager<
             DbGhostdagStore,
@@ -135,20 +124,20 @@ impl PruningProofManager {
     ) -> Self {
         Self {
             db,
-            headers_store,
-            reachability_store,
-            reachability_relations,
+            headers_store: storage.headers_store.clone(),
+            reachability_store: storage.reachability_store.clone(),
+            reachability_relations_store: storage.reachability_relations_store.clone(),
             parents_manager,
             reachability_service,
-            ghostdag_stores,
-            relations_stores,
-            pruning_store,
-            past_pruning_points_store,
-            virtual_stores,
-            body_tips_store,
-            headers_selected_tip_store,
-            selected_chain_store,
-            depth_store,
+            ghostdag_stores: storage.ghostdag_stores.clone(),
+            relations_stores: storage.relations_stores.clone(),
+            pruning_point_store: storage.pruning_point_store.clone(),
+            past_pruning_points_store: storage.past_pruning_points_store.clone(),
+            virtual_stores: storage.virtual_stores.clone(),
+            body_tips_store: storage.body_tips_store.clone(),
+            headers_selected_tip_store: storage.headers_selected_tip_store.clone(),
+            selected_chain_store: storage.selected_chain_store.clone(),
+            depth_store: storage.depth_store.clone(),
             ghostdag_managers,
             traversal_manager,
 
@@ -181,7 +170,7 @@ impl PruningProofManager {
         }
         let current_pp = pruning_points.last().unwrap().hash;
         info!("Setting {current_pp} as the current pruning point");
-        self.pruning_store.write().set(current_pp, current_pp, (pruning_points.len() - 1) as u64).unwrap();
+        self.pruning_point_store.write().set(current_pp, current_pp, (pruning_points.len() - 1) as u64).unwrap();
     }
 
     pub fn apply_proof(&self, mut proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
@@ -299,7 +288,7 @@ impl PruningProofManager {
 
         debug!("Estimated proof size: {}, actual size: {}", capacity_estimate, dag.len());
 
-        let mut reachability_relations_write = self.reachability_relations.write();
+        let mut reachability_relations_write = self.reachability_relations_store.write();
 
         for reverse_sortable_block in up_heap.into_sorted_iter() {
             // TODO: Convert to into_iter_sorted once it gets stable
@@ -486,7 +475,7 @@ impl PruningProofManager {
             selected_tip_by_level[level_idx] = selected_tip;
         }
 
-        let pruning_read = self.pruning_store.read();
+        let pruning_read = self.pruning_point_store.read();
         let relations_read = self.relations_stores.read();
         let current_pp = pruning_read.get().unwrap().pruning_point;
         let current_pp_header = headers_store.get_header(current_pp).unwrap();
@@ -714,7 +703,7 @@ impl PruningProofManager {
     }
 
     pub fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
-        let pp = self.pruning_store.read().pruning_point().unwrap();
+        let pp = self.pruning_point_store.read().pruning_point().unwrap();
         if let Some(cache) = self.cached_proof.read().clone() {
             if cache.pruning_point == pp {
                 return cache.data;
@@ -726,7 +715,7 @@ impl PruningProofManager {
     }
 
     pub fn get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
-        let pp = self.pruning_store.read().pruning_point().unwrap();
+        let pp = self.pruning_point_store.read().pruning_point().unwrap();
         if let Some(cache) = self.cached_anticone.read().clone() {
             if cache.pruning_point == pp {
                 return Ok(cache.data);

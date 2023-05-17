@@ -1,10 +1,10 @@
 pub mod ctl;
 pub mod factory;
+pub mod storage;
 pub mod test_consensus;
 
 use crate::{
     config::Config,
-    constants::store_names,
     errors::{BlockProcessResult, RuleError},
     model::{
         services::{
@@ -13,10 +13,9 @@ use crate::{
             statuses::MTStatusesService,
         },
         stores::{
-            acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
-            block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
+            acceptance_data::AcceptanceDataStoreReader,
+            block_transactions::BlockTransactionsStoreReader,
             block_window_cache::BlockWindowCacheStore,
-            daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
@@ -27,11 +26,9 @@ use crate::{
             relations::{DbRelationsStore, RelationsStoreReader},
             selected_chain::DbSelectedChainStore,
             statuses::{DbStatusesStore, StatusesStoreReader},
-            tips::{DbTipsStore, TipsStoreReader},
-            utxo_diffs::DbUtxoDiffsStore,
-            utxo_multisets::DbUtxoMultisetsStore,
-            utxo_set::{DbUtxoSetStore, UtxoSetStore, UtxoSetStoreReader},
-            virtual_state::{DbVirtualStateStore, VirtualStateStoreReader},
+            tips::TipsStoreReader,
+            utxo_set::{UtxoSetStore, UtxoSetStoreReader},
+            virtual_state::VirtualStateStoreReader,
             DB,
         },
     },
@@ -46,8 +43,8 @@ use crate::{
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
         mass::MassCalculator, parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningManager,
-        pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations, sync::SyncManager,
-        transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
+        pruning_proof::PruningProofManager, sync::SyncManager, transaction_validator::TransactionValidator,
+        traversal_manager::DagTraversalManager,
     },
 };
 use kaspa_consensus_core::{
@@ -81,33 +78,20 @@ use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
-use parking_lot::RwLock;
+
+use std::thread::{self, JoinHandle};
 use std::{
-    cmp::max,
     future::Future,
     iter::once,
+    ops::Deref,
     sync::{atomic::Ordering, Arc},
-};
-use std::{
-    ops::DerefMut,
-    thread::{self, JoinHandle},
 };
 use tokio::sync::{oneshot, RwLock as TokioRwLock};
 
+use self::storage::ConsensusStorage;
+
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
-
-/// Used in order to group virtual related stores under a single lock
-pub struct VirtualStores {
-    pub state: DbVirtualStateStore,
-    pub utxo_set: DbUtxoSetStore,
-}
-
-impl VirtualStores {
-    pub fn new(state: DbVirtualStateStore, utxo_set: DbUtxoSetStore) -> Self {
-        Self { state, utxo_set }
-    }
-}
 
 pub struct Consensus {
     // DB
@@ -122,23 +106,8 @@ pub struct Consensus {
     pub virtual_processor: Arc<VirtualStateProcessor>,
     pub pruning_processor: Arc<PruningProcessor>,
 
-    // Stores
-    statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
-    reachability_store: Arc<RwLock<DbReachabilityStore>>,
-    pruning_store: Arc<RwLock<DbPruningStore>>,
-    headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
-    body_tips_store: Arc<RwLock<DbTipsStore>>,
-    pub headers_store: Arc<DbHeadersStore>,
-    pub block_transactions_store: Arc<DbBlockTransactionsStore>,
-    pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
-    pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
-    pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
-    acceptance_data_store: Arc<DbAcceptanceDataStore>,
-    // TODO: remove all pub from stores and processors when StoreManager is implemented
-
-    // Append-only stores
-    pub ghostdag_store: Arc<DbGhostdagStore>,
+    // Storage
+    pub(super) storage: Arc<ConsensusStorage>,
 
     // Services and managers
     statuses_service: MTStatusesService<DbStatusesStore>,
@@ -157,7 +126,7 @@ pub struct Consensus {
     >,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-    pub(super) pruning_proof_manager: PruningProofManager,
+    pub(super) pruning_proof_manager: Arc<PruningProofManager>,
     sync_manager: SyncManager<
         MTRelationsService<DbRelationsStore>,
         DbReachabilityStore,
@@ -183,6 +152,14 @@ pub struct Consensus {
     config: Arc<Config>,
 }
 
+impl Deref for Consensus {
+    type Target = ConsensusStorage;
+
+    fn deref(&self) -> &Self::Target {
+        &self.storage
+    }
+}
+
 impl Consensus {
     pub fn new(
         db: Arc<DB>,
@@ -193,91 +170,38 @@ impl Consensus {
     ) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
+
         //
-        // Stores
+        // Storage layer
         //
-
-        let pruning_size_for_caches = params.pruning_depth;
-        let pruning_plus_finality_size_for_caches = params.pruning_depth + params.finality_depth;
-
-        // Headers
-        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
-        let relations_stores = Arc::new(RwLock::new(
-            (0..=params.max_block_level)
-                .map(|level| {
-                    let cache_size =
-                        max(pruning_plus_finality_size_for_caches.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
-                    DbRelationsStore::new(db.clone(), level, cache_size)
-                })
-                .collect_vec(),
-        ));
-        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), pruning_plus_finality_size_for_caches)));
-        // Reachability relations are only read during pruning, so finality depth is sufficient for cache size
-        let reachability_relations =
-            Arc::new(RwLock::new(DbRelationsStore::with_prefix(db.clone(), b"reachability-", config.finality_depth)));
-        let ghostdag_stores = (0..=params.max_block_level)
-            .map(|level| {
-                let cache_size =
-                    max(pruning_plus_finality_size_for_caches.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
-                Arc::new(DbGhostdagStore::new(db.clone(), level, cache_size))
-            })
-            .collect_vec();
-        let ghostdag_store = ghostdag_stores[0].clone();
-        let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), pruning_size_for_caches));
-        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), perf_params.header_data_cache_size));
-        let depth_store = Arc::new(DbDepthStore::new(db.clone(), perf_params.header_data_cache_size));
-        let selected_chain_store = Arc::new(RwLock::new(DbSelectedChainStore::new(db.clone(), perf_params.header_data_cache_size)));
-        // Pruning
-        let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
-        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), 4));
-        let pruning_point_utxo_set_store =
-            Arc::new(RwLock::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::PRUNING_UTXO_SET)));
-
-        // Block data
-
-        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), perf_params.block_data_cache_size));
-        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), perf_params.block_data_cache_size));
-        let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), perf_params.block_data_cache_size));
-        let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), perf_params.block_data_cache_size));
-        // Tips
-        let headers_selected_tip_store = Arc::new(RwLock::new(DbHeadersSelectedTipStore::new(db.clone())));
-        let body_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone())));
-        // Block windows
-        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(perf_params.block_window_cache_size));
-        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(perf_params.block_window_cache_size));
-        // Virtual stores
-        let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(
-            DbVirtualStateStore::new(db.clone()),
-            DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::VIRTUAL_UTXO_SET),
-        )));
+        let storage = ConsensusStorage::new(db.clone(), config.clone());
 
         //
         // Services and managers
         //
-
-        let statuses_service = MTStatusesService::new(statuses_store.clone());
+        let statuses_service = MTStatusesService::new(storage.statuses_store.clone());
         let relations_services =
-            (0..=params.max_block_level).map(|level| MTRelationsService::new(relations_stores.clone(), level)).collect_vec();
+            (0..=params.max_block_level).map(|level| MTRelationsService::new(storage.relations_stores.clone(), level)).collect_vec();
         let relations_service = relations_services[0].clone();
-        let reachability_service = MTReachabilityService::new(reachability_store.clone());
+        let reachability_service = MTReachabilityService::new(storage.reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
             params.genesis.hash,
-            ghostdag_store.clone(),
+            storage.ghostdag_primary_store.clone(),
             relations_service.clone(),
-            block_window_cache_for_difficulty.clone(),
-            block_window_cache_for_past_median_time.clone(),
+            storage.block_window_cache_for_difficulty.clone(),
+            storage.block_window_cache_for_past_median_time.clone(),
             params.difficulty_window_size,
             (2 * params.timestamp_deviation_tolerance - 1) as usize, // TODO: incorporate target_time_per_block to this calculation
             reachability_service.clone(),
         );
         let past_median_time_manager = PastMedianTimeManager::new(
-            headers_store.clone(),
+            storage.headers_store.clone(),
             dag_traversal_manager.clone(),
             params.timestamp_deviation_tolerance as usize,
             params.genesis.timestamp,
         );
         let difficulty_manager = DifficultyManager::new(
-            headers_store.clone(),
+            storage.headers_store.clone(),
             params.genesis.bits,
             params.difficulty_window_size,
             params.target_time_per_block,
@@ -286,11 +210,12 @@ impl Consensus {
             params.merge_depth,
             params.finality_depth,
             params.genesis.hash,
-            depth_store.clone(),
+            storage.depth_store.clone(),
             reachability_service.clone(),
-            ghostdag_store.clone(),
+            storage.ghostdag_primary_store.clone(),
         );
-        let ghostdag_managers = ghostdag_stores
+        let ghostdag_managers = storage
+            .ghostdag_stores
             .iter()
             .cloned()
             .enumerate()
@@ -300,7 +225,7 @@ impl Consensus {
                     params.ghostdag_k,
                     ghostdag_store,
                     relations_services[level].clone(),
-                    headers_store.clone(),
+                    storage.headers_store.clone(),
                     reachability_service.clone(),
                 )
             })
@@ -332,18 +257,48 @@ impl Consensus {
             params.finality_depth,
             params.genesis.hash,
             reachability_service.clone(),
-            ghostdag_store.clone(),
-            headers_store.clone(),
-            past_pruning_points_store.clone(),
+            storage.ghostdag_primary_store.clone(),
+            storage.headers_store.clone(),
+            storage.past_pruning_points_store.clone(),
         );
 
         let parents_manager = ParentsManager::new(
             params.max_block_level,
             params.genesis.hash,
-            headers_store.clone(),
+            storage.headers_store.clone(),
             reachability_service.clone(),
             relations_service.clone(),
         );
+
+        let pruning_proof_manager = Arc::new(PruningProofManager::new(
+            db.clone(),
+            &storage,
+            parents_manager.clone(),
+            reachability_service.clone(),
+            ghostdag_managers.clone(),
+            dag_traversal_manager.clone(),
+            params.max_block_level,
+            params.genesis.hash,
+            params.pruning_proof_m,
+            params.anticone_finalization_depth(),
+            params.difficulty_window_size,
+            params.ghostdag_k,
+        ));
+
+        let sync_manager = SyncManager::new(
+            params.mergeset_size_limit as usize,
+            reachability_service.clone(),
+            dag_traversal_manager.clone(),
+            storage.ghostdag_primary_store.clone(),
+            storage.selected_chain_store.clone(),
+            storage.headers_selected_tip_store.clone(),
+            storage.pruning_point_store.clone(),
+            storage.statuses_store.clone(),
+        );
+
+        //
+        // Processor channels
+        //
 
         let (sender, receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
             unbounded_crossbeam();
@@ -389,19 +344,7 @@ impl Consensus {
             block_processors_pool.clone(),
             params,
             db.clone(),
-            relations_stores.clone(),
-            reachability_store.clone(),
-            reachability_relations.clone(),
-            ghostdag_stores.clone(),
-            headers_store.clone(),
-            daa_excluded_store.clone(),
-            statuses_store.clone(),
-            pruning_store.clone(),
-            depth_store.clone(),
-            headers_selected_tip_store.clone(),
-            selected_chain_store.clone(),
-            block_window_cache_for_difficulty,
-            block_window_cache_for_past_median_time,
+            &storage,
             reachability_service.clone(),
             past_median_time_manager.clone(),
             dag_traversal_manager.clone(),
@@ -409,7 +352,7 @@ impl Consensus {
             depth_manager.clone(),
             pruning_manager.clone(),
             parents_manager.clone(),
-            ghostdag_managers.clone(),
+            ghostdag_managers,
             counters.clone(),
         ));
 
@@ -418,11 +361,11 @@ impl Consensus {
             virtual_sender,
             block_processors_pool,
             db.clone(),
-            statuses_store.clone(),
-            ghostdag_store.clone(),
-            headers_store.clone(),
-            block_transactions_store.clone(),
-            body_tips_store.clone(),
+            storage.statuses_store.clone(),
+            storage.ghostdag_primary_store.clone(),
+            storage.headers_store.clone(),
+            storage.block_transactions_store.clone(),
+            storage.body_tips_store.clone(),
             reachability_service.clone(),
             coinbase_manager.clone(),
             mass_calculator,
@@ -441,19 +384,7 @@ impl Consensus {
             virtual_pool,
             params,
             db.clone(),
-            statuses_store.clone(),
-            ghostdag_store.clone(),
-            headers_store.clone(),
-            daa_excluded_store,
-            block_transactions_store.clone(),
-            pruning_store.clone(),
-            past_pruning_points_store.clone(),
-            body_tips_store.clone(),
-            utxo_diffs_store.clone(),
-            utxo_multisets_store,
-            acceptance_data_store.clone(),
-            virtual_stores.clone(),
-            pruning_point_utxo_set_store.clone(),
+            &storage,
             ghostdag_manager.clone(),
             reachability_service.clone(),
             relations_service.clone(),
@@ -463,7 +394,7 @@ impl Consensus {
             transaction_validator,
             past_median_time_manager.clone(),
             pruning_manager.clone(),
-            parents_manager.clone(),
+            parents_manager,
             depth_manager.clone(),
             notification_root.clone(),
             counters.clone(),
@@ -472,58 +403,11 @@ impl Consensus {
         let pruning_processor = Arc::new(PruningProcessor::new(
             pruning_receiver,
             db.clone(),
-            pruning_store.clone(),
-            past_pruning_points_store.clone(),
-            pruning_point_utxo_set_store.clone(),
-            utxo_diffs_store,
-            headers_store.clone(),
-            reachability_store.clone(),
-            reachability_relations.clone(),
+            &storage,
             pruning_manager.clone(),
             reachability_service.clone(),
             pruning_lock.clone(),
         ));
-
-        let pruning_proof_manager = PruningProofManager::new(
-            db.clone(),
-            headers_store.clone(),
-            reachability_store.clone(),
-            reachability_relations.clone(),
-            parents_manager,
-            reachability_service.clone(),
-            ghostdag_stores,
-            relations_stores.clone(),
-            pruning_store.clone(),
-            past_pruning_points_store.clone(),
-            virtual_stores.clone(),
-            body_tips_store.clone(),
-            headers_selected_tip_store.clone(),
-            depth_store,
-            selected_chain_store.clone(),
-            ghostdag_managers,
-            dag_traversal_manager.clone(),
-            params.max_block_level,
-            params.genesis.hash,
-            params.pruning_proof_m,
-            params.anticone_finalization_depth(),
-            params.difficulty_window_size,
-            params.ghostdag_k,
-        );
-
-        let sync_manager = SyncManager::new(
-            params.mergeset_size_limit as usize,
-            reachability_service.clone(),
-            dag_traversal_manager.clone(),
-            ghostdag_store.clone(),
-            selected_chain_store,
-            headers_selected_tip_store.clone(),
-            pruning_store.clone(),
-            statuses_store.clone(),
-        );
-
-        // Ensure that reachability store is initialized
-        reachability::init(reachability_store.write().deref_mut()).unwrap();
-        relations::init(reachability_relations.write().deref_mut());
 
         // Ensure the relations stores are initialized
         header_processor.init();
@@ -544,20 +428,7 @@ impl Consensus {
             body_processor,
             virtual_processor,
             pruning_processor,
-            statuses_store,
-            relations_stores,
-            reachability_store,
-            ghostdag_store,
-            pruning_store,
-            headers_selected_tip_store,
-            body_tips_store,
-            headers_store,
-            block_transactions_store,
-            pruning_point_utxo_set_store,
-            virtual_stores,
-            acceptance_data_store,
-            past_pruning_points_store,
-
+            storage,
             statuses_service,
             relations_service,
             reachability_service,
@@ -678,7 +549,7 @@ impl ConsensusApi for Consensus {
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
         // TODO: consider saving the merge depth root as part of virtual state
         // TODO: unwrap on pruning_point and virtual state reads when staging consensus is implemented
-        let Some(pruning_point) = self.pruning_store.read().pruning_point().unwrap_option() else { return None; };
+        let Some(pruning_point) = self.pruning_point_store.read().pruning_point().unwrap_option() else { return None; };
         let Some(virtual_state) = self.virtual_processor.virtual_stores.read().state.get().unwrap_option() else { return None; };
         let virtual_ghostdag_data = &virtual_state.ghostdag_data;
         let root = self.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
@@ -742,7 +613,7 @@ impl ConsensusApi for Consensus {
         chunk_size: usize,
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
-        if self.pruning_store.read().pruning_point().unwrap() != expected_pruning_point {
+        if self.pruning_point_store.read().pruning_point().unwrap() != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
         let pruning_point_utxoset_read = self.pruning_point_utxo_set_store.read();
@@ -752,7 +623,7 @@ impl ConsensusApi for Consensus {
 
         // We recheck the expected pruning point in case it was switched just before the utxo set read.
         // NOTE: we rely on order of operations by pruning processor. See extended comment therein.
-        if self.pruning_store.read().pruning_point().unwrap() != expected_pruning_point {
+        if self.pruning_point_store.read().pruning_point().unwrap() != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
 
@@ -848,7 +719,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn pruning_point_headers(&self) -> Vec<Arc<Header>> {
-        let current_pp_info = self.pruning_store.read().get().unwrap();
+        let current_pp_info = self.pruning_point_store.read().get().unwrap();
         (0..current_pp_info.index)
             .map(|index| self.past_pruning_points_store.get(index).unwrap())
             .chain(once(current_pp_info.pruning_point))
@@ -890,7 +761,7 @@ impl ConsensusApi for Consensus {
             Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
             _ => {}
         };
-        Ok((&*self.ghostdag_store.get_data(hash).unwrap()).into())
+        Ok((&*self.ghostdag_primary_store.get_data(hash).unwrap()).into())
     }
 
     fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
@@ -931,14 +802,14 @@ impl ConsensusApi for Consensus {
     }
 
     fn pruning_point(&self) -> Option<Hash> {
-        self.pruning_store.read().pruning_point().unwrap_option()
+        self.pruning_point_store.read().pruning_point().unwrap_option()
     }
 
     fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(hash)?;
         Ok(self
             .dag_traversal_manager
-            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), self.config.difficulty_window_size)
+            .block_window(&self.ghostdag_primary_store.get_data(hash).unwrap(), self.config.difficulty_window_size)
             .unwrap()
             .into_iter()
             .map(|block| block.0.hash)
@@ -959,7 +830,7 @@ impl ConsensusApi for Consensus {
         // current. The syncee should validate it got all of the associated data.
         for _ in 0..=self.config.params.ghostdag_k {
             hashes.push(current);
-            current = self.ghostdag_store.get_selected_parent(current).unwrap();
+            current = self.ghostdag_primary_store.get_selected_parent(current).unwrap();
         }
         Ok(hashes)
     }
@@ -967,7 +838,7 @@ impl ConsensusApi for Consensus {
     fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(high)?;
 
-        let pp_read_guard = self.pruning_store.read();
+        let pp_read_guard = self.pruning_point_store.read();
         let pp = pp_read_guard.pruning_point().unwrap();
         Ok(self.sync_manager.create_block_locator_from_pruning_point(high, pp, Some(limit))?)
     }
@@ -981,7 +852,7 @@ impl ConsensusApi for Consensus {
         let high_ghostdag_data: Refs<_> = match start_hash {
             Some(hash) => {
                 self.validate_block_exists(hash)?;
-                self.ghostdag_store.get_data(hash).unwrap().into()
+                self.ghostdag_primary_store.get_data(hash).unwrap().into()
             }
             None => virtual_ghostdag_data.as_ref().unwrap().into(),
         };

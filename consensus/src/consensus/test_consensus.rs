@@ -25,6 +25,7 @@ use crate::{
             pruning::PruningStoreReader,
             reachability::DbReachabilityStore,
             relations::DbRelationsStore,
+            virtual_state::VirtualStores,
             DB,
         },
     },
@@ -34,7 +35,7 @@ use crate::{
     test_helpers::header_from_precomputed_hash,
 };
 
-use super::{Consensus, DbGhostdagManager, VirtualStores};
+use super::{Consensus, DbGhostdagManager};
 
 pub struct TestConsensus {
     consensus: Arc<Consensus>,
@@ -94,7 +95,7 @@ impl TestConsensus {
         header.pruning_point = self
             .consensus
             .pruning_manager
-            .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_store.read().get().unwrap());
+            .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_point_store.read().get().unwrap());
         let window = self.consensus.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size).unwrap();
         let (daa_score, _) = self
             .consensus
@@ -151,7 +152,7 @@ impl TestConsensus {
     }
 
     pub fn ghostdag_store(&self) -> &Arc<DbGhostdagStore> {
-        &self.consensus.ghostdag_store
+        &self.consensus.ghostdag_primary_store
     }
 
     pub fn reachability_store(&self) -> &Arc<RwLock<DbReachabilityStore>> {

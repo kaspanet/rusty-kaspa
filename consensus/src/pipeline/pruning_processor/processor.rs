@@ -1,17 +1,17 @@
 //! TODO: module comment about locking safety and consistency of various pruning stores
 
 use crate::{
+    consensus::storage::ConsensusStorage,
     model::{
         services::reachability::MTReachabilityService,
         stores::{
             ghostdag::{CompactGhostdagData, DbGhostdagStore},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
-            pruning::{DbPruningStore, PruningStore, PruningStoreReader},
+            pruning::{PruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
-            relations::DbRelationsStore,
-            utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
-            utxo_set::{DbUtxoSetStore, UtxoSetStore},
+            utxo_diffs::UtxoDiffsStoreReader,
+            utxo_set::UtxoSetStore,
         },
     },
     processes::pruning::PruningManager,
@@ -22,9 +22,9 @@ use kaspa_core::info;
 use kaspa_database::prelude::DB;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use parking_lot::{RwLock, RwLockUpgradableReadGuard};
+use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 use tokio::sync::RwLock as TokioRwLock;
 
 pub enum PruningProcessingMessage {
@@ -40,16 +40,8 @@ pub struct PruningProcessor {
     // DB
     db: Arc<DB>,
 
-    // Stores
-    pruning_store: Arc<RwLock<DbPruningStore>>,
-    past_pruning_points_store: Arc<DbPastPruningPointsStore>,
-    pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
-    utxo_diffs_store: Arc<DbUtxoDiffsStore>,
-    headers_store: Arc<DbHeadersStore>,
-
-    // Reachability stores
-    reachability_store: Arc<RwLock<DbReachabilityStore>>,
-    reachability_relations: Arc<RwLock<DbRelationsStore>>,
+    // Storage
+    storage: Arc<ConsensusStorage>,
 
     // Managers and Services
     pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
@@ -59,36 +51,25 @@ pub struct PruningProcessor {
     pruning_lock: Arc<TokioRwLock<()>>,
 }
 
+impl Deref for PruningProcessor {
+    type Target = ConsensusStorage;
+
+    fn deref(&self) -> &Self::Target {
+        &self.storage
+    }
+}
+
 impl PruningProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: CrossbeamReceiver<PruningProcessingMessage>,
         db: Arc<DB>,
-        pruning_store: Arc<RwLock<DbPruningStore>>,
-        past_pruning_points_store: Arc<DbPastPruningPointsStore>,
-        pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
-        utxo_diffs_store: Arc<DbUtxoDiffsStore>,
-        headers_store: Arc<DbHeadersStore>,
-        reachability_store: Arc<RwLock<DbReachabilityStore>>,
-        reachability_relations: Arc<RwLock<DbRelationsStore>>,
+        storage: &Arc<ConsensusStorage>,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         pruning_lock: Arc<TokioRwLock<()>>,
     ) -> Self {
-        Self {
-            receiver,
-            db,
-            pruning_store,
-            past_pruning_points_store,
-            pruning_point_utxo_set_store,
-            utxo_diffs_store,
-            headers_store,
-            reachability_store,
-            reachability_relations,
-            pruning_manager,
-            reachability_service,
-            pruning_lock,
-        }
+        Self { receiver, db, storage: storage.clone(), pruning_manager, reachability_service, pruning_lock }
     }
 
     pub fn worker(self: &Arc<Self>) {
@@ -115,7 +96,7 @@ impl PruningProcessor {
     }
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
-        let pruning_read_guard = self.pruning_store.upgradable_read();
+        let pruning_read_guard = self.pruning_point_store.upgradable_read();
         let current_pruning_info = pruning_read_guard.get().unwrap();
         let (new_pruning_points, new_candidate) = self.pruning_manager.next_pruning_points_and_candidate_by_ghostdag_data(
             sink_ghostdag_data,
@@ -150,6 +131,8 @@ impl PruningProcessor {
 
             // TODO: remove assertion when we stabilize
             self.assert_utxo_commitment(new_pruning_point);
+
+            let _prune_guard = self.pruning_lock.blocking_write();
         } else if new_candidate != current_pruning_info.candidate {
             let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
             write_guard.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();

@@ -1,5 +1,5 @@
 use crate::{
-    consensus::{DbGhostdagManager, VirtualStores},
+    consensus::{storage::ConsensusStorage, DbGhostdagManager},
     constants::BLOCK_VERSION,
     errors::RuleError,
     model::{
@@ -24,7 +24,7 @@ use crate::{
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
             utxo_set::DbUtxoSetStore,
-            virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader},
+            virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader, VirtualStores},
             DB,
         },
     },
@@ -109,11 +109,11 @@ pub struct VirtualStateProcessor {
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) ghostdag_primary_store: Arc<DbGhostdagStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
-    pub(super) daa_store: Arc<DbDaaStore>,
+    pub(super) daa_excluded_store: Arc<DbDaaStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
-    pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
+    pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
 
@@ -160,22 +160,7 @@ impl VirtualStateProcessor {
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         db: Arc<DB>,
-        // Stores
-        statuses_store: Arc<RwLock<DbStatusesStore>>,
-        ghostdag_store: Arc<DbGhostdagStore>,
-        headers_store: Arc<DbHeadersStore>,
-        daa_store: Arc<DbDaaStore>,
-        block_transactions_store: Arc<DbBlockTransactionsStore>,
-        pruning_store: Arc<RwLock<DbPruningStore>>,
-        past_pruning_points_store: Arc<DbPastPruningPointsStore>,
-        body_tips_store: Arc<RwLock<DbTipsStore>>,
-        // Utxo-related stores
-        utxo_diffs_store: Arc<DbUtxoDiffsStore>,
-        utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
-        acceptance_data_store: Arc<DbAcceptanceDataStore>,
-        // Virtual-related stores
-        virtual_stores: Arc<RwLock<VirtualStores>>,
-        pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
+        storage: &Arc<ConsensusStorage>,
         // Managers
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -215,19 +200,19 @@ impl VirtualStateProcessor {
             pruning_depth: params.pruning_depth,
 
             db,
-            statuses_store,
-            headers_store,
-            ghostdag_store,
-            daa_store,
-            block_transactions_store,
-            pruning_store,
-            past_pruning_points_store,
-            body_tips_store,
-            utxo_diffs_store,
-            utxo_multisets_store,
-            acceptance_data_store,
-            virtual_stores,
-            pruning_point_utxo_set_store,
+            statuses_store: storage.statuses_store.clone(),
+            headers_store: storage.headers_store.clone(),
+            ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
+            daa_excluded_store: storage.daa_excluded_store.clone(),
+            block_transactions_store: storage.block_transactions_store.clone(),
+            pruning_point_store: storage.pruning_point_store.clone(),
+            past_pruning_points_store: storage.past_pruning_points_store.clone(),
+            body_tips_store: storage.body_tips_store.clone(),
+            utxo_diffs_store: storage.utxo_diffs_store.clone(),
+            utxo_multisets_store: storage.utxo_multisets_store.clone(),
+            acceptance_data_store: storage.acceptance_data_store.clone(),
+            virtual_stores: storage.virtual_stores.clone(),
+            pruning_point_utxo_set_store: storage.pruning_point_utxo_set_store.clone(),
             ghostdag_manager,
             reachability_service,
             relations_service,
@@ -276,7 +261,7 @@ impl VirtualStateProcessor {
     }
 
     fn resolve_virtual(self: &Arc<Self>) {
-        let pruning_point = self.pruning_store.read().pruning_point().unwrap();
+        let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
         let virtual_read = self.virtual_stores.upgradable_read();
         let prev_state = virtual_read.state.get().unwrap();
         let finality_point = self.virtual_finality_point(&prev_state.ghostdag_data, pruning_point);
@@ -301,7 +286,7 @@ impl VirtualStateProcessor {
             .expect("all possible rule errors are unexpected here");
 
         // Update the pruning processor about the virtual state change
-        let sink_ghostdag_data = self.ghostdag_store.get_compact_data(new_sink).unwrap();
+        let sink_ghostdag_data = self.ghostdag_primary_store.get_compact_data(new_sink).unwrap();
         // Empty the channel before sending the new message. If pruning processor is busy, this step makes sure
         // the internal channel does not grow with no need (since we only care about the most recent message)
         let _consume = self.pruning_receiver.try_iter().count();
@@ -394,7 +379,7 @@ impl VirtualStateProcessor {
                     }
 
                     let header = self.headers_store.get_header(current).unwrap();
-                    let mergeset_data = self.ghostdag_store.get_data(current).unwrap();
+                    let mergeset_data = self.ghostdag_primary_store.get_data(current).unwrap();
                     let pov_daa_score = header.daa_score;
 
                     let selected_parent_multiset_hash = self.utxo_multisets_store.get(selected_parent).unwrap();
@@ -525,7 +510,7 @@ impl VirtualStateProcessor {
 
         let mut heap = tips
             .into_iter()
-            .map(|block| SortableBlock { hash: block, blue_work: self.ghostdag_store.get_blue_work(block).unwrap() })
+            .map(|block| SortableBlock { hash: block, blue_work: self.ghostdag_primary_store.get_blue_work(block).unwrap() })
             .collect::<BinaryHeap<_>>();
 
         // The initial diff point is the previous sink
@@ -551,7 +536,7 @@ impl VirtualStateProcessor {
             }
             for parent in self.relations_service.get_parents(candidate).unwrap().iter().copied() {
                 if !self.reachability_service.is_dag_ancestor_of_any(parent, &mut heap.iter().map(|sb| sb.hash)) {
-                    heap.push(SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() });
+                    heap.push(SortableBlock { hash: parent, blue_work: self.ghostdag_primary_store.get_blue_work(parent).unwrap() });
                 }
             }
         }
@@ -728,7 +713,7 @@ impl VirtualStateProcessor {
         // At this point we can safely drop the read lock
         drop(virtual_read);
 
-        let pruning_info = self.pruning_store.read().get().unwrap();
+        let pruning_info = self.pruning_point_store.read().get().unwrap();
         let header_pruning_point =
             self.pruning_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);
         let coinbase = self
@@ -768,7 +753,7 @@ impl VirtualStateProcessor {
     }
 
     pub fn init(self: &Arc<Self>) {
-        let pp_read_guard = self.pruning_store.upgradable_read();
+        let pp_read_guard = self.pruning_point_store.upgradable_read();
 
         // Ensure that some pruning point is registered
         if pp_read_guard.pruning_point().unwrap_option().is_none() {
@@ -785,7 +770,7 @@ impl VirtualStateProcessor {
             .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
             .unwrap();
         self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_or_exists();
-        self.pruning_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
+        self.pruning_point_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
 
         // Write the UTXO state of genesis
         self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default());

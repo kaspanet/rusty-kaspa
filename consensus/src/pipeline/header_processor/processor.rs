@@ -1,4 +1,5 @@
 use crate::{
+    consensus::storage::ConsensusStorage,
     errors::{BlockProcessResult, RuleError},
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
@@ -130,13 +131,13 @@ pub struct HeaderProcessor {
     // Stores
     relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
-    reachability_relations: Arc<RwLock<DbRelationsStore>>,
+    reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
+    pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
     pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
-    pub(super) daa_store: Arc<DbDaaStore>,
+    pub(super) daa_excluded_store: Arc<DbDaaStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
@@ -181,19 +182,7 @@ impl HeaderProcessor {
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         db: Arc<DB>,
-        relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
-        reachability_store: Arc<RwLock<DbReachabilityStore>>,
-        reachability_relations: Arc<RwLock<DbRelationsStore>>,
-        ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
-        headers_store: Arc<DbHeadersStore>,
-        daa_store: Arc<DbDaaStore>,
-        statuses_store: Arc<RwLock<DbStatusesStore>>,
-        pruning_store: Arc<RwLock<DbPruningStore>>,
-        depth_store: Arc<DbDepthStore>,
-        headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
-        selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
-        block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
-        block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
+        storage: &Arc<ConsensusStorage>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         past_median_time_manager: PastMedianTimeManager<
             DbHeadersStore,
@@ -229,19 +218,19 @@ impl HeaderProcessor {
             genesis: params.genesis.clone(),
             difficulty_window_size: params.difficulty_window_size,
             db,
-            relations_stores,
-            reachability_store,
-            reachability_relations,
-            ghostdag_stores,
-            statuses_store,
-            pruning_store,
-            daa_store,
-            headers_store,
-            depth_store,
-            headers_selected_tip_store,
-            selected_chain_store,
-            block_window_cache_for_difficulty,
-            block_window_cache_for_past_median_time,
+            relations_stores: storage.relations_stores.clone(),
+            reachability_store: storage.reachability_store.clone(),
+            reachability_relations_store: storage.reachability_relations_store.clone(),
+            ghostdag_stores: storage.ghostdag_stores.clone(),
+            statuses_store: storage.statuses_store.clone(),
+            pruning_point_store: storage.pruning_point_store.clone(),
+            daa_excluded_store: storage.daa_excluded_store.clone(),
+            headers_store: storage.headers_store.clone(),
+            depth_store: storage.depth_store.clone(),
+            headers_selected_tip_store: storage.headers_selected_tip_store.clone(),
+            selected_chain_store: storage.selected_chain_store.clone(),
+            block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
+            block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
             ghostdag_managers,
             dag_traversal_manager,
             difficulty_manager,
@@ -361,7 +350,7 @@ impl HeaderProcessor {
             header.hash,
             header.clone(),
             block_level,
-            self.pruning_store.read().get().unwrap(),
+            self.pruning_point_store.read().get().unwrap(),
             self.collect_known_parents(header, block_level),
         )
     }
@@ -420,7 +409,7 @@ impl HeaderProcessor {
             self.block_window_cache_for_past_median_time.insert(ctx.hash, Arc::new(window));
         }
 
-        self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa.unwrap())).unwrap();
+        self.daa_excluded_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa.unwrap())).unwrap();
         self.headers_store.insert_batch(&mut batch, ctx.hash, ctx.header, ctx.block_level).unwrap();
         self.depth_store.insert_batch(&mut batch, ctx.hash, ctx.merge_depth_root.unwrap(), ctx.finality_point.unwrap()).unwrap();
 
@@ -466,7 +455,7 @@ impl HeaderProcessor {
         });
 
         // Write reachability relations. These relations are only needed during header pruning
-        let mut reachability_relations_write = self.reachability_relations.write();
+        let mut reachability_relations_write = self.reachability_relations_store.write();
         reachability_relations_write.insert_batch(&mut batch, ctx.hash, reachability_parents).unwrap();
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
