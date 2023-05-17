@@ -48,7 +48,7 @@ impl TestConsensus {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
         Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), notification_root, counters)),
+            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
             params: config.params.clone(),
             db_lifetime: Default::default(),
         }
@@ -60,7 +60,7 @@ impl TestConsensus {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
         Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), notification_root, counters)),
+            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
             params: config.params.clone(),
             db_lifetime,
         }
@@ -73,7 +73,7 @@ impl TestConsensus {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
         Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), notification_root, counters)),
+            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
             params: config.params.clone(),
             db_lifetime,
         }

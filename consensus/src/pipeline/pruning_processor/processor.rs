@@ -25,6 +25,7 @@ use kaspa_muhash::MuHash;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rocksdb::WriteBatch;
 use std::sync::Arc;
+use tokio::sync::RwLock as TokioRwLock;
 
 pub enum PruningProcessingMessage {
     Exit,
@@ -53,6 +54,9 @@ pub struct PruningProcessor {
     // Managers and Services
     pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
+
+    // Pruning lock
+    pruning_lock: Arc<TokioRwLock<()>>,
 }
 
 impl PruningProcessor {
@@ -69,6 +73,7 @@ impl PruningProcessor {
         reachability_relations: Arc<RwLock<DbRelationsStore>>,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
+        pruning_lock: Arc<TokioRwLock<()>>,
     ) -> Self {
         Self {
             receiver,
@@ -82,6 +87,7 @@ impl PruningProcessor {
             reachability_relations,
             pruning_manager,
             reachability_service,
+            pruning_lock,
         }
     }
 

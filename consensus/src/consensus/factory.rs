@@ -190,9 +190,15 @@ impl ConsensusFactory for Factory {
         };
         let dir = self.db_root_dir.join(entry.directory_name.clone());
         let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
-        // TODO: pass lock to consensus
+
         let session_lock = Arc::new(TokioRwLock::new(()));
-        let consensus = Arc::new(Consensus::new(db.clone(), Arc::new(config), self.notification_root.clone(), self.counters.clone()));
+        let consensus = Arc::new(Consensus::new(
+            db.clone(),
+            Arc::new(config),
+            session_lock.clone(),
+            self.notification_root.clone(),
+            self.counters.clone(),
+        ));
 
         // We write the new active entry only once the instance was created successfully.
         // This way we can safely avoid processing genesis in future process runs
@@ -207,11 +213,12 @@ impl ConsensusFactory for Factory {
         let entry = self.management_store.write().new_staging_consensus_entry().unwrap();
         let dir = self.db_root_dir.join(entry.directory_name);
         let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
-        // TODO: pass lock to consensus
+
         let session_lock = Arc::new(TokioRwLock::new(()));
         let consensus = Arc::new(Consensus::new(
             db.clone(),
             Arc::new(self.config.to_builder().skip_adding_genesis().build()),
+            session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
         ));

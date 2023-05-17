@@ -91,7 +91,7 @@ use std::{
     ops::DerefMut,
     thread::{self, JoinHandle},
 };
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, RwLock as TokioRwLock};
 
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
@@ -169,6 +169,9 @@ pub struct Consensus {
     >,
     depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
+    // Pruning lock
+    pruning_lock: Arc<TokioRwLock<()>>,
+
     // Notification management
     notification_root: Arc<ConsensusNotificationRoot>,
 
@@ -183,6 +186,7 @@ impl Consensus {
     pub fn new(
         db: Arc<DB>,
         config: Arc<Config>,
+        pruning_lock: Arc<TokioRwLock<()>>,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
@@ -475,6 +479,7 @@ impl Consensus {
             reachability_relations.clone(),
             pruning_manager.clone(),
             reachability_service.clone(),
+            pruning_lock.clone(),
         ));
 
         let pruning_proof_manager = PruningProofManager::new(
@@ -563,6 +568,7 @@ impl Consensus {
             pruning_proof_manager,
             sync_manager,
             depth_manager,
+            pruning_lock,
             notification_root,
             counters,
             config,
