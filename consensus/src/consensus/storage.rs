@@ -48,7 +48,7 @@ pub struct ConsensusStorage {
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
     // Append-only stores
-    pub ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
+    pub ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
     pub ghostdag_primary_store: Arc<DbGhostdagStore>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
@@ -92,13 +92,15 @@ impl ConsensusStorage {
             store_names::REACHABILITY_RELATIONS_PREFIX,
             config.finality_depth,
         )));
-        let ghostdag_stores = (0..=params.max_block_level)
-            .map(|level| {
-                let cache_size =
-                    max(extended_pruning_size_for_caches.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
-                Arc::new(DbGhostdagStore::new(db.clone(), level, cache_size))
-            })
-            .collect_vec();
+        let ghostdag_stores = Arc::new(
+            (0..=params.max_block_level)
+                .map(|level| {
+                    let cache_size =
+                        max(extended_pruning_size_for_caches.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
+                    Arc::new(DbGhostdagStore::new(db.clone(), level, cache_size))
+                })
+                .collect_vec(),
+        );
         let ghostdag_primary_store = ghostdag_stores[0].clone();
         let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), pruning_size_for_caches));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), perf_params.header_data_cache_size));

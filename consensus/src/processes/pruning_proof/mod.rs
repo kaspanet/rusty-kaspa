@@ -76,7 +76,7 @@ pub struct PruningProofManager {
     reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
-    ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
+    ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
     relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     pruning_point_store: Arc<RwLock<DbPruningStore>>,
     past_pruning_points_store: Arc<DbPastPruningPointsStore>,
