@@ -17,7 +17,7 @@ use kaspa_consensus_core::{
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
-use kaspa_core::{info, trace};
+use kaspa_core::{debug, info, trace};
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
@@ -200,7 +200,7 @@ impl PruningProofManager {
         }
 
         proof[0].sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
-        self.populate_reachability(&proof);
+        self.populate_reachability_and_headers(&proof);
         for (level, headers) in proof.iter().enumerate() {
             trace!("Applying level {} in pruning point proof", level);
             self.ghostdag_stores[level].insert(ORIGIN, self.ghostdag_managers[level].origin_ghostdag_data()).unwrap();
@@ -258,9 +258,16 @@ impl PruningProofManager {
         self.db.write(batch).unwrap();
     }
 
-    pub fn populate_reachability(&self, proof: &PruningPointProof) {
-        let mut dag = BlockHashMap::new(); // TODO: Consider making a capacity estimation here
-        let mut up_heap = BinaryHeap::new();
+    fn estimate_proof_unique_size(&self, proof: &PruningPointProof) -> usize {
+        let approx_history_size = proof[0][0].daa_score;
+        let approx_unique_full_levels = f64::log2(approx_history_size as f64 / self.pruning_proof_m as f64).max(0f64) as usize;
+        proof.iter().flatten().count().min((approx_unique_full_levels + 1) * self.pruning_proof_m as usize)
+    }
+
+    pub fn populate_reachability_and_headers(&self, proof: &PruningPointProof) {
+        let capacity_estimate = self.estimate_proof_unique_size(proof);
+        let mut dag = BlockHashMap::with_capacity(capacity_estimate);
+        let mut up_heap = BinaryHeap::with_capacity(capacity_estimate);
         for header in proof.iter().flatten().cloned() {
             if let Vacant(e) = dag.entry(header.hash) {
                 let state = kaspa_pow::State::new(&header);
@@ -269,7 +276,11 @@ impl PruningProofManager {
                 let block_level = max(signed_block_level, 0) as BlockLevel;
                 self.headers_store.insert(header.hash, header.clone(), block_level).unwrap();
 
-                let mut parents = BlockHashSet::new(); // TODO: Consider making a capacity estimation here
+                let mut parents = BlockHashSet::with_capacity(header.direct_parents().len() * 2);
+                // We collect all available parent relations in order to maximize reachability information.
+                // By taking into account parents from all levels we insure that the induced DAG has valid
+                // reachability information for each level-specific sub-DAG -- hence a single reachability
+                // oracle can serve them all
                 for level in 0..=self.max_block_level {
                     for parent in self.parents_manager.parents_at_level(&header, level) {
                         parents.insert(*parent);
@@ -286,12 +297,16 @@ impl PruningProofManager {
             }
         }
 
+        debug!("Estimated proof size: {}, actual size: {}", capacity_estimate, dag.len());
+
         let mut reachability_relations_write = self.reachability_relations.write();
 
         for reverse_sortable_block in up_heap.into_sorted_iter() {
             // TODO: Convert to into_iter_sorted once it gets stable
             let hash = reverse_sortable_block.0.hash;
             let dag_entry = dag.get(&hash).unwrap();
+
+            // Filter only existing parents
             let parents_in_dag = BinaryHeap::from_iter(
                 dag_entry
                     .parents
@@ -301,6 +316,7 @@ impl PruningProofManager {
                     .map(|parent| SortableBlock { hash: parent, blue_work: dag.get(&parent).unwrap().header.blue_work }),
             );
 
+            // Find the maximal parent antichain from the possibly redundant set of existing parents
             let mut reachability_parents: Vec<SortableBlock> = Vec::new();
             for parent in parents_in_dag.into_sorted_iter() {
                 if self
@@ -409,15 +425,12 @@ impl PruningProofManager {
                     .filter(|parent| ghostdag_stores[level_idx].has(*parent).unwrap())
                     .collect_vec();
 
-                let parents: BlockHashes = if parents.is_empty() {
-                    if i != 0 {
-                        return Err(PruningImportError::PruningProofHeaderWithNoKnownParents(header.hash, level));
-                    }
-                    vec![ORIGIN]
-                } else {
-                    parents
+                // Only the first block at each level is allowed to have no known parents
+                if parents.is_empty() && i != 0 {
+                    return Err(PruningImportError::PruningProofHeaderWithNoKnownParents(header.hash, level));
                 }
-                .into();
+
+                let parents: BlockHashes = parents.push_if_empty(ORIGIN).into();
 
                 if relations_stores[level_idx].has(header.hash).unwrap() {
                     return Err(PruningImportError::PruningProofDuplicateHeaderAtLevel(header.hash, level));
