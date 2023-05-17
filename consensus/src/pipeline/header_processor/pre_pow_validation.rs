@@ -1,6 +1,7 @@
 use super::*;
 use crate::errors::{BlockProcessResult, RuleError};
 use crate::model::services::reachability::ReachabilityService;
+use crate::processes::window::WindowManager;
 use kaspa_consensus_core::header::Header;
 
 impl HeaderProcessor {
@@ -24,13 +25,8 @@ impl HeaderProcessor {
 
     fn check_difficulty_and_daa_score(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
         let ghostdag_data = ctx.ghostdag_data();
-        let window = self.dag_traversal_manager.block_window(ghostdag_data, self.difficulty_window_size)?;
-
-        let (daa_score, mergeset_non_daa) = self.difficulty_manager.calc_daa_score_and_non_daa_mergeset_blocks(
-            &window,
-            ghostdag_data,
-            self.ghostdag_stores[0].as_ref(),
-        );
+        let (window, daa_score, mergeset_non_daa) =
+            self.window_manager.block_window_with_daa_score_and_non_daa_mergeset(ghostdag_data)?;
 
         if daa_score != header.daa_score {
             return Err(RuleError::UnexpectedHeaderDaaScore(daa_score, header.daa_score));
@@ -38,7 +34,7 @@ impl HeaderProcessor {
 
         ctx.mergeset_non_daa = Some(mergeset_non_daa);
 
-        let expected_bits = self.difficulty_manager.calculate_difficulty_bits(&window);
+        let expected_bits = self.window_manager.calculate_difficulty_bits(&window);
         if header.bits != expected_bits {
             return Err(RuleError::UnexpectedDifficulty(header.bits, expected_bits));
         }

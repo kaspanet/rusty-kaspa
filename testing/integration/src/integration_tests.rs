@@ -18,6 +18,7 @@ use kaspa_consensus::params::{Params, DEVNET_PARAMS, DIFFICULTY_MAX, DIFFICULTY_
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
+use kaspa_consensus::processes::window::{WindowManager, WindowType};
 use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
@@ -351,8 +352,10 @@ async fn block_window_test() {
         // Submit to consensus
         consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
 
-        let window =
-            consensus.dag_traversal_manager().block_window(&consensus.ghostdag_store().get_data(block_id).unwrap(), 10).unwrap();
+        let window = consensus
+            .window_manager()
+            .block_window(&consensus.ghostdag_store().get_data(block_id).unwrap(), WindowType::VaryingWindow(10))
+            .unwrap();
 
         let window_hashes: Vec<String> = window
             .into_sorted_vec()
@@ -1252,7 +1255,7 @@ async fn difficulty_test() {
 
     async fn add_block_with_min_time(consensus: &TestConsensus, parents: Vec<Hash>) -> Header {
         let ghostdag_data = consensus.ghostdag_manager().ghostdag(&parents[..]);
-        let (pmt, _) = consensus.past_median_time_manager().calc_past_median_time(&ghostdag_data).unwrap();
+        let (pmt, _) = consensus.window_manager().calc_past_median_time(&ghostdag_data).unwrap();
         add_block(consensus, Some(pmt + 1), parents).await
     }
 

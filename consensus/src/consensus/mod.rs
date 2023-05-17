@@ -44,10 +44,20 @@ use crate::{
         ProcessingCounters,
     },
     processes::{
-        block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
-        mass::MassCalculator, parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningManager,
-        pruning_proof::PruningProofManager, reachability::inquirer as reachability, sync::SyncManager,
-        transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager,
+        block_depth::BlockDepthManager,
+        coinbase::CoinbaseManager,
+        difficulty::DifficultyManager,
+        ghostdag::protocol::GhostdagManager,
+        mass::MassCalculator,
+        parents_builder::ParentsManager,
+        past_median_time::PastMedianTimeManager,
+        pruning::PruningManager,
+        pruning_proof::PruningProofManager,
+        reachability::inquirer as reachability,
+        sync::SyncManager,
+        transaction_validator::TransactionValidator,
+        traversal_manager::DagTraversalManager,
+        window::{FullWindowManager, WindowManager, WindowType},
     },
 };
 use kaspa_consensus_core::{
@@ -143,17 +153,9 @@ pub struct Consensus {
     statuses_service: MTStatusesService<DbStatusesStore>,
     relations_service: MTRelationsService<DbRelationsStore>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
-    pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
-    pub(super) dag_traversal_manager:
-        DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
+    pub(super) window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
+    pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     pub(super) ghostdag_manager: DbGhostdagManager,
-    pub(super) past_median_time_manager: PastMedianTimeManager<
-        DbHeadersStore,
-        DbGhostdagStore,
-        BlockWindowCacheStore,
-        DbReachabilityStore,
-        MTRelationsService<DbRelationsStore>,
-    >,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) pruning_proof_manager: PruningProofManager,
@@ -165,7 +167,6 @@ pub struct Consensus {
         DbHeadersSelectedTipStore,
         DbPruningStore,
         DbStatusesStore,
-        BlockWindowCacheStore,
     >,
     depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
 
@@ -256,15 +257,10 @@ impl Consensus {
             params.genesis.hash,
             ghostdag_store.clone(),
             relations_service.clone(),
-            block_window_cache_for_difficulty.clone(),
-            block_window_cache_for_past_median_time.clone(),
-            params.difficulty_window_size,
-            params.past_median_time_window_size(),
             reachability_service.clone(),
         );
         let past_median_time_manager = PastMedianTimeManager::new(
             headers_store.clone(),
-            dag_traversal_manager.clone(),
             params.past_median_time_window_size(),
             params.past_median_time_sample_rate,
             params.genesis.timestamp,
@@ -275,6 +271,16 @@ impl Consensus {
             params.difficulty_sample_rate,
             params.difficulty_window_size,
             params.target_time_per_block,
+        );
+        let window_manager = FullWindowManager::new(
+            params.genesis.hash,
+            ghostdag_store.clone(),
+            block_window_cache_for_difficulty.clone(),
+            block_window_cache_for_past_median_time.clone(),
+            params.difficulty_window_size,
+            params.past_median_time_window_size(),
+            difficulty_manager,
+            past_median_time_manager,
         );
         let depth_manager = BlockDepthManager::new(
             params.merge_depth,
@@ -396,9 +402,8 @@ impl Consensus {
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             reachability_service.clone(),
-            past_median_time_manager.clone(),
             dag_traversal_manager.clone(),
-            difficulty_manager.clone(),
+            window_manager.clone(),
             depth_manager.clone(),
             pruning_manager.clone(),
             parents_manager.clone(),
@@ -420,7 +425,7 @@ impl Consensus {
             coinbase_manager.clone(),
             mass_calculator,
             transaction_validator.clone(),
-            past_median_time_manager.clone(),
+            window_manager.clone(),
             params.max_block_mass,
             params.genesis.clone(),
             notification_root.clone(),
@@ -450,10 +455,9 @@ impl Consensus {
             reachability_service.clone(),
             relations_service.clone(),
             dag_traversal_manager.clone(),
-            difficulty_manager.clone(),
+            window_manager.clone(),
             coinbase_manager.clone(),
             transaction_validator,
-            past_median_time_manager.clone(),
             pruning_manager.clone(),
             parents_manager.clone(),
             depth_manager.clone(),
@@ -490,11 +494,11 @@ impl Consensus {
             selected_chain_store.clone(),
             ghostdag_managers,
             dag_traversal_manager.clone(),
+            window_manager.clone(),
             params.max_block_level,
             params.genesis.hash,
             params.pruning_proof_m,
             params.anticone_finalization_depth(),
-            params.difficulty_window_size,
             params.ghostdag_k,
         );
 
@@ -548,10 +552,9 @@ impl Consensus {
             statuses_service,
             relations_service,
             reachability_service,
-            difficulty_manager,
             dag_traversal_manager,
+            window_manager,
             ghostdag_manager,
-            past_median_time_manager,
             coinbase_manager,
             pruning_manager,
             pruning_proof_manager,
@@ -923,8 +926,8 @@ impl ConsensusApi for Consensus {
     fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(hash)?;
         Ok(self
-            .dag_traversal_manager
-            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), self.config.difficulty_window_size)
+            .window_manager
+            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), WindowType::SampledDifficultyWindow)
             .unwrap()
             .into_iter()
             .map(|block| block.0.hash)
@@ -971,7 +974,7 @@ impl ConsensusApi for Consensus {
             }
             None => virtual_ghostdag_data.as_ref().unwrap().into(),
         };
-        let window = self.dag_traversal_manager.block_window(&high_ghostdag_data, window_size).unwrap();
-        Ok(self.difficulty_manager.estimate_network_hashes_per_second(&window)?)
+        let window = self.window_manager.block_window(&high_ghostdag_data, WindowType::VaryingWindow(window_size)).unwrap();
+        Ok(self.window_manager.estimate_network_hashes_per_second(&window)?)
     }
 }

@@ -1,5 +1,6 @@
 use std::{
     cmp::{max, Reverse},
+    collections::hash_map::Entry::Vacant,
     collections::BinaryHeap,
     ops::DerefMut,
     sync::Arc,
@@ -21,6 +22,7 @@ use kaspa_core::{info, trace};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
+use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 
@@ -47,12 +49,14 @@ use crate::{
             DB,
         },
     },
-    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability},
+    processes::{
+        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
+        parents_builder::ParentsManager,
+        reachability::inquirer as reachability,
+        traversal_manager::DagTraversalManager,
+        window::{FullWindowManager, WindowManager, WindowType},
+    },
 };
-use std::collections::hash_map::Entry::Vacant;
-
-use super::{ghostdag::protocol::GhostdagManager, parents_builder::ParentsManager, traversal_manager::DagTraversalManager};
-use kaspa_utils::binary_heap::BinaryHeapExtensions;
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -82,8 +86,8 @@ pub struct PruningProofManager {
     selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
     ghostdag_managers: Vec<DbGhostdagManager>,
-    traversal_manager:
-        DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
+    traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
+    window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
 
     cached_proof: RwLock<Option<CachedPruningPointData<PruningPointProof>>>,
     cached_anticone: RwLock<Option<CachedPruningPointData<PruningPointTrustedData>>>,
@@ -92,7 +96,6 @@ pub struct PruningProofManager {
     genesis_hash: Hash,
     pruning_proof_m: u64,
     anticone_finalization_depth: u64,
-    difficulty_adjustment_window_size: usize,
     ghostdag_k: KType,
 }
 
@@ -194,17 +197,12 @@ impl PruningProofManager {
         depth_store: Arc<DbDepthStore>,
         selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
         ghostdag_managers: Vec<DbGhostdagManager>,
-        traversal_manager: DagTraversalManager<
-            DbGhostdagStore,
-            BlockWindowCacheStore,
-            DbReachabilityStore,
-            MTRelationsService<DbRelationsStore>,
-        >,
+        traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
+        window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
         max_block_level: BlockLevel,
         genesis_hash: Hash,
         pruning_proof_m: u64,
         anticone_finalization_depth: u64,
-        difficulty_adjustment_window_size: usize,
         ghostdag_k: KType,
     ) -> Self {
         Self {
@@ -224,6 +222,7 @@ impl PruningProofManager {
             depth_store,
             ghostdag_managers,
             traversal_manager,
+            window_manager,
 
             cached_proof: RwLock::new(None),
             cached_anticone: RwLock::new(None),
@@ -232,7 +231,6 @@ impl PruningProofManager {
             genesis_hash,
             pruning_proof_m,
             anticone_finalization_depth,
-            difficulty_adjustment_window_size,
             ghostdag_k,
         }
     }
@@ -754,8 +752,8 @@ impl PruningProofManager {
 
         for anticone_block in anticone.iter().copied() {
             let window = self
-                .traversal_manager
-                .block_window(&self.ghostdag_stores[0].get_data(anticone_block).unwrap(), self.difficulty_adjustment_window_size)
+                .window_manager
+                .block_window(&self.ghostdag_stores[0].get_data(anticone_block).unwrap(), WindowType::FullDifficultyWindow)
                 .unwrap();
 
             for hash in window.into_iter().map(|block| block.0.hash) {

@@ -36,13 +36,12 @@ use crate::{
     processes::{
         block_depth::BlockDepthManager,
         coinbase::CoinbaseManager,
-        difficulty::DifficultyManager,
         ghostdag::ordering::SortableBlock,
         parents_builder::ParentsManager,
-        past_median_time::PastMedianTimeManager,
         pruning::PruningManager,
         transaction_validator::{errors::TxResult, TransactionValidator},
         traversal_manager::DagTraversalManager,
+        window::{FullWindowManager, WindowManager},
     },
 };
 use kaspa_consensus_core::{
@@ -128,18 +127,10 @@ pub struct VirtualStateProcessor {
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) relations_service: MTRelationsService<DbRelationsStore>,
-    pub(super) dag_traversal_manager:
-        DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-    pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
+    pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
+    pub(super) window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) past_median_time_manager: PastMedianTimeManager<
-        DbHeadersStore,
-        DbGhostdagStore,
-        BlockWindowCacheStore,
-        DbReachabilityStore,
-        MTRelationsService<DbRelationsStore>,
-    >,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
@@ -178,22 +169,10 @@ impl VirtualStateProcessor {
         ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         relations_service: MTRelationsService<DbRelationsStore>,
-        dag_traversal_manager: DagTraversalManager<
-            DbGhostdagStore,
-            BlockWindowCacheStore,
-            DbReachabilityStore,
-            MTRelationsService<DbRelationsStore>,
-        >,
-        difficulty_manager: DifficultyManager<DbHeadersStore>,
+        dag_traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
+        window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
         coinbase_manager: CoinbaseManager,
         transaction_validator: TransactionValidator,
-        past_median_time_manager: PastMedianTimeManager<
-            DbHeadersStore,
-            DbGhostdagStore,
-            BlockWindowCacheStore,
-            DbReachabilityStore,
-            MTRelationsService<DbRelationsStore>,
-        >,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
         parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
         depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
@@ -229,10 +208,9 @@ impl VirtualStateProcessor {
             reachability_service,
             relations_service,
             dag_traversal_manager,
-            difficulty_manager,
+            window_manager,
             coinbase_manager,
             transaction_validator,
-            past_median_time_manager,
             pruning_manager,
             parents_manager,
             depth_manager,
@@ -447,14 +425,10 @@ impl VirtualStateProcessor {
         let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset);
 
         // Calc virtual DAA score, difficulty bits and past median time
-        let window = self.dag_traversal_manager.block_window(&virtual_ghostdag_data, self.difficulty_window_size)?;
-        let (virtual_daa_score, mergeset_non_daa) = self.difficulty_manager.calc_daa_score_and_non_daa_mergeset_blocks(
-            &window,
-            &virtual_ghostdag_data,
-            self.ghostdag_store.deref(),
-        );
-        let virtual_bits = self.difficulty_manager.calculate_difficulty_bits(&window);
-        let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_ghostdag_data)?.0;
+        let (window, virtual_daa_score, mergeset_non_daa) =
+            self.window_manager.block_window_with_daa_score_and_non_daa_mergeset(&virtual_ghostdag_data)?;
+        let virtual_bits = self.window_manager.calculate_difficulty_bits(&window);
+        let virtual_past_median_time = self.window_manager.calc_past_median_time(&virtual_ghostdag_data)?.0;
 
         // Calc virtual UTXO state relative to selected parent
         self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);

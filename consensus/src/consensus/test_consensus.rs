@@ -12,6 +12,7 @@ use parking_lot::RwLock;
 use std::future::Future;
 use std::{sync::Arc, thread::JoinHandle};
 
+use crate::processes::window::{FullWindowManager, WindowManager};
 use crate::{
     config::Config,
     constants::TX_VERSION,
@@ -30,7 +31,7 @@ use crate::{
     },
     params::Params,
     pipeline::{body_processor::BlockBodyProcessor, virtual_processor::VirtualStateProcessor, ProcessingCounters},
-    processes::{past_median_time::PastMedianTimeManager, traversal_manager::DagTraversalManager},
+    processes::traversal_manager::DagTraversalManager,
     test_helpers::header_from_precomputed_hash,
 };
 
@@ -95,15 +96,11 @@ impl TestConsensus {
             .consensus
             .pruning_manager
             .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_store.read().get().unwrap());
-        let window = self.consensus.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size).unwrap();
-        let (daa_score, _) = self.consensus.difficulty_manager.calc_daa_score_and_non_daa_mergeset_blocks(
-            &window,
-            &ghostdag_data,
-            self.ghostdag_store().as_ref(),
-        );
-        header.bits = self.consensus.difficulty_manager.calculate_difficulty_bits(&window);
+        let (window, daa_score, _) =
+            self.consensus.window_manager.block_window_with_daa_score_and_non_daa_mergeset(&ghostdag_data).unwrap();
+        header.bits = self.consensus.window_manager.calculate_difficulty_bits(&window);
         header.daa_score = daa_score;
-        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(&ghostdag_data).unwrap().0 + 1;
+        header.timestamp = self.consensus.window_manager.calc_past_median_time(&ghostdag_data).unwrap().0 + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;
 
@@ -145,9 +142,13 @@ impl TestConsensus {
         self.consensus.shutdown(wait_handles)
     }
 
+    pub fn window_manager(&self) -> &FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore> {
+        &self.consensus.window_manager
+    }
+
     pub fn dag_traversal_manager(
         &self,
-    ) -> &DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>> {
+    ) -> &DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>> {
         &self.consensus.dag_traversal_manager
     }
 
@@ -181,18 +182,6 @@ impl TestConsensus {
 
     pub fn virtual_processor(&self) -> &Arc<VirtualStateProcessor> {
         &self.consensus.virtual_processor
-    }
-
-    pub fn past_median_time_manager(
-        &self,
-    ) -> &PastMedianTimeManager<
-        DbHeadersStore,
-        DbGhostdagStore,
-        BlockWindowCacheStore,
-        DbReachabilityStore,
-        MTRelationsService<DbRelationsStore>,
-    > {
-        &self.consensus.past_median_time_manager
     }
 
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {

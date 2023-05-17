@@ -11,3 +11,4 @@ pub mod reachability;
 pub mod sync;
 pub mod transaction_validator;
 pub mod traversal_manager;
+pub mod window;

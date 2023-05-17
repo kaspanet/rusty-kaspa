@@ -1,14 +1,13 @@
 use crate::{
     errors::{BlockProcessResult, RuleError},
     model::{
-        services::{reachability::MTReachabilityService, relations::MTRelationsService},
+        services::reachability::MTReachabilityService,
         stores::{
             block_transactions::DbBlockTransactionsStore,
             block_window_cache::BlockWindowCacheStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
-            relations::DbRelationsStore,
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::DbTipsStore,
             DB,
@@ -19,8 +18,7 @@ use crate::{
         ProcessingCounters,
     },
     processes::{
-        coinbase::CoinbaseManager, mass::MassCalculator, past_median_time::PastMedianTimeManager,
-        transaction_validator::TransactionValidator,
+        coinbase::CoinbaseManager, mass::MassCalculator, transaction_validator::TransactionValidator, window::FullWindowManager,
     },
 };
 use crossbeam_channel::{Receiver, Sender};
@@ -68,13 +66,7 @@ pub struct BlockBodyProcessor {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) past_median_time_manager: PastMedianTimeManager<
-        DbHeadersStore,
-        DbGhostdagStore,
-        BlockWindowCacheStore,
-        DbReachabilityStore,
-        MTRelationsService<DbRelationsStore>,
-    >,
+    pub(super) window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -101,13 +93,7 @@ impl BlockBodyProcessor {
         coinbase_manager: CoinbaseManager,
         mass_calculator: MassCalculator,
         transaction_validator: TransactionValidator,
-        past_median_time_manager: PastMedianTimeManager<
-            DbHeadersStore,
-            DbGhostdagStore,
-            BlockWindowCacheStore,
-            DbReachabilityStore,
-            MTRelationsService<DbRelationsStore>,
-        >,
+        window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
         max_block_mass: u64,
         genesis: GenesisBlock,
         notification_root: Arc<ConsensusNotificationRoot>,
@@ -127,7 +113,7 @@ impl BlockBodyProcessor {
             coinbase_manager,
             mass_calculator,
             transaction_validator,
-            past_median_time_manager,
+            window_manager,
             max_block_mass,
             genesis,
             task_manager: BlockTaskDependencyManager::new(),
