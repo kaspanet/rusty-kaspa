@@ -154,8 +154,19 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
 
     #[inline]
     #[must_use]
-    fn difficulty_full_window_size(&self) -> u64 {
+    pub fn difficulty_full_window_size(&self) -> u64 {
         self.difficulty_adjustment_window_size as u64 * self.difficulty_sample_rate
+    }
+
+    /// Returns the DAA window lowest accepted blue score
+    #[inline]
+    #[must_use]
+    pub fn lowest_daa_blue_score(&self, ghostdag_data: &GhostdagData) -> u64 {
+        if ghostdag_data.blue_score > self.difficulty_full_window_size() {
+            ghostdag_data.blue_score - self.difficulty_full_window_size()
+        } else {
+            0
+        }
     }
 
     pub fn calc_daa_score_and_non_daa_mergeset_blocks<'a>(
@@ -163,15 +174,10 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
         ghostdag_data: &GhostdagData,
         store: &'a (impl GhostdagStoreReader + ?Sized),
     ) -> (u64, BlockHashSet) {
-        // Define the DAA window lowest accepted blue score
-        let lowest_blue_score = if ghostdag_data.blue_score > self.difficulty_full_window_size() {
-            ghostdag_data.blue_score - self.difficulty_full_window_size()
-        } else {
-            0
-        };
+        let lowest_daa_blue_score = self.lowest_daa_blue_score(ghostdag_data);
         let mergeset_non_daa: BlockHashSet = ghostdag_data
             .consensus_ordered_mergeset(store)
-            .filter(|hash| store.get_blue_score(*hash).unwrap() < lowest_blue_score)
+            .filter(|hash| store.get_blue_score(*hash).unwrap() < lowest_daa_blue_score)
             .collect();
         let sp_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
         (sp_daa_score + (ghostdag_data.mergeset_size() - mergeset_non_daa.len()) as u64, mergeset_non_daa)

@@ -427,7 +427,7 @@ impl VirtualStateProcessor {
         // Calc virtual DAA score, difficulty bits and past median time
         let (window, virtual_daa_score, mergeset_non_daa) =
             self.window_manager.block_window_with_daa_score_and_non_daa_mergeset(&virtual_ghostdag_data)?;
-        let virtual_bits = self.window_manager.calculate_difficulty_bits(&window);
+        let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_ghostdag_data, &window);
         let virtual_past_median_time = self.window_manager.calc_past_median_time(&virtual_ghostdag_data)?.0;
 
         // Calc virtual UTXO state relative to selected parent
