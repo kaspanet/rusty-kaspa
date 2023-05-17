@@ -1,7 +1,7 @@
 //! TODO: module comment about locking safety and consistency of various pruning stores
 
 use crate::{
-    consensus::storage::ConsensusStorage,
+    consensus::{services::ConsensusServices, storage::ConsensusStorage},
     model::{
         services::reachability::MTReachabilityService,
         stores::{
@@ -60,16 +60,21 @@ impl Deref for PruningProcessor {
 }
 
 impl PruningProcessor {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: CrossbeamReceiver<PruningProcessingMessage>,
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
-        pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-        reachability_service: MTReachabilityService<DbReachabilityStore>,
+        services: &Arc<ConsensusServices>,
         pruning_lock: Arc<TokioRwLock<()>>,
     ) -> Self {
-        Self { receiver, db, storage: storage.clone(), pruning_manager, reachability_service, pruning_lock }
+        Self {
+            receiver,
+            db,
+            storage: storage.clone(),
+            pruning_manager: services.pruning_manager.clone(),
+            reachability_service: services.reachability_service.clone(),
+            pruning_lock,
+        }
     }
 
     pub fn worker(self: &Arc<Self>) {

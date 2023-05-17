@@ -235,14 +235,8 @@ impl Consensus {
             counters.clone(),
         ));
 
-        let pruning_processor = Arc::new(PruningProcessor::new(
-            pruning_receiver,
-            db.clone(),
-            &storage,
-            services.pruning_manager.clone(),
-            services.reachability_service.clone(),
-            pruning_lock.clone(),
-        ));
+        let pruning_processor =
+            Arc::new(PruningProcessor::new(pruning_receiver, db.clone(), &storage, &services, pruning_lock.clone()));
 
         // Ensure the relations stores are initialized
         header_processor.init();
@@ -355,7 +349,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
-        self.body_processor.mass_calculator.calc_tx_mass(transaction)
+        self.services.mass_calculator.calc_tx_mass(transaction)
     }
 
     fn get_virtual_daa_score(&self) -> u64 {
