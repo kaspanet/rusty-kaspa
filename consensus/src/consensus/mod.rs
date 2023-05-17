@@ -1,5 +1,6 @@
 pub mod ctl;
 pub mod factory;
+pub mod services;
 pub mod storage;
 pub mod test_consensus;
 
@@ -10,22 +11,18 @@ use crate::{
         services::{
             reachability::{MTReachabilityService, ReachabilityService},
             relations::MTRelationsService,
-            statuses::MTStatusesService,
         },
         stores::{
             acceptance_data::AcceptanceDataStoreReader,
             block_transactions::BlockTransactionsStoreReader,
-            block_window_cache::BlockWindowCacheStore,
-            depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
-            headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
-            past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStoreReader},
-            pruning::{DbPruningStore, PruningStoreReader},
+            headers_selected_tip::HeadersSelectedTipStoreReader,
+            past_pruning_points::PastPruningPointsStoreReader,
+            pruning::PruningStoreReader,
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
-            selected_chain::DbSelectedChainStore,
-            statuses::{DbStatusesStore, StatusesStoreReader},
+            statuses::StatusesStoreReader,
             tips::TipsStoreReader,
             utxo_set::{UtxoSetStore, UtxoSetStoreReader},
             virtual_state::VirtualStateStoreReader,
@@ -40,12 +37,7 @@ use crate::{
         virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
         ProcessingCounters,
     },
-    processes::{
-        block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
-        mass::MassCalculator, parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningManager,
-        pruning_proof::PruningProofManager, sync::SyncManager, transaction_validator::TransactionValidator,
-        traversal_manager::DagTraversalManager,
-    },
+    processes::ghostdag::protocol::GhostdagManager,
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
@@ -88,7 +80,7 @@ use std::{
 };
 use tokio::sync::{oneshot, RwLock as TokioRwLock};
 
-use self::storage::ConsensusStorage;
+use self::{services::ConsensusServices, storage::ConsensusStorage};
 
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
@@ -110,34 +102,7 @@ pub struct Consensus {
     pub(super) storage: Arc<ConsensusStorage>,
 
     // Services and managers
-    pub(super) statuses_service: MTStatusesService<DbStatusesStore>,
-    pub(super) relations_service: MTRelationsService<DbRelationsStore>,
-    pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
-    pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
-    pub(super) dag_traversal_manager:
-        DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-    pub(super) ghostdag_manager: DbGhostdagManager,
-    pub(super) past_median_time_manager: PastMedianTimeManager<
-        DbHeadersStore,
-        DbGhostdagStore,
-        BlockWindowCacheStore,
-        DbReachabilityStore,
-        MTRelationsService<DbRelationsStore>,
-    >,
-    pub(super) coinbase_manager: CoinbaseManager,
-    pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-    pub(super) pruning_proof_manager: Arc<PruningProofManager>,
-    pub(super) sync_manager: SyncManager<
-        MTRelationsService<DbRelationsStore>,
-        DbReachabilityStore,
-        DbGhostdagStore,
-        DbSelectedChainStore,
-        DbHeadersSelectedTipStore,
-        DbPruningStore,
-        DbStatusesStore,
-        BlockWindowCacheStore,
-    >,
-    pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+    pub(super) services: Arc<ConsensusServices>,
 
     // Pruning lock
     pruning_lock: Arc<TokioRwLock<()>>,
@@ -174,127 +139,14 @@ impl Consensus {
         //
         // Storage layer
         //
+
         let storage = ConsensusStorage::new(db.clone(), config.clone());
 
         //
         // Services and managers
         //
-        let statuses_service = MTStatusesService::new(storage.statuses_store.clone());
-        let relations_services =
-            (0..=params.max_block_level).map(|level| MTRelationsService::new(storage.relations_stores.clone(), level)).collect_vec();
-        let relations_service = relations_services[0].clone();
-        let reachability_service = MTReachabilityService::new(storage.reachability_store.clone());
-        let dag_traversal_manager = DagTraversalManager::new(
-            params.genesis.hash,
-            storage.ghostdag_primary_store.clone(),
-            relations_service.clone(),
-            storage.block_window_cache_for_difficulty.clone(),
-            storage.block_window_cache_for_past_median_time.clone(),
-            params.difficulty_window_size,
-            (2 * params.timestamp_deviation_tolerance - 1) as usize, // TODO: incorporate target_time_per_block to this calculation
-            reachability_service.clone(),
-        );
-        let past_median_time_manager = PastMedianTimeManager::new(
-            storage.headers_store.clone(),
-            dag_traversal_manager.clone(),
-            params.timestamp_deviation_tolerance as usize,
-            params.genesis.timestamp,
-        );
-        let difficulty_manager = DifficultyManager::new(
-            storage.headers_store.clone(),
-            params.genesis.bits,
-            params.difficulty_window_size,
-            params.target_time_per_block,
-        );
-        let depth_manager = BlockDepthManager::new(
-            params.merge_depth,
-            params.finality_depth,
-            params.genesis.hash,
-            storage.depth_store.clone(),
-            reachability_service.clone(),
-            storage.ghostdag_primary_store.clone(),
-        );
-        let ghostdag_managers = storage
-            .ghostdag_stores
-            .iter()
-            .cloned()
-            .enumerate()
-            .map(|(level, ghostdag_store)| {
-                GhostdagManager::new(
-                    params.genesis.hash,
-                    params.ghostdag_k,
-                    ghostdag_store,
-                    relations_services[level].clone(),
-                    storage.headers_store.clone(),
-                    reachability_service.clone(),
-                )
-            })
-            .collect_vec();
-        let ghostdag_manager = ghostdag_managers[0].clone();
 
-        let coinbase_manager = CoinbaseManager::new(
-            params.coinbase_payload_script_public_key_max_len,
-            params.max_coinbase_payload_len,
-            params.deflationary_phase_daa_score,
-            params.pre_deflationary_phase_base_subsidy,
-        );
-
-        let mass_calculator =
-            MassCalculator::new(params.mass_per_tx_byte, params.mass_per_script_pub_key_byte, params.mass_per_sig_op);
-
-        let transaction_validator = TransactionValidator::new(
-            params.max_tx_inputs,
-            params.max_tx_outputs,
-            params.max_signature_script_len,
-            params.max_script_public_key_len,
-            params.ghostdag_k,
-            params.coinbase_payload_script_public_key_max_len,
-            params.coinbase_maturity,
-        );
-
-        let pruning_manager = PruningManager::new(
-            params.pruning_depth,
-            params.finality_depth,
-            params.genesis.hash,
-            reachability_service.clone(),
-            storage.ghostdag_primary_store.clone(),
-            storage.headers_store.clone(),
-            storage.past_pruning_points_store.clone(),
-        );
-
-        let parents_manager = ParentsManager::new(
-            params.max_block_level,
-            params.genesis.hash,
-            storage.headers_store.clone(),
-            reachability_service.clone(),
-            relations_service.clone(),
-        );
-
-        let pruning_proof_manager = Arc::new(PruningProofManager::new(
-            db.clone(),
-            &storage,
-            parents_manager.clone(),
-            reachability_service.clone(),
-            ghostdag_managers.clone(),
-            dag_traversal_manager.clone(),
-            params.max_block_level,
-            params.genesis.hash,
-            params.pruning_proof_m,
-            params.anticone_finalization_depth(),
-            params.difficulty_window_size,
-            params.ghostdag_k,
-        ));
-
-        let sync_manager = SyncManager::new(
-            params.mergeset_size_limit as usize,
-            reachability_service.clone(),
-            dag_traversal_manager.clone(),
-            storage.ghostdag_primary_store.clone(),
-            storage.selected_chain_store.clone(),
-            storage.headers_selected_tip_store.clone(),
-            storage.pruning_point_store.clone(),
-            storage.statuses_store.clone(),
-        );
+        let services = ConsensusServices::new(db.clone(), storage.clone(), config.clone());
 
         //
         // Processor channels
@@ -345,14 +197,7 @@ impl Consensus {
             params,
             db.clone(),
             &storage,
-            reachability_service.clone(),
-            past_median_time_manager.clone(),
-            dag_traversal_manager.clone(),
-            difficulty_manager.clone(),
-            depth_manager.clone(),
-            pruning_manager.clone(),
-            parents_manager.clone(),
-            ghostdag_managers,
+            &services,
             counters.clone(),
         ));
 
@@ -366,11 +211,11 @@ impl Consensus {
             storage.headers_store.clone(),
             storage.block_transactions_store.clone(),
             storage.body_tips_store.clone(),
-            reachability_service.clone(),
-            coinbase_manager.clone(),
-            mass_calculator,
-            transaction_validator.clone(),
-            past_median_time_manager.clone(),
+            services.reachability_service.clone(),
+            services.coinbase_manager.clone(),
+            services.mass_calculator.clone(),
+            services.transaction_validator.clone(),
+            services.past_median_time_manager.clone(),
             params.max_block_mass,
             params.genesis.clone(),
             notification_root.clone(),
@@ -385,17 +230,7 @@ impl Consensus {
             params,
             db.clone(),
             &storage,
-            ghostdag_manager.clone(),
-            reachability_service.clone(),
-            relations_service.clone(),
-            dag_traversal_manager.clone(),
-            difficulty_manager.clone(),
-            coinbase_manager.clone(),
-            transaction_validator,
-            past_median_time_manager.clone(),
-            pruning_manager.clone(),
-            parents_manager,
-            depth_manager.clone(),
+            &services,
             notification_root.clone(),
             counters.clone(),
         ));
@@ -404,8 +239,8 @@ impl Consensus {
             pruning_receiver,
             db.clone(),
             &storage,
-            pruning_manager.clone(),
-            reachability_service.clone(),
+            services.pruning_manager.clone(),
+            services.reachability_service.clone(),
             pruning_lock.clone(),
         ));
 
@@ -429,18 +264,7 @@ impl Consensus {
             virtual_processor,
             pruning_processor,
             storage,
-            statuses_service,
-            relations_service,
-            reachability_service,
-            difficulty_manager,
-            dag_traversal_manager,
-            ghostdag_manager,
-            past_median_time_manager,
-            coinbase_manager,
-            pruning_manager,
-            pruning_proof_manager,
-            sync_manager,
-            depth_manager,
+            services,
             pruning_lock,
             notification_root,
             counters,
@@ -552,7 +376,7 @@ impl ConsensusApi for Consensus {
         let Some(pruning_point) = self.pruning_point_store.read().pruning_point().unwrap_option() else { return None; };
         let Some(virtual_state) = self.virtual_stores.read().state.get().unwrap_option() else { return None; };
         let virtual_ghostdag_data = &virtual_state.ghostdag_data;
-        let root = self.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
+        let root = self.services.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
         if root.is_origin() {
             None
         } else {
@@ -584,7 +408,7 @@ impl ConsensusApi for Consensus {
         // do the calculation against the virtual itself so that we
         // won't later need to remove it from the result.
         self.validate_block_exists(hash)?;
-        Ok(self.dag_traversal_manager.calculate_chain_path(hash, self.get_sink()))
+        Ok(self.services.dag_traversal_manager.calculate_chain_path(hash, self.get_sink()))
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
@@ -631,19 +455,19 @@ impl ConsensusApi for Consensus {
     }
 
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
-        self.coinbase_manager.modify_coinbase_payload(payload, miner_data)
+        self.services.coinbase_manager.modify_coinbase_payload(payload, miner_data)
     }
 
     fn validate_pruning_proof(&self, proof: &PruningPointProof) -> Result<(), PruningImportError> {
-        self.pruning_proof_manager.validate_pruning_point_proof(proof)
+        self.services.pruning_proof_manager.validate_pruning_point_proof(proof)
     }
 
     fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
-        self.pruning_proof_manager.apply_proof(proof, trusted_set)
+        self.services.pruning_proof_manager.apply_proof(proof, trusted_set)
     }
 
     fn import_pruning_points(&self, pruning_points: PruningPointsList) {
-        self.pruning_proof_manager.import_pruning_points(&pruning_points)
+        self.services.pruning_proof_manager.import_pruning_points(&pruning_points)
     }
 
     fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash) {
@@ -671,7 +495,7 @@ impl ConsensusApi for Consensus {
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
-        Ok(self.reachability_service.is_chain_ancestor_of(low, high))
+        Ok(self.services.reachability_service.is_chain_ancestor_of(low, high))
     }
 
     // max_blocks has to be greater than the merge set size limit
@@ -680,7 +504,7 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
 
-        Ok(self.sync_manager.antipast_hashes_between(low, high, Some(max_blocks)))
+        Ok(self.services.sync_manager.antipast_hashes_between(low, high, Some(max_blocks)))
     }
 
     fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
@@ -694,16 +518,20 @@ impl ConsensusApi for Consensus {
 
     fn get_anticone_from_pov(&self, hash: Hash, context: Hash, max_traversal_allowed: Option<u64>) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(hash)?;
-        Ok(self.dag_traversal_manager.anticone(hash, std::iter::once(context), max_traversal_allowed)?)
+        Ok(self.services.dag_traversal_manager.anticone(hash, std::iter::once(context), max_traversal_allowed)?)
     }
 
     fn get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(hash)?;
-        Ok(self.dag_traversal_manager.anticone(hash, self.virtual_stores.read().state.get().unwrap().parents.iter().copied(), None)?)
+        Ok(self.services.dag_traversal_manager.anticone(
+            hash,
+            self.virtual_stores.read().state.get().unwrap().parents.iter().copied(),
+            None,
+        )?)
     }
 
     fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
-        self.pruning_proof_manager.get_pruning_point_proof()
+        self.services.pruning_proof_manager.get_pruning_point_proof()
     }
 
     fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>> {
@@ -715,7 +543,7 @@ impl ConsensusApi for Consensus {
             self.validate_block_exists(high)?;
         }
 
-        Ok(self.sync_manager.create_headers_selected_chain_block_locator(low, high)?)
+        Ok(self.services.sync_manager.create_headers_selected_chain_block_locator(low, high)?)
     }
 
     fn pruning_point_headers(&self) -> Vec<Arc<Header>> {
@@ -728,7 +556,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
-        self.pruning_proof_manager.get_pruning_point_anticone_and_trusted_data()
+        self.services.pruning_proof_manager.get_pruning_point_anticone_and_trusted_data()
     }
 
     fn get_block(&self, hash: Hash) -> ConsensusResult<Block> {
@@ -765,11 +593,11 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
-        self.relations_service.get_children(hash).unwrap_option()
+        self.services.relations_service.get_children(hash).unwrap_option()
     }
 
     fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
-        self.relations_service.get_parents(hash).unwrap_option()
+        self.services.relations_service.get_parents(hash).unwrap_option()
     }
 
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
@@ -798,7 +626,7 @@ impl ConsensusApi for Consensus {
 
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(high)?;
-        Ok(self.sync_manager.get_missing_block_body_hashes(high)?)
+        Ok(self.services.sync_manager.get_missing_block_body_hashes(high)?)
     }
 
     fn pruning_point(&self) -> Option<Hash> {
@@ -808,6 +636,7 @@ impl ConsensusApi for Consensus {
     fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(hash)?;
         Ok(self
+            .services
             .dag_traversal_manager
             .block_window(&self.ghostdag_primary_store.get_data(hash).unwrap(), self.config.difficulty_window_size)
             .unwrap()
@@ -840,7 +669,7 @@ impl ConsensusApi for Consensus {
 
         let pp_read_guard = self.pruning_point_store.read();
         let pp = pp_read_guard.pruning_point().unwrap();
-        Ok(self.sync_manager.create_block_locator_from_pruning_point(high, pp, Some(limit))?)
+        Ok(self.services.sync_manager.create_block_locator_from_pruning_point(high, pp, Some(limit))?)
     }
 
     fn estimate_network_hashes_per_second(&self, start_hash: Option<Hash>, window_size: usize) -> ConsensusResult<u64> {
@@ -853,7 +682,7 @@ impl ConsensusApi for Consensus {
             }
             None => virtual_ghostdag_data.as_ref().unwrap().into(),
         };
-        let window = self.dag_traversal_manager.block_window(&high_ghostdag_data, window_size).unwrap();
-        Ok(self.difficulty_manager.estimate_network_hashes_per_second(&window)?)
+        let window = self.services.dag_traversal_manager.block_window(&high_ghostdag_data, window_size).unwrap();
+        Ok(self.services.difficulty_manager.estimate_network_hashes_per_second(&window)?)
     }
 }

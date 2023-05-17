@@ -1,8 +1,14 @@
 use crate::{
-    consensus::storage::ConsensusStorage,
+    consensus::{
+        services::{
+            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbDifficultyManager, DbGhostdagManager, DbParentsManager,
+            DbPastMedianTimeManager, DbPruningManager,
+        },
+        storage::ConsensusStorage,
+    },
     errors::{BlockProcessResult, RuleError},
     model::{
-        services::{reachability::MTReachabilityService, relations::MTRelationsService},
+        services::reachability::MTReachabilityService,
         stores::{
             block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
             daa::DbDaaStore,
@@ -10,7 +16,6 @@ use crate::{
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::DbHeadersStore,
             headers_selected_tip::{DbHeadersSelectedTipStore, HeadersSelectedTipStoreReader},
-            past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningPointInfo, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreReader},
@@ -21,16 +26,7 @@ use crate::{
     },
     params::Params,
     pipeline::deps_manager::{BlockProcessingMessage, BlockTask, BlockTaskDependencyManager, TaskId},
-    processes::{
-        block_depth::BlockDepthManager,
-        difficulty::DifficultyManager,
-        ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
-        parents_builder::ParentsManager,
-        past_median_time::PastMedianTimeManager,
-        pruning::PruningManager,
-        reachability::inquirer as reachability,
-        traversal_manager::DagTraversalManager,
-    },
+    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability},
 };
 use crossbeam_channel::{Receiver, Sender};
 use itertools::Itertools;
@@ -144,28 +140,14 @@ pub struct HeaderProcessor {
     pub(super) depth_store: Arc<DbDepthStore>,
 
     // Managers and services
-    pub(super) ghostdag_managers: Vec<
-        GhostdagManager<
-            DbGhostdagStore,
-            MTRelationsService<DbRelationsStore>,
-            MTReachabilityService<DbReachabilityStore>,
-            DbHeadersStore,
-        >,
-    >,
-    pub(super) dag_traversal_manager:
-        DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-    pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
-    pub(super) past_median_time_manager: PastMedianTimeManager<
-        DbHeadersStore,
-        DbGhostdagStore,
-        BlockWindowCacheStore,
-        DbReachabilityStore,
-        MTRelationsService<DbRelationsStore>,
-    >,
-    pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+    pub(super) ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
+    pub(super) dag_traversal_manager: DbDagTraversalManager,
+    pub(super) difficulty_manager: DbDifficultyManager,
+    pub(super) past_median_time_manager: DbPastMedianTimeManager,
+    pub(super) depth_manager: DbBlockDepthManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
-    pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
+    pub(super) pruning_manager: DbPruningManager,
+    pub(super) parents_manager: DbParentsManager,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -175,7 +157,6 @@ pub struct HeaderProcessor {
 }
 
 impl HeaderProcessor {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: Receiver<BlockProcessingMessage>,
         body_sender: Sender<BlockProcessingMessage>,
@@ -183,32 +164,7 @@ impl HeaderProcessor {
         params: &Params,
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
-        reachability_service: MTReachabilityService<DbReachabilityStore>,
-        past_median_time_manager: PastMedianTimeManager<
-            DbHeadersStore,
-            DbGhostdagStore,
-            BlockWindowCacheStore,
-            DbReachabilityStore,
-            MTRelationsService<DbRelationsStore>,
-        >,
-        dag_traversal_manager: DagTraversalManager<
-            DbGhostdagStore,
-            BlockWindowCacheStore,
-            DbReachabilityStore,
-            MTRelationsService<DbRelationsStore>,
-        >,
-        difficulty_manager: DifficultyManager<DbHeadersStore>,
-        depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
-        pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-        ghostdag_managers: Vec<
-            GhostdagManager<
-                DbGhostdagStore,
-                MTRelationsService<DbRelationsStore>,
-                MTReachabilityService<DbReachabilityStore>,
-                DbHeadersStore,
-            >,
-        >,
+        services: &Arc<ConsensusServices>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
@@ -218,6 +174,7 @@ impl HeaderProcessor {
             genesis: params.genesis.clone(),
             difficulty_window_size: params.difficulty_window_size,
             db,
+
             relations_stores: storage.relations_stores.clone(),
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
@@ -231,14 +188,16 @@ impl HeaderProcessor {
             selected_chain_store: storage.selected_chain_store.clone(),
             block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
-            ghostdag_managers,
-            dag_traversal_manager,
-            difficulty_manager,
-            reachability_service,
-            past_median_time_manager,
-            depth_manager,
-            pruning_manager,
-            parents_manager,
+
+            ghostdag_managers: services.ghostdag_managers.clone(),
+            dag_traversal_manager: services.dag_traversal_manager.clone(),
+            difficulty_manager: services.difficulty_manager.clone(),
+            reachability_service: services.reachability_service.clone(),
+            past_median_time_manager: services.past_median_time_manager.clone(),
+            depth_manager: services.depth_manager.clone(),
+            pruning_manager: services.pruning_manager.clone(),
+            parents_manager: services.parents_manager.clone(),
+
             task_manager: BlockTaskDependencyManager::new(),
             counters,
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,

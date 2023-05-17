@@ -17,24 +17,18 @@ use crate::{
     constants::TX_VERSION,
     errors::BlockProcessResult,
     model::{
-        services::{reachability::MTReachabilityService, relations::MTRelationsService},
+        services::reachability::MTReachabilityService,
         stores::{
-            block_window_cache::BlockWindowCacheStore,
-            ghostdag::DbGhostdagStore,
-            headers::{DbHeadersStore, HeaderStoreReader},
-            pruning::PruningStoreReader,
-            reachability::DbReachabilityStore,
-            relations::DbRelationsStore,
-            virtual_state::VirtualStores,
-            DB,
+            ghostdag::DbGhostdagStore, headers::HeaderStoreReader, pruning::PruningStoreReader, reachability::DbReachabilityStore,
+            virtual_state::VirtualStores, DB,
         },
     },
     params::Params,
     pipeline::{body_processor::BlockBodyProcessor, virtual_processor::VirtualStateProcessor, ProcessingCounters},
-    processes::{past_median_time::PastMedianTimeManager, traversal_manager::DagTraversalManager},
     test_helpers::header_from_precomputed_hash,
 };
 
+use super::services::{DbDagTraversalManager, DbPastMedianTimeManager};
 use super::{Consensus, DbGhostdagManager};
 
 pub struct TestConsensus {
@@ -91,19 +85,22 @@ impl TestConsensus {
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
-        let ghostdag_data = self.consensus.ghostdag_manager.ghostdag(header.direct_parents());
+        let ghostdag_data = self.consensus.services.ghostdag_primary_manager.ghostdag(header.direct_parents());
         header.pruning_point = self
             .consensus
+            .services
             .pruning_manager
             .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_point_store.read().get().unwrap());
-        let window = self.consensus.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size).unwrap();
+        let window =
+            self.consensus.services.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size).unwrap();
         let (daa_score, _) = self
             .consensus
+            .services
             .difficulty_manager
             .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
-        header.bits = self.consensus.difficulty_manager.calculate_difficulty_bits(&window);
+        header.bits = self.consensus.services.difficulty_manager.calculate_difficulty_bits(&window);
         header.daa_score = daa_score;
-        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(&ghostdag_data).unwrap().0 + 1;
+        header.timestamp = self.consensus.services.past_median_time_manager.calc_past_median_time(&ghostdag_data).unwrap().0 + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;
 
@@ -122,7 +119,7 @@ impl TestConsensus {
     ) -> MutableBlock {
         let mut header = self.build_header_with_parents(hash, parents);
         let cb_payload: Vec<u8> = header.blue_score.to_le_bytes().iter().copied() // Blue score
-            .chain(self.consensus.coinbase_manager.calc_block_subsidy(header.daa_score).to_le_bytes().iter().copied()) // Subsidy
+            .chain(self.consensus.services.coinbase_manager.calc_block_subsidy(header.daa_score).to_le_bytes().iter().copied()) // Subsidy
             .chain((0_u16).to_le_bytes().iter().copied()) // Script public key version
             .chain((0_u8).to_le_bytes().iter().copied()) // Script public key length
             .collect();
@@ -145,10 +142,8 @@ impl TestConsensus {
         self.consensus.shutdown(wait_handles)
     }
 
-    pub fn dag_traversal_manager(
-        &self,
-    ) -> &DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>> {
-        &self.consensus.dag_traversal_manager
+    pub fn dag_traversal_manager(&self) -> &DbDagTraversalManager {
+        &self.consensus.services.dag_traversal_manager
     }
 
     pub fn ghostdag_store(&self) -> &Arc<DbGhostdagStore> {
@@ -160,7 +155,7 @@ impl TestConsensus {
     }
 
     pub fn reachability_service(&self) -> &MTReachabilityService<DbReachabilityStore> {
-        &self.consensus.reachability_service
+        &self.consensus.services.reachability_service
     }
 
     pub fn headers_store(&self) -> Arc<impl HeaderStoreReader> {
@@ -183,20 +178,12 @@ impl TestConsensus {
         &self.consensus.virtual_processor
     }
 
-    pub fn past_median_time_manager(
-        &self,
-    ) -> &PastMedianTimeManager<
-        DbHeadersStore,
-        DbGhostdagStore,
-        BlockWindowCacheStore,
-        DbReachabilityStore,
-        MTRelationsService<DbRelationsStore>,
-    > {
-        &self.consensus.past_median_time_manager
+    pub fn past_median_time_manager(&self) -> &DbPastMedianTimeManager {
+        &self.consensus.services.past_median_time_manager
     }
 
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {
-        &self.consensus.ghostdag_manager
+        &self.consensus.services.ghostdag_primary_manager
     }
 }
 

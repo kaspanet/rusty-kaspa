@@ -1,5 +1,12 @@
 use crate::{
-    consensus::{storage::ConsensusStorage, DbGhostdagManager},
+    consensus::{
+        services::{
+            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbDifficultyManager, DbParentsManager,
+            DbPastMedianTimeManager, DbPruningManager,
+        },
+        storage::ConsensusStorage,
+        DbGhostdagManager,
+    },
     constants::BLOCK_VERSION,
     errors::RuleError,
     model::{
@@ -10,9 +17,7 @@ use crate::{
         stores::{
             acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
-            block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
-            depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
@@ -34,15 +39,9 @@ use crate::{
         virtual_processor::utxo_validation::UtxoProcessingContext, ProcessingCounters,
     },
     processes::{
-        block_depth::BlockDepthManager,
         coinbase::CoinbaseManager,
-        difficulty::DifficultyManager,
         ghostdag::ordering::SortableBlock,
-        parents_builder::ParentsManager,
-        past_median_time::PastMedianTimeManager,
-        pruning::PruningManager,
         transaction_validator::{errors::TxResult, TransactionValidator},
-        traversal_manager::DagTraversalManager,
     },
 };
 use kaspa_consensus_core::{
@@ -128,21 +127,14 @@ pub struct VirtualStateProcessor {
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) relations_service: MTRelationsService<DbRelationsStore>,
-    pub(super) dag_traversal_manager:
-        DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-    pub(super) difficulty_manager: DifficultyManager<DbHeadersStore>,
+    pub(super) dag_traversal_manager: DbDagTraversalManager,
+    pub(super) difficulty_manager: DbDifficultyManager,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) past_median_time_manager: PastMedianTimeManager<
-        DbHeadersStore,
-        DbGhostdagStore,
-        BlockWindowCacheStore,
-        DbReachabilityStore,
-        MTRelationsService<DbRelationsStore>,
-    >,
-    pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-    pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+    pub(super) past_median_time_manager: DbPastMedianTimeManager,
+    pub(super) pruning_manager: DbPruningManager,
+    pub(super) parents_manager: DbParentsManager,
+    pub(super) depth_manager: DbBlockDepthManager,
 
     // Notifier
     notification_root: Arc<ConsensusNotificationRoot>,
@@ -152,7 +144,6 @@ pub struct VirtualStateProcessor {
 }
 
 impl VirtualStateProcessor {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: CrossbeamReceiver<BlockProcessingMessage>,
         pruning_sender: CrossbeamSender<PruningProcessingMessage>,
@@ -161,29 +152,7 @@ impl VirtualStateProcessor {
         params: &Params,
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
-        // Managers
-        ghostdag_manager: DbGhostdagManager,
-        reachability_service: MTReachabilityService<DbReachabilityStore>,
-        relations_service: MTRelationsService<DbRelationsStore>,
-        dag_traversal_manager: DagTraversalManager<
-            DbGhostdagStore,
-            BlockWindowCacheStore,
-            DbReachabilityStore,
-            MTRelationsService<DbRelationsStore>,
-        >,
-        difficulty_manager: DifficultyManager<DbHeadersStore>,
-        coinbase_manager: CoinbaseManager,
-        transaction_validator: TransactionValidator,
-        past_median_time_manager: PastMedianTimeManager<
-            DbHeadersStore,
-            DbGhostdagStore,
-            BlockWindowCacheStore,
-            DbReachabilityStore,
-            MTRelationsService<DbRelationsStore>,
-        >,
-        pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-        depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+        services: &Arc<ConsensusServices>,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
@@ -213,17 +182,19 @@ impl VirtualStateProcessor {
             acceptance_data_store: storage.acceptance_data_store.clone(),
             virtual_stores: storage.virtual_stores.clone(),
             pruning_point_utxo_set_store: storage.pruning_point_utxo_set_store.clone(),
-            ghostdag_manager,
-            reachability_service,
-            relations_service,
-            dag_traversal_manager,
-            difficulty_manager,
-            coinbase_manager,
-            transaction_validator,
-            past_median_time_manager,
-            pruning_manager,
-            parents_manager,
-            depth_manager,
+
+            ghostdag_manager: services.ghostdag_primary_manager.clone(),
+            reachability_service: services.reachability_service.clone(),
+            relations_service: services.relations_service.clone(),
+            dag_traversal_manager: services.dag_traversal_manager.clone(),
+            difficulty_manager: services.difficulty_manager.clone(),
+            coinbase_manager: services.coinbase_manager.clone(),
+            transaction_validator: services.transaction_validator.clone(),
+            past_median_time_manager: services.past_median_time_manager.clone(),
+            pruning_manager: services.pruning_manager.clone(),
+            parents_manager: services.parents_manager.clone(),
+            depth_manager: services.depth_manager.clone(),
+
             notification_root,
             counters,
         }

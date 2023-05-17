@@ -1,14 +1,13 @@
 use crate::{
+    consensus::services::DbPastMedianTimeManager,
     errors::{BlockProcessResult, RuleError},
     model::{
-        services::{reachability::MTReachabilityService, relations::MTRelationsService},
+        services::reachability::MTReachabilityService,
         stores::{
             block_transactions::DbBlockTransactionsStore,
-            block_window_cache::BlockWindowCacheStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
-            relations::DbRelationsStore,
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::DbTipsStore,
             DB,
@@ -18,10 +17,7 @@ use crate::{
         deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId},
         ProcessingCounters,
     },
-    processes::{
-        coinbase::CoinbaseManager, mass::MassCalculator, past_median_time::PastMedianTimeManager,
-        transaction_validator::TransactionValidator,
-    },
+    processes::{coinbase::CoinbaseManager, mass::MassCalculator, transaction_validator::TransactionValidator},
 };
 use crossbeam_channel::{Receiver, Sender};
 use kaspa_consensus_core::{
@@ -68,13 +64,7 @@ pub struct BlockBodyProcessor {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) past_median_time_manager: PastMedianTimeManager<
-        DbHeadersStore,
-        DbGhostdagStore,
-        BlockWindowCacheStore,
-        DbReachabilityStore,
-        MTRelationsService<DbRelationsStore>,
-    >,
+    pub(super) past_median_time_manager: DbPastMedianTimeManager,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -92,23 +82,20 @@ impl BlockBodyProcessor {
         receiver: Receiver<BlockProcessingMessage>,
         sender: Sender<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
+
         db: Arc<DB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         ghostdag_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>,
         block_transactions_store: Arc<DbBlockTransactionsStore>,
         body_tips_store: Arc<RwLock<DbTipsStore>>,
+
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         coinbase_manager: CoinbaseManager,
         mass_calculator: MassCalculator,
         transaction_validator: TransactionValidator,
-        past_median_time_manager: PastMedianTimeManager<
-            DbHeadersStore,
-            DbGhostdagStore,
-            BlockWindowCacheStore,
-            DbReachabilityStore,
-            MTRelationsService<DbRelationsStore>,
-        >,
+        past_median_time_manager: DbPastMedianTimeManager,
+
         max_block_mass: u64,
         genesis: GenesisBlock,
         notification_root: Arc<ConsensusNotificationRoot>,

@@ -1,11 +1,15 @@
 use std::{
     cmp::{max, Reverse},
+    collections::hash_map::Entry::Vacant,
     collections::BinaryHeap,
     ops::DerefMut,
     sync::Arc,
 };
 
 use itertools::Itertools;
+use parking_lot::RwLock;
+use rocksdb::WriteBatch;
+
 use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     errors::{
@@ -21,18 +25,18 @@ use kaspa_core::{debug, info, trace};
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
-use parking_lot::RwLock;
-use rocksdb::WriteBatch;
+use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
 
 use crate::{
-    consensus::{storage::ConsensusStorage, DbGhostdagManager},
+    consensus::{
+        services::{DbDagTraversalManager, DbParentsManager},
+        storage::ConsensusStorage,
+        DbGhostdagManager,
+    },
     model::{
-        services::{
-            reachability::{MTReachabilityService, ReachabilityService},
-            relations::MTRelationsService,
-        },
+        services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
+            block_window_cache::BlockWindowHeap,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
@@ -49,14 +53,8 @@ use crate::{
     },
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability},
 };
-use std::collections::hash_map::Entry::Vacant;
 
-use super::{
-    ghostdag::{mergeset::unordered_mergeset_without_selected_parent, protocol::GhostdagManager},
-    parents_builder::ParentsManager,
-    traversal_manager::DagTraversalManager,
-};
-use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
+use super::ghostdag::{mergeset::unordered_mergeset_without_selected_parent, protocol::GhostdagManager};
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -71,10 +69,10 @@ impl<T> Clone for CachedPruningPointData<T> {
 
 pub struct PruningProofManager {
     db: Arc<DB>,
+
     headers_store: Arc<DbHeadersStore>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
-    parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
     relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
@@ -86,9 +84,9 @@ pub struct PruningProofManager {
     depth_store: Arc<DbDepthStore>,
     selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
-    ghostdag_managers: Vec<DbGhostdagManager>,
-    traversal_manager:
-        DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
+    ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
+    traversal_manager: DbDagTraversalManager,
+    parents_manager: DbParentsManager,
 
     cached_proof: RwLock<Option<CachedPruningPointData<PruningPointProof>>>,
     cached_anticone: RwLock<Option<CachedPruningPointData<PruningPointTrustedData>>>,
@@ -106,15 +104,10 @@ impl PruningProofManager {
     pub fn new(
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
-        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
+        parents_manager: DbParentsManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
-        ghostdag_managers: Vec<DbGhostdagManager>,
-        traversal_manager: DagTraversalManager<
-            DbGhostdagStore,
-            BlockWindowCacheStore,
-            DbReachabilityStore,
-            MTRelationsService<DbRelationsStore>,
-        >,
+        ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
+        traversal_manager: DbDagTraversalManager,
         max_block_level: BlockLevel,
         genesis_hash: Hash,
         pruning_proof_m: u64,
@@ -127,7 +120,6 @@ impl PruningProofManager {
             headers_store: storage.headers_store.clone(),
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
-            parents_manager,
             reachability_service,
             ghostdag_stores: storage.ghostdag_stores.clone(),
             relations_stores: storage.relations_stores.clone(),
@@ -138,8 +130,10 @@ impl PruningProofManager {
             headers_selected_tip_store: storage.headers_selected_tip_store.clone(),
             selected_chain_store: storage.selected_chain_store.clone(),
             depth_store: storage.depth_store.clone(),
+
             ghostdag_managers,
             traversal_manager,
+            parents_manager,
 
             cached_proof: RwLock::new(None),
             cached_anticone: RwLock::new(None),
