@@ -2,7 +2,7 @@ use crate::{
     consensus::{
         services::{
             ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbDifficultyManager, DbGhostdagManager, DbParentsManager,
-            DbPastMedianTimeManager, DbPruningManager,
+            DbPastMedianTimeManager, DbPruningPointManager,
         },
         storage::ConsensusStorage,
     },
@@ -146,7 +146,7 @@ pub struct HeaderProcessor {
     pub(super) past_median_time_manager: DbPastMedianTimeManager,
     pub(super) depth_manager: DbBlockDepthManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
-    pub(super) pruning_manager: DbPruningManager,
+    pub(super) pruning_point_manager: DbPruningPointManager,
     pub(super) parents_manager: DbParentsManager,
 
     // Dependency manager
@@ -195,7 +195,7 @@ impl HeaderProcessor {
             reachability_service: services.reachability_service.clone(),
             past_median_time_manager: services.past_median_time_manager.clone(),
             depth_manager: services.depth_manager.clone(),
-            pruning_manager: services.pruning_manager.clone(),
+            pruning_point_manager: services.pruning_point_manager.clone(),
             parents_manager: services.parents_manager.clone(),
 
             task_manager: BlockTaskDependencyManager::new(),

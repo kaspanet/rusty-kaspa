@@ -1,20 +1,22 @@
 //! TODO: module comment about locking safety and consistency of various pruning stores
 
 use crate::{
-    consensus::{services::ConsensusServices, storage::ConsensusStorage},
+    consensus::{
+        services::{ConsensusServices, DbPruningPointManager},
+        storage::ConsensusStorage,
+    },
     model::{
         services::reachability::MTReachabilityService,
         stores::{
-            ghostdag::{CompactGhostdagData, DbGhostdagStore},
-            headers::{DbHeadersStore, HeaderStoreReader},
-            past_pruning_points::DbPastPruningPointsStore,
+            ghostdag::CompactGhostdagData,
+            headers::HeaderStoreReader,
             pruning::{PruningStore, PruningStoreReader},
             reachability::DbReachabilityStore,
             utxo_diffs::UtxoDiffsStoreReader,
             utxo_set::UtxoSetStore,
         },
     },
-    processes::pruning::PruningManager,
+    processes::pruning_proof::PruningProofManager,
 };
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use kaspa_consensus_core::muhash::MuHashExtensions;
@@ -44,8 +46,9 @@ pub struct PruningProcessor {
     storage: Arc<ConsensusStorage>,
 
     // Managers and Services
-    pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pruning_point_manager: DbPruningPointManager,
+    pruning_proof_manager: Arc<PruningProofManager>,
 
     // Pruning lock
     pruning_lock: Arc<TokioRwLock<()>>,
@@ -71,8 +74,9 @@ impl PruningProcessor {
             receiver,
             db,
             storage: storage.clone(),
-            pruning_manager: services.pruning_manager.clone(),
             reachability_service: services.reachability_service.clone(),
+            pruning_point_manager: services.pruning_point_manager.clone(),
+            pruning_proof_manager: services.pruning_proof_manager.clone(),
             pruning_lock,
         }
     }
@@ -103,7 +107,7 @@ impl PruningProcessor {
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
         let pruning_read_guard = self.pruning_point_store.upgradable_read();
         let current_pruning_info = pruning_read_guard.get().unwrap();
-        let (new_pruning_points, new_candidate) = self.pruning_manager.next_pruning_points_and_candidate_by_ghostdag_data(
+        let (new_pruning_points, new_candidate) = self.pruning_point_manager.next_pruning_points_and_candidate_by_ghostdag_data(
             sink_ghostdag_data,
             None,
             current_pruning_info.candidate,

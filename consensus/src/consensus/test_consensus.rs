@@ -89,7 +89,7 @@ impl TestConsensus {
         header.pruning_point = self
             .consensus
             .services
-            .pruning_manager
+            .pruning_point_manager
             .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_point_store.read().get().unwrap());
         let window =
             self.consensus.services.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size).unwrap();

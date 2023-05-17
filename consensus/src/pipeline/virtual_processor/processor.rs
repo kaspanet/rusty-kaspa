@@ -2,7 +2,7 @@ use crate::{
     consensus::{
         services::{
             ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbDifficultyManager, DbParentsManager,
-            DbPastMedianTimeManager, DbPruningManager,
+            DbPastMedianTimeManager, DbPruningPointManager,
         },
         storage::ConsensusStorage,
         DbGhostdagManager,
@@ -132,7 +132,7 @@ pub struct VirtualStateProcessor {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) transaction_validator: TransactionValidator,
     pub(super) past_median_time_manager: DbPastMedianTimeManager,
-    pub(super) pruning_manager: DbPruningManager,
+    pub(super) pruning_point_manager: DbPruningPointManager,
     pub(super) parents_manager: DbParentsManager,
     pub(super) depth_manager: DbBlockDepthManager,
 
@@ -191,7 +191,7 @@ impl VirtualStateProcessor {
             coinbase_manager: services.coinbase_manager.clone(),
             transaction_validator: services.transaction_validator.clone(),
             past_median_time_manager: services.past_median_time_manager.clone(),
-            pruning_manager: services.pruning_manager.clone(),
+            pruning_point_manager: services.pruning_point_manager.clone(),
             parents_manager: services.parents_manager.clone(),
             depth_manager: services.depth_manager.clone(),
 
@@ -686,7 +686,7 @@ impl VirtualStateProcessor {
 
         let pruning_info = self.pruning_point_store.read().get().unwrap();
         let header_pruning_point =
-            self.pruning_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);
+            self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);
         let coinbase = self
             .coinbase_manager
             .expected_coinbase_transaction(

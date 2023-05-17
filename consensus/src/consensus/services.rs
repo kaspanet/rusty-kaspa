@@ -12,7 +12,7 @@ use crate::{
     },
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
-        mass::MassCalculator, parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningManager,
+        mass::MassCalculator, parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningPointManager,
         pruning_proof::PruningProofManager, sync::SyncManager, transaction_validator::TransactionValidator,
         traversal_manager::DagTraversalManager,
     },
@@ -47,7 +47,7 @@ pub type DbSyncManager = SyncManager<
 >;
 
 pub type DbDifficultyManager = DifficultyManager<DbHeadersStore>;
-pub type DbPruningManager = PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>;
+pub type DbPruningPointManager = PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 
@@ -65,7 +65,7 @@ pub struct ConsensusServices {
     pub ghostdag_primary_manager: DbGhostdagManager,
     pub past_median_time_manager: DbPastMedianTimeManager,
     pub coinbase_manager: CoinbaseManager,
-    pub pruning_manager: DbPruningManager,
+    pub pruning_point_manager: DbPruningPointManager,
     pub pruning_proof_manager: Arc<PruningProofManager>,
     pub parents_manager: DbParentsManager,
     pub sync_manager: DbSyncManager,
@@ -153,7 +153,7 @@ impl ConsensusServices {
             params.coinbase_maturity,
         );
 
-        let pruning_manager = PruningManager::new(
+        let pruning_point_manager = PruningPointManager::new(
             params.pruning_depth,
             params.finality_depth,
             params.genesis.hash,
@@ -208,7 +208,7 @@ impl ConsensusServices {
             ghostdag_primary_manager,
             past_median_time_manager,
             coinbase_manager,
-            pruning_manager,
+            pruning_point_manager,
             pruning_proof_manager,
             parents_manager,
             sync_manager,
