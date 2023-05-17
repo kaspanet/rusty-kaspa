@@ -95,7 +95,6 @@ impl PruningProcessor {
         while let Ok(mut msg) = self.receiver.recv() {
             let mut exit = false;
             // Empty the channel from all pending messages and process the last one
-            // TODO: turn the channel into a watch-like object dropping earlier messages internally
             for next_msg in self.receiver.try_iter() {
                 match next_msg {
                     PruningProcessingMessage::Exit => exit = true,

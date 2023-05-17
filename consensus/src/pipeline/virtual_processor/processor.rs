@@ -92,6 +92,7 @@ pub struct VirtualStateProcessor {
     // Channels
     receiver: CrossbeamReceiver<BlockProcessingMessage>,
     pruning_sender: CrossbeamSender<PruningProcessingMessage>,
+    pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -155,6 +156,7 @@ impl VirtualStateProcessor {
     pub fn new(
         receiver: CrossbeamReceiver<BlockProcessingMessage>,
         pruning_sender: CrossbeamSender<PruningProcessingMessage>,
+        pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         db: Arc<DB>,
@@ -203,6 +205,7 @@ impl VirtualStateProcessor {
         Self {
             receiver,
             pruning_sender,
+            pruning_receiver,
             thread_pool,
 
             genesis: params.genesis.clone(),
@@ -299,6 +302,9 @@ impl VirtualStateProcessor {
 
         // Update the pruning processor about the virtual state change
         let sink_ghostdag_data = self.ghostdag_store.get_compact_data(new_sink).unwrap();
+        // Empty the channel before sending the new message. If pruning processor is busy, this step makes sure
+        // the internal channel does not grow with no need (since we only care about the most recent message)
+        let _consume = self.pruning_receiver.try_iter().count();
         self.pruning_sender.send(PruningProcessingMessage::Process { sink_ghostdag_data }).unwrap();
 
         // Emit notifications

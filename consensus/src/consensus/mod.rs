@@ -52,7 +52,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    api::ConsensusApi,
+    api::{BlockValidationFuture, ConsensusApi},
     block::{Block, BlockTemplate},
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
@@ -73,8 +73,9 @@ use kaspa_consensus_core::{
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
-use crossbeam_channel::{unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
-use futures_util::future::BoxFuture;
+use crossbeam_channel::{
+    bounded as bounded_crossbeam, unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender,
+};
 use itertools::Itertools;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
@@ -353,7 +354,7 @@ impl Consensus {
         let (pruning_sender, pruning_receiver): (
             CrossbeamSender<PruningProcessingMessage>,
             CrossbeamReceiver<PruningProcessingMessage>,
-        ) = unbounded_crossbeam();
+        ) = bounded_crossbeam(2);
 
         //
         // Thread-pools
@@ -436,6 +437,7 @@ impl Consensus {
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
             pruning_sender,
+            pruning_receiver.clone(),
             virtual_pool,
             params,
             db.clone(),
@@ -642,12 +644,12 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.build_block_template(miner_data, txs)
     }
 
-    fn validate_and_insert_block(&self, block: Block) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+    fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
         let result = self.validate_and_insert_block_impl(BlockTask::Ordinary { block });
         Box::pin(async move { result.await })
     }
 
-    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BoxFuture<'static, BlockProcessResult<BlockStatus>> {
+    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
         let result = self.validate_and_insert_block_impl(BlockTask::Trusted { block: tb.block });
         Box::pin(async move { result.await })
     }
