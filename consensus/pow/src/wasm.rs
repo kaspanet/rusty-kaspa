@@ -1,8 +1,8 @@
+use js_sys::BigInt;
 use kaspa_consensus_core::header::Header;
 use wasm_bindgen::prelude::*;
-use workflow_wasm::jsvalue::*;
-use js_sys::BigInt;
 use workflow_wasm::error::Error;
+use workflow_wasm::jsvalue::*;
 use workflow_wasm::result::Result;
 
 #[wasm_bindgen(inspectable)]

@@ -465,7 +465,6 @@ pub struct IteratorOptions {
     chunk_size: Option<usize>,
 }
 
-
 #[async_trait]
 pub trait Iterator: Send + Sync {
     type Item: Send + Sync;
