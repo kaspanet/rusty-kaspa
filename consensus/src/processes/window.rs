@@ -15,7 +15,7 @@ use kaspa_hashes::Hash;
 use kaspa_utils::refs::Refs;
 use std::{cmp::Reverse, collections::BinaryHeap, ops::Deref, sync::Arc};
 
-use super::{difficulty::DifficultyManager, past_median_time::PastMedianTimeManager};
+use super::{difficulty::FullDifficultyManager, past_median_time::FullPastMedianTimeManager};
 
 pub enum WindowType {
     SampledDifficultyWindow,
@@ -43,8 +43,8 @@ pub struct FullWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, 
     block_window_cache_for_past_median_time: Arc<U>,
     difficulty_window_size: usize,
     past_median_time_window_size: usize,
-    difficulty_manager: DifficultyManager<V>,
-    past_median_time_manager: PastMedianTimeManager<V>,
+    difficulty_manager: FullDifficultyManager<V>,
+    past_median_time_manager: FullPastMedianTimeManager<V>,
 }
 
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> FullWindowManager<T, U, V> {
@@ -55,8 +55,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
         block_window_cache_for_past_median_time: Arc<U>,
         difficulty_window_size: usize,
         past_median_time_window_size: usize,
-        difficulty_manager: DifficultyManager<V>,
-        past_median_time_manager: PastMedianTimeManager<V>,
+        difficulty_manager: FullDifficultyManager<V>,
+        past_median_time_manager: FullPastMedianTimeManager<V>,
     ) -> Self {
         Self {
             genesis_hash,

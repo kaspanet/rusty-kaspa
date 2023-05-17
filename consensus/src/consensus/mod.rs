@@ -46,11 +46,11 @@ use crate::{
     processes::{
         block_depth::BlockDepthManager,
         coinbase::CoinbaseManager,
-        difficulty::DifficultyManager,
+        difficulty::FullDifficultyManager,
         ghostdag::protocol::GhostdagManager,
         mass::MassCalculator,
         parents_builder::ParentsManager,
-        past_median_time::PastMedianTimeManager,
+        past_median_time::FullPastMedianTimeManager,
         pruning::PruningManager,
         pruning_proof::PruningProofManager,
         reachability::inquirer as reachability,
@@ -259,16 +259,10 @@ impl Consensus {
             relations_service.clone(),
             reachability_service.clone(),
         );
-        let past_median_time_manager = PastMedianTimeManager::new(
-            headers_store.clone(),
-            params.past_median_time_window_size(),
-            params.past_median_time_sample_rate,
-            params.genesis.timestamp,
-        );
-        let difficulty_manager = DifficultyManager::new(
+        let past_median_time_manager = FullPastMedianTimeManager::new(headers_store.clone(), params.genesis.timestamp);
+        let difficulty_manager = FullDifficultyManager::new(
             headers_store.clone(),
             params.genesis.bits,
-            params.difficulty_sample_rate,
             params.difficulty_window_size,
             params.target_time_per_block,
         );

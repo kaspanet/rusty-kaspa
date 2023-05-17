@@ -11,30 +11,66 @@ use kaspa_math::{Uint256, Uint320};
 use std::{
     cmp::{max, Ordering},
     iter::once_with,
+    ops::Deref,
     sync::Arc,
 };
 
 use super::ghostdag::ordering::SortableBlock;
 use itertools::Itertools;
 
+trait DifficultyManagerExtension {
+    fn headers_store(&self) -> &dyn HeaderStoreReader;
+
+    fn get_difficulty_blocks(&self, window: &BlockWindowHeap) -> Vec<DifficultyBlock> {
+        window
+            .iter()
+            .map(|item| {
+                let data = self.headers_store().get_compact_header_data(item.0.hash).unwrap();
+                DifficultyBlock { timestamp: data.timestamp, bits: data.bits, sortable_block: item.0.clone() }
+            })
+            .collect()
+    }
+
+    fn internal_estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
+        // TODO: perhaps move this const
+        const MIN_WINDOW_SIZE: usize = 1000;
+        let window_size = window.len();
+        if window_size < MIN_WINDOW_SIZE {
+            return Err(DifficultyError::UnderMinWindowSizeAllowed(window_size, MIN_WINDOW_SIZE));
+        }
+        let difficulty_blocks = self.get_difficulty_blocks(window);
+        let (min_ts, max_ts) = difficulty_blocks.iter().map(|x| x.timestamp).minmax().into_option().unwrap();
+        if min_ts == max_ts {
+            return Err(DifficultyError::EmptyTimestampRange);
+        }
+        let window_duration = (max_ts - min_ts) / 1000; // Divided by 1000 to convert milliseconds to seconds
+        if window_duration == 0 {
+            return Ok(0);
+        }
+
+        let (min_blue_work, max_blue_work) =
+            difficulty_blocks.iter().map(|x| x.sortable_block.blue_work).minmax().into_option().unwrap();
+
+        Ok(((max_blue_work - min_blue_work) / window_duration).as_u64())
+    }
+}
+
 #[derive(Clone)]
-pub struct DifficultyManager<T: HeaderStoreReader> {
+pub struct FullDifficultyManager<T: HeaderStoreReader> {
     headers_store: Arc<T>,
     genesis_bits: u32,
-    difficulty_sample_rate: u64,
     difficulty_adjustment_window_size: usize,
     target_time_per_block: u64,
 }
 
-impl<T: HeaderStoreReader> DifficultyManager<T> {
+impl<T: HeaderStoreReader> FullDifficultyManager<T> {
     pub fn new(
         headers_store: Arc<T>,
         genesis_bits: u32,
-        difficulty_sample_rate: u64,
         difficulty_adjustment_window_size: usize,
         target_time_per_block: u64,
     ) -> Self {
-        Self { headers_store, difficulty_sample_rate, difficulty_adjustment_window_size, genesis_bits, target_time_per_block }
+        Self { headers_store, difficulty_adjustment_window_size, genesis_bits, target_time_per_block }
     }
 
     pub fn calc_daa_score_and_non_daa_mergeset_blocks<'a>(
@@ -60,16 +96,6 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         (sp_daa_score + (ghostdag_data.mergeset_size() - mergeset_non_daa.len()) as u64, mergeset_non_daa)
     }
 
-    fn get_difficulty_blocks(&self, window: &BlockWindowHeap) -> Vec<DifficultyBlock> {
-        window
-            .iter()
-            .map(|item| {
-                let data = self.headers_store.get_compact_header_data(item.0.hash).unwrap();
-                DifficultyBlock { timestamp: data.timestamp, bits: data.bits, sortable_block: item.0.clone() }
-            })
-            .collect()
-    }
-
     pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap) -> u32 {
         let mut difficulty_blocks = self.get_difficulty_blocks(window);
 
@@ -87,42 +113,106 @@ impl<T: HeaderStoreReader> DifficultyManager<T> {
         difficulty_blocks.swap_remove(min_ts_index);
 
         // We need Uint320 to avoid overflow when summing and multiplying by the window size.
-        // TODO: Try to see if we can use U256 instead, by modifying the algorithm.
+        let difficulty_blocks_len = difficulty_blocks.len() as u64;
+        let targets_sum: Uint320 =
+            difficulty_blocks.into_iter().map(|diff_block| Uint320::from(Uint256::from_compact_target_bits(diff_block.bits))).sum();
+        let average_target = targets_sum / (difficulty_blocks_len);
+        let new_target = average_target * max(max_ts - min_ts, 1) / (self.target_time_per_block * difficulty_blocks_len);
+        Uint256::try_from(new_target).expect("Expected target should be less than 2^256").compact_target_bits()
+    }
+
+    pub fn estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
+        self.internal_estimate_network_hashes_per_second(window)
+    }
+}
+
+impl<T: HeaderStoreReader> DifficultyManagerExtension for FullDifficultyManager<T> {
+    fn headers_store(&self) -> &dyn HeaderStoreReader {
+        self.headers_store.deref()
+    }
+}
+
+#[derive(Clone)]
+pub struct SampledDifficultyManager<T: HeaderStoreReader> {
+    headers_store: Arc<T>,
+    genesis_bits: u32,
+    difficulty_sample_rate: u64,
+    difficulty_adjustment_window_size: usize,
+    target_time_per_block: u64,
+}
+
+impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
+    pub fn new(
+        headers_store: Arc<T>,
+        genesis_bits: u32,
+        difficulty_sample_rate: u64,
+        difficulty_adjustment_window_size: usize,
+        target_time_per_block: u64,
+    ) -> Self {
+        Self { headers_store, difficulty_sample_rate, difficulty_adjustment_window_size, genesis_bits, target_time_per_block }
+    }
+
+    #[inline]
+    #[must_use]
+    fn difficulty_full_window_size(&self) -> u64 {
+        self.difficulty_adjustment_window_size as u64 * self.difficulty_sample_rate
+    }
+
+    pub fn calc_daa_score_and_non_daa_mergeset_blocks<'a>(
+        &'a self,
+        ghostdag_data: &GhostdagData,
+        store: &'a (impl GhostdagStoreReader + ?Sized),
+    ) -> (u64, BlockHashSet) {
+        // Define the DAA window lowest accepted blue score
+        let lowest_blue_score = if ghostdag_data.blue_score > self.difficulty_full_window_size() {
+            ghostdag_data.blue_score - self.difficulty_full_window_size()
+        } else {
+            0
+        };
+        let mergeset_non_daa: BlockHashSet = ghostdag_data
+            .consensus_ordered_mergeset(store)
+            .filter(|hash| store.get_blue_score(*hash).unwrap() < lowest_blue_score)
+            .collect();
+        let sp_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
+        (sp_daa_score + (ghostdag_data.mergeset_size() - mergeset_non_daa.len()) as u64, mergeset_non_daa)
+    }
+
+    pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap) -> u32 {
+        // Note: this fn is duplicated (almost, see `* self.difficulty_sample_rate`) in Full and Sampled structs
+        // so some alternate calculation can be investigated here.
+        let mut difficulty_blocks = self.get_difficulty_blocks(window);
+
+        // Until there are enough blocks for a full block window the difficulty should remain constant.
+        if difficulty_blocks.len() < self.difficulty_adjustment_window_size {
+            return self.genesis_bits;
+        }
+
+        let (min_ts_index, max_ts_index) = difficulty_blocks.iter().position_minmax().into_option().unwrap();
+
+        let min_ts = difficulty_blocks[min_ts_index].timestamp;
+        let max_ts = difficulty_blocks[max_ts_index].timestamp;
+
+        // We remove the minimal block because we want the average target for the internal window.
+        difficulty_blocks.swap_remove(min_ts_index);
+
+        // We need Uint320 to avoid overflow when summing and multiplying by the window size.
         let difficulty_blocks_len = difficulty_blocks.len() as u64;
         let targets_sum: Uint320 =
             difficulty_blocks.into_iter().map(|diff_block| Uint320::from(Uint256::from_compact_target_bits(diff_block.bits))).sum();
         let average_target = targets_sum / (difficulty_blocks_len);
         let new_target = average_target * max(max_ts - min_ts, 1)
-            / (self.target_time_per_block * self.difficulty_sample_rate * difficulty_blocks_len);
+            / (self.target_time_per_block * self.difficulty_sample_rate * difficulty_blocks_len); // This does differ from FullDifficultyManager version
         Uint256::try_from(new_target).expect("Expected target should be less than 2^256").compact_target_bits()
     }
 
     pub fn estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
-        // TODO: perhaps move this const
-        const MIN_WINDOW_SIZE: usize = 1000;
-        let window_size = window.len();
-        if window_size < MIN_WINDOW_SIZE {
-            return Err(DifficultyError::UnderMinWindowSizeAllowed(window_size, MIN_WINDOW_SIZE));
-        }
-        // return 0 if no blocks had been mined yet
-        if window.is_empty() {
-            return Ok(0);
-        }
+        self.internal_estimate_network_hashes_per_second(window)
+    }
+}
 
-        let difficulty_blocks = self.get_difficulty_blocks(window);
-        let (min_ts, max_ts) = difficulty_blocks.iter().map(|x| x.timestamp).minmax().into_option().unwrap();
-        if min_ts == max_ts {
-            return Err(DifficultyError::EmptyTimestampRange);
-        }
-        let window_duration = (max_ts - min_ts) / 1000; // Divided by 1000 to convert milliseconds to seconds
-        if window_duration == 0 {
-            return Ok(0);
-        }
-
-        let (min_blue_work, max_blue_work) =
-            difficulty_blocks.iter().map(|x| x.sortable_block.blue_work).minmax().into_option().unwrap();
-
-        Ok(((max_blue_work - min_blue_work) / window_duration).as_u64())
+impl<T: HeaderStoreReader> DifficultyManagerExtension for SampledDifficultyManager<T> {
+    fn headers_store(&self) -> &dyn HeaderStoreReader {
+        self.headers_store.deref()
     }
 }
 
