@@ -1,24 +1,14 @@
-use std::{
-    cmp::Reverse,
-    collections::{BinaryHeap, VecDeque},
-    sync::Arc,
-};
+use std::{collections::VecDeque, sync::Arc};
 
-use crate::{
-    model::{
-        services::reachability::{MTReachabilityService, ReachabilityService},
-        stores::{
-            block_window_cache::BlockWindowHeap, ghostdag::GhostdagStoreReader, reachability::ReachabilityStoreReader,
-            relations::RelationsStoreReader,
-        },
-    },
-    processes::ghostdag::ordering::SortableBlock,
+use crate::model::{
+    services::reachability::{MTReachabilityService, ReachabilityService},
+    stores::{ghostdag::GhostdagStoreReader, reachability::ReachabilityStoreReader, relations::RelationsStoreReader},
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
     errors::traversal::{TraversalError, TraversalResult},
-    BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
+    BlockHashSet, ChainPath, HashMapCustomHasher,
 };
 use kaspa_hashes::Hash;
 
@@ -116,38 +106,5 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         }
 
         current
-    }
-}
-
-struct BoundedSizeBlockHeap {
-    binary_heap: BlockWindowHeap,
-    size_bound: usize,
-}
-
-impl BoundedSizeBlockHeap {
-    fn new(size_bound: usize) -> Self {
-        Self::from_binary_heap(size_bound, BinaryHeap::with_capacity(size_bound))
-    }
-
-    fn from_binary_heap(size_bound: usize, binary_heap: BlockWindowHeap) -> Self {
-        Self { size_bound, binary_heap }
-    }
-
-    fn reached_size_bound(&self) -> bool {
-        self.binary_heap.len() == self.size_bound
-    }
-
-    fn try_push(&mut self, hash: Hash, blue_work: BlueWorkType) -> bool {
-        let r_sortable_block = Reverse(SortableBlock { hash, blue_work });
-        if self.reached_size_bound() {
-            if let Some(max) = self.binary_heap.peek() {
-                if *max < r_sortable_block {
-                    return false; // Heap is full and the suggested block is greater than the max
-                }
-            }
-            self.binary_heap.pop(); // Remove the max block (because it's reverse, it'll be the block with the least blue work)
-        }
-        self.binary_heap.push(r_sortable_block);
-        true
     }
 }
