@@ -1,4 +1,6 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use wasm_bindgen::JsValue;
+use workflow_wasm::sendable::Sendable;
 
 pub mod int;
 pub mod uint;
@@ -12,6 +14,9 @@ construct_uint!(Uint3072, 48);
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("{0:?}")]
+    JsValue(Sendable<JsValue>),
+
     #[error("Invalid hex string: {0}")]
     Hex(#[from] faster_hex::Error),
 
@@ -24,8 +29,35 @@ pub enum Error {
     #[error(transparent)]
     WorkflowWasm(#[from] workflow_wasm::error::Error),
 
+    #[error(transparent)]
+    SerdeWasmBindgen(#[from] serde_wasm_bindgen::Error),
+
+    #[error("{0:?}")]
+    JsSys(Sendable<js_sys::Error>),
+
     #[error("Supplied value is not compatible with this type")]
     NotCompatible,
+
+    #[error("range error: {0:?}")]
+    Range(Sendable<js_sys::RangeError>),
+}
+
+impl From<js_sys::Error> for Error {
+    fn from(err: js_sys::Error) -> Self {
+        Error::JsSys(Sendable(err))
+    }
+}
+
+impl From<js_sys::RangeError> for Error {
+    fn from(err: js_sys::RangeError) -> Self {
+        Error::Range(Sendable(err))
+    }
+}
+
+impl From<JsValue> for Error {
+    fn from(err: JsValue) -> Self {
+        Error::JsValue(Sendable(err))
+    }
 }
 
 impl Uint256 {

@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use faster_hex::{hex_decode, hex_string};
 use kaspa_bip32::{ExtendedPublicKey, Language, Mnemonic};
 use serde::Serializer;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 #[allow(unused_imports)]
 use workflow_core::runtime;
@@ -188,7 +189,8 @@ impl PubKeyData {
 // referring to the Keydata by `id`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
-    pub id: String,
+    pub id: AccountId,
+    // pub id: String,
     pub name: String,
     pub title: String,
     pub account_kind: AccountKind,
@@ -215,9 +217,8 @@ impl Account {
         minimum_signatures: u16,
         cosigner_index: u32,
     ) -> Self {
-        let id = pub_key_data.id.to_hex();
         Self {
-            id,
+            id: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
             name,
             title,
             account_kind,
@@ -241,7 +242,7 @@ impl From<crate::account::Account> for Account {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
-    pub id: String,
+    pub id: AccountId,
     pub name: String,
     pub title: String,
     pub account_kind: AccountKind,
@@ -454,201 +455,314 @@ impl AccessContextT for AccessContext {
     }
 }
 
-pub struct TransactionRecord;
 pub type TransactionRecordId = u64;
+pub struct TransactionRecord {
+    id: TransactionRecordId,
+}
+
+#[derive(Default)]
+pub struct IteratorOptions {
+    chunk_size: Option<usize>,
+}
 
 #[async_trait]
-pub trait AccountAccessor {}
+pub trait Iterator: Send + Sync {
+    type Item: Send + Sync;
+    // type Id;
+
+    async fn next(&mut self) -> Option<Vec<Self::Item>>;
+}
 
 #[async_trait]
-pub trait StoreTrait {
-    async fn prv_key_data_len(self: &Arc<Self>) -> Result<usize>;
-    async fn prv_key_data_ids(self: &Arc<Self>, range: std::ops::Range<usize>) -> Result<Vec<PrvKeyDataId>>;
-    async fn store_prv_key_data(self: &Arc<Self>, ctx: &Arc<dyn AccessContextT>, prv_key_data: &[&PrvKeyData]) -> Result<()>;
-    async fn load_prv_key_data(
-        self: &Arc<Self>,
-        ctx: &Arc<dyn AccessContextT>,
-        prv_key_data_id: &[PrvKeyDataId],
-    ) -> Result<Vec<PrvKeyData>>;
+pub trait PrvKeyDataStore: Send + Sync {
+    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = PrvKeyDataId>>;
+    async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&PrvKeyData]) -> Result<()>;
+    async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[PrvKeyDataId]) -> Result<Vec<PrvKeyData>>;
+}
 
-    async fn account_len(self: &Arc<Self>) -> Result<usize>;
-    async fn account_ids(self: &Arc<Self>, range: std::ops::Range<usize>) -> Result<Vec<AccountId>>;
-    async fn store_account(self: &Arc<Self>, ctx: &Arc<dyn AccessContextT>, account: &[&Account]) -> Result<()>;
-    async fn load_account(self: &Arc<Self>, ctx: &Arc<dyn AccessContextT>, account_ids: &[AccountId]) -> Result<Vec<Account>>;
+#[async_trait]
+pub trait AccountStore: Send + Sync {
+    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = AccountId>>;
+    async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&Account]) -> Result<()>;
+    async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[AccountId]) -> Result<Vec<Account>>;
+}
 
-    async fn metadata_len(self: &Arc<Self>) -> Result<usize>;
-    async fn metadata_ids(self: &Arc<Self>, range: std::ops::Range<usize>) -> Result<Vec<AccountId>>;
-    async fn store_metadata(self: &Arc<Self>, ctx: &Arc<dyn AccessContextT>, metadata: &[&Metadata]) -> Result<()>;
-    async fn load_metadata(self: &Arc<Self>, ctx: &Arc<dyn AccessContextT>, account_ids: &[AccountId]) -> Result<Vec<Metadata>>;
+#[async_trait]
+pub trait MetadataStore: Send + Sync {
+    // async fn iter(self: Arc<Self>) -> Arc<dyn Iterator<Item = AccountId>>;
+    async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&Metadata]) -> Result<()>;
+    async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[AccountId]) -> Result<Vec<Metadata>>;
+}
 
-    async fn transaction_record_len(self: &Arc<Self>) -> Result<usize>;
-    async fn transaction_record_ids(self: &Arc<Self>, range: std::ops::Range<usize>) -> Result<Vec<TransactionRecordId>>;
-    async fn store_transaction_record(&self, ctx: &Arc<dyn AccessContextT>, transaction_record: &[&TransactionRecord]) -> Result<()>;
-    async fn load_transaction_record(
-        &self,
-        ctx: &Arc<dyn AccessContextT>,
-        transaction_record_ids: &[TransactionRecordId],
-    ) -> Result<Vec<TransactionRecord>>;
+#[async_trait]
+pub trait TransactionRecordStore: Send + Sync {
+    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = TransactionRecordId>>;
+    async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&TransactionRecord]) -> Result<()>;
+    async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[TransactionRecordId]) -> Result<Vec<TransactionRecord>>;
+}
+
+#[async_trait]
+pub trait Interface: Sized + Send + Sync {
+    async fn prv_key_data(self: Arc<Self>) -> Arc<dyn PrvKeyDataStore>;
+    async fn account(self: Arc<Self>) -> Arc<dyn AccountStore>;
+    async fn metadata(self: Arc<Self>) -> Arc<dyn MetadataStore>;
+    async fn transaction_record(self: Arc<Self>) -> Arc<dyn TransactionRecordStore>;
+}
+
+pub struct Collection<Id, Data>
+where
+    Id: std::hash::Hash + std::cmp::Eq,
+    Data: IdT,
+{
+    pub vec: Vec<Arc<Data>>,
+    pub map: HashMap<Id, Arc<Data>>,
+}
+
+impl<Id, Data> Default for Collection<Id, Data>
+where
+    Id: std::hash::Hash + std::cmp::Eq,
+    Data: IdT,
+{
+    fn default() -> Self {
+        Self { vec: Vec::new(), map: HashMap::new() }
+    }
+}
+
+use std::cmp::Eq;
+use std::fmt::Debug;
+use std::fmt::{Display, Formatter};
+use std::hash::Hash;
+
+pub trait IdT {
+    type Id: Eq + Hash + Debug;
+    fn id(&self) -> &Self::Id;
+}
+
+impl IdT for PrvKeyData {
+    type Id = PrvKeyDataId;
+    fn id(&self) -> &PrvKeyDataId {
+        &self.id
+    }
+}
+
+impl IdT for Account {
+    type Id = AccountId;
+    fn id(&self) -> &AccountId {
+        &self.id
+    }
+}
+
+impl IdT for Metadata {
+    type Id = AccountId;
+    fn id(&self) -> &AccountId {
+        &self.id
+    }
+}
+
+impl IdT for TransactionRecord {
+    type Id = TransactionRecordId;
+    fn id(&self) -> &TransactionRecordId {
+        &self.id
+    }
+}
+
+// impl IdT for PrvKeyData
+
+impl<Id, Data> Collection<Id, Data>
+where
+    Id: Clone + Hash + Eq + Display + Debug + Send, //+ std::fmt::Debug + Send
+    Data: Clone + IdT<Id = Id>,
+{
+    pub fn len(&self) -> usize {
+        self.vec.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.vec.is_empty()
+    }
+
+    pub fn insert(&mut self, id: Id, data: Arc<Data>) -> Result<()> {
+        if self.map.get(&id).is_some() {
+            self.map.remove(&id);
+            self.vec.retain(|d| d.id() != &id);
+        }
+
+        self.map.insert(id, data.clone());
+        self.vec.push(data);
+        Ok(())
+    }
+
+    pub fn store(&mut self, data: &[&Data]) -> Result<()> {
+        for data in data.iter() {
+            let id = data.id();
+            if self.map.get(id).is_some() {
+                self.map.remove(id);
+                self.vec.retain(|d| d.id() != id);
+            }
+
+            let data = Arc::new((*data).clone());
+            self.map.insert(id.clone(), data.clone());
+            self.vec.push(data.clone());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct LocalStoreCache {
+    prv_key_data: Mutex<Collection<PrvKeyDataId, PrvKeyData>>,
+    accounts: Mutex<Collection<AccountId, Account>>,
+    metadata: Mutex<Collection<AccountId, Metadata>>,
+    transaction_records: Mutex<Collection<TransactionRecordId, TransactionRecord>>,
 }
 
 pub struct LocalStore {
     pub wallet: Store,
-    // pub transactions: Store,
+    pub cache: LocalStoreCache,
 }
 
 impl LocalStore {
     pub fn new(_folder: &Path, name: &str) -> Result<LocalStore> {
         let wallet = Store::new(DEFAULT_WALLET_FOLDER, name)?;
         // let transactions = Store::new(name)?;
-        Ok(LocalStore { wallet })
+
+        Ok(LocalStore { wallet, cache: LocalStoreCache::default() })
     }
 }
 
-#[allow(clippy::len_without_is_empty)]
+#[derive(Clone)]
+struct StoreIteratorInner {
+    store: Arc<LocalStore>,
+    cursor: usize,
+    chunk_size: usize,
+}
+
+impl Debug for StoreIteratorInner {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StoreIteratorInner").field("cursor", &self.cursor).finish()
+    }
+}
+
+static DEFAULT_CHUNK_SIZE: usize = 25;
+#[macro_export]
+macro_rules! declare_iterator {
+    ($prop:ident, $name:ident, $id : ty, $data : ty) => {
+        #[derive(Clone, Debug)]
+        pub struct $name(StoreIteratorInner);
+
+        impl $name {
+            pub fn new(store: Arc<LocalStore>, iterator_options: IteratorOptions) -> Self {
+                Self(StoreIteratorInner { store, cursor: 0, chunk_size: iterator_options.chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE) })
+            }
+        }
+
+        #[async_trait]
+        impl Iterator for $name {
+            type Item = $id;
+
+            async fn next(&mut self) -> Option<Vec<Self::Item>> {
+                let vec = &self.0.store.cache.$prop.lock().unwrap().vec;
+                if self.0.cursor >= vec.len() {
+                    return None;
+                } else {
+                    let slice = &vec[self.0.cursor as usize..(self.0.cursor as usize + self.0.chunk_size)];
+                    if slice.is_empty() {
+                        None
+                    } else {
+                        self.0.cursor += slice.len();
+                        let vec = slice.iter().map(|data| data.id.clone()).collect();
+                        Some(vec)
+                    }
+                }
+            }
+        }
+    };
+}
+
+declare_iterator!(prv_key_data, LocalStorePrvKeyDataIterator, PrvKeyDataId, PrvKeyData);
+declare_iterator!(accounts, LocalStoreAccountIterator, AccountId, Account);
+declare_iterator!(metadata, LocalStoreMetadataIterator, AccountId, Metadata);
+declare_iterator!(transaction_records, LocalStoreTransactionRecordIterator, TransactionRecordId, TransactionRecord);
+
 #[async_trait]
-pub trait Interface: Send + Sync {
-    type Data;
-    type Id;
-
-    async fn len(&self) -> Result<u64>;
-
-    async fn get_ids(&self, _range: std::ops::Range<u64>) -> Result<Vec<Self::Id>>;
-
-    async fn store(&self, _ctx: Arc<dyn AccessContextT>, _data: &[&Self::Data]) -> Result<()>;
-
-    async fn load(&self, _ctx: &Arc<dyn AccessContextT>, _id: &[Self::Id]) -> Result<Vec<Self::Data>>;
+impl Interface for LocalStore {
+    async fn prv_key_data(self: Arc<Self>) -> Arc<dyn PrvKeyDataStore> {
+        self
+    }
+    async fn account(self: Arc<Self>) -> Arc<dyn AccountStore> {
+        self
+    }
+    async fn metadata(self: Arc<Self>) -> Arc<dyn MetadataStore> {
+        self
+    }
+    async fn transaction_record(self: Arc<Self>) -> Arc<dyn TransactionRecordStore> {
+        self
+    }
 }
-
-pub type PrvKeyDataInterface = dyn Interface<Id = PrvKeyDataId, Data = PrvKeyData>;
-pub type AccountInterface = dyn Interface<Id = AccountId, Data = Account>;
-pub type MetadataInterface = dyn Interface<Id = AccountId, Data = Metadata>;
-pub type TransactionInterface = dyn Interface<Id = TransactionRecordId, Data = TransactionRecord>;
 
 #[async_trait]
-pub trait Factory: Sized + Send + Sync {
-    async fn prv_key_data(&self) -> Arc<PrvKeyDataInterface>;
-    async fn account(&self) -> Arc<AccountInterface>;
-    async fn metadata(&self) -> Arc<MetadataInterface>;
-    async fn transaction(&self) -> Arc<TransactionInterface>;
-    // async fn prv_key_data(&self) -> Arc<dyn Interface<Id = PrvKeyDataId, Data = PrvKeyData>>;
-    // async fn account(&self) -> Arc<dyn Interface<Id = AccountId, Data = Account>>;
-    // async fn metadata(&self) -> Arc<dyn Interface<Id = AccountId, Data = Metadata>>;
-    // async fn transaction(&self) -> Arc<dyn Interface<Id = TransactionRecordId, Data = TransactionRecord>>;
+impl PrvKeyDataStore for LocalStore {
+    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = PrvKeyDataId>> {
+        Box::new(LocalStorePrvKeyDataIterator::new(self, options))
+    }
+
+    async fn store(&self, _ctx: &Arc<dyn AccessContextT>, _data: &[&PrvKeyData]) -> Result<()> {
+        todo!();
+    }
+
+    async fn load(&self, _ctx: &Arc<dyn AccessContextT>, _id: &[PrvKeyDataId]) -> Result<Vec<PrvKeyData>> {
+        todo!();
+    }
 }
 
-#[allow(dead_code)]
-struct LocalStoreFactory {
-    pub prv_key_data: Arc<PrvKeyDataInterface>,
-    pub account: Arc<PrvKeyDataInterface>,
-    pub metadata: Arc<PrvKeyDataInterface>,
-    pub transaction: Arc<PrvKeyDataInterface>,
+#[async_trait]
+impl AccountStore for LocalStore {
+    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = AccountId>> {
+        Box::new(LocalStoreAccountIterator::new(self, options))
+    }
+
+    async fn store(&self, _ctx: &Arc<dyn AccessContextT>, data: &[&Account]) -> Result<()> {
+        self.cache.accounts.lock().unwrap().store(data)?;
+        Ok(())
+    }
+
+    async fn load(&self, _ctx: &Arc<dyn AccessContextT>, _id: &[AccountId]) -> Result<Vec<Account>> {
+        todo!();
+    }
 }
 
-// #[async_trait]
-// impl Factory for LocalStoreFactory {
-//     async fn prv_key_data(&self) -> Arc<dyn Interface<Id = PrvKeyDataId, Data = PrvKeyData>> {
-//         todo!();
-//     }
+#[async_trait]
+impl MetadataStore for LocalStore {
+    // async fn iter(self: Arc<Self>, options : IteratorOptions) -> Arc<dyn Iterator<Item = AccountId>> {
+    //     let iter = LocalStoreMetadataIterator::new(self.clone(), options);
+    //     Arc::new(iter)
+    // }
 
-//     async fn get_ids(&self, _range: std::ops::Range<u64>) -> Result<Vec<Self::Id>>
-//      {
-//         todo!();
-//     }
+    async fn store(&self, _ctx: &Arc<dyn AccessContextT>, data: &[&Metadata]) -> Result<()> {
+        self.cache.metadata.lock().unwrap().store(data)?;
+        Ok(())
+        // todo!();d
+    }
 
-//     async fn store(&self, _ctx: Arc<dyn AccessContextT>, _data: &[&Self::Data]) -> Result<()>
-//      {
-//         todo!();
-//         // Ok(())
-//     }
+    async fn load(&self, _ctx: &Arc<dyn AccessContextT>, _id: &[AccountId]) -> Result<Vec<Metadata>> {
+        todo!();
+    }
+}
 
-//     async fn load(&self, _ctx: &Arc<dyn AccessContextT>, _id: &[Self::Id]) -> Result<Vec<Self::Data>>
-//      {
-//         todo!();
-//     }
-// }
+#[async_trait]
+impl TransactionRecordStore for LocalStore {
+    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = TransactionRecordId>> {
+        Box::new(LocalStoreTransactionRecordIterator::new(self, options))
+    }
 
-// #[async_trait]
-// impl StoreTrait for LocalStore {
-//     async fn prv_key_data_len(self: &Arc<Self>) -> Result<usize> {
-//         todo!();
-//     }
-//     async fn account(&self) -> Arc<dyn Interface<Id = AccountId, Data = Account>> {
-//         todo!()
-//     }
-//     async fn metadata(&self) -> Arc<dyn Interface<Id = AccountId, Data = Metadata>> {
-//         todo!()
-//     }
-//     async fn transaction(&self) -> Arc<dyn Interface<Id = TransactionRecordId, Data = TransactionRecord>> {
-//         todo!()
-//     }
-// }
+    async fn store(&self, _ctx: &Arc<dyn AccessContextT>, _data: &[&TransactionRecord]) -> Result<()> {
+        todo!();
+    }
 
-// #[async_trait]
-// impl StoreTrait for LocalStore {
-//     async fn prv_key_data_len(self: &Arc<Self>) -> Result<usize> {
-//         todo!();
-//     }
-//     async fn prv_key_data_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<PrvKeyDataId>> {
-//         todo!();
-//     }
-//     async fn store_prv_key_data(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _prv_key_data: &[&PrvKeyData]) -> Result<()> {
-//         todo!();
-//     }
-//     async fn load_prv_key_data(
-//         self: &Arc<Self>,
-//         _ctx: &Arc<dyn AccessContextT>,
-//         _prv_key_data_id: &[PrvKeyDataId],
-//     ) -> Result<Vec<PrvKeyData>> {
-//         todo!();
-//     }
-
-//     async fn account_len(self: &Arc<Self>) -> Result<usize> {
-//         todo!();
-//     }
-//     async fn account_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<AccountId>> {
-//         todo!();
-//     }
-//     async fn store_account(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account: &[&Account]) -> Result<()> {
-//         todo!();
-//     }
-//     async fn load_account(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account_ids: &[AccountId]) -> Result<Vec<Account>> {
-//         todo!();
-//     }
-
-//     async fn metadata_len(self: &Arc<Self>) -> Result<usize> {
-//         todo!();
-//     }
-//     async fn metadata_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<AccountId>> {
-//         todo!();
-//     }
-//     async fn store_metadata(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _metadata: &[&Metadata]) -> Result<()> {
-//         todo!();
-//     }
-//     async fn load_metadata(self: &Arc<Self>, _ctx: &Arc<dyn AccessContextT>, _account_ids: &[AccountId]) -> Result<Vec<Metadata>> {
-//         todo!();
-//     }
-
-//     async fn transaction_record_len(self: &Arc<Self>) -> Result<usize> {
-//         todo!();
-//     }
-//     async fn transaction_record_ids(self: &Arc<Self>, _range: std::ops::Range<usize>) -> Result<Vec<TransactionRecordId>> {
-//         todo!();
-//     }
-//     async fn store_transaction_record(
-//         &self,
-//         _ctx: &Arc<dyn AccessContextT>,
-//         _transaction_record: &[&TransactionRecord],
-//     ) -> Result<()> {
-//         todo!();
-//     }
-//     async fn load_transaction_record(
-//         &self,
-//         _ctx: &Arc<dyn AccessContextT>,
-//         _transaction_record_ids: &[TransactionRecordId],
-//     ) -> Result<Vec<TransactionRecord>> {
-//         todo!();
-//     }
-// }
+    async fn load(&self, _ctx: &Arc<dyn AccessContextT>, _id: &[TransactionRecordId]) -> Result<Vec<TransactionRecord>> {
+        todo!();
+    }
+}
 
 #[cfg(test)]
 mod tests {

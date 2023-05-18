@@ -14,10 +14,13 @@ borsh.workspace = true
 malachite-nz = "0.3"
 malachite-base = "0.3"
 wasm-bindgen.workspace = true
+serde-wasm-bindgen.workspace = true
 js-sys.workspace = true
 kaspa-utils.workspace = true
 thiserror.workspace = true
 workflow-wasm.workspace = true
+
+workflow-log.workspace = true
 
 [dev-dependencies]
 rand_chacha.workspace = true

@@ -2,7 +2,6 @@ use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use js_sys::{Array, Object};
 use kaspa_hashes::Hash;
-use kaspa_math::*;
 use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::*;
@@ -202,14 +201,18 @@ impl Header {
     }
 
     #[wasm_bindgen(getter = blueWork)]
+    pub fn blue_work(&self) -> js_sys::BigInt {
+        self.blue_work.try_into().unwrap_or_else(|err| panic!("invalid blue work: {err}"))
+    }
+
+    #[wasm_bindgen(js_name = getBlueWorkAsHex)]
     pub fn get_blue_work_as_hex(&self) -> String {
-        (&self.blue_work).to_hex()
+        self.blue_work.to_hex()
     }
 
     #[wasm_bindgen(setter = blueWork)]
     pub fn set_blue_work_from_js_value(&mut self, js_value: JsValue) {
-        let vec = js_value.try_as_vec_u8().expect("invalid blue work");
-        self.blue_work = Uint192::from_be_bytes(vec.as_slice().try_into().expect("invalid byte length"));
+        self.blue_work = js_value.try_into().unwrap_or_else(|err| panic!("invalid blue work: {err}"));
     }
 }
 
@@ -221,7 +224,7 @@ pub enum Error {
     SerdeWasmBindgen(#[from] serde_wasm_bindgen::Error),
     #[error(transparent)]
     WorkflowWasm(#[from] workflow_wasm::error::Error),
-    #[error("Error in property `{0}`: {1}")]
+    #[error("`TryFrom<JsValue> for Header` - error converting property `{0}`: {1}")]
     Conversion(&'static str, String),
 }
 
@@ -255,7 +258,6 @@ impl TryFrom<JsValue> for Header {
 
             let header = Self {
                 hash: object.get("hash")?.try_into().unwrap_or_default(),
-                // hash: object.get("hash")?.try_into().map_err(|err|Error::convert("hash",err))?,
                 version: object.get_u16("version")?,
                 parents_by_level,
                 hash_merkle_root: object.get("hashMerkleRoot")?.try_into().map_err(|err| Error::convert("hashMerkleRoot", err))?,

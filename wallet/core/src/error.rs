@@ -75,8 +75,7 @@ pub enum Error {
 
     #[error(transparent)]
     Address(#[from] kaspa_addresses::AddressError),
-    // #[error(transparent)]
-    // CoreSigner(#[from] CoreSignerError),
+
     #[error("SerdeWasmBindgen: {0:?}")]
     SerdeWasmBindgen(Sendable<JsValue>),
 
@@ -85,12 +84,10 @@ pub enum Error {
 
     #[error("{0}")]
     Chacha20poly1305(chacha20poly1305::Error),
-    // #[error(transparent)]
-    // InvalidHashLength(sha2::digest::InvalidLength),
+
     #[error(transparent)]
     FromUtf8Error(#[from] std::string::FromUtf8Error),
-    //     #[error(transparent)]
-    //     ConsensusCoreWasm(#[from] kaspa_consensus_core::wasm::error::Error),
+
     #[error(transparent)]
     ScriptBuilderError(#[from] kaspa_txscript::script_builder::ScriptBuilderError),
 
@@ -105,11 +102,7 @@ pub enum Error {
 
     #[error("private key {0} not found")]
     PrivateKeyNotFound(String),
-    // #[error("invalid private key: {0}")]
-    // ChannelError(workflow_core::channel::ChannelError<Events>),
 }
-
-//unsafe impl Send for Error{}
 
 impl Error {
     pub fn custom<T: Into<String>>(msg: T) -> Self {
