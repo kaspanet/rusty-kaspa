@@ -6,27 +6,34 @@ use crate::{
         storage::ConsensusStorage,
     },
     model::{
-        services::reachability::MTReachabilityService,
+        services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
             ghostdag::CompactGhostdagData,
             headers::HeaderStoreReader,
+            past_pruning_points::PastPruningPointsStoreReader,
             pruning::{PruningStore, PruningStoreReader},
-            reachability::DbReachabilityStore,
+            reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             utxo_diffs::UtxoDiffsStoreReader,
             utxo_set::UtxoSetStore,
         },
     },
-    processes::pruning_proof::PruningProofManager,
+    processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
 };
 use crossbeam_channel::Receiver as CrossbeamReceiver;
-use kaspa_consensus_core::muhash::MuHashExtensions;
+use kaspa_consensus_core::{
+    blockhash::ORIGIN, blockstatus::BlockStatus::StatusHeaderOnly, muhash::MuHashExtensions, pruning::PruningPointProof, BlockHashSet,
+};
 use kaspa_core::info;
-use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
-use std::{ops::Deref, sync::Arc};
+use std::{
+    collections::VecDeque,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 use tokio::sync::RwLock as TokioRwLock;
 
 pub enum PruningProcessingMessage {
@@ -141,7 +148,8 @@ impl PruningProcessor {
             // TODO: remove assertion when we stabilize
             self.assert_utxo_commitment(new_pruning_point);
 
-            let _prune_guard = self.pruning_lock.blocking_write();
+            // Finally, prune data in the new pruning point past
+            self.prune(new_pruning_point);
         } else if new_candidate != current_pruning_info.candidate {
             let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
             write_guard.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
@@ -156,5 +164,134 @@ impl PruningProcessor {
             multiset.add_utxo(&outpoint, &entry);
         }
         assert_eq!(multiset.finalize(), commitment, "pruning point utxo set does not match the header utxo commitment");
+    }
+
+    fn prune(&self, new_pruning_point: Hash) {
+        let _prune_guard = self.pruning_lock.blocking_write();
+
+        // TODO: acquire pruning lock in all other processors
+        // TODO: check if archival
+        // TODO: progress logs
+
+        let proof = self.pruning_proof_manager.get_pruning_point_proof();
+        let data = self
+            .pruning_proof_manager
+            .get_pruning_point_anticone_and_trusted_data()
+            .expect("insufficient depth error is unexpected here");
+
+        assert_eq!(new_pruning_point, proof[0].last().unwrap().hash);
+        assert_eq!(new_pruning_point, data.anticone[0]);
+
+        // We keep full blocks for pruning point and its anticone, and headers for all the rest
+        let kept_relations: BlockHashSet = data
+            .anticone
+            .iter()
+            .copied()
+            .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
+            .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
+            .collect();
+        let kept_blocks: BlockHashSet = data.anticone.iter().copied().collect();
+        let past_pruning_points: BlockHashSet = self.past_pruning_points();
+
+        let mut batch = WriteBatch::default();
+        let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
+        let mut level_relations_write = self.relations_stores.write();
+        let mut reachability_relations_write = self.reachability_relations_store.write();
+        let mut statuses_write = self.statuses_store.write();
+
+        // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
+        let mut queue = VecDeque::<Hash>::from([ORIGIN]);
+        while let Some(parent) = queue.pop_front() {
+            let children = staging.get_children(parent).unwrap();
+            for current in children.iter().copied() {
+                if staging.is_dag_ancestor_of(new_pruning_point, current) {
+                    continue;
+                }
+
+                // TODO: batch and release locks
+                // TODO: tips, hst, sc
+
+                // Remove window cache entries
+                self.block_window_cache_for_difficulty.remove(&current);
+                self.block_window_cache_for_past_median_time.remove(&current);
+
+                if !kept_blocks.contains(&current) {
+                    // Prune data related to block bodies and UTXO state
+                    self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
+                    self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
+                    self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
+                    self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
+                    self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
+
+                    if kept_relations.contains(&current) {
+                        statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
+                    } else {
+                        // Prune data related to headers: relations, reachability, ghostdag
+                        let mergeset = relations::delete_reachability_relations(
+                            BatchDbWriter::new(&mut batch),
+                            reachability_relations_write.deref_mut(),
+                            &staging,
+                            current,
+                        );
+                        reachability::delete_block(&mut staging, current, &mut mergeset.iter().cloned()).unwrap();
+                        let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
+                        (0..=block_level as usize).for_each(|level| {
+                            relations::delete_level_relations(
+                                BatchDbWriter::new(&mut batch),
+                                &mut level_relations_write[level],
+                                current,
+                            );
+                            self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap();
+                        });
+
+                        // Remove status completely
+                        statuses_write.delete_batch(&mut batch, current).unwrap();
+
+                        if !past_pruning_points.contains(&current) {
+                            // Prune headers
+                            self.headers_store.delete_batch(&mut batch, current).unwrap();
+                        }
+                    }
+                }
+
+                queue.push_back(current);
+            }
+        }
+
+        let reachability_write = staging.commit(&mut batch).unwrap();
+
+        // Flush the batch to the DB
+        self.db.write(batch).unwrap();
+
+        // Calling the drops explicitly after the batch is written in order to avoid possible errors.
+        drop(reachability_write);
+        drop(statuses_write);
+        drop(reachability_relations_write);
+        drop(level_relations_write);
+        // drop(hst_write);
+        // drop(sc_write);
+        // drop(tips_write);
+
+        // TODO: remove this sanity test when stable
+        self.assert_proof_rebuilding(proof, new_pruning_point);
+    }
+
+    fn past_pruning_points(&self) -> BlockHashSet {
+        (0..self.pruning_point_store.read().get().unwrap().index)
+            .map(|index| self.past_pruning_points_store.get(index).unwrap())
+            .collect()
+    }
+
+    fn assert_proof_rebuilding(&self, proof: Arc<PruningPointProof>, new_pruning_point: Hash) {
+        info!("Rebuilding the pruning proof after pruning data (Alpha sanity test)");
+        let proof_hashes = proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
+        let built_proof = self.pruning_proof_manager.build_pruning_point_proof(new_pruning_point);
+        let built_proof_hashes = built_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
+        assert_eq!(proof_hashes.len(), built_proof_hashes.len(), "Locally built proof does not match the applied one");
+        for (i, (a, b)) in proof_hashes.into_iter().zip(built_proof_hashes).enumerate() {
+            if a != b {
+                panic!("Proof built following pruning does not match previous proof: built[{}]={}, prev[{}]={}", i, b, i, a);
+            }
+        }
     }
 }

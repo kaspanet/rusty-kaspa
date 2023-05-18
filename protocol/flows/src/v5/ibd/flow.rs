@@ -12,6 +12,7 @@ use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
+    BlockHashSet,
 };
 use kaspa_consensusmanager::StagingConsensus;
 use kaspa_core::{debug, info};
@@ -236,19 +237,20 @@ impl IbdFlow {
             entries.push(entry);
         }
 
-        let proof_hashes = proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
+        let ref_proof = proof.clone();
         let trusted_set = pkg.build_trusted_subdag(entries)?;
         consensus.apply_pruning_proof(proof, &trusted_set);
         consensus.import_pruning_points(pruning_points);
 
         info!("Building the proof which was just applied (Alpha sanity test)");
         let built_proof = consensus.get_pruning_point_proof(); // TODO: remove this sanity test when stable
-        let built_proof_hashes = built_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
-        assert_eq!(proof_hashes.len(), built_proof_hashes.len(), "Locally built proof does not match the applied one");
-        for (i, (a, b)) in proof_hashes.into_iter().zip(built_proof_hashes).enumerate() {
-            if a != b {
-                panic!("Locally built proof does not match the applied one: built[{}]={}, applied[{}]={}", i, b, i, a);
-            }
+        for (i, (ref_level, built_level)) in ref_proof.iter().zip(built_proof.iter()).enumerate() {
+            assert_eq!(
+                ref_level.iter().map(|h| h.hash).collect::<BlockHashSet>(),
+                built_level.iter().map(|h| h.hash).collect::<BlockHashSet>(),
+                "Locally built proof for level {} does not match the applied one",
+                i
+            );
         }
         info!("Proof was locally built successfully");
 
