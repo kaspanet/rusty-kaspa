@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use kaspa_consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
 use kaspa_database::prelude::DbWriter;
+use kaspa_database::prelude::MemoryWriter;
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
@@ -22,10 +23,21 @@ pub trait RelationsStoreReader {
 /// since it modifies the children arrays for previously added parents which is
 /// non-append-only and thus needs to be guarded.
 pub trait RelationsStore: RelationsStoreReader {
+    type DefaultWriter: DbWriter;
+    fn default_writer(&self) -> Self::DefaultWriter;
     /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`
-    fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
-    fn delete(&mut self, hash: Hash) -> Result<(), StoreError>;
-    fn replace_parent(&mut self, hash: Hash, replaced_parent: Hash, replace_with: &[Hash]) -> Result<(), StoreError>;
+    fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+        self.insert_with_writer(self.default_writer(), hash, parents)
+    }
+    fn insert_with_writer(&mut self, writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
+    fn delete(&mut self, writer: impl DbWriter, hash: Hash) -> Result<(), StoreError>;
+    fn replace_parent(
+        &mut self,
+        writer: impl DbWriter,
+        hash: Hash,
+        replaced_parent: Hash,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError>;
 }
 
 const PARENTS_PREFIX: &[u8] = b"block-parents";
@@ -61,84 +73,8 @@ impl DbRelationsStore {
         }
     }
 
-    fn insert_with_writer(&self, mut writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
-        if self.has(hash)? {
-            return Err(StoreError::HashAlreadyExists(hash));
-        }
-
-        // Insert a new entry for `hash`
-        self.parents_access.write(&mut writer, hash, parents.clone())?;
-
-        // The new hash has no children yet
-        self.children_access.write(&mut writer, hash, BlockHashes::new(Vec::new()))?;
-
-        // Update `children` for each parent
-        for parent in parents.iter().cloned() {
-            let mut children = (*self.get_children(parent)?).clone();
-            children.push(hash);
-            self.children_access.write(&mut writer, parent, BlockHashes::new(children))?;
-        }
-
-        Ok(())
-    }
-
-    /// Delete children and parents entries of `hash` and remove `hash` from `children` of each of its parents
-    /// Note: the removal from parents of each child must be done beforehand by calling `replace_parent` for each child
-    fn delete_with_writer(&self, mut writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
-        let parents = self.parents_access.read(hash)?;
-        self.parents_access.delete(&mut writer, hash)?;
-        self.children_access.delete(&mut writer, hash)?;
-
-        // Remove `hash` from `children` of each parent
-        for parent in parents.iter().cloned() {
-            let mut children = (*self.get_children(parent)?).clone();
-            let index = children.iter().copied().position(|h| h == hash).expect("inconsistent child-parent relation");
-            children.swap_remove(index);
-            self.children_access.write(&mut writer, parent, BlockHashes::new(children))?;
-        }
-
-        Ok(())
-    }
-
-    fn replace_parent_with_writer(
-        &self,
-        mut writer: impl DbWriter,
-        hash: Hash,
-        replaced_parent: Hash,
-        replace_with: &[Hash],
-    ) -> Result<(), StoreError> {
-        let mut parents = (*self.get_parents(hash)?).clone();
-        let replaced_index =
-            parents.iter().copied().position(|h| h == replaced_parent).expect("callers must ensure replaced is a parent");
-        parents.swap_remove(replaced_index);
-        parents.extend(replace_with);
-        self.parents_access.write(&mut writer, hash, BlockHashes::new(parents))?;
-
-        for parent in replace_with.iter().cloned() {
-            let mut children = (*self.get_children(parent)?).clone();
-            children.push(hash);
-            self.children_access.write(&mut writer, parent, BlockHashes::new(children))?;
-        }
-
-        Ok(())
-    }
-
     pub fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         self.insert_with_writer(BatchDbWriter::new(batch), hash, parents)
-    }
-
-    pub fn delete_batch(&mut self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
-        self.delete_with_writer(BatchDbWriter::new(batch), hash)
-    }
-
-    pub fn replace_parent_batch(
-        &mut self,
-        batch: &mut WriteBatch,
-        hash: Hash,
-        replaced_parent: Hash,
-        replace_with: &[Hash],
-    ) -> Result<(), StoreError> {
-        self.replace_parent_with_writer(BatchDbWriter::new(batch), hash, replaced_parent, replace_with)
     }
 }
 
@@ -166,16 +102,72 @@ impl RelationsStoreReader for DbRelationsStore {
 }
 
 impl RelationsStore for DbRelationsStore {
-    fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
-        self.insert_with_writer(DirectDbWriter::new(&self.db), hash, parents)
+    type DefaultWriter = DirectDbWriter<'static>;
+
+    fn default_writer(&self) -> Self::DefaultWriter {
+        DirectDbWriter::from_arc(self.db.clone())
     }
 
-    fn delete(&mut self, hash: Hash) -> Result<(), StoreError> {
-        self.delete_with_writer(DirectDbWriter::new(&self.db), hash)
+    fn insert_with_writer(&mut self, mut writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+        if self.has(hash)? {
+            return Err(StoreError::HashAlreadyExists(hash));
+        }
+
+        // Insert a new entry for `hash`
+        self.parents_access.write(&mut writer, hash, parents.clone())?;
+
+        // The new hash has no children yet
+        self.children_access.write(&mut writer, hash, BlockHashes::new(Vec::new()))?;
+
+        // Update `children` for each parent
+        for parent in parents.iter().cloned() {
+            let mut children = (*self.get_children(parent)?).clone();
+            children.push(hash);
+            self.children_access.write(&mut writer, parent, BlockHashes::new(children))?;
+        }
+
+        Ok(())
     }
 
-    fn replace_parent(&mut self, hash: Hash, replaced_parent: Hash, replace_with: &[Hash]) -> Result<(), StoreError> {
-        self.replace_parent_with_writer(DirectDbWriter::new(&self.db), hash, replaced_parent, replace_with)
+    /// Delete children and parents entries of `hash` and remove `hash` from `children` of each of its parents
+    /// Note: the removal from parents of each child must be done beforehand by calling `replace_parent` for each child
+    fn delete(&mut self, mut writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
+        let parents = self.parents_access.read(hash)?;
+        self.parents_access.delete(&mut writer, hash)?;
+        self.children_access.delete(&mut writer, hash)?;
+
+        // Remove `hash` from `children` of each parent
+        for parent in parents.iter().cloned() {
+            let mut children = (*self.get_children(parent)?).clone();
+            let index = children.iter().copied().position(|h| h == hash).expect("inconsistent child-parent relation");
+            children.swap_remove(index);
+            self.children_access.write(&mut writer, parent, BlockHashes::new(children))?;
+        }
+
+        Ok(())
+    }
+
+    fn replace_parent(
+        &mut self,
+        mut writer: impl DbWriter,
+        hash: Hash,
+        replaced_parent: Hash,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError> {
+        let mut parents = (*self.get_parents(hash)?).clone();
+        let replaced_index =
+            parents.iter().copied().position(|h| h == replaced_parent).expect("callers must ensure replaced is a parent");
+        parents.swap_remove(replaced_index);
+        parents.extend(replace_with);
+        self.parents_access.write(&mut writer, hash, BlockHashes::new(parents))?;
+
+        for parent in replace_with.iter().cloned() {
+            let mut children = (*self.get_children(parent)?).clone();
+            children.push(hash);
+            self.children_access.write(&mut writer, parent, BlockHashes::new(children))?;
+        }
+
+        Ok(())
     }
 }
 
@@ -221,7 +213,13 @@ impl RelationsStoreReader for MemoryRelationsStore {
 }
 
 impl RelationsStore for MemoryRelationsStore {
-    fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+    type DefaultWriter = MemoryWriter;
+
+    fn default_writer(&self) -> Self::DefaultWriter {
+        MemoryWriter::default()
+    }
+
+    fn insert_with_writer(&mut self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         if let Vacant(e) = self.parents_map.entry(hash) {
             // Update the new entry for `hash`
             e.insert(BlockHashes::clone(&parents));
@@ -241,7 +239,7 @@ impl RelationsStore for MemoryRelationsStore {
         }
     }
 
-    fn delete(&mut self, hash: Hash) -> Result<(), StoreError> {
+    fn delete(&mut self, _writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
         let parents = self.get_parents(hash)?;
         self.parents_map.remove(&hash);
         self.children_map.remove(&hash);
@@ -257,7 +255,13 @@ impl RelationsStore for MemoryRelationsStore {
         Ok(())
     }
 
-    fn replace_parent(&mut self, hash: Hash, replaced_parent: Hash, replace_with: &[Hash]) -> Result<(), StoreError> {
+    fn replace_parent(
+        &mut self,
+        _writer: impl DbWriter,
+        hash: Hash,
+        replaced_parent: Hash,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError> {
         let mut parents = (*self.get_parents(hash)?).clone();
         let replaced_index =
             parents.iter().copied().position(|h| h == replaced_parent).expect("callers must ensure replaced is a parent");

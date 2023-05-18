@@ -117,7 +117,7 @@ impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ?Sized> DagBuilder<'
     }
 
     pub fn delete_block(&mut self, hash: Hash) -> &mut Self {
-        let mergeset = delete_reachability_relations(self.relations, self.reachability, hash);
+        let mergeset = delete_reachability_relations(self.relations.default_writer(), self.relations, self.reachability, hash);
         delete_block(self.reachability, hash, &mut mergeset.iter().cloned()).unwrap();
         self
     }

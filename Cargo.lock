@@ -1713,6 +1713,7 @@ dependencies = [
  "indexmap",
  "itertools 0.10.5",
  "kaspa-hashes",
+ "kaspa-utils",
  "num_cpus",
  "parking_lot",
  "rand 0.8.5",
