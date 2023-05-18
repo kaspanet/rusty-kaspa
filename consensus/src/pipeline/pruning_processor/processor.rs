@@ -170,9 +170,6 @@ impl PruningProcessor {
     }
 
     fn prune(&self, new_pruning_point: Hash) {
-        let prune_guard = self.pruning_lock.blocking_write();
-
-        // TODO: acquire pruning lock in all other processors
         // TODO: check if archival
         // TODO: progress logs
 
@@ -188,8 +185,10 @@ impl PruningProcessor {
         assert_eq!(new_pruning_point, data.anticone[0]);
         assert_eq!(genesis, proof.last().unwrap().last().unwrap().hash);
 
-        // We keep full blocks for pruning point and its anticone, and headers for all the rest
-        let kept_relations: BlockHashSet = data
+        // We keep full data for pruning point and its anticone, relations for DAA/GD
+        // windows and pruning proof, and only headers for past pruning points
+        let keep_blocks: BlockHashSet = data.anticone.iter().copied().collect();
+        let keep_relations: BlockHashSet = data
             .anticone
             .iter()
             .copied()
@@ -197,40 +196,43 @@ impl PruningProcessor {
             .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
             .chain(proof.iter().flatten().map(|h| h.hash))
             .collect();
-        let kept_blocks: BlockHashSet = data.anticone.iter().copied().collect();
-        let past_pruning_points: BlockHashSet = self.past_pruning_points();
+        let keep_headers: BlockHashSet = self.past_pruning_points();
 
-        let mut batch = WriteBatch::default();
+        let mut prune_guard = self.pruning_lock.blocking_write();
         let mut reachability_read = self.reachability_store.upgradable_read();
-        let mut level_relations_write = self.relations_stores.write();
-        let mut reachability_relations_write = self.reachability_relations_store.write();
-        let mut statuses_write = self.statuses_store.write();
 
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let mut counter = 0;
         info!("PRUNING DATA");
         while let Some(current) = queue.pop_front() {
-            if !reachability_read.has(current).unwrap() {
-                info!("BRRRRRRRRRRRRR {}", current);
-                continue;
-            }
-
             if reachability_read.is_dag_ancestor_of_result(new_pruning_point, current).unwrap() {
                 continue;
             }
 
             queue.extend(reachability_read.get_children(current).unwrap().iter());
 
-            // TODO: batch and release locks
+            if counter % 1000 == 0 {
+                // Release and recapture to allow consensus progress during pruning
+                drop(reachability_read);
+                drop(prune_guard);
+                prune_guard = self.pruning_lock.blocking_write();
+                reachability_read = self.reachability_store.upgradable_read()
+            }
+
             // TODO: tips, sc
+            // TODO: consult about fixing GD data
 
             // Remove window cache entries
             self.block_window_cache_for_difficulty.remove(&current);
             self.block_window_cache_for_past_median_time.remove(&current);
 
-            if !kept_blocks.contains(&current) {
-                counter += 1;
+            if !keep_blocks.contains(&current) {
+                let mut batch = WriteBatch::default();
+                let mut level_relations_write = self.relations_stores.write();
+                let mut reachability_relations_write = self.reachability_relations_store.write();
+                let mut statuses_write = self.statuses_store.write();
+                let mut staging = StagingReachabilityStore::new(reachability_read);
 
                 // Prune data related to block bodies and UTXO state
                 self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
@@ -239,10 +241,11 @@ impl PruningProcessor {
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
                 self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
 
-                if kept_relations.contains(&current) {
+                if keep_relations.contains(&current) {
                     statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
                 } else {
-                    let mut staging = StagingReachabilityStore::new(reachability_read);
+                    // Count only full DAG pruning
+                    counter += 1;
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
                         BatchDbWriter::new(&mut batch),
@@ -262,62 +265,27 @@ impl PruningProcessor {
                     // Remove status completely
                     statuses_write.delete_batch(&mut batch, current).unwrap();
 
-                    if !past_pruning_points.contains(&current) {
+                    if !keep_headers.contains(&current) {
                         // Prune headers
                         self.headers_store.delete_batch(&mut batch, current).unwrap();
                     }
-
-                    let reachability_write = staging.commit(&mut batch).unwrap();
-
-                    // Flush the batch to the DB
-                    self.db.write(batch).unwrap();
-
-                    // Calling the drops explicitly after the batch is written in order to avoid possible errors.
-                    drop(reachability_write);
-                    drop(statuses_write);
-                    drop(reachability_relations_write);
-                    drop(level_relations_write);
-
-                    batch = WriteBatch::default();
-                    reachability_read = self.reachability_store.upgradable_read();
-                    level_relations_write = self.relations_stores.write();
-                    reachability_relations_write = self.reachability_relations_store.write();
-                    statuses_write = self.statuses_store.write();
                 }
+
+                let reachability_write = staging.commit(&mut batch).unwrap();
+
+                // Flush the batch to the DB
+                self.db.write(batch).unwrap();
+
+                // Calling the drops explicitly after the batch is written in order to avoid possible errors.
+                drop(reachability_write);
+                drop(statuses_write);
+                drop(reachability_relations_write);
+                drop(level_relations_write);
+
+                reachability_read = self.reachability_store.upgradable_read()
             }
         }
-
-        info!("Proof levels: {}", proof.len());
-        // for (level, headers) in proof.iter().enumerate() {
-        //     for header in headers.iter() {
-        //         let parents = level_relations_write[level].get_parents(header.hash).unwrap();
-        //         let ghostdag = self.ghostdag_managers[level].ghostdag(&parents);
-        //         self.ghostdag_stores[level].delete_batch(&mut batch, header.hash).unwrap();
-        //         self.ghostdag_stores[level].insert_batch(&mut batch, header.hash, &Arc::new(ghostdag)).unwrap();
-        //     }
-        // }
-
-        // Flush the batch to the DB
-        self.db.write(batch).unwrap();
-
-        // Calling the drops explicitly after the batch is written in order to avoid possible errors.
         drop(reachability_read);
-        drop(statuses_write);
-        drop(reachability_relations_write);
-        drop(level_relations_write);
-
-        // let reachability_write = staging.commit(&mut batch).unwrap();
-
-        // // Flush the batch to the DB
-        // self.db.write(batch).unwrap();
-
-        // // Calling the drops explicitly after the batch is written in order to avoid possible errors.
-        // drop(reachability_write);
-        // drop(statuses_write);
-        // drop(reachability_relations_write);
-        // drop(level_relations_write);
-        // drop(sc_write);
-        // drop(tips_write);
         drop(prune_guard);
 
         info!("PRUNED {} BLOCKS", counter);
@@ -343,5 +311,6 @@ impl PruningProcessor {
                 panic!("Proof built following pruning does not match the previous proof: built[{}]={}, prev[{}]={}", i, b, i, a);
             }
         }
+        info!("Proof was rebuilt successfully following pruning");
     }
 }
