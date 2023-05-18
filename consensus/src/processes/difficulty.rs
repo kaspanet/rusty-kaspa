@@ -66,18 +66,13 @@ trait DifficultyManagerExtension {
 pub struct FullDifficultyManager<T: HeaderStoreReader> {
     headers_store: Arc<T>,
     genesis_bits: u32,
-    difficulty_adjustment_window_size: usize,
+    difficulty_window_size: usize,
     target_time_per_block: u64,
 }
 
 impl<T: HeaderStoreReader> FullDifficultyManager<T> {
-    pub fn new(
-        headers_store: Arc<T>,
-        genesis_bits: u32,
-        difficulty_adjustment_window_size: usize,
-        target_time_per_block: u64,
-    ) -> Self {
-        Self { headers_store, difficulty_adjustment_window_size, genesis_bits, target_time_per_block }
+    pub fn new(headers_store: Arc<T>, genesis_bits: u32, difficulty_window_size: usize, target_time_per_block: u64) -> Self {
+        Self { headers_store, difficulty_window_size, genesis_bits, target_time_per_block }
     }
 
     pub fn calc_daa_score_and_mergeset_non_daa_blocks<'a>(
@@ -106,7 +101,7 @@ impl<T: HeaderStoreReader> FullDifficultyManager<T> {
         let mut difficulty_blocks = self.get_difficulty_blocks(window);
 
         // Until there are enough blocks for a full block window the difficulty should remain constant.
-        if difficulty_blocks.len() < self.difficulty_adjustment_window_size {
+        if difficulty_blocks.len() < self.difficulty_window_size {
             return self.genesis_bits;
         }
 
@@ -143,7 +138,7 @@ pub struct SampledDifficultyManager<T: HeaderStoreReader> {
     headers_store: Arc<T>,
     genesis_bits: u32,
     difficulty_sample_rate: u64,
-    difficulty_adjustment_window_size: usize,
+    difficulty_window_size: usize,
     target_time_per_block: u64,
 }
 
@@ -152,16 +147,16 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
         headers_store: Arc<T>,
         genesis_bits: u32,
         difficulty_sample_rate: u64,
-        difficulty_adjustment_window_size: usize,
+        difficulty_window_size: usize,
         target_time_per_block: u64,
     ) -> Self {
-        Self { headers_store, difficulty_sample_rate, difficulty_adjustment_window_size, genesis_bits, target_time_per_block }
+        Self { headers_store, difficulty_sample_rate, difficulty_window_size, genesis_bits, target_time_per_block }
     }
 
     #[inline]
     #[must_use]
     pub fn difficulty_full_window_size(&self) -> u64 {
-        self.difficulty_adjustment_window_size as u64 * self.difficulty_sample_rate
+        self.difficulty_window_size as u64 * self.difficulty_sample_rate
     }
 
     /// Returns the DAA window lowest accepted blue score
@@ -201,7 +196,7 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
         let mut difficulty_blocks = self.get_difficulty_blocks(window);
 
         // Until there are enough blocks for a full block window the difficulty should remain constant.
-        if difficulty_blocks.len() < self.difficulty_adjustment_window_size {
+        if difficulty_blocks.len() < self.difficulty_window_size {
             return self.genesis_bits;
         }
 

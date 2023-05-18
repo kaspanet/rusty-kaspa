@@ -8,6 +8,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
+    config::genesis::GenesisBlock,
     errors::{block::RuleError, difficulty::DifficultyResult},
     BlockHashSet, BlueWorkType,
 };
@@ -62,21 +63,24 @@ pub struct FullWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, 
 
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> FullWindowManager<T, U, V> {
     pub fn new(
-        genesis_hash: Hash,
+        genesis: &GenesisBlock,
         ghostdag_store: Arc<T>,
+        headers_store: Arc<V>,
         block_window_cache_for_difficulty: Arc<U>,
         block_window_cache_for_past_median_time: Arc<U>,
+        target_time_per_block: u64,
         difficulty_window_size: usize,
         past_median_time_window_size: usize,
-        difficulty_manager: FullDifficultyManager<V>,
-        past_median_time_manager: FullPastMedianTimeManager<V>,
     ) -> Self {
+        let difficulty_manager =
+            FullDifficultyManager::new(headers_store.clone(), genesis.bits, difficulty_window_size, target_time_per_block);
+        let past_median_time_manager = FullPastMedianTimeManager::new(headers_store, genesis.timestamp);
         Self {
-            genesis_hash,
+            genesis_hash: genesis.hash,
             ghostdag_store,
             block_window_cache_for_difficulty,
-            difficulty_window_size,
             block_window_cache_for_past_median_time,
+            difficulty_window_size,
             past_median_time_window_size,
             difficulty_manager,
             past_median_time_manager,
@@ -221,20 +225,27 @@ pub struct SampledWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReade
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> SampledWindowManager<T, U, V> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        genesis_hash: Hash,
+        genesis: &GenesisBlock,
         ghostdag_store: Arc<T>,
         headers_store: Arc<V>,
         block_window_cache_for_difficulty: Arc<U>,
         block_window_cache_for_past_median_time: Arc<U>,
+        target_time_per_block: u64,
         difficulty_window_size: usize,
         difficulty_sample_rate: u64,
         past_median_time_window_size: usize,
         past_median_time_sample_rate: u64,
-        difficulty_manager: SampledDifficultyManager<V>,
-        past_median_time_manager: SampledPastMedianTimeManager<V>,
     ) -> Self {
+        let difficulty_manager = SampledDifficultyManager::new(
+            headers_store.clone(),
+            genesis.bits,
+            difficulty_sample_rate,
+            difficulty_window_size,
+            target_time_per_block,
+        );
+        let past_median_time_manager = SampledPastMedianTimeManager::new(headers_store.clone(), genesis.timestamp);
         Self {
-            genesis_hash,
+            genesis_hash: genesis.hash,
             ghostdag_store,
             headers_store,
             block_window_cache_for_difficulty,
