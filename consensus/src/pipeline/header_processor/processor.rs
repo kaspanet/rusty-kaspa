@@ -3,7 +3,7 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService},
         stores::{
-            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
+            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap, WindowOrigin},
             daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
@@ -27,7 +27,7 @@ use crate::{
         pruning::PruningManager,
         reachability::inquirer as reachability,
         traversal_manager::DagTraversalManager,
-        window::FullWindowManager,
+        window::DualWindowManager,
     },
 };
 use crossbeam_channel::{Receiver, Sender};
@@ -150,7 +150,7 @@ pub struct HeaderProcessor {
         >,
     >,
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-    pub(super) window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
+    pub(super) window_manager: DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>,
     pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
@@ -185,7 +185,7 @@ impl HeaderProcessor {
         block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-        window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
+        window_manager: DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>,
         depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
         parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
@@ -501,8 +501,8 @@ impl HeaderProcessor {
         );
         ctx.ghostdag_data =
             Some(self.ghostdag_managers.iter().map(|manager_by_level| Arc::new(manager_by_level.genesis_ghostdag_data())).collect());
-        ctx.block_window_for_difficulty = Some(Default::default());
-        ctx.block_window_for_past_median_time = Some(Default::default());
+        ctx.block_window_for_difficulty = Some(BlockWindowHeap::new(WindowOrigin::Sampled));
+        ctx.block_window_for_past_median_time = Some(BlockWindowHeap::new(WindowOrigin::Sampled));
         ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);

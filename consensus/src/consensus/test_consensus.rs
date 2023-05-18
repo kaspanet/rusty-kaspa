@@ -12,7 +12,8 @@ use parking_lot::RwLock;
 use std::future::Future;
 use std::{sync::Arc, thread::JoinHandle};
 
-use crate::processes::window::{FullWindowManager, WindowManager};
+use crate::model::stores::daa::DbDaaStore;
+use crate::processes::window::{DualWindowManager, WindowManager};
 use crate::{
     config::Config,
     constants::TX_VERSION,
@@ -141,7 +142,7 @@ impl TestConsensus {
         self.consensus.shutdown(wait_handles)
     }
 
-    pub fn window_manager(&self) -> &FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore> {
+    pub fn window_manager(&self) -> &DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore> {
         &self.consensus.window_manager
     }
 

@@ -163,11 +163,8 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
     #[inline]
     #[must_use]
     pub fn lowest_daa_blue_score(&self, ghostdag_data: &GhostdagData) -> u64 {
-        if ghostdag_data.blue_score > self.difficulty_full_window_size() {
-            ghostdag_data.blue_score - self.difficulty_full_window_size()
-        } else {
-            0
-        }
+        let difficulty_full_window_size = self.difficulty_full_window_size();
+        ghostdag_data.blue_score.max(difficulty_full_window_size) - difficulty_full_window_size
     }
 
     #[inline]

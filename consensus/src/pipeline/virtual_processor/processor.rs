@@ -41,7 +41,7 @@ use crate::{
         pruning::PruningManager,
         transaction_validator::{errors::TxResult, TransactionValidator},
         traversal_manager::DagTraversalManager,
-        window::{FullWindowManager, WindowManager},
+        window::{DualWindowManager, WindowManager},
     },
 };
 use kaspa_consensus_core::{
@@ -128,7 +128,7 @@ pub struct VirtualStateProcessor {
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) relations_service: MTRelationsService<DbRelationsStore>,
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-    pub(super) window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
+    pub(super) window_manager: DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) transaction_validator: TransactionValidator,
     pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
@@ -170,7 +170,7 @@ impl VirtualStateProcessor {
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         relations_service: MTRelationsService<DbRelationsStore>,
         dag_traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-        window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
+        window_manager: DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>,
         coinbase_manager: CoinbaseManager,
         transaction_validator: TransactionValidator,
         pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,

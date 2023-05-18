@@ -358,6 +358,7 @@ async fn block_window_test() {
             .unwrap();
 
         let window_hashes: Vec<String> = window
+            .blocks
             .into_sorted_vec()
             .iter()
             .map(|item| {
@@ -745,6 +746,8 @@ impl KaspadGoParams {
             sample_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             past_median_time_sample_rate: 1,
             target_time_per_block: self.TargetTimePerBlock / 1_000_000,
+            next_target_time_per_block: self.TargetTimePerBlock / 1_000_000,
+            sampling_activation_daa_score: u64::MAX,
             max_block_parents: self.MaxBlockParents,
             max_difficulty: DIFFICULTY_MAX,
             max_difficulty_f64: DIFFICULTY_MAX_AS_F64,

@@ -55,7 +55,7 @@ use crate::{
         sync::SyncManager,
         transaction_validator::TransactionValidator,
         traversal_manager::DagTraversalManager,
-        window::{FullWindowManager, WindowManager, WindowType},
+        window::{DualWindowManager, WindowManager, WindowType},
     },
 };
 use kaspa_consensus_core::{
@@ -93,6 +93,7 @@ use std::{
     cmp::max,
     future::Future,
     iter::once,
+    ops::Deref,
     sync::{atomic::Ordering, Arc},
 };
 use std::{
@@ -151,7 +152,7 @@ pub struct Consensus {
     statuses_service: MTStatusesService<DbStatusesStore>,
     relations_service: MTRelationsService<DbRelationsStore>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
-    pub(super) window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
+    pub(super) window_manager: DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>,
     pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) coinbase_manager: CoinbaseManager,
@@ -257,15 +258,20 @@ impl Consensus {
             relations_service.clone(),
             reachability_service.clone(),
         );
-        let window_manager = FullWindowManager::new(
+        let window_manager = DualWindowManager::new(
             &params.genesis,
             ghostdag_store.clone(),
             headers_store.clone(),
+            daa_excluded_store.clone(),
             block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time.clone(),
             params.target_time_per_block,
+            params.next_target_time_per_block,
+            params.sampling_activation_daa_score,
             params.difficulty_window_size,
+            params.difficulty_sample_rate,
             params.past_median_time_window_size(),
+            params.past_median_time_sample_rate,
         );
         let depth_manager = BlockDepthManager::new(
             params.merge_depth,
@@ -914,7 +920,8 @@ impl ConsensusApi for Consensus {
             .window_manager
             .block_window(&self.ghostdag_store.get_data(hash).unwrap(), WindowType::SampledDifficultyWindow)
             .unwrap()
-            .into_iter()
+            .deref()
+            .iter()
             .map(|block| block.0.hash)
             .collect())
     }

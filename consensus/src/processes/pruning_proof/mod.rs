@@ -2,7 +2,7 @@ use std::{
     cmp::{max, Reverse},
     collections::hash_map::Entry::Vacant,
     collections::BinaryHeap,
-    ops::DerefMut,
+    ops::{Deref, DerefMut},
     sync::Arc,
 };
 
@@ -34,7 +34,8 @@ use crate::{
             relations::MTRelationsService,
         },
         stores::{
-            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
+            block_window_cache::BlockWindowCacheStore,
+            daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
@@ -54,9 +55,11 @@ use crate::{
         parents_builder::ParentsManager,
         reachability::inquirer as reachability,
         traversal_manager::DagTraversalManager,
-        window::{FullWindowManager, WindowManager, WindowType},
+        window::{WindowManager, WindowType},
     },
 };
+
+use super::window::DualWindowManager;
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -87,7 +90,7 @@ pub struct PruningProofManager {
 
     ghostdag_managers: Vec<DbGhostdagManager>,
     traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-    window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
+    window_manager: DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>,
 
     cached_proof: RwLock<Option<CachedPruningPointData<PruningPointProof>>>,
     cached_anticone: RwLock<Option<CachedPruningPointData<PruningPointTrustedData>>>,
@@ -198,7 +201,7 @@ impl PruningProofManager {
         selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
         ghostdag_managers: Vec<DbGhostdagManager>,
         traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-        window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
+        window_manager: DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>,
         max_block_level: BlockLevel,
         genesis_hash: Hash,
         pruning_proof_m: u64,
@@ -681,7 +684,7 @@ impl PruningProofManager {
                 };
 
                 let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
-                let mut queue = BlockWindowHeap::new();
+                let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
                 let mut visited = BlockHashSet::new();
                 queue.push(Reverse(SortableBlock::new(root, self.ghostdag_stores[level].get_blue_work(root).unwrap())));
                 while let Some(current) = queue.pop() {
@@ -756,7 +759,7 @@ impl PruningProofManager {
                 .block_window(&self.ghostdag_stores[0].get_data(anticone_block).unwrap(), WindowType::FullDifficultyWindow)
                 .unwrap();
 
-            for hash in window.into_iter().map(|block| block.0.hash) {
+            for hash in window.deref().iter().map(|block| block.0.hash) {
                 if daa_window_blocks.contains_key(&hash) {
                     continue;
                 }

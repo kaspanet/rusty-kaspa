@@ -20,7 +20,12 @@ pub struct Params {
     pub sample_timestamp_deviation_tolerance: u64,
     /// Block sample rate for filling the past median time window (selects one every N blocks)
     pub past_median_time_sample_rate: u64,
+    /// Current/legacy target time per block
     pub target_time_per_block: u64,
+    /// New target time per block once an activating DAA score is reached
+    pub next_target_time_per_block: u64,
+    /// DAA score from which the window sampling starts for difficulty and past median time calculation
+    pub sampling_activation_daa_score: u64,
     pub max_block_parents: u8,
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
     pub max_difficulty: Uint256,
@@ -167,6 +172,8 @@ pub const MAINNET_PARAMS: Params = Params {
     sample_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
+    next_target_time_per_block: 1000,
+    sampling_activation_daa_score: u64::MAX,
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,
     max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
@@ -222,6 +229,8 @@ pub const TESTNET_PARAMS: Params = Params {
     sample_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
+    next_target_time_per_block: 1000,
+    sampling_activation_daa_score: u64::MAX,
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,
     max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
@@ -273,6 +282,8 @@ pub const SIMNET_PARAMS: Params = Params {
     sample_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
+    next_target_time_per_block: 1000,
+    sampling_activation_daa_score: u64::MAX,
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,
     max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
@@ -324,6 +335,8 @@ pub const DEVNET_PARAMS: Params = Params {
     sample_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
+    next_target_time_per_block: 1000,
+    sampling_activation_daa_score: u64::MAX,
     max_block_parents: 10,
     max_difficulty: DIFFICULTY_MAX,
     max_difficulty_f64: DIFFICULTY_MAX_AS_F64,

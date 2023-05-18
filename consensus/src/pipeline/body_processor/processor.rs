@@ -5,6 +5,7 @@ use crate::{
         stores::{
             block_transactions::DbBlockTransactionsStore,
             block_window_cache::BlockWindowCacheStore,
+            daa::DbDaaStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
@@ -18,7 +19,7 @@ use crate::{
         ProcessingCounters,
     },
     processes::{
-        coinbase::CoinbaseManager, mass::MassCalculator, transaction_validator::TransactionValidator, window::FullWindowManager,
+        coinbase::CoinbaseManager, mass::MassCalculator, transaction_validator::TransactionValidator, window::DualWindowManager,
     },
 };
 use crossbeam_channel::{Receiver, Sender};
@@ -66,7 +67,7 @@ pub struct BlockBodyProcessor {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
+    pub(super) window_manager: DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -93,7 +94,7 @@ impl BlockBodyProcessor {
         coinbase_manager: CoinbaseManager,
         mass_calculator: MassCalculator,
         transaction_validator: TransactionValidator,
-        window_manager: FullWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore>,
+        window_manager: DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>,
         max_block_mass: u64,
         genesis: GenesisBlock,
         notification_root: Arc<ConsensusNotificationRoot>,
