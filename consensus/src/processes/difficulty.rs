@@ -21,6 +21,13 @@ use itertools::Itertools;
 trait DifficultyManagerExtension {
     fn headers_store(&self) -> &dyn HeaderStoreReader;
 
+    #[inline]
+    #[must_use]
+    fn internal_calc_daa_score(&self, ghostdag_data: &GhostdagData, mergeset_non_daa: &BlockHashSet) -> u64 {
+        let sp_daa_score = self.headers_store().get_daa_score(ghostdag_data.selected_parent).unwrap();
+        sp_daa_score + (ghostdag_data.mergeset_size() - mergeset_non_daa.len()) as u64
+    }
+
     fn get_difficulty_blocks(&self, window: &BlockWindowHeap) -> Vec<DifficultyBlock> {
         window
             .iter()
@@ -73,7 +80,7 @@ impl<T: HeaderStoreReader> FullDifficultyManager<T> {
         Self { headers_store, difficulty_adjustment_window_size, genesis_bits, target_time_per_block }
     }
 
-    pub fn calc_daa_score_and_non_daa_mergeset_blocks<'a>(
+    pub fn calc_daa_score_and_mergeset_non_daa_blocks<'a>(
         &'a self,
         window: &BlockWindowHeap,
         ghostdag_data: &GhostdagData,
@@ -91,9 +98,8 @@ impl<T: HeaderStoreReader> FullDifficultyManager<T> {
             .take_while(|sortable_block| sortable_block < window_lowest_block)
             .map(|sortable_block| sortable_block.hash)
             .collect();
-        let sp_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
 
-        (sp_daa_score + (ghostdag_data.mergeset_size() - mergeset_non_daa.len()) as u64, mergeset_non_daa)
+        (self.internal_calc_daa_score(ghostdag_data, &mergeset_non_daa), mergeset_non_daa)
     }
 
     pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap) -> u32 {
@@ -169,7 +175,13 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
         }
     }
 
-    pub fn calc_daa_score_and_non_daa_mergeset_blocks<'a>(
+    #[inline]
+    #[must_use]
+    pub fn calc_daa_score(&self, ghostdag_data: &GhostdagData, mergeset_non_daa: &BlockHashSet) -> u64 {
+        self.internal_calc_daa_score(ghostdag_data, mergeset_non_daa)
+    }
+
+    pub fn calc_daa_score_and_mergeset_non_daa_blocks<'a>(
         &'a self,
         ghostdag_data: &GhostdagData,
         store: &'a (impl GhostdagStoreReader + ?Sized),
@@ -179,8 +191,8 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
             .consensus_ordered_mergeset(store)
             .filter(|hash| store.get_blue_score(*hash).unwrap() < lowest_daa_blue_score)
             .collect();
-        let sp_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
-        (sp_daa_score + (ghostdag_data.mergeset_size() - mergeset_non_daa.len()) as u64, mergeset_non_daa)
+
+        (self.internal_calc_daa_score(ghostdag_data, &mergeset_non_daa), mergeset_non_daa)
     }
 
     pub fn calculate_difficulty_bits(&self, window: &BlockWindowHeap) -> u32 {

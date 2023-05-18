@@ -425,13 +425,12 @@ impl VirtualStateProcessor {
         let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset);
 
         // Calc virtual DAA score, difficulty bits and past median time
-        let (window, virtual_daa_score, mergeset_non_daa) =
-            self.window_manager.block_window_with_daa_score_and_non_daa_mergeset(&virtual_ghostdag_data)?;
-        let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_ghostdag_data, &window);
+        let virtual_daa_window = self.window_manager.block_daa_window(&virtual_ghostdag_data)?;
+        let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_ghostdag_data, &virtual_daa_window.window);
         let virtual_past_median_time = self.window_manager.calc_past_median_time(&virtual_ghostdag_data)?.0;
 
         // Calc virtual UTXO state relative to selected parent
-        self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);
+        self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_window.daa_score);
 
         // Update the accumulated diff
         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
@@ -439,14 +438,14 @@ impl VirtualStateProcessor {
         // Build the new virtual state
         let new_virtual_state = Arc::new(VirtualState::new(
             virtual_parents,
-            virtual_daa_score,
+            virtual_daa_window.daa_score,
             virtual_bits,
             virtual_past_median_time,
             ctx.multiset_hash,
             ctx.mergeset_diff,
             ctx.accepted_tx_ids,
             ctx.mergeset_rewards,
-            mergeset_non_daa,
+            virtual_daa_window.mergeset_non_daa,
             virtual_ghostdag_data,
         ));
 

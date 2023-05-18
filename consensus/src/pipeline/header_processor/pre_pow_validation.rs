@@ -25,21 +25,20 @@ impl HeaderProcessor {
 
     fn check_difficulty_and_daa_score(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
         let ghostdag_data = ctx.ghostdag_data();
-        let (window, daa_score, mergeset_non_daa) =
-            self.window_manager.block_window_with_daa_score_and_non_daa_mergeset(ghostdag_data)?;
+        let daa_window = self.window_manager.block_daa_window(ghostdag_data)?;
 
-        if daa_score != header.daa_score {
-            return Err(RuleError::UnexpectedHeaderDaaScore(daa_score, header.daa_score));
+        if daa_window.daa_score != header.daa_score {
+            return Err(RuleError::UnexpectedHeaderDaaScore(daa_window.daa_score, header.daa_score));
         }
 
-        let expected_bits = self.window_manager.calculate_difficulty_bits(ghostdag_data, &window);
-        ctx.mergeset_non_daa = Some(mergeset_non_daa);
+        let expected_bits = self.window_manager.calculate_difficulty_bits(ghostdag_data, &daa_window.window);
+        ctx.mergeset_non_daa = Some(daa_window.mergeset_non_daa);
 
         if header.bits != expected_bits {
             return Err(RuleError::UnexpectedDifficulty(header.bits, expected_bits));
         }
 
-        ctx.block_window_for_difficulty = Some(window);
+        ctx.block_window_for_difficulty = Some(daa_window.window);
         Ok(())
     }
 }
