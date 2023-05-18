@@ -44,6 +44,7 @@ use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{atomic::Ordering, Arc};
+use tokio::sync::RwLock as TokioRwLock;
 
 use super::super::ProcessingCounters;
 
@@ -149,6 +150,9 @@ pub struct HeaderProcessor {
     pub(super) pruning_point_manager: DbPruningPointManager,
     pub(super) parents_manager: DbParentsManager,
 
+    // Pruning lock
+    pruning_lock: Arc<TokioRwLock<()>>,
+
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
 
@@ -165,6 +169,7 @@ impl HeaderProcessor {
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
+        pruning_lock: Arc<TokioRwLock<()>>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
@@ -199,6 +204,7 @@ impl HeaderProcessor {
             parents_manager: services.parents_manager.clone(),
 
             task_manager: BlockTaskDependencyManager::new(),
+            pruning_lock,
             counters,
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
             target_time_per_block: params.target_time_per_block,
@@ -252,6 +258,7 @@ impl HeaderProcessor {
     }
 
     fn process_header(&self, task: &BlockTask) -> BlockProcessResult<BlockStatus> {
+        let _prune_guard = self.pruning_lock.blocking_read();
         let header = &task.block().header;
         let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
 

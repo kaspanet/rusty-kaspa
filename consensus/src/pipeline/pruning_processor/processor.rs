@@ -2,17 +2,18 @@
 
 use crate::{
     consensus::{
-        services::{ConsensusServices, DbPruningPointManager},
+        services::{ConsensusServices, DbGhostdagManager, DbPruningPointManager},
         storage::ConsensusStorage,
     },
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            ghostdag::CompactGhostdagData,
+            ghostdag::{CompactGhostdagData, GhostdagStoreReader},
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::{PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
+            relations::RelationsStoreReader,
             utxo_diffs::UtxoDiffsStoreReader,
             utxo_set::UtxoSetStore,
         },
@@ -54,6 +55,7 @@ pub struct PruningProcessor {
 
     // Managers and Services
     reachability_service: MTReachabilityService<DbReachabilityStore>,
+    ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     pruning_point_manager: DbPruningPointManager,
     pruning_proof_manager: Arc<PruningProofManager>,
 
@@ -82,6 +84,7 @@ impl PruningProcessor {
             db,
             storage: storage.clone(),
             reachability_service: services.reachability_service.clone(),
+            ghostdag_managers: services.ghostdag_managers.clone(),
             pruning_point_manager: services.pruning_point_manager.clone(),
             pruning_proof_manager: services.pruning_proof_manager.clone(),
             pruning_lock,
@@ -167,7 +170,7 @@ impl PruningProcessor {
     }
 
     fn prune(&self, new_pruning_point: Hash) {
-        let _prune_guard = self.pruning_lock.blocking_write();
+        let prune_guard = self.pruning_lock.blocking_write();
 
         // TODO: acquire pruning lock in all other processors
         // TODO: check if archival
@@ -179,8 +182,11 @@ impl PruningProcessor {
             .get_pruning_point_anticone_and_trusted_data()
             .expect("insufficient depth error is unexpected here");
 
+        let genesis = self.past_pruning_points_store.get(0).unwrap(); // TODO: pass genesis
+
         assert_eq!(new_pruning_point, proof[0].last().unwrap().hash);
         assert_eq!(new_pruning_point, data.anticone[0]);
+        assert_eq!(genesis, proof.last().unwrap().last().unwrap().hash);
 
         // We keep full blocks for pruning point and its anticone, and headers for all the rest
         let kept_relations: BlockHashSet = data
@@ -189,88 +195,132 @@ impl PruningProcessor {
             .copied()
             .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
             .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
+            .chain(proof.iter().flatten().map(|h| h.hash))
             .collect();
         let kept_blocks: BlockHashSet = data.anticone.iter().copied().collect();
         let past_pruning_points: BlockHashSet = self.past_pruning_points();
 
         let mut batch = WriteBatch::default();
-        let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
+        let mut reachability_read = self.reachability_store.upgradable_read();
         let mut level_relations_write = self.relations_stores.write();
         let mut reachability_relations_write = self.reachability_relations_store.write();
         let mut statuses_write = self.statuses_store.write();
 
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
-        let mut queue = VecDeque::<Hash>::from([ORIGIN]);
-        while let Some(parent) = queue.pop_front() {
-            let children = staging.get_children(parent).unwrap();
-            for current in children.iter().copied() {
-                if staging.is_dag_ancestor_of(new_pruning_point, current) {
-                    continue;
-                }
+        let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
+        let mut counter = 0;
+        info!("PRUNING DATA");
+        while let Some(current) = queue.pop_front() {
+            if !reachability_read.has(current).unwrap() {
+                info!("BRRRRRRRRRRRRR {}", current);
+                continue;
+            }
 
-                // TODO: batch and release locks
-                // TODO: tips, hst, sc
+            if reachability_read.is_dag_ancestor_of_result(new_pruning_point, current).unwrap() {
+                continue;
+            }
 
-                // Remove window cache entries
-                self.block_window_cache_for_difficulty.remove(&current);
-                self.block_window_cache_for_past_median_time.remove(&current);
+            queue.extend(reachability_read.get_children(current).unwrap().iter());
 
-                if !kept_blocks.contains(&current) {
-                    // Prune data related to block bodies and UTXO state
-                    self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
-                    self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
-                    self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
-                    self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
-                    self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
+            // TODO: batch and release locks
+            // TODO: tips, sc
 
-                    if kept_relations.contains(&current) {
-                        statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
-                    } else {
-                        // Prune data related to headers: relations, reachability, ghostdag
-                        let mergeset = relations::delete_reachability_relations(
-                            BatchDbWriter::new(&mut batch),
-                            reachability_relations_write.deref_mut(),
-                            &staging,
-                            current,
-                        );
-                        reachability::delete_block(&mut staging, current, &mut mergeset.iter().cloned()).unwrap();
-                        let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
-                        (0..=block_level as usize).for_each(|level| {
-                            relations::delete_level_relations(
-                                BatchDbWriter::new(&mut batch),
-                                &mut level_relations_write[level],
-                                current,
-                            );
-                            self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap();
-                        });
+            // Remove window cache entries
+            self.block_window_cache_for_difficulty.remove(&current);
+            self.block_window_cache_for_past_median_time.remove(&current);
 
-                        // Remove status completely
-                        statuses_write.delete_batch(&mut batch, current).unwrap();
+            if !kept_blocks.contains(&current) {
+                counter += 1;
 
-                        if !past_pruning_points.contains(&current) {
-                            // Prune headers
-                            self.headers_store.delete_batch(&mut batch, current).unwrap();
-                        }
+                // Prune data related to block bodies and UTXO state
+                self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
+                self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
+                self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
+                self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
+                self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
+
+                if kept_relations.contains(&current) {
+                    statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
+                } else {
+                    let mut staging = StagingReachabilityStore::new(reachability_read);
+                    // Prune data related to headers: relations, reachability, ghostdag
+                    let mergeset = relations::delete_reachability_relations(
+                        BatchDbWriter::new(&mut batch),
+                        reachability_relations_write.deref_mut(),
+                        &staging,
+                        current,
+                    );
+                    reachability::delete_block(&mut staging, current, &mut mergeset.iter().cloned()).unwrap();
+                    let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
+                    (0..=block_level as usize).for_each(|level| {
+                        assert!(level_relations_write[level].has(current).unwrap());
+                        assert!(self.ghostdag_stores[level].has(current).unwrap());
+                        relations::delete_level_relations(BatchDbWriter::new(&mut batch), &mut level_relations_write[level], current);
+                        self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap();
+                    });
+
+                    // Remove status completely
+                    statuses_write.delete_batch(&mut batch, current).unwrap();
+
+                    if !past_pruning_points.contains(&current) {
+                        // Prune headers
+                        self.headers_store.delete_batch(&mut batch, current).unwrap();
                     }
-                }
 
-                queue.push_back(current);
+                    let reachability_write = staging.commit(&mut batch).unwrap();
+
+                    // Flush the batch to the DB
+                    self.db.write(batch).unwrap();
+
+                    // Calling the drops explicitly after the batch is written in order to avoid possible errors.
+                    drop(reachability_write);
+                    drop(statuses_write);
+                    drop(reachability_relations_write);
+                    drop(level_relations_write);
+
+                    batch = WriteBatch::default();
+                    reachability_read = self.reachability_store.upgradable_read();
+                    level_relations_write = self.relations_stores.write();
+                    reachability_relations_write = self.reachability_relations_store.write();
+                    statuses_write = self.statuses_store.write();
+                }
             }
         }
 
-        let reachability_write = staging.commit(&mut batch).unwrap();
+        info!("Proof levels: {}", proof.len());
+        // for (level, headers) in proof.iter().enumerate() {
+        //     for header in headers.iter() {
+        //         let parents = level_relations_write[level].get_parents(header.hash).unwrap();
+        //         let ghostdag = self.ghostdag_managers[level].ghostdag(&parents);
+        //         self.ghostdag_stores[level].delete_batch(&mut batch, header.hash).unwrap();
+        //         self.ghostdag_stores[level].insert_batch(&mut batch, header.hash, &Arc::new(ghostdag)).unwrap();
+        //     }
+        // }
 
         // Flush the batch to the DB
         self.db.write(batch).unwrap();
 
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
-        drop(reachability_write);
+        drop(reachability_read);
         drop(statuses_write);
         drop(reachability_relations_write);
         drop(level_relations_write);
-        // drop(hst_write);
+
+        // let reachability_write = staging.commit(&mut batch).unwrap();
+
+        // // Flush the batch to the DB
+        // self.db.write(batch).unwrap();
+
+        // // Calling the drops explicitly after the batch is written in order to avoid possible errors.
+        // drop(reachability_write);
+        // drop(statuses_write);
+        // drop(reachability_relations_write);
+        // drop(level_relations_write);
         // drop(sc_write);
         // drop(tips_write);
+        drop(prune_guard);
+
+        info!("PRUNED {} BLOCKS", counter);
 
         // TODO: remove this sanity test when stable
         self.assert_proof_rebuilding(proof, new_pruning_point);
@@ -282,15 +332,15 @@ impl PruningProcessor {
             .collect()
     }
 
-    fn assert_proof_rebuilding(&self, proof: Arc<PruningPointProof>, new_pruning_point: Hash) {
+    fn assert_proof_rebuilding(&self, ref_proof: Arc<PruningPointProof>, new_pruning_point: Hash) {
         info!("Rebuilding the pruning proof after pruning data (Alpha sanity test)");
-        let proof_hashes = proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
+        let proof_hashes = ref_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
         let built_proof = self.pruning_proof_manager.build_pruning_point_proof(new_pruning_point);
         let built_proof_hashes = built_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
-        assert_eq!(proof_hashes.len(), built_proof_hashes.len(), "Locally built proof does not match the applied one");
+        assert_eq!(proof_hashes.len(), built_proof_hashes.len(), "Rebuilt proof does not match the expected reference");
         for (i, (a, b)) in proof_hashes.into_iter().zip(built_proof_hashes).enumerate() {
             if a != b {
-                panic!("Proof built following pruning does not match previous proof: built[{}]={}, prev[{}]={}", i, b, i, a);
+                panic!("Proof built following pruning does not match the previous proof: built[{}]={}, prev[{}]={}", i, b, i, a);
             }
         }
     }

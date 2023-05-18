@@ -28,8 +28,8 @@ use crate::{
     test_helpers::header_from_precomputed_hash,
 };
 
-use super::services::{DbDagTraversalManager, DbPastMedianTimeManager};
-use super::{Consensus, DbGhostdagManager};
+use super::services::{DbDagTraversalManager, DbGhostdagManager, DbPastMedianTimeManager};
+use super::Consensus;
 
 pub struct TestConsensus {
     consensus: Arc<Consensus>,

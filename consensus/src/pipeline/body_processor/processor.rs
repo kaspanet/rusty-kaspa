@@ -36,6 +36,7 @@ use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{atomic::Ordering, Arc};
+use tokio::sync::RwLock as TokioRwLock;
 
 pub struct BlockBodyProcessor {
     // Channels
@@ -65,6 +66,9 @@ pub struct BlockBodyProcessor {
     pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
     pub(super) past_median_time_manager: DbPastMedianTimeManager,
+
+    // Pruning lock
+    pruning_lock: Arc<TokioRwLock<()>>,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -98,6 +102,7 @@ impl BlockBodyProcessor {
 
         max_block_mass: u64,
         genesis: GenesisBlock,
+        pruning_lock: Arc<TokioRwLock<()>>,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
@@ -118,6 +123,7 @@ impl BlockBodyProcessor {
             past_median_time_manager,
             max_block_mass,
             genesis,
+            pruning_lock,
             task_manager: BlockTaskDependencyManager::new(),
             notification_root,
             counters,
@@ -167,6 +173,7 @@ impl BlockBodyProcessor {
     }
 
     fn process_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<BlockStatus> {
+        let _prune_guard = self.pruning_lock.blocking_read();
         let status = self.statuses_store.read().get(block.hash()).unwrap();
         match status {
             StatusInvalid => return Err(RuleError::KnownInvalid),

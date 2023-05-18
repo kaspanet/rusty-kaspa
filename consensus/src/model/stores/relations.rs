@@ -139,7 +139,11 @@ impl RelationsStore for DbRelationsStore {
         // Remove `hash` from `children` of each parent
         for parent in parents.iter().cloned() {
             let mut children = (*self.get_children(parent)?).clone();
-            let index = children.iter().copied().position(|h| h == hash).expect("inconsistent child-parent relation");
+            let index = children
+                .iter()
+                .copied()
+                .position(|h| h == hash)
+                .unwrap_or_else(|| panic!("inconsistent child-parent relation, removed hash: {}, parent: {}", hash, parent));
             children.swap_remove(index);
             self.children_access.write(&mut writer, parent, BlockHashes::new(children))?;
         }

@@ -1,11 +1,10 @@
 use crate::{
     consensus::{
         services::{
-            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbDifficultyManager, DbParentsManager,
+            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbDifficultyManager, DbGhostdagManager, DbParentsManager,
             DbPastMedianTimeManager, DbPruningPointManager,
         },
         storage::ConsensusStorage,
-        DbGhostdagManager,
     },
     constants::BLOCK_VERSION,
     errors::RuleError,
@@ -84,6 +83,7 @@ use std::{
     ops::Deref,
     sync::{atomic::Ordering, Arc},
 };
+use tokio::sync::RwLock as TokioRwLock;
 
 use super::errors::{PruningImportError, PruningImportResult};
 
@@ -136,6 +136,9 @@ pub struct VirtualStateProcessor {
     pub(super) parents_manager: DbParentsManager,
     pub(super) depth_manager: DbBlockDepthManager,
 
+    // Pruning lock
+    pruning_lock: Arc<TokioRwLock<()>>,
+
     // Notifier
     notification_root: Arc<ConsensusNotificationRoot>,
 
@@ -144,6 +147,7 @@ pub struct VirtualStateProcessor {
 }
 
 impl VirtualStateProcessor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: CrossbeamReceiver<BlockProcessingMessage>,
         pruning_sender: CrossbeamSender<PruningProcessingMessage>,
@@ -153,6 +157,7 @@ impl VirtualStateProcessor {
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
+        pruning_lock: Arc<TokioRwLock<()>>,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
@@ -195,6 +200,7 @@ impl VirtualStateProcessor {
             parents_manager: services.parents_manager.clone(),
             depth_manager: services.depth_manager.clone(),
 
+            pruning_lock,
             notification_root,
             counters,
         }
@@ -232,6 +238,7 @@ impl VirtualStateProcessor {
     }
 
     fn resolve_virtual(self: &Arc<Self>) {
+        let _prune_guard = self.pruning_lock.blocking_read();
         let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
         let virtual_read = self.virtual_stores.upgradable_read();
         let prev_state = virtual_read.state.get().unwrap();

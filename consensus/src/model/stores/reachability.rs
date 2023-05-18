@@ -228,6 +228,14 @@ impl<'a> StagingReachabilityStore<'a> {
         }
         Ok(store_write)
     }
+
+    fn check_not_in_deletions(&self, hash: Hash) -> Result<(), StoreError> {
+        if self.staging_deletions.contains(&hash) {
+            Err(StoreError::KeyNotFound(DbKey::new(b"staging-reachability", hash)))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl ReachabilityStore for StagingReachabilityStore<'_> {
@@ -334,6 +342,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
     }
 
     fn get_height(&self, hash: Hash) -> Result<u64, StoreError> {
+        self.check_not_in_deletions(hash)?;
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(data.height)
         } else {
@@ -357,10 +366,14 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
 
 impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
+        if self.staging_deletions.contains(&hash) {
+            return Ok(false);
+        }
         Ok(self.staging_writes.contains_key(&hash) || self.store_read.access.has(hash)?)
     }
 
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError> {
+        self.check_not_in_deletions(hash)?;
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(data.interval)
         } else {
@@ -369,6 +382,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
     }
 
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
+        self.check_not_in_deletions(hash)?;
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(data.parent)
         } else {
@@ -377,6 +391,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
     }
 
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+        self.check_not_in_deletions(hash)?;
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(BlockHashes::clone(&data.children))
         } else {
@@ -385,6 +400,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
     }
 
     fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+        self.check_not_in_deletions(hash)?;
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(BlockHashes::clone(&data.future_covering_set))
         } else {

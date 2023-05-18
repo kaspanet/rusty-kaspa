@@ -8,20 +8,16 @@ use crate::{
     config::Config,
     errors::{BlockProcessResult, RuleError},
     model::{
-        services::{
-            reachability::{MTReachabilityService, ReachabilityService},
-            relations::MTRelationsService,
-        },
+        services::reachability::ReachabilityService,
         stores::{
             acceptance_data::AcceptanceDataStoreReader,
             block_transactions::BlockTransactionsStoreReader,
-            ghostdag::{DbGhostdagStore, GhostdagStoreReader},
-            headers::{DbHeadersStore, HeaderStoreReader},
+            ghostdag::GhostdagStoreReader,
+            headers::HeaderStoreReader,
             headers_selected_tip::HeadersSelectedTipStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
-            reachability::DbReachabilityStore,
-            relations::{DbRelationsStore, RelationsStoreReader},
+            relations::RelationsStoreReader,
             statuses::StatusesStoreReader,
             tips::TipsStoreReader,
             utxo_set::{UtxoSetStore, UtxoSetStoreReader},
@@ -37,7 +33,6 @@ use crate::{
         virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
         ProcessingCounters,
     },
-    processes::ghostdag::protocol::GhostdagManager,
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
@@ -81,9 +76,6 @@ use std::{
 use tokio::sync::{oneshot, RwLock as TokioRwLock};
 
 use self::{services::ConsensusServices, storage::ConsensusStorage};
-
-pub type DbGhostdagManager =
-    GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
 
 pub struct Consensus {
     // DB
@@ -198,6 +190,7 @@ impl Consensus {
             db.clone(),
             &storage,
             &services,
+            pruning_lock.clone(),
             counters.clone(),
         ));
 
@@ -218,6 +211,7 @@ impl Consensus {
             services.past_median_time_manager.clone(),
             params.max_block_mass,
             params.genesis.clone(),
+            pruning_lock.clone(),
             notification_root.clone(),
             counters.clone(),
         ));
@@ -231,6 +225,7 @@ impl Consensus {
             db.clone(),
             &storage,
             &services,
+            pruning_lock.clone(),
             notification_root.clone(),
             counters.clone(),
         ));

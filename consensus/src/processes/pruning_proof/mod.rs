@@ -29,9 +29,8 @@ use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
 
 use crate::{
     consensus::{
-        services::{DbDagTraversalManager, DbParentsManager},
+        services::{DbDagTraversalManager, DbGhostdagManager, DbParentsManager},
         storage::ConsensusStorage,
-        DbGhostdagManager,
     },
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
