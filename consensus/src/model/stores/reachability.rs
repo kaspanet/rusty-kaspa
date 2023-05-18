@@ -31,7 +31,9 @@ impl ReachabilityData {
 pub trait ReachabilityStoreReader {
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
     fn get_interval(&self, hash: Hash) -> Result<Interval, StoreError>;
+    /// Returns the reachability *tree* parent of `hash`
     fn get_parent(&self, hash: Hash) -> Result<Hash, StoreError>;
+    /// Returns the reachability *tree* children of `hash`
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
     fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
 }
@@ -378,7 +380,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(BlockHashes::clone(&data.children))
         } else {
-            Ok(BlockHashes::clone(&self.store_read.access.read(hash)?.children))
+            self.store_read.get_children(hash)
         }
     }
 
@@ -386,7 +388,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
         if let Some(data) = self.staging_writes.get(&hash) {
             Ok(BlockHashes::clone(&data.future_covering_set))
         } else {
-            Ok(BlockHashes::clone(&self.store_read.access.read(hash)?.future_covering_set))
+            self.store_read.get_future_covering_set(hash)
         }
     }
 }

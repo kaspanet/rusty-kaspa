@@ -225,6 +225,7 @@ pub trait GhostdagStore: GhostdagStoreReader {
     /// Additionally, this means writes are semantically "append-only", which is why
     /// we can keep the `insert` method non-mutable on self. See "Parallel Processing.md" for an overview.
     fn insert(&self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"block-ghostdag-data";
@@ -267,6 +268,11 @@ impl DbGhostdagStore {
             CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
         )?;
         Ok(())
+    }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.compact_access.delete(BatchDbWriter::new(batch), hash)?;
+        self.access.delete(BatchDbWriter::new(batch), hash)
     }
 }
 
@@ -324,6 +330,11 @@ impl GhostdagStore for DbGhostdagStore {
         )?;
         Ok(())
     }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.compact_access.delete(DirectDbWriter::new(&self.db), hash)?;
+        self.access.delete(DirectDbWriter::new(&self.db), hash)
+    }
 }
 
 /// An in-memory implementation of `GhostdagStore` trait to be used for tests.
@@ -368,6 +379,16 @@ impl GhostdagStore for MemoryGhostdagStore {
         self.mergeset_blues_map.borrow_mut().insert(hash, data.mergeset_blues.clone());
         self.mergeset_reds_map.borrow_mut().insert(hash, data.mergeset_reds.clone());
         self.blues_anticone_sizes_map.borrow_mut().insert(hash, data.blues_anticone_sizes.clone());
+        Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.blue_score_map.borrow_mut().remove(&hash);
+        self.blue_work_map.borrow_mut().remove(&hash);
+        self.selected_parent_map.borrow_mut().remove(&hash);
+        self.mergeset_blues_map.borrow_mut().remove(&hash);
+        self.mergeset_reds_map.borrow_mut().remove(&hash);
+        self.blues_anticone_sizes_map.borrow_mut().remove(&hash);
         Ok(())
     }
 }

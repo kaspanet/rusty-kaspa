@@ -16,6 +16,7 @@ pub trait DepthStoreReader {
 pub trait DepthStore: DepthStoreReader {
     // This is append only
     fn insert(&self, hash: Hash, merge_depth_root: Hash, finality_point: Hash) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"block-at-depth";
@@ -55,6 +56,10 @@ impl DbDepthStore {
         self.access.write(BatchDbWriter::new(batch), hash, BlockDepthInfo { merge_depth_root, finality_point })?;
         Ok(())
     }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(BatchDbWriter::new(batch), hash)
+    }
 }
 
 impl DepthStoreReader for DbDepthStore {
@@ -74,5 +79,9 @@ impl DepthStore for DbDepthStore {
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, BlockDepthInfo { merge_depth_root, finality_point })?;
         Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(DirectDbWriter::new(&self.db), hash)
     }
 }
