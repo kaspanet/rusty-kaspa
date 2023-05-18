@@ -8,6 +8,7 @@ use kaspa_wallet_core::storage::AccountKind;
 use kaspa_wallet_core::{secret::Secret, wallet::AccountCreateArgs, Wallet};
 use kaspa_wallet_core::{Address, AddressPrefix};
 use std::sync::{Arc, Mutex};
+use workflow_core::abortable::Abortable;
 use workflow_core::channel::*;
 use workflow_core::runtime;
 use workflow_log::*;
@@ -176,8 +177,9 @@ impl WalletCli {
                 if keydata.is_none() {
                     return Err("It is read only wallet.".into());
                 }
-
-                let ids = account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret).await?;
+                let abortable = Abortable::default();
+                let ids =
+                    account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret, &abortable).await?;
 
                 term.writeln(format!("\r\nSending {amount} KAS to {address}, tx ids:"));
                 term.writeln(format!("{}\r\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\r\n")));

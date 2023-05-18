@@ -23,6 +23,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use workflow_core::abortable::Abortable;
 use workflow_core::channel::{Channel, DuplexChannel};
 
 #[derive(Default, Clone)]
@@ -367,6 +368,7 @@ impl Account {
         priority_fee_sompi: u64,
         keydata: PrvKeyData,
         payment_secret: Option<Secret>,
+        abortable: &Abortable,
     ) -> Result<Vec<kaspa_hashes::Hash>> {
         let fee_margin = 1000; //TODO update select_utxos to remove this fee_margin
         let transaction_amount = amount_sompi + priority_fee_sompi + fee_margin;
@@ -390,6 +392,7 @@ impl Account {
             priority_fee_sompi,
             payload,
             LimitCalcStrategy::inputs(80),
+            abortable,
         )
         .await?;
 

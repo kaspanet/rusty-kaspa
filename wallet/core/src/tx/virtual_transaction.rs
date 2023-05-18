@@ -17,6 +17,7 @@ use kaspa_consensus_core::{subnets::SubnetworkId, tx};
 use kaspa_rpc_core::SubmitTransactionRequest;
 use kaspa_txscript::pay_to_address_script;
 use kaspa_wrpc_client::wasm::RpcClient;
+use workflow_core::abortable::Abortable;
 use workflow_wasm::tovalue::to_value;
 
 #[wasm_bindgen]
@@ -213,6 +214,7 @@ impl VirtualTransaction {
         priority_fee_sompi: Option<u64>,
         payload: Vec<u8>,
         limit_calc_strategy: LimitCalcStrategy,
+        abortable: &Abortable,
     ) -> crate::Result<VirtualTransaction> {
         log_trace!("VirtualTransaction...");
         log_trace!("utxo_selection.transaction_amount: {:?}", utxo_selection.transaction_amount);
@@ -230,6 +232,7 @@ impl VirtualTransaction {
 
         match limit_calc_strategy.strategy {
             LimitStrategy::Calculated => {
+                abortable.check()?;
                 let mtx = create_transaction(
                     sig_op_count,
                     utxo_selection,
@@ -241,22 +244,26 @@ impl VirtualTransaction {
                 )?;
 
                 let tx = mtx.tx().clone();
-
+                abortable.check()?;
                 let mass = calculate_mass(&tx, &consensus_params, true, minimum_signatures);
                 if mass <= MAXIMUM_STANDARD_TRANSACTION_MASS {
                     return Ok(VirtualTransaction { transactions: vec![mtx], payload });
                 }
-
+                abortable.check()?;
                 let max_inputs = calculate_chunk_size(&tx, mass, &consensus_params, true, minimum_signatures).await? as usize;
+                abortable.check()?;
                 let mut txs =
-                    Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count, minimum_signatures).await?;
+                    Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count, minimum_signatures, abortable).await?;
+                abortable.check()?;
                 txs.merge(outputs, change_address, priority_fee, payload.clone(), minimum_signatures).await?;
                 Ok(VirtualTransaction { transactions: txs.transactions, payload })
             }
             LimitStrategy::Inputs(inputs) => {
+                abortable.check()?;
                 let max_inputs = inputs as usize;
                 let mut txs =
-                    Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count, minimum_signatures).await?;
+                    Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count, minimum_signatures, abortable).await?;
+                abortable.check()?;
                 txs.merge(outputs, change_address, priority_fee, payload.clone(), minimum_signatures).await?;
                 Ok(VirtualTransaction { transactions: txs.transactions, payload })
             }
@@ -328,6 +335,7 @@ impl VirtualTransaction {
         change_address: &Address,
         sig_op_count: u8,
         minimum_signatures: u16,
+        abortable: &Abortable,
     ) -> crate::Result<Transactions> {
         let mut final_inputs = vec![];
         let mut final_utxos = vec![];
@@ -345,10 +353,13 @@ impl VirtualTransaction {
             return Ok(Transactions { transactions, inputs: final_inputs, utxos: final_utxos, amount: final_amount });
         }
 
+        abortable.check()?;
+
         let consensus_params = get_consensus_params_by_address(change_address);
 
         let chunks = utxos_entries.chunks(chunk_size).collect::<Vec<&[UtxoEntryReference]>>();
         for chunk in chunks {
+            abortable.check()?;
             let utxos = chunk.iter().map(|reference| reference.utxo.clone()).collect::<Vec<Arc<UtxoEntry>>>();
 
             let mut amount = 0;
@@ -389,7 +400,7 @@ impl VirtualTransaction {
                 log_debug!("outputs is dust: {}\r\n", amount_after_fee);
                 continue;
             }
-
+            abortable.check()?;
             let transaction_id = tx.finalize().unwrap().to_str();
 
             final_amount += amount_after_fee;
