@@ -1,11 +1,14 @@
 use itertools::Itertools;
+use kaspa_consensus_core::BlockHashSet;
 use kaspa_consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
-use kaspa_database::prelude::DbWriter;
 use kaspa_database::prelude::MemoryWriter;
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, DbWriter};
 use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
 use kaspa_hashes::Hash;
+use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
+use rocksdb::WriteBatch;
 use std::sync::Arc;
 
 /// Reader API for `RelationsStore`.
@@ -103,6 +106,99 @@ impl RelationsStore for DbRelationsStore {
     fn delete_entries(&mut self, mut writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
         self.parents_access.delete(&mut writer, hash)?;
         self.children_access.delete(&mut writer, hash)
+    }
+}
+
+pub struct StagingRelationsStore<'a> {
+    store_read: RwLockUpgradableReadGuard<'a, DbRelationsStore>,
+    staging_parents_writes: BlockHashMap<BlockHashes>,
+    staging_children_writes: BlockHashMap<BlockHashes>,
+    staging_deletions: BlockHashSet,
+}
+
+impl<'a> StagingRelationsStore<'a> {
+    pub fn new(store_read: RwLockUpgradableReadGuard<'a, DbRelationsStore>) -> Self {
+        Self {
+            store_read,
+            staging_parents_writes: Default::default(),
+            staging_children_writes: Default::default(),
+            staging_deletions: Default::default(),
+        }
+    }
+
+    pub fn commit(self, batch: &mut WriteBatch) -> Result<RwLockWriteGuard<'a, DbRelationsStore>, StoreError> {
+        let store_write = RwLockUpgradableReadGuard::upgrade(self.store_read);
+        store_write.parents_access.delete_many(BatchDbWriter::new(batch), &mut self.staging_deletions.iter().copied())?;
+        store_write.children_access.delete_many(BatchDbWriter::new(batch), &mut self.staging_deletions.iter().copied())?;
+        for (k, v) in self.staging_parents_writes {
+            store_write.parents_access.write(BatchDbWriter::new(batch), k, v)?
+        }
+        for (k, v) in self.staging_children_writes {
+            store_write.children_access.write(BatchDbWriter::new(batch), k, v)?
+        }
+        Ok(store_write)
+    }
+
+    fn check_not_in_deletions(&self, hash: Hash) -> Result<(), StoreError> {
+        if self.staging_deletions.contains(&hash) {
+            Err(StoreError::KeyNotFound(DbKey::new(b"staging-relations", hash)))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl RelationsStore for StagingRelationsStore<'_> {
+    type DefaultWriter = MemoryWriter;
+
+    fn default_writer(&self) -> Self::DefaultWriter {
+        MemoryWriter::default()
+    }
+
+    fn set_parents(&mut self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+        self.staging_parents_writes.insert(hash, parents);
+        Ok(())
+    }
+
+    fn set_children(&mut self, _writer: impl DbWriter, hash: Hash, children: BlockHashes) -> Result<(), StoreError> {
+        self.staging_children_writes.insert(hash, children);
+        Ok(())
+    }
+
+    fn delete_entries(&mut self, _writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
+        self.staging_deletions.insert(hash);
+        Ok(())
+    }
+}
+
+impl RelationsStoreReader for StagingRelationsStore<'_> {
+    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+        self.check_not_in_deletions(hash)?;
+        if let Some(data) = self.staging_parents_writes.get(&hash) {
+            Ok(BlockHashes::clone(data))
+        } else {
+            self.store_read.get_parents(hash)
+        }
+    }
+
+    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+        self.check_not_in_deletions(hash)?;
+        if let Some(data) = self.staging_children_writes.get(&hash) {
+            Ok(BlockHashes::clone(data))
+        } else {
+            self.store_read.get_children(hash)
+        }
+    }
+
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
+        if self.staging_deletions.contains(&hash) {
+            return Ok(false);
+        }
+        Ok(self.staging_parents_writes.contains_key(&hash) || self.store_read.has(hash)?)
+    }
+
+    fn counts(&self) -> Result<(usize, usize), StoreError> {
+        unimplemented!()
     }
 }
 

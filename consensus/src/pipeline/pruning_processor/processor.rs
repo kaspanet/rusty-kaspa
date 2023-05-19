@@ -8,12 +8,12 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            ghostdag::{CompactGhostdagData, GhostdagStoreReader},
+            ghostdag::CompactGhostdagData,
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::{PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
-            relations::RelationsStoreReader,
+            relations::StagingRelationsStore,
             utxo_diffs::UtxoDiffsStoreReader,
             utxo_set::UtxoSetStore,
         },
@@ -30,11 +30,7 @@ use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
-use std::{
-    collections::VecDeque,
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::{collections::VecDeque, ops::Deref, sync::Arc};
 use tokio::sync::RwLock as TokioRwLock;
 
 pub enum PruningProcessingMessage {
@@ -230,9 +226,9 @@ impl PruningProcessor {
             if !keep_blocks.contains(&current) {
                 let mut batch = WriteBatch::default();
                 let mut level_relations_write = self.relations_stores.write();
-                let mut reachability_relations_write = self.reachability_relations_store.write();
+                let mut staging_relations = StagingRelationsStore::new(self.reachability_relations_store.upgradable_read());
+                let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
-                let mut staging = StagingReachabilityStore::new(reachability_read);
 
                 // Prune data related to block bodies and UTXO state
                 self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
@@ -249,15 +245,13 @@ impl PruningProcessor {
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
                         BatchDbWriter::new(&mut batch),
-                        reachability_relations_write.deref_mut(),
-                        &staging,
+                        &mut staging_relations,
+                        &staging_reachability,
                         current,
                     );
-                    reachability::delete_block(&mut staging, current, &mut mergeset.iter().cloned()).unwrap();
+                    reachability::delete_block(&mut staging_reachability, current, &mut mergeset.iter().copied()).unwrap();
                     let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
                     (0..=block_level as usize).for_each(|level| {
-                        assert!(level_relations_write[level].has(current).unwrap());
-                        assert!(self.ghostdag_stores[level].has(current).unwrap());
                         relations::delete_level_relations(BatchDbWriter::new(&mut batch), &mut level_relations_write[level], current);
                         self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap();
                     });
@@ -271,7 +265,8 @@ impl PruningProcessor {
                     }
                 }
 
-                let reachability_write = staging.commit(&mut batch).unwrap();
+                let reachability_write = staging_reachability.commit(&mut batch).unwrap();
+                let reachability_relations_write = staging_relations.commit(&mut batch).unwrap();
 
                 // Flush the batch to the DB
                 self.db.write(batch).unwrap();
