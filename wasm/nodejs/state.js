@@ -39,7 +39,9 @@ const {
 
     console.log("creating state");
     let state = new State(header);
-    let [a, v] = state.checkPow(0n);
+    let nonce = BigInt("0xffffffffffffffff");
+    console.log("nonce:", nonce);
+    let [a, v] = state.checkPow(nonce);
     console.log("state:", state);
     console.log("[a,v]:", a, v);
     console.log("v.toString(16):", v.toString(16));

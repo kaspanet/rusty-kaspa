@@ -419,7 +419,13 @@ macro_rules! construct_uint {
                 Ok(Self::from_be_bytes(out))
             }
 
-            pub fn to_bigint(&self) -> Result<js_sys::BigInt, $crate::Error> {
+            #[inline]
+            pub fn as_bigint(&self) -> Result<js_sys::BigInt, $crate::Error> {
+                self.try_into()
+            }
+
+            #[inline]
+            pub fn to_bigint(self) -> Result<js_sys::BigInt, $crate::Error> {
                 self.try_into()
             }
 
@@ -949,7 +955,7 @@ macro_rules! construct_uint {
             #[inline]
             fn try_from(value: $name) -> Result<js_sys::BigInt, Self::Error> {
                 use $crate::wasm::*;
-                BigInt::new(&JsValue::from_str(&format!("0x{value:x}"))).map_err(|err|$crate::Error::JsSys(Sendable(err)))
+                BigInt::try_from(&value)
             }
         }
 
