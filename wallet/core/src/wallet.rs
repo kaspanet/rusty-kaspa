@@ -1,17 +1,13 @@
 use crate::account::{AccountId, AccountList, AccountMap};
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::storage::{self, AccountKind, KeyDataId, PrvKeyData, PrvKeyDataId};
+use crate::storage::{self, AccountKind, PrvKeyData, PrvKeyDataId};
 use crate::utxo::UtxoEntryReference;
-// use crate::utils::NetworkType;
 #[allow(unused_imports)]
 use crate::{account::Account, accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
 use crate::{imports::*, DynRpcApi};
-// use derivative::Derivative;
 use futures::future::join_all;
 use futures::{select, FutureExt};
-// use itertools::Itertools;
-// use itertools::Itertools;
 use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::Mnemonic;
 use kaspa_consensus_core::networktype::NetworkType;
@@ -28,7 +24,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use storage::{Payload, PubKeyData, Store};
+use storage::{local::Store, Payload, PubKeyData};
 use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
 use workflow_core::task::spawn;
 use workflow_log::log_error;
@@ -41,7 +37,6 @@ pub struct AccountCreateArgs {
     pub wallet_password: Secret,
     pub payment_password: Option<Secret>,
     pub override_wallet: bool,
-    // pub priv_key_data_id: Option<PrvKeyDataId>,
 }
 
 impl AccountCreateArgs {
@@ -57,14 +52,10 @@ pub struct BalanceUpdate {
 }
 
 #[derive(Clone, Debug)]
-// #[derive(Clone, Derivative)]
-// #[derivative(Debug)]
 pub enum Events {
     Connect,
     Disconnect,
     DAAScoreChange(u64),
-    // #[derivative(Debug = "ignore")]
-    // Balance(Arc<Account>),
     Balance(Arc<BalanceUpdate>),
 }
 
@@ -177,7 +168,7 @@ impl Wallet {
         // - TODO - RESET?
         self.reset().await?;
 
-        let store = storage::Store::default();
+        let store = storage::local::Store::default();
         let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
 
@@ -191,10 +182,10 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn get_account_keydata(&self, id: KeyDataId, secret: Secret) -> Result<Option<PrvKeyData>> {
+    pub async fn get_account_keydata(&self, id: PrvKeyDataId, secret: Secret) -> Result<Option<PrvKeyData>> {
         // let id = if let Some(id) = id { id } else { return Ok(None) };
 
-        let store = storage::Store::default();
+        let store = storage::local::Store::default();
         let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
         let key = payload.as_ref().prv_key_data.iter().find(|k| k.id == id);
@@ -205,7 +196,7 @@ impl Wallet {
     pub async fn is_account_key_encrypted(&self, account: &Account, secret: Secret) -> Result<bool> {
         // let id = if let Some(id) = account.prv_key_data_id { id } else { return Ok(false) };
         let id = account.prv_key_data_id;
-        let store = storage::Store::default();
+        let store = storage::local::Store::default();
         let wallet = storage::Wallet::try_load(&store).await?;
         let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
         let key = payload.as_ref().prv_key_data.iter().find(|k| k.id == id);
@@ -367,7 +358,7 @@ impl Wallet {
     }
 
     pub async fn create_wallet(self: &Arc<Wallet>, args: &AccountCreateArgs) -> Result<(PathBuf, Mnemonic)> {
-        let store = Store::new(storage::DEFAULT_WALLET_FOLDER, storage::DEFAULT_WALLET_NAME)?;
+        let store = Store::new(storage::local::DEFAULT_WALLET_FOLDER, storage::local::DEFAULT_WALLET_NAME)?;
         // let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
         if !args.override_wallet && store.exists().await? {
             return Err(Error::WalletAlreadyExists);
@@ -453,7 +444,7 @@ impl Wallet {
     pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<()> {
         let keydata = load_v0_keydata(&import_secret).await?;
 
-        let store = storage::Store::new(storage::DEFAULT_WALLET_FOLDER, storage::DEFAULT_WALLET_NAME)?;
+        let store = storage::local::Store::new(storage::local::DEFAULT_WALLET_FOLDER, storage::local::DEFAULT_WALLET_NAME)?;
         let wallet = storage::Wallet::try_load(&store).await?;
         let mut payload = wallet.payload.decrypt::<Payload>(wallet_secret).unwrap();
         let payload = payload.as_mut();

@@ -553,49 +553,10 @@ impl Account {
 
 pub type AccountList = Vec<Arc<Account>>;
 
-// #[derive(Default, Clone)]
-// pub struct AccountList(Vec<Arc<Account>>);
-
-// impl AsRef<Vec<Arc<Account>>> for AccountList {
-//     fn as_ref(&self) -> &Vec<Arc<Account>> {
-//         &self.0
-//     }
-// }
-
-// impl AsMut<Vec<Arc<Account>>> for AccountList {
-//     fn as_mut(&mut self) -> &mut Vec<Arc<Account>> {
-//         &mut self.0
-//     }
-// }
-
-// impl AccountList {
-//     pub fn new_with_accounts(accounts: &[Arc<Account>]) -> Self {
-//         AccountList(accounts.to_vec())
-//     }
-// }
-
-// impl From<Vec<Arc<Account>>> for AccountList {
-//     fn from(accounts: Vec<Arc<Account>>) -> Self {
-//         AccountList::new_with_accounts(&accounts)
-//     }
-// }
-
 #[derive(Default, Clone)]
 pub struct AccountMap(Arc<Mutex<HashMap<PrvKeyDataId, AccountList>>>);
 
 impl AccountMap {
-    // pub fn new(accounts: Vec<Account>) -> Result<HashMap<PrvKeyDataId, Vec<Arc<Account>>>> {
-    //     let mut map = HashMap::<PrvKeyDataId, Vec<Arc<Account>>>::new();
-    //     for account in accounts.into_iter() {
-    //         if let Some(list) = map.get_mut(&account.prv_key_data_id) {
-    //             list.push(Arc::new(account));
-    //         } else {
-    //             map.insert(account.prv_key_data_id, vec![Arc::new(account)]);
-    //         }
-    //     }
-    //     Ok(map)
-    // }
-
     pub fn locked_map(&self) -> MutexGuard<HashMap<PrvKeyDataId, AccountList>> {
         self.0.lock().unwrap()
     }
