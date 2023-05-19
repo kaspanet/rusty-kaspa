@@ -16,6 +16,7 @@ wasm-bindgen.workspace = true
 js-sys.workspace = true
 workflow-wasm.workspace = true
 kaspa-utils.workspace = true
+# workflow-log.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
