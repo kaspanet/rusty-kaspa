@@ -48,6 +48,8 @@ pub trait WindowManager {
     fn calculate_difficulty_bits(&self, high_ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32;
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError>;
     fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64>;
+    fn window_size(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> usize;
+    fn sample_rate(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> u64;
 }
 
 #[derive(Clone)]
@@ -93,7 +95,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
         high_ghostdag_data: &GhostdagData,
         window_type: WindowType,
     ) -> Result<Arc<BlockWindowHeap>, RuleError> {
-        let window_size = self.window_size(window_type);
+        let window_size = self.window_size(high_ghostdag_data, window_type);
         if window_size == 0 {
             return Ok(Arc::new(BlockWindowHeap::new(WindowOrigin::Full)));
         }
@@ -176,14 +178,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
         }
         false
     }
-
-    fn window_size(&self, window_type: WindowType) -> usize {
-        match window_type {
-            WindowType::SampledDifficultyWindow | WindowType::FullDifficultyWindow => self.difficulty_window_size,
-            WindowType::SampledMedianTimeWindow => self.past_median_time_window_size,
-            WindowType::VaryingWindow(size) => size,
-        }
-    }
 }
 
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> WindowManager for FullWindowManager<T, U, V> {
@@ -213,6 +207,18 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Wi
 
     fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
         self.difficulty_manager.estimate_network_hashes_per_second(&window)
+    }
+
+    fn window_size(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {
+        match window_type {
+            WindowType::SampledDifficultyWindow | WindowType::FullDifficultyWindow => self.difficulty_window_size,
+            WindowType::SampledMedianTimeWindow => self.past_median_time_window_size,
+            WindowType::VaryingWindow(size) => size,
+        }
+    }
+
+    fn sample_rate(&self, _ghostdag_data: &GhostdagData, _window_type: WindowType) -> u64 {
+        1
     }
 }
 
@@ -291,11 +297,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         high_ghostdag_data: &GhostdagData,
         window_type: WindowType,
     ) -> Result<(Arc<BlockWindowHeap>, DaaStatus), RuleError> {
-        let window_size = self.window_size(window_type);
+        let window_size = self.window_size(high_ghostdag_data, window_type);
         if window_size == 0 {
             return Ok((Arc::new(BlockWindowHeap::new(WindowOrigin::Sampled)), None));
         }
-        let sample_rate = self.sample_rate(window_type);
+        let sample_rate = self.sample_rate(high_ghostdag_data, window_type);
 
         let cache = match window_type {
             WindowType::SampledDifficultyWindow => Some(&self.block_window_cache_for_difficulty),
@@ -494,23 +500,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         }
         false
     }
-
-    fn window_size(&self, window_type: WindowType) -> usize {
-        match window_type {
-            WindowType::SampledDifficultyWindow => self.difficulty_window_size,
-            WindowType::FullDifficultyWindow => (self.difficulty_window_size - 1) * self.difficulty_sample_rate as usize + 1,
-            WindowType::SampledMedianTimeWindow => self.past_median_time_window_size,
-            WindowType::VaryingWindow(size) => size,
-        }
-    }
-
-    fn sample_rate(&self, window_type: WindowType) -> u64 {
-        match window_type {
-            WindowType::SampledDifficultyWindow | WindowType::FullDifficultyWindow => self.difficulty_sample_rate,
-            WindowType::SampledMedianTimeWindow => self.past_median_time_sample_rate,
-            WindowType::VaryingWindow(_) => 1,
-        }
-    }
 }
 
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> WindowManager
@@ -540,6 +529,23 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 
     fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
         self.difficulty_manager.estimate_network_hashes_per_second(&window)
+    }
+
+    fn window_size(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {
+        match window_type {
+            WindowType::SampledDifficultyWindow => self.difficulty_window_size,
+            WindowType::FullDifficultyWindow => (self.difficulty_window_size - 1) * self.difficulty_sample_rate as usize + 1,
+            WindowType::SampledMedianTimeWindow => self.past_median_time_window_size,
+            WindowType::VaryingWindow(size) => size,
+        }
+    }
+
+    fn sample_rate(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> u64 {
+        match window_type {
+            WindowType::SampledDifficultyWindow => self.difficulty_sample_rate,
+            WindowType::SampledMedianTimeWindow => self.past_median_time_sample_rate,
+            WindowType::FullDifficultyWindow | WindowType::VaryingWindow(_) => 1,
+        }
     }
 }
 
@@ -636,6 +642,20 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 
     fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
         self.sampled_window_manager.estimate_network_hashes_per_second(window)
+    }
+
+    fn window_size(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {
+        match self.sampling(ghostdag_data) {
+            true => self.sampled_window_manager.window_size(ghostdag_data, window_type),
+            false => self.full_window_manager.window_size(ghostdag_data, window_type),
+        }
+    }
+
+    fn sample_rate(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> u64 {
+        match self.sampling(ghostdag_data) {
+            true => self.sampled_window_manager.sample_rate(ghostdag_data, window_type),
+            false => self.full_window_manager.sample_rate(ghostdag_data, window_type),
+        }
     }
 }
 
