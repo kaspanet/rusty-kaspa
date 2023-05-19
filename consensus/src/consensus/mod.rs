@@ -967,6 +967,6 @@ impl ConsensusApi for Consensus {
             None => virtual_ghostdag_data.as_ref().unwrap().into(),
         };
         let window = self.window_manager.block_window(&high_ghostdag_data, WindowType::VaryingWindow(window_size)).unwrap();
-        Ok(self.window_manager.estimate_network_hashes_per_second(&window)?)
+        Ok(self.window_manager.estimate_network_hashes_per_second(window)?)
     }
 }

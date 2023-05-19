@@ -355,10 +355,11 @@ async fn block_window_test() {
         let window = consensus
             .window_manager()
             .block_window(&consensus.ghostdag_store().get_data(block_id).unwrap(), WindowType::VaryingWindow(10))
-            .unwrap();
+            .unwrap()
+            .blocks
+            .clone();
 
         let window_hashes: Vec<String> = window
-            .blocks
             .into_sorted_vec()
             .iter()
             .map(|item| {

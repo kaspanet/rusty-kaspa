@@ -31,7 +31,7 @@ impl HeaderProcessor {
             return Err(RuleError::UnexpectedHeaderDaaScore(daa_window.daa_score, header.daa_score));
         }
 
-        let expected_bits = self.window_manager.calculate_difficulty_bits(ghostdag_data, &daa_window.window);
+        let expected_bits = self.window_manager.calculate_difficulty_bits(ghostdag_data, &daa_window);
         ctx.mergeset_non_daa = Some(daa_window.mergeset_non_daa);
 
         if header.bits != expected_bits {

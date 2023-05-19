@@ -31,23 +31,23 @@ pub enum WindowType {
 }
 
 pub struct DaaWindow {
-    pub window: BlockWindowHeap,
+    pub window: Arc<BlockWindowHeap>,
     pub daa_score: u64,
     pub mergeset_non_daa: BlockHashSet,
 }
 
 impl DaaWindow {
-    pub fn new(window: BlockWindowHeap, daa_score: u64, mergeset_non_daa: BlockHashSet) -> Self {
+    pub fn new(window: Arc<BlockWindowHeap>, daa_score: u64, mergeset_non_daa: BlockHashSet) -> Self {
         Self { window, daa_score, mergeset_non_daa }
     }
 }
 
 pub trait WindowManager {
-    fn block_window(&self, high_ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<BlockWindowHeap, RuleError>;
+    fn block_window(&self, high_ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError>;
     fn block_daa_window(&self, high_ghostdag_data: &GhostdagData) -> Result<DaaWindow, RuleError>;
-    fn calculate_difficulty_bits(&self, high_ghostdag_data: &GhostdagData, window: &BlockWindowHeap) -> u32;
-    fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, BlockWindowHeap), RuleError>;
-    fn estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64>;
+    fn calculate_difficulty_bits(&self, high_ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32;
+    fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError>;
+    fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64>;
 }
 
 #[derive(Clone)]
@@ -88,10 +88,14 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
         }
     }
 
-    fn build_block_window(&self, high_ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<BlockWindowHeap, RuleError> {
+    fn build_block_window(
+        &self,
+        high_ghostdag_data: &GhostdagData,
+        window_type: WindowType,
+    ) -> Result<Arc<BlockWindowHeap>, RuleError> {
         let window_size = self.window_size(window_type);
         if window_size == 0 {
-            return Ok(BlockWindowHeap::new(WindowOrigin::Full));
+            return Ok(Arc::new(BlockWindowHeap::new(WindowOrigin::Full)));
         }
 
         let cache = if window_size == self.difficulty_window_size {
@@ -115,7 +119,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
                         );
                     }
 
-                    return Ok(window_heap.binary_heap);
+                    return Ok(Arc::new(window_heap.binary_heap));
                 }
             }
         }
@@ -150,7 +154,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
             current_ghostdag = parent_ghostdag.into();
         }
 
-        Ok(window_heap.binary_heap)
+        Ok(Arc::new(window_heap.binary_heap))
     }
 
     fn try_push_mergeset(
@@ -183,7 +187,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
 }
 
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> WindowManager for FullWindowManager<T, U, V> {
-    fn block_window(&self, high_ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<BlockWindowHeap, RuleError> {
+    fn block_window(&self, high_ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError> {
         self.build_block_window(high_ghostdag_data, window_type)
     }
 
@@ -197,18 +201,18 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Wi
         Ok(DaaWindow::new(window, daa_score, mergeset_non_daa))
     }
 
-    fn calculate_difficulty_bits(&self, _high_ghostdag_data: &GhostdagData, window: &BlockWindowHeap) -> u32 {
-        self.difficulty_manager.calculate_difficulty_bits(window)
+    fn calculate_difficulty_bits(&self, _high_ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32 {
+        self.difficulty_manager.calculate_difficulty_bits(&daa_window.window)
     }
 
-    fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, BlockWindowHeap), RuleError> {
+    fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
         let window = self.block_window(ghostdag_data, WindowType::SampledMedianTimeWindow)?;
         let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
         Ok((past_median_time, window))
     }
 
-    fn estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
-        self.difficulty_manager.estimate_network_hashes_per_second(window)
+    fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
+        self.difficulty_manager.estimate_network_hashes_per_second(&window)
     }
 }
 
@@ -286,14 +290,12 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         &self,
         high_ghostdag_data: &GhostdagData,
         window_type: WindowType,
-    ) -> Result<(BlockWindowHeap, DaaStatus), RuleError> {
+    ) -> Result<(Arc<BlockWindowHeap>, DaaStatus), RuleError> {
         let window_size = self.window_size(window_type);
         if window_size == 0 {
-            return Ok((BlockWindowHeap::new(WindowOrigin::Sampled), None));
+            return Ok((Arc::new(BlockWindowHeap::new(WindowOrigin::Sampled)), None));
         }
         let sample_rate = self.sample_rate(window_type);
-
-        // TODO: optimize the cache for reuse of unchanged windows
 
         let cache = match window_type {
             WindowType::SampledDifficultyWindow => Some(&self.block_window_cache_for_difficulty),
@@ -305,6 +307,12 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             if let Some(selected_parent_binary_heap) = cache.get(&high_ghostdag_data.selected_parent) {
                 // Only use the cached window if it originates from here
                 if let WindowOrigin::Sampled = selected_parent_binary_heap.origin() {
+                    let selected_parent_blue_work = self.ghostdag_store.get_blue_work(high_ghostdag_data.selected_parent).unwrap();
+                    let read_only_heap = BoundedSizeReadOnlyBlockHeap::new(window_size, selected_parent_binary_heap.clone());
+                    if !self.mergeset_will_change_window(read_only_heap, sample_rate, high_ghostdag_data, selected_parent_blue_work) {
+                        // If applying the mergeset of the current block will not change the cached window return it as is
+                        return Ok((selected_parent_binary_heap.clone(), None));
+                    }
                     let mut window_heap = BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_binary_heap).clone());
                     let mut daa_status = None;
                     if high_ghostdag_data.selected_parent != self.genesis_hash {
@@ -313,11 +321,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
                             &mut daa_status,
                             sample_rate,
                             high_ghostdag_data,
-                            self.ghostdag_store.get_blue_work(high_ghostdag_data.selected_parent).unwrap(),
+                            selected_parent_blue_work,
                         );
                     }
 
-                    return Ok((window_heap.binary_heap, daa_status));
+                    return Ok((Arc::new(window_heap.binary_heap), daa_status));
                 }
             }
         }
@@ -358,7 +366,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             current_ghostdag = parent_ghostdag.into();
         }
 
-        Ok((window_heap.binary_heap, highest_daa_status))
+        Ok((Arc::new(window_heap.binary_heap), highest_daa_status))
     }
 
     fn try_push_mergeset(
@@ -426,6 +434,67 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         false
     }
 
+    /// This function mimics `try_push_mergeset` and determines if any change to the provided window should occur when applying the mergeset.
+    fn mergeset_will_change_window(
+        &self,
+        heap: BoundedSizeReadOnlyBlockHeap,
+        sample_rate: u64,
+        ghostdag_data: &GhostdagData,
+        selected_parent_blue_work: BlueWorkType,
+    ) -> bool {
+        // If the window is full and the selected parent is less than the minimum then we break
+        // because this means that there cannot be any more blocks in the past with higher blue work
+        if !heap.can_push(ghostdag_data.selected_parent, selected_parent_blue_work).0 {
+            return false;
+        }
+
+        let selected_parent_block = SortableBlock::new(ghostdag_data.selected_parent, selected_parent_blue_work);
+        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
+        if selected_parent_daa_score >= self.sampling_activation_daa_score {
+            // Define the DAA window lowest accepted blue score in ghostdag_data POV
+            let lowest_daa_blue_score = self.difficulty_manager.lowest_daa_blue_score(ghostdag_data);
+            let mut index: u64 = 0;
+            for block in once(selected_parent_block)
+                .chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref()))
+            {
+                if self.ghostdag_store.get_blue_score(block.hash).unwrap() < lowest_daa_blue_score {
+                } else {
+                    index += 1;
+                    // If it's smaller than minimum then we won't be able to add the rest because we iterate in descending blue work order.
+                    let (can_push, _) = heap.can_push(block.hash, block.blue_work);
+                    if !can_push {
+                        break;
+                    }
+                    if sample_rate <= 1 || selected_parent_daa_score + index % sample_rate == 0 {
+                        return true;
+                    }
+                }
+            }
+        } else {
+            // The selected parent is below the sampling activation DAA score, so we rely on the already stored
+            // non DAA mergeset instead of evaluating it on the fly because the current rules defining what is
+            // considered non-DAA are different after the sampling activation.
+            let mergeset_non_daa = (*self.daa_store.get_mergeset_non_daa(ghostdag_data.selected_parent).unwrap()).clone();
+            let mut index: u64 = 0;
+            for block in once(selected_parent_block)
+                .chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref()))
+            {
+                if !mergeset_non_daa.contains(&block.hash) {
+                    index += 1;
+                    // If it's smaller than minimum then we won't be able to add the rest because we iterate in descending blue work order.
+                    let (can_push, _) = heap.can_push(block.hash, block.blue_work);
+                    if !can_push {
+                        break;
+                    }
+                    if sample_rate <= 1 || selected_parent_daa_score + index % sample_rate == 0 {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     fn window_size(&self, window_type: WindowType) -> usize {
         match window_type {
             WindowType::SampledDifficultyWindow => self.difficulty_window_size,
@@ -447,7 +516,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> WindowManager
     for SampledWindowManager<T, U, V, W>
 {
-    fn block_window(&self, high_ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<BlockWindowHeap, RuleError> {
+    fn block_window(&self, high_ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError> {
         self.build_block_window(high_ghostdag_data, window_type).map(|(window, _)| window)
     }
 
@@ -459,18 +528,18 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         Ok(DaaWindow::new(window, daa_score, mergeset_non_daa))
     }
 
-    fn calculate_difficulty_bits(&self, _high_ghostdag_data: &GhostdagData, window: &BlockWindowHeap) -> u32 {
-        self.difficulty_manager.calculate_difficulty_bits(window)
+    fn calculate_difficulty_bits(&self, _high_ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32 {
+        self.difficulty_manager.calculate_difficulty_bits(&daa_window.window)
     }
 
-    fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, BlockWindowHeap), RuleError> {
+    fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
         let window = self.block_window(ghostdag_data, WindowType::SampledMedianTimeWindow)?;
         let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
         Ok((past_median_time, window))
     }
 
-    fn estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
-        self.difficulty_manager.estimate_network_hashes_per_second(window)
+    fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
+        self.difficulty_manager.estimate_network_hashes_per_second(&window)
     }
 }
 
@@ -537,7 +606,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> WindowManager
     for DualWindowManager<T, U, V, W>
 {
-    fn block_window(&self, high_ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<BlockWindowHeap, RuleError> {
+    fn block_window(&self, high_ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError> {
         match self.sampling(high_ghostdag_data) {
             true => self.sampled_window_manager.block_window(high_ghostdag_data, window_type),
             false => self.full_window_manager.block_window(high_ghostdag_data, window_type),
@@ -551,21 +620,21 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         }
     }
 
-    fn calculate_difficulty_bits(&self, high_ghostdag_data: &GhostdagData, window: &BlockWindowHeap) -> u32 {
+    fn calculate_difficulty_bits(&self, high_ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32 {
         match self.sampling(high_ghostdag_data) {
-            true => self.sampled_window_manager.calculate_difficulty_bits(high_ghostdag_data, window),
-            false => self.full_window_manager.calculate_difficulty_bits(high_ghostdag_data, window),
+            true => self.sampled_window_manager.calculate_difficulty_bits(high_ghostdag_data, daa_window),
+            false => self.full_window_manager.calculate_difficulty_bits(high_ghostdag_data, daa_window),
         }
     }
 
-    fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, BlockWindowHeap), RuleError> {
+    fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
         match self.sampling(ghostdag_data) {
             true => self.sampled_window_manager.calc_past_median_time(ghostdag_data),
             false => self.full_window_manager.calc_past_median_time(ghostdag_data),
         }
     }
 
-    fn estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
+    fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
         self.sampled_window_manager.estimate_network_hashes_per_second(window)
     }
 }
@@ -618,5 +687,31 @@ impl BoundedSizeBlockHeap {
         }
         self.binary_heap.push(r_sortable_block);
         true
+    }
+}
+
+struct BoundedSizeReadOnlyBlockHeap {
+    binary_heap: Arc<BlockWindowHeap>,
+    size_bound: usize,
+}
+
+impl BoundedSizeReadOnlyBlockHeap {
+    fn new(size_bound: usize, binary_heap: Arc<BlockWindowHeap>) -> Self {
+        Self { size_bound, binary_heap }
+    }
+
+    fn reached_size_bound(&self) -> bool {
+        self.binary_heap.len() == self.size_bound
+    }
+
+    fn can_push(&self, hash: Hash, blue_work: BlueWorkType) -> (bool, Reverse<SortableBlock>) {
+        let r_sortable_block = Reverse(SortableBlock { hash, blue_work });
+        if self.reached_size_bound() {
+            let max = self.binary_heap.peek().unwrap();
+            // Returns false if heap is full and the suggested block is greater than the max. Since the heap is reversed,
+            // pushing the suggested block would involve to remove a block with a higher blue work.
+            return (*max >= r_sortable_block, r_sortable_block);
+        }
+        (true, r_sortable_block)
     }
 }

@@ -58,8 +58,8 @@ pub struct HeaderProcessingContext {
 
     // Staging data
     pub ghostdag_data: Option<Vec<Arc<GhostdagData>>>,
-    pub block_window_for_difficulty: Option<BlockWindowHeap>,
-    pub block_window_for_past_median_time: Option<BlockWindowHeap>,
+    pub block_window_for_difficulty: Option<Arc<BlockWindowHeap>>,
+    pub block_window_for_past_median_time: Option<Arc<BlockWindowHeap>>,
     pub mergeset_non_daa: Option<BlockHashSet>,
     pub merge_depth_root: Option<Hash>,
     pub finality_point: Option<Hash>,
@@ -394,11 +394,11 @@ impl HeaderProcessor {
             self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap_or_exists();
         }
         if let Some(window) = ctx.block_window_for_difficulty {
-            self.block_window_cache_for_difficulty.insert(ctx.hash, Arc::new(window));
+            self.block_window_cache_for_difficulty.insert(ctx.hash, window);
         }
 
         if let Some(window) = ctx.block_window_for_past_median_time {
-            self.block_window_cache_for_past_median_time.insert(ctx.hash, Arc::new(window));
+            self.block_window_cache_for_past_median_time.insert(ctx.hash, window);
         }
 
         self.daa_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa.unwrap())).unwrap();
@@ -501,8 +501,8 @@ impl HeaderProcessor {
         );
         ctx.ghostdag_data =
             Some(self.ghostdag_managers.iter().map(|manager_by_level| Arc::new(manager_by_level.genesis_ghostdag_data())).collect());
-        ctx.block_window_for_difficulty = Some(BlockWindowHeap::new(WindowOrigin::Sampled));
-        ctx.block_window_for_past_median_time = Some(BlockWindowHeap::new(WindowOrigin::Sampled));
+        ctx.block_window_for_difficulty = Some(Arc::new(BlockWindowHeap::new(WindowOrigin::Sampled)));
+        ctx.block_window_for_past_median_time = Some(Arc::new(BlockWindowHeap::new(WindowOrigin::Sampled)));
         ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
