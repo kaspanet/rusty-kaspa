@@ -10,7 +10,7 @@ use crate::{
     processes::{
         ghostdag::mergeset::unordered_mergeset_without_selected_parent,
         reachability::interval::Interval,
-        relations::{delete_reachability_relations, init as relations_init},
+        relations::{delete_reachability_relations, init as relations_init, RelationsStoreExtensions},
     },
 };
 use itertools::Itertools;

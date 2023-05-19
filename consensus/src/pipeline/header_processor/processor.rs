@@ -26,7 +26,7 @@ use crate::{
     },
     params::Params,
     pipeline::deps_manager::{BlockProcessingMessage, BlockTask, BlockTaskDependencyManager, TaskId},
-    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability},
+    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations::RelationsStoreExtensions},
 };
 use crossbeam_channel::{Receiver, Sender};
 use itertools::Itertools;

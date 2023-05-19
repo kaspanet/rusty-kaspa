@@ -5,8 +5,9 @@ use kaspa_consensus_core::{
     blockhash::{BlockHashes, ORIGIN},
     BlockHashSet,
 };
-use kaspa_database::prelude::DbWriter;
+use kaspa_database::prelude::{BatchDbWriter, DbWriter, StoreError};
 use kaspa_hashes::Hash;
+use rocksdb::WriteBatch;
 
 /// Initializes this relations store with an `origin` root
 pub fn init<S: RelationsStore + ?Sized>(relations: &mut S) {
@@ -65,3 +66,82 @@ where
     relations.delete(&mut writer, hash).unwrap();
     mergeset
 }
+
+pub trait RelationsStoreExtensions: RelationsStore {
+    /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`
+    fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+        self.insert_with_writer(self.default_writer(), hash, parents)
+    }
+
+    fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+        self.insert_with_writer(BatchDbWriter::new(batch), hash, parents)
+    }
+
+    fn insert_with_writer<W>(&mut self, mut writer: W, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>
+    where
+        W: DbWriter,
+    {
+        if self.has(hash)? {
+            return Err(StoreError::HashAlreadyExists(hash));
+        }
+
+        // Insert a new entry for `hash`
+        self.set_parents(&mut writer, hash, parents.clone())?;
+
+        // The new hash has no children yet
+        self.set_children(&mut writer, hash, BlockHashes::new(Vec::new()))?;
+
+        // Update `children` for each parent
+        for parent in parents.iter().cloned() {
+            let mut children = (*self.get_children(parent)?).clone();
+            children.push(hash);
+            self.set_children(&mut writer, parent, BlockHashes::new(children))?;
+        }
+
+        Ok(())
+    }
+
+    fn delete<W>(&mut self, mut writer: W, hash: Hash) -> Result<(), StoreError>
+    where
+        W: DbWriter,
+    {
+        let parents = self.get_parents(hash)?;
+        self.delete_entries(&mut writer, hash)?;
+
+        // Remove `hash` from `children` of each parent
+        for parent in parents.iter().cloned() {
+            let mut children = (*self.get_children(parent)?).clone();
+            let index = children
+                .iter()
+                .copied()
+                .position(|h| h == hash)
+                .unwrap_or_else(|| panic!("inconsistent child-parent relation, hash: {}, parent: {}", hash, parent,));
+            children.swap_remove(index);
+            self.set_children(&mut writer, parent, BlockHashes::new(children))?;
+        }
+
+        Ok(())
+    }
+
+    fn replace_parent<W>(&mut self, mut writer: W, hash: Hash, replaced_parent: Hash, replace_with: &[Hash]) -> Result<(), StoreError>
+    where
+        W: DbWriter,
+    {
+        let mut parents = (*self.get_parents(hash)?).clone();
+        let replaced_index =
+            parents.iter().copied().position(|h| h == replaced_parent).expect("callers must ensure replaced is a parent");
+        parents.swap_remove(replaced_index);
+        parents.extend(replace_with);
+        self.set_parents(&mut writer, hash, BlockHashes::new(parents))?;
+
+        for parent in replace_with.iter().cloned() {
+            let mut children = (*self.get_children(parent)?).clone();
+            children.push(hash);
+            self.set_children(&mut writer, parent, BlockHashes::new(children))?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<S: RelationsStore + ?Sized> RelationsStoreExtensions for S {}

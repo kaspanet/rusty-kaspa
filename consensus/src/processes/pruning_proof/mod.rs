@@ -43,14 +43,14 @@ use crate::{
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
-            relations::{DbRelationsStore, RelationsStore, RelationsStoreReader},
+            relations::{DbRelationsStore, RelationsStoreReader},
             selected_chain::{DbSelectedChainStore, SelectedChainStore},
             tips::DbTipsStore,
             virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader, VirtualStores},
             DB,
         },
     },
-    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability},
+    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations::RelationsStoreExtensions},
 };
 
 use super::ghostdag::{mergeset::unordered_mergeset_without_selected_parent, protocol::GhostdagManager};
