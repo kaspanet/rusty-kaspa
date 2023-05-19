@@ -5,6 +5,8 @@ use crate::prelude::DB;
 
 /// Abstraction over direct/batched DB writing
 pub trait DbWriter {
+    const IS_BATCH: bool;
+    
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,
@@ -27,6 +29,8 @@ impl<'a> DirectDbWriter<'a> {
 }
 
 impl DbWriter for DirectDbWriter<'_> {
+    const IS_BATCH: bool = false;
+
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,
@@ -51,6 +55,8 @@ impl<'a> BatchDbWriter<'a> {
 }
 
 impl DbWriter for BatchDbWriter<'_> {
+    const IS_BATCH: bool = true;
+
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,
@@ -67,6 +73,8 @@ impl DbWriter for BatchDbWriter<'_> {
 }
 
 impl<T: DbWriter> DbWriter for &mut T {
+    const IS_BATCH: bool = T::IS_BATCH;
+
     #[inline]
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
@@ -87,6 +95,8 @@ impl<T: DbWriter> DbWriter for &mut T {
 pub struct MemoryWriter;
 
 impl DbWriter for MemoryWriter {
+    const IS_BATCH: bool = false;
+
     fn put<K, V>(&mut self, _key: K, _value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,

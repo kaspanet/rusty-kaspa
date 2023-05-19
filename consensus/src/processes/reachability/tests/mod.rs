@@ -18,7 +18,7 @@ use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     BlockHashMap, BlockHashSet,
 };
-use kaspa_database::prelude::StoreError;
+use kaspa_database::prelude::{DbWriter, StoreError};
 use kaspa_hashes::Hash;
 use std::collections::{
     hash_map::Entry::{Occupied, Vacant},
@@ -117,7 +117,11 @@ impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ?Sized> DagBuilder<'
     }
 
     pub fn delete_block(&mut self, hash: Hash) -> &mut Self {
-        let mergeset = delete_reachability_relations(self.relations.default_writer(), self.relations, self.reachability, hash);
+        self.delete_block_with_writer(self.relations.default_writer(), hash)
+    }
+
+    pub fn delete_block_with_writer(&mut self, writer: impl DbWriter, hash: Hash) -> &mut Self {
+        let mergeset = delete_reachability_relations(writer, self.relations, self.reachability, hash);
         delete_block(self.reachability, hash, &mut mergeset.iter().cloned()).unwrap();
         self
     }
@@ -156,7 +160,11 @@ pub fn validate_relations<S: RelationsStoreReader + ?Sized>(relations: &S) -> st
             }
         }
     }
-    assert_eq!(relations.counts().unwrap(), (visited.len(), visited.len()));
+    let expected_counts = (visited.len(), visited.len());
+    let actual_counts = relations.counts().unwrap();
+    if actual_counts != expected_counts {
+        return Err(TestError::WrongCounts(expected_counts, actual_counts));
+    }
     Ok(())
 }
 
@@ -331,6 +339,9 @@ pub enum TestError {
 
     #[error("child interval out of parent bounds")]
     IntervalOutOfParentBounds { parent: Hash, child: Hash, parent_interval: Interval, child_interval: Interval },
+
+    #[error("expected store counts: {0:?}, but got: {1:?}")]
+    WrongCounts((usize, usize), (usize, usize)),
 }
 
 pub trait StoreValidationExtensions {

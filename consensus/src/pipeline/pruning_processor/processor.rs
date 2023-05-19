@@ -25,7 +25,7 @@ use kaspa_consensus_core::{
     blockhash::ORIGIN, blockstatus::BlockStatus::StatusHeaderOnly, muhash::MuHashExtensions, pruning::PruningPointProof, BlockHashSet,
 };
 use kaspa_core::info;
-use kaspa_database::prelude::{BatchDbWriter, DB};
+use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use parking_lot::RwLockUpgradableReadGuard;
@@ -199,13 +199,13 @@ impl PruningProcessor {
 
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
-        let mut counter = 0;
+        let (mut counter, mut traversed) = (0, 0);
         info!("PRUNING DATA");
         while let Some(current) = queue.pop_front() {
             if reachability_read.is_dag_ancestor_of_result(new_pruning_point, current).unwrap() {
                 continue;
             }
-
+            traversed += 1;
             queue.extend(reachability_read.get_children(current).unwrap().iter());
 
             if counter % 1000 == 0 {
@@ -244,7 +244,7 @@ impl PruningProcessor {
                     counter += 1;
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
-                        BatchDbWriter::new(&mut batch),
+                        MemoryWriter::default(), // Both stores are staging so we just pass a dummy writer
                         &mut staging_relations,
                         &staging_reachability,
                         current,
@@ -283,7 +283,14 @@ impl PruningProcessor {
         drop(reachability_read);
         drop(prune_guard);
 
-        info!("PRUNED {} BLOCKS", counter);
+        info!("Header and block pruning: traversed: {}, pruned {}", traversed, counter);
+        info!(
+            "Proof size: {}, pp anticone: {}, unique proof and windows: {}, pruning points in history: {}",
+            proof.iter().map(|l| l.len()).sum::<usize>(),
+            keep_blocks.len(),
+            keep_relations.len(),
+            keep_headers.len()
+        );
 
         // TODO: remove this sanity test when stable
         self.assert_proof_rebuilding(proof, new_pruning_point);

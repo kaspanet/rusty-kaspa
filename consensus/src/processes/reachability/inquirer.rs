@@ -258,7 +258,7 @@ mod tests {
     use crate::{
         model::stores::{
             reachability::{DbReachabilityStore, MemoryReachabilityStore, StagingReachabilityStore},
-            relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore},
+            relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore, StagingRelationsStore},
         },
         processes::reachability::{interval::Interval, tests::gen::generate_complex_dag},
     };
@@ -385,12 +385,13 @@ mod tests {
         let (_lifetime, db) = create_temp_db();
         let cache_size = test.blocks.len() as u64 / 3;
         let reachability = RwLock::new(DbReachabilityStore::new(db.clone(), cache_size));
-        let mut relations = DbRelationsStore::new(db.clone(), 0, cache_size);
+        let relations = RwLock::new(DbRelationsStore::with_prefix(db.clone(), &[], 0));
 
         // Add blocks via a staging store
         {
-            let mut staging = StagingReachabilityStore::new(reachability.upgradable_read());
-            let mut builder = DagBuilder::new(&mut staging, &mut relations);
+            let mut staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
+            let mut staging_relations = StagingRelationsStore::new(relations.upgradable_read());
+            let mut builder = DagBuilder::new(&mut staging_reachability, &mut staging_relations);
             builder.init();
             builder.add_block(DagBlock::new(test.genesis.into(), vec![ORIGIN]));
             for (block, parents) in test.blocks.iter() {
@@ -400,17 +401,20 @@ mod tests {
             // Commit the staging changes
             {
                 let mut batch = WriteBatch::default();
-                let write_guard = staging.commit(&mut batch).unwrap();
+                let reachability_write = staging_reachability.commit(&mut batch).unwrap();
+                let relations_write = staging_relations.commit(&mut batch).unwrap();
                 db.write(batch).unwrap();
-                drop(write_guard);
+                drop(reachability_write);
+                drop(relations_write);
             }
         }
 
         let reachability_read = reachability.read();
+        let relations_read = relations.read();
 
         // Assert tree intervals and DAG relations
         reachability_read.validate_intervals(ORIGIN).unwrap();
-        validate_relations(&relations).unwrap();
+        validate_relations(relations_read.deref()).unwrap();
 
         // Assert genesis future
         for block in test.ids() {
@@ -431,41 +435,54 @@ mod tests {
         let hashes = hashes_ref.iter().copied().collect_vec();
         assert_eq!(test.blocks.len() + 1, hashes.len());
         let chain_closure_ref = build_chain_closure(reachability_read.deref(), &hashes);
-        let dag_closure_ref = build_transitive_closure(&relations, reachability_read.deref(), &hashes);
+        let dag_closure_ref = build_transitive_closure(relations_read.deref(), reachability_read.deref(), &hashes);
 
         drop(reachability_read);
+        drop(relations_read);
 
-        let mut staging = StagingReachabilityStore::new(reachability.upgradable_read());
+        let mut batch = WriteBatch::default();
+        let mut staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
+        let mut staging_relations = StagingRelationsStore::new(relations.upgradable_read());
 
         for (i, block) in
             test.ids().choose_multiple(&mut rand::thread_rng(), test.blocks.len()).into_iter().chain(once(test.genesis)).enumerate()
         {
-            DagBuilder::new(&mut staging, &mut relations).delete_block(block.into());
+            DagBuilder::new(&mut staging_reachability, &mut staging_relations).delete_block(block.into());
             hashes_ref.remove(&block.into());
-            staging.validate_intervals(ORIGIN).unwrap();
-            validate_relations(&relations).unwrap();
-            validate_closures(&relations, &staging, &chain_closure_ref, &dag_closure_ref, &hashes_ref);
+            staging_reachability.validate_intervals(ORIGIN).unwrap();
+            validate_relations(&staging_relations).unwrap();
+            validate_closures(&staging_relations, &staging_reachability, &chain_closure_ref, &dag_closure_ref, &hashes_ref);
 
             // Once in a while verify the underlying store
             if i % (test.blocks.len() / 3) == 0 || i == test.blocks.len() - 1 {
                 // Commit the staging changes
                 {
-                    let mut batch = WriteBatch::default();
-                    let write_guard = staging.commit(&mut batch).unwrap();
+                    let reachability_write = staging_reachability.commit(&mut batch).unwrap();
+                    let relations_write = staging_relations.commit(&mut batch).unwrap();
                     db.write(batch).unwrap();
-                    drop(write_guard);
+                    drop(reachability_write);
+                    drop(relations_write);
                 }
 
                 // Verify the underlying store
                 {
                     let reachability_read = reachability.read();
+                    let relations_read = relations.read();
                     reachability_read.validate_intervals(ORIGIN).unwrap();
-                    validate_relations(&relations).unwrap();
-                    validate_closures(&relations, reachability_read.deref(), &chain_closure_ref, &dag_closure_ref, &hashes_ref);
+                    validate_relations(relations_read.deref()).unwrap();
+                    validate_closures(
+                        relations_read.deref(),
+                        reachability_read.deref(),
+                        &chain_closure_ref,
+                        &dag_closure_ref,
+                        &hashes_ref,
+                    );
                 }
 
-                // Recapture staging
-                staging = StagingReachabilityStore::new(reachability.upgradable_read());
+                // Recapture staging stores
+                batch = WriteBatch::default();
+                staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
+                staging_relations = StagingRelationsStore::new(relations.upgradable_read());
             }
         }
     }

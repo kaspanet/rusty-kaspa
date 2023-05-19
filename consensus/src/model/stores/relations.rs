@@ -128,14 +128,15 @@ impl<'a> StagingRelationsStore<'a> {
 
     pub fn commit(self, batch: &mut WriteBatch) -> Result<RwLockWriteGuard<'a, DbRelationsStore>, StoreError> {
         let store_write = RwLockUpgradableReadGuard::upgrade(self.store_read);
-        store_write.parents_access.delete_many(BatchDbWriter::new(batch), &mut self.staging_deletions.iter().copied())?;
-        store_write.children_access.delete_many(BatchDbWriter::new(batch), &mut self.staging_deletions.iter().copied())?;
         for (k, v) in self.staging_parents_writes {
             store_write.parents_access.write(BatchDbWriter::new(batch), k, v)?
         }
         for (k, v) in self.staging_children_writes {
             store_write.children_access.write(BatchDbWriter::new(batch), k, v)?
         }
+        // Deletions always come after mutations
+        store_write.parents_access.delete_many(BatchDbWriter::new(batch), &mut self.staging_deletions.iter().copied())?;
+        store_write.children_access.delete_many(BatchDbWriter::new(batch), &mut self.staging_deletions.iter().copied())?;
         Ok(store_write)
     }
 
@@ -166,6 +167,8 @@ impl RelationsStore for StagingRelationsStore<'_> {
     }
 
     fn delete_entries(&mut self, _writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
+        self.staging_parents_writes.remove(&hash);
+        self.staging_children_writes.remove(&hash);
         self.staging_deletions.insert(hash);
         Ok(())
     }
@@ -198,7 +201,25 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
     }
 
     fn counts(&self) -> Result<(usize, usize), StoreError> {
-        unimplemented!()
+        let parent_entries: BlockHashSet = self
+            .store_read
+            .parents_access
+            .iterator()
+            .map(|r| r.unwrap().0)
+            .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
+            .map(Hash::from_bytes)
+            .chain(self.staging_parents_writes.keys().copied())
+            .collect();
+        let children_entries: BlockHashSet = self
+            .store_read
+            .children_access
+            .iterator()
+            .map(|r| r.unwrap().0)
+            .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
+            .map(Hash::from_bytes)
+            .chain(self.staging_children_writes.keys().copied())
+            .collect();
+        Ok((parent_entries.difference(&self.staging_deletions).count(), children_entries.difference(&self.staging_deletions).count()))
     }
 }
 

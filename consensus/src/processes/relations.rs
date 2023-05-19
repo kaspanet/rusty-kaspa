@@ -39,13 +39,18 @@ where
 /// Delete relations of `hash` for the case where relations represent the maximally known reachability
 /// relations. In this case we preserve all topological info by connecting parents of `hash` as parents
 /// of its children if necessary. This means that these relations do not correlate with header data and
-/// can contain links which didn't appear in the original DAG (but yet follow from it)
+/// can contain links which didn't appear in the original DAG (but yet follow from it).
+///
+/// NOTE: this algorithm does not support a batch writer bcs it might write to the same entry multiple times
+/// (and writes will not accumulate if the entry gets out of the cache in between the calls)
 pub fn delete_reachability_relations<W, S, U>(mut writer: W, relations: &mut S, reachability: &U, hash: Hash) -> BlockHashSet
 where
     W: DbWriter,
     S: RelationsStore + ?Sized,
     U: ReachabilityService + ?Sized,
 {
+    assert!(!W::IS_BATCH, "batch writes are not supported for this algo, see doc.");
+
     let selected_parent = reachability.get_chain_parent(hash);
     let parents = relations.get_parents(hash).unwrap();
     let children = relations.get_children(hash).unwrap();

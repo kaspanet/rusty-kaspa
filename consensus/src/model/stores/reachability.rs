@@ -218,11 +218,12 @@ impl<'a> StagingReachabilityStore<'a> {
 
     pub fn commit(self, batch: &mut WriteBatch) -> Result<RwLockWriteGuard<'a, DbReachabilityStore>, StoreError> {
         let mut store_write = RwLockUpgradableReadGuard::upgrade(self.store_read);
-        store_write.access.delete_many(BatchDbWriter::new(batch), &mut self.staging_deletions.iter().copied())?;
         for (k, v) in self.staging_writes {
             let data = Arc::new(v);
             store_write.access.write(BatchDbWriter::new(batch), k, data)?
         }
+        // Deletions always come after mutations
+        store_write.access.delete_many(BatchDbWriter::new(batch), &mut self.staging_deletions.iter().copied())?;
         if let Some(root) = self.staging_reindex_root {
             store_write.reindex_root.write(BatchDbWriter::new(batch), &root)?;
         }
@@ -337,6 +338,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
     }
 
     fn delete(&mut self, hash: Hash) -> Result<(), StoreError> {
+        self.staging_writes.remove(&hash);
         self.staging_deletions.insert(hash);
         Ok(())
     }
