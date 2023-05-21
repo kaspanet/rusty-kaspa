@@ -215,7 +215,7 @@ impl PruningProcessor {
             .collect_vec();
             tips_write.prune_tips_with_writer(BatchDbWriter::new(&mut batch), &pruned_tips).unwrap();
             if !pruned_tips.is_empty() {
-                info!("Header and block pruning: pruned {} tips: {:?}", pruned_tips.len(), pruned_tips)
+                info!("Header and Block pruning: pruned {} tips: {:?}", pruned_tips.len(), pruned_tips)
             }
 
             // Prune the selected chain index below the pruning point

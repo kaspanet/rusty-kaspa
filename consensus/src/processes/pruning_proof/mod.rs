@@ -43,7 +43,7 @@ use crate::{
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
             pruning::{DbPruningStore, PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
-            relations::{DbRelationsStore, RelationsStoreReader},
+            relations::{DbRelationsStore, RelationsStoreReader, StagingRelationsStore},
             selected_chain::{DbSelectedChainStore, SelectedChainStore},
             tips::DbTipsStore,
             virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader, VirtualStores},
@@ -281,8 +281,6 @@ impl PruningProofManager {
 
         debug!("Estimated proof size: {}, actual size: {}", capacity_estimate, dag.len());
 
-        let mut reachability_relations_write = self.reachability_relations_store.write();
-
         for reverse_sortable_block in up_heap.into_sorted_iter() {
             // TODO: Convert to into_iter_sorted once it gets stable
             let hash = reverse_sortable_block.0.hash;
@@ -298,33 +296,46 @@ impl PruningProofManager {
                     .map(|parent| SortableBlock { hash: parent, blue_work: dag.get(&parent).unwrap().header.blue_work }),
             );
 
+            let reachability_read = self.reachability_store.upgradable_read();
+
             // Find the maximal parent antichain from the possibly redundant set of existing parents
             let mut reachability_parents: Vec<SortableBlock> = Vec::new();
             for parent in parents_in_dag.into_sorted_iter() {
-                if self
-                    .reachability_service
-                    .is_dag_ancestor_of_any(parent.hash, &mut reachability_parents.iter().map(|parent| &parent.hash).cloned())
-                {
+                if reachability_read.is_dag_ancestor_of_any(parent.hash, &mut reachability_parents.iter().map(|parent| parent.hash)) {
                     continue;
                 }
 
                 reachability_parents.push(parent);
             }
             let reachability_parents_hashes =
-                BlockHashes::new(reachability_parents.iter().map(|parent| &parent.hash).cloned().collect_vec().push_if_empty(ORIGIN));
-
+                BlockHashes::new(reachability_parents.iter().map(|parent| parent.hash).collect_vec().push_if_empty(ORIGIN));
             let selected_parent = reachability_parents.iter().max().map(|parent| parent.hash).unwrap_or(ORIGIN);
-            reachability_relations_write.insert(hash, reachability_parents_hashes.clone()).unwrap();
+
+            // Prepare batch
+            let mut batch = WriteBatch::default();
+            let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
+            let mut staging_reachability_relations = StagingRelationsStore::new(self.reachability_relations_store.upgradable_read());
+
+            // Stage
+            staging_reachability_relations.insert(hash, reachability_parents_hashes.clone()).unwrap();
             let mergeset = unordered_mergeset_without_selected_parent(
-                &*reachability_relations_write,
-                &self.reachability_service,
+                &staging_reachability_relations,
+                &staging_reachability,
                 selected_parent,
                 &reachability_parents_hashes,
             );
-            let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
-            reachability::add_block(&mut staging, hash, selected_parent, &mut mergeset.iter().cloned()).unwrap();
-            let reachability_write_guard = staging.commit(&mut WriteBatch::default()).unwrap();
-            drop(reachability_write_guard);
+            reachability::add_block(&mut staging_reachability, hash, selected_parent, &mut mergeset.iter().copied()).unwrap();
+
+            // Commit
+            let reachability_write = staging_reachability.commit(&mut batch).unwrap();
+            let reachability_relations_write = staging_reachability_relations.commit(&mut batch).unwrap();
+
+            // Write
+            self.db.write(batch).unwrap();
+
+            // Drop
+            drop(reachability_write);
+            drop(reachability_relations_write);
         }
     }
 
