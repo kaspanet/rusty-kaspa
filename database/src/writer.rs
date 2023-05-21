@@ -6,7 +6,7 @@ use crate::prelude::DB;
 /// Abstraction over direct/batched DB writing
 pub trait DbWriter {
     const IS_BATCH: bool;
-    
+
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,

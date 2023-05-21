@@ -274,6 +274,7 @@ pub fn validate_closures<S: RelationsStoreReader + ?Sized, V: ReachabilityStoreR
     let dag_closure = build_transitive_closure(relations, reachability, &hashes);
     assert!(chain_closure.subset_of(chain_closure_ref));
     assert!(dag_closure.subset_of(dag_closure_ref));
+    assert_eq!(reachability.count().unwrap(), hashes.len() + 1);
 }
 
 /// A struct for holding full quadratic reachability information. Can be used for chain or DAG

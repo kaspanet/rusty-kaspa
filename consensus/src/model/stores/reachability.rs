@@ -36,6 +36,8 @@ pub trait ReachabilityStoreReader {
     /// Returns the reachability *tree* children of `hash`
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
     fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
+    /// Returns the counts of entries in the store. To be used for tests only
+    fn count(&self) -> Result<usize, StoreError>;
 }
 
 /// Write API for `ReachabilityStore`. All write functions are deliberately `mut`
@@ -201,6 +203,10 @@ impl ReachabilityStoreReader for DbReachabilityStore {
 
     fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.access.read(hash)?.future_covering_set))
+    }
+
+    fn count(&self) -> Result<usize, StoreError> {
+        Ok(self.access.iterator().count())
     }
 }
 
@@ -409,6 +415,20 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
             self.store_read.get_future_covering_set(hash)
         }
     }
+
+    fn count(&self) -> Result<usize, StoreError> {
+        Ok(self
+            .store_read
+            .access
+            .iterator()
+            .map(|r| r.unwrap().0)
+            .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
+            .map(Hash::from_bytes)
+            .chain(self.staging_writes.keys().copied())
+            .collect::<BlockHashSet>() // TODO: use block_unique
+            .difference(&self.staging_deletions)
+            .count())
+    }
 }
 
 pub struct MemoryReachabilityStore {
@@ -535,6 +555,10 @@ impl ReachabilityStoreReader for MemoryReachabilityStore {
 
     fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         Ok(Arc::clone(&self.get_data(hash)?.future_covering_set))
+    }
+
+    fn count(&self) -> Result<usize, StoreError> {
+        Ok(self.map.len())
     }
 }
 
