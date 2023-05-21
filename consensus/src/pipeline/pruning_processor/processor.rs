@@ -14,6 +14,7 @@ use crate::{
             pruning::{PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::StagingRelationsStore,
+            selected_chain::SelectedChainStore,
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
             utxo_set::UtxoSetStore,
@@ -197,6 +198,7 @@ impl PruningProcessor {
         let mut prune_guard = self.pruning_lock.blocking_write();
         let mut reachability_read = self.reachability_store.upgradable_read();
 
+        // Prune tips which can no longer be merged by virtual
         let mut tips_write = self.body_tips_store.write();
         let pruned_tips = tips_write
             .get()
@@ -213,6 +215,9 @@ impl PruningProcessor {
         }
         drop(tips_write);
 
+        // Prune the selected chain index below the pruning point
+        self.selected_chain_store.write().prune_below_pruning_point(DirectDbWriter::new(&self.db), new_pruning_point).unwrap();
+
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let (mut counter, mut traversed) = (0, 0);
@@ -222,9 +227,6 @@ impl PruningProcessor {
             }
             traversed += 1;
             queue.extend(reachability_read.get_children(current).unwrap().iter());
-
-            // TODO: sc
-            // TODO: consult about fixing GD data
 
             // Remove window cache entries
             self.block_window_cache_for_difficulty.remove(&current);
