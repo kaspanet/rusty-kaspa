@@ -9,7 +9,7 @@ use crate::{
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
-            tips::DbTipsStore,
+            tips::{DbTipsStore, TipsStore},
             DB,
         },
     },

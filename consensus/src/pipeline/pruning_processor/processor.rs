@@ -14,6 +14,7 @@ use crate::{
             pruning::{PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::StagingRelationsStore,
+            tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
             utxo_set::UtxoSetStore,
         },
@@ -21,11 +22,12 @@ use crate::{
     processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
 };
 use crossbeam_channel::Receiver as CrossbeamReceiver;
+use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::ORIGIN, blockstatus::BlockStatus::StatusHeaderOnly, muhash::MuHashExtensions, pruning::PruningPointProof, BlockHashSet,
 };
 use kaspa_core::info;
-use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, DB};
+use kaspa_database::prelude::{BatchDbWriter, DirectDbWriter, MemoryWriter, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use parking_lot::RwLockUpgradableReadGuard;
@@ -167,7 +169,6 @@ impl PruningProcessor {
 
     fn prune(&self, new_pruning_point: Hash) {
         // TODO: check if archival
-        // TODO: progress logs
 
         let proof = self.pruning_proof_manager.get_pruning_point_proof();
         let data = self
@@ -184,23 +185,37 @@ impl PruningProcessor {
         // We keep full data for pruning point and its anticone, relations for DAA/GD
         // windows and pruning proof, and only headers for past pruning points
         let keep_blocks: BlockHashSet = data.anticone.iter().copied().collect();
-        let keep_relations: BlockHashSet = data
-            .anticone
-            .iter()
-            .copied()
+        let keep_relations: BlockHashSet = std::iter::empty()
             .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
             .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
             .chain(proof.iter().flatten().map(|h| h.hash))
             .collect();
         let keep_headers: BlockHashSet = self.past_pruning_points();
 
+        info!("Starting Header and Block pruning...");
+
         let mut prune_guard = self.pruning_lock.blocking_write();
         let mut reachability_read = self.reachability_store.upgradable_read();
+
+        let mut tips_write = self.body_tips_store.write();
+        let pruned_tips = tips_write
+            .get()
+            .unwrap()
+            .iter()
+            .copied()
+            // By the prunality proof, any tip which isn't in future(pruning_point) will never be merged
+            // by virtual and hence can be safely deleted
+            .filter(|&h| !reachability_read.is_dag_ancestor_of_result(new_pruning_point, h).unwrap())
+            .collect_vec();
+        tips_write.prune_tips_with_writer(DirectDbWriter::new(&self.db), &pruned_tips).unwrap();
+        if !pruned_tips.is_empty() {
+            info!("Header and block pruning: pruned {} tips: {:?}", pruned_tips.len(), pruned_tips)
+        }
+        drop(tips_write);
 
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let (mut counter, mut traversed) = (0, 0);
-        info!("PRUNING DATA");
         while let Some(current) = queue.pop_front() {
             if reachability_read.is_dag_ancestor_of_result(new_pruning_point, current).unwrap() {
                 continue;
@@ -208,15 +223,7 @@ impl PruningProcessor {
             traversed += 1;
             queue.extend(reachability_read.get_children(current).unwrap().iter());
 
-            if counter % 100 == 0 {
-                // Release and recapture to allow consensus progress during pruning
-                drop(reachability_read);
-                drop(prune_guard);
-                prune_guard = self.pruning_lock.blocking_write();
-                reachability_read = self.reachability_store.upgradable_read()
-            }
-
-            // TODO: tips, sc
+            // TODO: sc
             // TODO: consult about fixing GD data
 
             // Remove window cache entries
@@ -224,6 +231,7 @@ impl PruningProcessor {
             self.block_window_cache_for_past_median_time.remove(&current);
 
             if !keep_blocks.contains(&current) {
+                let mut counted = false;
                 let mut batch = WriteBatch::default();
                 let mut level_relations_write = self.relations_stores.write();
                 let mut staging_relations = StagingRelationsStore::new(self.reachability_relations_store.upgradable_read());
@@ -240,8 +248,8 @@ impl PruningProcessor {
                 if keep_relations.contains(&current) {
                     statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
                 } else {
-                    // Count only full DAG pruning
-                    counter += 1;
+                    // Count only blocks which get full DAG pruning
+                    counted = true;
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
                         MemoryWriter::default(), // Both stores are staging so we just pass a dummy writer
@@ -277,15 +285,25 @@ impl PruningProcessor {
                 drop(reachability_relations_write);
                 drop(level_relations_write);
 
-                reachability_read = self.reachability_store.upgradable_read()
+                if counted {
+                    counter += 1;
+                    if counter % 100 == 0 {
+                        // Release and recapture to allow consensus progress during pruning
+                        drop(prune_guard);
+                        info!("Header and Block pruning: traversed: {}, pruned {}...", traversed, counter);
+                        prune_guard = self.pruning_lock.blocking_write();
+                    }
+                }
+
+                reachability_read = self.reachability_store.upgradable_read();
             }
         }
         drop(reachability_read);
         drop(prune_guard);
 
-        info!("Header and block pruning: traversed: {}, pruned {}", traversed, counter);
+        info!("Header and Block pruning completed: traversed: {}, pruned {}", traversed, counter);
         info!(
-            "Proof size: {}, pp anticone: {}, unique proof and windows: {}, pruning points in history: {}",
+            "Header and Block pruning stats: proof size: {}, pruning point and anticone: {}, unique headers in proof and windows: {}, pruning points in history: {}",
             proof.iter().map(|l| l.len()).sum::<usize>(),
             keep_blocks.len(),
             keep_relations.len(),
