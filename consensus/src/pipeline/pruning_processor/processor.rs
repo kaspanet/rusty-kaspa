@@ -306,7 +306,9 @@ impl PruningProcessor {
                     if counter % 100 == 0 {
                         // Release and recapture to allow consensus progress during pruning
                         drop(prune_guard);
-                        info!("Header and Block pruning: traversed: {}, pruned {}...", traversed, counter);
+                        if counter % 2000 == 0 {
+                            info!("Header and Block pruning: traversed: {}, pruned {}...", traversed, counter);
+                        }
                         prune_guard = self.pruning_lock.blocking_write();
                     }
                 }
