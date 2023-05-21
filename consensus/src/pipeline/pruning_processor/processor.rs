@@ -31,6 +31,7 @@ use kaspa_core::info;
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{collections::VecDeque, ops::Deref, sync::Arc};
@@ -202,17 +203,17 @@ impl PruningProcessor {
             // Start with a batch for pruning body tips and selected chain stores
             let mut batch = WriteBatch::default();
 
-            // Prune tips which can no longer be merged by virtual
-            let mut tips_write = self.body_tips_store.write();
-            let pruned_tips = tips_write
-            .get()
-            .unwrap()
-            .iter()
-            .copied()
+            // Prune tips which can no longer be merged by virtual.
             // By the prunality proof, any tip which isn't in future(pruning_point) will never be merged
             // by virtual and hence can be safely deleted
-            .filter(|&h| !reachability_read.is_dag_ancestor_of_result(new_pruning_point, h).unwrap())
-            .collect_vec();
+            let mut tips_write = self.body_tips_store.write();
+            let pruned_tips = tips_write
+                .get()
+                .unwrap()
+                .iter()
+                .copied()
+                .filter(|&h| !reachability_read.is_dag_ancestor_of_result(new_pruning_point, h).unwrap())
+                .collect_vec();
             tips_write.prune_tips_with_writer(BatchDbWriter::new(&mut batch), &pruned_tips).unwrap();
             if !pruned_tips.is_empty() {
                 info!("Header and Block pruning: pruned {} tips: {:?}", pruned_tips.len(), pruned_tips)
@@ -234,6 +235,7 @@ impl PruningProcessor {
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let (mut counter, mut traversed) = (0, 0);
+        info!("Header and Block pruning: starting traversal from: {} (genesis: {})", queue.iter().reusable_format(", "), genesis);
         while let Some(current) = queue.pop_front() {
             if reachability_read.is_dag_ancestor_of_result(new_pruning_point, current).unwrap() {
                 continue;
@@ -242,12 +244,22 @@ impl PruningProcessor {
             // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
             queue.extend(reachability_read.get_children(current).unwrap().iter());
 
+            if traversed % 100 == 0 {
+                // Release and recapture to allow consensus progress during pruning
+                drop(prune_guard);
+                drop(reachability_read);
+                if traversed % 1000 == 0 {
+                    info!("Header and Block pruning: traversed: {}, pruned {}...", traversed, counter);
+                }
+                prune_guard = self.pruning_lock.blocking_write();
+                reachability_read = self.reachability_store.upgradable_read();
+            }
+
             // Remove window cache entries
             self.block_window_cache_for_difficulty.remove(&current);
             self.block_window_cache_for_past_median_time.remove(&current);
 
             if !keep_blocks.contains(&current) {
-                let mut counted = false;
                 let mut batch = WriteBatch::default();
                 let mut level_relations_write = self.relations_stores.write();
                 let mut staging_relations = StagingRelationsStore::new(self.reachability_relations_store.upgradable_read());
@@ -265,7 +277,7 @@ impl PruningProcessor {
                     statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
                 } else {
                     // Count only blocks which get fully pruned including DAG relations
-                    counted = true;
+                    counter += 1;
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
                         MemoryWriter::default(), // Both stores are staging so we just pass a dummy writer
@@ -300,18 +312,6 @@ impl PruningProcessor {
                 drop(statuses_write);
                 drop(reachability_relations_write);
                 drop(level_relations_write);
-
-                if counted {
-                    counter += 1;
-                    if counter % 100 == 0 {
-                        // Release and recapture to allow consensus progress during pruning
-                        drop(prune_guard);
-                        if counter % 2000 == 0 {
-                            info!("Header and Block pruning: traversed: {}, pruned {}...", traversed, counter);
-                        }
-                        prune_guard = self.pruning_lock.blocking_write();
-                    }
-                }
 
                 reachability_read = self.reachability_store.upgradable_read();
             }
