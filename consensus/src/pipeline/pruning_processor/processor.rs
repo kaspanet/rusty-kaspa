@@ -28,7 +28,7 @@ use kaspa_consensus_core::{
     blockhash::ORIGIN, blockstatus::BlockStatus::StatusHeaderOnly, muhash::MuHashExtensions, pruning::PruningPointProof, BlockHashSet,
 };
 use kaspa_core::info;
-use kaspa_database::prelude::{BatchDbWriter, DirectDbWriter, MemoryWriter, DB};
+use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use parking_lot::RwLockUpgradableReadGuard;
@@ -198,9 +198,13 @@ impl PruningProcessor {
         let mut prune_guard = self.pruning_lock.blocking_write();
         let mut reachability_read = self.reachability_store.upgradable_read();
 
-        // Prune tips which can no longer be merged by virtual
-        let mut tips_write = self.body_tips_store.write();
-        let pruned_tips = tips_write
+        {
+            // Start with a batch for pruning body tips and selected chain stores
+            let mut batch = WriteBatch::default();
+
+            // Prune tips which can no longer be merged by virtual
+            let mut tips_write = self.body_tips_store.write();
+            let pruned_tips = tips_write
             .get()
             .unwrap()
             .iter()
@@ -209,15 +213,24 @@ impl PruningProcessor {
             // by virtual and hence can be safely deleted
             .filter(|&h| !reachability_read.is_dag_ancestor_of_result(new_pruning_point, h).unwrap())
             .collect_vec();
-        tips_write.prune_tips_with_writer(DirectDbWriter::new(&self.db), &pruned_tips).unwrap();
-        if !pruned_tips.is_empty() {
-            info!("Header and block pruning: pruned {} tips: {:?}", pruned_tips.len(), pruned_tips)
+            tips_write.prune_tips_with_writer(BatchDbWriter::new(&mut batch), &pruned_tips).unwrap();
+            if !pruned_tips.is_empty() {
+                info!("Header and block pruning: pruned {} tips: {:?}", pruned_tips.len(), pruned_tips)
+            }
+
+            // Prune the selected chain index below the pruning point
+            let mut selected_chain_write = self.selected_chain_store.write();
+            selected_chain_write.prune_below_pruning_point(BatchDbWriter::new(&mut batch), new_pruning_point).unwrap();
+
+            // Flush the batch to the DB
+            self.db.write(batch).unwrap();
+
+            // Calling the drops explicitly after the batch is written in order to avoid possible errors.
+            drop(selected_chain_write);
+            drop(tips_write);
         }
-        drop(tips_write);
 
-        // Prune the selected chain index below the pruning point
-        self.selected_chain_store.write().prune_below_pruning_point(DirectDbWriter::new(&self.db), new_pruning_point).unwrap();
-
+        // Now we traverse the anti-future of the new pruning point starting from origin and going up.
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let (mut counter, mut traversed) = (0, 0);
@@ -226,6 +239,7 @@ impl PruningProcessor {
                 continue;
             }
             traversed += 1;
+            // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
             queue.extend(reachability_read.get_children(current).unwrap().iter());
 
             // Remove window cache entries
@@ -250,7 +264,7 @@ impl PruningProcessor {
                 if keep_relations.contains(&current) {
                     statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
                 } else {
-                    // Count only blocks which get full DAG pruning
+                    // Count only blocks which get fully pruned including DAG relations
                     counted = true;
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
