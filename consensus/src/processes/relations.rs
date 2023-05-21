@@ -2,7 +2,7 @@ use super::ghostdag::mergeset::unordered_mergeset_without_selected_parent;
 use crate::model::{services::reachability::ReachabilityService, stores::relations::RelationsStore};
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::{BlockHashes, ORIGIN},
+    blockhash::{BlockHashIteratorExtensions, BlockHashes, ORIGIN},
     BlockHashSet,
 };
 use kaspa_database::prelude::{BatchDbWriter, DbWriter, StoreError};
@@ -82,12 +82,18 @@ pub trait RelationsStoreExtensions: RelationsStore {
         self.insert_with_writer(BatchDbWriter::new(batch), hash, parents)
     }
 
-    fn insert_with_writer<W>(&mut self, mut writer: W, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>
+    fn insert_with_writer<W>(&mut self, mut writer: W, hash: Hash, mut parents: BlockHashes) -> Result<(), StoreError>
     where
         W: DbWriter,
     {
         if self.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
+        }
+
+        // TODO: remove this filter
+        if parents.len() != parents.iter().copied().block_unique().count() {
+            // Since this is rare/unexpected, avoid the collect unless it happens
+            parents = BlockHashes::new(parents.iter().copied().block_unique().collect());
         }
 
         // Insert a new entry for `hash`

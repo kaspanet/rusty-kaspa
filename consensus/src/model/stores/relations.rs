@@ -201,25 +201,28 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
     }
 
     fn counts(&self) -> Result<(usize, usize), StoreError> {
-        let parent_entries: BlockHashSet = self
-            .store_read
-            .parents_access
-            .iterator()
-            .map(|r| r.unwrap().0)
-            .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
-            .map(Hash::from_bytes)
-            .chain(self.staging_parents_writes.keys().copied())
-            .collect();
-        let children_entries: BlockHashSet = self
-            .store_read
-            .children_access
-            .iterator()
-            .map(|r| r.unwrap().0)
-            .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
-            .map(Hash::from_bytes)
-            .chain(self.staging_children_writes.keys().copied())
-            .collect();
-        Ok((parent_entries.difference(&self.staging_deletions).count(), children_entries.difference(&self.staging_deletions).count()))
+        Ok((
+            self.store_read
+                .parents_access
+                .iterator()
+                .map(|r| r.unwrap().0)
+                .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
+                .map(Hash::from_bytes)
+                .chain(self.staging_parents_writes.keys().copied())
+                .collect::<BlockHashSet>()
+                .difference(&self.staging_deletions)
+                .count(),
+            self.store_read
+                .children_access
+                .iterator()
+                .map(|r| r.unwrap().0)
+                .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
+                .map(Hash::from_bytes)
+                .chain(self.staging_children_writes.keys().copied())
+                .collect::<BlockHashSet>()
+                .difference(&self.staging_deletions)
+                .count(),
+        ))
     }
 }
 

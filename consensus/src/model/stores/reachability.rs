@@ -425,7 +425,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
             .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
             .map(Hash::from_bytes)
             .chain(self.staging_writes.keys().copied())
-            .collect::<BlockHashSet>() // TODO: use block_unique
+            .collect::<BlockHashSet>()
             .difference(&self.staging_deletions)
             .count())
     }

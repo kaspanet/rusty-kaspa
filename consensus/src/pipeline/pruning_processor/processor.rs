@@ -208,7 +208,7 @@ impl PruningProcessor {
             traversed += 1;
             queue.extend(reachability_read.get_children(current).unwrap().iter());
 
-            if counter % 1000 == 0 {
+            if counter % 100 == 0 {
                 // Release and recapture to allow consensus progress during pruning
                 drop(reachability_read);
                 drop(prune_guard);
