@@ -258,7 +258,6 @@ impl HeaderProcessor {
     }
 
     fn process_header(&self, task: &BlockTask) -> BlockProcessResult<BlockStatus> {
-        let _prune_guard = self.pruning_lock.blocking_read();
         let header = &task.block().header;
         let status_option = self.statuses_store.read().get(header.hash).unwrap_option();
 

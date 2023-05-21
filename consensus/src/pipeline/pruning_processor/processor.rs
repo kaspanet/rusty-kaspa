@@ -244,7 +244,7 @@ impl PruningProcessor {
             // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
             queue.extend(reachability_read.get_children(current).unwrap().iter());
 
-            if traversed % 100 == 0 {
+            if traversed % 50 == 0 {
                 // Release and recapture to allow consensus progress during pruning
                 drop(prune_guard);
                 drop(reachability_read);
