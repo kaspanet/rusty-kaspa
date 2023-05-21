@@ -276,6 +276,11 @@ impl Consensus {
         ]
     }
 
+    /// Acquires a consensus session, blocking data-pruning from occurring until released
+    pub fn acquire_session(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
+        self.pruning_lock.blocking_read()
+    }
+
     fn validate_and_insert_block_impl(&self, task: BlockTask) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let (tx, rx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender.send(BlockProcessingMessage::Process(task, tx)).unwrap();

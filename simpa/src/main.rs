@@ -17,7 +17,7 @@ use kaspa_consensus::{
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::BlockProcessResult, header::Header, BlockHashSet,
-    HashMapCustomHasher,
+    BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{info, warn};
@@ -155,6 +155,8 @@ fn main() {
 }
 
 fn adjust_consensus_params(args: &Args, params: &mut Params) {
+    // We have no actual PoW in the simulation, so the true max is most reflective
+    params.max_block_level = BlockLevel::MAX;
     if args.bps * args.delay > 2.0 {
         let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
