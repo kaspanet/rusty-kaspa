@@ -21,12 +21,12 @@ pub fn init<S: RelationsStore + ?Sized>(relations: &mut S) {
 /// kept topologically continuous. If any child of this `hash` will remain with no parent, we make
 /// sure to connect it to `origin`. Note that apart from the special case of `origin`, these relations
 /// are always a subset of the original header relations for this level.
-pub fn delete_level_relations<W, S>(mut writer: W, relations: &mut S, hash: Hash)
+pub fn delete_level_relations<W, S>(mut writer: W, relations: &mut S, hash: Hash) -> Result<(), StoreError>
 where
     W: DbWriter,
     S: RelationsStore + ?Sized,
 {
-    let children = relations.get_children(hash).unwrap();
+    let children = relations.get_children(hash)?; // if the first entry was found, we expect all others as well, hence we unwrap below
     for child in children.iter().copied() {
         let child_parents = relations.get_parents(child).unwrap();
         // If the removed hash is the only parent of child, then replace it with `origin`
@@ -34,6 +34,7 @@ where
         relations.replace_parent(&mut writer, child, hash, replace_with).unwrap();
     }
     relations.delete(&mut writer, hash).unwrap();
+    Ok(())
 }
 
 /// Delete relations of `hash` for the case where relations represent the maximally known reachability

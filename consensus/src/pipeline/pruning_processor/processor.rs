@@ -28,7 +28,7 @@ use kaspa_consensus_core::{
     blockhash::ORIGIN, blockstatus::BlockStatus::StatusHeaderOnly, muhash::MuHashExtensions, pruning::PruningPointProof, BlockHashSet,
 };
 use kaspa_core::info;
-use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, DB};
+use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_utils::iter::IterExtensions;
@@ -288,8 +288,9 @@ impl PruningProcessor {
                     reachability::delete_block(&mut staging_reachability, current, &mut mergeset.iter().copied()).unwrap();
                     let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
                     (0..=block_level as usize).for_each(|level| {
-                        relations::delete_level_relations(BatchDbWriter::new(&mut batch), &mut level_relations_write[level], current);
-                        self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap();
+                        relations::delete_level_relations(BatchDbWriter::new(&mut batch), &mut level_relations_write[level], current)
+                            .unwrap_option();
+                        self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap_option();
                     });
 
                     // Remove status completely
