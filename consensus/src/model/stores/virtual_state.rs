@@ -59,7 +59,7 @@ impl VirtualState {
         Self {
             parents: vec![genesis.hash],
             ghostdag_data,
-            daa_score: 0,
+            daa_score: genesis.daa_score,
             bits: genesis.bits,
             past_median_time: genesis.timestamp,
             multiset: MuHash::new(),

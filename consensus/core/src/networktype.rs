@@ -45,6 +45,12 @@ impl NetworkType {
             format!("kaspa-{}", self)
         }
     }
+
+    pub fn iter() -> impl Iterator<Item = Self> {
+        static NETWORK_TYPES: [NetworkType; 4] =
+            [NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Devnet, NetworkType::Simnet];
+        NETWORK_TYPES.iter().copied()
+    }
 }
 
 impl TryFrom<Prefix> for NetworkType {

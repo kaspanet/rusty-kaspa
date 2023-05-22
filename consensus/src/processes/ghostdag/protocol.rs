@@ -46,7 +46,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     pub fn genesis_ghostdag_data(&self) -> GhostdagData {
         GhostdagData::new(
             0,
-            Default::default(), // TODO: take blue score and work from actual genesis
+            Default::default(),
             blockhash::ORIGIN,
             BlockHashes::new(Vec::new()),
             BlockHashes::new(Vec::new()),

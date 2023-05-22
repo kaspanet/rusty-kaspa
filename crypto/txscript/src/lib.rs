@@ -10,13 +10,14 @@ pub mod standard;
 
 use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
-use crate::opcodes::{deserialize_opcode_data, OpCodeImplementation};
+use crate::opcodes::{deserialize_next_opcode, OpCodeImplementation};
 use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues};
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
 use log::trace;
+use opcodes::codes::OpReturn;
 use opcodes::{codes, to_small_int, OpCond};
 use script_class::ScriptClass;
 
@@ -84,10 +85,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
 fn parse_script<T: VerifiableTransaction>(
     script: &[u8],
 ) -> impl Iterator<Item = Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>> + '_ {
-    script.iter().batching(|it| {
-        // reads the opcode num item here and then match to opcode
-        it.next().map(|code| deserialize_opcode_data(*code, it))
-    })
+    script.iter().batching(|it| deserialize_next_opcode(it))
 }
 
 pub fn get_sig_op_count<T: VerifiableTransaction>(signature_script: &[u8], prev_script_public_key: &ScriptPublicKey) -> u64 {
@@ -135,6 +133,13 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction>(opcodes: &[Result<Box<d
         }
     }
     num_sigs
+}
+
+/// Returns whether the passed public key script is unspendable, or guaranteed to fail at execution.
+///
+/// This allows inputs to be pruned instantly when entering the UTXO set.
+pub fn is_unspendable<T: VerifiableTransaction>(script: &[u8]) -> bool {
+    parse_script::<T>(script).enumerate().any(|(index, op)| op.is_err() || (index == 0 && op.unwrap().value() == OpReturn))
 }
 
 impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
@@ -511,7 +516,19 @@ mod tests {
         is_valid: bool,
     }
 
-    fn test_script_cases(test_cases: Vec<ScriptTestCase>) {
+    struct VerifiableTransactionMock {}
+
+    impl VerifiableTransaction for VerifiableTransactionMock {
+        fn tx(&self) -> &Transaction {
+            unimplemented!()
+        }
+
+        fn populated_input(&self, _index: usize) -> (&TransactionInput, &UtxoEntry) {
+            unimplemented!()
+        }
+    }
+
+    fn run_test_script_cases(test_cases: Vec<ScriptTestCase>) {
         let sig_cache = Cache::new(10_000);
         let mut reused_values = SigHashReusedValues::new();
 
@@ -563,7 +580,7 @@ mod tests {
             },
         ];
 
-        test_script_cases(test_cases)
+        run_test_script_cases(test_cases)
     }
 
     #[test]
@@ -595,7 +612,7 @@ mod tests {
             },
         ];
 
-        test_script_cases(test_cases)
+        run_test_script_cases(test_cases)
     }
 
     #[test]
@@ -672,18 +689,6 @@ mod tests {
 
     #[test]
     fn test_get_sig_op_count() {
-        struct VerifiableTransactionMock {}
-
-        impl VerifiableTransaction for VerifiableTransactionMock {
-            fn tx(&self) -> &Transaction {
-                unimplemented!()
-            }
-
-            fn populated_input(&self, _index: usize) -> (&TransactionInput, &UtxoEntry) {
-                unimplemented!()
-            }
-        }
-
         struct TestVector<'a> {
             name: &'a str,
             signature_script: &'a [u8],
@@ -760,6 +765,35 @@ mod tests {
             assert_eq!(
                 get_sig_op_count::<VerifiableTransactionMock>(test.signature_script, &test.prev_script_public_key),
                 test.expected_sig_ops,
+                "failed for '{}'",
+                test.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_unspendable() {
+        struct Test<'a> {
+            name: &'a str,
+            script_public_key: &'a [u8],
+            expected: bool,
+        }
+        let tests = vec![
+            Test { name: "unspendable", script_public_key: &[0x6a, 0x04, 0x74, 0x65, 0x73, 0x74], expected: true },
+            Test {
+                name: "spendable",
+                script_public_key: &[
+                    0x76, 0xa9, 0x14, 0x29, 0x95, 0xa0, 0xfe, 0x68, 0x43, 0xfa, 0x9b, 0x95, 0x45, 0x97, 0xf0, 0xdc, 0xa7, 0xa4, 0x4d,
+                    0xf6, 0xfa, 0x0b, 0x5c, 0x88, 0xac,
+                ],
+                expected: false,
+            },
+        ];
+
+        for test in tests {
+            assert_eq!(
+                is_unspendable::<VerifiableTransactionMock>(test.script_public_key),
+                test.expected,
                 "failed for '{}'",
                 test.name
             );

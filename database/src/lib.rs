@@ -6,6 +6,8 @@ mod item;
 mod key;
 mod writer;
 
+pub mod utils;
+
 pub mod prelude {
     use crate::{db, errors};
 

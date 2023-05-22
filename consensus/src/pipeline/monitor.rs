@@ -1,4 +1,4 @@
-use kaspa_consensus::pipeline::ProcessingCounters;
+use super::ProcessingCounters;
 use kaspa_core::{
     info,
     task::service::{AsyncService, AsyncServiceFuture},
@@ -46,13 +46,15 @@ impl ConsensusMonitor {
             let now = Instant::now();
 
             info!(
-                "Processed {} blocks and {} headers in the last {:.2}s ({} transactions; {} parent references; {} UTXO-validated blocks)", 
+                "Processed {} blocks and {} headers in the last {:.2}s ({} transactions; {} parent references; {} UTXO-validated blocks, average of {} transactions in a block, average block mass of {})", 
                 delta.body_counts,
                 delta.header_counts,
                 (now - last_log_time).as_secs_f64(),
                 delta.txs_counts,
                 delta.dep_counts,
                 delta.chain_block_counts,
+                if delta.body_counts != 0 { delta.txs_counts/delta.body_counts} else{ 0 },
+                if delta.body_counts != 0 { delta.mass_counts /delta.body_counts} else{ 0 },
             );
 
             last_snapshot = snapshot;

@@ -7,12 +7,11 @@ use crate::{
 };
 
 /// Sign a transaction using schnorr
-pub fn sign(mut signable_tx: SignableTransaction, privkey: [u8; 32]) -> SignableTransaction {
+pub fn sign(mut signable_tx: SignableTransaction, schnorr_key: secp256k1::KeyPair) -> SignableTransaction {
     for i in 0..signable_tx.tx.inputs.len() {
         signable_tx.tx.inputs[i].sig_op_count = 1;
     }
 
-    let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
     let mut reused_values = SigHashReusedValues::new();
     for i in 0..signable_tx.tx.inputs.len() {
         let sig_hash = calc_schnorr_signature_hash(&signable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);

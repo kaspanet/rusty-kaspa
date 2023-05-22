@@ -6,12 +6,16 @@ use async_channel::unbounded;
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
-use kaspa_consensus::consensus::test_consensus::{create_temp_db, get_kaspa_tempdir, TestConsensus};
+use kaspa_consensus::consensus::test_consensus::TestConsensus;
+use kaspa_consensus::model::stores::block_transactions::{
+    BlockTransactionsStore, BlockTransactionsStoreReader, DbBlockTransactionsStore,
+};
 use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
 use kaspa_consensus::params::{Params, DEVNET_PARAMS, DIFFICULTY_MAX, DIFFICULTY_MAX_AS_F64, MAINNET_PARAMS};
+use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus_core::api::ConsensusApi;
@@ -29,6 +33,7 @@ use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
+use kaspa_database::utils::{create_temp_db, get_kaspa_tempdir};
 use kaspa_hashes::Hash;
 
 use flate2::read::GzDecoder;
@@ -54,7 +59,7 @@ use std::{
     future::Future,
     io::{BufRead, BufReader},
     str::{from_utf8, FromStr},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use crate::common;
@@ -173,7 +178,7 @@ fn test_noattack_json() {
 async fn consensus_sanity_test() {
     let genesis_child: Hash = 2.into();
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     consensus
@@ -236,7 +241,7 @@ async fn ghostdag_test() {
                 p.ghostdag_k = test.k;
             })
             .build();
-        let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+        let consensus = TestConsensus::new(&config);
         let wait_handles = consensus.init();
 
         for block in test.blocks.iter() {
@@ -309,7 +314,7 @@ async fn block_window_test() {
             p.ghostdag_k = 1;
         })
         .build();
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     struct TestBlock {
@@ -368,7 +373,7 @@ async fn block_window_test() {
 #[tokio::test]
 async fn header_in_isolation_validation_test() {
     let config = Config::new(MAINNET_PARAMS);
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
 
@@ -436,7 +441,7 @@ async fn header_in_isolation_validation_test() {
 #[tokio::test]
 async fn incest_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
     consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
@@ -459,7 +464,7 @@ async fn incest_test() {
 #[tokio::test]
 async fn missing_parents_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
     block.header.parents_by_level[0] = vec![0.into()];
@@ -480,7 +485,7 @@ async fn missing_parents_test() {
 #[tokio::test]
 async fn known_invalid_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
     block.header.timestamp -= 1;
@@ -505,7 +510,7 @@ async fn known_invalid_test() {
 #[tokio::test]
 async fn median_time_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     let num_blocks = 2 * config.timestamp_deviation_tolerance - 1;
@@ -547,7 +552,7 @@ async fn median_time_test() {
 #[tokio::test]
 async fn mergeset_size_limit_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     let num_blocks_per_chain = config.mergeset_size_limit + 1;
@@ -765,60 +770,55 @@ impl KaspadGoParams {
 
 #[tokio::test]
 async fn goref_custom_pruning_depth_test() {
-    json_test("testdata/dags_for_json_tests/goref_custom_pruning_depth").await
-}
-
-#[tokio::test]
-async fn goref_custom_pruning_depth_concurrent_test() {
-    json_concurrency_test("testdata/dags_for_json_tests/goref_custom_pruning_depth").await
+    json_test("testdata/dags_for_json_tests/goref_custom_pruning_depth", false).await
 }
 
 #[tokio::test]
 async fn goref_notx_test() {
-    json_test("testdata/dags_for_json_tests/goref-notx-5000-blocks").await
+    json_test("testdata/dags_for_json_tests/goref-notx-5000-blocks", false).await
 }
 
 #[tokio::test]
 async fn goref_notx_concurrent_test() {
-    json_concurrency_test("testdata/dags_for_json_tests/goref-notx-5000-blocks").await
+    json_test("testdata/dags_for_json_tests/goref-notx-5000-blocks", true).await
 }
 
 #[tokio::test]
 async fn goref_tx_small_test() {
-    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks").await
+    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", false).await
 }
 
 #[tokio::test]
 async fn goref_tx_small_concurrent_test() {
-    json_concurrency_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks").await
+    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", true).await
 }
 
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_test() {
     // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks").await
+    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", false).await
 }
 
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_concurrent_test() {
     // TODO: add this file to a data repo and fetch dynamically
-    json_concurrency_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks").await
+    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", true).await
 }
 
 #[tokio::test]
 #[ignore = "long"]
 async fn goref_mainnet_test() {
     // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-mainnet").await
+    json_test("testdata/dags_for_json_tests/goref-mainnet", false).await
 }
 
 #[tokio::test]
 #[ignore = "long"]
 async fn goref_mainnet_concurrent_test() {
     // TODO: add this directory to a data repo and fetch dynamically
-    json_concurrency_test("testdata/dags_for_json_tests/goref-mainnet").await
+    json_test("testdata/dags_for_json_tests/goref-mainnet", true).await
 }
 
 fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
@@ -827,7 +827,7 @@ fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
     BufReader::new(decoder).lines().map(|line| line.unwrap())
 }
 
-async fn json_test(file_path: &str) {
+async fn json_test(file_path: &str, concurrency: bool) {
     kaspa_core::log::try_init_logger("info");
     let main_path = Path::new(file_path);
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
@@ -857,17 +857,22 @@ async fn json_test(file_path: &str) {
     let config = Arc::new(config);
 
     let (notification_send, notification_recv) = unbounded();
-    let tc = Arc::new(TestConsensus::create_from_temp_db(&config, notification_send));
+    let tc = Arc::new(TestConsensus::with_notifier(&config, notification_send));
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv));
 
+    // External storage for storing block bodies. This allows separating header and body processing phases
+    let (_external_db_lifetime, external_storage) = create_temp_db();
+    let external_block_store = DbBlockTransactionsStore::new(external_storage, config.perf.block_data_cache_size);
+
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
-    let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus()));
+    let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
     let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
     async_runtime.register(notify_service.clone());
     async_runtime.register(index_service.clone());
+    async_runtime.register(Arc::new(ConsensusMonitor::new(tc.processing_counters().clone())));
 
     let core = Arc::new(Core::new());
     core.bind(tc.clone());
@@ -885,66 +890,91 @@ async fn json_test(file_path: &str) {
 
         // TODO: Add consensus validation that the pruning point is one of the trusted blocks.
         let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
-        tc.consensus().apply_pruning_proof(proof, &trusted_blocks);
+        tc.apply_pruning_proof(proof, &trusted_blocks);
 
         let past_pruning_points =
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
         let pruning_point = past_pruning_points.last().unwrap().hash;
 
-        tc.consensus.as_ref().import_pruning_points(past_pruning_points);
+        tc.import_pruning_points(past_pruning_points);
 
-        info!("Starting to process {} trusted blocks", trusted_blocks.len());
-        let mut last_time = SystemTime::now();
-        let mut last_index: usize = 0;
-        for (i, tb) in trusted_blocks.into_iter().enumerate() {
-            let now = SystemTime::now();
-            let passed = now.duration_since(last_time).unwrap();
-            if passed > Duration::new(1, 0) {
-                info!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
-                last_time = now;
-                last_index = i;
-            }
-            tc.consensus.as_ref().validate_and_insert_trusted_block(tb).await.unwrap();
+        info!("Processing {} trusted blocks...", trusted_blocks.len());
+        for tb in trusted_blocks.into_iter() {
+            tc.validate_and_insert_trusted_block(tb).await.unwrap();
         }
-        info!("Done processing trusted blocks");
         Some(pruning_point)
     } else {
         None
     };
 
-    let mut last_time = SystemTime::now();
-    let mut last_index: usize = 0;
-    for (i, line) in lines.enumerate() {
-        let now = SystemTime::now();
-        let passed = now.duration_since(last_time).unwrap();
-        if passed > Duration::new(10, 0) {
-            info!("Processed {} blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
-            last_time = now;
-            last_index = i;
+    info!("Processing block headers...");
+
+    if concurrency {
+        let chunks = lines.chunks(1000);
+        let mut iter = chunks.into_iter();
+        let chunk = iter.next().unwrap();
+        let mut prev_joins = submit_header_chunk(&tc, &external_block_store, chunk);
+
+        for chunk in iter {
+            let current_joins = submit_header_chunk(&tc, &external_block_store, chunk);
+            let statuses = try_join_all(prev_joins).await.unwrap();
+            assert!(statuses.iter().all(|s| s.is_header_only()));
+            prev_joins = current_joins;
         }
-        let block = json_line_to_block(line);
-        let hash = block.header.hash;
-        // Test our hashing implementation vs the hash accepted from the json source
-        assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {i} {hash} failed");
-        let status = tc
-            .consensus()
-            .as_ref()
-            .validate_and_insert_block(block, !proof_exists)
-            .await
-            .unwrap_or_else(|e| panic!("block {i} {hash} failed: {e}"));
-        assert!(status.is_utxo_valid_or_pending());
+
+        let statuses = try_join_all(prev_joins).await.unwrap();
+        assert!(statuses.iter().all(|s| s.is_header_only()));
+    } else {
+        for line in lines {
+            let block = json_line_to_block(line);
+            let hash = block.header.hash;
+            // Test our hashing implementation vs the hash accepted from the json source
+            assert_eq!(hashing::header::hash(&block.header), hash, "header hashing for block {hash} failed");
+
+            external_block_store.insert(hash, block.transactions).unwrap();
+            let block = Block::from_header_arc(block.header);
+            let status = tc.validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
+            assert!(status.is_header_only());
+        }
     }
 
     if proof_exists {
+        info!("Importing the UTXO set...");
         let mut multiset = MuHash::new();
         for outpoint_utxo_pairs in gzip_file_lines(&main_path.join("pp-utxo.json.gz")).map(json_line_to_utxo_pairs) {
-            tc.consensus.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
+            tc.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
         }
 
-        tc.consensus.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
+        tc.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
         utxoindex.write().resync().unwrap();
-        tc.consensus.resolve_virtual();
         // TODO: Add consensus validation that the pruning point is actually the right block according to the rules (in pruning depth etc).
+    }
+
+    let missing_bodies = tc.get_missing_block_body_hashes(tc.get_headers_selected_tip()).unwrap();
+
+    info!("Processing {} block bodies...", missing_bodies.len());
+
+    if concurrency {
+        let chunks = missing_bodies.into_iter().chunks(1000);
+        let mut iter = chunks.into_iter();
+        let chunk = iter.next().unwrap();
+        let mut prev_joins = submit_body_chunk(&tc, &external_block_store, chunk);
+
+        for chunk in iter {
+            let current_joins = submit_body_chunk(&tc, &external_block_store, chunk);
+            let statuses = try_join_all(prev_joins).await.unwrap();
+            assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
+            prev_joins = current_joins;
+        }
+
+        let statuses = try_join_all(prev_joins).await.unwrap();
+        assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
+    } else {
+        for hash in missing_bodies {
+            let block = Block::from_arcs(tc.get_header(hash).unwrap(), external_block_store.get(hash).unwrap());
+            let status = tc.validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
+            assert!(status.is_utxo_valid_or_pending());
+        }
     }
 
     core.shutdown();
@@ -953,120 +983,38 @@ async fn json_test(file_path: &str) {
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(tc.body_tips().iter().copied().any(|h| tc.block_status(h) == BlockStatus::StatusUTXOValid));
     let virtual_utxos: HashSet<TransactionOutpoint> =
-        HashSet::from_iter(tc.consensus().get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
+        HashSet::from_iter(tc.get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
     let utxoindex_utxos = utxoindex.read().get_all_outpoints().unwrap();
     assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
 }
 
-async fn json_concurrency_test(file_path: &str) {
-    kaspa_core::log::try_init_logger("info");
-    let main_path = Path::new(file_path);
-    let proof_exists = main_path.join("proof.json.gz").exists();
-
-    let mut lines = gzip_file_lines(&main_path.join("blocks.json.gz"));
-    let first_line = lines.next().unwrap();
-    let go_params_res: Result<KaspadGoParams, _> = serde_json::from_str(&first_line);
-    let params = if let Ok(go_params) = go_params_res {
-        let mut params = go_params.into_params();
-        if !proof_exists {
-            let second_line = lines.next().unwrap();
-            let genesis_block = json_line_to_block(second_line);
-            params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
-        }
-        params
-    } else {
-        let genesis_block = json_line_to_block(first_line);
-        let mut params = DEVNET_PARAMS;
-        params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
-        params
-    };
-
-    let mut config = Config::new(params);
-    if proof_exists {
-        config.process_genesis = false;
-    }
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
-    let wait_handles = consensus.init();
-
-    let pruning_point = if proof_exists {
-        let proof_lines = gzip_file_lines(&main_path.join("proof.json.gz"));
-        let proof = proof_lines
-            .map(|line| {
-                let rpc_headers: Vec<RPCBlockHeader> = serde_json::from_str(&line).unwrap();
-                rpc_headers.iter().map(|rh| Arc::new(rpc_header_to_header(rh))).collect_vec()
-            })
-            .collect_vec();
-
-        let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
-        consensus.consensus().apply_pruning_proof(proof, &trusted_blocks);
-
-        let past_pruning_points =
-            gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();
-        let pruning_point = past_pruning_points.last().unwrap().hash;
-
-        consensus.consensus.as_ref().import_pruning_points(past_pruning_points);
-
-        info!("Starting to process {} trusted blocks", trusted_blocks.len());
-        let mut last_time = SystemTime::now();
-        let mut last_index: usize = 0;
-        for (i, tb) in trusted_blocks.into_iter().enumerate() {
-            let now = SystemTime::now();
-            let passed = now.duration_since(last_time).unwrap();
-            if passed > Duration::new(1, 0) {
-                info!("Processed {} trusted blocks in the last {} seconds (total {})", i - last_index, passed.as_secs(), i);
-                last_time = now;
-                last_index = i;
-            }
-            consensus.consensus.as_ref().validate_and_insert_trusted_block(tb).await.unwrap();
-        }
-        info!("Done processing trusted blocks");
-        Some(pruning_point)
-    } else {
-        None
-    };
-
-    let chunks = lines.chunks(1000);
-    let mut iter = chunks.into_iter();
-    let mut chunk = iter.next().unwrap();
-    let mut prev_joins = submit_chunk(&consensus, &mut chunk, proof_exists);
-
-    for (i, mut chunk) in iter.enumerate() {
-        let current_joins = submit_chunk(&consensus, &mut chunk, proof_exists);
-        let statuses = try_join_all(prev_joins).await.unwrap();
-        assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
-        prev_joins = current_joins;
-        info!("Processed 1000 blocks ({} overall)", (i + 1) * 1000);
-    }
-
-    let statuses = try_join_all(prev_joins).await.unwrap();
-    assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
-
-    if proof_exists {
-        let mut multiset = MuHash::new();
-        for outpoint_utxo_pairs in gzip_file_lines(&main_path.join("pp-utxo.json.gz")).map(json_line_to_utxo_pairs) {
-            consensus.consensus.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
-        }
-
-        consensus.consensus.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
-        consensus.consensus.resolve_virtual();
-    }
-
-    // Assert that at least one body tip was resolved with valid UTXO
-    assert!(consensus.body_tips().iter().copied().any(|h| consensus.block_status(h) == BlockStatus::StatusUTXOValid));
-
-    consensus.shutdown(wait_handles);
-}
-
-fn submit_chunk(
-    consensus: &TestConsensus,
-    chunk: &mut impl Iterator<Item = String>,
-    proof_exists: bool,
+fn submit_header_chunk(
+    tc: &TestConsensus,
+    external_block_store: &DbBlockTransactionsStore,
+    chunk: impl Iterator<Item = String>,
 ) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
     let mut futures = Vec::new();
     for line in chunk {
-        let f = consensus.consensus.as_ref().validate_and_insert_block(json_line_to_block(line), !proof_exists);
+        let block = json_line_to_block(line);
+        external_block_store.insert(block.hash(), block.transactions).unwrap();
+        let block = Block::from_header_arc(block.header);
+        let f = tc.validate_and_insert_block(block);
+        futures.push(f);
+    }
+    futures
+}
+
+fn submit_body_chunk(
+    tc: &TestConsensus,
+    external_block_store: &DbBlockTransactionsStore,
+    chunk: impl Iterator<Item = Hash>,
+) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
+    let mut futures = Vec::new();
+    for hash in chunk {
+        let block = Block::from_arcs(tc.get_header(hash).unwrap(), external_block_store.get(hash).unwrap());
+        let f = tc.validate_and_insert_block(block);
         futures.push(f);
     }
     futures
@@ -1220,7 +1168,7 @@ async fn bounded_merge_depth_test() {
 
     assert!((config.ghostdag_k as u64) < config.merge_depth, "K must be smaller than merge depth for this test to run");
 
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     let mut selected_chain = vec![config.genesis.hash];
@@ -1292,7 +1240,7 @@ async fn difficulty_test() {
     async fn add_block(consensus: &TestConsensus, block_time: Option<u64>, parents: Vec<Hash>) -> Header {
         let selected_parent = consensus.ghostdag_manager().find_selected_parent(parents.iter().copied());
         let block_time = block_time.unwrap_or_else(|| {
-            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params.target_time_per_block
+            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().target_time_per_block
         });
         let mut header = consensus.build_header_with_parents(new_unique(), parents);
         header.timestamp = block_time;
@@ -1317,7 +1265,7 @@ async fn difficulty_test() {
             p.difficulty_window_size = 140;
         })
         .build();
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     let fake_genesis = Header {
@@ -1443,7 +1391,7 @@ async fn difficulty_test() {
 #[tokio::test]
 async fn selected_chain_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::create_from_temp_db_and_dummy_sender(&config);
+    let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
     consensus.add_block_with_parents(1.into(), vec![config.genesis.hash]).await.unwrap();

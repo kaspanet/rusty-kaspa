@@ -74,11 +74,11 @@ pub trait OpCodeMetadata: Debug {
 }
 
 pub trait OpCodeExecution<T: VerifiableTransaction> {
-    fn empty() -> Box<dyn OpCodeImplementation<T>>
+    fn empty() -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>
     where
         Self: Sized;
     #[allow(clippy::new_ret_no_self)]
-    fn new(data: Vec<u8>) -> Box<dyn OpCodeImplementation<T>>
+    fn new(data: Vec<u8>) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>
     where
         Self: Sized;
 
@@ -86,13 +86,15 @@ pub trait OpCodeExecution<T: VerifiableTransaction> {
 }
 
 pub trait OpcodeSerialization {
-    fn serialize(&self) -> [&u8];
-    fn deserialize<'i, I: Iterator<Item = &'i u8>>(it: &mut I) -> Result<Box<dyn OpcodeSerialization>, TxScriptError>
+    fn serialize(&self) -> Vec<u8>;
+    fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(
+        it: &mut I,
+    ) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>
     where
         Self: Sized;
 }
 
-pub trait OpCodeImplementation<T: VerifiableTransaction>: OpCodeExecution<T> + OpCodeMetadata {}
+pub trait OpCodeImplementation<T: VerifiableTransaction>: OpCodeExecution<T> + OpCodeMetadata + OpcodeSerialization {}
 
 impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
     fn value(&self) -> u8 {
@@ -946,28 +948,46 @@ pub fn to_small_int<T: VerifiableTransaction>(opcode: &Box<dyn OpCodeImplementat
 #[cfg(test)]
 mod test {
     use crate::caches::Cache;
+    use crate::data_stack::Stack;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
     use crate::{opcodes, TxScriptEngine, TxScriptError};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
     use kaspa_consensus_core::tx::PopulatedTransaction;
 
+    struct TestCase<'a> {
+        init: Stack,
+        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>>>,
+        dstack: Stack,
+    }
+
+    fn run_test_cases(tests: Vec<TestCase>) {
+        let cache = Cache::new(10_000);
+        let mut reused_values = SigHashReusedValues::new();
+        for TestCase { init, code, dstack } in tests {
+            let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+            vm.dstack = init;
+            code.execute(&mut vm).expect("Script should not fail");
+            assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
+        }
+    }
+
     #[test]
     fn test_opcode_disabled() {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
-            opcodes::OpCat::empty(),
-            opcodes::OpSubStr::empty(),
-            opcodes::OpLeft::empty(),
-            opcodes::OpRight::empty(),
-            opcodes::OpInvert::empty(),
-            opcodes::OpAnd::empty(),
-            opcodes::OpOr::empty(),
-            opcodes::Op2Mul::empty(),
-            opcodes::Op2Div::empty(),
-            opcodes::OpMul::empty(),
-            opcodes::OpDiv::empty(),
-            opcodes::OpMod::empty(),
-            opcodes::OpLShift::empty(),
-            opcodes::OpRShift::empty(),
+            opcodes::OpCat::empty().expect("Should accept empty"),
+            opcodes::OpSubStr::empty().expect("Should accept empty"),
+            opcodes::OpLeft::empty().expect("Should accept empty"),
+            opcodes::OpRight::empty().expect("Should accept empty"),
+            opcodes::OpInvert::empty().expect("Should accept empty"),
+            opcodes::OpAnd::empty().expect("Should accept empty"),
+            opcodes::OpOr::empty().expect("Should accept empty"),
+            opcodes::Op2Mul::empty().expect("Should accept empty"),
+            opcodes::Op2Div::empty().expect("Should accept empty"),
+            opcodes::OpMul::empty().expect("Should accept empty"),
+            opcodes::OpDiv::empty().expect("Should accept empty"),
+            opcodes::OpMod::empty().expect("Should accept empty"),
+            opcodes::OpLShift::empty().expect("Should accept empty"),
+            opcodes::OpRShift::empty().expect("Should accept empty"),
         ];
 
         let cache = Cache::new(10_000);
@@ -980,5 +1000,671 @@ mod test {
                 _ => panic!("Opcode {pop:?} should be disabled"),
             }
         }
+    }
+
+    #[test]
+    fn test_opcode_reserved() {
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
+            opcodes::OpReserved::empty().expect("Should accept empty"),
+            opcodes::OpVer::empty().expect("Should accept empty"),
+            opcodes::OpVerIf::empty().expect("Should accept empty"),
+            opcodes::OpVerNotIf::empty().expect("Should accept empty"),
+            opcodes::OpReserved1::empty().expect("Should accept empty"),
+            opcodes::OpReserved2::empty().expect("Should accept empty"),
+        ];
+
+        let cache = Cache::new(10_000);
+        let mut reused_values = SigHashReusedValues::new();
+        let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+
+        for pop in tests {
+            match pop.execute(&mut vm) {
+                Err(TxScriptError::OpcodeReserved(_)) => {}
+                _ => panic!("Opcode {pop:?} should be disabled"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_opcode_invalid() {
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
+            opcodes::OpUnknown166::empty().expect("Should accept empty"),
+            opcodes::OpUnknown167::empty().expect("Should accept empty"),
+            opcodes::OpUnknown178::empty().expect("Should accept empty"),
+            opcodes::OpUnknown179::empty().expect("Should accept empty"),
+            opcodes::OpUnknown180::empty().expect("Should accept empty"),
+            opcodes::OpUnknown181::empty().expect("Should accept empty"),
+            opcodes::OpUnknown182::empty().expect("Should accept empty"),
+            opcodes::OpUnknown183::empty().expect("Should accept empty"),
+            opcodes::OpUnknown184::empty().expect("Should accept empty"),
+            opcodes::OpUnknown185::empty().expect("Should accept empty"),
+            opcodes::OpUnknown186::empty().expect("Should accept empty"),
+            opcodes::OpUnknown187::empty().expect("Should accept empty"),
+            opcodes::OpUnknown188::empty().expect("Should accept empty"),
+            opcodes::OpUnknown189::empty().expect("Should accept empty"),
+            opcodes::OpUnknown190::empty().expect("Should accept empty"),
+            opcodes::OpUnknown191::empty().expect("Should accept empty"),
+            opcodes::OpUnknown192::empty().expect("Should accept empty"),
+            opcodes::OpUnknown193::empty().expect("Should accept empty"),
+            opcodes::OpUnknown194::empty().expect("Should accept empty"),
+            opcodes::OpUnknown195::empty().expect("Should accept empty"),
+            opcodes::OpUnknown196::empty().expect("Should accept empty"),
+            opcodes::OpUnknown197::empty().expect("Should accept empty"),
+            opcodes::OpUnknown198::empty().expect("Should accept empty"),
+            opcodes::OpUnknown199::empty().expect("Should accept empty"),
+            opcodes::OpUnknown200::empty().expect("Should accept empty"),
+            opcodes::OpUnknown201::empty().expect("Should accept empty"),
+            opcodes::OpUnknown202::empty().expect("Should accept empty"),
+            opcodes::OpUnknown203::empty().expect("Should accept empty"),
+            opcodes::OpUnknown204::empty().expect("Should accept empty"),
+            opcodes::OpUnknown205::empty().expect("Should accept empty"),
+            opcodes::OpUnknown206::empty().expect("Should accept empty"),
+            opcodes::OpUnknown207::empty().expect("Should accept empty"),
+            opcodes::OpUnknown208::empty().expect("Should accept empty"),
+            opcodes::OpUnknown209::empty().expect("Should accept empty"),
+            opcodes::OpUnknown210::empty().expect("Should accept empty"),
+            opcodes::OpUnknown211::empty().expect("Should accept empty"),
+            opcodes::OpUnknown212::empty().expect("Should accept empty"),
+            opcodes::OpUnknown213::empty().expect("Should accept empty"),
+            opcodes::OpUnknown214::empty().expect("Should accept empty"),
+            opcodes::OpUnknown215::empty().expect("Should accept empty"),
+            opcodes::OpUnknown216::empty().expect("Should accept empty"),
+            opcodes::OpUnknown217::empty().expect("Should accept empty"),
+            opcodes::OpUnknown218::empty().expect("Should accept empty"),
+            opcodes::OpUnknown219::empty().expect("Should accept empty"),
+            opcodes::OpUnknown220::empty().expect("Should accept empty"),
+            opcodes::OpUnknown221::empty().expect("Should accept empty"),
+            opcodes::OpUnknown222::empty().expect("Should accept empty"),
+            opcodes::OpUnknown223::empty().expect("Should accept empty"),
+            opcodes::OpUnknown224::empty().expect("Should accept empty"),
+            opcodes::OpUnknown225::empty().expect("Should accept empty"),
+            opcodes::OpUnknown226::empty().expect("Should accept empty"),
+            opcodes::OpUnknown227::empty().expect("Should accept empty"),
+            opcodes::OpUnknown228::empty().expect("Should accept empty"),
+            opcodes::OpUnknown229::empty().expect("Should accept empty"),
+            opcodes::OpUnknown230::empty().expect("Should accept empty"),
+            opcodes::OpUnknown231::empty().expect("Should accept empty"),
+            opcodes::OpUnknown232::empty().expect("Should accept empty"),
+            opcodes::OpUnknown233::empty().expect("Should accept empty"),
+            opcodes::OpUnknown234::empty().expect("Should accept empty"),
+            opcodes::OpUnknown235::empty().expect("Should accept empty"),
+            opcodes::OpUnknown236::empty().expect("Should accept empty"),
+            opcodes::OpUnknown237::empty().expect("Should accept empty"),
+            opcodes::OpUnknown238::empty().expect("Should accept empty"),
+            opcodes::OpUnknown239::empty().expect("Should accept empty"),
+            opcodes::OpUnknown240::empty().expect("Should accept empty"),
+            opcodes::OpUnknown241::empty().expect("Should accept empty"),
+            opcodes::OpUnknown242::empty().expect("Should accept empty"),
+            opcodes::OpUnknown243::empty().expect("Should accept empty"),
+            opcodes::OpUnknown244::empty().expect("Should accept empty"),
+            opcodes::OpUnknown245::empty().expect("Should accept empty"),
+            opcodes::OpUnknown246::empty().expect("Should accept empty"),
+            opcodes::OpUnknown247::empty().expect("Should accept empty"),
+            opcodes::OpUnknown248::empty().expect("Should accept empty"),
+            opcodes::OpUnknown249::empty().expect("Should accept empty"),
+        ];
+
+        let cache = Cache::new(10_000);
+        let mut reused_values = SigHashReusedValues::new();
+        let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+
+        for pop in tests {
+            match pop.execute(&mut vm) {
+                Err(TxScriptError::InvalidOpcode(_)) => {}
+                _ => panic!("Opcode {pop:?} should be disabled"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_push_data() {
+        run_test_cases(vec![
+            TestCase { code: opcodes::OpFalse::empty().expect("Should accept empty"), dstack: vec![vec![]], init: Default::default() },
+            TestCase {
+                code: opcodes::OpData1::new([1u8; 1].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 1].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData2::new([1u8; 2].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 2].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData3::new([1u8; 3].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 3].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData4::new([1u8; 4].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 4].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData5::new([1u8; 5].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 5].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData6::new([1u8; 6].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 6].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData7::new([1u8; 7].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 7].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData8::new([1u8; 8].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 8].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData9::new([1u8; 9].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 9].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData10::new([1u8; 10].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 10].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData11::new([1u8; 11].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 11].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData12::new([1u8; 12].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 12].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData13::new([1u8; 13].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 13].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData14::new([1u8; 14].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 14].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData15::new([1u8; 15].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 15].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData16::new([1u8; 16].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 16].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData17::new([1u8; 17].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 17].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData18::new([1u8; 18].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 18].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData19::new([1u8; 19].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 19].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData20::new([1u8; 20].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 20].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData21::new([1u8; 21].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 21].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData22::new([1u8; 22].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 22].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData23::new([1u8; 23].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 23].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData24::new([1u8; 24].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 24].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData25::new([1u8; 25].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 25].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData26::new([1u8; 26].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 26].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData27::new([1u8; 27].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 27].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData28::new([1u8; 28].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 28].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData29::new([1u8; 29].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 29].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData30::new([1u8; 30].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 30].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData31::new([1u8; 31].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 31].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData32::new([1u8; 32].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 32].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData33::new([1u8; 33].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 33].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData34::new([1u8; 34].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 34].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData35::new([1u8; 35].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 35].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData36::new([1u8; 36].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 36].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData37::new([1u8; 37].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 37].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData38::new([1u8; 38].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 38].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData39::new([1u8; 39].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 39].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData40::new([1u8; 40].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 40].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData41::new([1u8; 41].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 41].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData42::new([1u8; 42].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 42].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData43::new([1u8; 43].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 43].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData44::new([1u8; 44].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 44].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData45::new([1u8; 45].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 45].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData46::new([1u8; 46].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 46].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData47::new([1u8; 47].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 47].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData48::new([1u8; 48].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 48].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData49::new([1u8; 49].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 49].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData50::new([1u8; 50].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 50].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData51::new([1u8; 51].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 51].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData52::new([1u8; 52].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 52].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData53::new([1u8; 53].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 53].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData54::new([1u8; 54].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 54].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData55::new([1u8; 55].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 55].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData56::new([1u8; 56].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 56].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData57::new([1u8; 57].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 57].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData58::new([1u8; 58].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 58].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData59::new([1u8; 59].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 59].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData60::new([1u8; 60].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 60].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData61::new([1u8; 61].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 61].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData62::new([1u8; 62].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 62].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData63::new([1u8; 63].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 63].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData64::new([1u8; 64].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 64].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData65::new([1u8; 65].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 65].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData66::new([1u8; 66].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 66].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData67::new([1u8; 67].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 67].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData68::new([1u8; 68].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 68].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData69::new([1u8; 69].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 69].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData70::new([1u8; 70].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 70].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData71::new([1u8; 71].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 71].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData72::new([1u8; 72].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 72].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData73::new([1u8; 73].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 73].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData74::new([1u8; 74].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 74].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpData75::new([1u8; 75].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 75].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpPushData1::new([1u8; 76].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 76].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpPushData2::new([1u8; 0x100].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 0x100].to_vec()],
+                init: Default::default(),
+            },
+            TestCase {
+                code: opcodes::OpPushData4::new([1u8; 0x10000].to_vec()).expect("Valid opcode"),
+                dstack: vec![[1u8; 0x10000].to_vec()],
+                init: Default::default(),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_push_num() {
+        run_test_cases(vec![
+            TestCase { code: opcodes::Op1::empty().expect("Should accept empty"), dstack: vec![vec![1]], init: Default::default() },
+            TestCase { code: opcodes::Op2::empty().expect("Should accept empty"), dstack: vec![vec![2]], init: Default::default() },
+            TestCase { code: opcodes::Op3::empty().expect("Should accept empty"), dstack: vec![vec![3]], init: Default::default() },
+            TestCase { code: opcodes::Op4::empty().expect("Should accept empty"), dstack: vec![vec![4]], init: Default::default() },
+            TestCase { code: opcodes::Op5::empty().expect("Should accept empty"), dstack: vec![vec![5]], init: Default::default() },
+            TestCase { code: opcodes::Op6::empty().expect("Should accept empty"), dstack: vec![vec![6]], init: Default::default() },
+            TestCase { code: opcodes::Op7::empty().expect("Should accept empty"), dstack: vec![vec![7]], init: Default::default() },
+            TestCase { code: opcodes::Op8::empty().expect("Should accept empty"), dstack: vec![vec![8]], init: Default::default() },
+            TestCase { code: opcodes::Op9::empty().expect("Should accept empty"), dstack: vec![vec![9]], init: Default::default() },
+            TestCase { code: opcodes::Op10::empty().expect("Should accept empty"), dstack: vec![vec![10]], init: Default::default() },
+            TestCase { code: opcodes::Op11::empty().expect("Should accept empty"), dstack: vec![vec![11]], init: Default::default() },
+            TestCase { code: opcodes::Op12::empty().expect("Should accept empty"), dstack: vec![vec![12]], init: Default::default() },
+            TestCase { code: opcodes::Op13::empty().expect("Should accept empty"), dstack: vec![vec![13]], init: Default::default() },
+            TestCase { code: opcodes::Op14::empty().expect("Should accept empty"), dstack: vec![vec![14]], init: Default::default() },
+            TestCase { code: opcodes::Op15::empty().expect("Should accept empty"), dstack: vec![vec![15]], init: Default::default() },
+            TestCase { code: opcodes::Op16::empty().expect("Should accept empty"), dstack: vec![vec![16]], init: Default::default() },
+        ]);
+    }
+
+    #[test]
+    fn test_uniary_num_ops() {
+        run_test_cases(vec![
+            TestCase { code: opcodes::Op1Add::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![1]] },
+            TestCase { code: opcodes::Op1Add::empty().expect("Should accept empty"), init: vec![vec![1]], dstack: vec![vec![2]] },
+            TestCase {
+                code: opcodes::Op1Add::empty().expect("Should accept empty"),
+                init: vec![vec![2, 1]],
+                dstack: vec![vec![3, 1]],
+            },
+            TestCase { code: opcodes::Op1Add::empty().expect("Should accept empty"), init: vec![vec![0x81]], dstack: vec![vec![]] },
+            TestCase { code: opcodes::Op1Sub::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![0x81]] },
+            TestCase { code: opcodes::Op1Sub::empty().expect("Should accept empty"), init: vec![vec![1]], dstack: vec![vec![]] },
+            TestCase { code: opcodes::Op1Sub::empty().expect("Should accept empty"), init: vec![vec![2]], dstack: vec![vec![1]] },
+            TestCase {
+                code: opcodes::Op1Sub::empty().expect("Should accept empty"),
+                init: vec![vec![3, 1]],
+                dstack: vec![vec![2, 1]],
+            },
+            TestCase { code: opcodes::OpNegate::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![]] },
+            TestCase { code: opcodes::OpNegate::empty().expect("Should accept empty"), init: vec![vec![1]], dstack: vec![vec![0x81]] },
+            TestCase { code: opcodes::OpNegate::empty().expect("Should accept empty"), init: vec![vec![0x81]], dstack: vec![vec![1]] },
+            TestCase {
+                code: opcodes::OpNegate::empty().expect("Should accept empty"),
+                init: vec![vec![3, 1]],
+                dstack: vec![vec![3, 0x81]],
+            },
+            TestCase { code: opcodes::OpAbs::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![]] },
+            TestCase { code: opcodes::OpAbs::empty().expect("Should accept empty"), init: vec![vec![3, 1]], dstack: vec![vec![3, 1]] },
+            TestCase {
+                code: opcodes::OpAbs::empty().expect("Should accept empty"),
+                init: vec![vec![3, 0x81]],
+                dstack: vec![vec![3, 1]],
+            },
+            TestCase { code: opcodes::OpAbs::empty().expect("Should accept empty"), init: vec![vec![1]], dstack: vec![vec![1]] },
+            TestCase { code: opcodes::OpAbs::empty().expect("Should accept empty"), init: vec![vec![0x81]], dstack: vec![vec![1]] },
+            TestCase {
+                code: opcodes::OpAbs::empty().expect("Should accept empty"),
+                init: vec![vec![1, 1, 0x82]],
+                dstack: vec![vec![1, 1, 2]],
+            },
+            TestCase { code: opcodes::OpNot::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![1]] },
+            TestCase { code: opcodes::OpNot::empty().expect("Should accept empty"), init: vec![vec![1]], dstack: vec![vec![]] },
+            TestCase { code: opcodes::OpNot::empty().expect("Should accept empty"), init: vec![vec![1, 2, 3]], dstack: vec![vec![]] },
+            TestCase { code: opcodes::Op0NotEqual::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![]] },
+            TestCase { code: opcodes::Op0NotEqual::empty().expect("Should accept empty"), init: vec![vec![1]], dstack: vec![vec![1]] },
+            TestCase { code: opcodes::Op0NotEqual::empty().expect("Should accept empty"), init: vec![vec![2]], dstack: vec![vec![1]] },
+            TestCase {
+                code: opcodes::Op0NotEqual::empty().expect("Should accept empty"),
+                init: vec![vec![1, 2, 3]],
+                dstack: vec![vec![1]],
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_binary_num_ops() {
+        run_test_cases(vec![
+            TestCase { code: opcodes::OpAdd::empty().expect("Should accept empty"), init: vec![vec![], vec![]], dstack: vec![vec![]] },
+            TestCase {
+                code: opcodes::OpAdd::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpAdd::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpAdd::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![1]],
+                dstack: vec![vec![2]],
+            },
+            TestCase {
+                code: opcodes::OpAdd::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpAdd::empty().expect("Should accept empty"),
+                init: vec![vec![0x7f], vec![1]],
+                dstack: vec![vec![0x80, 0]],
+            },
+            TestCase {
+                code: opcodes::OpAdd::empty().expect("Should accept empty"),
+                init: vec![vec![0x80, 0], vec![0x80, 0]],
+                dstack: vec![vec![0, 1]],
+            },
+            TestCase {
+                code: opcodes::OpAdd::empty().expect("Should accept empty"),
+                init: vec![vec![0xff, 0], vec![1]],
+                dstack: vec![vec![0, 1]],
+            },
+            TestCase { code: opcodes::OpSub::empty().expect("Should accept empty"), init: vec![vec![], vec![]], dstack: vec![vec![]] },
+            TestCase {
+                code: opcodes::OpSub::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![0x81]],
+            },
+            TestCase {
+                code: opcodes::OpSub::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpSub::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpSub::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![1]],
+                dstack: vec![vec![0x82]],
+            },
+            TestCase {
+                code: opcodes::OpSub::empty().expect("Should accept empty"),
+                init: vec![vec![0x80, 0], vec![1]],
+                dstack: vec![vec![0x7f]],
+            },
+            TestCase {
+                code: opcodes::OpSub::empty().expect("Should accept empty"),
+                init: vec![vec![0, 1], vec![0x80, 0]],
+                dstack: vec![vec![0x80, 0]],
+            },
+            TestCase {
+                code: opcodes::OpSub::empty().expect("Should accept empty"),
+                init: vec![vec![0, 1], vec![1]],
+                dstack: vec![vec![0xff, 0]],
+            },
+        ]);
     }
 }
