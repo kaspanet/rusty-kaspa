@@ -7,6 +7,16 @@
 use log::{Level, LevelFilter};
 
 cfg_if::cfg_if! {
+    if #[cfg(not(target_arch = "wasm32"))] {
+use consts::*;
+
+mod appender;
+mod consts;
+mod logger;
+    }
+}
+
+cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         static mut LEVEL_FILTER : LevelFilter = LevelFilter::Trace;
         #[inline(always)]
@@ -19,19 +29,36 @@ cfg_if::cfg_if! {
     }
 }
 
-// TODO: enhance logger with parallel output to file, rotation, compression
-
 #[cfg(not(target_arch = "wasm32"))]
-pub fn init_logger(filters: &str) {
-    let level = log::LevelFilter::Info;
+pub fn init_logger(log_dir: Option<&str>, filters: &str) {
+    use crate::log::appender::AppenderSpec;
+    use log4rs::{config::Root, Config};
+    use std::iter::once;
 
-    env_logger::Builder::new()
-        .format_target(false)
-        .format_timestamp_secs()
-        .filter_level(level)
-        .parse_default_env()
-        .parse_filters(filters)
-        .init();
+    const CONSOLE_APPENDER: &str = "stdout";
+    const LOG_FILE_APPENDER: &str = "log_file";
+    const ERR_LOG_FILE_APPENDER: &str = "err_log_file";
+
+    let level = LevelFilter::Info;
+    let loggers = logger::Builder::new().root_level(level).parse_env(DEFAULT_LOGGER_ENV).parse_expression(filters).build();
+
+    let mut stdout_appender = AppenderSpec::console(CONSOLE_APPENDER, None);
+    let mut file_appender = log_dir.map(|x| AppenderSpec::roller(LOG_FILE_APPENDER, None, x, LOG_FILE_NAME));
+    let mut err_file_appender =
+        log_dir.map(|x| AppenderSpec::roller(ERR_LOG_FILE_APPENDER, Some(LevelFilter::Warn), x, ERR_LOG_FILE_NAME));
+    let appenders = once(&mut stdout_appender).chain(&mut file_appender).chain(&mut err_file_appender).map(|x| x.appender());
+
+    let config = Config::builder()
+        .appenders(appenders)
+        .loggers(loggers.items())
+        .build(
+            Root::builder()
+                .appenders(once(&stdout_appender).chain(&file_appender).chain(&err_file_appender).map(|x| x.name))
+                .build(loggers.root_level()),
+        )
+        .unwrap();
+
+    let _handle = log4rs::init_config(config).unwrap();
 
     workflow_log::set_log_level(level);
 }
@@ -40,13 +67,19 @@ pub fn init_logger(filters: &str) {
 /// Should be used for tests.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn try_init_logger(filters: &str) {
-    let _ = env_logger::Builder::new()
-        .format_target(false)
-        .format_timestamp_secs()
-        .filter_level(log::LevelFilter::Info)
-        .parse_default_env()
-        .parse_filters(filters)
-        .try_init();
+    use crate::log::appender::AppenderSpec;
+    use log4rs::{config::Root, Config};
+
+    const CONSOLE_APPENDER: &str = "stdout";
+
+    let loggers = logger::Builder::new().root_level(LevelFilter::Info).parse_env(DEFAULT_LOGGER_ENV).parse_expression(filters).build();
+    let mut stdout_appender = AppenderSpec::console(CONSOLE_APPENDER, None);
+    let config = Config::builder()
+        .appender(stdout_appender.appender())
+        .loggers(loggers.items())
+        .build(Root::builder().appender(CONSOLE_APPENDER).build(loggers.root_level()))
+        .unwrap();
+    let _ = log4rs::init_config(config);
 }
 
 #[cfg(target_arch = "wasm32")]
