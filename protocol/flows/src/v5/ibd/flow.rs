@@ -92,9 +92,9 @@ impl IbdFlow {
     }
 
     async fn ibd(&mut self, relay_block: Block) -> Result<(), ProtocolError> {
-        let ci = self.ctx.consensus();
-        let session = ci.session().await;
-        let consensus = session.deref();
+        let mut ci = self.ctx.consensus();
+        let mut session = ci.session().await;
+        let mut consensus = session.deref();
 
         let negotiation_output = self.negotiate_missing_syncer_chain_segment(consensus).await?;
         let ibd_type = self.determine_ibd_type(consensus, &relay_block.header, negotiation_output.highest_known_syncer_chain_hash)?;
@@ -116,6 +116,10 @@ impl IbdFlow {
                     Ok(()) => {
                         staging.commit();
                         self.ctx.on_pruning_point_utxoset_override();
+                        // This will reobtain the freshly committed staging consensus
+                        ci = self.ctx.consensus();
+                        session = ci.session().await;
+                        consensus = session.deref();
                     }
                     Err(e) => {
                         staging.cancel();
@@ -124,11 +128,6 @@ impl IbdFlow {
                 }
             }
         }
-
-        // If headers proof was downloaded this will be the freshly committed staging consensus
-        let ci = self.ctx.consensus();
-        let session = ci.session().await;
-        let consensus = session.deref();
 
         // Sync missing bodies in the past of syncer selected tip
         self.sync_missing_block_bodies(consensus, negotiation_output.syncer_header_selected_tip).await?;
