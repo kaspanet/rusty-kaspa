@@ -57,8 +57,10 @@ fn add_dag_block(store: &mut (impl ReachabilityStore + ?Sized), new_block: Hash,
     Ok(())
 }
 
-/// Deletes a block permanently from the DAG reachability structures while keeping full reachability info for all other blocks.
-/// That is, for any other B, C blocks, all DAG/chain queries are guaranteed to return the same results as before the deletion.
+/// Deletes a block permanently from the DAG reachability structures while
+/// keeping full reachability info for all other blocks. That is, for any other
+/// B, C ∈ G, DAG/chain queries are guaranteed to return the same results as
+/// before the deletion.
 pub fn delete_block(store: &mut (impl ReachabilityStore + ?Sized), block: Hash, mergeset_iterator: HashIterator) -> Result<()> {
     let interval = store.get_interval(block)?;
     let parent = store.get_parent(block)?;

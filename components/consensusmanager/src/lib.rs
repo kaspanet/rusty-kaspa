@@ -3,7 +3,7 @@ use kaspa_consensus_core::api::{ConsensusApi, DynConsensus};
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::{collections::VecDeque, ops::Deref, sync::Arc, thread::JoinHandle};
-use tokio::sync::{RwLock as TokioRwLock, RwLockReadGuard as TokioRwLockReadGuard};
+use tokio::sync::{OwnedRwLockReadGuard as TokioOwnedRwLockReadGuard, RwLock as TokioRwLock};
 
 /// Consensus controller trait. Includes methods required to start/stop/control consensus, but which should not
 /// be exposed to ordinary users
@@ -198,24 +198,24 @@ impl ConsensusInstance {
         Self { session_lock, consensus }
     }
 
-    pub async fn session(&self) -> ConsensusSession<'_> {
-        let g = self.session_lock.read().await;
+    pub async fn session(&self) -> ConsensusSession {
+        let g = self.session_lock.clone().read_owned().await;
         ConsensusSession::new(g, self.consensus.clone())
     }
 }
 
-pub struct ConsensusSession<'a> {
-    _session_guard: TokioRwLockReadGuard<'a, ()>,
+pub struct ConsensusSession {
+    _session_guard: Arc<TokioOwnedRwLockReadGuard<()>>,
     consensus: DynConsensus,
 }
 
-impl<'a> ConsensusSession<'a> {
-    pub fn new(session_guard: TokioRwLockReadGuard<'a, ()>, consensus: DynConsensus) -> Self {
-        Self { _session_guard: session_guard, consensus }
+impl ConsensusSession {
+    pub fn new(session_guard: TokioOwnedRwLockReadGuard<()>, consensus: DynConsensus) -> Self {
+        Self { _session_guard: Arc::new(session_guard), consensus }
     }
 }
 
-impl Deref for ConsensusSession<'_> {
+impl Deref for ConsensusSession {
     type Target = dyn ConsensusApi; // We avoid exposing the Arc itself by ref since it can be easily cloned and misused
 
     fn deref(&self) -> &Self::Target {

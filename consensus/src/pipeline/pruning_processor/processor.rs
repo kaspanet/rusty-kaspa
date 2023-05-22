@@ -251,6 +251,7 @@ impl PruningProcessor {
                 if traversed % 1000 == 0 {
                     info!("Header and Block pruning: traversed: {}, pruned {}...", traversed, counter);
                 }
+                std::thread::yield_now();
                 prune_guard = self.pruning_lock.blocking_write();
                 reachability_read = self.reachability_store.upgradable_read();
             }
