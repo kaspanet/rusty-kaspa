@@ -12,7 +12,7 @@ use crate::{
         stores::{
             acceptance_data::AcceptanceDataStoreReader,
             block_transactions::BlockTransactionsStoreReader,
-            ghostdag::GhostdagStoreReader,
+            ghostdag::{GhostdagData, GhostdagStoreReader},
             headers::HeaderStoreReader,
             headers_selected_tip::HeadersSelectedTipStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
@@ -41,12 +41,12 @@ use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    errors::pruning::PruningImportError,
     errors::{
         coinbase::CoinbaseResult,
         consensus::{ConsensusError, ConsensusResult},
         tx::TxResult,
     },
+    errors::{difficulty::DifficultyError, pruning::PruningImportError},
     header::Header,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
@@ -64,7 +64,6 @@ use itertools::Itertools;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_utils::refs::Refs;
 
 use std::thread::{self, JoinHandle};
 use std::{
@@ -325,6 +324,15 @@ impl Consensus {
         } else {
             Err(ConsensusError::BlockNotFound(hash))
         }
+    }
+
+    fn estimate_network_hashes_per_second_impl(&self, ghostdag_data: &GhostdagData, window_size: usize) -> ConsensusResult<u64> {
+        let window = match self.services.dag_traversal_manager.block_window(ghostdag_data, window_size) {
+            Ok(w) => w,
+            Err(RuleError::InsufficientDaaWindowSize(s)) => return Err(DifficultyError::InsufficientWindowData(s).into()),
+            Err(e) => panic!("unexpected error: {e}"),
+        };
+        Ok(self.services.difficulty_manager.estimate_network_hashes_per_second(&window)?)
     }
 }
 
@@ -667,16 +675,16 @@ impl ConsensusApi for Consensus {
     }
 
     fn estimate_network_hashes_per_second(&self, start_hash: Option<Hash>, window_size: usize) -> ConsensusResult<u64> {
-        let virtual_ghostdag_data =
-            if start_hash.is_none() { Some(self.virtual_stores.read().state.get().unwrap().ghostdag_data.clone()) } else { None };
-        let high_ghostdag_data: Refs<_> = match start_hash {
+        match start_hash {
             Some(hash) => {
                 self.validate_block_exists(hash)?;
-                self.ghostdag_primary_store.get_data(hash).unwrap().into()
+                let ghostdag_data = self.ghostdag_primary_store.get_data(hash).unwrap();
+                self.estimate_network_hashes_per_second_impl(&ghostdag_data, window_size)
             }
-            None => virtual_ghostdag_data.as_ref().unwrap().into(),
-        };
-        let window = self.services.dag_traversal_manager.block_window(&high_ghostdag_data, window_size).unwrap();
-        Ok(self.services.difficulty_manager.estimate_network_hashes_per_second(&window)?)
+            None => {
+                let virtual_state = self.virtual_stores.read().state.get().unwrap();
+                self.estimate_network_hashes_per_second_impl(&virtual_state.ghostdag_data, window_size)
+            }
+        }
     }
 }
