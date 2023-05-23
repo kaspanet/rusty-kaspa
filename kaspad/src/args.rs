@@ -16,6 +16,7 @@ pub struct Defaults {
     pub reset_db: bool,
     pub outbound_target: usize,
     pub inbound_limit: usize,
+    pub allow_submit_block_when_not_synced: bool,
     pub testnet: bool,
     pub devnet: bool,
     pub simnet: bool,
@@ -37,6 +38,7 @@ impl Default for Defaults {
             testnet: false,
             devnet: false,
             simnet: false,
+            allow_submit_block_when_not_synced: false,
         }
     }
 }
@@ -62,6 +64,7 @@ pub struct Args {
     pub reset_db: bool,
     pub outbound_target: usize,
     pub inbound_limit: usize,
+    pub allow_submit_block_when_not_synced: bool,
     pub testnet: bool,
     pub devnet: bool,
     pub simnet: bool,
@@ -165,6 +168,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .help("Max number of inbound peers (default: 128)."),
         )
         .arg(arg!(--"reset-db" "Reset database before starting node. It's needed when switching between subnetworks."))
+        .arg(arg!(--"allow-submit-block-when-not-synced" "Allow the node to accept blocks from RPC while not synced (this flag is mainly used for testing)"))
         .arg(arg!(--utxoindex "Enable the UTXO index"))
         .arg(arg!(--testnet "Use the test network"))
         .arg(arg!(--devnet "Use the development test network"))
@@ -198,6 +202,7 @@ impl Args {
             outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
             inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
             reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
+            allow_submit_block_when_not_synced: m.get_one::<bool>("allow-submit-block-when-not-synced").cloned().unwrap_or(defaults.allow_submit_block_when_not_synced),
             utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
@@ -209,6 +214,7 @@ impl Args {
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
         config.unsafe_rpc = self.unsafe_rpc;
+        config.allow_submit_block_when_not_synced = self.allow_submit_block_when_not_synced;
         config.user_agent_comments = self.user_agent_comments.clone();
     }
 }
@@ -287,6 +293,8 @@ impl Args {
       --archival                            Run as an archival node: don't delete old block data when moving the
                                             pruning point (Warning: heavy disk usage)'
       --protocol-version=                   Use non default p2p protocol version (default: 5)
+      --allow-submit-block-when-not-synced  Allow the node to accept blocks from RPC while not synced 
+                                            (this flag is mainly used for testing)
       --testnet                             Use the test network
       --simnet                              Use the simulation test network
       --devnet                              Use the development test network

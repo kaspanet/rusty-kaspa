@@ -37,7 +37,6 @@ pub struct Config {
 
     /// Allow the node to accept blocks from RPC while not synced
     /// (this flag is mainly used for testing)
-    // TODO: add and handle a matching kaspad command argument
     pub allow_submit_block_when_not_synced: bool,
 
     pub user_agent_comments: Vec<String>,
