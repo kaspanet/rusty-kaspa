@@ -113,11 +113,11 @@ pub mod rpc {
 }
 
 pub use kaspa_wallet_core::{
-    account::Account,
     keypair::{Keypair, PrivateKey},
+    runtime::account::Account,
+    runtime::wallet::Wallet,
     signer::{js_sign_transaction as sign_transaction, Signer},
-    storage::Store,
+    storage::local::Store,
     tx::{MutableTransaction, VirtualTransaction},
     utxo::{UtxoEntry, UtxoEntryReference, UtxoOrdering, UtxoSet},
-    wallet::Wallet,
 };

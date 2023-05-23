@@ -1779,7 +1779,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-addresses"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "borsh",
  "criterion",
@@ -1791,7 +1791,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-addressmanager"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "borsh",
  "itertools 0.10.5",
@@ -1806,7 +1806,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-bip32"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "bs58",
  "faster-hex",
@@ -1830,7 +1830,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-connectionmanager"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "duration-string",
  "futures-util",
@@ -1847,7 +1847,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "bincode",
@@ -1888,7 +1888,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus-core"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -1920,7 +1920,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus-notify"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "cfg-if 1.0.0",
@@ -1939,7 +1939,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensusmanager"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "duration-string",
  "futures-util",
@@ -1955,7 +1955,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-core"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "cfg-if 1.0.0",
  "ctrlc",
@@ -1972,7 +1972,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-database"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "bincode",
  "faster-hex",
@@ -1990,7 +1990,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-grpc-client"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "async-stream",
@@ -2017,7 +2017,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-grpc-core"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "async-stream",
@@ -2045,7 +2045,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-grpc-server"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "async-stream",
@@ -2072,7 +2072,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-hashes"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "blake2b_simd",
  "borsh",
@@ -2093,7 +2093,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-index-core"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -2112,7 +2112,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-index-processor"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -2140,7 +2140,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-math"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "borsh",
  "criterion",
@@ -2160,14 +2160,14 @@ dependencies = [
 
 [[package]]
 name = "kaspa-merkle"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "kaspa-hashes",
 ]
 
 [[package]]
 name = "kaspa-mining"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "criterion",
  "futures-util",
@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-muhash"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "criterion",
  "kaspa-hashes",
@@ -2201,7 +2201,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-notify"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -2228,7 +2228,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-p2p-flows"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-trait",
  "futures",
@@ -2257,7 +2257,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-p2p-lib"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "borsh",
  "ctrlc",
@@ -2286,7 +2286,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-pow"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "criterion",
  "js-sys",
@@ -2300,7 +2300,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-rpc-core"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -2333,7 +2333,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-rpc-macros"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "convert_case 0.5.0",
  "proc-macro-error",
@@ -2345,7 +2345,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-rpc-service"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-trait",
  "kaspa-addresses",
@@ -2369,7 +2369,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-testing-integration"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "bincode",
@@ -2415,7 +2415,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-txscript"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "blake2b_simd",
  "borsh",
@@ -2440,7 +2440,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-txscript-errors"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "secp256k1",
  "thiserror",
@@ -2448,7 +2448,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-utils"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "borsh",
@@ -2462,7 +2462,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-utxoindex"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "futures",
  "kaspa-consensus",
@@ -2483,7 +2483,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-std",
  "async-trait",
@@ -2495,7 +2495,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-cli"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-trait",
  "cfg-if 1.0.0",
@@ -2516,7 +2516,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-cli-wasm"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-trait",
  "js-sys",
@@ -2530,7 +2530,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-core"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "aes",
  "argon2",
@@ -2585,7 +2585,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wasm"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "kaspa-addresses",
  "kaspa-consensus-core",
@@ -2600,7 +2600,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-client"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-std",
  "async-trait",
@@ -2627,7 +2627,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-proxy"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-trait",
  "clap 4.2.7",
@@ -2646,7 +2646,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-server"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -2671,14 +2671,14 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-wasm"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "kaspa-wrpc-client",
 ]
 
 [[package]]
 name = "kaspad"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "clap 4.2.7",
@@ -3640,7 +3640,7 @@ dependencies = [
 
 [[package]]
 name = "rothschild"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "clap 4.2.7",
  "faster-hex",
@@ -3986,7 +3986,7 @@ dependencies = [
 
 [[package]]
 name = "simpa"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-channel",
  "clap 4.2.7",
@@ -4937,8 +4937,6 @@ dependencies = [
 [[package]]
 name = "workflow-core"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ef1497bd5f8361176dc31d5f6f6d298f25c9e0e908ec093fd1a29ed03533273"
 dependencies = [
  "async-channel",
  "async-std",
@@ -4964,8 +4962,6 @@ dependencies = [
 [[package]]
 name = "workflow-core-macros"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2e8cf5beaf736ed48df90f556b6ad0e3e701be09b3a8f68cc871bfcf2092655"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -4980,8 +4976,6 @@ dependencies = [
 [[package]]
 name = "workflow-dom"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "213d5d737e5d373ed392ec151e9fb47c4b06c931b33b9f3893b4e2fd88751241"
 dependencies = [
  "futures",
  "js-sys",
@@ -4997,8 +4991,6 @@ dependencies = [
 [[package]]
 name = "workflow-log"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4814b97a501f4270f1572e956c12a4fca03f438b950b40a2ac3db2537d5fb902"
 dependencies = [
  "cfg-if 1.0.0",
  "console",
@@ -5013,8 +5005,6 @@ dependencies = [
 [[package]]
 name = "workflow-macro-tools"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf3bd4fddadade24d994f8d5d0cd8dfe769af9d28eadab2ae58431a8290d007d"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -5026,8 +5016,6 @@ dependencies = [
 [[package]]
 name = "workflow-node"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79ad0754d5e446c4a3affd6de1c95a3a1fff4a6665a0964b245f24b174a6548b"
 dependencies = [
  "futures",
  "js-sys",
@@ -5045,8 +5033,6 @@ dependencies = [
 [[package]]
 name = "workflow-panic-hook"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3e9b16888bb7b7eea4c55abe89c789f54f8fe267ed373bdcf4aef907518090b"
 dependencies = [
  "cfg-if 1.0.0",
  "wasm-bindgen",
@@ -5056,8 +5042,6 @@ dependencies = [
 [[package]]
 name = "workflow-rpc"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9c3c620b76225ab345a032112ab1e4ed2cfbb2ad14932e5c8e7ab1e49755318"
 dependencies = [
  "ahash 0.8.3",
  "async-std",
@@ -5086,8 +5070,6 @@ dependencies = [
 [[package]]
 name = "workflow-rpc-macros"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c89625856920a2a0fcfaad621857928441aa3cb1934c2f11bee766b1a632b94a"
 dependencies = [
  "parse-variants",
  "proc-macro-error",
@@ -5099,8 +5081,6 @@ dependencies = [
 [[package]]
 name = "workflow-store"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa5d68321129b5f6b21c3629f140baa5bacf4b4bc2a42285c45f2daf2d6b5efd"
 dependencies = [
  "async-std",
  "base64 0.21.0",
@@ -5119,8 +5099,6 @@ dependencies = [
 [[package]]
 name = "workflow-task"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "787ed380d15e051e92043c80930f81fb952641c324d09a5bd97c1024635a8654"
 dependencies = [
  "futures",
  "thiserror",
@@ -5131,8 +5109,6 @@ dependencies = [
 [[package]]
 name = "workflow-task-macros"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf2e71078fa394fd56e6229a55af698d48eaa33c2312d251fe04e5907f82cb65"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -5147,8 +5123,6 @@ dependencies = [
 [[package]]
 name = "workflow-terminal"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb2e900ae7d37f594984b7f9d89c32d36db87c842249dc7c918081f3fd86f749"
 dependencies = [
  "async-std",
  "async-trait",
@@ -5171,8 +5145,6 @@ dependencies = [
 [[package]]
 name = "workflow-wasm"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ddba855d3347c4c55fc1c92933727f4319ee3d6b41e33912558316f55332cd0"
 dependencies = [
  "cfg-if 1.0.0",
  "faster-hex",
@@ -5192,8 +5164,6 @@ dependencies = [
 [[package]]
 name = "workflow-wasm-macros"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da2fd9eaf47b2382f9466b1e43359b0c0a4a7eace5394dcca31338bced9aa204"
 dependencies = [
  "js-sys",
  "proc-macro-error",
@@ -5206,8 +5176,6 @@ dependencies = [
 [[package]]
 name = "workflow-websocket"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93b30535e5032dd3871187d0f2d4374bbfe5857d8cf372a327d412b5e3052645"
 dependencies = [
  "ahash 0.8.3",
  "async-std",

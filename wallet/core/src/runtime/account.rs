@@ -1,15 +1,15 @@
 #[allow(unused_imports)]
 use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::address::{build_derivate_paths, AddressManager};
+use crate::imports::*;
 use crate::result::Result;
+use crate::runtime::wallet::{BalanceUpdate, Events, Wallet};
 use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
 use crate::storage::{self, PrvKeyData, PrvKeyDataId, PubKeyData};
 use crate::tx::{LimitCalcStrategy, PaymentOutput, PaymentOutputs, VirtualTransaction};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoOrdering, UtxoSet};
-use crate::wallet::{BalanceUpdate, Events};
 use crate::AddressDerivationManager;
-use crate::{imports::*, Wallet};
 use faster_hex::hex_string;
 use futures::future::join_all;
 use itertools::Itertools;
@@ -559,49 +559,10 @@ impl Account {
 
 pub type AccountList = Vec<Arc<Account>>;
 
-// #[derive(Default, Clone)]
-// pub struct AccountList(Vec<Arc<Account>>);
-
-// impl AsRef<Vec<Arc<Account>>> for AccountList {
-//     fn as_ref(&self) -> &Vec<Arc<Account>> {
-//         &self.0
-//     }
-// }
-
-// impl AsMut<Vec<Arc<Account>>> for AccountList {
-//     fn as_mut(&mut self) -> &mut Vec<Arc<Account>> {
-//         &mut self.0
-//     }
-// }
-
-// impl AccountList {
-//     pub fn new_with_accounts(accounts: &[Arc<Account>]) -> Self {
-//         AccountList(accounts.to_vec())
-//     }
-// }
-
-// impl From<Vec<Arc<Account>>> for AccountList {
-//     fn from(accounts: Vec<Arc<Account>>) -> Self {
-//         AccountList::new_with_accounts(&accounts)
-//     }
-// }
-
 #[derive(Default, Clone)]
 pub struct AccountMap(Arc<Mutex<HashMap<PrvKeyDataId, AccountList>>>);
 
 impl AccountMap {
-    // pub fn new(accounts: Vec<Account>) -> Result<HashMap<PrvKeyDataId, Vec<Arc<Account>>>> {
-    //     let mut map = HashMap::<PrvKeyDataId, Vec<Arc<Account>>>::new();
-    //     for account in accounts.into_iter() {
-    //         if let Some(list) = map.get_mut(&account.prv_key_data_id) {
-    //             list.push(Arc::new(account));
-    //         } else {
-    //             map.insert(account.prv_key_data_id, vec![Arc::new(account)]);
-    //         }
-    //     }
-    //     Ok(map)
-    // }
-
     pub fn locked_map(&self) -> MutexGuard<HashMap<PrvKeyDataId, AccountList>> {
         self.0.lock().unwrap()
     }

@@ -146,7 +146,9 @@ impl Serialize for Hash {
         S: Serializer,
     {
         if serializer.is_human_readable() {
-            serializer.serialize_str(&self.to_string())
+            let mut hex = [0u8; HASH_SIZE * 2];
+            faster_hex::hex_encode(&self.0, &mut hex).expect("The output is exactly twice the size of the input");
+            serializer.serialize_str(str::from_utf8(&hex).expect("hex is always valid UTF-8"))
         } else {
             serializer.serialize_bytes(&self.0)
         }

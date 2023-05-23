@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use futures::*;
 use kaspa_wallet_core::accounts::gen0::import::*;
 use kaspa_wallet_core::storage::AccountKind;
-use kaspa_wallet_core::{secret::Secret, wallet::AccountCreateArgs, Wallet};
+use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
 use kaspa_wallet_core::{Address, AddressPrefix};
 use std::sync::{Arc, Mutex};
 use workflow_core::abortable::Abortable;
@@ -38,7 +38,7 @@ impl WalletCli {
     }
 
     fn term(&self) -> Option<Arc<Terminal>> {
-        self.term.lock().unwrap().as_ref().cloned() //map(|term| term.clone())
+        self.term.lock().unwrap().as_ref().cloned()
     }
 
     async fn action(&self, action: Action, mut argv: Vec<String>, term: Arc<Terminal>) -> Result<()> {
