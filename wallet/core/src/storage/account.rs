@@ -45,8 +45,8 @@ impl Account {
     }
 }
 
-impl From<crate::account::Account> for Account {
-    fn from(account: crate::account::Account) -> Self {
+impl From<crate::runtime::Account> for Account {
+    fn from(account: crate::runtime::Account) -> Self {
         let inner = account.inner();
         inner.stored.clone()
     }

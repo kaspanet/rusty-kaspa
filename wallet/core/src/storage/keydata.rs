@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 // use crate::account::AccountId;
 use crate::address::create_xpub_from_mnemonic;
 use crate::result::Result;
@@ -60,6 +62,7 @@ impl Zeroize for KeyDataId {
 
 pub type PrvKeyDataId = KeyDataId;
 pub type PubKeyDataId = KeyDataId;
+pub type PrvKeyDataMap = HashMap<PrvKeyDataId, PrvKeyData>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

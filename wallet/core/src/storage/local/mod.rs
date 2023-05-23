@@ -1,4 +1,6 @@
 pub mod collection;
+pub mod interface;
+pub mod iterators;
 pub mod store;
 
 pub use collection::Collection;

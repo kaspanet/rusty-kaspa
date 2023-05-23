@@ -1,15 +1,15 @@
 #[allow(unused_imports)]
 use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::address::{build_derivate_paths, AddressManager};
+use crate::imports::*;
 use crate::result::Result;
+use crate::runtime::wallet::{BalanceUpdate, Events, Wallet};
 use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
 use crate::storage::{self, PrvKeyData, PrvKeyDataId, PubKeyData};
 use crate::tx::{LimitCalcStrategy, PaymentOutput, PaymentOutputs, VirtualTransaction};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoOrdering, UtxoSet};
-use crate::wallet::{BalanceUpdate, Events};
 use crate::AddressDerivationManager;
-use crate::{imports::*, Wallet};
 use faster_hex::hex_string;
 use futures::future::join_all;
 use itertools::Itertools;

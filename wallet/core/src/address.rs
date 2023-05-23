@@ -1,4 +1,3 @@
-use crate::account::AccountKind;
 use crate::accounts::gen0::PubkeyDerivationManagerV0;
 use crate::accounts::gen0::WalletDerivationManagerV0;
 use crate::accounts::gen1::PubkeyDerivationManager;
@@ -6,6 +5,7 @@ use crate::accounts::gen1::WalletDerivationManager;
 use crate::accounts::PubkeyDerivationManagerTrait;
 use crate::accounts::WalletDerivationManagerTrait;
 use crate::error::Error;
+use crate::runtime::AccountKind;
 use crate::storage::PubKeyData;
 use crate::Result;
 use futures::future::join_all;

@@ -10,7 +10,7 @@ use chacha20poly1305::{
 use faster_hex::{hex_decode, hex_string};
 use serde::{de::DeserializeOwned, Serializer};
 use sha2::{Digest, Sha256};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use zeroize::Zeroize;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -146,6 +146,16 @@ impl<T> Deref for Decrypted<T>
     type Target = T;
     fn deref(&self) -> &T {
         &self.0
+    }
+}
+
+impl<T> DerefMut for Decrypted<T>
+// where
+//     T: Zeroize,
+{
+    // type Target = T;
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 

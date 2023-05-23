@@ -1,10 +1,10 @@
-use crate::account::{AccountId, AccountList, AccountMap};
 use crate::result::Result;
+use crate::runtime::{Account, AccountId, AccountList, AccountMap};
 use crate::secret::Secret;
 use crate::storage::{self, AccountKind, PrvKeyData, PrvKeyDataId};
 use crate::utxo::UtxoEntryReference;
 #[allow(unused_imports)]
-use crate::{account::Account, accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
+use crate::{accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
 use crate::{imports::*, DynRpcApi};
 use futures::future::join_all;
 use futures::{select, FutureExt};
@@ -166,7 +166,27 @@ impl Wallet {
     // pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) => Result<()> {
     pub async fn load(self: &Arc<Wallet>, secret: Secret, prefix: AddressPrefix) -> Result<()> {
         // - TODO - RESET?
-        self.reset().await?;
+        // self.reset().await?;
+
+        // use crate::iterator::*;
+        // use storage::interface::*;
+        // use storage::local::interface::*;
+
+        // let ctx = Arc::new(AccessContext::default());
+        // let ctx: Arc<dyn AccessContextT> = ctx;
+        // let local_store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
+        // // let iface : Arc<dyn Interface> = local_store;
+        // let store_accounts = local_store.account().await;
+        // let mut iter = store_accounts.clone().iter(IteratorOptions::default()).await;
+        // while let Some(ids) = iter.next().await {
+        //     let accounts = store_accounts.load(&ctx, &ids).await?;
+
+        //     let accounts = accounts.iter().map(|stored| Account::try_new_from_storage(self, stored, prefix)).collect::<Vec<_>>();
+        //     let accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
+        //     let accounts = accounts.into_iter().map(Arc::new).collect::<Vec<_>>();
+
+        //     self.inner.account_map.extend(accounts)?;
+        // }
 
         let store = storage::local::Store::default();
         let wallet = storage::Wallet::try_load(&store).await?;

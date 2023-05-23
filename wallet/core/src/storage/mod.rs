@@ -3,7 +3,6 @@ pub use crate::encryption::{Decrypted, Encryptable, Encrypted};
 pub mod account;
 pub mod id;
 pub mod interface;
-pub mod iterator;
 pub mod keydata;
 pub mod local;
 pub mod metadata;
@@ -14,15 +13,14 @@ pub mod wallet;
 pub use account::Account;
 pub use id::IdT;
 pub use interface::{AccessContextT, AccountStore, Interface, MetadataStore, PrvKeyDataStore, TransactionRecordStore};
-pub use iterator::{Iterator, IteratorOptions};
-pub use keydata::{KeyDataPayload, PrvKeyData, PrvKeyDataId, PubKeyData, PubKeyDataId};
+// pub use iterator::{Iterator, IteratorOptions};
+pub use keydata::{KeyDataPayload, PrvKeyData, PrvKeyDataId, PrvKeyDataMap, PubKeyData, PubKeyDataId};
 pub use metadata::Metadata;
 pub use payload::Payload;
 pub use transaction::{TransactionRecord, TransactionRecordId};
 pub use wallet::Wallet;
 
-pub use crate::account::AccountId;
-pub use crate::account::AccountKind;
+pub use crate::runtime::{AccountId, AccountKind};
 
 #[cfg(test)]
 mod tests {

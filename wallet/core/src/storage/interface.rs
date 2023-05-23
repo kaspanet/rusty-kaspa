@@ -1,11 +1,10 @@
 use crate::imports::*;
+use crate::iterator::*;
 use crate::result::Result;
 use crate::secret::Secret;
 use async_trait::async_trait;
 
-use crate::storage::{
-    Account, AccountId, Iterator, IteratorOptions, Metadata, PrvKeyData, PrvKeyDataId, TransactionRecord, TransactionRecordId,
-};
+use crate::storage::{Account, AccountId, Metadata, PrvKeyData, PrvKeyDataId, TransactionRecord, TransactionRecordId};
 
 #[async_trait]
 pub trait AccessContextT: Send + Sync {
@@ -42,33 +41,41 @@ impl AccessContextT for AccessContext {
 #[async_trait]
 pub trait PrvKeyDataStore: Send + Sync {
     async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = PrvKeyDataId>>;
+    async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[&PrvKeyDataId]) -> Result<Vec<PrvKeyData>>;
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&PrvKeyData]) -> Result<()>;
-    async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[PrvKeyDataId]) -> Result<Vec<PrvKeyData>>;
+    async fn remove(&self, ctx: &Arc<dyn AccessContextT>, id: &[&PrvKeyDataId]) -> Result<()>;
 }
 
 #[async_trait]
 pub trait AccountStore: Send + Sync {
     async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = AccountId>>;
-    async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&Account]) -> Result<()>;
     async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[AccountId]) -> Result<Vec<Account>>;
+    async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&Account]) -> Result<()>;
+    async fn remove(&self, ctx: &Arc<dyn AccessContextT>, id: &[AccountId]) -> Result<()>;
 }
 
 #[async_trait]
 pub trait MetadataStore: Send + Sync {
     // async fn iter(self: Arc<Self>) -> Arc<dyn Iterator<Item = AccountId>>;
-    async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&Metadata]) -> Result<()>;
     async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[AccountId]) -> Result<Vec<Metadata>>;
+    async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&Metadata]) -> Result<()>;
+    async fn remove(&self, ctx: &Arc<dyn AccessContextT>, id: &[AccountId]) -> Result<()>;
 }
 
 #[async_trait]
 pub trait TransactionRecordStore: Send + Sync {
     async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = TransactionRecordId>>;
+    async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[&TransactionRecordId]) -> Result<Vec<TransactionRecord>>;
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&TransactionRecord]) -> Result<()>;
-    async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[TransactionRecordId]) -> Result<Vec<TransactionRecord>>;
+    async fn remove(&self, ctx: &Arc<dyn AccessContextT>, id: &[&TransactionRecordId]) -> Result<()>;
 }
 
 #[async_trait]
-pub trait Interface: Sized + Send + Sync {
+// pub trait Interface: Sized + Send + Sync {
+pub trait Interface: Send + Sync {
+    async fn open(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()>;
+    async fn close(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()>;
+    // ~~~
     async fn prv_key_data(self: Arc<Self>) -> Arc<dyn PrvKeyDataStore>;
     async fn account(self: Arc<Self>) -> Arc<dyn AccountStore>;
     async fn metadata(self: Arc<Self>) -> Arc<dyn MetadataStore>;
