@@ -253,7 +253,8 @@ impl VirtualTransaction {
                 let max_inputs = calculate_chunk_size(&tx, mass, &consensus_params, true, minimum_signatures).await? as usize;
                 abortable.check()?;
                 let mut txs =
-                    Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count, minimum_signatures, abortable).await?;
+                    Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count, minimum_signatures, abortable)
+                        .await?;
                 abortable.check()?;
                 txs.merge(outputs, change_address, priority_fee, payload.clone(), minimum_signatures).await?;
                 Ok(VirtualTransaction { transactions: txs.transactions, payload })
@@ -262,7 +263,8 @@ impl VirtualTransaction {
                 abortable.check()?;
                 let max_inputs = inputs as usize;
                 let mut txs =
-                    Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count, minimum_signatures, abortable).await?;
+                    Self::split_utxos(entries, max_inputs, max_inputs, change_address, sig_op_count, minimum_signatures, abortable)
+                        .await?;
                 abortable.check()?;
                 txs.merge(outputs, change_address, priority_fee, payload.clone(), minimum_signatures).await?;
                 Ok(VirtualTransaction { transactions: txs.transactions, payload })
