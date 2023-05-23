@@ -202,7 +202,10 @@ impl Args {
             outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
             inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
             reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
-            allow_submit_block_when_not_synced: m.get_one::<bool>("allow-submit-block-when-not-synced").cloned().unwrap_or(defaults.allow_submit_block_when_not_synced),
+            allow_submit_block_when_not_synced: m
+                .get_one::<bool>("allow-submit-block-when-not-synced")
+                .cloned()
+                .unwrap_or(defaults.allow_submit_block_when_not_synced),
             utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
@@ -293,7 +296,7 @@ impl Args {
       --archival                            Run as an archival node: don't delete old block data when moving the
                                             pruning point (Warning: heavy disk usage)'
       --protocol-version=                   Use non default p2p protocol version (default: 5)
-      --allow-submit-block-when-not-synced  Allow the node to accept blocks from RPC while not synced 
+      --allow-submit-block-when-not-synced  Allow the node to accept blocks from RPC while not synced
                                             (this flag is mainly used for testing)
       --testnet                             Use the test network
       --simnet                              Use the simulation test network
