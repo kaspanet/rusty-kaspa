@@ -48,8 +48,10 @@ pub enum Action {
     // Parse,
     // #[describe("?Sends a Kaspa transaction to a public address")]
     Send,
-    #[describe("?Shows all generated public addresses of the current wallet")]
+    #[describe("?Shows address of the current wallet")]
     Address,
+    #[describe("?Shows all generated public addresses of the current wallet")]
+    ShowAddresses,
     #[describe("?Sign the given partially signed transaction")]
     Sign,
     #[describe("?Start the wallet daemon")]

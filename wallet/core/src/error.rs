@@ -7,6 +7,7 @@ use kaspa_wrpc_client::error::Error as KaspaWorkflowRpcError;
 use secp256k1::Error as Secp256k1Error;
 use std::sync::PoisonError;
 use wasm_bindgen::JsValue;
+use workflow_core::abortable::Aborted;
 use workflow_rpc::client::error::Error as RpcError;
 use workflow_wasm::sendable::*;
 
@@ -102,6 +103,15 @@ pub enum Error {
 
     #[error("private key {0} not found")]
     PrivateKeyNotFound(String),
+
+    #[error("task aborted")]
+    Aborted,
+}
+
+impl From<Aborted> for Error {
+    fn from(_value: Aborted) -> Self {
+        Self::Aborted
+    }
 }
 
 impl Error {

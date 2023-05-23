@@ -23,6 +23,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use workflow_core::abortable::Abortable;
 use workflow_core::channel::{Channel, DuplexChannel};
 
 #[derive(Default, Clone)]
@@ -319,6 +320,8 @@ impl Account {
             }
         }
 
+        scan.address_manager.set_index(last_address_index)?;
+
         Ok(())
     }
 
@@ -365,6 +368,7 @@ impl Account {
         priority_fee_sompi: u64,
         keydata: PrvKeyData,
         payment_secret: Option<Secret>,
+        abortable: &Abortable,
     ) -> Result<Vec<kaspa_hashes::Hash>> {
         let fee_margin = 1000; //TODO update select_utxos to remove this fee_margin
         let transaction_amount = amount_sompi + priority_fee_sompi + fee_margin;
@@ -376,16 +380,19 @@ impl Account {
         let priority_fee_sompi = Some(priority_fee_sompi);
         let payload = vec![];
         let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
+        let minimum_signatures = self.inner().stored.minimum_signatures;
         let addresses = utxo_selection.selected_entries.iter().map(|u| u.utxo.address.clone().unwrap()).collect::<Vec<Address>>();
         //let mtx = create_transaction(utxo_selection, outputs, change_address, priority_fee, payload)?;
         let vt = VirtualTransaction::new(
             sig_op_count,
+            minimum_signatures,
             &utxo_selection,
             &outputs,
             &change_address,
             priority_fee_sompi,
             payload,
             LimitCalcStrategy::inputs(80),
+            abortable,
         )
         .await?;
 
@@ -396,7 +403,7 @@ impl Account {
         let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
         let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
         let mut tx_ids = vec![];
-        for mtx in vt.transactions() {
+        for mtx in vt.transactions().clone() {
             let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
             let id = self.wallet.rpc().submit_transaction(mtx.try_into()?, false).await?;
             //println!("id: {id}\r\n");
@@ -441,12 +448,11 @@ impl Account {
         self.change_address_manager()?.current_address().await
     }
 
-    #[allow(dead_code)]
-    fn receive_address_manager(&self) -> Result<Arc<AddressManager>> {
+    pub fn receive_address_manager(&self) -> Result<Arc<AddressManager>> {
         Ok(self.derivation.receive_address_manager())
     }
 
-    fn change_address_manager(&self) -> Result<Arc<AddressManager>> {
+    pub fn change_address_manager(&self) -> Result<Arc<AddressManager>> {
         Ok(self.derivation.change_address_manager())
     }
 

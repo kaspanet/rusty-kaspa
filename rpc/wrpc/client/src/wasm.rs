@@ -264,11 +264,10 @@ build_wrpc_wasm_bindgen_interface!(
 #[wasm_bindgen]
 impl RpcClient {
     #[wasm_bindgen(js_name = submitTransaction)]
-    pub async fn submit_transaction(&self, request: JsValue) -> JsResult<JsValue> {
+    pub async fn js_submit_transaction(&self, request: JsValue) -> JsResult<JsValue> {
         log_info!("submit_transaction req: {:?}", request);
-        let request: SubmitTransactionRequest = from_value(request)?;
-        let result: RpcResult<SubmitTransactionResponse> = self.client.submit_transaction_call(request).await;
-        let response: SubmitTransactionResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
+        let response =
+            self.submit_transaction(from_value(request)?).await.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
         to_value(&response).map_err(|err| err.into())
     }
 
@@ -282,5 +281,13 @@ impl RpcClient {
         let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
         //log_info!("get_utxos_by_addresses resp: {:?}", response);
         to_value(&response).map_err(|err| err.into())
+    }
+}
+
+impl RpcClient {
+    pub async fn submit_transaction(&self, request: SubmitTransactionRequest) -> Result<SubmitTransactionResponse> {
+        let result: RpcResult<SubmitTransactionResponse> = self.client.submit_transaction_call(request).await;
+        let response: SubmitTransactionResponse = result?;
+        Ok(response)
     }
 }

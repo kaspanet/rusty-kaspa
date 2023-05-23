@@ -9,7 +9,7 @@ use crate::{imports::*, DynRpcApi};
 use futures::future::join_all;
 use futures::{select, FutureExt};
 use kaspa_addresses::Prefix as AddressPrefix;
-use kaspa_bip32::Mnemonic;
+use kaspa_bip32::{ExtendedPrivateKey, Mnemonic};
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_notify::{
     listener::ListenerId,
@@ -427,8 +427,22 @@ impl Wallet {
         Ok((store.filename().clone(), mnemonic))
     }
 
-    pub async fn dump_unencrypted(&self) -> Result<()> {
-        Ok(())
+    pub async fn dump_unencrypted(
+        &self,
+        account: Arc<Account>,
+        password: Secret,
+        payment_secret: Option<Secret>,
+    ) -> Result<(String, String)> {
+        let key = self.get_account_keydata(account.prv_key_data_id, password).await?;
+        if let Some(key_data) = key {
+            let mnemonic = key_data.as_mnemonic(payment_secret)?;
+            let seed = mnemonic.to_seed("");
+            let xprv = ExtendedPrivateKey::<kaspa_bip32::SecretKey>::new(seed).unwrap();
+            let prefix = kaspa_bip32::Prefix::KPRV;
+            Ok((mnemonic.phrase_string(), xprv.to_string(prefix).to_string()))
+        } else {
+            Err("Account private key data not found".to_string().into())
+        }
     }
 
     pub async fn select(&self, account: Option<Arc<Account>>) -> Result<()> {
