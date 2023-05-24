@@ -1675,7 +1675,9 @@ dependencies = [
 name = "kaspa-consensusmanager"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
  "duration-string",
+ "futures",
  "futures-util",
  "itertools 0.10.5",
  "kaspa-consensus-core",

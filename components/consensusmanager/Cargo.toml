@@ -16,4 +16,6 @@ parking_lot.workspace = true
 itertools.workspace = true
 rand.workspace = true
 futures-util.workspace = true
+futures.workspace = true
 duration-string = "0.2.0"
+arc-swap = { version = "1.6.0", features = ["weak"] }

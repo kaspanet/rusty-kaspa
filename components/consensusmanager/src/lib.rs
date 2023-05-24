@@ -5,6 +5,8 @@ use parking_lot::RwLock;
 use std::{collections::VecDeque, ops::Deref, sync::Arc, thread::JoinHandle};
 use tokio::sync::{OwnedRwLockReadGuard as TokioOwnedRwLockReadGuard, RwLock as TokioRwLock};
 
+pub mod readers_lock;
+
 /// Consensus controller trait. Includes methods required to start/stop/control consensus, but which should not
 /// be exposed to ordinary users
 pub trait ConsensusCtl: Sync + Send {
