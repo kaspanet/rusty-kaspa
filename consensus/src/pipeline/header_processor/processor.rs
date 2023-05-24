@@ -37,6 +37,7 @@ use kaspa_consensus_core::{
     header::Header,
     BlockHashSet, BlockLevel,
 };
+use kaspa_consensusmanager::SessionLock;
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_utils::vec::VecExtensions;
@@ -44,7 +45,6 @@ use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{atomic::Ordering, Arc};
-use tokio::sync::RwLock as TokioRwLock;
 
 use super::super::ProcessingCounters;
 
@@ -151,7 +151,7 @@ pub struct HeaderProcessor {
     pub(super) parents_manager: DbParentsManager,
 
     // Pruning lock
-    pruning_lock: Arc<TokioRwLock<()>>,
+    pruning_lock: SessionLock,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -169,7 +169,7 @@ impl HeaderProcessor {
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
-        pruning_lock: Arc<TokioRwLock<()>>,
+        pruning_lock: SessionLock,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {

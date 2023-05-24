@@ -27,6 +27,7 @@ use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::ORIGIN, blockstatus::BlockStatus::StatusHeaderOnly, muhash::MuHashExtensions, pruning::PruningPointProof, BlockHashSet,
 };
+use kaspa_consensusmanager::SessionLock;
 use kaspa_core::info;
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
@@ -35,7 +36,6 @@ use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{collections::VecDeque, ops::Deref, sync::Arc};
-use tokio::sync::RwLock as TokioRwLock;
 
 pub enum PruningProcessingMessage {
     Exit,
@@ -60,7 +60,7 @@ pub struct PruningProcessor {
     pruning_proof_manager: Arc<PruningProofManager>,
 
     // Pruning lock
-    pruning_lock: Arc<TokioRwLock<()>>,
+    pruning_lock: SessionLock,
 }
 
 impl Deref for PruningProcessor {
@@ -77,7 +77,7 @@ impl PruningProcessor {
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
-        pruning_lock: Arc<TokioRwLock<()>>,
+        pruning_lock: SessionLock,
     ) -> Self {
         Self {
             receiver,

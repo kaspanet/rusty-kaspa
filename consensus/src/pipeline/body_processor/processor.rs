@@ -30,13 +30,13 @@ use kaspa_consensus_notify::{
     notification::{BlockAddedNotification, Notification},
     root::ConsensusNotificationRoot,
 };
+use kaspa_consensusmanager::SessionLock;
 use kaspa_hashes::Hash;
 use kaspa_notify::notifier::Notify;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{atomic::Ordering, Arc};
-use tokio::sync::RwLock as TokioRwLock;
 
 pub struct BlockBodyProcessor {
     // Channels
@@ -68,7 +68,7 @@ pub struct BlockBodyProcessor {
     pub(super) past_median_time_manager: DbPastMedianTimeManager,
 
     // Pruning lock
-    pruning_lock: Arc<TokioRwLock<()>>,
+    pruning_lock: SessionLock,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
@@ -102,7 +102,7 @@ impl BlockBodyProcessor {
 
         max_block_mass: u64,
         genesis: GenesisBlock,
-        pruning_lock: Arc<TokioRwLock<()>>,
+        pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {

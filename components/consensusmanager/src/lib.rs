@@ -3,9 +3,11 @@ use kaspa_consensus_core::api::{ConsensusApi, DynConsensus};
 use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::{collections::VecDeque, ops::Deref, sync::Arc, thread::JoinHandle};
-use tokio::sync::{OwnedRwLockReadGuard as TokioOwnedRwLockReadGuard, RwLock as TokioRwLock};
 
 pub mod readers_lock;
+mod session;
+
+pub use session::{ConsensusInstance, ConsensusSession, SessionLock, SessionReadGuard, SessionWriteGuard};
 
 /// Consensus controller trait. Includes methods required to start/stop/control consensus, but which should not
 /// be exposed to ordinary users
@@ -103,7 +105,7 @@ impl ConsensusManager {
         let (consensus, ctl) = (consensus.clone() as DynConsensus, consensus as DynConsensusCtl);
         Self {
             factory: Arc::new(MockFactory),
-            inner: RwLock::new(ManagerInner::new(ConsensusInstance::new(Arc::new(TokioRwLock::new(())), consensus), ctl)),
+            inner: RwLock::new(ManagerInner::new(ConsensusInstance::new(SessionLock::new(), consensus), ctl)),
         }
     }
 
@@ -186,41 +188,5 @@ impl Deref for StagingConsensus {
 
     fn deref(&self) -> &Self::Target {
         &self.staging.consensus
-    }
-}
-
-#[derive(Clone)]
-pub struct ConsensusInstance {
-    session_lock: Arc<TokioRwLock<()>>,
-    consensus: DynConsensus,
-}
-
-impl ConsensusInstance {
-    pub fn new(session_lock: Arc<TokioRwLock<()>>, consensus: DynConsensus) -> Self {
-        Self { session_lock, consensus }
-    }
-
-    pub async fn session(&self) -> ConsensusSession {
-        let g = self.session_lock.clone().read_owned().await;
-        ConsensusSession::new(g, self.consensus.clone())
-    }
-}
-
-pub struct ConsensusSession {
-    _session_guard: Arc<TokioOwnedRwLockReadGuard<()>>,
-    consensus: DynConsensus,
-}
-
-impl ConsensusSession {
-    pub fn new(session_guard: TokioOwnedRwLockReadGuard<()>, consensus: DynConsensus) -> Self {
-        Self { _session_guard: Arc::new(session_guard), consensus }
-    }
-}
-
-impl Deref for ConsensusSession {
-    type Target = dyn ConsensusApi; // We avoid exposing the Arc itself by ref since it can be easily cloned and misused
-
-    fn deref(&self) -> &Self::Target {
-        self.consensus.as_ref()
     }
 }

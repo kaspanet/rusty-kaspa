@@ -65,6 +65,7 @@ use kaspa_consensus_notify::{
     },
     root::ConsensusNotificationRoot,
 };
+use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
@@ -83,7 +84,6 @@ use std::{
     ops::Deref,
     sync::{atomic::Ordering, Arc},
 };
-use tokio::sync::RwLock as TokioRwLock;
 
 use super::errors::{PruningImportError, PruningImportResult};
 
@@ -137,7 +137,7 @@ pub struct VirtualStateProcessor {
     pub(super) depth_manager: DbBlockDepthManager,
 
     // Pruning lock
-    pruning_lock: Arc<TokioRwLock<()>>,
+    pruning_lock: SessionLock,
 
     // Notifier
     notification_root: Arc<ConsensusNotificationRoot>,
@@ -157,7 +157,7 @@ impl VirtualStateProcessor {
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
-        pruning_lock: Arc<TokioRwLock<()>>,
+        pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {

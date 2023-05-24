@@ -7,8 +7,9 @@ use std::{
     ops::Deref,
     sync::{Arc, Weak},
 };
-use tokio::sync::{
-    OwnedRwLockReadGuard as TokioOwnedRwLockReadGuard, RwLock as TokioRwLock, RwLockWriteGuard as TokioRwLockWriteGuard,
+pub use tokio::sync::{
+    OwnedRwLockReadGuard as TokioOwnedRwLockReadGuard, OwnedRwLockWriteGuard as OwnedTokioRwLockWriteGuard, RwLock as TokioRwLock,
+    RwLockWriteGuard as TokioRwLockWriteGuard,
 };
 
 type ArcedOwnedRwLockReadGuard<T> = Arc<TokioOwnedRwLockReadGuard<T>>;
@@ -70,6 +71,10 @@ impl<T: Send + Sync + 'static> ReadersFirstRwLock<T> {
 
     pub async fn write(&self) -> TokioRwLockWriteGuard<'_, T> {
         self.inner.write().await
+    }
+
+    pub async fn write_owned(&self) -> OwnedTokioRwLockWriteGuard<T> {
+        self.inner.clone().write_owned().await
     }
 
     pub fn blocking_write(&self) -> TokioRwLockWriteGuard<'_, T> {

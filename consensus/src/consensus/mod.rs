@@ -61,6 +61,7 @@ use crossbeam_channel::{
     bounded as bounded_crossbeam, unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender,
 };
 use itertools::Itertools;
+use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -72,7 +73,7 @@ use std::{
     ops::Deref,
     sync::{atomic::Ordering, Arc},
 };
-use tokio::sync::{oneshot, RwLock as TokioRwLock};
+use tokio::sync::oneshot;
 
 use self::{services::ConsensusServices, storage::ConsensusStorage};
 
@@ -96,7 +97,7 @@ pub struct Consensus {
     pub(super) services: Arc<ConsensusServices>,
 
     // Pruning lock
-    pruning_lock: Arc<TokioRwLock<()>>,
+    pruning_lock: SessionLock,
 
     // Notification management
     notification_root: Arc<ConsensusNotificationRoot>,
@@ -120,7 +121,7 @@ impl Consensus {
     pub fn new(
         db: Arc<DB>,
         config: Arc<Config>,
-        pruning_lock: Arc<TokioRwLock<()>>,
+        pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
@@ -276,7 +277,7 @@ impl Consensus {
     }
 
     /// Acquires a consensus session, blocking data-pruning from occurring until released
-    pub fn acquire_session(&self) -> tokio::sync::RwLockReadGuard<'_, ()> {
+    pub fn acquire_session(&self) -> SessionReadGuard {
         self.pruning_lock.blocking_read()
     }
 
