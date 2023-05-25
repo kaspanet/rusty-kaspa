@@ -168,7 +168,7 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .help("Max number of inbound peers (default: 128)."),
         )
         .arg(arg!(--"reset-db" "Reset database before starting node. It's needed when switching between subnetworks."))
-        .arg(arg!(--"allow-submit-block-when-not-synced" "Allow the node to accept blocks from RPC while not synced (this flag is mainly used for testing)"))
+        .arg(arg!(--"enable-desync-mining" "Allow the node to accept blocks from RPC while not synced (this flag is mainly used for testing)"))
         .arg(arg!(--utxoindex "Enable the UTXO index"))
         .arg(arg!(--testnet "Use the test network"))
         .arg(arg!(--devnet "Use the development test network"))
