@@ -1,8 +1,8 @@
-use kaspa_utils::hex::ToHex;
-use wasm_bindgen::prelude::*;
-use num::Float;
-use kaspa_math::Uint256;
 use js_sys::BigInt;
+use kaspa_math::Uint256;
+use kaspa_utils::hex::ToHex;
+use num::Float;
+use wasm_bindgen::prelude::*;
 
 // https://github.com/tmrlvi/kaspa-miner/blob/bf361d02a46c580f55f46b5dfa773477634a5753/src/client/stratum.rs#L36
 const DIFFICULTY_1_TARGET: (u64, i16) = (0xffffu64, 208); // 0xffff 2^208

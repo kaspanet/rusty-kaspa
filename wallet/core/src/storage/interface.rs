@@ -53,7 +53,7 @@ pub trait AccountStore: Send + Sync {
     async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = AccountId>>;
     async fn len(&self, ctx: &Arc<dyn AccessContextT>) -> Result<usize>;
     async fn load(&self, ctx: &Arc<dyn AccessContextT>, ids: &[AccountId]) -> Result<Vec<Arc<Account>>>;
-    async fn range(&self, ctx: &Arc<dyn AccessContextT>, range : std::ops::Range<usize>) -> Result<Vec<Arc<Account>>>;
+    async fn range(&self, ctx: &Arc<dyn AccessContextT>, range: std::ops::Range<usize>) -> Result<Vec<Arc<Account>>>;
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&Account]) -> Result<()>;
     async fn remove(&self, ctx: &Arc<dyn AccessContextT>, id: &[AccountId]) -> Result<()>;
 }

@@ -138,13 +138,11 @@ impl PrvKeyDataStore for LocalStore {
     }
 
     // async fn range(&self, _ctx: &Arc<dyn AccessContextT>, range : std::ops::Range<usize>) -> Result<Vec<PrvKeyDataInfo>> {
-        
-        
+
     //     let accounts = self.cache.inner().prv_key_data_info[range.start..range.end].to_vec(); //accounts.range(range)?;
     //     Ok(accounts)
 
     //     // todo!();
-
 
     // }
 
@@ -163,7 +161,6 @@ impl AccountStore for LocalStore {
         Ok(self.cache.inner().accounts.vec.len())
     }
 
-
     async fn store(&self, _ctx: &Arc<dyn AccessContextT>, data: &[&Account]) -> Result<()> {
         // self.cache.accounts.lock().unwrap().store(data)?;
         // let secret = ctx.wallet_secret().await.expect("wallet requires an encryption secret");
@@ -180,12 +177,11 @@ impl AccountStore for LocalStore {
         // let accounts = accounts.into_iter().map(|account| (*account).clone()).collect::<Vec<_>>();
         Ok(accounts)
     }
-    
-    async fn range(&self, _ctx: &Arc<dyn AccessContextT>, range : std::ops::Range<usize>) -> Result<Vec<Arc<Account>>> {
+
+    async fn range(&self, _ctx: &Arc<dyn AccessContextT>, range: std::ops::Range<usize>) -> Result<Vec<Arc<Account>>> {
         let accounts = self.cache.inner().accounts.range(range)?;
         Ok(accounts)
     }
-
 
     async fn remove(&self, _ctx: &Arc<dyn AccessContextT>, ids: &[AccountId]) -> Result<()> {
         self.cache.inner().accounts.remove(ids)?;

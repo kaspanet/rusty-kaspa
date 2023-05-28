@@ -216,8 +216,6 @@ impl Wallet {
     pub async fn is_account_key_encrypted(&self, account: &Account, secret: Secret) -> Result<bool> {
         let _id = account.prv_key_data_id;
 
-
-
         // let id = if let Some(id) = account.prv_key_data_id { id } else { return Ok(false) };
         let id = account.prv_key_data_id;
         let store = storage::local::Store::default();

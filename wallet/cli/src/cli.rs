@@ -130,18 +130,21 @@ impl WalletCli {
             Action::DumpUnencrypted => {
                 let account = self.wallet.account()?;
                 let password = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
-                let mut payment_secret = Option::<Secret>::None;
+                let mut _payment_secret = Option::<Secret>::None;
 
                 if self.wallet.is_account_key_encrypted(&account, password.clone()).await? {
-                    payment_secret = Some(Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec()));
+                    _payment_secret = Some(Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec()));
                 }
                 let keydata = self.wallet.get_account_keydata(account.prv_key_data_id, password.clone()).await?;
                 if keydata.is_none() {
                     return Err("It is read only wallet.".into());
                 }
-                let (mnemonic, xprv) = self.wallet.dump_unencrypted(account, password, payment_secret).await?;
-                term.writeln(format!("mnemonic: {mnemonic}"));
-                term.writeln(format!("xprv: {xprv}"));
+
+                todo!();
+
+                // let (mnemonic, xprv) = self.wallet.dump_unencrypted(account, password, payment_secret).await?;
+                // term.writeln(format!("mnemonic: {mnemonic}"));
+                // term.writeln(format!("xprv: {xprv}"));
             }
             Action::NewAddress => {
                 let account = self.wallet.account()?;
