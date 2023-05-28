@@ -14,7 +14,7 @@ pub use account::Account;
 pub use id::IdT;
 pub use interface::{AccessContextT, AccountStore, Interface, MetadataStore, PrvKeyDataStore, TransactionRecordStore};
 // pub use iterator::{Iterator, IteratorOptions};
-pub use keydata::{KeyDataPayload, PrvKeyData, PrvKeyDataId, PrvKeyDataMap, PubKeyData, PubKeyDataId};
+pub use keydata::{KeyDataPayload, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PubKeyData, PubKeyDataId};
 pub use metadata::Metadata;
 pub use payload::Payload;
 pub use transaction::{TransactionRecord, TransactionRecordId};

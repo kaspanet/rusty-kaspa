@@ -9,7 +9,7 @@ use crate::{imports::*, DynRpcApi};
 use futures::future::join_all;
 use futures::{select, FutureExt};
 use kaspa_addresses::Prefix as AddressPrefix;
-use kaspa_bip32::{ExtendedPrivateKey, Mnemonic};
+use kaspa_bip32::Mnemonic;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_notify::{
     listener::ListenerId,
@@ -164,40 +164,40 @@ impl Wallet {
     }
 
     // pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) => Result<()> {
-    pub async fn load(self: &Arc<Wallet>, secret: Secret, prefix: AddressPrefix) -> Result<()> {
+    pub async fn load(self: &Arc<Wallet>, _secret: Secret, prefix: AddressPrefix) -> Result<()> {
         // - TODO - RESET?
-        // self.reset().await?;
+        self.reset().await?;
 
-        // use crate::iterator::*;
-        // use storage::interface::*;
-        // use storage::local::interface::*;
+        use crate::iterator::*;
+        use storage::interface::*;
+        use storage::local::interface::*;
 
-        // let ctx = Arc::new(AccessContext::default());
-        // let ctx: Arc<dyn AccessContextT> = ctx;
-        // let local_store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
-        // // let iface : Arc<dyn Interface> = local_store;
-        // let store_accounts = local_store.account().await;
-        // let mut iter = store_accounts.clone().iter(IteratorOptions::default()).await;
-        // while let Some(ids) = iter.next().await {
-        //     let accounts = store_accounts.load(&ctx, &ids).await?;
+        let ctx = Arc::new(AccessContext::default());
+        let ctx: Arc<dyn AccessContextT> = ctx;
+        let local_store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
+        // let iface : Arc<dyn Interface> = local_store;
+        let store_accounts = local_store.account().await;
+        let mut iter = store_accounts.clone().iter(IteratorOptions::default()).await;
+        while let Some(ids) = iter.next().await {
+            let accounts = store_accounts.load(&ctx, &ids).await?;
 
-        //     let accounts = accounts.iter().map(|stored| Account::try_new_from_storage(self, stored, prefix)).collect::<Vec<_>>();
-        //     let accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
-        //     let accounts = accounts.into_iter().map(Arc::new).collect::<Vec<_>>();
+            let accounts = accounts.iter().map(|stored| Account::try_new_from_storage(self, stored, prefix)).collect::<Vec<_>>();
+            let accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
+            let accounts = accounts.into_iter().map(Arc::new).collect::<Vec<_>>();
 
-        //     self.inner.account_map.extend(accounts)?;
-        // }
+            self.inner.account_map.extend(accounts)?;
+        }
 
-        let store = storage::local::Store::default();
-        let wallet = storage::Wallet::try_load(&store).await?;
-        let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
+        // let store = storage::local::Store::default();
+        // let wallet = storage::Wallet::try_load(&store).await?;
+        // let payload = wallet.payload.decrypt::<storage::Payload>(secret)?;
 
-        let accounts =
-            payload.as_ref().accounts.iter().map(|stored| Account::try_new_from_storage(self, stored, prefix)).collect::<Vec<_>>();
-        let accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
-        let accounts = accounts.into_iter().map(Arc::new).collect::<Vec<_>>();
+        // let accounts =
+        //     payload.as_ref().accounts.iter().map(|stored| Account::try_new_from_storage(self, stored, prefix)).collect::<Vec<_>>();
+        // let accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
+        // let accounts = accounts.into_iter().map(Arc::new).collect::<Vec<_>>();
 
-        self.inner.account_map.extend(accounts)?;
+        // self.inner.account_map.extend(accounts)?;
 
         Ok(())
     }
@@ -214,6 +214,10 @@ impl Wallet {
     }
 
     pub async fn is_account_key_encrypted(&self, account: &Account, secret: Secret) -> Result<bool> {
+        let _id = account.prv_key_data_id;
+
+
+
         // let id = if let Some(id) = account.prv_key_data_id { id } else { return Ok(false) };
         let id = account.prv_key_data_id;
         let store = storage::local::Store::default();
@@ -427,22 +431,8 @@ impl Wallet {
         Ok((store.filename().clone(), mnemonic))
     }
 
-    pub async fn dump_unencrypted(
-        &self,
-        account: Arc<Account>,
-        password: Secret,
-        payment_secret: Option<Secret>,
-    ) -> Result<(String, String)> {
-        let key = self.get_account_keydata(account.prv_key_data_id, password).await?;
-        if let Some(key_data) = key {
-            let mnemonic = key_data.as_mnemonic(payment_secret)?;
-            let seed = mnemonic.to_seed("");
-            let xprv = ExtendedPrivateKey::<kaspa_bip32::SecretKey>::new(seed).unwrap();
-            let prefix = kaspa_bip32::Prefix::KPRV;
-            Ok((mnemonic.phrase_string(), xprv.to_string(prefix).to_string()))
-        } else {
-            Err("Account private key data not found".to_string().into())
-        }
+    pub async fn dump_unencrypted(&self) -> Result<()> {
+        Ok(())
     }
 
     pub async fn select(&self, account: Option<Arc<Account>>) -> Result<()> {

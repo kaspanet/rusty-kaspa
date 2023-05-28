@@ -4,7 +4,7 @@ use crate::result::Result;
 use crate::secret::Secret;
 use async_trait::async_trait;
 
-use crate::storage::{Account, AccountId, Metadata, PrvKeyData, PrvKeyDataId, TransactionRecord, TransactionRecordId};
+use crate::storage::*;
 
 #[async_trait]
 pub trait AccessContextT: Send + Sync {
@@ -40,8 +40,10 @@ impl AccessContextT for AccessContext {
 
 #[async_trait]
 pub trait PrvKeyDataStore: Send + Sync {
-    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = PrvKeyDataId>>;
+    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>>;
+    async fn len(&self, ctx: &Arc<dyn AccessContextT>) -> Result<usize>;
     async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[&PrvKeyDataId]) -> Result<Vec<PrvKeyData>>;
+    // async fn range(&self, ctx: &Arc<dyn AccessContextT>, range : std::ops::Range<usize>) -> Result<Vec<Arc<PrvKeyData>>>;
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&PrvKeyData]) -> Result<()>;
     async fn remove(&self, ctx: &Arc<dyn AccessContextT>, id: &[&PrvKeyDataId]) -> Result<()>;
 }
@@ -49,7 +51,9 @@ pub trait PrvKeyDataStore: Send + Sync {
 #[async_trait]
 pub trait AccountStore: Send + Sync {
     async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = AccountId>>;
-    async fn load(&self, ctx: &Arc<dyn AccessContextT>, id: &[AccountId]) -> Result<Vec<Account>>;
+    async fn len(&self, ctx: &Arc<dyn AccessContextT>) -> Result<usize>;
+    async fn load(&self, ctx: &Arc<dyn AccessContextT>, ids: &[AccountId]) -> Result<Vec<Arc<Account>>>;
+    async fn range(&self, ctx: &Arc<dyn AccessContextT>, range : std::ops::Range<usize>) -> Result<Vec<Arc<Account>>>;
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&Account]) -> Result<()>;
     async fn remove(&self, ctx: &Arc<dyn AccessContextT>, id: &[AccountId]) -> Result<()>;
 }

@@ -12,7 +12,8 @@ use async_trait::async_trait;
 #[derive(Default)]
 pub struct Cache {
     pub prv_key_data: Encrypted, //Mutex<Collection<PrvKeyDataId, PrvKeyData>>,
-    pub prv_key_data_ids: Vec<PrvKeyDataId>,
+    // pub prv_key_data_ids: Vec<PrvKeyDataId>,
+    pub prv_key_data_info: Vec<Arc<PrvKeyDataInfo>>,
     pub accounts: Collection<AccountId, Account>,
     pub metadata: Collection<AccountId, Metadata>,
     pub transaction_records: Collection<TransactionRecordId, TransactionRecord>,
@@ -23,7 +24,7 @@ impl TryFrom<(Wallet, &Secret)> for Cache {
     fn try_from((wallet, secret): (Wallet, &Secret)) -> Result<Self> {
         let payload = wallet.payload(secret.clone())?;
 
-        let prv_key_data_ids = payload.0.prv_key_data.iter().map(|pkdata| pkdata.id).collect();
+        let prv_key_data_info = payload.0.prv_key_data.iter().map(|pkdata| Arc::new(pkdata.into())).collect();
         let prv_key_data_map = payload.0.prv_key_data.into_iter().map(|pkdata| (pkdata.id, pkdata)).collect::<HashMap<_, _>>();
         let prv_key_data: Decrypted<PrvKeyDataMap> = Decrypted::new(prv_key_data_map);
         let prv_key_data = prv_key_data.encrypt(secret.clone())?;
@@ -32,7 +33,7 @@ impl TryFrom<(Wallet, &Secret)> for Cache {
         // let transaction_records : Collection<TransactionRecordId,TransactionRecord> = wallet.transaction_records.try_into()?;
         let transaction_records: Collection<TransactionRecordId, TransactionRecord> = Collection::default();
 
-        Ok(Cache { prv_key_data, prv_key_data_ids, accounts, metadata, transaction_records })
+        Ok(Cache { prv_key_data, prv_key_data_info, accounts, metadata, transaction_records })
     }
 }
 
@@ -119,9 +120,13 @@ impl Interface for LocalStore {
 
 #[async_trait]
 impl PrvKeyDataStore for LocalStore {
-    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = PrvKeyDataId>> {
+    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>> {
         // todo!()
         Box::new(PrvKeyDataIterator::new(self, options))
+    }
+
+    async fn len(&self, _ctx: &Arc<dyn AccessContextT>) -> Result<usize> {
+        Ok(self.cache.inner().prv_key_data_info.len())
     }
 
     async fn store(&self, _ctx: &Arc<dyn AccessContextT>, _data: &[&PrvKeyData]) -> Result<()> {
@@ -131,6 +136,17 @@ impl PrvKeyDataStore for LocalStore {
     async fn load(&self, _ctx: &Arc<dyn AccessContextT>, _id: &[&PrvKeyDataId]) -> Result<Vec<PrvKeyData>> {
         todo!();
     }
+
+    // async fn range(&self, _ctx: &Arc<dyn AccessContextT>, range : std::ops::Range<usize>) -> Result<Vec<PrvKeyDataInfo>> {
+        
+        
+    //     let accounts = self.cache.inner().prv_key_data_info[range.start..range.end].to_vec(); //accounts.range(range)?;
+    //     Ok(accounts)
+
+    //     // todo!();
+
+
+    // }
 
     async fn remove(&self, _ctx: &Arc<dyn AccessContextT>, _id: &[&PrvKeyDataId]) -> Result<()> {
         todo!();
@@ -143,6 +159,11 @@ impl AccountStore for LocalStore {
         Box::new(AccountIterator::new(self, options))
     }
 
+    async fn len(&self, _ctx: &Arc<dyn AccessContextT>) -> Result<usize> {
+        Ok(self.cache.inner().accounts.vec.len())
+    }
+
+
     async fn store(&self, _ctx: &Arc<dyn AccessContextT>, data: &[&Account]) -> Result<()> {
         // self.cache.accounts.lock().unwrap().store(data)?;
         // let secret = ctx.wallet_secret().await.expect("wallet requires an encryption secret");
@@ -152,13 +173,19 @@ impl AccountStore for LocalStore {
         Ok(())
     }
 
-    async fn load(&self, _ctx: &Arc<dyn AccessContextT>, ids: &[AccountId]) -> Result<Vec<Account>> {
+    async fn load(&self, _ctx: &Arc<dyn AccessContextT>, ids: &[AccountId]) -> Result<Vec<Arc<Account>>> {
         // self.cache.reload(ctx).await?;
         // let secret = ctx.wallet_secret().await.expect("wallet requires an encryption secret");
         let accounts = self.cache.inner().accounts.load(ids)?;
-        let accounts = accounts.into_iter().map(|account| (*account).clone()).collect::<Vec<_>>();
+        // let accounts = accounts.into_iter().map(|account| (*account).clone()).collect::<Vec<_>>();
         Ok(accounts)
     }
+    
+    async fn range(&self, _ctx: &Arc<dyn AccessContextT>, range : std::ops::Range<usize>) -> Result<Vec<Arc<Account>>> {
+        let accounts = self.cache.inner().accounts.range(range)?;
+        Ok(accounts)
+    }
+
 
     async fn remove(&self, _ctx: &Arc<dyn AccessContextT>, ids: &[AccountId]) -> Result<()> {
         self.cache.inner().accounts.remove(ids)?;

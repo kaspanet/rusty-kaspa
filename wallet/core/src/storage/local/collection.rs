@@ -97,6 +97,10 @@ where
             })
             .collect())
     }
+
+    pub fn range(&self, range : std::ops::Range<usize>) -> Result<Vec<Arc<Data>>> {
+        Ok(self.vec[range.start..range.end].to_vec())
+    }
 }
 
 impl<Id, Data> TryFrom<Vec<Data>> for Collection<Id, Data>

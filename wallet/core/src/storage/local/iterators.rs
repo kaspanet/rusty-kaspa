@@ -68,10 +68,10 @@ impl PrvKeyDataIterator {
 
 #[async_trait]
 impl Iterator for PrvKeyDataIterator {
-    type Item = PrvKeyDataId;
+    type Item = Arc<PrvKeyDataInfo>;
 
     async fn next(&mut self) -> Option<Vec<Self::Item>> {
-        let vec = &self.0.store.cache.inner().prv_key_data_ids;
+        let vec = &self.0.store.cache.inner().prv_key_data_info;
         if self.0.cursor >= vec.len() {
             return None;
         } else {

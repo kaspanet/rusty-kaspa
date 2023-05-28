@@ -20,7 +20,12 @@ impl XPublicKey {
     // }
 
     #[wasm_bindgen(js_name=fromMasterXPrv)]
-    pub async fn from_master_xprv(xprv: &str, is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<XPublicKey> {
+    pub async fn from_master_xprv(
+        xprv: &str,
+        is_multisig: bool,
+        account_index: u64,
+        cosigner_index: Option<u32>,
+    ) -> Result<XPublicKey> {
         let xprv = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
         let path = WalletDerivationManager::build_derivate_path(is_multisig, account_index, None, None)?;
         let xprv = xprv.derive_path(path)?;

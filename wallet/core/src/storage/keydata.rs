@@ -151,6 +151,28 @@ impl PrvKeyData {
     }
 }
 
+#[derive(Clone)]
+pub struct PrvKeyDataInfo {
+    pub id: PrvKeyDataId,
+    pub is_encrypted: bool,
+}
+
+impl From<&PrvKeyData> for PrvKeyDataInfo {
+    fn from(data: &PrvKeyData) -> Self {
+        Self::new(data.id, data.payload.is_encrypted())
+    }
+}
+
+impl PrvKeyDataInfo {
+    pub fn new(id: PrvKeyDataId, is_encrypted: bool) -> Self {
+        Self { id, is_encrypted }
+    }
+
+    pub fn is_encrypted(&self) -> bool {
+        self.is_encrypted
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PubKeyData {
