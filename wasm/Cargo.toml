@@ -22,6 +22,10 @@ kaspa-rpc-core.workspace = true
 kaspa-wrpc-client.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-pow.workspace = true
+num.workspace = true
+kaspa-math.workspace = true
+workflow-log.workspace = true
+js-sys.workspace = true
 
 [features] 
 wallet = [] 

@@ -96,6 +96,9 @@ For more details, please follow the [**integrating with Kaspa**](https://kaspa-m
 
 #![allow(unused_imports)]
 
+pub mod utils;
+pub use crate::utils::*;
+
 pub use kaspa_addresses::{Address, Version as AddressVersion};
 pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 pub use kaspa_pow::wasm::*;

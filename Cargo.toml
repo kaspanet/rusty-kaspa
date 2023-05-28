@@ -163,6 +163,7 @@ cfb-mode = "0.8.2"
 evpkdf = "0.2.0"
 md-5 = "0.10.5"
 derivative = "2.2.0"
+num = "0.4.0"
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }
