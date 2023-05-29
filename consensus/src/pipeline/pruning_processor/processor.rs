@@ -218,7 +218,7 @@ impl PruningProcessor {
             let mut counter = 0;
             let mut batch = WriteBatch::default();
             for kept in keep_relations.iter().copied() {
-                let ghostdag = self.ghostdag_primary_store.get_data(kept).unwrap();
+                let Some(ghostdag) = self.ghostdag_primary_store.get_data(kept).unwrap_option() else { continue; };
                 if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains(&h)) {
                     let mut mutable_ghostdag: ExternalGhostdagData = ghostdag.as_ref().into();
                     mutable_ghostdag.mergeset_blues.retain(|h| keep_relations.contains(h));
