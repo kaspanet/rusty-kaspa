@@ -37,7 +37,7 @@ pub struct Config {
 
     /// Allow the node to accept blocks from RPC while not synced
     /// (required when initiating a new network from genesis)
-    pub enable_desync_mining: bool,
+    pub enable_unsynced_mining: bool,
 
     pub user_agent_comments: Vec<String>,
 }
@@ -50,7 +50,7 @@ impl Config {
             process_genesis: true,
             utxoindex: false,
             unsafe_rpc: false,
-            enable_desync_mining: false,
+            enable_unsynced_mining: false,
             user_agent_comments: Default::default(),
         }
     }
