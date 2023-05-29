@@ -28,13 +28,14 @@ use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::ORIGIN,
     blockstatus::BlockStatus::StatusHeaderOnly,
+    config::Config,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::ExternalGhostdagData,
     BlockHashSet,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::info;
+use kaspa_core::{info, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -72,6 +73,9 @@ pub struct PruningProcessor {
 
     // Pruning lock
     pruning_lock: SessionLock,
+
+    // Config
+    config: Arc<Config>,
 }
 
 impl Deref for PruningProcessor {
@@ -89,6 +93,7 @@ impl PruningProcessor {
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
         pruning_lock: SessionLock,
+        config: Arc<Config>,
     ) -> Self {
         Self {
             receiver,
@@ -99,6 +104,7 @@ impl PruningProcessor {
             pruning_point_manager: services.pruning_point_manager.clone(),
             pruning_proof_manager: services.pruning_proof_manager.clone(),
             pruning_lock,
+            config,
         }
     }
 
@@ -147,8 +153,9 @@ impl PruningProcessor {
             }
             drop(utxoset_write);
 
-            // TODO: remove assertion when we stabilize
-            self.assert_utxo_commitment(new_pruning_point);
+            if self.config.enable_sanity_checks {
+                self.assert_utxo_commitment(new_pruning_point);
+            }
 
             // Finally, prune data in the new pruning point past
             self.prune(new_pruning_point);
@@ -169,8 +176,12 @@ impl PruningProcessor {
     }
 
     fn prune(&self, new_pruning_point: Hash) {
-        // TODO: check if archival
         // TODO: mark the last pruned point (and check on startup if it's below the pruning point)
+
+        if self.config.is_archival {
+            warn!("The node is configured as an archival node -- skipping data pruning. Note this might lead to high disk usage.");
+            return;
+        }
 
         let proof = self.pruning_proof_manager.get_pruning_point_proof();
         let data = self
@@ -358,9 +369,10 @@ impl PruningProcessor {
             keep_headers.len()
         );
 
-        // TODO: remove these sanity tests when stable
-        self.assert_proof_rebuilding(proof, new_pruning_point);
-        self.assert_data_rebuilding(data, new_pruning_point);
+        if self.config.enable_sanity_checks {
+            self.assert_proof_rebuilding(proof, new_pruning_point);
+            self.assert_data_rebuilding(data, new_pruning_point);
+        }
     }
 
     fn past_pruning_points(&self) -> BlockHashSet {
@@ -370,7 +382,7 @@ impl PruningProcessor {
     }
 
     fn assert_proof_rebuilding(&self, ref_proof: Arc<PruningPointProof>, new_pruning_point: Hash) {
-        info!("Rebuilding the pruning proof after pruning data (Alpha sanity test)");
+        info!("Rebuilding the pruning proof after pruning data (sanity test)");
         let proof_hashes = ref_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
         let built_proof = self.pruning_proof_manager.build_pruning_point_proof(new_pruning_point);
         let built_proof_hashes = built_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
@@ -384,7 +396,7 @@ impl PruningProcessor {
     }
 
     fn assert_data_rebuilding(&self, ref_data: Arc<PruningPointTrustedData>, new_pruning_point: Hash) {
-        info!("Rebuilding pruning point trusted data (Alpha sanity test)");
+        info!("Rebuilding pruning point trusted data (sanity test)");
         let virtual_state = self.virtual_stores.read().state.get().unwrap();
         let built_data = self
             .pruning_proof_manager

@@ -19,6 +19,8 @@ pub struct Defaults {
     pub testnet: bool,
     pub devnet: bool,
     pub simnet: bool,
+    pub archival: bool,
+    pub sanity: bool,
 }
 
 impl Default for Defaults {
@@ -37,6 +39,8 @@ impl Default for Defaults {
             testnet: false,
             devnet: false,
             simnet: false,
+            archival: false,
+            sanity: true, // TODO: change the default to false when we reach stable versions
         }
     }
 }
@@ -65,6 +69,8 @@ pub struct Args {
     pub testnet: bool,
     pub devnet: bool,
     pub simnet: bool,
+    pub archival: bool,
+    pub sanity: bool,
 }
 
 pub fn cli(defaults: &Defaults) -> Command {
@@ -169,6 +175,8 @@ pub fn cli(defaults: &Defaults) -> Command {
         .arg(arg!(--testnet "Use the test network"))
         .arg(arg!(--devnet "Use the development test network"))
         .arg(arg!(--simnet "Use the simulation test network"))
+        .arg(arg!(--archival "Run as an archival node: avoids deleting old block data when moving the pruning point (Warning: heavy disk usage)"))
+        .arg(arg!(--sanity "Enable various sanity checks which might be compute-intensive (mostly performed during pruning)"))
         .arg(
             Arg::new("user_agent_comments")
                 .long("uacomment")
@@ -202,6 +210,8 @@ impl Args {
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
             simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
+            archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
+            sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
             user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
         }
     }
@@ -209,6 +219,8 @@ impl Args {
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
         config.unsafe_rpc = self.unsafe_rpc;
+        config.is_archival = self.archival;
+        config.enable_sanity_checks = self.sanity;
         config.user_agent_comments = self.user_agent_comments.clone();
     }
 }

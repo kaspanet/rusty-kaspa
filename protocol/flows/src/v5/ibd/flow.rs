@@ -233,22 +233,28 @@ impl IbdFlow {
             entries.push(entry);
         }
 
-        let ref_proof = proof.clone();
         let trusted_set = pkg.build_trusted_subdag(entries)?;
-        consensus.apply_pruning_proof(proof, &trusted_set);
-        consensus.import_pruning_points(pruning_points);
 
-        info!("Building the proof which was just applied (Alpha sanity test)");
-        let built_proof = consensus.get_pruning_point_proof(); // TODO: remove this sanity test when stable
-        for (i, (ref_level, built_level)) in ref_proof.iter().zip(built_proof.iter()).enumerate() {
-            assert_eq!(
-                ref_level.iter().map(|h| h.hash).collect::<BlockHashSet>(),
-                built_level.iter().map(|h| h.hash).collect::<BlockHashSet>(),
-                "Locally built proof for level {} does not match the applied one",
-                i
-            );
+        if self.ctx.config.enable_sanity_checks {
+            let ref_proof = proof.clone();
+            consensus.apply_pruning_proof(proof, &trusted_set);
+            consensus.import_pruning_points(pruning_points);
+
+            info!("Building the proof which was just applied (sanity test)");
+            let built_proof = consensus.get_pruning_point_proof();
+            for (i, (ref_level, built_level)) in ref_proof.iter().zip(built_proof.iter()).enumerate() {
+                assert_eq!(
+                    ref_level.iter().map(|h| h.hash).collect::<BlockHashSet>(),
+                    built_level.iter().map(|h| h.hash).collect::<BlockHashSet>(),
+                    "Locally built proof for level {} does not match the applied one",
+                    i
+                );
+            }
+            info!("Proof was locally built successfully");
+        } else {
+            consensus.apply_pruning_proof(proof, &trusted_set);
+            consensus.import_pruning_points(pruning_points);
         }
-        info!("Proof was locally built successfully");
 
         info!("Starting to process {} trusted blocks", trusted_set.len());
         let mut last_time = Instant::now();

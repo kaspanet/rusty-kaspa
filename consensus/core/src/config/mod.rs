@@ -23,10 +23,12 @@ pub struct Config {
     // Additional consensus configuration arguments which are not consensus sensitive
     //
     pub process_genesis: bool,
-    // TODO:
-    // is_archival: bool,
-    // enable_sanity_check_pruning_utxoset: bool,
-    //
+
+    /// Indicates whether this node is an archival node
+    pub is_archival: bool,
+
+    /// Enable various sanity checks which might be compute-intensive (mostly performed during pruning)
+    pub enable_sanity_checks: bool,
 
     // TODO: move non-consensus parameters like utxoindex to a higher scoped Config
     /// Enable the UTXO index
@@ -49,6 +51,8 @@ impl Config {
             params,
             perf: PERF_PARAMS,
             process_genesis: true,
+            is_archival: false,
+            enable_sanity_checks: false,
             utxoindex: false,
             unsafe_rpc: false,
             allow_submit_block_when_not_synced: false,
@@ -107,6 +111,16 @@ impl ConfigBuilder {
 
     pub fn skip_proof_of_work(mut self) -> Self {
         self.config.params.skip_proof_of_work = true;
+        self
+    }
+
+    pub fn set_archival(mut self) -> Self {
+        self.config.is_archival = true;
+        self
+    }
+
+    pub fn enable_sanity_checks(mut self) -> Self {
+        self.config.enable_sanity_checks = true;
         self
     }
 
