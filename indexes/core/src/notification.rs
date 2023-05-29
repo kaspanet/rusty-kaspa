@@ -6,7 +6,7 @@ use kaspa_notify::{
     notification::Notification as NotificationTrait,
     subscription::{
         single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
-        Single,
+        Subscription,
     },
 };
 use std::{collections::HashMap, sync::Arc};

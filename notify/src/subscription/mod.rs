@@ -72,6 +72,8 @@ impl Mutation {
 
 pub trait Subscription {
     fn event_type(&self) -> EventType;
+    fn active(&self) -> bool;
+    fn scope(&self) -> Scope;
 }
 
 pub trait Compounded: Subscription + AsAny + DynEq + CompoundedClone + Debug + Send + Sync {
@@ -88,9 +90,7 @@ impl Eq for dyn Compounded {}
 pub type CompoundedSubscription = Box<dyn Compounded>;
 
 pub trait Single: Subscription + AsAny + DynHash + DynEq + SingleClone + Debug + Send + Sync {
-    fn active(&self) -> bool;
     fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>>;
-    fn scope(&self) -> Scope;
 }
 
 impl Hash for dyn Single {

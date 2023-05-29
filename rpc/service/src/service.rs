@@ -162,7 +162,7 @@ impl RpcCoreService {
 }
 
 #[async_trait]
-impl RpcApi<ChannelConnection> for RpcCoreService {
+impl RpcApi for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
