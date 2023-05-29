@@ -170,7 +170,7 @@ impl PruningProcessor {
 
     fn prune(&self, new_pruning_point: Hash) {
         // TODO: check if archival
-        // TODO: mark the last pruned point
+        // TODO: mark the last pruned point (and check on startup if it's below the pruning point)
 
         let proof = self.pruning_proof_manager.get_pruning_point_proof();
         let data = self

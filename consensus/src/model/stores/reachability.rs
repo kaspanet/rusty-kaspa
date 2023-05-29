@@ -253,6 +253,9 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
     }
 
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
+        // Note: We never delete and re-insert an item (deletion is part of pruning; new items are inserted
+        // for new blocks only), hence we can avoid verifying that the new block is not in `staging_deletions`
+
         if self.store_read.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }

@@ -260,7 +260,7 @@ impl PruningProofManager {
 
                 let mut parents = BlockHashSet::with_capacity(header.direct_parents().len() * 2);
                 // We collect all available parent relations in order to maximize reachability information.
-                // By taking into account parents from all levels we insure that the induced DAG has valid
+                // By taking into account parents from all levels we ensure that the induced DAG has valid
                 // reachability information for each level-specific sub-DAG -- hence a single reachability
                 // oracle can serve them all
                 for level in 0..=self.max_block_level {
