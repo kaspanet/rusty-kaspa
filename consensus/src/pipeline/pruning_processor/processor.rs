@@ -92,31 +92,19 @@ impl PruningProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        while let Ok(mut msg) = self.receiver.recv() {
-            let mut exit = false;
-            // Empty the channel from all pending messages and process the last one
-            for next_msg in self.receiver.try_iter() {
-                match next_msg {
-                    PruningProcessingMessage::Exit => exit = true,
-                    m => msg = m,
-                }
-            }
+        while let Ok(msg) = self.receiver.recv() {
             match msg {
-                PruningProcessingMessage::Exit => break,
                 PruningProcessingMessage::Process { sink_ghostdag_data } => {
                     self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
                 }
-            };
-
-            if exit {
-                break;
+                PruningProcessingMessage::Exit => break,
             }
         }
     }
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
-        let pruning_read_guard = self.pruning_point_store.upgradable_read();
-        let current_pruning_info = pruning_read_guard.get().unwrap();
+        let pruning_point_read = self.pruning_point_store.upgradable_read();
+        let current_pruning_info = pruning_point_read.get().unwrap();
         let (new_pruning_points, new_candidate) = self.pruning_point_manager.next_pruning_points_and_candidate_by_ghostdag_data(
             sink_ghostdag_data,
             None,
@@ -126,15 +114,15 @@ impl PruningProcessor {
 
         if !new_pruning_points.is_empty() {
             let mut batch = WriteBatch::default();
-            let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
+            let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
             for (i, past_pp) in new_pruning_points.iter().copied().enumerate() {
                 self.past_pruning_points_store.insert_batch(&mut batch, current_pruning_info.index + i as u64 + 1, past_pp).unwrap();
             }
             let new_pp_index = current_pruning_info.index + new_pruning_points.len() as u64;
             let new_pruning_point = *new_pruning_points.last().unwrap();
-            write_guard.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
+            pruning_point_write.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
             self.db.write(batch).unwrap();
-            drop(write_guard);
+            drop(pruning_point_write);
 
             info!("Daily pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
 
@@ -154,7 +142,7 @@ impl PruningProcessor {
             // Finally, prune data in the new pruning point past
             self.prune(new_pruning_point);
         } else if new_candidate != current_pruning_info.candidate {
-            let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_read_guard);
+            let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
             write_guard.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
         }
     }
@@ -287,6 +275,7 @@ impl PruningProcessor {
                         current,
                     );
                     reachability::delete_block(&mut staging_reachability, current, &mut mergeset.iter().copied()).unwrap();
+                    // TODO: consider adding block level to compact header data
                     let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
                     (0..=block_level as usize).for_each(|level| {
                         relations::delete_level_relations(BatchDbWriter::new(&mut batch), &mut level_relations_write[level], current)

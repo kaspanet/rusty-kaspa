@@ -173,6 +173,7 @@ impl BlockBodyProcessor {
     }
 
     fn process_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<BlockStatus> {
+        let _prune_guard = self.pruning_lock.blocking_read();
         let status = self.statuses_store.read().get(block.hash()).unwrap();
         match status {
             StatusInvalid => return Err(RuleError::KnownInvalid),
