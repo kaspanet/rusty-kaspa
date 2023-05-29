@@ -12,6 +12,14 @@ pub struct SessionReadGuard<'a>(RfRwLockReadGuard<'a>);
 
 pub struct SessionWriteGuard<'a>(RfRwLockWriteGuard<'a>);
 
+impl SessionWriteGuard<'_> {
+    /// Releases and recaptures the write lock. Makes sure that other pending readers/writers get a
+    /// chance to capture the lock before this thread does so.
+    pub fn blocking_yield(&mut self) {
+        self.0.blocking_yield();
+    }
+}
+
 #[derive(Clone)]
 pub struct SessionLock(Arc<RfRwLock>);
 

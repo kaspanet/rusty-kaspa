@@ -282,10 +282,8 @@ impl PruningProcessor {
 
             // If we have the lock for more than 10ms, release and recapture to allow consensus progress during pruning
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
-                drop(prune_guard);
                 drop(reachability_read);
-                std::thread::sleep(Duration::from_millis(1));
-                prune_guard = self.pruning_lock.blocking_write();
+                prune_guard.blocking_yield();
                 lock_acquire_time = Instant::now();
                 reachability_read = self.reachability_store.upgradable_read();
             }

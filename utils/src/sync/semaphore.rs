@@ -1,5 +1,8 @@
 use event_listener::Event;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
+};
 
 /// A low-level non-fair semaphore. The semaphore is non-fair in the sense that clients acquiring
 /// a lower number of permits might get their allocation before earlier clients which requested more
@@ -71,5 +74,20 @@ impl Semaphore {
         let slot = self.counter.fetch_add(permits, Ordering::AcqRel) + permits;
         self.signal.notify(permits);
         slot
+    }
+
+    /// Releases and recaptures `permits` permits. Makes sure that other pending listeners get a
+    /// chance to capture the emptied slots before this thread does so. Returns the acquired slot.
+    pub fn blocking_yield(&self, permits: usize) -> usize {
+        self.release(permits);
+        // We wait for a signal or for a short timeout before we reenter the acquire loop.
+        // Waiting for a signal has the benefit that if others are in the listen queue and they
+        // capture the lock for less than timeout, then this thread will awake asap once they are
+        // done. On the other hand a timeout is a must for the case where there are no other listeners
+        // which will awake us.
+        // Avoiding the wait all together is harmful in the case there are listeners, since this thread
+        // will most likely recapture the emptied slot before they wake up.
+        self.signal.listen().wait_timeout(Duration::from_micros(1));
+        self.blocking_acquire(permits)
     }
 }

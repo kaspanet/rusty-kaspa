@@ -63,6 +63,10 @@ impl RfRwLock {
     fn release_write(&self) {
         self.ll_sem.release(Semaphore::MAX_PERMITS);
     }
+
+    fn blocking_yield_writer(&self) {
+        self.ll_sem.blocking_yield(Semaphore::MAX_PERMITS);
+    }
 }
 
 pub struct RfRwLockReadGuard<'a>(&'a RfRwLock);
@@ -89,6 +93,14 @@ impl Drop for RfRwLockWriteGuard<'_> {
     }
 }
 
+impl RfRwLockWriteGuard<'_> {
+    /// Releases and recaptures the write lock. Makes sure that other pending readers/writers get a
+    /// chance to capture the lock before this thread does so.
+    pub fn blocking_yield(&mut self) {
+        self.0.blocking_yield_writer();
+    }
+}
+
 pub struct RfRwLockOwnedWriteGuard(Arc<RfRwLock>);
 
 impl Drop for RfRwLockOwnedWriteGuard {
@@ -107,6 +119,26 @@ mod tests {
     use tokio::{sync::oneshot, time::sleep, time::timeout};
 
     const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
+
+    #[tokio::test]
+    async fn test_writer_reentrance() {
+        let l = Arc::new(RfRwLock::new());
+        let (tx, rx) = oneshot::channel();
+        let l_clone = l.clone();
+        let h = std::thread::spawn(move || {
+            let mut write = l_clone.blocking_write();
+            tx.send(()).unwrap();
+            for _ in 0..10 {
+                std::thread::sleep(Duration::from_millis(5));
+                write.blocking_yield();
+            }
+        });
+        rx.await.unwrap();
+        // Make sure the reader acquires the lock when the writer yields
+        let read = timeout(Duration::from_millis(10), l.read()).await.unwrap();
+        drop(read);
+        timeout(Duration::from_millis(1000), tokio::task::spawn_blocking(move || h.join())).await.unwrap().unwrap().unwrap();
+    }
 
     #[tokio::test]
     async fn test_readers_preferred() {
