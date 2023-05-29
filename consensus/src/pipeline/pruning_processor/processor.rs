@@ -35,7 +35,12 @@ use kaspa_muhash::MuHash;
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
-use std::{collections::VecDeque, ops::Deref, sync::Arc};
+use std::{
+    collections::VecDeque,
+    ops::Deref,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 pub enum PruningProcessingMessage {
     Exit,
@@ -182,10 +187,13 @@ impl PruningProcessor {
             .collect();
         let keep_headers: BlockHashSet = self.past_pruning_points();
 
-        info!("Starting Header and Block pruning...");
+        info!("Header and Block pruning: waiting for consensus write permissions...");
 
         let mut prune_guard = self.pruning_lock.blocking_write();
+        let mut lock_acquire_time = Instant::now();
         let mut reachability_read = self.reachability_store.upgradable_read();
+
+        info!("Starting Header and Block pruning...");
 
         {
             // Start with a batch for pruning body tips and selected chain stores
@@ -232,16 +240,18 @@ impl PruningProcessor {
             // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
             queue.extend(reachability_read.get_children(current).unwrap().iter());
 
-            if traversed % 50 == 0 {
-                // Release and recapture to allow consensus progress during pruning
+            // If we have the lock for more than 10ms, release and recapture to allow consensus progress during pruning
+            if lock_acquire_time.elapsed() > Duration::from_millis(10) {
                 drop(prune_guard);
                 drop(reachability_read);
-                if traversed % 1000 == 0 {
-                    info!("Header and Block pruning: traversed: {}, pruned {}...", traversed, counter);
-                }
                 std::thread::yield_now();
                 prune_guard = self.pruning_lock.blocking_write();
+                lock_acquire_time = Instant::now();
                 reachability_read = self.reachability_store.upgradable_read();
+            }
+
+            if traversed % 1000 == 0 {
+                info!("Header and Block pruning: traversed: {}, pruned {}...", traversed, counter);
             }
 
             // Remove window cache entries
