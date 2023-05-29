@@ -2,25 +2,27 @@ use crate::imports::*;
 use kaspa_rpc_core::notify::collector::{RpcCoreCollector, RpcCoreConverter};
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
 use std::fmt::Debug;
+use workflow_rpc::client::Ctl;
 
-/// [`NotificationMoe`] controls notification delivery process
-#[wasm_bindgen]
-#[derive(Clone, Copy, Debug)]
-pub enum NotificationMode {
-    /// Local notifier is used for notification processing.
-    ///
-    /// Multiple listeners can register and subscribe independently.
-    MultiListeners,
-    /// No notifier is present, notifications are relayed
-    /// directly through the internal channel to a single listener.
-    Direct,
-}
+// /// [`NotificationMode`] controls notification delivery process
+// #[wasm_bindgen]
+// #[derive(Clone, Copy, Debug)]
+// pub enum NotificationMode {
+//     /// Local notifier is used for notification processing.
+//     ///
+//     /// Multiple listeners can register and subscribe independently.
+//     MultiListeners,
+//     /// No notifier is present, notifications are relayed
+//     /// directly through the internal channel to a single listener.
+//     Direct,
+// }
 
 #[derive(Clone)]
 struct Inner {
     rpc: Arc<RpcClient<RpcApiOps>>,
     notification_channel: Channel<Notification>,
     encoding: Encoding,
+    ctl_channel: Channel<Ctl>,
 }
 
 impl Inner {
@@ -28,7 +30,9 @@ impl Inner {
         let re = Regex::new(r"^wrpc").unwrap();
         let url = re.replace(url, "ws").to_string();
         // log_trace!("Kaspa wRPC::{encoding} connecting to: {url}");
-        let options = RpcClientOptions { url: &url, ..RpcClientOptions::default() };
+        let ctl_channel = Channel::<Ctl>::unbounded();
+
+        let options = RpcClientOptions { url: &url, ctl_channel: Some(ctl_channel.clone()), ..RpcClientOptions::default() };
 
         let notification_channel = Channel::unbounded();
 
@@ -71,7 +75,7 @@ impl Inner {
         });
         let rpc = Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options)?);
 
-        let client = Self { rpc, notification_channel, encoding };
+        let client = Self { rpc, notification_channel, encoding, ctl_channel };
 
         Ok(client)
     }
@@ -175,7 +179,7 @@ impl KaspaRpcClient {
     pub async fn stop(&self) -> Result<()> {
         match &self.notification_mode {
             NotificationMode::MultiListeners => {
-                log_info!("stop notifier...");
+                // log_info!("stop notifier...");
                 self.notifier.as_ref().unwrap().stop().await?;
             }
             NotificationMode::Direct => {
@@ -221,10 +225,14 @@ impl KaspaRpcClient {
     pub fn notification_mode(&self) -> NotificationMode {
         self.notification_mode
     }
+
+    pub fn ctl_channel_receiver(&self) -> Receiver<Ctl> {
+        self.inner.ctl_channel.receiver.clone()
+    }
 }
 
 #[async_trait]
-impl RpcApi<ChannelConnection> for KaspaRpcClient {
+impl RpcApi for KaspaRpcClient {
     //
     // The following proc-macro iterates over the array of enum variants
     // generating a function for each variant as follows:

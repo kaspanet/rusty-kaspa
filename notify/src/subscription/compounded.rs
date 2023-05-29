@@ -46,6 +46,14 @@ impl Subscription for OverallSubscription {
     fn event_type(&self) -> EventType {
         self.event_type
     }
+
+    fn active(&self) -> bool {
+        self.active > 0
+    }
+
+    fn scope(&self) -> Scope {
+        self.event_type.into()
+    }
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
@@ -131,6 +139,14 @@ impl Subscription for VirtualChainChangedSubscription {
     fn event_type(&self) -> EventType {
         EventType::VirtualChainChanged
     }
+
+    fn active(&self) -> bool {
+        self.include_accepted_transaction_ids.iter().sum::<usize>() > 0
+    }
+
+    fn scope(&self) -> Scope {
+        Scope::VirtualChainChanged(VirtualChainChangedScope::new(self.all() > 0))
+    }
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
@@ -215,6 +231,15 @@ impl Subscription for UtxosChangedSubscription {
     #[inline(always)]
     fn event_type(&self) -> EventType {
         EventType::UtxosChanged
+    }
+
+    fn active(&self) -> bool {
+        self.all > 0 || !self.addresses.is_empty()
+    }
+
+    fn scope(&self) -> Scope {
+        let addresses = if self.all > 0 { vec![] } else { self.addresses.keys().cloned().collect() };
+        Scope::UtxosChanged(UtxosChangedScope::new(addresses))
     }
 }
 
