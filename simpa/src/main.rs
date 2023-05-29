@@ -78,6 +78,11 @@ struct Args {
     /// Input directory of a previous simulation DB (NOTE: simulation args must be compatible with the original run)
     #[arg(short, long)]
     input_dir: Option<String>,
+
+    /// Indicates whether to test pruning. Currently this means we shorten the pruning constants and avoid validating
+    /// the DAG in a separate consensus following the simulation phase
+    #[arg(long, default_value_t = false)]
+    test_pruning: bool,
 }
 
 /// Calculates the k parameter of the GHOSTDAG protocol such that anticones lager than k will be created
@@ -124,9 +129,11 @@ fn main() {
     let mut perf_params = PERF_PARAMS;
     adjust_consensus_params(&args, &mut params);
     adjust_perf_params(&args, &params, &mut perf_params);
-    let config = Arc::new(ConfigBuilder::new(params).set_perf_params(perf_params).skip_proof_of_work().build());
-
-    // TODO: set consensus as archival to avoid pruning
+    let mut builder = ConfigBuilder::new(params).set_perf_params(perf_params).skip_proof_of_work().enable_sanity_checks();
+    if !args.test_pruning {
+        builder = builder.set_archival();
+    }
+    let config = Arc::new(builder.build());
 
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
@@ -142,6 +149,11 @@ fn main() {
         consensus.shutdown(handles);
         (consensus, lifetime)
     };
+
+    if args.test_pruning {
+        drop(consensus);
+        return;
+    }
 
     // Benchmark the DAG validation time
     let (_lifetime2, db2) = create_temp_db_with_parallelism(num_cpus::get());
@@ -175,6 +187,16 @@ fn adjust_consensus_params(args: &Args, params: &mut Params) {
             k,
             params.difficulty_window_size
         );
+    }
+    if args.test_pruning {
+        params.pruning_proof_m = 16;
+        params.difficulty_window_size = 64;
+        params.timestamp_deviation_tolerance = 16;
+        params.finality_depth = 128;
+        params.merge_depth = 128;
+        params.mergeset_size_limit = 32;
+        params.pruning_depth = params.anticone_finalization_depth();
+        info!("Setting pruning depth to {}", params.pruning_depth);
     }
 }
 

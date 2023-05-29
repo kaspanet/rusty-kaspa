@@ -179,7 +179,7 @@ impl PruningProcessor {
         // TODO: mark the last pruned point (and check on startup if it's below the pruning point)
 
         if self.config.is_archival {
-            warn!("The node is configured as an archival node -- skipping data pruning. Note this might lead to high disk usage.");
+            warn!("The node is configured as an archival node -- skipping data pruning. Note this might lead to heavy disk usage.");
             return;
         }
 
