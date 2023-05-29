@@ -42,7 +42,7 @@ impl Default for Defaults {
             devnet: false,
             simnet: false,
             archival: false,
-            sanity: true, // TODO: change the default to false when we reach stable versions
+            sanity: false,
         }
     }
 }
@@ -226,7 +226,8 @@ impl Args {
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
         config.is_archival = self.archival;
-        config.enable_sanity_checks = self.sanity;
+        // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
+        config.enable_sanity_checks = true;
         config.user_agent_comments = self.user_agent_comments.clone();
     }
 }
