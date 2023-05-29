@@ -7,7 +7,7 @@ use kaspa_notify::{
     notification::{full_featured, Notification as NotificationTrait},
     subscription::{
         single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
-        Single,
+        Subscription,
     },
 };
 use serde::{Deserialize, Serialize};

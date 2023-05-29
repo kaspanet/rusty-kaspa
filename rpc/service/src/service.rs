@@ -162,7 +162,7 @@ impl RpcCoreService {
 }
 
 #[async_trait]
-impl RpcApi<ChannelConnection> for RpcCoreService {
+impl RpcApi for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
@@ -170,7 +170,7 @@ impl RpcApi<ChannelConnection> for RpcCoreService {
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
         let is_synced: bool = self.flow_context.hub().has_peers() && session.is_nearly_synced();
 
-        if !self.config.allow_submit_block_when_not_synced && !is_synced {
+        if !self.config.enable_unsynced_mining && !is_synced {
             // error = "Block not submitted - node is not synced"
             return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::IsInIBD) });
         }

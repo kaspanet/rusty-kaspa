@@ -301,7 +301,7 @@ pub fn main() {
             listen_address.as_ref().map(|listen_address| {
                 Arc::new(WrpcService::new(
                     wrpc_service_tasks,
-                    rpc_core_server.service(),
+                    Some(rpc_core_server.service()),
                     encoding,
                     WrpcServerOptions {
                         listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String

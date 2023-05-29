@@ -15,7 +15,7 @@ pub use kaspa_rpc_core::{
     api::ops::RpcApiOps,
     api::rpc::RpcApi,
     error::RpcResult,
-    notify::{collector::RpcCoreCollector, connection::ChannelConnection},
+    notify::{collector::RpcCoreCollector, connection::ChannelConnection, mode::NotificationMode},
     prelude::*,
 };
 pub use regex::Regex;

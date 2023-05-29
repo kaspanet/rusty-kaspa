@@ -38,9 +38,8 @@ pub struct Config {
     pub unsafe_rpc: bool,
 
     /// Allow the node to accept blocks from RPC while not synced
-    /// (this flag is mainly used for testing)
-    // TODO: add and handle a matching kaspad command argument
-    pub allow_submit_block_when_not_synced: bool,
+    /// (required when initiating a new network from genesis)
+    pub enable_unsynced_mining: bool,
 
     pub user_agent_comments: Vec<String>,
 }
@@ -55,7 +54,7 @@ impl Config {
             enable_sanity_checks: false,
             utxoindex: false,
             unsafe_rpc: false,
-            allow_submit_block_when_not_synced: false,
+            enable_unsynced_mining: false,
             user_agent_comments: Default::default(),
         }
     }
