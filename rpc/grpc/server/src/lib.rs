@@ -96,7 +96,7 @@ impl AsyncService for GrpcServer {
                     trace!("Error while stopping the gRPC service: {0}", err);
                 }
             }
-            match grpc_service.finalize().await {
+            match grpc_service.finalize() {
                 Ok(_) => {}
                 Err(err) => {
                     trace!("Error while finalizing the gRPC service: {0}", err);

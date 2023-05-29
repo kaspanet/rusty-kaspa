@@ -11,7 +11,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::api::rpc::RpcApi;
+use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
 use kaspa_txscript::pay_to_address_script;
 use secp256k1::{rand::thread_rng, KeyPair};
 use tokio::time::{interval, MissedTickBehavior};
@@ -74,7 +74,10 @@ async fn main() {
     kaspa_core::log::init_logger(None, "");
     let args = Args::parse();
     let mut stats = Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 };
-    let rpc_client = GrpcClient::connect(format!("grpc://{}", args.rpc_server), true, None, false, Some(500_000)).await.unwrap();
+    let rpc_client =
+        GrpcClient::connect(NotificationMode::Direct, format!("grpc://{}", args.rpc_server), true, None, false, Some(500_000))
+            .await
+            .unwrap();
     info!("Connected to RPC");
     let mut pending = HashMap::new();
 

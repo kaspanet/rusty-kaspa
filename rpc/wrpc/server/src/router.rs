@@ -71,17 +71,23 @@ impl Router {
             RpcApiOps::Subscribe,
             workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, scope: Scope| {
                 Box::pin(async move {
-                    let notifier = manager.notifier();
-                    let id = if let Some(listener_id) = connection.listener_id() {
+                    let rpc_service = manager.rpc_service(&connection);
+                    let listener_id = if let Some(listener_id) = connection.listener_id() {
                         listener_id
                     } else {
-                        let id = notifier.register_new_listener(connection.clone());
-                        connection.register_notification_listener(id);
-                        id
+                        // The only possible case here is a server connected to rpc core.
+                        // If the proxy is used, the connection has a gRPC client and the listener id
+                        // is always set to Some(ListenerId::default()) by the connection ctor.
+                        let notifier = manager
+                            .notifier()
+                            .unwrap_or_else(|| panic!("Incorrect use: `server::Server` does not carry an internal notifier"));
+                        let listener_id = notifier.register_new_listener(connection.clone());
+                        connection.register_notification_listener(listener_id);
+                        listener_id
                     };
-                    workflow_log::log_trace!("notification subscribe[0x{id:x}] {scope:?}");
-                    notifier.try_start_notify(id, scope).map_err(|err| err.to_string())?;
-                    Ok(SubscribeResponse::new(id))
+                    workflow_log::log_trace!("notification subscribe[0x{listener_id:x}] {scope:?}");
+                    rpc_service.start_notify(listener_id, scope).await.map_err(|err| err.to_string())?;
+                    Ok(SubscribeResponse::new(listener_id))
                 })
             }),
         );
@@ -92,8 +98,9 @@ impl Router {
                 Box::pin(async move {
                     if let Some(listener_id) = connection.listener_id() {
                         workflow_log::log_trace!("notification unsubscribe[0x{listener_id:x}] {scope:?}");
-                        manager.notifier().try_stop_notify(listener_id, scope).unwrap_or_else(|err| {
-                            format!("wRPC -> RpcApiOps::Unsubscribe error calling try_stop_notify(): {err}");
+                        let rpc_service = manager.rpc_service(&connection);
+                        rpc_service.stop_notify(listener_id, scope).await.unwrap_or_else(|err| {
+                            format!("wRPC -> RpcApiOps::Unsubscribe error calling stop_notify(): {err}");
                         });
                     } else {
                         workflow_log::log_trace!("notification unsubscribe[N/A] {scope:?}");
