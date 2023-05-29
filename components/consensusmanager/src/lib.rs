@@ -4,7 +4,6 @@ use kaspa_core::{core::Core, service::Service};
 use parking_lot::RwLock;
 use std::{collections::VecDeque, ops::Deref, sync::Arc, thread::JoinHandle};
 
-pub mod readers_lock;
 mod session;
 
 pub use session::{ConsensusInstance, ConsensusSession, SessionLock, SessionReadGuard, SessionWriteGuard};

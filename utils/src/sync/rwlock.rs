@@ -3,7 +3,10 @@ use std::sync::Arc;
 
 /// Readers-first Reader-writer Lock. If the lock is acquired by readers, then additional readers
 /// will always be able to acquire the lock as well even if a writer is already in the queue. Note
-/// that this makes it safe to make recursive read calls
+/// that this makes it safe to make recursive read calls.
+///
+/// We currently only use this lock over an empty tuple, however it can easily contain data by
+/// using `UnsafeCell<T>` and passing it to the various guards with or without mutable access
 pub struct RfRwLock {
     // The low-level "non-fair" semaphore used to prioritize readers
     ll_sem: Semaphore,
@@ -30,14 +33,15 @@ impl RfRwLock {
         RfRwLockReadGuard(self)
     }
 
-    pub async fn read_owned(self: Arc<Self>) -> RFRwLockOwnedReadGuard {
+    pub async fn read_owned(self: Arc<Self>) -> RfRwLockOwnedReadGuard {
         self.ll_sem.acquire(1).await;
-        RFRwLockOwnedReadGuard(self)
+        RfRwLockOwnedReadGuard(self)
     }
 
     pub async fn write(&self) -> RfRwLockWriteGuard<'_> {
         // Writes acquire all possible permits, hence they ensure exclusiveness. On the other hand, this allows
-        // late readers to get in front of them since readers request only a single permit
+        // late readers to get in front of them since readers request only a single permit and the semaphore is
+        // non-fair
         self.ll_sem.acquire(Semaphore::MAX_PERMITS).await;
         RfRwLockWriteGuard(self)
     }
@@ -69,9 +73,9 @@ impl Drop for RfRwLockReadGuard<'_> {
     }
 }
 
-pub struct RFRwLockOwnedReadGuard(Arc<RfRwLock>);
+pub struct RfRwLockOwnedReadGuard(Arc<RfRwLock>);
 
-impl Drop for RFRwLockOwnedReadGuard {
+impl Drop for RfRwLockOwnedReadGuard {
     fn drop(&mut self) {
         self.0.release_read();
     }

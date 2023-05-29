@@ -1,20 +1,19 @@
 //! Consensus and Session management structures.
 //!
-//! We use newtypes in order to simplify changing the underlying lock to
-//! a more performant one in the future
+//! We use newtypes in order to simplify changing the underlying lock in the future
 
-use std::{ops::Deref, sync::Arc};
-use tokio::sync::RwLockWriteGuard as TokioRwLockWriteGuard;
-
-use crate::readers_lock::{ReadersFirstRwLock, ReadersFirstRwLockReadGuard};
 use kaspa_consensus_core::api::{ConsensusApi, DynConsensus};
+use kaspa_utils::sync::rwlock::*;
+use std::{ops::Deref, sync::Arc};
 
-pub struct SessionReadGuard(ReadersFirstRwLockReadGuard<()>);
+pub struct SessionOwnedReadGuard(RfRwLockOwnedReadGuard);
 
-pub struct SessionWriteGuard<'a>(TokioRwLockWriteGuard<'a, ()>);
+pub struct SessionReadGuard<'a>(RfRwLockReadGuard<'a>);
+
+pub struct SessionWriteGuard<'a>(RfRwLockWriteGuard<'a>);
 
 #[derive(Clone)]
-pub struct SessionLock(Arc<ReadersFirstRwLock<()>>);
+pub struct SessionLock(Arc<RfRwLock>);
 
 impl Default for SessionLock {
     fn default() -> Self {
@@ -24,7 +23,11 @@ impl Default for SessionLock {
 
 impl SessionLock {
     pub fn new() -> SessionLock {
-        SessionLock(Arc::new(ReadersFirstRwLock::new(())))
+        SessionLock(Arc::new(RfRwLock::new()))
+    }
+
+    pub async fn read_owned(&self) -> SessionOwnedReadGuard {
+        SessionOwnedReadGuard(self.0.clone().read_owned().await)
     }
 
     pub async fn read(&self) -> SessionReadGuard {
@@ -52,23 +55,47 @@ impl ConsensusInstance {
     }
 
     pub async fn session(&self) -> ConsensusSession {
-        let g = self.session_lock.clone().read().await;
+        let g = self.session_lock.read().await;
         ConsensusSession::new(g, self.consensus.clone())
+    }
+
+    pub async fn session_owned(&self) -> ConsensusSessionOwned {
+        let g = self.session_lock.read_owned().await;
+        ConsensusSessionOwned::new(g, self.consensus.clone())
     }
 }
 
-pub struct ConsensusSession {
-    _session_guard: SessionReadGuard,
+pub struct ConsensusSession<'a> {
+    _session_guard: SessionReadGuard<'a>,
     consensus: DynConsensus,
 }
 
-impl ConsensusSession {
-    pub fn new(session_guard: SessionReadGuard, consensus: DynConsensus) -> Self {
+impl<'a> ConsensusSession<'a> {
+    pub fn new(session_guard: SessionReadGuard<'a>, consensus: DynConsensus) -> Self {
         Self { _session_guard: session_guard, consensus }
     }
 }
 
-impl Deref for ConsensusSession {
+impl Deref for ConsensusSession<'_> {
+    type Target = dyn ConsensusApi; // We avoid exposing the Arc itself by ref since it can be easily cloned and misused
+
+    fn deref(&self) -> &Self::Target {
+        self.consensus.as_ref()
+    }
+}
+
+pub struct ConsensusSessionOwned {
+    _session_guard: SessionOwnedReadGuard,
+    consensus: DynConsensus,
+}
+
+impl ConsensusSessionOwned {
+    pub fn new(session_guard: SessionOwnedReadGuard, consensus: DynConsensus) -> Self {
+        Self { _session_guard: session_guard, consensus }
+    }
+}
+
+impl Deref for ConsensusSessionOwned {
     type Target = dyn ConsensusApi; // We avoid exposing the Arc itself by ref since it can be easily cloned and misused
 
     fn deref(&self) -> &Self::Target {

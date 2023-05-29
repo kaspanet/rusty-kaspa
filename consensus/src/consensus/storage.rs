@@ -108,7 +108,7 @@ impl ConsensusStorage {
         let selected_chain_store = Arc::new(RwLock::new(DbSelectedChainStore::new(db.clone(), perf_params.header_data_cache_size)));
 
         // Pruning
-        let pruning_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
+        let pruning_point_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), 4));
         let pruning_point_utxo_set_store =
             Arc::new(RwLock::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::PRUNING_UTXO_SET)));
@@ -144,7 +144,7 @@ impl ConsensusStorage {
             reachability_store,
             ghostdag_stores,
             ghostdag_primary_store,
-            pruning_point_store: pruning_store,
+            pruning_point_store,
             headers_selected_tip_store,
             body_tips_store,
             headers_store,

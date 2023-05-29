@@ -17,4 +17,12 @@ triggered = "0.1"
 event-listener = "2.5.3"
 
 [dev-dependencies]
+async-trait.workspace = true
+futures-util.workspace = true
 tokio = { workspace = true, features = ["rt", "time", "macros"] }
+criterion.workspace = true
+rand.workspace = true
+
+[[bench]]
+name = "bench"
+harness = false
