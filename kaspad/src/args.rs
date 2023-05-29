@@ -35,10 +35,10 @@ impl Default for Defaults {
             reset_db: false,
             outbound_target: 8,
             inbound_limit: 128,
+            enable_unsynced_mining: false,
             testnet: false,
             devnet: false,
             simnet: false,
-            enable_unsynced_mining: false,
         }
     }
 }
@@ -202,8 +202,7 @@ impl Args {
             outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
             inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
             reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
-            enable_unsynced_mining: m.get_one::<bool>("enable_unsynced_mining").cloned().unwrap_or(defaults.enable_
-                nc_mining),
+            enable_unsynced_mining: m.get_one::<bool>("enable_unsynced_mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
             utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
