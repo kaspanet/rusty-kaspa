@@ -8,8 +8,13 @@ license.workspace = true
 
 [dependencies]
 async-channel.workspace = true
-triggered = "0.1"
 uuid.workspace = true
 serde.workspace = true
 borsh.workspace = true
 itertools.workspace = true
+
+triggered = "0.1"
+event-listener = "2.5.3"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "time", "macros"] }
