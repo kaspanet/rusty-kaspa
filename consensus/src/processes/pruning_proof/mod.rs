@@ -656,7 +656,7 @@ impl PruningProofManager {
         }
     }
 
-    fn calculate_pruning_point_anticone_and_trusted_data(
+    pub(crate) fn calculate_pruning_point_anticone_and_trusted_data(
         &self,
         pruning_point: Hash,
         virtual_parents: impl Iterator<Item = Hash>,
@@ -696,6 +696,9 @@ impl PruningProofManager {
                 let current_gd = self.ghostdag_stores[0].get_data(current).unwrap();
                 ghostdag_blocks.insert(current, (&*current_gd).into());
                 current = current_gd.selected_parent;
+                if current == self.genesis_hash {
+                    break;
+                }
             }
         }
 

@@ -8,7 +8,7 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            ghostdag::CompactGhostdagData,
+            ghostdag::{CompactGhostdagData, GhostdagStoreReader},
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::{PruningStore, PruningStoreReader},
@@ -18,6 +18,7 @@ use crate::{
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
             utxo_set::UtxoSetStore,
+            virtual_state::VirtualStateStoreReader,
         },
     },
     processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
@@ -25,7 +26,12 @@ use crate::{
 use crossbeam_channel::Receiver as CrossbeamReceiver;
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::ORIGIN, blockstatus::BlockStatus::StatusHeaderOnly, muhash::MuHashExtensions, pruning::PruningPointProof, BlockHashSet,
+    blockhash::ORIGIN,
+    blockstatus::BlockStatus::StatusHeaderOnly,
+    muhash::MuHashExtensions,
+    pruning::{PruningPointProof, PruningPointTrustedData},
+    trusted::ExternalGhostdagData,
+    BlockHashSet,
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::info;
@@ -164,6 +170,7 @@ impl PruningProcessor {
 
     fn prune(&self, new_pruning_point: Hash) {
         // TODO: check if archival
+        // TODO: mark the last pruned point
 
         let proof = self.pruning_proof_manager.get_pruning_point_proof();
         let data = self
@@ -181,6 +188,7 @@ impl PruningProcessor {
         // windows and pruning proof, and only headers for past pruning points
         let keep_blocks: BlockHashSet = data.anticone.iter().copied().collect();
         let keep_relations: BlockHashSet = std::iter::empty()
+            .chain(data.anticone.iter().copied())
             .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
             .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
             .chain(proof.iter().flatten().map(|h| h.hash))
@@ -194,6 +202,27 @@ impl PruningProcessor {
         let mut reachability_read = self.reachability_store.upgradable_read();
 
         info!("Starting Header and Block pruning...");
+
+        {
+            let mut counter = 0;
+            let mut batch = WriteBatch::default();
+            for kept in keep_relations.iter().copied() {
+                let ghostdag = self.ghostdag_primary_store.get_data(kept).unwrap();
+                if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains(&h)) {
+                    let mut mutable_ghostdag: ExternalGhostdagData = ghostdag.as_ref().into();
+                    mutable_ghostdag.mergeset_blues.retain(|h| keep_relations.contains(h));
+                    mutable_ghostdag.mergeset_reds.retain(|h| keep_relations.contains(h));
+                    mutable_ghostdag.blues_anticone_sizes.retain(|k, _| keep_relations.contains(k));
+                    if !keep_relations.contains(&mutable_ghostdag.selected_parent) {
+                        mutable_ghostdag.selected_parent = ORIGIN;
+                    }
+                    counter += 1;
+                    self.ghostdag_primary_store.update_batch(&mut batch, kept, &Arc::new(mutable_ghostdag.into())).unwrap();
+                }
+            }
+            self.db.write(batch).unwrap();
+            info!("Header and Block pruning: updated ghostdag data for {} blocks", counter);
+        }
 
         {
             // Start with a batch for pruning body tips and selected chain stores
@@ -329,8 +358,9 @@ impl PruningProcessor {
             keep_headers.len()
         );
 
-        // TODO: remove this sanity test when stable
+        // TODO: remove these sanity tests when stable
         self.assert_proof_rebuilding(proof, new_pruning_point);
+        self.assert_data_rebuilding(data, new_pruning_point);
     }
 
     fn past_pruning_points(&self) -> BlockHashSet {
@@ -351,5 +381,26 @@ impl PruningProcessor {
             }
         }
         info!("Proof was rebuilt successfully following pruning");
+    }
+
+    fn assert_data_rebuilding(&self, ref_data: Arc<PruningPointTrustedData>, new_pruning_point: Hash) {
+        info!("Rebuilding pruning point trusted data (Alpha sanity test)");
+        let virtual_state = self.virtual_stores.read().state.get().unwrap();
+        let built_data = self
+            .pruning_proof_manager
+            .calculate_pruning_point_anticone_and_trusted_data(new_pruning_point, virtual_state.parents.iter().copied());
+        assert_eq!(
+            ref_data.anticone.iter().copied().collect::<BlockHashSet>(),
+            built_data.anticone.iter().copied().collect::<BlockHashSet>()
+        );
+        assert_eq!(
+            ref_data.daa_window_blocks.iter().map(|th| th.header.hash).collect::<BlockHashSet>(),
+            built_data.daa_window_blocks.iter().map(|th| th.header.hash).collect::<BlockHashSet>()
+        );
+        assert_eq!(
+            ref_data.ghostdag_blocks.iter().map(|gd| gd.hash).collect::<BlockHashSet>(),
+            built_data.ghostdag_blocks.iter().map(|gd| gd.hash).collect::<BlockHashSet>()
+        );
+        info!("Trusted data was rebuilt successfully following pruning");
     }
 }

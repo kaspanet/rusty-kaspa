@@ -270,6 +270,16 @@ impl DbGhostdagStore {
         Ok(())
     }
 
+    pub fn update_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {
+        self.access.write(BatchDbWriter::new(batch), hash, data.clone())?;
+        self.compact_access.write(
+            BatchDbWriter::new(batch),
+            hash,
+            CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
+        )?;
+        Ok(())
+    }
+
     pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
         self.compact_access.delete(BatchDbWriter::new(batch), hash)?;
         self.access.delete(BatchDbWriter::new(batch), hash)
