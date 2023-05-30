@@ -140,6 +140,18 @@ impl Params {
         }
     }
 
+    /// Returns the target time per block,
+    /// depending on a selected parent DAA score
+    #[inline]
+    #[must_use]
+    pub fn target_time_per_block(&self, selected_parent_daa_score: u64) -> u64 {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            self.target_time_per_block
+        } else {
+            self.next_target_time_per_block
+        }
+    }
+
     fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
         if selected_parent_daa_score < self.sampling_activation_daa_score {
             self.target_time_per_block * self.full_difficulty_window_size as u64

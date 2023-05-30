@@ -1281,7 +1281,7 @@ async fn difficulty_test() {
     async fn add_block(_test: &Test, consensus: &TestConsensus, block_time: Option<u64>, parents: Vec<Hash>) -> Header {
         let selected_parent = consensus.ghostdag_manager().find_selected_parent(parents.iter().copied());
         let block_time = block_time.unwrap_or_else(|| {
-            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().target_time_per_block
+            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().target_time_per_block(0)
         });
         let mut header = consensus.build_header_with_parents(new_unique(), parents);
         header.timestamp = block_time;
@@ -1310,7 +1310,9 @@ async fn difficulty_test() {
 
     const FULL_WINDOW_SIZE: usize = 140;
     const SAMPLED_WINDOW_SIZE: usize = 13;
+    const HIGH_BPS_SAMPLED_WINDOW_SIZE: usize = 13;
     const SAMPLE_RATE: u64 = 10;
+    const HIGH_BPS: u64 = 4;
     let tests = vec![
         Test {
             name: "MAINNET with full window",
@@ -1331,6 +1333,23 @@ async fn difficulty_test() {
                     p.ghostdag_k = 1;
                     p.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
                     p.difficulty_sample_rate = SAMPLE_RATE;
+                    p.sampling_activation_daa_score = 0;
+                    // Define past median time so that calls to add_block_with_min_time creates blocks
+                    // which timestamps fit within the min-max timestamps found in the difficulty window
+                    p.past_median_time_sample_rate = 3;
+                    p.sampled_timestamp_deviation_tolerance = 45;
+                })
+                .build(),
+        },
+        Test {
+            name: "MAINNET with sampled window & high BPS",
+            config: ConfigBuilder::new(MAINNET_PARAMS)
+                .skip_proof_of_work()
+                .edit_consensus_params(|p| {
+                    p.ghostdag_k = 1;
+                    p.next_target_time_per_block /= HIGH_BPS;
+                    p.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
+                    p.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
                     p.sampling_activation_daa_score = 0;
                     // Define past median time so that calls to add_block_with_min_time creates blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
@@ -1368,12 +1387,12 @@ async fn difficulty_test() {
         // Stage 0
         info!("{} - Stage 0", test.name);
         let mut tip = fake_genesis;
-        for _ in 0..expanded_window_size {
+        for i in 0..expanded_window_size {
             tip = add_block(&test, &consensus, None, vec![tip.hash]).await;
             assert_eq!(
                 tip.bits, test.config.genesis.bits,
-                "{}: until first DAA window is created difficulty should remains unchanged",
-                test.name
+                "{}: {} until first DAA window is created difficulty should remain unchanged",
+                test.name, i
             );
         }
 
