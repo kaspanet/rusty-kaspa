@@ -92,6 +92,54 @@ impl Params {
         }
     }
 
+    /// Returns the timestamp deviation tolerance,
+    /// depending on a selected parent DAA score
+    #[inline]
+    #[must_use]
+    pub fn timestamp_deviation_tolerance(&self, selected_parent_daa_score: u64) -> u64 {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            self.full_timestamp_deviation_tolerance
+        } else {
+            self.sampled_timestamp_deviation_tolerance
+        }
+    }
+
+    /// Returns the past median time sample rate,
+    /// depending on a selected parent DAA score
+    #[inline]
+    #[must_use]
+    pub fn past_median_time_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            1
+        } else {
+            self.past_median_time_sample_rate
+        }
+    }
+
+    /// Returns the size of the blocks window that is inspected to calculate the difficulty,
+    /// depending on a selected parent DAA score
+    #[inline]
+    #[must_use]
+    pub fn difficulty_window_size(&self, selected_parent_daa_score: u64) -> usize {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            self.full_difficulty_window_size
+        } else {
+            self.sampled_difficulty_window_size
+        }
+    }
+
+    /// Returns the difficulty sample rate,
+    /// depending on a selected parent DAA score
+    #[inline]
+    #[must_use]
+    pub fn difficulty_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            1
+        } else {
+            self.difficulty_sample_rate
+        }
+    }
+
     fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
         if selected_parent_daa_score < self.sampling_activation_daa_score {
             self.target_time_per_block * self.full_difficulty_window_size as u64
