@@ -460,9 +460,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
             current_daa_score = block.header.daa_score;
-            // TODO: decide if we resolve virtual separately on long IBD
-            // TODO: handle peer banning
-            // TODO: call self.ctx.on_new_block for every inserted block
             jobs.push(consensus.validate_and_insert_block(block));
         }
 

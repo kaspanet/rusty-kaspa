@@ -12,6 +12,7 @@ use crate::{
         headers_selected_tip::DbHeadersSelectedTipStore,
         past_pruning_points::DbPastPruningPointsStore,
         pruning::DbPruningStore,
+        pruning_utxoset::PruningUtxosetStores,
         reachability::DbReachabilityStore,
         relations::DbRelationsStore,
         selected_chain::DbSelectedChainStore,
@@ -43,7 +44,7 @@ pub struct ConsensusStorage {
     pub pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     pub body_tips_store: Arc<RwLock<DbTipsStore>>,
-    pub pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
+    pub pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
@@ -110,9 +111,9 @@ impl ConsensusStorage {
         // Pruning
         let pruning_point_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), 4));
-        let pruning_point_utxo_set_store =
-            Arc::new(RwLock::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::PRUNING_UTXO_SET)));
+        let pruning_utxoset_stores = Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), perf_params.utxo_set_cache_size)));
 
+        // Txs
         let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), perf_params.block_data_cache_size));
         let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), perf_params.block_data_cache_size));
         let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), perf_params.block_data_cache_size));
@@ -149,7 +150,7 @@ impl ConsensusStorage {
             body_tips_store,
             headers_store,
             block_transactions_store,
-            pruning_point_utxo_set_store,
+            pruning_utxoset_stores,
             virtual_stores,
             selected_chain_store,
             acceptance_data_store,

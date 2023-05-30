@@ -17,7 +17,6 @@ use crate::{
             selected_chain::SelectedChainStore,
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
-            utxo_set::UtxoSetStore,
             virtual_state::VirtualStateStoreReader,
         },
     },
@@ -143,15 +142,17 @@ impl PruningProcessor {
 
             info!("Daily pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
 
-            // TODO: DB batching via marker
-            let mut utxoset_write = self.pruning_point_utxo_set_store.write();
+            let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
             for chain_block in
                 self.reachability_service.forward_chain_iterator(current_pruning_info.pruning_point, new_pruning_point, true).skip(1)
             {
                 let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
-                utxoset_write.write_diff(utxo_diff.as_ref()).unwrap();
+                let mut batch = WriteBatch::default();
+                pruning_utxoset_write.utxo_set.write_diff_batch(&mut batch, utxo_diff.as_ref()).unwrap();
+                pruning_utxoset_write.set_utxoset_position(&mut batch, chain_block).unwrap();
+                self.db.write(batch).unwrap();
             }
-            drop(utxoset_write);
+            drop(pruning_utxoset_write);
 
             if self.config.enable_sanity_checks {
                 self.assert_utxo_commitment(new_pruning_point);
@@ -168,15 +169,15 @@ impl PruningProcessor {
     fn assert_utxo_commitment(&self, pruning_point: Hash) {
         let commitment = self.headers_store.get_header(pruning_point).unwrap().utxo_commitment;
         let mut multiset = MuHash::new();
-        let utxoset_read = self.pruning_point_utxo_set_store.read();
-        for (outpoint, entry) in utxoset_read.iterator().map(|r| r.unwrap()) {
+        let pruning_utxoset_read = self.pruning_utxoset_stores.read();
+        for (outpoint, entry) in pruning_utxoset_read.utxo_set.iterator().map(|r| r.unwrap()) {
             multiset.add_utxo(&outpoint, &entry);
         }
         assert_eq!(multiset.finalize(), commitment, "pruning point utxo set does not match the header utxo commitment");
     }
 
     fn prune(&self, new_pruning_point: Hash) {
-        // TODO: mark the last pruned point (and check on startup if it's below the pruning point)
+        // TODO: check on startup if the data pruned point is below the pruning point)
 
         if self.config.is_archival {
             warn!("The node is configured as an archival node -- skipping data pruning. Note this might lead to heavy disk usage.");
@@ -280,7 +281,7 @@ impl PruningProcessor {
             // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
             queue.extend(reachability_read.get_children(current).unwrap().iter());
 
-            // If we have the lock for more than 10ms, release and recapture to allow consensus progress during pruning
+            // If we have the lock for more than a few milliseconds, release and recapture to allow consensus progress during pruning
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
                 drop(reachability_read);
                 prune_guard.blocking_yield();
@@ -355,6 +356,7 @@ impl PruningProcessor {
                 reachability_read = self.reachability_store.upgradable_read();
             }
         }
+
         drop(reachability_read);
         drop(prune_guard);
 
@@ -370,6 +372,15 @@ impl PruningProcessor {
         if self.config.enable_sanity_checks {
             self.assert_proof_rebuilding(proof, new_pruning_point);
             self.assert_data_rebuilding(data, new_pruning_point);
+        }
+
+        {
+            // Set the data pruned point to the new pruning point only after we successfully pruned its past
+            let mut pruning_point_write = self.pruning_point_store.write();
+            let mut batch = WriteBatch::default();
+            pruning_point_write.set_data_pruned_point(&mut batch, new_pruning_point).unwrap();
+            self.db.write(batch).unwrap();
+            drop(pruning_point_write);
         }
     }
 

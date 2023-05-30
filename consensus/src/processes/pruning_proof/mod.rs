@@ -41,7 +41,7 @@ use crate::{
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
-            pruning::{DbPruningStore, PruningStore, PruningStoreReader},
+            pruning::{DbPruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreReader, StagingRelationsStore},
             selected_chain::{DbSelectedChainStore, SelectedChainStore},
@@ -161,9 +161,16 @@ impl PruningProofManager {
             let block_level = max(signed_block_level, 0) as BlockLevel;
             self.headers_store.insert(header.hash, header.clone(), block_level).unwrap();
         }
-        let current_pp = pruning_points.last().unwrap().hash;
-        info!("Setting {current_pp} as the current pruning point");
-        self.pruning_point_store.write().set(current_pp, current_pp, (pruning_points.len() - 1) as u64).unwrap();
+
+        let new_pruning_point = pruning_points.last().unwrap().hash;
+        info!("Setting {new_pruning_point} as the current pruning point");
+
+        let mut pruning_point_write = self.pruning_point_store.write();
+        let mut batch = WriteBatch::default();
+        pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, (pruning_points.len() - 1) as u64).unwrap();
+        pruning_point_write.set_data_pruned_point(&mut batch, new_pruning_point).unwrap();
+        self.db.write(batch).unwrap();
+        drop(pruning_point_write);
     }
 
     pub fn apply_proof(&self, mut proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
@@ -184,7 +191,7 @@ impl PruningProofManager {
         proof[0].sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
         self.populate_reachability_and_headers(&proof);
         for (level, headers) in proof.iter().enumerate() {
-            trace!("Applying level {} in pruning point proof", level);
+            trace!("Applying level {} from the pruning point proof", level);
             self.ghostdag_stores[level].insert(ORIGIN, self.ghostdag_managers[level].origin_ghostdag_data()).unwrap();
             for header in headers.iter() {
                 let parents = Arc::new(
@@ -615,8 +622,7 @@ impl PruningProofManager {
                         continue;
                     }
 
-                    let current_header = self.headers_store.get_header(current).unwrap();
-                    headers.push(current_header.clone());
+                    headers.push(self.headers_store.get_header(current).unwrap());
                     for child in self.relations_stores.read()[level].get_children(current).unwrap().iter().copied() {
                         queue.push(Reverse(SortableBlock::new(child, self.ghostdag_stores[level].get_blue_work(child).unwrap())));
                     }
