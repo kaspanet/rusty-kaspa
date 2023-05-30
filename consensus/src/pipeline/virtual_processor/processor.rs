@@ -186,7 +186,7 @@ impl VirtualStateProcessor {
 
             genesis: params.genesis.clone(),
             max_block_parents: params.max_block_parents,
-            difficulty_window_size: params.difficulty_window_size,
+            difficulty_window_size: params.full_difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
             pruning_depth: params.pruning_depth,
 
@@ -733,7 +733,14 @@ impl VirtualStateProcessor {
             header_pruning_point,
         );
         let selected_parent_timestamp = self.headers_store.get_timestamp(virtual_state.ghostdag_data.selected_parent).unwrap();
-        Ok(BlockTemplate::new(MutableBlock::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp))
+        let selected_parent_daa_score = self.headers_store.get_daa_score(virtual_state.ghostdag_data.selected_parent).unwrap();
+        Ok(BlockTemplate::new(
+            MutableBlock::new(header, txs),
+            miner_data,
+            coinbase.has_red_reward,
+            selected_parent_timestamp,
+            selected_parent_daa_score,
+        ))
     }
 
     pub fn init(self: &Arc<Self>) {

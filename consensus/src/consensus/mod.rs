@@ -268,9 +268,11 @@ impl Consensus {
             params.target_time_per_block,
             params.next_target_time_per_block,
             params.sampling_activation_daa_score,
-            params.difficulty_window_size,
+            params.full_difficulty_window_size,
+            params.sampled_difficulty_window_size,
             params.difficulty_sample_rate,
-            params.past_median_time_window_size(),
+            params.full_past_median_time_window_size(),
+            params.sampled_past_median_time_window_size(),
             params.past_median_time_sample_rate,
         );
         let depth_manager = BlockDepthManager::new(
@@ -684,7 +686,7 @@ impl ConsensusApi for Consensus {
 
     fn is_nearly_synced(&self) -> bool {
         // See comment within `config.is_nearly_synced`
-        self.config.is_nearly_synced(self.get_sink_timestamp())
+        self.config.is_nearly_synced(self.get_sink_timestamp(), self.headers_store.get_daa_score(self.get_sink()).unwrap())
     }
 
     fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {

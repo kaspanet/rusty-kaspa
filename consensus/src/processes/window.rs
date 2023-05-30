@@ -233,7 +233,6 @@ pub struct SampledWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReade
     block_window_cache_for_difficulty: Arc<U>,
     block_window_cache_for_past_median_time: Arc<U>,
     target_time_per_block: u64,
-    next_target_time_per_block: u64,
     sampling_activation_daa_score: u64,
     difficulty_window_size: usize,
     difficulty_sample_rate: u64,
@@ -253,7 +252,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         block_window_cache_for_difficulty: Arc<U>,
         block_window_cache_for_past_median_time: Arc<U>,
         target_time_per_block: u64,
-        next_target_time_per_block: u64,
         sampling_activation_daa_score: u64,
         difficulty_window_size: usize,
         difficulty_sample_rate: u64,
@@ -263,8 +261,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         let difficulty_manager = SampledDifficultyManager::new(
             headers_store.clone(),
             genesis.bits,
-            difficulty_sample_rate,
             difficulty_window_size,
+            difficulty_sample_rate,
             target_time_per_block,
         );
         let past_median_time_manager = SampledPastMedianTimeManager::new(headers_store.clone(), genesis.timestamp);
@@ -276,7 +274,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             target_time_per_block,
-            next_target_time_per_block,
             sampling_activation_daa_score,
             difficulty_window_size,
             difficulty_sample_rate,
@@ -408,7 +405,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
                     if !can_push {
                         break;
                     }
-                    if sample_rate <= 1 || selected_parent_daa_score + index % sample_rate == 0 {
+                    if sample_rate <= 1 || (selected_parent_daa_score + index) % sample_rate == 0 {
                         heap.force_push(block);
                     }
                 }
@@ -429,7 +426,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
                     if !can_push {
                         break;
                     }
-                    if sample_rate <= 1 || selected_parent_daa_score + index % sample_rate == 0 {
+                    if sample_rate <= 1 || (selected_parent_daa_score + index) % sample_rate == 0 {
                         heap.force_push(block);
                     }
                 }
@@ -471,7 +468,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
                     if !can_push {
                         break;
                     }
-                    if sample_rate <= 1 || selected_parent_daa_score + index % sample_rate == 0 {
+                    if sample_rate <= 1 || (selected_parent_daa_score + index) % sample_rate == 0 {
                         return true;
                     }
                 }
@@ -492,7 +489,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
                     if !can_push {
                         break;
                     }
-                    if sample_rate <= 1 || selected_parent_daa_score + index % sample_rate == 0 {
+                    if sample_rate <= 1 || (selected_parent_daa_score + index) % sample_rate == 0 {
                         return true;
                     }
                 }
@@ -570,9 +567,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         target_time_per_block: u64,
         next_target_time_per_block: u64,
         sampling_activation_daa_score: u64,
-        difficulty_window_size: usize,
+        full_difficulty_window_size: usize,
+        sampled_difficulty_window_size: usize,
         difficulty_sample_rate: u64,
-        past_median_time_window_size: usize,
+        full_past_median_time_window_size: usize,
+        sampled_past_median_time_window_size: usize,
         past_median_time_sample_rate: u64,
     ) -> Self {
         let full_window_manager = FullWindowManager::new(
@@ -582,8 +581,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time.clone(),
             target_time_per_block,
-            difficulty_window_size,
-            past_median_time_window_size,
+            full_difficulty_window_size,
+            full_past_median_time_window_size,
         );
         let sampled_window_manager = SampledWindowManager::new(
             genesis,
@@ -592,12 +591,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             daa_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
-            target_time_per_block,
             next_target_time_per_block,
             sampling_activation_daa_score,
-            difficulty_window_size,
+            sampled_difficulty_window_size,
             difficulty_sample_rate,
-            past_median_time_window_size,
+            sampled_past_median_time_window_size,
             past_median_time_sample_rate,
         );
         Self { ghostdag_store, headers_store, sampled_window_manager, full_window_manager, sampling_activation_daa_score }

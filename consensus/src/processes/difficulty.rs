@@ -137,8 +137,8 @@ impl<T: HeaderStoreReader> DifficultyManagerExtension for FullDifficultyManager<
 pub struct SampledDifficultyManager<T: HeaderStoreReader> {
     headers_store: Arc<T>,
     genesis_bits: u32,
-    difficulty_sample_rate: u64,
     difficulty_window_size: usize,
+    difficulty_sample_rate: u64,
     target_time_per_block: u64,
 }
 
@@ -146,8 +146,8 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
     pub fn new(
         headers_store: Arc<T>,
         genesis_bits: u32,
-        difficulty_sample_rate: u64,
         difficulty_window_size: usize,
+        difficulty_sample_rate: u64,
         target_time_per_block: u64,
     ) -> Self {
         Self { headers_store, difficulty_sample_rate, difficulty_window_size, genesis_bits, target_time_per_block }
@@ -209,9 +209,10 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
         let difficulty_blocks_len = difficulty_blocks.len() as u64;
         let targets_sum: Uint320 =
             difficulty_blocks.into_iter().map(|diff_block| Uint320::from(Uint256::from_compact_target_bits(diff_block.bits))).sum();
-        let average_target = targets_sum / (difficulty_blocks_len);
-        let new_target = average_target * max(max_ts - min_ts, 1)
-            / (self.target_time_per_block * self.difficulty_sample_rate * difficulty_blocks_len); // This does differ from FullDifficultyManager version
+        let average_target = targets_sum / difficulty_blocks_len;
+        let measured_duration = max(max_ts - min_ts, 1);
+        let expected_duration = self.target_time_per_block * self.difficulty_sample_rate * difficulty_blocks_len; // This does differ from FullDifficultyManager version
+        let new_target = average_target * measured_duration / expected_duration;
         Uint256::try_from(new_target).expect("Expected target should be less than 2^256").compact_target_bits()
     }
 
