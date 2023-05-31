@@ -240,6 +240,7 @@ async fn ghostdag_test() {
             .edit_consensus_params(|p| {
                 p.genesis.hash = string_to_hash(&test.genesis_id);
                 p.ghostdag_k = test.k;
+                p.min_difficulty_window_len = p.full_difficulty_window_size;
             })
             .build();
         let consensus = TestConsensus::new(&config);
@@ -785,6 +786,7 @@ impl KaspadGoParams {
             difficulty_sample_rate: 1,
             sampled_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             full_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+            min_difficulty_window_len: self.DifficultyAdjustmentWindowSize,
             mergeset_size_limit: self.MergeSetSizeLimit,
             merge_depth: self.MergeDepth,
             finality_depth,
@@ -883,11 +885,13 @@ async fn json_test(file_path: &str, concurrency: bool) {
             let genesis_block = json_line_to_block(second_line);
             params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
         }
+        params.min_difficulty_window_len = params.full_difficulty_window_size;
         params
     } else {
         let genesis_block = json_line_to_block(first_line);
         let mut params = DEVNET_PARAMS;
         params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
+        params.min_difficulty_window_len = params.full_difficulty_window_size;
         params
     };
 
@@ -1554,7 +1558,12 @@ async fn difficulty_test() {
 
 #[tokio::test]
 async fn selected_chain_test() {
-    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+    let config = ConfigBuilder::new(MAINNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            p.min_difficulty_window_len = p.full_difficulty_window_size;
+        })
+        .build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 

@@ -36,6 +36,8 @@ pub struct Params {
     pub sampled_difficulty_window_size: usize,
     /// Size of full blocks window that is inspected to calculate the required difficulty of each block
     pub full_difficulty_window_size: usize,
+    // The minimum length a difficulty window (full or sampled) must have to trigger a DAA calculation
+    pub min_difficulty_window_len: usize,
     pub mergeset_size_limit: u64,
     pub merge_depth: u64,
     pub finality_depth: u64,
@@ -207,13 +209,15 @@ pub const TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
 pub const SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 600; // KIP-003: 20/2 = 10 minutes, so 600 @ current BPS
 pub const PAST_MEDIAN_TIME_SAMPLE_RATE: u64 = 10; // KIP-003: every 10 seconds, so 10 @ current BPS
 
-/// Highest proof of work difficulty value a Kaspa block can have for each network.
-/// It is the value 2^255 - 1.
+/// Highest proof of work difficulty target a Kaspa block can have for each network.
+/// This value is: 2^255 - 1.
 ///
 /// Computed value: `Uint256::from_u64(1).wrapping_shl(255) - 1.into()`
 pub const MAX_DIFFICULTY_TARGET: Uint256 =
     Uint256([18446744073709551615, 18446744073709551615, 18446744073709551615, 9223372036854775807]);
 pub const MAX_DIFFICULTY_TARGET_AS_F64: f64 = 5.78960446186581e76;
+
+pub const MIN_DIFFICULTY_WINDOW_LEN: usize = 2;
 
 pub const DIFFICULTY_WINDOW_SIZE: usize = 2641;
 pub const DIFFICULTY_SAMPLE_WINDOW_SIZE: usize = 1001; // KIP-003: 500 minutes, so 1000 + 1 @ current BPS and sample rate;
@@ -257,6 +261,7 @@ pub const MAINNET_PARAMS: Params = Params {
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
+    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -314,6 +319,7 @@ pub const TESTNET_PARAMS: Params = Params {
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
+    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -367,6 +373,7 @@ pub const SIMNET_PARAMS: Params = Params {
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
+    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -420,6 +427,7 @@ pub const DEVNET_PARAMS: Params = Params {
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
+    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,

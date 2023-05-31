@@ -14,6 +14,7 @@ use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType,
 };
 use kaspa_hashes::Hash;
+use kaspa_math::Uint256;
 use kaspa_utils::refs::Refs;
 use std::{cmp::Reverse, iter::once, ops::Deref, sync::Arc};
 
@@ -73,10 +74,16 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
         block_window_cache_for_past_median_time: Arc<U>,
         target_time_per_block: u64,
         difficulty_window_size: usize,
+        min_difficulty_window_len: usize,
         past_median_time_window_size: usize,
     ) -> Self {
-        let difficulty_manager =
-            FullDifficultyManager::new(headers_store.clone(), genesis.bits, difficulty_window_size, target_time_per_block);
+        let difficulty_manager = FullDifficultyManager::new(
+            headers_store.clone(),
+            genesis.bits,
+            difficulty_window_size,
+            min_difficulty_window_len,
+            target_time_per_block,
+        );
         let past_median_time_manager = FullPastMedianTimeManager::new(headers_store, genesis.timestamp);
         Self {
             genesis_hash: genesis.hash,
@@ -251,9 +258,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         daa_store: Arc<W>,
         block_window_cache_for_difficulty: Arc<U>,
         block_window_cache_for_past_median_time: Arc<U>,
+        max_difficulty_target: Uint256,
         target_time_per_block: u64,
         sampling_activation_daa_score: u64,
         difficulty_window_size: usize,
+        min_difficulty_window_len: usize,
         difficulty_sample_rate: u64,
         past_median_time_window_size: usize,
         past_median_time_sample_rate: u64,
@@ -261,7 +270,9 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         let difficulty_manager = SampledDifficultyManager::new(
             headers_store.clone(),
             genesis.bits,
+            max_difficulty_target,
             difficulty_window_size,
+            min_difficulty_window_len,
             difficulty_sample_rate,
             target_time_per_block,
         );
@@ -564,11 +575,13 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         daa_store: Arc<W>,
         block_window_cache_for_difficulty: Arc<U>,
         block_window_cache_for_past_median_time: Arc<U>,
+        max_difficulty_target: Uint256,
         target_time_per_block: u64,
         next_target_time_per_block: u64,
         sampling_activation_daa_score: u64,
         full_difficulty_window_size: usize,
         sampled_difficulty_window_size: usize,
+        min_difficulty_window_len: usize,
         difficulty_sample_rate: u64,
         full_past_median_time_window_size: usize,
         sampled_past_median_time_window_size: usize,
@@ -582,6 +595,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             block_window_cache_for_past_median_time.clone(),
             target_time_per_block,
             full_difficulty_window_size,
+            min_difficulty_window_len.min(full_difficulty_window_size),
             full_past_median_time_window_size,
         );
         let sampled_window_manager = SampledWindowManager::new(
@@ -591,9 +605,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             daa_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
+            max_difficulty_target,
             next_target_time_per_block,
             sampling_activation_daa_score,
             sampled_difficulty_window_size,
+            min_difficulty_window_len.min(sampled_difficulty_window_size),
             difficulty_sample_rate,
             sampled_past_median_time_window_size,
             past_median_time_sample_rate,
