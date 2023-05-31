@@ -29,4 +29,8 @@ impl<T: RelationsStoreReader> RelationsStoreReader for MTRelationsService<T> {
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
         self.store.read()[self.level].has(hash)
     }
+
+    fn counts(&self) -> Result<(usize, usize), StoreError> {
+        self.store.read()[self.level].counts()
+    }
 }

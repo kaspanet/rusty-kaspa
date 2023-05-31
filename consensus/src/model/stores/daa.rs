@@ -14,6 +14,7 @@ pub trait DaaStoreReader {
 pub trait DaaStore: DaaStoreReader {
     // This is append only
     fn insert(&self, hash: Hash, mergeset_non_daa: Arc<BlockHashSet>) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"mergeset_non_daa";
@@ -41,6 +42,10 @@ impl DbDaaStore {
         self.access.write(BatchDbWriter::new(batch), hash, mergeset_non_daa)?;
         Ok(())
     }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(BatchDbWriter::new(batch), hash)
+    }
 }
 
 impl DaaStoreReader for DbDaaStore {
@@ -56,5 +61,9 @@ impl DaaStore for DbDaaStore {
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, mergeset_non_daa)?;
         Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(DirectDbWriter::new(&self.db), hash)
     }
 }

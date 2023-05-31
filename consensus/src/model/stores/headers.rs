@@ -27,6 +27,7 @@ pub struct HeaderWithBlockLevel {
 pub trait HeaderStore: HeaderStoreReader {
     // This is append only
     fn insert(&self, hash: Hash, header: Arc<Header>, block_level: BlockLevel) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
 const HEADERS_STORE_PREFIX: &[u8] = b"headers";
@@ -87,6 +88,11 @@ impl DbHeadersStore {
             },
         )?;
         Ok(())
+    }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.compact_headers_access.delete(BatchDbWriter::new(batch), hash)?;
+        self.headers_access.delete(BatchDbWriter::new(batch), hash)
     }
 }
 
@@ -157,5 +163,10 @@ impl HeaderStore for DbHeadersStore {
         )?;
         self.headers_access.write(DirectDbWriter::new(&self.db), hash, HeaderWithBlockLevel { header, block_level })?;
         Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.compact_headers_access.delete(DirectDbWriter::new(&self.db), hash)?;
+        self.headers_access.delete(DirectDbWriter::new(&self.db), hash)
     }
 }

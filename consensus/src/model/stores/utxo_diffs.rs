@@ -19,6 +19,7 @@ pub trait UtxoDiffsStoreReader {
 
 pub trait UtxoDiffsStore: UtxoDiffsStoreReader {
     fn insert(&self, hash: Hash, utxo_diff: Arc<UtxoDiff>) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"utxo-diffs";
@@ -46,6 +47,10 @@ impl DbUtxoDiffsStore {
         self.access.write(BatchDbWriter::new(batch), hash, utxo_diff)?;
         Ok(())
     }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(BatchDbWriter::new(batch), hash)
+    }
 }
 
 impl UtxoDiffsStoreReader for DbUtxoDiffsStore {
@@ -61,5 +66,9 @@ impl UtxoDiffsStore for DbUtxoDiffsStore {
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, utxo_diff)?;
         Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(DirectDbWriter::new(&self.db), hash)
     }
 }
