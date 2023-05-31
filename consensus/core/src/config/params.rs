@@ -28,8 +28,8 @@ pub struct Params {
     pub sampling_activation_daa_score: u64,
     pub max_block_parents: u8,
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
-    pub max_difficulty: Uint256,
-    pub max_difficulty_f64: f64,
+    pub max_difficulty_target: Uint256,
+    pub max_difficulty_target_f64: f64,
     /// Block sample rate for filling the difficulty window (selects one every N blocks)
     pub difficulty_sample_rate: u64,
     /// Size of sampled blocks window that is inspected to calculate the required difficulty of each block
@@ -211,8 +211,9 @@ pub const PAST_MEDIAN_TIME_SAMPLE_RATE: u64 = 10; // KIP-003: every 10 seconds, 
 /// It is the value 2^255 - 1.
 ///
 /// Computed value: `Uint256::from_u64(1).wrapping_shl(255) - 1.into()`
-pub const DIFFICULTY_MAX: Uint256 = Uint256([18446744073709551615, 18446744073709551615, 18446744073709551615, 9223372036854775807]);
-pub const DIFFICULTY_MAX_AS_F64: f64 = 5.78960446186581e76;
+pub const MAX_DIFFICULTY_TARGET: Uint256 =
+    Uint256([18446744073709551615, 18446744073709551615, 18446744073709551615, 9223372036854775807]);
+pub const MAX_DIFFICULTY_TARGET_AS_F64: f64 = 5.78960446186581e76;
 
 pub const DIFFICULTY_WINDOW_SIZE: usize = 2641;
 pub const DIFFICULTY_SAMPLE_WINDOW_SIZE: usize = 1001; // KIP-003: 500 minutes, so 1000 + 1 @ current BPS and sample rate;
@@ -251,8 +252,8 @@ pub const MAINNET_PARAMS: Params = Params {
     next_target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
+    max_difficulty_target: MAX_DIFFICULTY_TARGET,
+    max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
@@ -308,8 +309,8 @@ pub const TESTNET_PARAMS: Params = Params {
     next_target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
+    max_difficulty_target: MAX_DIFFICULTY_TARGET,
+    max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
@@ -361,8 +362,8 @@ pub const SIMNET_PARAMS: Params = Params {
     next_target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
+    max_difficulty_target: MAX_DIFFICULTY_TARGET,
+    max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
@@ -414,8 +415,8 @@ pub const DEVNET_PARAMS: Params = Params {
     next_target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
+    max_difficulty_target: MAX_DIFFICULTY_TARGET,
+    max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
@@ -456,12 +457,12 @@ pub const DEVNET_PARAMS: Params = Params {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::params::{DIFFICULTY_MAX, DIFFICULTY_MAX_AS_F64};
+    use crate::config::params::{MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
     use kaspa_math::Uint256;
 
     #[test]
     fn test_difficulty_max_consts() {
-        assert_eq!(DIFFICULTY_MAX, Uint256::from_u64(1).wrapping_shl(255) - 1.into());
-        assert_eq!(DIFFICULTY_MAX_AS_F64, DIFFICULTY_MAX.as_f64());
+        assert_eq!(MAX_DIFFICULTY_TARGET, Uint256::from_u64(1).wrapping_shl(255) - 1.into());
+        assert_eq!(MAX_DIFFICULTY_TARGET_AS_F64, MAX_DIFFICULTY_TARGET.as_f64());
     }
 }

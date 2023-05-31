@@ -14,7 +14,7 @@ use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as Gho
 use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{Params, DEVNET_PARAMS, DIFFICULTY_MAX, DIFFICULTY_MAX_AS_F64, MAINNET_PARAMS};
+use kaspa_consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
@@ -780,8 +780,8 @@ impl KaspadGoParams {
             next_target_time_per_block: self.TargetTimePerBlock / 1_000_000,
             sampling_activation_daa_score: u64::MAX,
             max_block_parents: self.MaxBlockParents,
-            max_difficulty: DIFFICULTY_MAX,
-            max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
+            max_difficulty_target: MAX_DIFFICULTY_TARGET,
+            max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
             difficulty_sample_rate: 1,
             sampled_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             full_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
@@ -1590,7 +1590,7 @@ async fn selected_chain_test() {
     consensus.add_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec()).await.unwrap();
 
     assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
-    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie breaer rules.
+    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie breaker rules.
     assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(2).unwrap(), 23.into());
     assert!(consensus.header_processor.selected_chain_store.read().get_by_index(3).is_err());
 
