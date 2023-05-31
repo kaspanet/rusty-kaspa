@@ -21,13 +21,13 @@ pub struct ProcessingCounters {
 impl ProcessingCounters {
     pub fn snapshot(&self) -> ProcessingCountersSnapshot {
         ProcessingCountersSnapshot {
-            blocks_submitted: self.blocks_submitted.load(Ordering::SeqCst),
-            header_counts: self.header_counts.load(Ordering::SeqCst),
-            dep_counts: self.dep_counts.load(Ordering::SeqCst),
-            body_counts: self.body_counts.load(Ordering::SeqCst),
-            txs_counts: self.txs_counts.load(Ordering::SeqCst),
-            chain_block_counts: self.chain_block_counts.load(Ordering::SeqCst),
-            mass_counts: self.mass_counts.load(Ordering::SeqCst),
+            blocks_submitted: self.blocks_submitted.load(Ordering::Relaxed),
+            header_counts: self.header_counts.load(Ordering::Relaxed),
+            dep_counts: self.dep_counts.load(Ordering::Relaxed),
+            body_counts: self.body_counts.load(Ordering::Relaxed),
+            txs_counts: self.txs_counts.load(Ordering::Relaxed),
+            chain_block_counts: self.chain_block_counts.load(Ordering::Relaxed),
+            mass_counts: self.mass_counts.load(Ordering::Relaxed),
         }
     }
 }

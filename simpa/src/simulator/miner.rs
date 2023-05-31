@@ -1,5 +1,3 @@
-use super::infra::{Environment, Process, Resumption, Suspension};
-use futures::future::try_join_all;
 use indexmap::IndexSet;
 use itertools::Itertools;
 use kaspa_consensus::consensus::Consensus;
@@ -7,9 +5,7 @@ use kaspa_consensus::model::stores::virtual_state::VirtualStateStoreReader;
 use kaspa_consensus::params::Params;
 use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_consensus_core::block::Block;
-use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::errors::block::BlockProcessResult;
 use kaspa_consensus_core::sign::sign;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{
@@ -17,14 +13,13 @@ use kaspa_consensus_core::tx::{
 };
 use kaspa_consensus_core::utxo::utxo_view::UtxoView;
 use kaspa_core::trace;
+use kaspa_utils::sim::{Environment, Process, Resumption, Suspension};
 use rand::rngs::ThreadRng;
 use rand::Rng;
 use rand_distr::{Distribution, Exp};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::cmp::max;
-use std::future::Future;
 use std::iter::once;
-use std::pin::Pin;
 use std::sync::Arc;
 
 pub struct Miner {
@@ -38,9 +33,6 @@ pub struct Miner {
     // Miner data
     miner_data: MinerData,
     secret_key: secp256k1::SecretKey,
-
-    // Pending tasks
-    futures: Vec<Pin<Box<dyn Future<Output = BlockProcessResult<BlockStatus>>>>>,
 
     // UTXO data related to this miner
     possible_unspent_outpoints: IndexSet<TransactionOutpoint>,
@@ -80,7 +72,6 @@ impl Miner {
             params: params.clone(),
             miner_data: MinerData::new(ScriptPublicKey::new(0, ScriptVec::from_slice(&script_pub_key_script_vec)), Vec::new()),
             secret_key: sk,
-            futures: Vec::new(),
             possible_unspent_outpoints: IndexSet::new(),
             dist: Exp::new(bps * hashrate).unwrap(),
             rng: rand::thread_rng(),
@@ -88,21 +79,19 @@ impl Miner {
             sim_time: 0,
             target_txs_per_block,
             target_blocks,
-            max_cached_outpoints: 100_000,
+            max_cached_outpoints: 10_000,
         }
     }
 
     fn build_new_block(&mut self, timestamp: u64) -> Block {
-        // Sync on all processed blocks before building the new block
-        let statuses = futures::executor::block_on(try_join_all(self.futures.drain(..))).unwrap();
-        assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
-
         let txs = self.build_txs();
         let nonce = self.id;
+        let session = self.consensus.acquire_session();
         let mut block_template = self
             .consensus
             .build_block_template(self.miner_data.clone(), txs)
             .expect("simulation txs are selected in sync with virtual state and are expected to be valid");
+        drop(session);
         block_template.block.header.timestamp = timestamp; // Use simulation time rather than real time
         block_template.block.header.nonce = nonce;
         block_template.block.header.finalize();
@@ -110,10 +99,10 @@ impl Miner {
     }
 
     fn build_txs(&mut self) -> Vec<Transaction> {
-        let virtual_read = self.consensus.virtual_processor.virtual_stores.read();
+        let virtual_read = self.consensus.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
-        let multiple_outputs = self.possible_unspent_outpoints.len() < 10_000;
+        let multiple_outputs = self.possible_unspent_outpoints.len() < 5_000;
         let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &self.secret_key.secret_bytes()).unwrap();
         let txs = self
             .possible_unspent_outpoints
@@ -193,7 +182,10 @@ impl Miner {
         if self.report_progress(env) {
             Suspension::Halt
         } else {
-            self.futures.push(Box::pin(self.consensus.validate_and_insert_block(block)));
+            let session = self.consensus.acquire_session();
+            let status = futures::executor::block_on(self.consensus.validate_and_insert_block(block)).unwrap();
+            assert!(status.is_utxo_valid_or_pending());
+            drop(session);
             Suspension::Idle
         }
     }

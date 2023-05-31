@@ -14,6 +14,7 @@ pub trait BlockTransactionsStoreReader {
 pub trait BlockTransactionsStore: BlockTransactionsStoreReader {
     // This is append only
     fn insert(&self, hash: Hash, transactions: Arc<Vec<Transaction>>) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"block-transactions";
@@ -45,6 +46,10 @@ impl DbBlockTransactionsStore {
         self.access.write(BatchDbWriter::new(batch), hash, transactions)?;
         Ok(())
     }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(BatchDbWriter::new(batch), hash)
+    }
 }
 
 impl BlockTransactionsStoreReader for DbBlockTransactionsStore {
@@ -60,5 +65,9 @@ impl BlockTransactionsStore for DbBlockTransactionsStore {
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, transactions)?;
         Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(DirectDbWriter::new(&self.db), hash)
     }
 }

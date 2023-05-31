@@ -5,7 +5,7 @@ use rocksdb::WriteBatch;
 
 use std::sync::Arc;
 
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbWriter};
 use kaspa_database::prelude::{CachedDbItem, DB};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_hashes::Hash;
@@ -22,6 +22,7 @@ pub trait SelectedChainStoreReader {
 /// since chain index is not append-only and thus needs to be guarded.
 pub trait SelectedChainStore: SelectedChainStoreReader {
     fn apply_changes(&mut self, batch: &mut WriteBatch, changes: ChainPath) -> StoreResult<()>;
+    fn prune_below_pruning_point(&mut self, writer: impl DbWriter, pruning_point: Hash) -> StoreResult<()>;
     fn init_with_pruning_point(&mut self, batch: &mut WriteBatch, block: Hash) -> StoreResult<()>;
 }
 
@@ -91,6 +92,22 @@ impl SelectedChainStore for DbSelectedChainStore {
         }
 
         self.access_highest_index.write(BatchDbWriter::new(batch), &new_highest_index).unwrap();
+        Ok(())
+    }
+
+    fn prune_below_pruning_point(&mut self, mut writer: impl DbWriter, pruning_point: Hash) -> StoreResult<()> {
+        let mut index = self.access_index_by_hash.read(pruning_point)?;
+        while index > 0 {
+            index -= 1;
+            match self.access_hash_by_index.read(index.into()) {
+                Ok(hash) => {
+                    self.access_hash_by_index.delete(&mut writer, index.into())?;
+                    self.access_index_by_hash.delete(&mut writer, hash)?;
+                }
+                Err(StoreError::KeyNotFound(_)) => break, // This signals that data below this point has already been pruned
+                Err(e) => return Err(e),
+            }
+        }
         Ok(())
     }
 

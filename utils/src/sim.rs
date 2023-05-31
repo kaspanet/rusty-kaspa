@@ -1,3 +1,9 @@
+//! Module with structs for supporting discrete event simulation in virtual time.
+//! Inspired by python's simpy library.
+//!
+//! Users should define the message type `T` required for the simulation, derive `Process<T>` with
+//! various simulation actor logic and plug the processes into a `Simulation<T>` instance.
+
 use std::collections::{BinaryHeap, HashMap, HashSet};
 
 /// Internal structure representing a scheduled simulator event
@@ -66,7 +72,11 @@ pub struct Environment<T> {
 
 impl<T: Clone> Environment<T> {
     pub fn new(delay: u64) -> Self {
-        Self { now: 0, broadcast_delay: delay, event_queue: BinaryHeap::new(), process_ids: HashSet::new() }
+        Self::with_start_time(delay, 0)
+    }
+
+    pub fn with_start_time(delay: u64, start_time: u64) -> Self {
+        Self { now: start_time, broadcast_delay: delay, event_queue: BinaryHeap::new(), process_ids: HashSet::new() }
     }
 
     pub fn now(&self) -> u64 {
@@ -104,6 +114,10 @@ pub struct Simulation<T> {
 impl<T: Clone> Simulation<T> {
     pub fn new(delay: u64) -> Self {
         Self { env: Environment::new(delay), processes: HashMap::new() }
+    }
+
+    pub fn with_start_time(delay: u64, start_time: u64) -> Self {
+        Self { env: Environment::with_start_time(delay, start_time), processes: HashMap::new() }
     }
 
     pub fn register(&mut self, id: u64, process: BoxedProcess<T>) {

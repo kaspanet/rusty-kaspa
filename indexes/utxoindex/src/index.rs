@@ -252,13 +252,8 @@ mod tests {
             ..Default::default()
         });
         // Write virtual state from emulator to test_consensus db.
-        tc.virtual_processor()
-            .virtual_stores
-            .write()
-            .utxo_set
-            .write_diff(&test_consensus_virtual_state.utxo_diff)
-            .expect("expected write diff");
-        tc.virtual_processor().virtual_stores.write().state.set(test_consensus_virtual_state).expect("setting of state");
+        tc.virtual_stores.write().utxo_set.write_diff(&test_consensus_virtual_state.utxo_diff).expect("expected write diff");
+        tc.virtual_stores.write().state.set(test_consensus_virtual_state).expect("setting of state");
 
         // Sync utxoindex from scratch.
         assert!(!utxoindex.read().is_synced().expect("expected bool"));

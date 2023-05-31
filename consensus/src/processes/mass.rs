@@ -1,5 +1,6 @@
 use kaspa_consensus_core::{mass::transaction_estimated_serialized_size, tx::Transaction};
 
+#[derive(Clone)]
 pub struct MassCalculator {
     mass_per_tx_byte: u64,
     mass_per_script_pub_key_byte: u64,

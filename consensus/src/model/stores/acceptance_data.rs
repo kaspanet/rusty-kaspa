@@ -13,6 +13,7 @@ pub trait AcceptanceDataStoreReader {
 
 pub trait AcceptanceDataStore: AcceptanceDataStoreReader {
     fn insert(&self, hash: Hash, acceptance_data: Arc<AcceptanceData>) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"acceptance-data";
@@ -40,6 +41,10 @@ impl DbAcceptanceDataStore {
         self.access.write(BatchDbWriter::new(batch), hash, acceptance_data)?;
         Ok(())
     }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(BatchDbWriter::new(batch), hash)
+    }
 }
 
 impl AcceptanceDataStoreReader for DbAcceptanceDataStore {
@@ -55,5 +60,9 @@ impl AcceptanceDataStore for DbAcceptanceDataStore {
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, acceptance_data)?;
         Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(DirectDbWriter::new(&self.db), hash)
     }
 }

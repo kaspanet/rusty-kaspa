@@ -14,6 +14,7 @@ pub trait UtxoMultisetsStoreReader {
 
 pub trait UtxoMultisetsStore: UtxoMultisetsStoreReader {
     fn insert(&self, hash: Hash, multiset: MuHash) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
 const STORE_PREFIX: &[u8] = b"utxo-multisets";
@@ -41,6 +42,10 @@ impl DbUtxoMultisetsStore {
         self.access.write(BatchDbWriter::new(batch), hash, multiset.try_into().expect("multiset is expected to be finalized"))?;
         Ok(())
     }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(BatchDbWriter::new(batch), hash)
+    }
 }
 
 impl UtxoMultisetsStoreReader for DbUtxoMultisetsStore {
@@ -56,5 +61,9 @@ impl UtxoMultisetsStore for DbUtxoMultisetsStore {
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, multiset.try_into().expect("multiset is expected to be finalized"))?;
         Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(DirectDbWriter::new(&self.db), hash)
     }
 }
