@@ -2,7 +2,7 @@ use super::{ctl::Ctl, Consensus};
 use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
+use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
 use kaspa_core::time::unix_now;
 use kaspa_database::prelude::{
     BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB,
@@ -11,7 +11,6 @@ use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Arc};
-use tokio::sync::RwLock as TokioRwLock;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ConsensusEntry {
@@ -190,9 +189,15 @@ impl ConsensusFactory for Factory {
         };
         let dir = self.db_root_dir.join(entry.directory_name.clone());
         let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
-        // TODO: pass lock to consensus
-        let session_lock = Arc::new(TokioRwLock::new(()));
-        let consensus = Arc::new(Consensus::new(db.clone(), Arc::new(config), self.notification_root.clone(), self.counters.clone()));
+
+        let session_lock = SessionLock::new();
+        let consensus = Arc::new(Consensus::new(
+            db.clone(),
+            Arc::new(config),
+            session_lock.clone(),
+            self.notification_root.clone(),
+            self.counters.clone(),
+        ));
 
         // We write the new active entry only once the instance was created successfully.
         // This way we can safely avoid processing genesis in future process runs
@@ -207,11 +212,12 @@ impl ConsensusFactory for Factory {
         let entry = self.management_store.write().new_staging_consensus_entry().unwrap();
         let dir = self.db_root_dir.join(entry.directory_name);
         let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
-        // TODO: pass lock to consensus
-        let session_lock = Arc::new(TokioRwLock::new(()));
+
+        let session_lock = SessionLock::new();
         let consensus = Arc::new(Consensus::new(
             db.clone(),
             Arc::new(self.config.to_builder().skip_adding_genesis().build()),
+            session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
         ));

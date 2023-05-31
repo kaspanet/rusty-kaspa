@@ -14,7 +14,12 @@ use crate::model::{
 use kaspa_hashes::Hash;
 
 #[derive(Clone)]
-pub struct PruningManager<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V: PastPruningPointsStoreReader> {
+pub struct PruningPointManager<
+    S: GhostdagStoreReader,
+    T: ReachabilityStoreReader,
+    U: HeaderStoreReader,
+    V: PastPruningPointsStoreReader,
+> {
     pruning_depth: u64,
     finality_depth: u64,
     genesis_hash: Hash,
@@ -26,7 +31,7 @@ pub struct PruningManager<S: GhostdagStoreReader, T: ReachabilityStoreReader, U:
 }
 
 impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V: PastPruningPointsStoreReader>
-    PruningManager<S, T, U, V>
+    PruningPointManager<S, T, U, V>
 {
     pub fn new(
         pruning_depth: u64,

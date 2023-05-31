@@ -1,5 +1,11 @@
 use crate::{
-    consensus::{DbGhostdagManager, VirtualStores},
+    consensus::{
+        services::{
+            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbPruningPointManager,
+            DbWindowManager,
+        },
+        storage::ConsensusStorage,
+    },
     constants::BLOCK_VERSION,
     errors::RuleError,
     model::{
@@ -10,9 +16,7 @@ use crate::{
         stores::{
             acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
-            block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
-            depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
@@ -24,7 +28,7 @@ use crate::{
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
             utxo_set::DbUtxoSetStore,
-            virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader},
+            virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader, VirtualStores},
             DB,
         },
     },
@@ -34,14 +38,10 @@ use crate::{
         virtual_processor::utxo_validation::UtxoProcessingContext, ProcessingCounters,
     },
     processes::{
-        block_depth::BlockDepthManager,
         coinbase::CoinbaseManager,
         ghostdag::ordering::SortableBlock,
-        parents_builder::ParentsManager,
-        pruning::PruningManager,
         transaction_validator::{errors::TxResult, TransactionValidator},
-        traversal_manager::DagTraversalManager,
-        window::{DualWindowManager, WindowManager},
+        window::WindowManager,
     },
 };
 use kaspa_consensus_core::{
@@ -66,6 +66,7 @@ use kaspa_consensus_notify::{
     },
     root::ConsensusNotificationRoot,
 };
+use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
@@ -91,6 +92,7 @@ pub struct VirtualStateProcessor {
     // Channels
     receiver: CrossbeamReceiver<BlockProcessingMessage>,
     pruning_sender: CrossbeamSender<PruningProcessingMessage>,
+    pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -107,11 +109,11 @@ pub struct VirtualStateProcessor {
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) ghostdag_primary_store: Arc<DbGhostdagStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
-    pub(super) daa_store: Arc<DbDaaStore>,
+    pub(super) daa_excluded_store: Arc<DbDaaStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
-    pub(super) pruning_store: Arc<RwLock<DbPruningStore>>,
+    pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
 
@@ -119,23 +121,26 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
-    pub virtual_stores: Arc<RwLock<VirtualStores>>,
-    pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
-    // TODO: remove all pub from stores when StoreManager is implemented
+    pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
+    pub(super) pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) relations_service: MTRelationsService<DbRelationsStore>,
-    pub(super) dag_traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-    pub(super) window_manager: DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>,
+    pub(super) dag_traversal_manager: DbDagTraversalManager,
+    pub(super) window_manager: DbWindowManager,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-    pub(super) parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-    pub(super) depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+    pub(super) pruning_point_manager: DbPruningPointManager,
+    pub(super) parents_manager: DbParentsManager,
+    pub(super) depth_manager: DbBlockDepthManager,
 
-    pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
+    // Pruning lock
+    pruning_lock: SessionLock,
+
+    // Notifier
+    notification_root: Arc<ConsensusNotificationRoot>,
 
     // Counters
     counters: Arc<ProcessingCounters>,
@@ -146,42 +151,20 @@ impl VirtualStateProcessor {
     pub fn new(
         receiver: CrossbeamReceiver<BlockProcessingMessage>,
         pruning_sender: CrossbeamSender<PruningProcessingMessage>,
+        pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
         db: Arc<DB>,
-        // Stores
-        statuses_store: Arc<RwLock<DbStatusesStore>>,
-        ghostdag_store: Arc<DbGhostdagStore>,
-        headers_store: Arc<DbHeadersStore>,
-        daa_store: Arc<DbDaaStore>,
-        block_transactions_store: Arc<DbBlockTransactionsStore>,
-        pruning_store: Arc<RwLock<DbPruningStore>>,
-        past_pruning_points_store: Arc<DbPastPruningPointsStore>,
-        body_tips_store: Arc<RwLock<DbTipsStore>>,
-        // Utxo-related stores
-        utxo_diffs_store: Arc<DbUtxoDiffsStore>,
-        utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
-        acceptance_data_store: Arc<DbAcceptanceDataStore>,
-        // Virtual-related stores
-        virtual_stores: Arc<RwLock<VirtualStores>>,
-        pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
-        // Managers
-        ghostdag_manager: DbGhostdagManager,
-        reachability_service: MTReachabilityService<DbReachabilityStore>,
-        relations_service: MTRelationsService<DbRelationsStore>,
-        dag_traversal_manager: DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-        window_manager: DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>,
-        coinbase_manager: CoinbaseManager,
-        transaction_validator: TransactionValidator,
-        pruning_manager: PruningManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>,
-        parents_manager: ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>,
-        depth_manager: BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>,
+        storage: &Arc<ConsensusStorage>,
+        services: &Arc<ConsensusServices>,
+        pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
             receiver,
             pruning_sender,
+            pruning_receiver,
             thread_pool,
 
             genesis: params.genesis.clone(),
@@ -191,29 +174,32 @@ impl VirtualStateProcessor {
             pruning_depth: params.pruning_depth,
 
             db,
-            statuses_store,
-            headers_store,
-            ghostdag_store,
-            daa_store,
-            block_transactions_store,
-            pruning_store,
-            past_pruning_points_store,
-            body_tips_store,
-            utxo_diffs_store,
-            utxo_multisets_store,
-            acceptance_data_store,
-            virtual_stores,
-            pruning_point_utxo_set_store,
-            ghostdag_manager,
-            reachability_service,
-            relations_service,
-            dag_traversal_manager,
-            window_manager,
-            coinbase_manager,
-            transaction_validator,
-            pruning_manager,
-            parents_manager,
-            depth_manager,
+            statuses_store: storage.statuses_store.clone(),
+            headers_store: storage.headers_store.clone(),
+            ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
+            daa_excluded_store: storage.daa_excluded_store.clone(),
+            block_transactions_store: storage.block_transactions_store.clone(),
+            pruning_point_store: storage.pruning_point_store.clone(),
+            past_pruning_points_store: storage.past_pruning_points_store.clone(),
+            body_tips_store: storage.body_tips_store.clone(),
+            utxo_diffs_store: storage.utxo_diffs_store.clone(),
+            utxo_multisets_store: storage.utxo_multisets_store.clone(),
+            acceptance_data_store: storage.acceptance_data_store.clone(),
+            virtual_stores: storage.virtual_stores.clone(),
+            pruning_point_utxo_set_store: storage.pruning_point_utxo_set_store.clone(),
+
+            ghostdag_manager: services.ghostdag_primary_manager.clone(),
+            reachability_service: services.reachability_service.clone(),
+            relations_service: services.relations_service.clone(),
+            dag_traversal_manager: services.dag_traversal_manager.clone(),
+            window_manager: services.window_manager.clone(),
+            coinbase_manager: services.coinbase_manager.clone(),
+            transaction_validator: services.transaction_validator.clone(),
+            pruning_point_manager: services.pruning_point_manager.clone(),
+            parents_manager: services.parents_manager.clone(),
+            depth_manager: services.depth_manager.clone(),
+
+            pruning_lock,
             notification_root,
             counters,
         }
@@ -251,7 +237,8 @@ impl VirtualStateProcessor {
     }
 
     fn resolve_virtual(self: &Arc<Self>) {
-        let pruning_point = self.pruning_store.read().pruning_point().unwrap();
+        let _prune_guard = self.pruning_lock.blocking_read();
+        let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
         let virtual_read = self.virtual_stores.upgradable_read();
         let prev_state = virtual_read.state.get().unwrap();
         let finality_point = self.virtual_finality_point(&prev_state.ghostdag_data, pruning_point);
@@ -276,7 +263,10 @@ impl VirtualStateProcessor {
             .expect("all possible rule errors are unexpected here");
 
         // Update the pruning processor about the virtual state change
-        let sink_ghostdag_data = self.ghostdag_store.get_compact_data(new_sink).unwrap();
+        let sink_ghostdag_data = self.ghostdag_primary_store.get_compact_data(new_sink).unwrap();
+        // Empty the channel before sending the new message. If pruning processor is busy, this step makes sure
+        // the internal channel does not grow with no need (since we only care about the most recent message)
+        let _consume = self.pruning_receiver.try_iter().count();
         self.pruning_sender.send(PruningProcessingMessage::Process { sink_ghostdag_data }).unwrap();
 
         // Emit notifications
@@ -366,7 +356,7 @@ impl VirtualStateProcessor {
                     }
 
                     let header = self.headers_store.get_header(current).unwrap();
-                    let mergeset_data = self.ghostdag_store.get_data(current).unwrap();
+                    let mergeset_data = self.ghostdag_primary_store.get_data(current).unwrap();
                     let pov_daa_score = header.daa_score;
 
                     let selected_parent_multiset_hash = self.utxo_multisets_store.get(selected_parent).unwrap();
@@ -494,7 +484,7 @@ impl VirtualStateProcessor {
 
         let mut heap = tips
             .into_iter()
-            .map(|block| SortableBlock { hash: block, blue_work: self.ghostdag_store.get_blue_work(block).unwrap() })
+            .map(|block| SortableBlock { hash: block, blue_work: self.ghostdag_primary_store.get_blue_work(block).unwrap() })
             .collect::<BinaryHeap<_>>();
 
         // The initial diff point is the previous sink
@@ -520,7 +510,7 @@ impl VirtualStateProcessor {
             }
             for parent in self.relations_service.get_parents(candidate).unwrap().iter().copied() {
                 if !self.reachability_service.is_dag_ancestor_of_any(parent, &mut heap.iter().map(|sb| sb.hash)) {
-                    heap.push(SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() });
+                    heap.push(SortableBlock { hash: parent, blue_work: self.ghostdag_primary_store.get_blue_work(parent).unwrap() });
                 }
             }
         }
@@ -697,9 +687,9 @@ impl VirtualStateProcessor {
         // At this point we can safely drop the read lock
         drop(virtual_read);
 
-        let pruning_info = self.pruning_store.read().get().unwrap();
+        let pruning_info = self.pruning_point_store.read().get().unwrap();
         let header_pruning_point =
-            self.pruning_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);
+            self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);
         let coinbase = self
             .coinbase_manager
             .expected_coinbase_transaction(
@@ -744,7 +734,7 @@ impl VirtualStateProcessor {
     }
 
     pub fn init(self: &Arc<Self>) {
-        let pp_read_guard = self.pruning_store.upgradable_read();
+        let pp_read_guard = self.pruning_point_store.upgradable_read();
 
         // Ensure that some pruning point is registered
         if pp_read_guard.pruning_point().unwrap_option().is_none() {
@@ -761,7 +751,7 @@ impl VirtualStateProcessor {
             .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
             .unwrap();
         self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_or_exists();
-        self.pruning_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
+        self.pruning_point_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
 
         // Write the UTXO state of genesis
         self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default());

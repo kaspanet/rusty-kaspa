@@ -4,13 +4,15 @@ use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{ghostdag::GhostdagStoreReader, reachability::ReachabilityStoreReader, relations::RelationsStoreReader},
 };
+use indexmap::IndexSet;
 use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
     errors::traversal::{TraversalError, TraversalResult},
-    BlockHashSet, ChainPath, HashMapCustomHasher,
+    BlockHasher, ChainPath,
 };
 use kaspa_hashes::Hash;
+use rand::Rng;
 
 #[derive(Clone)]
 pub struct DagTraversalManager<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> {
@@ -41,8 +43,8 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
                 break;
             }
         }
-
-        let mut added = self.reachability_service.backward_chain_iterator(to, common_ancestor, false).collect_vec(); // It is more intuitive to use forward iterator here, but going downwards the selected chain is faster.
+        // It is more intuitive to use forward iterator here, but going downwards the selected chain is faster.
+        let mut added = self.reachability_service.backward_chain_iterator(to, common_ancestor, false).collect_vec();
         added.reverse();
         ChainPath { added, removed }
     }
@@ -55,7 +57,10 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
     ) -> TraversalResult<Vec<Hash>> {
         let mut anticone = Vec::new();
         let mut queue = VecDeque::from_iter(tips);
-        let mut visited = BlockHashSet::new();
+        // Tracking visited blocks is only an optimization, hence it makes no sense
+        // to let this set explode in size if the traversal is deep and unbounded. However
+        // if max traversal is specified we already have a bound
+        let mut visited = BoundedSizeBlockSet::new(max_traversal_allowed.map_or(4096, |_| usize::MAX));
         let mut traversal_count = 0;
         while let Some(current) = queue.pop_front() {
             if !visited.insert(current) {
@@ -106,5 +111,23 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         }
 
         current
+    }
+}
+
+struct BoundedSizeBlockSet {
+    set: IndexSet<Hash, BlockHasher>,
+    size_bound: usize,
+}
+
+impl BoundedSizeBlockSet {
+    fn new(size_bound: usize) -> Self {
+        Self { set: Default::default(), size_bound }
+    }
+
+    pub fn insert(&mut self, hash: Hash) -> bool {
+        if self.set.len() == self.size_bound {
+            self.set.swap_remove_index(rand::thread_rng().gen_range(0..self.size_bound));
+        }
+        self.set.insert(hash)
     }
 }

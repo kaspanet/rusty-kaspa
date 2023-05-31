@@ -187,11 +187,14 @@ where
         TKey: Clone + AsRef<[u8]>,
         TData: DeserializeOwned,
     {
-        let db_key = bucket.map_or(DbKey::prefix_only(&self.prefix), move |bucket| {
-            let mut key = DbKey::prefix_only(&self.prefix);
-            key.add_bucket(bucket);
-            key
-        });
+        let db_key = bucket.map_or_else(
+            move || DbKey::prefix_only(&self.prefix),
+            move |bucket| {
+                let mut key = DbKey::prefix_only(&self.prefix);
+                key.add_bucket(bucket);
+                key
+            },
+        );
 
         let mut read_opts = ReadOptions::default();
         read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));

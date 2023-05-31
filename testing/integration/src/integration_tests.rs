@@ -13,6 +13,7 @@ use kaspa_consensus::model::stores::block_transactions::{
 use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
+use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
 use kaspa_consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
@@ -109,8 +110,9 @@ fn reachability_stretch_test(use_attack_json: bool) {
 
     // Act
     let (_temp_db_lifetime, db) = create_temp_db();
-    let mut store = DbReachabilityStore::new(db, 100000);
-    let mut builder = DagBuilder::new(&mut store);
+    let mut store = DbReachabilityStore::new(db.clone(), 100000);
+    let mut relations = DbRelationsStore::new(db, 0, 100000); // TODO: remove level
+    let mut builder = DagBuilder::new(&mut store, &mut relations);
 
     builder.init();
 
@@ -1574,11 +1576,11 @@ async fn selected_chain_test() {
     }
     consensus.add_block_with_parents(7.into(), vec![1.into()]).await.unwrap(); // Adding a non chain block shouldn't affect the selected chain store.
 
-    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
+    assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
     for i in 1..7 {
-        assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(i).unwrap(), i.into());
+        assert_eq!(consensus.selected_chain_store.read().get_by_index(i).unwrap(), i.into());
     }
-    assert!(consensus.header_processor.selected_chain_store.read().get_by_index(7).is_err());
+    assert!(consensus.selected_chain_store.read().get_by_index(7).is_err());
 
     consensus.add_block_with_parents(8.into(), vec![config.genesis.hash]).await.unwrap();
     for i in 9..15 {
@@ -1586,11 +1588,11 @@ async fn selected_chain_test() {
         consensus.add_block_with_parents(hash, vec![(i - 1).into()]).await.unwrap();
     }
 
-    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
+    assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
     for i in 1..8 {
-        assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(i).unwrap(), (i + 7).into());
+        assert_eq!(consensus.selected_chain_store.read().get_by_index(i).unwrap(), (i + 7).into());
     }
-    assert!(consensus.header_processor.selected_chain_store.read().get_by_index(8).is_err());
+    assert!(consensus.selected_chain_store.read().get_by_index(8).is_err());
 
     // We now check a situation where there's a shorter selected chain (3 blocks) with more blue work
     for i in 15..23 {
@@ -1598,10 +1600,10 @@ async fn selected_chain_test() {
     }
     consensus.add_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec()).await.unwrap();
 
-    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
-    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie breaker rules.
-    assert_eq!(consensus.header_processor.selected_chain_store.read().get_by_index(2).unwrap(), 23.into());
-    assert!(consensus.header_processor.selected_chain_store.read().get_by_index(3).is_err());
+    assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
+    assert_eq!(consensus.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie breaer rules.
+    assert_eq!(consensus.selected_chain_store.read().get_by_index(2).unwrap(), 23.into());
+    assert!(consensus.selected_chain_store.read().get_by_index(3).is_err());
 
     consensus.shutdown(wait_handles);
 }

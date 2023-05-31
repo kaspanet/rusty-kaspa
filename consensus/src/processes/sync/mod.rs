@@ -35,7 +35,7 @@ pub struct SyncManager<
     ghostdag_store: Arc<U>,
     selected_chain_store: Arc<RwLock<V>>,
     header_selected_tip_store: Arc<RwLock<W>>,
-    pruning_store: Arc<RwLock<X>>,
+    pruning_point_store: Arc<RwLock<X>>,
     statuses_store: Arc<RwLock<Y>>,
 }
 
@@ -56,7 +56,7 @@ impl<
         ghostdag_store: Arc<U>,
         selected_chain_store: Arc<RwLock<V>>,
         header_selected_tip_store: Arc<RwLock<W>>,
-        pruning_store: Arc<RwLock<X>>,
+        pruning_point_store: Arc<RwLock<X>>,
         statuses_store: Arc<RwLock<Y>>,
     ) -> Self {
         Self {
@@ -66,7 +66,7 @@ impl<
             ghostdag_store,
             selected_chain_store,
             header_selected_tip_store,
-            pruning_store,
+            pruning_point_store,
             statuses_store,
         }
     }
@@ -121,7 +121,7 @@ impl<
     pub fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> SyncManagerResult<Vec<Hash>> {
         let sc_read_guard = self.selected_chain_store.read();
         let hst_read_guard = self.header_selected_tip_store.read();
-        let pp_read_guard = self.pruning_store.read();
+        let pp_read_guard = self.pruning_point_store.read();
 
         let low = low.unwrap_or_else(|| pp_read_guard.get().unwrap().pruning_point);
         let high = high.unwrap_or_else(|| hst_read_guard.get().unwrap().hash);
@@ -162,7 +162,7 @@ impl<
     }
 
     pub fn get_missing_block_body_hashes(&self, high: Hash) -> SyncManagerResult<Vec<Hash>> {
-        let pp = self.pruning_store.read().pruning_point().unwrap();
+        let pp = self.pruning_point_store.read().pruning_point().unwrap();
         if !self.reachability_service.is_chain_ancestor_of(pp, high) {
             return Err(SyncManagerError::PruningPointNotInChain(pp, high));
         }

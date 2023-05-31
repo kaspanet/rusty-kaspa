@@ -1,9 +1,12 @@
+use kaspa_utils::refs::Refs;
 use rocksdb::WriteBatch;
 
 use crate::prelude::DB;
 
 /// Abstraction over direct/batched DB writing
 pub trait DbWriter {
+    const IS_BATCH: bool;
+
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,
@@ -12,16 +15,22 @@ pub trait DbWriter {
 }
 
 pub struct DirectDbWriter<'a> {
-    db: &'a DB,
+    db: Refs<'a, DB>,
 }
 
 impl<'a> DirectDbWriter<'a> {
     pub fn new(db: &'a DB) -> Self {
-        Self { db }
+        Self { db: db.into() }
+    }
+
+    pub fn from_arc(db: std::sync::Arc<DB>) -> Self {
+        Self { db: db.into() }
     }
 }
 
 impl DbWriter for DirectDbWriter<'_> {
+    const IS_BATCH: bool = false;
+
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,
@@ -46,6 +55,8 @@ impl<'a> BatchDbWriter<'a> {
 }
 
 impl DbWriter for BatchDbWriter<'_> {
+    const IS_BATCH: bool = true;
+
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,
@@ -62,6 +73,8 @@ impl DbWriter for BatchDbWriter<'_> {
 }
 
 impl<T: DbWriter> DbWriter for &mut T {
+    const IS_BATCH: bool = T::IS_BATCH;
+
     #[inline]
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
@@ -74,5 +87,25 @@ impl<T: DbWriter> DbWriter for &mut T {
     #[inline]
     fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error> {
         (*self).delete(key)
+    }
+}
+
+/// A writer for memory stores which writes nothing to the DB
+#[derive(Default)]
+pub struct MemoryWriter;
+
+impl DbWriter for MemoryWriter {
+    const IS_BATCH: bool = false;
+
+    fn put<K, V>(&mut self, _key: K, _value: V) -> Result<(), rocksdb::Error>
+    where
+        K: AsRef<[u8]>,
+        V: AsRef<[u8]>,
+    {
+        Ok(())
+    }
+
+    fn delete<K: AsRef<[u8]>>(&mut self, _key: K) -> Result<(), rocksdb::Error> {
+        Ok(())
     }
 }

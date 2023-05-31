@@ -17,7 +17,7 @@ use kaspa_consensus::{
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::BlockProcessResult, header::Header, BlockHashSet,
-    HashMapCustomHasher,
+    BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{info, warn};
@@ -78,6 +78,11 @@ struct Args {
     /// Input directory of a previous simulation DB (NOTE: simulation args must be compatible with the original run)
     #[arg(short, long)]
     input_dir: Option<String>,
+
+    /// Indicates whether to test pruning. Currently this means we shorten the pruning constants and avoid validating
+    /// the DAG in a separate consensus following the simulation phase
+    #[arg(long, default_value_t = false)]
+    test_pruning: bool,
 }
 
 /// Calculates the k parameter of the GHOSTDAG protocol such that anticones lager than k will be created
@@ -124,28 +129,37 @@ fn main() {
     let mut perf_params = PERF_PARAMS;
     adjust_consensus_params(&args, &mut params);
     adjust_perf_params(&args, &params, &mut perf_params);
-    let config = Arc::new(ConfigBuilder::new(params).set_perf_params(perf_params).skip_proof_of_work().build());
+    let mut builder = ConfigBuilder::new(params).set_perf_params(perf_params).skip_proof_of_work().enable_sanity_checks();
+    if !args.test_pruning {
+        builder = builder.set_archival();
+    }
+    let config = Arc::new(builder.build());
 
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
         let (lifetime, db) = load_existing_db(input_dir, num_cpus::get());
         let (dummy_notification_sender, _) = unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-        let consensus = Arc::new(Consensus::new(db, config.clone(), notification_root, Default::default()));
+        let consensus = Arc::new(Consensus::new(db, config.clone(), Default::default(), notification_root, Default::default()));
         (consensus, lifetime)
     } else {
-        let until = if args.target_blocks.is_none() { args.sim_time * 1000 } else { u64::MAX }; // milliseconds
+        let until = if args.target_blocks.is_none() { config.genesis.timestamp + args.sim_time * 1000 } else { u64::MAX }; // milliseconds
         let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, config.clone(), args.output_dir);
         let (consensus, handles, lifetime) = sim.init(args.miners, args.tpb).run(until);
         consensus.shutdown(handles);
         (consensus, lifetime)
     };
 
+    if args.test_pruning {
+        drop(consensus);
+        return;
+    }
+
     // Benchmark the DAG validation time
     let (_lifetime2, db2) = create_temp_db_with_parallelism(num_cpus::get());
     let (dummy_notification_sender, _) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-    let consensus2 = Arc::new(Consensus::new(db2, config.clone(), notification_root, Default::default()));
+    let consensus2 = Arc::new(Consensus::new(db2, config.clone(), Default::default(), notification_root, Default::default()));
     let handles2 = consensus2.run_processors();
     validate(&consensus, &consensus2, &config, args.delay, args.bps);
     consensus2.shutdown(handles2);
@@ -153,6 +167,9 @@ fn main() {
 }
 
 fn adjust_consensus_params(args: &Args, params: &mut Params) {
+    // We have no actual PoW in the simulation, so the true max is most reflective
+    params.max_block_level = BlockLevel::MAX;
+    params.genesis.timestamp = 0;
     if args.bps * args.delay > 2.0 {
         let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
@@ -170,6 +187,16 @@ fn adjust_consensus_params(args: &Args, params: &mut Params) {
             k,
             params.full_difficulty_window_size
         );
+    }
+    if args.test_pruning {
+        params.pruning_proof_m = 16;
+        params.full_difficulty_window_size = 64;
+        params.full_timestamp_deviation_tolerance = 16;
+        params.finality_depth = 128;
+        params.merge_depth = 128;
+        params.mergeset_size_limit = 32;
+        params.pruning_depth = params.anticone_finalization_depth();
+        info!("Setting pruning depth to {}", params.pruning_depth);
     }
 }
 
@@ -264,12 +291,12 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -
 }
 
 fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64, k: KType) -> usize {
-    let blues_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_blues.len()).sum::<usize>()
-        as f64
-        / hashes.len() as f64;
-    let reds_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_reds.len()).sum::<usize>()
-        as f64
-        / hashes.len() as f64;
+    let blues_mean =
+        hashes.iter().map(|&h| src_consensus.ghostdag_primary_store.get_data(h).unwrap().mergeset_blues.len()).sum::<usize>() as f64
+            / hashes.len() as f64;
+    let reds_mean =
+        hashes.iter().map(|&h| src_consensus.ghostdag_primary_store.get_data(h).unwrap().mergeset_reds.len()).sum::<usize>() as f64
+            / hashes.len() as f64;
     let parents_mean = hashes.iter().map(|&h| src_consensus.headers_store.get_header(h).unwrap().direct_parents().len()).sum::<usize>()
         as f64
         / hashes.len() as f64;

@@ -74,7 +74,7 @@ impl HeaderProcessor {
     }
 
     pub fn check_pruning_point(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let expected = self.pruning_manager.expected_header_pruning_point(ctx.ghostdag_data().to_compact(), ctx.pruning_info);
+        let expected = self.pruning_point_manager.expected_header_pruning_point(ctx.ghostdag_data().to_compact(), ctx.pruning_info);
         if expected != header.pruning_point {
             return Err(RuleError::WrongHeaderPruningPoint(expected, header.pruning_point));
         }
