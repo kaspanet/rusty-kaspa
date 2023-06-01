@@ -164,7 +164,7 @@ impl Wallet {
     }
 
     // pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) => Result<()> {
-    pub async fn load(self: &Arc<Wallet>, _secret: Secret, prefix: AddressPrefix) -> Result<()> {
+    pub async fn load(self: &Arc<Wallet>, secret: Secret, prefix: AddressPrefix) -> Result<()> {
         // - TODO - RESET?
         self.reset().await?;
 
@@ -172,9 +172,10 @@ impl Wallet {
         use storage::interface::*;
         use storage::local::interface::*;
 
-        let ctx = Arc::new(AccessContext::default());
+        let ctx = Arc::new(AccessContext::new_with_wallet_secret(secret));
         let ctx: Arc<dyn AccessContextT> = ctx;
         let local_store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
+        local_store.open(&ctx).await?;
         // let iface : Arc<dyn Interface> = local_store;
         let store_accounts = local_store.account().await;
         let mut iter = store_accounts.clone().iter(IteratorOptions::default()).await;
@@ -743,7 +744,7 @@ mod test {
         let utxo_set_balance = utxo_set.calculate_balance().await?;
         println!("get_utxos_by_addresses: {utxo_set_balance:?}");
 
-        let utxo_selection = utxo_set.select(100000, UtxoOrdering::AscendingAmount).await?;
+        let utxo_selection = utxo_set.select(100000, UtxoOrdering::AscendingAmount, true).await?;
 
         //let payload = vec![];
         let to_address = Address::try_from("kaspatest:qpakxqlesqywgkq7rg4wyhjd93kmw7trkl3gpa3vd5flyt59a43yyn8vu0w8c")?;

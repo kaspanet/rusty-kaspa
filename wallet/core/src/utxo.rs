@@ -6,6 +6,7 @@ use kaspa_rpc_core::{GetUtxosByAddressesResponse, RpcUtxosByAddressesEntry};
 use serde_wasm_bindgen::from_value;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
+use workflow_core::time::{Duration, Instant};
 use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
 
 pub type UtxoEntryId = TransactionOutpointInner;
@@ -128,15 +129,16 @@ pub struct Inner {
     entries: Vec<UtxoEntryReference>,
     // ordered: AtomicU32,
     map: HashMap<TransactionOutpointInner, UtxoEntryReference>,
+    in_use: HashMap<TransactionOutpointInner, Instant>,
 }
 
 impl Inner {
     fn new() -> Self {
-        Self { entries: vec![], map: HashMap::default() }
+        Self { entries: vec![], map: HashMap::default(), in_use: HashMap::default() }
     }
 
     fn new_with_args(entries: Vec<UtxoEntryReference>) -> Self {
-        Self { entries, map: HashMap::default() }
+        Self { entries, map: HashMap::default(), in_use: HashMap::default() }
     }
 }
 
@@ -192,8 +194,8 @@ impl UtxoSet {
     // }
 
     #[wasm_bindgen(js_name=select)]
-    pub async fn select_utxos(&self, transaction_amount: u64, order: UtxoOrdering) -> Result<SelectionContext> {
-        let data = self.select(transaction_amount, order).await?;
+    pub async fn select_utxos(&self, transaction_amount: u64, order: UtxoOrdering, mark_utxo: bool) -> Result<SelectionContext> {
+        let data = self.select(transaction_amount, order, mark_utxo).await?;
         Ok(data)
     }
 
@@ -264,12 +266,13 @@ impl UtxoSet {
         Ok(l)
     }
 
-    pub async fn select(&self, transaction_amount: u64, order: UtxoOrdering) -> Result<SelectionContext> {
+    pub async fn select(&self, transaction_amount: u64, order: UtxoOrdering, mark_utxo: bool) -> Result<SelectionContext> {
         if self.ordered.load(Ordering::SeqCst) != order as u32 {
             self.order(order)?;
         }
 
         let mut selected_entries = vec![];
+        let mut in_use = vec![];
 
         let total_selected_amount = self
             .inner()
@@ -284,9 +287,29 @@ impl UtxoSet {
 
                 let amount = entry.as_ref().utxo_entry.amount;
                 *total += amount;
+                if mark_utxo {
+                    in_use.push(entry.as_ref().outpoint.inner().clone());
+                }
                 Some(amount)
             })
             .sum();
+
+        if mark_utxo {
+            // let map = &mut self.inner().in_use;
+            // let now = Instant::now();
+            // for outpoint in in_use {
+            //     map.insert(outpoint, now);
+            // }
+
+            ////////
+            // TODO: move to ticker callback
+            // let checkpoint = Instant::now().checked_sub(Duration::from_secs(60)).unwrap();
+            // for (key, instant) in &self.inner().in_use {
+            //     if instant < &checkpoint {
+            //         map.remove(key);
+            //     }
+            // }
+        }
 
         Ok(SelectionContext { transaction_amount, total_selected_amount, selected_entries })
     }
