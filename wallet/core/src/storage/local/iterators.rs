@@ -40,7 +40,7 @@ macro_rules! declare_iterator {
                 if self.0.cursor >= vec.len() {
                     return None;
                 } else {
-                    let slice = &vec[self.0.cursor as usize..(self.0.cursor as usize + self.0.chunk_size)];
+                    let slice = &vec[self.0.cursor as usize..(self.0.cursor as usize + self.0.chunk_size).min(vec.len())];
                     if slice.is_empty() {
                         None
                     } else {

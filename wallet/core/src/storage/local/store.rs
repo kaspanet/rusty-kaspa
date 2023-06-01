@@ -21,7 +21,7 @@ impl Store {
 
 impl Default for Store {
     fn default() -> Self {
-        Self::new(super::DEFAULT_WALLET_FOLDER, super::DEFAULT_WALLET_NAME).unwrap()
+        Self::new(super::DEFAULT_WALLET_FOLDER, super::DEFAULT_WALLET_FILE).unwrap()
     }
 }
 

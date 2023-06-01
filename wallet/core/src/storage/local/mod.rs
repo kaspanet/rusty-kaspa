@@ -8,4 +8,4 @@ pub use store::Store;
 
 pub const DEFAULT_WALLET_FOLDER: &str = "~/.kaspa/";
 pub const DEFAULT_WALLET_NAME: &str = "kaspa";
-pub const DEFAULT_WALLET_FILE: &str = "~/.kaspa/kaspa.wallet";
+pub const DEFAULT_WALLET_FILE: &str = "kaspa";

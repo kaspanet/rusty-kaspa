@@ -109,7 +109,8 @@ impl Interface for LocalStore {
         self
     }
 
-    async fn open(&self, _ctx: &Arc<dyn AccessContextT>) -> Result<()> {
+    async fn open(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
+        self.cache.reload(ctx).await?;
         Ok(())
     }
 
