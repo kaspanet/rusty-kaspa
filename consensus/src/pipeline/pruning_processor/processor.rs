@@ -110,22 +110,39 @@ impl PruningProcessor {
     pub fn worker(self: &Arc<Self>) {
         let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() else { return; };
 
-        // Check if pruning utxoset recovery is needed. We wait for the first processing message to arrive in order
-        // to make sure the node is already connected and receiving blocks before we start background recovery operations
-        let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
-        // TODO: `pruning_utxoset_position` is a new DB key so for now we assume correct state if the key is still missing
-        if let Some(pruning_utxoset_position) = self.pruning_utxoset_stores.read().utxoset_position().unwrap_option() {
+        // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
+        // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
+        self.check_if_pruning_workflows_need_recovery();
+        self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+
+        while let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() {
+            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+        }
+    }
+
+    fn check_if_pruning_workflows_need_recovery(&self) {
+        let pruning_point_read = self.pruning_point_store.read();
+        let pruning_point = pruning_point_read.pruning_point().unwrap();
+        let data_pruned_point = pruning_point_read.data_pruned_point().unwrap_option();
+        let pruning_utxoset_position = self.pruning_utxoset_stores.read().utxoset_position().unwrap_option();
+        drop(pruning_point_read);
+
+        if let Some(pruning_utxoset_position) = pruning_utxoset_position {
             // This indicates the node crashed during a former pruning point move and we need to recover
             if pruning_utxoset_position != pruning_point {
                 self.advance_pruning_utxoset(pruning_utxoset_position, pruning_point);
             }
         }
 
-        self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
-
-        while let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() {
-            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+        if let Some(data_pruned_point) = data_pruned_point {
+            // This indicates the node crashed or was forced to stop during a former data prune operation hence
+            // we need to complete it
+            if data_pruned_point != pruning_point {
+                self.prune(pruning_point);
+            }
         }
+
+        // TODO: both `pruning_utxoset_position` and `data_pruned_point` are new DB keys so for now we assume correct state if the keys are missing
     }
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
@@ -192,10 +209,8 @@ impl PruningProcessor {
     }
 
     fn prune(&self, new_pruning_point: Hash) {
-        // TODO: check on startup if the data pruned point is below the pruning point)
-
         if self.config.is_archival {
-            warn!("The node is configured as an archival node -- skipping data pruning. Note this might lead to heavy disk usage.");
+            warn!("The node is configured as an archival node -- avoiding data pruning. Note this might lead to heavy disk usage.");
             return;
         }
 
@@ -205,10 +220,11 @@ impl PruningProcessor {
             .get_pruning_point_anticone_and_trusted_data()
             .expect("insufficient depth error is unexpected here");
 
-        let genesis = self.past_pruning_points_store.get(0).unwrap(); // TODO: pass genesis
+        let genesis = self.past_pruning_points_store.get(0).unwrap();
 
         assert_eq!(new_pruning_point, proof[0].last().unwrap().hash);
         assert_eq!(new_pruning_point, data.anticone[0]);
+        assert_eq!(genesis, self.config.genesis.hash);
         assert_eq!(genesis, proof.last().unwrap().last().unwrap().hash);
 
         // We keep full data for pruning point and its anticone, relations for DAA/GD
