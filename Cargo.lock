@@ -1722,6 +1722,7 @@ dependencies = [
  "rand 0.8.5",
  "rocksdb",
  "serde",
+ "smallvec",
  "tempfile",
  "thiserror",
 ]

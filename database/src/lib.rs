@@ -6,6 +6,7 @@ mod item;
 mod key;
 mod writer;
 
+pub mod registry;
 pub mod utils;
 
 pub mod prelude {

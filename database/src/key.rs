@@ -3,12 +3,14 @@ use std::{
     str,
 };
 
+use smallvec::SmallVec;
+
 pub const SEP: u8 = b'/';
 pub const SEP_SIZE: usize = 1;
 
 #[derive(Clone)]
 pub struct DbKey {
-    path: Vec<u8>,
+    path: SmallVec<[u8; 36]>,
     prefix_len: usize,
 }
 
@@ -32,7 +34,7 @@ impl DbKey {
     where
         TBucket: Copy + AsRef<[u8]>,
     {
-        self.path.extend(bucket.as_ref().iter());
+        self.path.extend(bucket.as_ref().iter().copied());
         self.prefix_len += bucket.as_ref().len();
     }
 

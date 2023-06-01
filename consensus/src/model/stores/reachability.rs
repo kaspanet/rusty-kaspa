@@ -3,7 +3,10 @@ use kaspa_consensus_core::{
     blockhash::{self, BlockHashes},
     BlockHashMap, BlockHashSet, BlockHasher, HashMapCustomHasher,
 };
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter, StoreError, DB};
+use kaspa_database::{
+    prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter, StoreError, DB},
+    registry::DatabaseStorePrefixes,
+};
 use kaspa_hashes::Hash;
 
 use itertools::Itertools;
@@ -57,10 +60,6 @@ pub trait ReachabilityStore: ReachabilityStoreReader {
     fn get_reindex_root(&self) -> Result<Hash, StoreError>;
 }
 
-const REINDEX_ROOT_KEY: &[u8] = b"reachability-reindex-root";
-const STORE_PREFIX: &[u8] = b"reachability-data";
-// TODO: explore perf to see if using fixed-length constants for store prefixes is preferable
-
 /// A DB + cache implementation of `ReachabilityStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbReachabilityStore {
@@ -83,8 +82,8 @@ impl DbReachabilityStore {
     }
 
     fn new_with_prefix_end(db: Arc<DB>, cache_size: u64, prefix_end: u8) -> Self {
-        let store_prefix = STORE_PREFIX.iter().copied().chain(once(prefix_end)).collect_vec();
-        let reindex_root_prefix = REINDEX_ROOT_KEY.iter().copied().chain(once(prefix_end)).collect_vec();
+        let store_prefix = DatabaseStorePrefixes::Reachability.into_iter().chain(once(prefix_end)).collect_vec();
+        let reindex_root_prefix = DatabaseStorePrefixes::ReachabilityReindexRoot.into_iter().chain(once(prefix_end)).collect_vec();
         Self {
             db: Arc::clone(&db),
             access: CachedDbAccess::new(Arc::clone(&db), cache_size, store_prefix),
@@ -238,7 +237,7 @@ impl<'a> StagingReachabilityStore<'a> {
 
     fn check_not_in_deletions(&self, hash: Hash) -> Result<(), StoreError> {
         if self.staging_deletions.contains(&hash) {
-            Err(StoreError::KeyNotFound(DbKey::new(b"staging-reachability", hash)))
+            Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash)))
         } else {
             Ok(())
         }
@@ -453,14 +452,14 @@ impl MemoryReachabilityStore {
     fn get_data_mut(&mut self, hash: Hash) -> Result<&mut ReachabilityData, StoreError> {
         match self.map.get_mut(&hash) {
             Some(data) => Ok(data),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash))),
         }
     }
 
     fn get_data(&self, hash: Hash) -> Result<&ReachabilityData, StoreError> {
         match self.map.get(&hash) {
             Some(data) => Ok(data),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash))),
         }
     }
 }
@@ -534,7 +533,7 @@ impl ReachabilityStore for MemoryReachabilityStore {
     fn get_reindex_root(&self) -> Result<Hash, StoreError> {
         match self.reindex_root {
             Some(root) => Ok(root),
-            None => Err(StoreError::KeyNotFound(DbKey::prefix_only(REINDEX_ROOT_KEY))),
+            None => Err(StoreError::KeyNotFound(DbKey::prefix_only(DatabaseStorePrefixes::ReachabilityReindexRoot.as_ref()))),
         }
     }
 }

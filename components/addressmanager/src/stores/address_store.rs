@@ -2,16 +2,14 @@ use kaspa_database::{
     prelude::DB,
     prelude::{CachedDbAccess, DirectDbWriter},
     prelude::{StoreError, StoreResult},
+    registry::DatabaseStorePrefixes,
 };
 use serde::{Deserialize, Serialize};
 use std::net::Ipv6Addr;
 use std::{error::Error, fmt::Display, sync::Arc};
 
-use crate::NetAddress;
-
 use super::AddressKey;
-
-const STORE_PREFIX_CONNECTION_FAILED_COUNT: &[u8] = b"not-banned-addresses-connection";
+use crate::NetAddress;
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct Entry {
@@ -77,10 +75,7 @@ pub struct DbAddressesStore {
 
 impl DbAddressesStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self {
-            db: Arc::clone(&db),
-            access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX_CONNECTION_FAILED_COUNT.to_vec()),
-        }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::Addresses.into()) }
     }
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(AddressKey, Entry), Box<dyn Error>>> + '_ {

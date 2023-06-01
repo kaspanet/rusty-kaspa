@@ -11,13 +11,12 @@ use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
-use std::{error::Error, fmt::Display, sync::Arc};
+use std::{array::TryFromSliceError, error::Error, fmt::Display, sync::Arc};
 
 type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + 'a>;
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
-
     fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
 }
 
@@ -37,6 +36,14 @@ struct UtxoKey([u8; UTXO_KEY_SIZE]);
 impl AsRef<[u8]> for UtxoKey {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl TryFrom<&[u8]> for UtxoKey {
+    type Error = TryFromSliceError;
+
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        <[u8; UTXO_KEY_SIZE]>::try_from(slice).map(Self)
     }
 }
 
@@ -70,17 +77,17 @@ impl From<UtxoKey> for TransactionOutpoint {
 #[derive(Clone)]
 pub struct DbUtxoSetStore {
     db: Arc<DB>,
-    prefix: &'static [u8],
+    prefix: Vec<u8>,
     access: CachedDbAccess<UtxoKey, Arc<UtxoEntry>>,
 }
 
 impl DbUtxoSetStore {
-    pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, prefix.to_vec()), prefix }
+    pub fn new(db: Arc<DB>, cache_size: u64, prefix: Vec<u8>) -> Self {
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, prefix.clone()), prefix }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), cache_size, self.prefix)
+        Self::new(Arc::clone(&self.db), cache_size, self.prefix.clone())
     }
 
     /// See comment at [`UtxoSetStore::write_diff`]
@@ -93,9 +100,8 @@ impl DbUtxoSetStore {
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(TransactionOutpoint, Arc<UtxoEntry>), Box<dyn Error>>> + '_ {
         self.access.iterator().map(|iter_result| match iter_result {
-            Ok((key_bytes, utxo_entry)) => match <[u8; UTXO_KEY_SIZE]>::try_from(&key_bytes[..]) {
-                Ok(utxo_key_slice) => {
-                    let utxo_key = UtxoKey(utxo_key_slice);
+            Ok((key_bytes, utxo_entry)) => match UtxoKey::try_from(key_bytes.as_ref()) {
+                Ok(utxo_key) => {
                     let outpoint: TransactionOutpoint = utxo_key.into();
                     Ok((outpoint, utxo_entry))
                 }
@@ -137,7 +143,7 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         let seek_key = from_outpoint.map(UtxoKey::from);
         Box::new(self.access.seek_iterator(None, seek_key, limit, skip_first).map(|res| {
             let (key, entry) = res?;
-            let outpoint: TransactionOutpoint = UtxoKey(<[u8; UTXO_KEY_SIZE]>::try_from(&key[..]).unwrap()).into();
+            let outpoint: TransactionOutpoint = UtxoKey::try_from(key.as_ref()).unwrap().into();
             Ok((outpoint, UtxoEntry::clone(&entry)))
         }))
     }
