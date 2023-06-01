@@ -37,10 +37,10 @@ pub trait PruningStoreReader {
     /// Returns full pruning point info, including its index and the next pruning point candidate
     fn get(&self) -> StoreResult<PruningPointInfo>;
 
-    /// Represent the point at which data prior to it was successfully pruned. This is usually the
-    /// pruning point itself, though it might lag a bit behind (and for archival nodes it will remain
-    /// the initial syncing point or the last pruning point before turning to an archive)
-    fn data_pruned_point(&self) -> StoreResult<Hash>;
+    /// Represent the point after which data is fully held (i.e., history is consecutive from this point and up to virtual).
+    /// This is usually the pruning point, though it might lag a bit behind until data prune completes (and for archival
+    /// nodes it will remain the initial syncing point or the last pruning point before turning to an archive)
+    fn history_root(&self) -> StoreResult<Hash>;
 }
 
 pub trait PruningStore: PruningStoreReader {
@@ -52,18 +52,18 @@ pub trait PruningStore: PruningStoreReader {
 pub struct DbPruningStore {
     db: Arc<DB>,
     access: CachedDbItem<PruningPointInfo>,
-    data_pruned_point_access: CachedDbItem<Hash>,
+    history_root_access: CachedDbItem<Hash>,
 }
 
 const PRUNING_POINT_KEY: &[u8] = b"pruning-point";
-const DATA_PRUNED_POINT_KEY: &[u8] = b"data-pruned-point";
+const HISTORY_ROOT_KEY: &[u8] = b"history_root";
 
 impl DbPruningStore {
     pub fn new(db: Arc<DB>) -> Self {
         Self {
             db: Arc::clone(&db),
             access: CachedDbItem::new(db.clone(), PRUNING_POINT_KEY.to_vec()),
-            data_pruned_point_access: CachedDbItem::new(db.clone(), DATA_PRUNED_POINT_KEY.to_vec()),
+            history_root_access: CachedDbItem::new(db.clone(), HISTORY_ROOT_KEY.to_vec()),
         }
     }
 
@@ -75,8 +75,8 @@ impl DbPruningStore {
         self.access.write(BatchDbWriter::new(batch), &PruningPointInfo { pruning_point, candidate, index })
     }
 
-    pub fn set_data_pruned_point(&mut self, batch: &mut WriteBatch, data_pruned_point: Hash) -> StoreResult<()> {
-        self.data_pruned_point_access.write(BatchDbWriter::new(batch), &data_pruned_point)
+    pub fn set_history_root(&mut self, batch: &mut WriteBatch, history_root: Hash) -> StoreResult<()> {
+        self.history_root_access.write(BatchDbWriter::new(batch), &history_root)
     }
 }
 
@@ -97,8 +97,8 @@ impl PruningStoreReader for DbPruningStore {
         self.access.read()
     }
 
-    fn data_pruned_point(&self) -> StoreResult<Hash> {
-        self.data_pruned_point_access.read()
+    fn history_root(&self) -> StoreResult<Hash> {
+        self.history_root_access.read()
     }
 }
 

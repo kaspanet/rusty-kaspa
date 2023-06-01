@@ -123,13 +123,13 @@ impl PruningProcessor {
     fn check_if_pruning_workflows_need_recovery(&self) {
         let pruning_point_read = self.pruning_point_store.read();
         let pruning_point = pruning_point_read.pruning_point().unwrap();
-        let data_pruned_point = pruning_point_read.data_pruned_point().unwrap_option();
+        let history_root = pruning_point_read.history_root().unwrap_option();
         let pruning_utxoset_position = self.pruning_utxoset_stores.read().utxoset_position().unwrap_option();
         drop(pruning_point_read);
 
         debug!(
-            "[PRUNING PROCESSOR] recovery check: current pruning point: {}, data pruned point: {:?}, pruning utxoset position: {:?}",
-            pruning_point, data_pruned_point, pruning_utxoset_position
+            "[PRUNING PROCESSOR] recovery check: current pruning point: {}, history root: {:?}, pruning utxoset position: {:?}",
+            pruning_point, history_root, pruning_utxoset_position
         );
 
         if let Some(pruning_utxoset_position) = pruning_utxoset_position {
@@ -140,15 +140,15 @@ impl PruningProcessor {
             }
         }
 
-        if let Some(data_pruned_point) = data_pruned_point {
+        if let Some(history_root) = history_root {
             // This indicates the node crashed or was forced to stop during a former data prune operation hence
             // we need to complete it
-            if data_pruned_point != pruning_point {
+            if history_root != pruning_point {
                 self.prune(pruning_point);
             }
         }
 
-        // TODO: both `pruning_utxoset_position` and `data_pruned_point` are new DB keys so for now we assume correct state if the keys are missing
+        // TODO: both `pruning_utxoset_position` and `history_root` are new DB keys so for now we assume correct state if the keys are missing
     }
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
@@ -412,10 +412,10 @@ impl PruningProcessor {
         }
 
         {
-            // Set the data pruned point to the new pruning point only after we successfully pruned its past
+            // Set the history root to the new pruning point only after we successfully pruned its past
             let mut pruning_point_write = self.pruning_point_store.write();
             let mut batch = WriteBatch::default();
-            pruning_point_write.set_data_pruned_point(&mut batch, new_pruning_point).unwrap();
+            pruning_point_write.set_history_root(&mut batch, new_pruning_point).unwrap();
             self.db.write(batch).unwrap();
             drop(pruning_point_write);
         }
