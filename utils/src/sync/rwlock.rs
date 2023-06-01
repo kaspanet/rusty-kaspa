@@ -128,14 +128,15 @@ mod tests {
         let h = std::thread::spawn(move || {
             let mut write = l_clone.blocking_write();
             tx.send(()).unwrap();
-            for _ in 0..10 {
-                std::thread::sleep(Duration::from_millis(5));
+            for _ in 0..20 {
+                std::thread::sleep(Duration::from_millis(2));
                 write.blocking_yield();
             }
         });
         rx.await.unwrap();
-        // Make sure the reader acquires the lock when the writer yields
-        let read = timeout(Duration::from_millis(10), l.read()).await.unwrap();
+        // Make sure the reader acquires the lock during writer yields. We give the test a few chances to acquire
+        // in order to make sure it passes also in slow CI environments where the OS thread-scheduler might take its time
+        let read = timeout(Duration::from_millis(20), l.read()).await.unwrap();
         drop(read);
         timeout(Duration::from_millis(1000), tokio::task::spawn_blocking(move || h.join())).await.unwrap().unwrap().unwrap();
     }

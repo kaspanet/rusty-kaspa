@@ -6,8 +6,11 @@ use std::{
 
 /// A low-level non-fair semaphore. The semaphore is non-fair in the sense that clients acquiring
 /// a lower number of permits might get their allocation before earlier clients which requested more
-/// permits -- if the semaphore can provide the lower allocation but not the larger. This is especially
-/// useful for implementing a readers-preferred reader-writer lock
+/// permits -- if the semaphore can provide the lower allocation but not the larger. This non-fairness
+/// is especially useful for implementing a strict readers-preferred reader-writer lock. See [`RfRwLock`].
+/// Additionally it is possible that a new client immediately acquires if it happens to arrive right after
+/// a release and before others were awaked. Otherwise the semaphore is usually fair in the sense that
+/// waiters are awaked in the order they arrived at.
 #[derive(Debug)]
 pub(crate) struct Semaphore {
     counter: AtomicUsize,
