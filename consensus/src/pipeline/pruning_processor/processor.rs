@@ -34,7 +34,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{info, warn};
+use kaspa_core::{debug, info, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -127,9 +127,15 @@ impl PruningProcessor {
         let pruning_utxoset_position = self.pruning_utxoset_stores.read().utxoset_position().unwrap_option();
         drop(pruning_point_read);
 
+        debug!(
+            "[PRUNING PROCESSOR] recovery check: current pruning point: {}, data pruned point: {:?}, pruning utxoset position: {:?}",
+            pruning_point, data_pruned_point, pruning_utxoset_position
+        );
+
         if let Some(pruning_utxoset_position) = pruning_utxoset_position {
             // This indicates the node crashed during a former pruning point move and we need to recover
             if pruning_utxoset_position != pruning_point {
+                info!("Recovering pruning utxo-set from {} to the pruning point {}", pruning_utxoset_position, pruning_point);
                 self.advance_pruning_utxoset(pruning_utxoset_position, pruning_point);
             }
         }
