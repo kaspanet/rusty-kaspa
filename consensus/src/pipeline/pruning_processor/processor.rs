@@ -112,7 +112,7 @@ impl PruningProcessor {
 
         // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
         // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
-        self.check_if_pruning_workflows_need_recovery();
+        self.recover_pruning_workflows_if_needed();
         self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
 
         while let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() {
@@ -120,7 +120,7 @@ impl PruningProcessor {
         }
     }
 
-    fn check_if_pruning_workflows_need_recovery(&self) {
+    fn recover_pruning_workflows_if_needed(&self) {
         let pruning_point_read = self.pruning_point_store.read();
         let pruning_point = pruning_point_read.pruning_point().unwrap();
         let history_root = pruning_point_read.history_root().unwrap_option();

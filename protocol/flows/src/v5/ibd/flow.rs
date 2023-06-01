@@ -68,6 +68,8 @@ pub enum IbdType {
     DownloadHeadersProof,
 }
 
+// TODO: define a peer banning strategy
+
 impl IbdFlow {
     pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: Receiver<Block>) -> Self {
         Self { ctx, router, incoming_route, relay_receiver }
