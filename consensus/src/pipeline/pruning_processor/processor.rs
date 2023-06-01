@@ -108,13 +108,23 @@ impl PruningProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        while let Ok(msg) = self.receiver.recv() {
-            match msg {
-                PruningProcessingMessage::Process { sink_ghostdag_data } => {
-                    self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
-                }
-                PruningProcessingMessage::Exit => break,
+        let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() else { return; };
+
+        // Check if pruning utxoset recovery is needed. We wait for the first processing message to arrive in order
+        // to make sure the node is already connected and receiving blocks before we start background recovery operations
+        let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
+        // TODO: `pruning_utxoset_position` is a new DB key so for now we assume correct state if the key is still missing
+        if let Some(pruning_utxoset_position) = self.pruning_utxoset_stores.read().utxoset_position().unwrap_option() {
+            // This indicates the node crashed during a former pruning point move and we need to recover
+            if pruning_utxoset_position != pruning_point {
+                self.advance_pruning_utxoset(pruning_utxoset_position, pruning_point);
             }
+        }
+
+        self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+
+        while let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() {
+            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
         }
     }
 
@@ -129,6 +139,7 @@ impl PruningProcessor {
         );
 
         if !new_pruning_points.is_empty() {
+            // Update past pruning points and pruning point stores
             let mut batch = WriteBatch::default();
             let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
             for (i, past_pp) in new_pruning_points.iter().copied().enumerate() {
@@ -140,29 +151,33 @@ impl PruningProcessor {
             self.db.write(batch).unwrap();
             drop(pruning_point_write);
 
+            // Inform the user
             info!("Daily pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
 
-            let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
-            for chain_block in
-                self.reachability_service.forward_chain_iterator(current_pruning_info.pruning_point, new_pruning_point, true).skip(1)
-            {
-                let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
-                let mut batch = WriteBatch::default();
-                pruning_utxoset_write.utxo_set.write_diff_batch(&mut batch, utxo_diff.as_ref()).unwrap();
-                pruning_utxoset_write.set_utxoset_position(&mut batch, chain_block).unwrap();
-                self.db.write(batch).unwrap();
-            }
-            drop(pruning_utxoset_write);
-
-            if self.config.enable_sanity_checks {
-                self.assert_utxo_commitment(new_pruning_point);
-            }
+            // Advance the pruning point utxoset to the state of the new pruning point using chain-block UTXO diffs
+            self.advance_pruning_utxoset(current_pruning_info.pruning_point, new_pruning_point);
 
             // Finally, prune data in the new pruning point past
             self.prune(new_pruning_point);
         } else if new_candidate != current_pruning_info.candidate {
-            let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
-            write_guard.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
+            let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
+            pruning_point_write.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
+        }
+    }
+
+    fn advance_pruning_utxoset(&self, utxoset_position: Hash, new_pruning_point: Hash) {
+        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+        for chain_block in self.reachability_service.forward_chain_iterator(utxoset_position, new_pruning_point, true).skip(1) {
+            let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
+            let mut batch = WriteBatch::default();
+            pruning_utxoset_write.utxo_set.write_diff_batch(&mut batch, utxo_diff.as_ref()).unwrap();
+            pruning_utxoset_write.set_utxoset_position(&mut batch, chain_block).unwrap();
+            self.db.write(batch).unwrap();
+        }
+        drop(pruning_utxoset_write);
+
+        if self.config.enable_sanity_checks {
+            self.assert_utxo_commitment(new_pruning_point);
         }
     }
 
@@ -173,7 +188,7 @@ impl PruningProcessor {
         for (outpoint, entry) in pruning_utxoset_read.utxo_set.iterator().map(|r| r.unwrap()) {
             multiset.add_utxo(&outpoint, &entry);
         }
-        assert_eq!(multiset.finalize(), commitment, "pruning point utxo set does not match the header utxo commitment");
+        assert_eq!(multiset.finalize(), commitment, "Updated pruning point utxo set does not match the header utxo commitment");
     }
 
     fn prune(&self, new_pruning_point: Hash) {
