@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::{header::Header, BlockHasher, BlockLevel};
 use kaspa_database::prelude::DB;
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
@@ -41,6 +41,12 @@ pub struct CompactHeaderData {
     pub blue_score: u64,
 }
 
+impl From<&Header> for CompactHeaderData {
+    fn from(header: &Header) -> Self {
+        Self { daa_score: header.daa_score, timestamp: header.timestamp, bits: header.bits, blue_score: header.blue_score }
+    }
+}
+
 /// A DB + cache implementation of `HeaderStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbHeadersStore {
@@ -77,16 +83,7 @@ impl DbHeadersStore {
             return Err(StoreError::HashAlreadyExists(hash));
         }
         self.headers_access.write(BatchDbWriter::new(batch), hash, HeaderWithBlockLevel { header: header.clone(), block_level })?;
-        self.compact_headers_access.write(
-            BatchDbWriter::new(batch),
-            hash,
-            CompactHeaderData {
-                daa_score: header.daa_score,
-                timestamp: header.timestamp,
-                bits: header.bits,
-                blue_score: header.blue_score,
-            },
-        )?;
+        self.compact_headers_access.write(BatchDbWriter::new(batch), hash, header.as_ref().into())?;
         Ok(())
     }
 
@@ -135,12 +132,7 @@ impl HeaderStoreReader for DbHeadersStore {
 
     fn get_compact_header_data(&self, hash: Hash) -> Result<CompactHeaderData, StoreError> {
         if let Some(header_with_block_level) = self.headers_access.read_from_cache(hash) {
-            return Ok(CompactHeaderData {
-                daa_score: header_with_block_level.header.daa_score,
-                timestamp: header_with_block_level.header.timestamp,
-                bits: header_with_block_level.header.bits,
-                blue_score: header_with_block_level.header.blue_score,
-            });
+            return Ok(header_with_block_level.header.as_ref().into());
         }
         self.compact_headers_access.read(hash)
     }
@@ -151,22 +143,21 @@ impl HeaderStore for DbHeadersStore {
         if self.headers_access.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
-        self.compact_headers_access.write(
-            DirectDbWriter::new(&self.db),
-            hash,
-            CompactHeaderData {
-                daa_score: header.daa_score,
-                timestamp: header.timestamp,
-                bits: header.bits,
-                blue_score: header.blue_score,
-            },
-        )?;
-        self.headers_access.write(DirectDbWriter::new(&self.db), hash, HeaderWithBlockLevel { header, block_level })?;
+        if self.compact_headers_access.has(hash)? {
+            return Err(StoreError::DataInconsistency(format!("store has compact data for {} but is missing full data", hash)));
+        }
+        let mut batch = WriteBatch::default();
+        self.compact_headers_access.write(BatchDbWriter::new(&mut batch), hash, header.as_ref().into())?;
+        self.headers_access.write(BatchDbWriter::new(&mut batch), hash, HeaderWithBlockLevel { header, block_level })?;
+        self.db.write(batch)?;
         Ok(())
     }
 
     fn delete(&self, hash: Hash) -> Result<(), StoreError> {
-        self.compact_headers_access.delete(DirectDbWriter::new(&self.db), hash)?;
-        self.headers_access.delete(DirectDbWriter::new(&self.db), hash)
+        let mut batch = WriteBatch::default();
+        self.compact_headers_access.delete(BatchDbWriter::new(&mut batch), hash)?;
+        self.headers_access.delete(BatchDbWriter::new(&mut batch), hash)?;
+        self.db.write(batch)?;
+        Ok(())
     }
 }

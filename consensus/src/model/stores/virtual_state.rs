@@ -72,6 +72,8 @@ impl VirtualState {
     }
 }
 
+const VIRTUAL_UTXO_SET: &[u8] = b"virtual-utxo-set";
+
 /// Used in order to group virtual related stores under a single lock
 pub struct VirtualStores {
     pub state: DbVirtualStateStore,
@@ -79,8 +81,8 @@ pub struct VirtualStores {
 }
 
 impl VirtualStores {
-    pub fn new(state: DbVirtualStateStore, utxo_set: DbUtxoSetStore) -> Self {
-        Self { state, utxo_set }
+    pub fn new(db: Arc<DB>, utxoset_cache_size: u64) -> Self {
+        Self { state: DbVirtualStateStore::new(db.clone()), utxo_set: DbUtxoSetStore::new(db, utxoset_cache_size, VIRTUAL_UTXO_SET) }
     }
 }
 

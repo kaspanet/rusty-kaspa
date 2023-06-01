@@ -19,15 +19,15 @@ use crate::{
             daa::DbDaaStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
-            past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
-            pruning::{DbPruningStore, PruningStore, PruningStoreReader},
+            past_pruning_points::DbPastPruningPointsStore,
+            pruning::{DbPruningStore, PruningStoreReader},
+            pruning_utxoset::PruningUtxosetStores,
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
-            utxo_set::DbUtxoSetStore,
             virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader, VirtualStores},
             DB,
         },
@@ -121,7 +121,7 @@ pub struct VirtualStateProcessor {
     pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
-    pub(super) pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
+    pub(super) pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
 
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
@@ -186,7 +186,7 @@ impl VirtualStateProcessor {
             utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: storage.acceptance_data_store.clone(),
             virtual_stores: storage.virtual_stores.clone(),
-            pruning_point_utxo_set_store: storage.pruning_point_utxo_set_store.clone(),
+            pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
 
             ghostdag_manager: services.ghostdag_primary_manager.clone(),
             reachability_service: services.reachability_service.clone(),
@@ -730,30 +730,37 @@ impl VirtualStateProcessor {
         Ok(BlockTemplate::new(MutableBlock::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp))
     }
 
+    /// Make sure pruning point-related stores are initialized
     pub fn init(self: &Arc<Self>) {
-        let pp_read_guard = self.pruning_point_store.upgradable_read();
-
-        // Ensure that some pruning point is registered
-        if pp_read_guard.pruning_point().unwrap_option().is_none() {
-            self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_or_exists();
-            RwLockUpgradableReadGuard::upgrade(pp_read_guard).set(self.genesis.hash, self.genesis.hash, 0).unwrap();
+        let pruning_point_read = self.pruning_point_store.upgradable_read();
+        if pruning_point_read.pruning_point().unwrap_option().is_none() {
+            let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
+            let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+            let mut batch = WriteBatch::default();
+            self.past_pruning_points_store.insert_batch(&mut batch, 0, self.genesis.hash).unwrap_or_exists();
+            pruning_point_write.set_batch(&mut batch, self.genesis.hash, self.genesis.hash, 0).unwrap();
+            pruning_point_write.set_history_root(&mut batch, self.genesis.hash).unwrap();
+            pruning_utxoset_write.set_utxoset_position(&mut batch, self.genesis.hash).unwrap();
+            self.db.write(batch).unwrap();
+            drop(pruning_point_write);
+            drop(pruning_utxoset_write);
         }
     }
 
+    /// Initializes UTXO state of genesis and points virtual at genesis.
+    /// Note that pruning point-related stores are initialized by `init`
     pub fn process_genesis(self: &Arc<Self>) {
-        // Init virtual and pruning stores
+        // Write the UTXO state of genesis
+        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default());
+        // Init virtual stores
         self.virtual_stores
             .write()
             .state
             .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
             .unwrap();
-        self.past_pruning_points_store.insert(0, self.genesis.hash).unwrap_or_exists();
-        self.pruning_point_store.write().set(self.genesis.hash, self.genesis.hash, 0).unwrap();
-
-        // Write the UTXO state of genesis
-        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default());
     }
 
+    // TODO: rename to reflect finalizing pruning point utxoset state and importing *to* virtual utxoset
     pub fn import_pruning_point_utxo_set(
         &self,
         new_pruning_point: Hash,
@@ -770,12 +777,21 @@ impl VirtualStateProcessor {
         }
 
         {
+            // Set the pruning point utxoset position to the new point we just verified
+            let mut batch = WriteBatch::default();
+            let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+            pruning_utxoset_write.set_utxoset_position(&mut batch, new_pruning_point).unwrap();
+            self.db.write(batch).unwrap();
+            drop(pruning_utxoset_write);
+        }
+
+        {
             // Copy the pruning-point UTXO set into virtual's UTXO set
-            let pruning_point_utxo_set = self.pruning_point_utxo_set_store.read();
+            let pruning_utxoset_read = self.pruning_utxoset_stores.read();
             let mut virtual_write = self.virtual_stores.write();
 
             virtual_write.utxo_set.clear().unwrap();
-            for chunk in &pruning_point_utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(1000) {
+            for chunk in &pruning_utxoset_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(1000) {
                 virtual_write.utxo_set.write_from_iterator_without_cache(chunk).unwrap();
             }
         }

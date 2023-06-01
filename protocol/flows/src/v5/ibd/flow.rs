@@ -68,6 +68,8 @@ pub enum IbdType {
     DownloadHeadersProof,
 }
 
+// TODO: define a peer banning strategy
+
 impl IbdFlow {
     pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: Receiver<Block>) -> Self {
         Self { ctx, router, incoming_route, relay_receiver }
@@ -460,9 +462,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
             current_daa_score = block.header.daa_score;
-            // TODO: decide if we resolve virtual separately on long IBD
-            // TODO: handle peer banning
-            // TODO: call self.ctx.on_new_block for every inserted block
             jobs.push(consensus.validate_and_insert_block(block));
         }
 
