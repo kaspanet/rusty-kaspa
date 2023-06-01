@@ -11,6 +11,7 @@ use crate::Result;
 use futures::future::join_all;
 use kaspa_addresses::{Address, Prefix};
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
+use kaspa_consensus_core::networktype::NetworkType;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use wasm_bindgen::prelude::*;
@@ -265,14 +266,25 @@ extern "C" {
 
 #[wasm_bindgen(js_name=createAddress)]
 pub fn create_address_js(
+    key: &str,
+    network_type: NetworkType,
+    ecdsa: Option<bool>,
+    account_kind: Option<AccountKind>,
+) -> Result<Address> {
+    let key: secp256k1::PublicKey = from_value(key.into())?;
+    create_address(1, vec![key], network_type.into(), ecdsa.unwrap_or(false), account_kind)
+}
+
+#[wasm_bindgen(js_name=createMultisigAddress)]
+pub fn create_multisig_address_js(
     minimum_signatures: usize,
     keys: PublicKeys,
-    prefix: &str,
-    ecdsa: bool,
+    network_type: NetworkType,
+    ecdsa: Option<bool>,
     account_kind: Option<AccountKind>,
 ) -> Result<Address> {
     let keys: Vec<secp256k1::PublicKey> = from_value(keys.into())?;
-    create_address(minimum_signatures, keys, prefix.try_into()?, ecdsa, account_kind)
+    create_address(minimum_signatures, keys, network_type.into(), ecdsa.unwrap_or(false), account_kind)
 }
 
 pub fn create_address(

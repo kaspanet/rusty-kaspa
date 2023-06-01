@@ -6,6 +6,7 @@ let {
     Encoding,
     XPublicKey,
     createAddress,
+    NetworkType,
 } = kaspa;
 kaspa.init_console_panic_hook();
 
@@ -21,12 +22,12 @@ kaspa.init_console_panic_hook();
 
     let keys = await xpub.receivePubkeys(0, 10);
     console.log("receive address  keys", keys);
-    let addresses = keys.map(key=>createAddress(1, [key], "kaspa", false).toString());
+    let addresses = keys.map(key=>createAddress(key, NetworkType.Mainnet).toString());
     console.log("receive addresses", addresses);
 
     keys = await xpub.changePubkeys(0, 10);
     console.log("change address keys", keys)
-    addresses = keys.map(key=>createAddress(1, [key], "kaspa", false).toString());
+    addresses = keys.map(key=>createAddress(key, NetworkType.Mainnet).toString());
     console.log("change addresses", addresses);
 
 })();
