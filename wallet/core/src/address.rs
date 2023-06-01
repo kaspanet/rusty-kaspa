@@ -13,6 +13,8 @@ use kaspa_addresses::{Address, Prefix};
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
+use wasm_bindgen::prelude::*;
+use workflow_wasm::tovalue::from_value;
 
 pub struct Inner {
     pub index: u32,
@@ -72,24 +74,7 @@ impl AddressManager {
     }
 
     fn create_address(&self, keys: Vec<secp256k1::PublicKey>) -> Result<Address> {
-        let length = keys.len();
-        if length < self.minimum_signatures {
-            return Err(format!{"The minimum amount of signatures ({}) is greater than the amount of provided public keys ({length})", self.minimum_signatures}.into());
-        }
-
-        if length > 1 {
-            return self.create_multisig_address(keys);
-        }
-
-        if matches!(self.account_kind, AccountKind::V0) {
-            PubkeyDerivationManagerV0::create_address(&keys[0], self.prefix, self.ecdsa)
-        } else {
-            PubkeyDerivationManager::create_address(&keys[0], self.prefix, self.ecdsa)
-        }
-    }
-
-    fn create_multisig_address(&self, _keys: Vec<secp256k1::PublicKey>) -> Result<Address> {
-        Err("TODO: multisig_address".to_string().into())
+        create_address(self.minimum_signatures, keys, self.prefix, self.ecdsa, Some(self.account_kind))
     }
 
     pub fn index(&self) -> Result<u32> {
@@ -265,6 +250,51 @@ impl AddressDerivationManager {
             indexes.push(*index);
         }
         Ok(indexes)
+    }
+}
+
+pub fn create_multisig_address(_keys: Vec<secp256k1::PublicKey>) -> Result<Address> {
+    Err("TODO: multisig_address".to_string().into())
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type="Array")]
+    pub type PublicKeys;
+}
+
+#[wasm_bindgen(js_name=createAddress)]
+pub fn create_address_js(
+    minimum_signatures: usize,
+    keys: PublicKeys,
+    prefix: &str,
+    ecdsa: bool,
+    account_kind: Option<AccountKind>,
+) -> Result<Address> {
+    let keys: Vec<secp256k1::PublicKey> = from_value(keys.into())?;
+    create_address(minimum_signatures, keys, prefix.try_into()?, ecdsa, account_kind)
+}
+
+pub fn create_address(
+    minimum_signatures: usize,
+    keys: Vec<secp256k1::PublicKey>,
+    prefix: Prefix,
+    ecdsa: bool,
+    account_kind: Option<AccountKind>,
+) -> Result<Address> {
+    let length = keys.len();
+    if length < minimum_signatures {
+        return Err(format!{"The minimum amount of signatures ({}) is greater than the amount of provided public keys ({length})", minimum_signatures}.into());
+    }
+
+    if length > 1 {
+        return create_multisig_address(keys);
+    }
+
+    if matches!(account_kind, Some(AccountKind::V0)) {
+        PubkeyDerivationManagerV0::create_address(&keys[0], prefix, ecdsa)
+    } else {
+        PubkeyDerivationManager::create_address(&keys[0], prefix, ecdsa)
     }
 }
 

@@ -3,6 +3,7 @@ use crate::accounts::gen1::WalletDerivationManager;
 use crate::Result;
 use kaspa_bip32::{ExtendedPrivateKey, SecretKey};
 //use serde_wasm_bindgen::to_value;
+use kaspa_bip32::ExtendedPublicKey;
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::tovalue::to_value;
@@ -13,11 +14,12 @@ pub struct XPublicKey {
 }
 #[wasm_bindgen]
 impl XPublicKey {
-    // #[wasm_bindgen(constructor)]
-    // pub async fn new(kpub: &str, is_multisig: bool, account_index: u64) -> Result<XPublicKey> {
-    //     let xpub = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(kpub)?;
-    //     Self::from_xpublic_key(xpub, is_multisig, account_index).await
-    // }
+    #[wasm_bindgen(js_name=fromXPub)]
+    pub async fn from_xpub(kpub: &str, cosigner_index: Option<u32>) -> Result<XPublicKey> {
+        let xpub = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(kpub)?;
+        let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub, cosigner_index).await?;
+        Ok(Self { hd_wallet })
+    }
 
     #[wasm_bindgen(js_name=fromMasterXPrv)]
     pub async fn from_master_xprv(
