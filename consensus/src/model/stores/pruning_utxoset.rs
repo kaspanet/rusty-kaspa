@@ -8,7 +8,7 @@ use rocksdb::WriteBatch;
 
 use super::utxo_set::DbUtxoSetStore;
 
-pub const PRUNING_UTXO_SET: &[u8] = b"pruning-utxo-set";
+const PRUNING_UTXO_SET: &[u8] = b"pruning-utxo-set";
 const PRUNING_UTXOSET_POSITION_KEY: &[u8] = b"pruning-utxoset-position";
 
 /// Used in order to group stores related to the pruning point utxoset under a single lock
