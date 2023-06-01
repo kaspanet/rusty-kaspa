@@ -4,7 +4,7 @@ use kaspa_consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
 use kaspa_hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
@@ -32,6 +32,12 @@ pub struct CompactGhostdagData {
     pub blue_score: u64,
     pub blue_work: BlueWorkType,
     pub selected_parent: Hash,
+}
+
+impl From<&GhostdagData> for CompactGhostdagData {
+    fn from(value: &GhostdagData) -> Self {
+        Self { blue_score: value.blue_score, blue_work: value.blue_work, selected_parent: value.selected_parent }
+    }
 }
 
 impl From<ExternalGhostdagData> for GhostdagData {
@@ -173,7 +179,7 @@ impl GhostdagData {
     }
 
     pub fn to_compact(&self) -> CompactGhostdagData {
-        CompactGhostdagData { blue_score: self.blue_score, blue_work: self.blue_work, selected_parent: self.selected_parent }
+        self.into()
     }
 
     pub fn add_blue(&mut self, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &BlockHashMap<KType>) {
@@ -262,21 +268,13 @@ impl DbGhostdagStore {
             return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(BatchDbWriter::new(batch), hash, data.clone())?;
-        self.compact_access.write(
-            BatchDbWriter::new(batch),
-            hash,
-            CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
-        )?;
+        self.compact_access.write(BatchDbWriter::new(batch), hash, data.to_compact())?;
         Ok(())
     }
 
     pub fn update_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {
         self.access.write(BatchDbWriter::new(batch), hash, data.clone())?;
-        self.compact_access.write(
-            BatchDbWriter::new(batch),
-            hash,
-            CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
-        )?;
+        self.compact_access.write(BatchDbWriter::new(batch), hash, data.to_compact())?;
         Ok(())
     }
 
@@ -329,21 +327,22 @@ impl GhostdagStore for DbGhostdagStore {
         if self.access.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
-        self.access.write(DirectDbWriter::new(&self.db), hash, data.clone())?;
         if self.compact_access.has(hash)? {
-            return Err(StoreError::HashAlreadyExists(hash));
+            return Err(StoreError::DataInconsistency(format!("store has compact data for {} but is missing full data", hash)));
         }
-        self.compact_access.write(
-            DirectDbWriter::new(&self.db),
-            hash,
-            CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
-        )?;
+        let mut batch = WriteBatch::default();
+        self.access.write(BatchDbWriter::new(&mut batch), hash, data.clone())?;
+        self.compact_access.write(BatchDbWriter::new(&mut batch), hash, data.to_compact())?;
+        self.db.write(batch)?;
         Ok(())
     }
 
     fn delete(&self, hash: Hash) -> Result<(), StoreError> {
-        self.compact_access.delete(DirectDbWriter::new(&self.db), hash)?;
-        self.access.delete(DirectDbWriter::new(&self.db), hash)
+        let mut batch = WriteBatch::default();
+        self.compact_access.delete(BatchDbWriter::new(&mut batch), hash)?;
+        self.access.delete(BatchDbWriter::new(&mut batch), hash)?;
+        self.db.write(batch)?;
+        Ok(())
     }
 }
 

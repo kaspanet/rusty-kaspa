@@ -15,6 +15,9 @@ pub enum StoreError {
     #[error("hash {0} already exists in store")]
     HashAlreadyExists(Hash),
 
+    #[error("data inconsistency: {0}")]
+    DataInconsistency(String),
+
     #[error("rocksdb error {0}")]
     DbError(#[from] rocksdb::Error),
 

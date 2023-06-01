@@ -17,7 +17,6 @@ use crate::{
             selected_chain::SelectedChainStore,
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
-            utxo_set::UtxoSetStore,
             virtual_state::VirtualStateStoreReader,
         },
     },
@@ -35,7 +34,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{info, warn};
+use kaspa_core::{debug, info, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -109,14 +108,47 @@ impl PruningProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        while let Ok(msg) = self.receiver.recv() {
-            match msg {
-                PruningProcessingMessage::Process { sink_ghostdag_data } => {
-                    self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
-                }
-                PruningProcessingMessage::Exit => break,
+        let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() else { return; };
+
+        // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
+        // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
+        self.recover_pruning_workflows_if_needed();
+        self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+
+        while let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() {
+            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+        }
+    }
+
+    fn recover_pruning_workflows_if_needed(&self) {
+        let pruning_point_read = self.pruning_point_store.read();
+        let pruning_point = pruning_point_read.pruning_point().unwrap();
+        let history_root = pruning_point_read.history_root().unwrap_option();
+        let pruning_utxoset_position = self.pruning_utxoset_stores.read().utxoset_position().unwrap_option();
+        drop(pruning_point_read);
+
+        debug!(
+            "[PRUNING PROCESSOR] recovery check: current pruning point: {}, history root: {:?}, pruning utxoset position: {:?}",
+            pruning_point, history_root, pruning_utxoset_position
+        );
+
+        if let Some(pruning_utxoset_position) = pruning_utxoset_position {
+            // This indicates the node crashed during a former pruning point move and we need to recover
+            if pruning_utxoset_position != pruning_point {
+                info!("Recovering pruning utxo-set from {} to the pruning point {}", pruning_utxoset_position, pruning_point);
+                self.advance_pruning_utxoset(pruning_utxoset_position, pruning_point);
             }
         }
+
+        if let Some(history_root) = history_root {
+            // This indicates the node crashed or was forced to stop during a former data prune operation hence
+            // we need to complete it
+            if history_root != pruning_point {
+                self.prune(pruning_point);
+            }
+        }
+
+        // TODO: both `pruning_utxoset_position` and `history_root` are new DB keys so for now we assume correct state if the keys are missing
     }
 
     fn advance_pruning_point_and_candidate_if_possible(&self, sink_ghostdag_data: CompactGhostdagData) {
@@ -130,6 +162,7 @@ impl PruningProcessor {
         );
 
         if !new_pruning_points.is_empty() {
+            // Update past pruning points and pruning point stores
             let mut batch = WriteBatch::default();
             let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
             for (i, past_pp) in new_pruning_points.iter().copied().enumerate() {
@@ -141,45 +174,49 @@ impl PruningProcessor {
             self.db.write(batch).unwrap();
             drop(pruning_point_write);
 
+            // Inform the user
             info!("Daily pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
 
-            // TODO: DB batching via marker
-            let mut utxoset_write = self.pruning_point_utxo_set_store.write();
-            for chain_block in
-                self.reachability_service.forward_chain_iterator(current_pruning_info.pruning_point, new_pruning_point, true).skip(1)
-            {
-                let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
-                utxoset_write.write_diff(utxo_diff.as_ref()).unwrap();
-            }
-            drop(utxoset_write);
-
-            if self.config.enable_sanity_checks {
-                self.assert_utxo_commitment(new_pruning_point);
-            }
+            // Advance the pruning point utxoset to the state of the new pruning point using chain-block UTXO diffs
+            self.advance_pruning_utxoset(current_pruning_info.pruning_point, new_pruning_point);
 
             // Finally, prune data in the new pruning point past
             self.prune(new_pruning_point);
         } else if new_candidate != current_pruning_info.candidate {
-            let mut write_guard = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
-            write_guard.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
+            let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
+            pruning_point_write.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
+        }
+    }
+
+    fn advance_pruning_utxoset(&self, utxoset_position: Hash, new_pruning_point: Hash) {
+        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+        for chain_block in self.reachability_service.forward_chain_iterator(utxoset_position, new_pruning_point, true).skip(1) {
+            let utxo_diff = self.utxo_diffs_store.get(chain_block).expect("chain blocks have utxo state");
+            let mut batch = WriteBatch::default();
+            pruning_utxoset_write.utxo_set.write_diff_batch(&mut batch, utxo_diff.as_ref()).unwrap();
+            pruning_utxoset_write.set_utxoset_position(&mut batch, chain_block).unwrap();
+            self.db.write(batch).unwrap();
+        }
+        drop(pruning_utxoset_write);
+
+        if self.config.enable_sanity_checks {
+            self.assert_utxo_commitment(new_pruning_point);
         }
     }
 
     fn assert_utxo_commitment(&self, pruning_point: Hash) {
         let commitment = self.headers_store.get_header(pruning_point).unwrap().utxo_commitment;
         let mut multiset = MuHash::new();
-        let utxoset_read = self.pruning_point_utxo_set_store.read();
-        for (outpoint, entry) in utxoset_read.iterator().map(|r| r.unwrap()) {
+        let pruning_utxoset_read = self.pruning_utxoset_stores.read();
+        for (outpoint, entry) in pruning_utxoset_read.utxo_set.iterator().map(|r| r.unwrap()) {
             multiset.add_utxo(&outpoint, &entry);
         }
-        assert_eq!(multiset.finalize(), commitment, "pruning point utxo set does not match the header utxo commitment");
+        assert_eq!(multiset.finalize(), commitment, "Updated pruning point utxo set does not match the header utxo commitment");
     }
 
     fn prune(&self, new_pruning_point: Hash) {
-        // TODO: mark the last pruned point (and check on startup if it's below the pruning point)
-
         if self.config.is_archival {
-            warn!("The node is configured as an archival node -- skipping data pruning. Note this might lead to heavy disk usage.");
+            warn!("The node is configured as an archival node -- avoiding data pruning. Note this might lead to heavy disk usage.");
             return;
         }
 
@@ -189,10 +226,11 @@ impl PruningProcessor {
             .get_pruning_point_anticone_and_trusted_data()
             .expect("insufficient depth error is unexpected here");
 
-        let genesis = self.past_pruning_points_store.get(0).unwrap(); // TODO: pass genesis
+        let genesis = self.past_pruning_points_store.get(0).unwrap();
 
         assert_eq!(new_pruning_point, proof[0].last().unwrap().hash);
         assert_eq!(new_pruning_point, data.anticone[0]);
+        assert_eq!(genesis, self.config.genesis.hash);
         assert_eq!(genesis, proof.last().unwrap().last().unwrap().hash);
 
         // We keep full data for pruning point and its anticone, relations for DAA/GD
@@ -280,7 +318,7 @@ impl PruningProcessor {
             // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
             queue.extend(reachability_read.get_children(current).unwrap().iter());
 
-            // If we have the lock for more than 10ms, release and recapture to allow consensus progress during pruning
+            // If we have the lock for more than a few milliseconds, release and recapture to allow consensus progress during pruning
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
                 drop(reachability_read);
                 prune_guard.blocking_yield();
@@ -355,6 +393,7 @@ impl PruningProcessor {
                 reachability_read = self.reachability_store.upgradable_read();
             }
         }
+
         drop(reachability_read);
         drop(prune_guard);
 
@@ -370,6 +409,15 @@ impl PruningProcessor {
         if self.config.enable_sanity_checks {
             self.assert_proof_rebuilding(proof, new_pruning_point);
             self.assert_data_rebuilding(data, new_pruning_point);
+        }
+
+        {
+            // Set the history root to the new pruning point only after we successfully pruned its past
+            let mut pruning_point_write = self.pruning_point_store.write();
+            let mut batch = WriteBatch::default();
+            pruning_point_write.set_history_root(&mut batch, new_pruning_point).unwrap();
+            self.db.write(batch).unwrap();
+            drop(pruning_point_write);
         }
     }
 

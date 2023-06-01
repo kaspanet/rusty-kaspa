@@ -1,27 +1,12 @@
 use crate::{
     config::Config,
-    constants::store_names,
     model::stores::{
-        acceptance_data::DbAcceptanceDataStore,
-        block_transactions::DbBlockTransactionsStore,
-        block_window_cache::BlockWindowCacheStore,
-        daa::DbDaaStore,
-        depth::DbDepthStore,
-        ghostdag::DbGhostdagStore,
-        headers::DbHeadersStore,
-        headers_selected_tip::DbHeadersSelectedTipStore,
-        past_pruning_points::DbPastPruningPointsStore,
-        pruning::DbPruningStore,
-        reachability::DbReachabilityStore,
-        relations::DbRelationsStore,
-        selected_chain::DbSelectedChainStore,
-        statuses::DbStatusesStore,
-        tips::DbTipsStore,
-        utxo_diffs::DbUtxoDiffsStore,
-        utxo_multisets::DbUtxoMultisetsStore,
-        utxo_set::DbUtxoSetStore,
-        virtual_state::{DbVirtualStateStore, VirtualStores},
-        DB,
+        acceptance_data::DbAcceptanceDataStore, block_transactions::DbBlockTransactionsStore,
+        block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
+        headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
+        pruning::DbPruningStore, pruning_utxoset::PruningUtxosetStores, reachability::DbReachabilityStore,
+        relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, tips::DbTipsStore,
+        utxo_diffs::DbUtxoDiffsStore, utxo_multisets::DbUtxoMultisetsStore, virtual_state::VirtualStores, DB,
     },
     processes::{reachability::inquirer as reachability, relations},
 };
@@ -30,6 +15,8 @@ use itertools::Itertools;
 
 use parking_lot::RwLock;
 use std::{cmp::max, ops::DerefMut, sync::Arc};
+
+const REACHABILITY_RELATIONS_PREFIX: &[u8] = b"reachability-";
 
 pub struct ConsensusStorage {
     // DB
@@ -43,7 +30,7 @@ pub struct ConsensusStorage {
     pub pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     pub body_tips_store: Arc<RwLock<DbTipsStore>>,
-    pub pruning_point_utxo_set_store: Arc<RwLock<DbUtxoSetStore>>,
+    pub pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
@@ -87,11 +74,8 @@ impl ConsensusStorage {
         ));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), extended_pruning_size_for_caches)));
         // Reachability relations are only read during pruning, so finality depth is sufficient for cache size
-        let reachability_relations_store = Arc::new(RwLock::new(DbRelationsStore::with_prefix(
-            db.clone(),
-            store_names::REACHABILITY_RELATIONS_PREFIX,
-            config.finality_depth,
-        )));
+        let reachability_relations_store =
+            Arc::new(RwLock::new(DbRelationsStore::with_prefix(db.clone(), REACHABILITY_RELATIONS_PREFIX, config.finality_depth)));
         let ghostdag_stores = Arc::new(
             (0..=params.max_block_level)
                 .map(|level| {
@@ -110,9 +94,9 @@ impl ConsensusStorage {
         // Pruning
         let pruning_point_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), 4));
-        let pruning_point_utxo_set_store =
-            Arc::new(RwLock::new(DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::PRUNING_UTXO_SET)));
+        let pruning_utxoset_stores = Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), perf_params.utxo_set_cache_size)));
 
+        // Txs
         let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), perf_params.block_data_cache_size));
         let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), perf_params.block_data_cache_size));
         let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), perf_params.block_data_cache_size));
@@ -127,10 +111,7 @@ impl ConsensusStorage {
         let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(perf_params.block_window_cache_size));
 
         // Virtual stores
-        let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(
-            DbVirtualStateStore::new(db.clone()),
-            DbUtxoSetStore::new(db.clone(), perf_params.utxo_set_cache_size, store_names::VIRTUAL_UTXO_SET),
-        )));
+        let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(db.clone(), perf_params.utxo_set_cache_size)));
 
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
@@ -149,7 +130,7 @@ impl ConsensusStorage {
             body_tips_store,
             headers_store,
             block_transactions_store,
-            pruning_point_utxo_set_store,
+            pruning_utxoset_stores,
             virtual_stores,
             selected_chain_store,
             acceptance_data_store,

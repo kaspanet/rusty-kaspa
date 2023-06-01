@@ -12,6 +12,7 @@ pub mod headers;
 pub mod headers_selected_tip;
 pub mod past_pruning_points;
 pub mod pruning;
+pub mod pruning_utxoset;
 pub mod reachability;
 pub mod relations;
 pub mod statuses;
