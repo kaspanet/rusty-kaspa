@@ -396,8 +396,19 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_sync_info(&self) -> SyncInfo {
-        // TODO: actually get those numbers
-        SyncInfo::default()
+        let earliest_daa_score = if self.config.is_archival {
+            let history_root = self.pruning_point_store.read().history_root().expect("expected the history root");
+
+            self.headers_store.get_header(history_root).expect("expected history root to be in the header store").daa_score
+        } else {
+            let pruning_point = self.pruning_point_store.read().pruning_point().expect("expected the history root");
+
+            self.headers_store.get_header(pruning_point).expect("expected pruning point to be in the header store").daa_score
+        };
+
+        let sink_daa_score = self.get_virtual_daa_score();
+
+        SyncInfo { header_count: sink_daa_score - earliest_daa_score, block_count: sink_daa_score - earliest_daa_score }
     }
 
     fn is_nearly_synced(&self) -> bool {
