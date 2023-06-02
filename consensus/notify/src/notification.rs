@@ -1,5 +1,5 @@
 use derive_more::Display;
-use kaspa_consensus_core::{acceptance_data::AcceptanceData, block::Block, utxo::utxo_diff::UtxoDiff};
+use kaspa_consensus_core::{acceptance_data::AcceptanceData, block::Block, utxo::utxo_diff::UtxoDiff, tx::TransactionId};
 use kaspa_hashes::Hash;
 use kaspa_notify::{
     events::EventType,
@@ -41,6 +41,9 @@ pub enum Notification {
 
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
+
+    #[display(fmt = "PrunedTransactionIds notification")]
+    PrunedTransactionIds(PrunedTransactionIdsNotification),
 }
 }
 
@@ -172,3 +175,14 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct NewBlockTemplateNotification {}
+
+#[derive(Debug, Clone)]
+pub struct PrunedTransactionIdsNotification {
+    pub transaction_ids: Arc<Vec<TransactionId>>
+}
+
+impl PrunedTransactionIdsNotification {
+    pub fn new(transaction_ids: Arc<Vec<TransactionId>>) -> Self {
+        Self { transaction_ids }
+    }
+}

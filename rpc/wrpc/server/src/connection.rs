@@ -4,7 +4,7 @@ use kaspa_notify::{
     error::{Error as NotifyError, Result as NotifyResult},
     listener::ListenerId,
     notification::Notification as NotificationT,
-    notifier::Notify,
+    notifier::Notify, events::EventType,
 };
 use kaspa_rpc_core::{api::ops::RpcApiOps, notify::mode::NotificationMode, Notification};
 use std::{
@@ -62,6 +62,10 @@ impl Notify<Notification> for ConnectionInner {
     fn notify(&self, notification: Notification) -> NotifyResult<()> {
         self.send(Connection::into_message(&notification, &self.messenger.encoding().into()))
             .map_err(|err| NotifyError::General(err.to_string()))
+    }
+
+    fn has_subscription(&self, _event: EventType) -> bool {
+        unimplemented!()
     }
 }
 

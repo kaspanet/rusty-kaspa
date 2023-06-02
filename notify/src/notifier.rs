@@ -32,6 +32,8 @@ where
     N: Notification,
 {
     fn notify(&self, notification: N) -> Result<()>;
+
+    fn has_subscription(&self, event: EventType) -> bool;
 }
 
 pub type DynNotify<N> = Arc<dyn Notify<N>>;
@@ -139,6 +141,10 @@ where
 {
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
+    }
+
+    fn has_subscription(&self, event: EventType) -> bool {
+        self.inner.has_subscription(event)
     }
 }
 
@@ -363,6 +369,10 @@ where
         })
     }
 
+    fn has_subscription(&self, event: EventType) -> bool {
+        self.enabled_events[event]
+    }
+
     async fn stop(self: Arc<Self>) -> Result<()> {
         if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             trace!("[Notifier-{}] stopping collectors", self.name);
@@ -423,6 +433,10 @@ pub mod test_helpers {
     {
         fn notify(&self, notification: N) -> Result<()> {
             Ok(self.sender.try_send(notification)?)
+        }
+
+        fn has_subscription(&self, _event: EventType) -> bool {
+            unimplemented!()
         }
     }
 
