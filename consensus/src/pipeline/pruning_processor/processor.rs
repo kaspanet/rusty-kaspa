@@ -33,25 +33,23 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::ExternalGhostdagData,
     BlockHashSet,
-    
 };
 use kaspa_consensus_notify::{
-    root::ConsensusNotificationRoot, 
-    notification::PrunedTransactionIdsNotification,
-    notification::Notification as ConsensusNotification
+    notification::Notification as ConsensusNotification, notification::PrunedTransactionIdsNotification,
+    root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_notify::{notifier::Notify, events::EventType};
-use kaspa_utils::{iter::IterExtensions, arc::ArcExtensions};
+use kaspa_notify::{events::EventType, notifier::Notify};
+use kaspa_utils::{arc::ArcExtensions, iter::IterExtensions};
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
     collections::VecDeque,
-    ops::{Deref},
+    ops::Deref,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -77,7 +75,7 @@ pub struct PruningProcessor {
     ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     pruning_point_manager: DbPruningPointManager,
     pruning_proof_manager: Arc<PruningProofManager>,
-    
+
     // Notifier
     notification_root: Arc<ConsensusNotificationRoot>,
 
@@ -356,20 +354,20 @@ impl PruningProcessor {
 
                 // collect pruned data to be sent over the notifier for external services
 
-                //check if we need to send before expensive operations. 
+                //check if we need to send before expensive operations.
                 if self.notification_root.has_subscription(EventType::PrunedTransactionIds) {
                     let pruned_transaction_ids = ArcExtensions::unwrap_or_clone(
-                    self.block_transactions_store
-                        .get(current)
-                        .expect("expected to be pruned block to have transactions")
+                        self.block_transactions_store.get(current).expect("expected to be pruned block to have transactions"),
                     )
                     .into_iter()
-                    .map(move |transaction| { transaction.id() })
+                    .map(move |transaction| transaction.id())
                     .collect();
                     // TODO: handle error
-                    let _ = self.notification_root.notify(ConsensusNotification::PrunedTransactionIds(PrunedTransactionIdsNotification::new(Arc::new(pruned_transaction_ids))));
+                    let _ = self.notification_root.notify(ConsensusNotification::PrunedTransactionIds(
+                        PrunedTransactionIdsNotification::new(Arc::new(pruned_transaction_ids)),
+                    ));
                 }
-                
+
                 // Prune data related to block bodies and UTXO state
                 self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();

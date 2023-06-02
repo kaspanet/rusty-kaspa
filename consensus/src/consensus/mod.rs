@@ -230,8 +230,15 @@ impl Consensus {
             counters.clone(),
         ));
 
-        let pruning_processor =
-            Arc::new(PruningProcessor::new(pruning_receiver, db.clone(), &storage, &services, notification_root.clone(), pruning_lock.clone(), config.clone()));
+        let pruning_processor = Arc::new(PruningProcessor::new(
+            pruning_receiver,
+            db.clone(),
+            &storage,
+            &services,
+            notification_root.clone(),
+            pruning_lock.clone(),
+            config.clone(),
+        ));
 
         // Ensure the relations stores are initialized
         header_processor.init();

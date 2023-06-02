@@ -1,5 +1,5 @@
 use derive_more::Display;
-use kaspa_consensus_core::{acceptance_data::AcceptanceData, block::Block, utxo::utxo_diff::UtxoDiff, tx::TransactionId};
+use kaspa_consensus_core::{acceptance_data::AcceptanceData, block::Block, tx::TransactionId, utxo::utxo_diff::UtxoDiff};
 use kaspa_hashes::Hash;
 use kaspa_notify::{
     events::EventType,
@@ -178,7 +178,7 @@ pub struct NewBlockTemplateNotification {}
 
 #[derive(Debug, Clone)]
 pub struct PrunedTransactionIdsNotification {
-    pub transaction_ids: Arc<Vec<TransactionId>>
+    pub transaction_ids: Arc<Vec<TransactionId>>,
 }
 
 impl PrunedTransactionIdsNotification {

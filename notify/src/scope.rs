@@ -92,4 +92,3 @@ pub struct NewBlockTemplateScope {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PrunedTransactionIdsScope {}
-

@@ -29,7 +29,7 @@ impl From<&consensus_notify::Notification> for Notification {
             consensus_notify::Notification::VirtualDaaScoreChanged(msg) => Notification::VirtualDaaScoreChanged(msg.into()),
             consensus_notify::Notification::PruningPointUtxoSetOverride(msg) => Notification::PruningPointUtxoSetOverride(msg.into()),
             consensus_notify::Notification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
-            other => panic!("trying to convert none-rpc intended consensus notification: {0}", other)
+            other => panic!("trying to convert none-rpc intended consensus notification: {0}", other),
         }
     }
 }

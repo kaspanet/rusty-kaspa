@@ -2,9 +2,10 @@ use kaspa_grpc_client::{GrpcClient, GrpcClientNotify};
 use kaspa_notify::{
     connection::Connection as ConnectionT,
     error::{Error as NotifyError, Result as NotifyResult},
+    events::EventType,
     listener::ListenerId,
     notification::Notification as NotificationT,
-    notifier::Notify, events::EventType,
+    notifier::Notify,
 };
 use kaspa_rpc_core::{api::ops::RpcApiOps, notify::mode::NotificationMode, Notification};
 use std::{
