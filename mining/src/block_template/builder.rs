@@ -3,8 +3,7 @@ use crate::{block_template::selector::TransactionsSelector, model::candidate_tx:
 use kaspa_consensus_core::{
     api::ConsensusApi, block::BlockTemplate, coinbase::MinerData, merkle::calc_hash_merkle_root, tx::COINBASE_TRANSACTION_INDEX,
 };
-use kaspa_core::debug;
-use std::time::{SystemTime, UNIX_EPOCH};
+use kaspa_core::{debug, time::unix_now};
 
 pub(crate) struct BlockTemplateBuilder {
     policy: Policy,
@@ -110,7 +109,7 @@ impl BlockTemplateBuilder {
         }
         // Update the hash merkle root according to the modified transactions
         block_template.block.header.hash_merkle_root = calc_hash_merkle_root(block_template.block.transactions.iter());
-        let new_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+        let new_timestamp = unix_now();
         if new_timestamp > block_template.block.header.timestamp {
             // Only if new time stamp is later than current, update the header. Otherwise,
             // we keep the previous time as built by internal consensus median time logic

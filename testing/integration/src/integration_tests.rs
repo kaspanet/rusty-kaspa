@@ -35,6 +35,7 @@ use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
+use kaspa_core::time::unix_now;
 use kaspa_database::utils::{create_temp_db, get_kaspa_tempdir};
 use kaspa_hashes::Hash;
 
@@ -61,7 +62,6 @@ use std::{
     future::Future,
     io::{BufRead, BufReader},
     str::{from_utf8, FromStr},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use crate::common;
@@ -403,7 +403,7 @@ async fn header_in_isolation_validation_test() {
         let mut block = block.clone();
         block.header.hash = 2.into();
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+        let now = unix_now();
         let block_ts = now + config.full_timestamp_deviation_tolerance * config.target_time_per_block + 2000;
         block.header.timestamp = block_ts;
         match consensus.validate_and_insert_block(block.to_immutable()).await {

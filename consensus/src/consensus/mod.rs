@@ -444,10 +444,10 @@ impl ConsensusApi for Consensus {
         if self.pruning_point_store.read().pruning_point().unwrap() != expected_pruning_point {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
-        let pruning_point_utxoset_read = self.pruning_point_utxo_set_store.read();
-        let iter = pruning_point_utxoset_read.seek_iterator(from_outpoint, chunk_size, skip_first);
+        let pruning_utxoset_read = self.pruning_utxoset_stores.read();
+        let iter = pruning_utxoset_read.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
         let utxos = iter.map(|item| item.unwrap()).collect();
-        drop(pruning_point_utxoset_read);
+        drop(pruning_utxoset_read);
 
         // We recheck the expected pruning point in case it was switched just before the utxo set read.
         // NOTE: we rely on order of operations by pruning processor. See extended comment therein.
@@ -478,8 +478,8 @@ impl ConsensusApi for Consensus {
         // TODO: Check if a db tx is needed. We probably need some kind of a flag that is set on this function to true, and then
         // is set to false on the end of import_pruning_point_utxo_set. On any failure on any of those functions (and also if the
         // node starts when the flag is true) the related data will be deleted and the flag will be set to false.
-        let mut pruning_point_utxo_set = self.pruning_point_utxo_set_store.write();
-        pruning_point_utxo_set.write_many(utxoset_chunk).unwrap();
+        let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
+        pruning_utxoset_write.utxo_set.write_many(utxoset_chunk).unwrap();
         for (outpoint, entry) in utxoset_chunk {
             current_multiset.add_utxo(outpoint, entry);
         }
