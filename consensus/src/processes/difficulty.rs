@@ -74,6 +74,8 @@ trait DifficultyManagerExtension {
     }
 }
 
+/// A difficulty manager conforming to the legacy golang implementation
+/// based on full, hence un-sampled, windows
 #[derive(Clone)]
 pub struct FullDifficultyManager<T: HeaderStoreReader> {
     headers_store: Arc<T>,
@@ -153,6 +155,8 @@ impl<T: HeaderStoreReader> DifficultyManagerExtension for FullDifficultyManager<
     }
 }
 
+/// A difficulty manager implementing [KIP-0004](https://github.com/kaspanet/kips/blob/master/kip-0004.md),
+/// so based on sampled windows
 #[derive(Clone)]
 pub struct SampledDifficultyManager<T: HeaderStoreReader> {
     headers_store: Arc<T>,

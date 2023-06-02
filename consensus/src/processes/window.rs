@@ -54,6 +54,8 @@ pub trait WindowManager {
     fn sample_rate(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> u64;
 }
 
+/// A window manager conforming (indirectly) to the legacy golang implementation
+/// based on full, hence un-sampled, windows
 #[derive(Clone)]
 pub struct FullWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> {
     genesis_hash: Hash,
@@ -229,6 +231,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Wi
 
 type DaaStatus = Option<(u64, BlockHashSet)>;
 
+/// A sampled window manager implementing [KIP-0004](https://github.com/kaspanet/kips/blob/master/kip-0004.md)
 #[derive(Clone)]
 pub struct SampledWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> {
     genesis_hash: Hash,
@@ -556,6 +559,9 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     }
 }
 
+/// A window manager handling either full (un-sampled) or sampled windows depending on an activation DAA score
+///
+/// See [FullWindowManager] and [SampledWindowManager]
 #[derive(Clone)]
 pub struct DualWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> {
     ghostdag_store: Arc<T>,
