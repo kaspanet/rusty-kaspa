@@ -345,12 +345,12 @@ impl ConsensusApi for Consensus {
 
     fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
         let result = self.validate_and_insert_block_impl(BlockTask::Ordinary { block });
-        Box::pin(async move { result.await })
+        Box::pin(result)
     }
 
     fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
         let result = self.validate_and_insert_block_impl(BlockTask::Trusted { block: tb.block });
-        Box::pin(async move { result.await })
+        Box::pin(result)
     }
 
     fn validate_mempool_transaction_and_populate(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
