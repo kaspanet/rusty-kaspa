@@ -266,49 +266,67 @@ impl UtxoSet {
         Ok(l)
     }
 
+    pub async fn update_inuse_utxos(&self) -> Result<()> {
+        let mut removeable = vec![];
+        let checkpoint = Instant::now().checked_sub(Duration::from_secs(60)).unwrap();
+        for (key, instant) in &self.inner().in_use {
+            if instant < &checkpoint {
+                removeable.push(key.clone());
+            }
+        }
+        let map = &mut self.inner().in_use;
+        for key in &removeable {
+            map.remove(key);
+        }
+
+        Ok(())
+    }
+
     pub async fn select(&self, transaction_amount: u64, order: UtxoOrdering, mark_utxo: bool) -> Result<SelectionContext> {
         if self.ordered.load(Ordering::SeqCst) != order as u32 {
             self.order(order)?;
         }
 
+        // TODO: move to ticker callback
+        self.update_inuse_utxos().await?;
+
+        const FEE_PER_INPUT: u64 = 1124;
+
         let mut selected_entries = vec![];
         let mut in_use = vec![];
+        let total_selected_amount = {
+            let inner = self.inner();
+            inner
+                .entries
+                .iter()
+                .scan(0u64, |total, entry| {
+                    let outpoint = entry.as_ref().outpoint.inner().clone();
+                    if inner.in_use.contains_key(&outpoint) {
+                        return Some(0);
+                    }
 
-        let total_selected_amount = self
-            .inner()
-            .entries
-            .iter()
-            .scan(0u64, |total, entry| {
-                if *total >= transaction_amount {
-                    return None;
-                }
+                    if mark_utxo {
+                        in_use.push(outpoint);
+                    }
+                    if *total >= transaction_amount + selected_entries.len() as u64 * FEE_PER_INPUT {
+                        return None;
+                    }
 
-                selected_entries.push(entry.clone());
+                    selected_entries.push(entry.clone());
 
-                let amount = entry.as_ref().utxo_entry.amount;
-                *total += amount;
-                if mark_utxo {
-                    in_use.push(entry.as_ref().outpoint.inner().clone());
-                }
-                Some(amount)
-            })
-            .sum();
+                    let amount = entry.as_ref().utxo_entry.amount;
+                    *total += amount;
+                    Some(amount)
+                })
+                .sum()
+        };
 
         if mark_utxo {
-            // let map = &mut self.inner().in_use;
-            // let now = Instant::now();
-            // for outpoint in in_use {
-            //     map.insert(outpoint, now);
-            // }
-
-            ////////
-            // TODO: move to ticker callback
-            // let checkpoint = Instant::now().checked_sub(Duration::from_secs(60)).unwrap();
-            // for (key, instant) in &self.inner().in_use {
-            //     if instant < &checkpoint {
-            //         map.remove(key);
-            //     }
-            // }
+            let map = &mut self.inner().in_use;
+            let now = Instant::now();
+            for outpoint in in_use {
+                map.insert(outpoint, now);
+            }
         }
 
         Ok(SelectionContext { transaction_amount, total_selected_amount, selected_entries })

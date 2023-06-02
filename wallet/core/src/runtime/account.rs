@@ -370,8 +370,8 @@ impl Account {
         payment_secret: Option<Secret>,
         abortable: &Abortable,
     ) -> Result<Vec<kaspa_hashes::Hash>> {
-        let fee_margin = 1000; //TODO update select_utxos to remove this fee_margin
-        let transaction_amount = amount_sompi + priority_fee_sompi + fee_margin;
+        //let fee_margin = 1000; //TODO update select_utxos to remove this fee_margin
+        let transaction_amount = amount_sompi + priority_fee_sompi;
         let utxo_selection = self.utxos.select_utxos(transaction_amount, UtxoOrdering::AscendingAmount, true).await?;
 
         let change_address = self.change_address().await?;
