@@ -19,7 +19,7 @@ use crate::{
 };
 
 use itertools::Itertools;
-use std::sync::Arc;
+use std::{cmp::min, sync::Arc};
 
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
@@ -181,7 +181,7 @@ impl ConsensusServices {
             params.max_block_level,
             params.genesis.hash,
             params.pruning_proof_m,
-            params.anticone_finalization_depth(),
+            min(params.anticone_finalization_depth(), params.pruning_depth),
             params.difficulty_window_size,
             params.ghostdag_k,
         ));
