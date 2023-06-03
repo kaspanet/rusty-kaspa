@@ -19,7 +19,7 @@ use crate::{
 };
 
 use itertools::Itertools;
-use std::{sync::Arc, cmp::min};
+use std::{cmp::min, sync::Arc};
 
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
