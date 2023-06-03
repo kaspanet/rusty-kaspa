@@ -367,7 +367,6 @@ impl PruningProcessor {
                         PrunedTransactionIdsNotification::new(Arc::new(pruned_transaction_ids)),
                     ));
                 }
-
                 // Prune data related to block bodies and UTXO state
                 self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();

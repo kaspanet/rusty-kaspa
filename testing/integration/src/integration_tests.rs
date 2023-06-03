@@ -31,9 +31,12 @@ use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
 use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
+use kaspa_consensus_notify::connection::ConsensusChannelConnection;
+use kaspa_consensus_notify::notification::Notification as ConsensusNotification;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
+use kaspa_core::console::log;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::{create_temp_db, get_kaspa_tempdir};
 use kaspa_hashes::Hash;
@@ -48,6 +51,7 @@ use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
+use kaspa_notify::scope::PrunedTransactionIdsScope;
 use kaspa_utxoindex::api::UtxoIndexApi;
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
@@ -55,6 +59,7 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::thread;
 use std::{
     collections::HashMap,
     fs::File,
@@ -861,7 +866,27 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let (notification_send, notification_recv) = unbounded();
     let tc = Arc::new(TestConsensus::with_notifier(&config, notification_send));
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv));
+    let (s, r) = async_channel::unbounded::<ConsensusNotification>();
+    
+    let id = notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(s));
+    
+    notify_service.notifier().try_execute_subscribe_command(
+        id, 
+        kaspa_notify::scope::Scope::PrunedTransactionIds(PrunedTransactionIdsScope{}), 
+        kaspa_notify::subscription::Command::Start
+    ).unwrap();
 
+    let jh = tokio::spawn( async move {
+        loop {
+            let not = r.recv().await;
+            match not.unwrap() {
+                ConsensusNotification::PrunedTransactionIds(tx_ids) => {
+                    info!("{tx_ids:?}")
+                },
+                _ => (),
+            };
+        }
+    });
     // External storage for storing block bodies. This allows separating header and body processing phases
     let (_external_db_lifetime, external_storage) = create_temp_db();
     let external_block_store = DbBlockTransactionsStore::new(external_storage, config.perf.block_data_cache_size);
@@ -980,6 +1005,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     }
 
     core.shutdown();
+    tokio::join!(jh);
     core.join(joins);
 
     // Assert that at least one body tip was resolved with valid UTXO

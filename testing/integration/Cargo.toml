@@ -39,6 +39,7 @@ rocksdb.workspace = true
 kaspa-database.workspace = true
 kaspa-utxoindex.workspace = true
 kaspa-index-processor.workspace = true
+kaspa-notify.workspace = true
 
 crossbeam-channel = "0.5"
 async-channel = "1.8.0"

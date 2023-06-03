@@ -2109,6 +2109,7 @@ dependencies = [
  "kaspa-math",
  "kaspa-merkle",
  "kaspa-muhash",
+ "kaspa-notify",
  "kaspa-pow",
  "kaspa-txscript",
  "kaspa-txscript-errors",
