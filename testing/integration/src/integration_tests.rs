@@ -36,7 +36,6 @@ use kaspa_consensus_notify::notification::Notification as ConsensusNotification;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::console::log;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::{create_temp_db, get_kaspa_tempdir};
 use kaspa_hashes::Hash;
@@ -59,7 +58,6 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
-use std::thread;
 use std::{
     collections::HashMap,
     fs::File,
@@ -867,23 +865,23 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let tc = Arc::new(TestConsensus::with_notifier(&config, notification_send));
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv));
     let (s, r) = async_channel::unbounded::<ConsensusNotification>();
-    
-    let id = notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(s));
-    
-    notify_service.notifier().try_execute_subscribe_command(
-        id, 
-        kaspa_notify::scope::Scope::PrunedTransactionIds(PrunedTransactionIdsScope{}), 
-        kaspa_notify::subscription::Command::Start
-    ).unwrap();
 
-    let jh = tokio::spawn( async move {
+    let id = notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(s));
+
+    notify_service
+        .notifier()
+        .try_execute_subscribe_command(
+            id,
+            kaspa_notify::scope::Scope::PrunedTransactionIds(PrunedTransactionIdsScope {}),
+            kaspa_notify::subscription::Command::Start,
+        )
+        .unwrap();
+
+    let jh = tokio::spawn(async move {
         loop {
             let not = r.recv().await;
-            match not.unwrap() {
-                ConsensusNotification::PrunedTransactionIds(tx_ids) => {
-                    info!("{tx_ids:?}")
-                },
-                _ => (),
+            if let ConsensusNotification::PrunedTransactionIds(tx_ids) = not.unwrap() {
+                info!("{tx_ids:?}")
             };
         }
     });
@@ -1005,7 +1003,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     }
 
     core.shutdown();
-    tokio::join!(jh);
+    tokio::join!(jh).0.unwrap();
     core.join(joins);
 
     // Assert that at least one body tip was resolved with valid UTXO
