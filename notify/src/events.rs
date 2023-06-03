@@ -37,10 +37,12 @@ pub enum EventType {
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
     PrunedTransactionIds,
+    PruningStart,
+    PruningEnd,
     }
 }
 
-pub const EVENT_COUNT: usize = 10;
+pub const EVENT_COUNT: usize = 12;
 
 /// Generic array with [`EventType`] strongly-typed index
 #[derive(Default, Clone, Copy, Debug)]

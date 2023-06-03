@@ -44,9 +44,14 @@ pub enum Notification {
 
     #[display(fmt = "PrunedTransactionIds notification")]
     PrunedTransactionIds(PrunedTransactionIdsNotification),
-}
-}
 
+    #[display(fmt = "PruningStart notification")]
+    PruningStart(PruningStartNotification),
+
+    #[display(fmt = "PruningEnd notification")]
+    PruningEnd(PruningEndNotification),
+}
+}
 impl NotificationTrait for Notification {
     fn apply_overall_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
         match subscription.active() {
@@ -184,5 +189,29 @@ pub struct PrunedTransactionIdsNotification {
 impl PrunedTransactionIdsNotification {
     pub fn new(transaction_ids: Arc<Vec<TransactionId>>) -> Self {
         Self { transaction_ids }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PruningStartNotification {
+    pub old_pruning_point: Arc<Hash>,
+    pub old_history_root: Arc<Hash>,
+}
+
+impl PruningStartNotification {
+    pub fn new(old_pruning_point: Arc<Hash>, old_history_root: Arc<Hash>) -> Self {
+        Self { old_pruning_point, old_history_root }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PruningEndNotification {
+    pub new_pruning_point: Arc<Hash>,
+    pub new_history_root: Arc<Hash>,
+}
+
+impl PruningEndNotification {
+    pub fn new(new_pruning_point: Arc<Hash>, new_history_root: Arc<Hash>) -> Self {
+        Self { new_pruning_point, new_history_root }
     }
 }

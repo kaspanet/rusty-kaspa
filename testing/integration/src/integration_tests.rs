@@ -1003,7 +1003,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     }
 
     core.shutdown();
-    tokio::join!(jh).0.unwrap();
+    jh.abort();
     core.join(joins);
 
     // Assert that at least one body tip was resolved with valid UTXO

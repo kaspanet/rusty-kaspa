@@ -35,7 +35,8 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensus_notify::{
-    notification::Notification as ConsensusNotification, notification::PrunedTransactionIdsNotification,
+    notification::Notification as ConsensusNotification,
+    notification::{PrunedTransactionIdsNotification, PruningEndNotification, PruningStartNotification},
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::SessionLock;
@@ -181,11 +182,19 @@ impl PruningProcessor {
             }
             let new_pp_index = current_pruning_info.index + new_pruning_points.len() as u64;
             let new_pruning_point = *new_pruning_points.last().unwrap();
+            let old_history_root = pruning_point_write.history_root().unwrap();
             pruning_point_write.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
             self.db.write(batch).unwrap();
+            let new_history_root = pruning_point_write.history_root().unwrap();
             drop(pruning_point_write);
 
             // Inform the user
+            self.notification_root
+                .notify(ConsensusNotification::PruningStart(PruningStartNotification::new(
+                    Arc::new(current_pruning_info.pruning_point),
+                    Arc::new(old_history_root),
+                )))
+                .unwrap();
             info!("Daily pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
 
             // Advance the pruning point utxoset to the state of the new pruning point using chain-block UTXO diffs
@@ -193,6 +202,12 @@ impl PruningProcessor {
 
             // Finally, prune data in the new pruning point past
             self.prune(new_pruning_point);
+            self.notification_root
+                .notify(ConsensusNotification::PruningEnd(PruningEndNotification::new(
+                    Arc::new(new_pruning_point),
+                    Arc::new(new_history_root),
+                )))
+                .unwrap();
         } else if new_candidate != current_pruning_info.candidate {
             let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
             pruning_point_write.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
@@ -355,18 +370,21 @@ impl PruningProcessor {
                 // collect pruned data to be sent over the notifier for external services
 
                 //check if we need to send before expensive operations.
-                if self.notification_root.has_subscription(EventType::PrunedTransactionIds) {
-                    let pruned_transaction_ids = ArcExtensions::unwrap_or_clone(
-                        self.block_transactions_store.get(current).expect("expected to be pruned block to have transactions"),
-                    )
-                    .into_iter()
-                    .map(move |transaction| transaction.id())
-                    .collect();
+                if self.notification_root.has_subscription(EventType::PrunedTransactionIds)
+                    && self.block_transactions_store.has(current).unwrap()
+                {
+                    let pruned_transaction_ids = ArcExtensions::unwrap_or_clone(self.block_transactions_store.get(current).unwrap())
+                        .into_iter()
+                        .map(move |transaction| transaction.id())
+                        .collect();
                     // TODO: handle error
-                    let _ = self.notification_root.notify(ConsensusNotification::PrunedTransactionIds(
-                        PrunedTransactionIdsNotification::new(Arc::new(pruned_transaction_ids)),
-                    ));
-                }
+                    self.notification_root
+                        .notify(ConsensusNotification::PrunedTransactionIds(PrunedTransactionIdsNotification::new(Arc::new(
+                            pruned_transaction_ids,
+                        ))))
+                        .unwrap();
+                };
+
                 // Prune data related to block bodies and UTXO state
                 self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();

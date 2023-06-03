@@ -36,6 +36,8 @@ pub enum Scope {
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
     PrunedTransactionIds,
+    PruningStart,
+    PruningEnd,
 }
 }
 
@@ -92,3 +94,9 @@ pub struct NewBlockTemplateScope {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PrunedTransactionIdsScope {}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct PruningStartScope {}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct PruningEndScope {}
