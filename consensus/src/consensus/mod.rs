@@ -323,7 +323,7 @@ impl Consensus {
         self.signal_exit();
         // Wait for async consensus processors to exit
         for handle in wait_handles {
-            handle.join().unwrap()
+            handle.join().unwrap();
         }
     }
 
