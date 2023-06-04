@@ -39,10 +39,11 @@ pub enum EventType {
     PrunedTransactionIds,
     PruningStart,
     PruningEnd,
+    ConsensusShutDown,
     }
 }
 
-pub const EVENT_COUNT: usize = 12;
+pub const EVENT_COUNT: usize = 13;
 
 /// Generic array with [`EventType`] strongly-typed index
 #[derive(Default, Clone, Copy, Debug)]

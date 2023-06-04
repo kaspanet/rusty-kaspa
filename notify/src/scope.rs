@@ -38,6 +38,7 @@ pub enum Scope {
     PrunedTransactionIds,
     PruningStart,
     PruningEnd,
+    ConsensusShutDown,
 }
 }
 
@@ -100,3 +101,6 @@ pub struct PruningStartScope {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PruningEndScope {}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct ConsensusShutDownScope {}
