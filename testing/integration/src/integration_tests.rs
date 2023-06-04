@@ -58,7 +58,7 @@ use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
-use kaspa_notify::scope::{BlockAddedScope, ConsensusShutDownScope, PrunedTransactionIdsScope, PruningStartScope, PruningEndScope};
+use kaspa_notify::scope::{BlockAddedScope, ConsensusShutDownScope, PrunedTransactionIdsScope, PruningEndScope, PruningStartScope};
 use kaspa_utils::arc::ArcExtensions;
 use kaspa_utxoindex::api::UtxoIndexApi;
 use kaspa_utxoindex::UtxoIndex;
@@ -1268,13 +1268,15 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
             let tracker_res = tracker.expect("expected a tracker for this test");
             let processed_pruned_transactions = tracker_res.get_pruned_transaction_id_tracker();
             let mut processed_added_transactions = tracker_res.get_block_added_tracker();
-            
+
             //we most add genesis transactions as these are not processed via block added notifications.
             let genesis_txs = config.genesis.build_genesis_transactions();
             processed_added_transactions.transactions_processed.extend(genesis_txs.into_iter().map(move |tx| tx.id()));
-            
+
             assert!(processed_added_transactions.num_of_transactions_added >= processed_pruned_transactions.num_transactions_pruned);
-            assert!(processed_added_transactions.transactions_processed.is_superset(&processed_pruned_transactions.transactions_pruned));
+            assert!(processed_added_transactions
+                .transactions_processed
+                .is_superset(&processed_pruned_transactions.transactions_pruned));
 
             let tracked_pruning_end_state = tracker_res.get_pruning_end_state_tracker();
             info!("{0:?}, {1:?}", tracked_pruning_end_state.end_pruning_point, tracked_pruning_end_state.end_history_root);
@@ -1288,7 +1290,8 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
                 tc.past_pruning_points_store.get(tc.pruning_point_store.read().pruning_point_index().unwrap() - 4).unwrap()
             ); //in this test we expect pruning point to be pruning point index -2
             assert_eq!(tracked_pruning_end_state.end_pruning_point.unwrap(), tc.pruning_point().unwrap());
-            assert_eq!(tracked_pruning_end_state.end_history_root.unwrap(), tc.pruning_point_store.read().history_root().unwrap()); //in this test we expect pruning point to be history root.
+            assert_eq!(tracked_pruning_end_state.end_history_root.unwrap(), tc.pruning_point_store.read().history_root().unwrap());
+            //in this test we expect pruning point to be history root.
         }
         _other => (),
     }
