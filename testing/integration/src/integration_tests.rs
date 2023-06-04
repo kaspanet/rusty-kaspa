@@ -974,22 +974,18 @@ impl ProcessingTracker {
                         .unwrap_or_else(|| panic!("unexpected notfication {pruned_transaction_ids_notification:?}"))
                         .write()
                         .update(pruned_transaction_ids_notification),
-                    ConsensusNotification::PruningStart(pruning_start_notification) => {
-                        info!("{0:?}", pruning_start_notification.clone());
+                    ConsensusNotification::PruningStart(pruning_start_notification) =>
                         self.pruning_start_state_tracker
                             .clone()
                             .unwrap_or_else(|| panic!("unexpected notfication {pruning_start_notification:?}"))
                             .write()
-                            .update(pruning_start_notification);
-                    }
-                    ConsensusNotification::PruningEnd(pruning_end_notification) => {
-                        info!("{0:?}", pruning_end_notification.clone());
+                            .update(pruning_start_notification),
+                    ConsensusNotification::PruningEnd(pruning_end_notification) => 
                         self.pruning_end_state_tracker
                             .clone()
                             .unwrap_or_else(|| panic!("unexpected notfication {pruning_end_notification:?}"))
                             .write()
-                            .update(pruning_end_notification);
-                    }
+                            .update(pruning_end_notification),
                     ConsensusNotification::ConsensusShutDown(_) => {
                         assert!(self.consensus_receiver.is_empty());
                         self.consensus_notifier.unregister_listener(self.receiver_id).unwrap();
