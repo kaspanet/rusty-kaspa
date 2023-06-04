@@ -316,6 +316,7 @@ impl Consensus {
 
     pub fn signal_exit(&self) {
         self.block_sender.send(BlockProcessingMessage::Exit).unwrap();
+        self.notification_root.send(ConsensusNotification::ConsensusShutDown(ConsensusShutDownNotification {})).unwrap();
     }
 
     pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {
@@ -324,7 +325,6 @@ impl Consensus {
         for handle in wait_handles {
             handle.join().unwrap()
         }
-        self.notification_root.send(ConsensusNotification::ConsensusShutDown(ConsensusShutDownNotification {})).unwrap();
     }
 
     fn validate_block_exists(&self, hash: Hash) -> Result<(), ConsensusError> {
