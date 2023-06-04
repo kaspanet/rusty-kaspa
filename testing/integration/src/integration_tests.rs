@@ -777,10 +777,16 @@ impl KaspadGoParams {
 
 // processing counter structs
 
-struct PrunedTransactionsCounter {
+struct PrunedTransactionIdCounter {
     // we can adapt to a [`BlockHashSet`] for performance, since we do not expect an attacker in testing environment.
     transactions_pruned: BlockHashSet,
     num_transactions_pruned: usize,
+}
+
+impl PrunedTransactionIdCounter {
+    fn new() -> Self {
+        Self {transactions_pruned: BlockHashSet::new(), num_transactions_pruned: 0 }
+    }
 }
 
 struct PruningStateCounter {
@@ -811,10 +817,15 @@ struct ProcessingCounters {
 }
 
 impl ProcessingCounters {
-    fn new(consensus_notifier: Arc<ConsensusNotifier>, process_pruning: bool, process_block_added: bool ) -> Self {
+    fn new(
+        consensus_notifier: Arc<ConsensusNotifier>, 
+        process_pruned_transaction_ids: bool, 
+        process_pruned_state: bool,
+        process_blocks_added: bool 
+    ) -> Self {
         Self {
-            pruned_data_counter: if process_pruning {
-                Some(PrunedDataCounter::new())
+            pruned_data_counter: if process_pruned_transaction_ids {
+                Some(PrunedTransactionsCounter::new())
             } else {
                 None
             },
@@ -826,44 +837,23 @@ impl ProcessingCounters {
         }
     }
 
-    async fn count_pruned_transactions(&self, notifer: Arc<ConsensusNotifier>) -> JoinHandle<PrunedDataCounter> {        
-        let counter = PrunedDataCounter::new();
+    async fn process(&self, notifer: Arc<ConsensusNotifier>) -> JoinHandle<Self> {        
         let (_, pruning_counter_receiver) = async_channel::unbounded::<usize>();
         let id = notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(s));
     
-        notify_service
-            .notifier()
-            .try_execute_subscribe_command(
-                id,
-                kaspa_notify::scope::Scope::PrunedTransactionIds(PrunedTransactionIdsScope {}),
-                kaspa_notify::subscription::Command::Start,
-            )
-            .unwrap();
+        if self.block_added_counter.is_some() {
+            notify_service
+                .notifier()
+                .try_execute_subscribe_command(
+                    id,
+                    kaspa_notify::scope::Scope::PrunedTransactionIds(PrunedTransactionIdsScope {}),
+                    kaspa_notify::subscription::Command::Start,
+                )
+                .unwrap();
+        }
+        if self.
 
-        let res = loop {
-            let not = r.recv().await.unwrap();
-            if let ConsensusNotification::PruningStart(start_notification) = not {
-                info!("received: {not:?}");
-                return loop {
-                    match r.recv().await.unwrap() {
-                        ConsensusNotification::PrunedTransactionIds(pruned_transaction_ids_notificication) => {
-                            info!("received: {not:?}");
-                            counter.num_transactions_pruned += pruned_transaction_ids_notificication.transaction_ids.len();
-                            counter.transactions_pruned.extend(pruned_transaction_ids_notificication.transaction_ids.into_iter());
-                        },
-                        ConsensusNotification::PruningEnd(end_notification) => {
-                            info!("received: {not:?}");
-                            notify_service;
-                            return counter
-                        }
-                        other => panic!("unexpected notification: {other:?}"),
-                    };
-                };
-            } else {
-                panic!("unexpected first notification {not:?}")
-            };
-        };
-        res
+
     };
 }
 
