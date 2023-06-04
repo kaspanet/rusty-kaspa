@@ -873,6 +873,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "daemon"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "clap 4.1.8",
+ "dirs",
+ "futures-util",
+ "kaspa-addressmanager",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
+ "kaspa-consensusmanager",
+ "kaspa-core",
+ "kaspa-database",
+ "kaspa-grpc-server",
+ "kaspa-hashes",
+ "kaspa-index-processor",
+ "kaspa-mining",
+ "kaspa-p2p-flows",
+ "kaspa-rpc-core",
+ "kaspa-rpc-service",
+ "kaspa-utils",
+ "kaspa-utxoindex",
+ "kaspa-wrpc-server",
+ "log",
+ "num_cpus",
+ "rand 0.8.5",
+ "rayon",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "workflow-log",
+]
+
+[[package]]
 name = "derivative"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2362,6 +2397,7 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "clap 4.1.8",
+ "daemon",
  "dirs",
  "futures-util",
  "kaspa-addressmanager",

@@ -1,82 +1,13 @@
 use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
+use daemon::Args;
 use kaspa_consensus::config::Config;
 use kaspa_core::kaspad_env::version;
 use kaspa_utils::networking::ContextualNetAddress;
 
-pub struct Defaults {
-    pub appdir: &'static str,
-    pub no_log_files: bool,
-    pub rpclisten_borsh: &'static str,
-    pub rpclisten_json: &'static str,
-    pub unsafe_rpc: bool,
-    pub async_threads: usize,
-    pub utxoindex: bool,
-    pub reset_db: bool,
-    pub outbound_target: usize,
-    pub inbound_limit: usize,
-    pub enable_unsynced_mining: bool,
-    pub testnet: bool,
-    pub devnet: bool,
-    pub simnet: bool,
-    pub archival: bool,
-    pub sanity: bool,
-}
-
-impl Default for Defaults {
-    fn default() -> Self {
-        Defaults {
-            appdir: "datadir",
-            no_log_files: false,
-            rpclisten_borsh: "127.0.0.1:17110",
-            rpclisten_json: "127.0.0.1:18110",
-            unsafe_rpc: false,
-            async_threads: num_cpus::get(),
-            utxoindex: false,
-            reset_db: false,
-            outbound_target: 8,
-            inbound_limit: 128,
-            enable_unsynced_mining: false,
-            testnet: false,
-            devnet: false,
-            simnet: false,
-            archival: false,
-            sanity: false,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Args {
-    // NOTE: it is best if property names match config file fields
-    pub appdir: Option<String>,
-    pub logdir: Option<String>,
-    pub no_log_files: bool,
-    pub rpclisten: Option<ContextualNetAddress>,
-    pub rpclisten_borsh: Option<ContextualNetAddress>,
-    pub rpclisten_json: Option<ContextualNetAddress>,
-    pub unsafe_rpc: bool,
-    pub wrpc_verbose: bool,
-    pub log_level: String,
-    pub async_threads: usize,
-    pub connect_peers: Vec<ContextualNetAddress>,
-    pub add_peers: Vec<ContextualNetAddress>,
-    pub listen: Option<ContextualNetAddress>,
-    pub user_agent_comments: Vec<String>,
-    pub utxoindex: bool,
-    pub reset_db: bool,
-    pub outbound_target: usize,
-    pub inbound_limit: usize,
-    pub enable_unsynced_mining: bool,
-    pub testnet: bool,
-    pub devnet: bool,
-    pub simnet: bool,
-    pub archival: bool,
-    pub sanity: bool,
-}
-
-pub fn cli(defaults: &Defaults) -> Command {
+pub fn cli() -> Command {
+    let defaults: Args = Default::default();
     Command::new("kaspad")
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
@@ -114,11 +45,11 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .long("rpclisten-borsh")
                 .value_name("IP[:PORT]")
                 .require_equals(true)
-                .default_missing_value(defaults.rpclisten_borsh)
+                .default_missing_value(defaults.rpclisten_borsh.unwrap().to_string())
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help(format!(
                     "Interface:port to listen for wRPC Borsh connections (interop only; default: `{}`).",
-                    defaults.rpclisten_borsh
+                    defaults.rpclisten_borsh.unwrap().to_string()
                 )),
         )
         .arg(
@@ -126,9 +57,9 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .long("rpclisten-json")
                 .value_name("IP[:PORT]")
                 .require_equals(true)
-                .default_missing_value(defaults.rpclisten_json)
+                .default_missing_value(defaults.rpclisten_json.unwrap().to_string())
                 .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json)),
+                .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json.unwrap().to_string())),
         )
         .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node"))
         .arg(
@@ -190,45 +121,35 @@ pub fn cli(defaults: &Defaults) -> Command {
         )
 }
 
-impl Args {
-    pub fn parse(defaults: &Defaults) -> Args {
-        let m = cli(defaults).get_matches();
-        Args {
-            appdir: m.get_one::<String>("appdir").cloned(),
-            logdir: m.get_one::<String>("logdir").cloned(),
-            no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
-            rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
-            rpclisten_borsh: m.get_one::<ContextualNetAddress>("rpclisten-borsh").cloned(),
-            rpclisten_json: m.get_one::<ContextualNetAddress>("rpclisten-json").cloned(),
-            unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
-            wrpc_verbose: false,
-            log_level: m.get_one::<String>("log_level").cloned().unwrap(),
-            async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
-            connect_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
-            add_peers: m.get_many::<ContextualNetAddress>("add-peers").unwrap_or_default().copied().collect(),
-            listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
-            outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
-            inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
-            reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
-            enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
-            utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
-            testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
-            devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
-            simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
-            archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
-            sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
-            user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
-        }
-    }
+pub fn parse_args() -> Args {
+    let m: clap::ArgMatches = cli().get_matches();
+    let defaults: Args = Default::default();
 
-    pub fn apply_to_config(&self, config: &mut Config) {
-        config.utxoindex = self.utxoindex;
-        config.unsafe_rpc = self.unsafe_rpc;
-        config.enable_unsynced_mining = self.enable_unsynced_mining;
-        config.is_archival = self.archival;
-        // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
-        config.enable_sanity_checks = true;
-        config.user_agent_comments = self.user_agent_comments.clone();
+    Args {
+        appdir: m.get_one::<String>("appdir").cloned(),
+        logdir: m.get_one::<String>("logdir").cloned(),
+        no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
+        rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
+        rpclisten_borsh: m.get_one::<ContextualNetAddress>("rpclisten-borsh").cloned(),
+        rpclisten_json: m.get_one::<ContextualNetAddress>("rpclisten-json").cloned(),
+        unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
+        wrpc_verbose: false,
+        log_level: m.get_one::<String>("log_level").cloned().unwrap(),
+        async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
+        connect_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
+        add_peers: m.get_many::<ContextualNetAddress>("add-peers").unwrap_or_default().copied().collect(),
+        listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
+        outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
+        inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
+        reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
+        enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
+        utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
+        testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
+        devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
+        simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
+        archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
+        sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
+        user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
     }
 }
 

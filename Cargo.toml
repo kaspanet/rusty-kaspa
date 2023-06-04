@@ -11,6 +11,7 @@ members = [
     "consensus/notify",
     "consensus/pow",
     "kaspad",
+    "daemon",
     "simpa",
     "wasm",
     "math",
@@ -101,6 +102,7 @@ kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
 kaspa-wrpc-proxy = { path = "rpc/wrpc/proxy" }
 kaspa-wrpc-server = { path = "rpc/wrpc/server" }
 kaspad = { path = "kaspad" }
+daemon = { path = "daemon" }
 
 # external
 thiserror = "1"
