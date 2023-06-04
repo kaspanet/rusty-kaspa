@@ -50,6 +50,9 @@ pub enum Notification {
 
     #[display(fmt = "PruningEnd notification")]
     PruningEnd(PruningEndNotification),
+
+    #[display(fmt = "ConsensusShutDown notification")]
+    ConsensusShutDown(ConsensusShutDownNotification),
 }
 }
 impl NotificationTrait for Notification {
@@ -215,3 +218,8 @@ impl PruningEndNotification {
         Self { new_pruning_point, new_history_root }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct ConsensusShutDownNotification {}
+
+impl ConsensusShutDownNotification {}

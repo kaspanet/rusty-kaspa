@@ -55,7 +55,10 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
 };
-use kaspa_consensus_notify::root::ConsensusNotificationRoot;
+use kaspa_consensus_notify::{
+    notification::{ConsensusShutDownNotification, Notification as ConsensusNotification},
+    root::ConsensusNotificationRoot,
+};
 
 use crossbeam_channel::{
     bounded as bounded_crossbeam, unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender,
@@ -319,8 +322,9 @@ impl Consensus {
         self.signal_exit();
         // Wait for async consensus processors to exit
         for handle in wait_handles {
-            handle.join().unwrap();
+            handle.join().unwrap()
         }
+        self.notification_root.send(ConsensusNotification::ConsensusShutDown(ConsensusShutDownNotification {})).unwrap();
     }
 
     fn validate_block_exists(&self, hash: Hash) -> Result<(), ConsensusError> {
