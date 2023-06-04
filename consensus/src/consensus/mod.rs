@@ -406,9 +406,17 @@ impl ConsensusApi for Consensus {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
     }
 
+    fn get_source(&self) -> Hash {
+        if self.config.is_archival {
+            // we use the history root in archival cases.
+            return self.pruning_point_store.read().history_root().unwrap();
+        }
+        self.pruning_point_store.read().pruning_point().unwrap()
+    }
+
     fn get_sync_info(&self) -> SyncInfo {
-        // TODO: actually get those numbers
-        SyncInfo::default()
+        let count = self.get_virtual_daa_score() - self.get_header(self.get_source()).unwrap().daa_score;
+        SyncInfo { header_count: count, block_count: count }
     }
 
     fn is_nearly_synced(&self) -> bool {
