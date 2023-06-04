@@ -2,7 +2,7 @@ use super::genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TEST
 use crate::{networktype::NetworkType, BlockLevel, KType};
 use kaspa_addresses::Prefix;
 use kaspa_math::Uint256;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{time::{SystemTime, UNIX_EPOCH}, cmp::min};
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
@@ -170,7 +170,18 @@ impl Params {
     /// Based on the analysis at https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf
     /// and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
     pub fn anticone_finalization_depth(&self) -> u64 {
-        self.finality_depth + self.merge_depth + 4 * self.mergeset_size_limit * self.ghostdag_k as u64 + 2 * self.ghostdag_k as u64 + 2
+        let anticone_finalization_depth = self.finality_depth
+            + self.merge_depth
+            + 4 * self.mergeset_size_limit * self.ghostdag_k as u64
+            + 2 * self.ghostdag_k as u64
+            + 2;
+
+        // In mainnet it's guaranteed that `self.pruning_depth` is greater
+        // than `anticone_finalization_depth`, but for some tests we use
+        // a smaller (unsafe) pruning depth, so we return the minimum of
+        // the two to avoid a situation where a block can be pruned and
+        // not finalized.
+        min(self.pruning_depth, anticone_finalization_depth)
     }
 
     /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
