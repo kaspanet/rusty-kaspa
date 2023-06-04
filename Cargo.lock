@@ -1599,7 +1599,6 @@ dependencies = [
  "crossbeam-channel",
  "faster-hex",
  "flate2",
- "futures",
  "futures-util",
  "indexmap",
  "itertools 0.10.5",

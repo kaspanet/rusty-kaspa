@@ -35,7 +35,6 @@ kaspa-txscript.workspace = true
 rocksdb.workspace = true
 kaspa-database.workspace = true
 kaspa-consensusmanager.workspace = true
-futures.workspace = true
 
 crossbeam-channel = "0.5"
 async-channel = "1.8.0"
