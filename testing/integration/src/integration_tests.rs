@@ -29,10 +29,11 @@ use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::networktype::NetworkType::Mainnet;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
-use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
-use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
+use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry, TransactionId};
+use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType, BlockHashSet};
 use kaspa_consensus_notify::connection::ConsensusChannelConnection;
 use kaspa_consensus_notify::notification::Notification as ConsensusNotification;
+use kaspa_consensus_notify::notifier::ConsensusNotifier;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
@@ -54,6 +55,7 @@ use kaspa_notify::scope::PrunedTransactionIdsScope;
 use kaspa_utxoindex::api::UtxoIndexApi;
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
+use tokio::task::JoinHandle;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::path::Path;
@@ -773,6 +775,154 @@ impl KaspadGoParams {
     }
 }
 
+// processing counter structs
+
+struct PrunedTransactionsCounter {
+    // we can adapt to a [`BlockHashSet`] for performance, since we do not expect an attacker in testing environment.
+    transactions_pruned: BlockHashSet,
+    num_transactions_pruned: usize,
+}
+
+struct PruningStateCounter {
+    end_pruning_point: Option<Hash>,
+    end_history_root: Option<Hash>,
+}
+
+impl PrunedDataCounter {
+    fn new() -> Self {
+        Self { end_pruning_point: None, end_history_root: None, transactions_pruned: BlockHashSet::new(), num_transactions_pruned: 0 }
+    }
+}
+
+struct BlockAddedCounter {
+    num_of_transactions_added: usize, 
+    // we can adapt to a [`BlockHashSet`] for performance, since we do not expect an attacker in testing environment.
+    transactions_processed: BlockHashSet,
+}
+
+impl BlockAddedCounter {
+    fn new() -> Self {
+        Self { num_of_transactions_added: 0, transactions_processed: BlockHashSet::new() }
+    }
+}
+struct ProcessingCounters {
+    pruned_transaction_id_counter: Option<PrunedDataCounter>,
+    block_added_counter: Option<BlockAddedCounter>,
+}
+
+impl ProcessingCounters {
+    fn new(consensus_notifier: Arc<ConsensusNotifier>, process_pruning: bool, process_block_added: bool ) -> Self {
+        Self {
+            pruned_data_counter: if process_pruning {
+                Some(PrunedDataCounter::new())
+            } else {
+                None
+            },
+            block_added_counter: if process_block_added {
+                Some(PrunedDataCounter::new())
+            } else {
+                None
+            }
+        }
+    }
+
+    async fn count_pruned_transactions(&self, notifer: Arc<ConsensusNotifier>) -> JoinHandle<PrunedDataCounter> {        
+        let counter = PrunedDataCounter::new();
+        let (_, pruning_counter_receiver) = async_channel::unbounded::<usize>();
+        let id = notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(s));
+    
+        notify_service
+            .notifier()
+            .try_execute_subscribe_command(
+                id,
+                kaspa_notify::scope::Scope::PrunedTransactionIds(PrunedTransactionIdsScope {}),
+                kaspa_notify::subscription::Command::Start,
+            )
+            .unwrap();
+
+        let res = loop {
+            let not = r.recv().await.unwrap();
+            if let ConsensusNotification::PruningStart(start_notification) = not {
+                info!("received: {not:?}");
+                return loop {
+                    match r.recv().await.unwrap() {
+                        ConsensusNotification::PrunedTransactionIds(pruned_transaction_ids_notificication) => {
+                            info!("received: {not:?}");
+                            counter.num_transactions_pruned += pruned_transaction_ids_notificication.transaction_ids.len();
+                            counter.transactions_pruned.extend(pruned_transaction_ids_notificication.transaction_ids.into_iter());
+                        },
+                        ConsensusNotification::PruningEnd(end_notification) => {
+                            info!("received: {not:?}");
+                            notify_service;
+                            return counter
+                        }
+                        other => panic!("unexpected notification: {other:?}"),
+                    };
+                };
+            } else {
+                panic!("unexpected first notification {not:?}")
+            };
+        };
+        res
+    };
+}
+
+
+struct BodyProcessingCounters {
+    // we can adapt to a [`BlockHashSet`] for performance since we do not expect an attacker in testing environment.
+    transactions_processed: BlockHashSet,
+    num_transactions_processed: usize,
+}
+
+// 
+fn initiate_pruning_counter() -> {
+        
+    let (_, pruning_counter_receiver) = async_channel::unbounded::<usize>();
+    let id = notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(s));
+
+    notify_service
+        .notifier()
+        .try_execute_subscribe_command(
+            id,
+            kaspa_notify::scope::Scope::PrunedTransactionIds(PrunedTransactionIdsScope {}),
+            kaspa_notify::subscription::Command::Start,
+        )
+        .unwrap();
+    
+    let pruned_txs_counter: usize;
+    let pruned_tx_ids: HashSet<TransactionId>;
+
+
+    let res = loop {
+        let not = r.recv().await.unwrap();
+        if let ConsensusNotification::PruningStart(start_notification) = not {
+            info!("received: {not:?}");
+            return loop {
+                match r.recv().await.unwrap() {
+                    ConsensusNotification::PrunedTransactionIds(pruned_transaction_ids_notificication) => {
+                        info!("received: {not:?}");
+                        pruned_txs_counter += pruned_transaction_ids_notificication.transaction_ids.len();
+                        pruned_tx_ids.extend(pruned_transaction_ids_notificication.transaction_ids.into_iter());
+                    },
+                    ConsensusNotification::PruningEnd(end_notification) => {
+                        info!("received: {not:?}");
+                        return (
+                            pruned_txs_counter,
+                            pruned_tx_ids,
+                            end_notification.new_pruning_point,
+                            end_notification.new_history_root,
+                        );
+                    }
+                    other => panic!("unexpected notification: {other:?}"),
+                };
+            };
+        } else {
+            panic!("unexpected first notification {not:?}")
+        };
+    };
+    res
+}
+
 #[tokio::test]
 async fn goref_custom_pruning_depth_test() {
     json_test("testdata/dags_for_json_tests/goref_custom_pruning_depth", false).await
@@ -832,7 +982,37 @@ fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
     BufReader::new(decoder).lines().map(|line| line.unwrap())
 }
 
+fn build_counters(tc: &TestConsensus) -> {
+
+}
+
 async fn json_test(file_path: &str, concurrency: bool) {
+
+    struct PruningCounters {
+        start_pruning_point: Hash,
+        start_history_root: Hash,
+        end_pruning_point: Hash,
+        end_history_root: Hash,
+        transactions_pruned: BlockHashSet, // we can adapt to a block hash set since we do not expect an attacker in test. 
+        num_transactions_pruned: usize,
+    }
+
+    struct BodyProcessingCounters {
+
+    }
+
+    let pruning_processing_counters = PruningCounters {
+        start_pruning_point: ,
+        start_history_root: todo!(),
+        end_pruning_point: todo!(),
+        end_history_root: todo!(),
+        transactions_pruned: todo!(),
+        num_transactions_pruned: todo!(),
+    }
+    let body_processing_counters = {
+
+    }
+
     kaspa_core::log::try_init_logger("info");
     let main_path = Path::new(file_path);
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
@@ -865,7 +1045,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let tc = Arc::new(TestConsensus::with_notifier(&config, notification_send));
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv));
     let (s, r) = async_channel::unbounded::<ConsensusNotification>();
-
+    let (_, pruning_counter_receiver) = async_channel::unbounded::<usize>();
     let id = notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(s));
 
     notify_service
@@ -877,13 +1057,52 @@ async fn json_test(file_path: &str, concurrency: bool) {
         )
         .unwrap();
 
-    let jh = tokio::spawn(async move {
-        loop {
-            let not = r.recv().await;
-            if let ConsensusNotification::PrunedTransactionIds(tx_ids) = not.unwrap() {
-                info!("{tx_ids:?}")
+    let pruning_counters_jh = tokio::spawn(async move |notifier: Arc<ConsensusNotifier>| {
+        
+        let (_, pruning_counter_receiver) = async_channel::unbounded::<usize>();
+        let id = notify_service.notifier().register_new_listener(ConsensusChannelConnection::new(s));
+    
+        notify_service
+            .notifier()
+            .try_execute_subscribe_command(
+                id,
+                kaspa_notify::scope::Scope::PrunedTransactionIds(PrunedTransactionIdsScope {}),
+                kaspa_notify::subscription::Command::Start,
+            )
+            .unwrap();
+        
+        let pruned_txs_counter: usize;
+        let pruned_tx_ids: HashSet<TransactionId>;
+
+
+        let res = loop {
+            let not = r.recv().await.unwrap();
+            if let ConsensusNotification::PruningStart(start_notification) = not {
+                info!("received: {not:?}");
+                return loop {
+                    match r.recv().await.unwrap() {
+                        ConsensusNotification::PrunedTransactionIds(pruned_transaction_ids_notificication) => {
+                            info!("received: {not:?}");
+                            pruned_txs_counter += pruned_transaction_ids_notificication.transaction_ids.len();
+                            pruned_tx_ids.extend(pruned_transaction_ids_notificication.transaction_ids.into_iter());
+                        },
+                        ConsensusNotification::PruningEnd(end_notification) => {
+                            info!("received: {not:?}");
+                            return (
+                                pruned_txs_counter,
+                                pruned_tx_ids,
+                                end_notification.new_pruning_point,
+                                end_notification.new_history_root,
+                            );
+                        }
+                        other => panic!("unexpected notification: {other:?}"),
+                    };
+                };
+            } else {
+                panic!("unexpected first notification {not:?}")
             };
-        }
+        };
+        res
     });
     // External storage for storing block bodies. This allows separating header and body processing phases
     let (_external_db_lifetime, external_storage) = create_temp_db();
@@ -958,6 +1177,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
             external_block_store.insert(hash, block.transactions).unwrap();
             let block = Block::from_header_arc(block.header);
+            block.transactions.
             let status = tc.validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
             assert!(status.is_header_only());
         }
@@ -1003,7 +1223,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     }
 
     core.shutdown();
-    jh.abort();
+    let pruning_counters = pruning_counters_jh.await.expect("expected pruning counters");
     core.join(joins);
 
     // Assert that at least one body tip was resolved with valid UTXO

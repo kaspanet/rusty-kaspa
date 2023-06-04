@@ -182,19 +182,11 @@ impl PruningProcessor {
             }
             let new_pp_index = current_pruning_info.index + new_pruning_points.len() as u64;
             let new_pruning_point = *new_pruning_points.last().unwrap();
-            let old_history_root = pruning_point_write.history_root().unwrap();
             pruning_point_write.set_batch(&mut batch, new_pruning_point, new_candidate, new_pp_index).unwrap();
             self.db.write(batch).unwrap();
-            let new_history_root = pruning_point_write.history_root().unwrap();
             drop(pruning_point_write);
 
             // Inform the user
-            self.notification_root
-                .notify(ConsensusNotification::PruningStart(PruningStartNotification::new(
-                    Arc::new(current_pruning_info.pruning_point),
-                    Arc::new(old_history_root),
-                )))
-                .unwrap();
             info!("Daily pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
 
             // Advance the pruning point utxoset to the state of the new pruning point using chain-block UTXO diffs
@@ -202,12 +194,6 @@ impl PruningProcessor {
 
             // Finally, prune data in the new pruning point past
             self.prune(new_pruning_point);
-            self.notification_root
-                .notify(ConsensusNotification::PruningEnd(PruningEndNotification::new(
-                    Arc::new(new_pruning_point),
-                    Arc::new(new_history_root),
-                )))
-                .unwrap();
         } else if new_candidate != current_pruning_info.candidate {
             let mut pruning_point_write = RwLockUpgradableReadGuard::upgrade(pruning_point_read);
             pruning_point_write.set(current_pruning_info.pruning_point, new_candidate, current_pruning_info.index).unwrap();
@@ -269,6 +255,15 @@ impl PruningProcessor {
             .chain(proof.iter().flatten().map(|h| h.hash))
             .collect();
         let keep_headers: BlockHashSet = self.past_pruning_points();
+
+        self.notification_root
+            .notify(ConsensusNotification::PruningStart(PruningStartNotification::new(
+                Arc::new(
+                    self.past_pruning_points_store.get(self.pruning_point_store.read().pruning_point_index().unwrap() - 1).unwrap(),
+                ),
+                Arc::new(self.pruning_point_store.read().history_root().unwrap()),
+            )))
+            .unwrap();
 
         info!("Header and Block pruning: waiting for consensus write permissions...");
 
@@ -462,6 +457,13 @@ impl PruningProcessor {
             pruning_point_write.set_history_root(&mut batch, new_pruning_point).unwrap();
             self.db.write(batch).unwrap();
             drop(pruning_point_write);
+
+            self.notification_root
+                .notify(ConsensusNotification::PruningEnd(PruningEndNotification::new(
+                    Arc::new(self.pruning_point_store.read().pruning_point().unwrap()),
+                    Arc::new(new_pruning_point),
+                )))
+                .unwrap();
         }
     }
 
