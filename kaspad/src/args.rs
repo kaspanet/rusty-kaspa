@@ -2,7 +2,7 @@ use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
 use daemon::Args;
-use kaspa_consensus::config::Config;
+
 use kaspa_core::kaspad_env::version;
 use kaspa_utils::networking::ContextualNetAddress;
 
@@ -49,7 +49,7 @@ pub fn cli() -> Command {
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help(format!(
                     "Interface:port to listen for wRPC Borsh connections (interop only; default: `{}`).",
-                    defaults.rpclisten_borsh.unwrap().to_string()
+                    defaults.rpclisten_borsh.unwrap()
                 )),
         )
         .arg(
@@ -59,7 +59,7 @@ pub fn cli() -> Command {
                 .require_equals(true)
                 .default_missing_value(defaults.rpclisten_json.unwrap().to_string())
                 .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json.unwrap().to_string())),
+                .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json.unwrap())),
         )
         .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node"))
         .arg(
