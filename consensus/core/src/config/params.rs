@@ -2,7 +2,10 @@ use super::genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TEST
 use crate::{networktype::NetworkType, BlockLevel, KType};
 use kaspa_addresses::Prefix;
 use kaspa_math::Uint256;
-use std::{time::{SystemTime, UNIX_EPOCH}, cmp::min};
+use std::{
+    cmp::min,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
