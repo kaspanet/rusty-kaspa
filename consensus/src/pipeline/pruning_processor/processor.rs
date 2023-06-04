@@ -460,7 +460,7 @@ impl PruningProcessor {
 
             self.notification_root
                 .notify(ConsensusNotification::PruningEnd(PruningEndNotification::new(
-                    Arc::new(self.pruning_point_store.read().pruning_point().unwrap()),
+                    Arc::new(new_pruning_point),
                     Arc::new(new_pruning_point),
                 )))
                 .unwrap();

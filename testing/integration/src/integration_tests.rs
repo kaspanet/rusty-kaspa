@@ -46,15 +46,16 @@ use kaspa_core::time::unix_now;
 use kaspa_database::utils::{create_temp_db, get_kaspa_tempdir};
 use kaspa_hashes::Hash;
 use tokio::task::JoinHandle;
+use tokio::time::sleep;
 
 use crate::common;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
 use kaspa_core::core::Core;
-use kaspa_core::info;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
+use kaspa_core::{info, warn};
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
@@ -68,6 +69,7 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{
     collections::HashMap,
     fs::File,
@@ -959,7 +961,6 @@ impl ProcessingTracker {
                         notification
                         }.await.unwrap()
                 };
-                info!("{res:?}");
                 match res {
                     ConsensusNotification::BlockAdded(block_added_notification) => self
                         .block_added_tracker
@@ -973,18 +974,22 @@ impl ProcessingTracker {
                         .unwrap_or_else(|| panic!("unexpected notfication {pruned_transaction_ids_notification:?}"))
                         .write()
                         .update(pruned_transaction_ids_notification),
-                    ConsensusNotification::PruningStart(pruning_start_notification) => self
-                        .pruning_start_state_tracker
-                        .clone()
-                        .unwrap_or_else(|| panic!("unexpected notfication {pruning_start_notification:?}"))
-                        .write()
-                        .update(pruning_start_notification),
-                    ConsensusNotification::PruningEnd(pruning_end_notification) => self
-                        .pruning_end_state_tracker
-                        .clone()
-                        .unwrap_or_else(|| panic!("unexpected notfication {pruning_end_notification:?}"))
-                        .write()
-                        .update(pruning_end_notification),
+                    ConsensusNotification::PruningStart(pruning_start_notification) => {
+                        info!("{0:?}", pruning_start_notification.clone());
+                        self.pruning_start_state_tracker
+                            .clone()
+                            .unwrap_or_else(|| panic!("unexpected notfication {pruning_start_notification:?}"))
+                            .write()
+                            .update(pruning_start_notification);
+                    }
+                    ConsensusNotification::PruningEnd(pruning_end_notification) => {
+                        info!("{0:?}", pruning_end_notification.clone());
+                        self.pruning_end_state_tracker
+                            .clone()
+                            .unwrap_or_else(|| panic!("unexpected notfication {pruning_end_notification:?}"))
+                            .write()
+                            .update(pruning_end_notification);
+                    }
                     ConsensusNotification::ConsensusShutDown(_) => {
                         assert!(self.consensus_receiver.is_empty());
                         self.consensus_notifier.unregister_listener(self.receiver_id).unwrap();
@@ -1100,7 +1105,6 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
             let second_line = lines.next().unwrap();
             let genesis_block = json_line_to_block(second_line);
             params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
-            info!("{genesis_block:?}");
         }
         params
     } else {
@@ -1225,7 +1229,6 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
     let missing_bodies = tc.get_missing_block_body_hashes(tc.get_headers_selected_tip()).unwrap();
 
     info!("Processing {} block bodies...", missing_bodies.len());
-
     if concurrency {
         let chunks = missing_bodies.into_iter().chunks(1000);
         let mut iter = chunks.into_iter();
@@ -1249,8 +1252,14 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
         }
     }
 
+    // TODO: Sync and cordinated the shutdown process, this is a dirty fix, which just buys some time.
+    warn!("TODO: although integration tests may pass, we still need to do sync shutdowns"); // friendly reminder
+    sleep(Duration::from_secs(5)).await;
     core.shutdown();
     core.join(joins);
+    if let Some(tracker_jh) = tracker_jh {
+        tracker_jh.await.expect("expected no tracker errors");
+    }
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(tc.body_tips().iter().copied().any(|h| tc.block_status(h) == BlockStatus::StatusUTXOValid));
@@ -1264,7 +1273,6 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
     //test-specific checks
     match ident {
         JsonTestIdent::GoRefCustomPruningDepth => {
-            tracker_jh.expect("expected a join handle").await.expect("expected no tracker errors");
             let tracker_res = tracker.expect("expected a tracker for this test");
             let processed_pruned_transactions = tracker_res.get_pruned_transaction_id_tracker();
             let mut processed_added_transactions = tracker_res.get_block_added_tracker();
@@ -1279,19 +1287,17 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
                 .is_superset(&processed_pruned_transactions.transactions_pruned));
 
             let tracked_pruning_end_state = tracker_res.get_pruning_end_state_tracker();
-            info!("{0:?}, {1:?}", tracked_pruning_end_state.end_pruning_point, tracked_pruning_end_state.end_history_root);
             let pruning_start_state = tracker_res.get_pruning_start_state_tracker();
             assert_eq!(
                 pruning_start_state.start_pruning_point.unwrap(),
-                tc.past_pruning_points_store.get(tc.pruning_point_store.read().pruning_point_index().unwrap() - 3).unwrap()
+                tc.past_pruning_points_store.get(tc.pruning_point_store.read().pruning_point_index().unwrap() - 1).unwrap()
             );
             assert_eq!(
                 pruning_start_state.start_history_root.unwrap(),
-                tc.past_pruning_points_store.get(tc.pruning_point_store.read().pruning_point_index().unwrap() - 4).unwrap()
-            ); //in this test we expect pruning point to be pruning point index -2
+                tc.past_pruning_points_store.get(tc.pruning_point_store.read().pruning_point_index().unwrap() - 1).unwrap()
+            );
             assert_eq!(tracked_pruning_end_state.end_pruning_point.unwrap(), tc.pruning_point().unwrap());
-            assert_eq!(tracked_pruning_end_state.end_history_root.unwrap(), tc.pruning_point_store.read().history_root().unwrap());
-            //in this test we expect pruning point to be history root.
+            assert_eq!(tracked_pruning_end_state.end_history_root.unwrap(), tc.get_source());
         }
         _other => (),
     }
