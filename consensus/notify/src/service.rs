@@ -55,7 +55,10 @@ impl AsyncService for NotifyService {
             // Keep the notifier running until a service shutdown signal is received
             shutdown_signal.await;
             match self.notifier.stop().await {
-                Ok(_) => Ok(()),
+                Ok(_) => {
+                    println!("!!!!!!!! NOTIFIER STOP DONE");
+                    Ok(())
+                }
                 Err(err) => {
                     trace!("Error while stopping {}: {}", NOTIFY_SERVICE, err);
                     Err(AsyncServiceError::Service(err.to_string()))

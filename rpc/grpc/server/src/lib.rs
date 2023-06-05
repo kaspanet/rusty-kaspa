@@ -6,7 +6,7 @@ use kaspa_core::{
 use kaspa_grpc_core::{protowire::rpc_server::RpcServer, RPC_MAX_MESSAGE_SIZE};
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::{networking::NetAddress, triggers::DuplexTrigger};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tonic::{codec::CompressionEncoding, transport::Server};
 
 pub mod collector;
@@ -60,6 +60,8 @@ impl AsyncService for GrpcServer {
             // Start the tonic gRPC server
             info!("Grpc server starting on: {}", address);
             let result = Server::builder()
+                .timeout(Duration::from_secs(5))
+                .http2_keepalive_timeout(Some(Duration::from_secs(5)))
                 .add_service(svc)
                 .serve_with_shutdown(address.into(), shutdown_signal)
                 .await
@@ -71,6 +73,7 @@ impl AsyncService for GrpcServer {
 
             // Send a signal telling the shutdown is done
             shutdown_executed.trigger();
+            println!("!!!!!!!! GRPC STOP DONE");
             result
         })
     }

@@ -74,6 +74,7 @@ impl AsyncService for ConsensusMonitor {
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
             self.worker().await;
+            println!("!!!!!!!! MONITOR STOP DONE");
             Ok(())
         })
     }

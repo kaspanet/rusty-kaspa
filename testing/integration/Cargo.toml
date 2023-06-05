@@ -17,6 +17,9 @@ kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus.workspace = true
 kaspa-consensusmanager.workspace = true
+daemon.workspace = true
+kaspa-grpc-client.workspace = true
+kaspa-rpc-core.workspace = true
 
 faster-hex.workspace = true
 thiserror.workspace = true
@@ -52,6 +55,7 @@ criterion.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 tokio = { workspace = true, features = ["rt", "macros"] }
 kaspa-txscript-errors.workspace = true
+port-selector = "0.1.6"
 
 [features]
 html_reports = []

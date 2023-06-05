@@ -83,6 +83,7 @@ impl AsyncService for P2pService {
             shutdown_signal.await;
             p2p_adaptor.terminate_all_peers().await;
             connection_manager.stop().await;
+            println!("!!!!!!!! P2P STOP DONE");
             Ok(())
         })
     }

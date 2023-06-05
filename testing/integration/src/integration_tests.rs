@@ -3,6 +3,7 @@
 //!
 
 use async_channel::unbounded;
+use daemon::{create_daemon, Args};
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
@@ -36,6 +37,7 @@ use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::{create_temp_db, get_kaspa_tempdir};
+use kaspa_grpc_client::GrpcClient;
 use kaspa_hashes::Hash;
 
 use flate2::read::GzDecoder;
@@ -48,6 +50,7 @@ use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
+use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_utxoindex::api::UtxoIndexApi;
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
@@ -55,6 +58,7 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{
     collections::HashMap,
     fs::File,
@@ -128,7 +132,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
     let validation_freq = usize::max(1, num_chains / 100);
 
     use rand::prelude::*;
-    let mut rng = StdRng::seed_from_u64(22322);
+    let mut rng: StdRng = StdRng::seed_from_u64(22322);
 
     for i in 0..num_chains {
         let rand_idx = rng.gen_range(0..blocks.len());
@@ -1462,4 +1466,73 @@ async fn staging_consensus_test() {
 
     core.shutdown();
     core.join(joins);
+}
+
+#[tokio::test]
+async fn sanity_integration_test() {
+    let core = DaemonWithRpc::new_random();
+    let (workers, rpc_client) = core.start().await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    rpc_client.disconnect().await.unwrap();
+    drop(rpc_client);
+    core.core.shutdown();
+    core.core.join(workers);
+    // let core = create_daemon(Default::default());
+    // let workers = core.start();
+    // tokio::time::sleep(Duration::from_secs(1)).await;
+    // core.shutdown();
+    // core.join(workers);
+}
+
+async fn mining_integration_test() {
+    let core = create_daemon(Default::default());
+    let workers = core.start();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    core.shutdown();
+    core.join(workers);
+}
+
+struct DaemonWithRpc {
+    core: Arc<Core>,
+    rpc_port: u16,
+}
+
+impl DaemonWithRpc {
+    fn new_random() -> DaemonWithRpc {
+        let mut args: Args = Default::default();
+        args.devnet = true;
+
+        // This should ask the OS to allocate free port for `socket1` and `socket2`.
+        let socket1 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let rpc_port = socket1.local_addr().unwrap().port();
+
+        let socket2 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let p2p_port = socket2.local_addr().unwrap().port();
+
+        drop(socket1);
+        drop(socket2);
+
+        args.rpclisten = Some(format!("0.0.0.0:{rpc_port}").try_into().unwrap());
+        args.listen = Some(format!("0.0.0.0:{p2p_port}").try_into().unwrap());
+        args.appdir = Some(std::env::temp_dir().to_str().unwrap().into());
+
+        let core = create_daemon(args);
+        DaemonWithRpc { core, rpc_port }
+    }
+
+    async fn start(&self) -> (Vec<std::thread::JoinHandle<()>>, GrpcClient) {
+        let workers = self.core.start();
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let rpc_client = GrpcClient::connect(
+            NotificationMode::Direct,
+            format!("grpc://localhost:{}", self.rpc_port),
+            true,
+            None,
+            false,
+            Some(500_000),
+        )
+        .await
+        .unwrap();
+        (workers, rpc_client)
+    }
 }

@@ -218,7 +218,10 @@ impl HeaderProcessor {
     pub fn worker(self: &Arc<HeaderProcessor>) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
-                BlockProcessingMessage::Exit => break,
+                BlockProcessingMessage::Exit => {
+                    println!("!!!!!!!!!!");
+                    break;
+                }
                 BlockProcessingMessage::Process(task, result_transmitter) => {
                     if let Some(task_id) = self.task_manager.register(task, result_transmitter) {
                         let processor = self.clone();

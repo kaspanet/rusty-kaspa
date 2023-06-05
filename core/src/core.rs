@@ -72,6 +72,7 @@ impl Shutdown for Core {
             for service in self.services.lock().unwrap().iter() {
                 let ident = service.clone().ident();
                 trace!("shutting down: {}", ident);
+                crate::info!("!!!!!!!! shutting down: {}", ident);
                 service.clone().stop();
             }
         }
