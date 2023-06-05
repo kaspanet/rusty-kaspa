@@ -1,5 +1,6 @@
 pub mod block_depth;
 pub mod coinbase;
+pub mod dagknight;
 pub mod difficulty;
 pub mod ghostdag;
 pub mod parents_builder;
