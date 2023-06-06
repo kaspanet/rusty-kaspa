@@ -210,17 +210,14 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
         self.internal_calc_daa_score(ghostdag_data, mergeset_non_daa)
     }
 
-    pub fn calc_daa_score_and_mergeset_non_daa_blocks<'a>(
-        &'a self,
+    pub fn calc_daa_score_and_mergeset_non_daa_blocks(
+        &self,
         ghostdag_data: &GhostdagData,
-        store: &'a (impl GhostdagStoreReader + ?Sized),
+        store: &(impl GhostdagStoreReader + ?Sized),
     ) -> (u64, BlockHashSet) {
         let lowest_daa_blue_score = self.lowest_daa_blue_score(ghostdag_data);
-        let mergeset_non_daa: BlockHashSet = ghostdag_data
-            .consensus_ordered_mergeset(store)
-            .filter(|hash| store.get_blue_score(*hash).unwrap() < lowest_daa_blue_score)
-            .collect();
-
+        let mergeset_non_daa: BlockHashSet =
+            ghostdag_data.unordered_mergeset().filter(|hash| store.get_blue_score(*hash).unwrap() < lowest_daa_blue_score).collect();
         (self.internal_calc_daa_score(ghostdag_data, &mergeset_non_daa), mergeset_non_daa)
     }
 
