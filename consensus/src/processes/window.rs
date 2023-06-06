@@ -455,7 +455,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     ) -> bool {
         // If the window is full and the selected parent is less than the minimum then we break
         // because this means that there cannot be any more blocks in the past with higher blue work
-        if !heap.can_push(ghostdag_data.selected_parent, selected_parent_blue_work).0 {
+        if !heap.can_push(ghostdag_data.selected_parent, selected_parent_blue_work) {
             return true;
         }
 
@@ -468,8 +468,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
                 SampledBlock::Discarded(block) => {
                     // If it's smaller than minimum then we won't be able to add the rest because we iterate in
                     // descending blue work order.
-                    let (can_push, _) = heap.can_push(block.hash, block.blue_work);
-                    if !can_push {
+                    if !heap.can_push(block.hash, block.blue_work) {
                         break;
                     }
                 }
@@ -486,34 +485,20 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     ) -> impl Iterator<Item = SampledBlock> + 'a {
         let selected_parent_block = SortableBlock::new(ghostdag_data.selected_parent, selected_parent_blue_work);
         let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
-        let (lowest_daa_blue_score, mergeset_non_daa) = if selected_parent_daa_score >= self.sampling_activation_daa_score {
-            // Define the DAA window lowest accepted blue score in ghostdag_data POV
-            (Some(self.difficulty_manager.lowest_daa_blue_score(ghostdag_data)), None)
-        } else {
-            // The selected parent is below the sampling activation DAA score, so we rely on the already stored
-            // non DAA mergeset instead of evaluating it on the fly because the current rules defining what is
-            // considered non-DAA are different after the sampling activation.
-            (None, Some((*self.daa_store.get_mergeset_non_daa(ghostdag_data.selected_parent).unwrap()).clone()))
-        };
+        let blue_score_threshold = self.difficulty_manager.lowest_daa_blue_score(ghostdag_data);
         let mut index: u64 = 0;
 
         once(selected_parent_block).chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref())).map(
-            move |block| 'FILTER: {
-                if let Some(lowest_daa_blue_score) = lowest_daa_blue_score {
-                    if self.ghostdag_store.get_blue_score(block.hash).unwrap() < lowest_daa_blue_score {
-                        break 'FILTER SampledBlock::NonDaa(block.hash);
-                    }
-                }
-                if let Some(ref mergeset_non_daa) = mergeset_non_daa {
-                    if !mergeset_non_daa.contains(&block.hash) {
-                        break 'FILTER SampledBlock::NonDaa(block.hash);
-                    }
-                }
-                index += 1;
-                if (selected_parent_daa_score + index) % sample_rate == 0 {
-                    SampledBlock::Sampled(block)
+            move |block| {
+                if self.ghostdag_store.get_blue_score(block.hash).unwrap() < blue_score_threshold {
+                    SampledBlock::NonDaa(block.hash)
                 } else {
-                    SampledBlock::Discarded(block)
+                    index += 1;
+                    if (selected_parent_daa_score + index) % sample_rate == 0 {
+                        SampledBlock::Sampled(block)
+                    } else {
+                        SampledBlock::Discarded(block)
+                    }
                 }
             },
         )
@@ -764,14 +749,14 @@ impl BoundedSizeReadOnlyBlockHeap {
         self.binary_heap.len() == self.size_bound
     }
 
-    fn can_push(&self, hash: Hash, blue_work: BlueWorkType) -> (bool, Reverse<SortableBlock>) {
+    fn can_push(&self, hash: Hash, blue_work: BlueWorkType) -> bool {
         let r_sortable_block = Reverse(SortableBlock { hash, blue_work });
         if self.reached_size_bound() {
             let max = self.binary_heap.peek().unwrap();
             // Returns false if heap is full and the suggested block is greater than the max. Since the heap is reversed,
-            // pushing the suggested block would involve to remove a block with a higher blue work.
-            return (*max >= r_sortable_block, r_sortable_block);
+            // pushing the suggested block would involve removing a block with a higher blue work.
+            return *max >= r_sortable_block;
         }
-        (true, r_sortable_block)
+        true
     }
 }

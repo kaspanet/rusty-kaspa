@@ -76,7 +76,6 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn sampled_past_median_time_window_size(&self) -> usize {
-        // FIXME: KIP-0003 suggests that the window size be 2*self.timestamp_deviation_tolerance+1, instead of -1
         let deviation_tolerance_sampled_blocks =
             (self.sampled_timestamp_deviation_tolerance + self.past_median_time_sample_rate / 2) / self.past_median_time_sample_rate;
         (2 * deviation_tolerance_sampled_blocks - 1) as usize
