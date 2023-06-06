@@ -231,6 +231,12 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Wi
 
 type DaaStatus = Option<(u64, BlockHashSet)>;
 
+enum SampledBlock {
+    Sampled(SortableBlock),
+    NonDaa(Hash),
+    Discarded(SortableBlock),
+}
+
 /// A sampled window manager implementing [KIP-0004](https://github.com/kaspanet/kips/blob/master/kip-0004.md)
 #[derive(Clone)]
 pub struct SampledWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> {
@@ -319,15 +325,16 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
                 if let WindowOrigin::Sampled = selected_parent_binary_heap.origin() {
                     let selected_parent_blue_work = self.ghostdag_store.get_blue_work(ghostdag_data.selected_parent).unwrap();
                     let read_only_heap = BoundedSizeReadOnlyBlockHeap::new(window_size, selected_parent_binary_heap.clone());
-                    if !self.mergeset_will_change_window(read_only_heap, sample_rate, ghostdag_data, selected_parent_blue_work) {
-                        // If applying the mergeset of the current block will not change the cached window return it as is
+                    if self.mergeset_keeps_window(read_only_heap, sample_rate, ghostdag_data, selected_parent_blue_work) {
+                        // If applying the mergeset of the current block does not change the cached window return it as is
                         return Ok((selected_parent_binary_heap.clone(), None));
                     }
                     let mut window_heap = BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_binary_heap).clone());
                     let mut daa_status = None;
                     if ghostdag_data.selected_parent != self.genesis_hash {
-                        (_, daa_status) = self.try_push_mergeset_and_build_daa_status(
+                        self.try_push_mergeset_and_build_daa_status(
                             &mut window_heap,
+                            &mut daa_status,
                             sample_rate,
                             ghostdag_data,
                             selected_parent_blue_work,
@@ -361,21 +368,16 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             }
 
             let parent_ghostdag = self.ghostdag_store.get_data(current_ghostdag.selected_parent).unwrap();
-            let selected_parent_blue_work_too_low: bool;
-            match highest_daa_status {
-                None => {
-                    (selected_parent_blue_work_too_low, highest_daa_status) = self.try_push_mergeset_and_build_daa_status(
-                        &mut window_heap,
-                        sample_rate,
-                        &current_ghostdag,
-                        parent_ghostdag.blue_work,
-                    );
-                }
-                Some(_) => {
-                    selected_parent_blue_work_too_low =
-                        self.try_push_mergeset(&mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work);
-                }
-            }
+            let selected_parent_blue_work_too_low: bool = match highest_daa_status {
+                None => self.try_push_mergeset_and_build_daa_status(
+                    &mut window_heap,
+                    &mut highest_daa_status,
+                    sample_rate,
+                    &current_ghostdag,
+                    parent_ghostdag.blue_work,
+                ),
+                Some(_) => self.try_push_mergeset(&mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work),
+            };
             // No need to further iterate since past of selected parent has even lower blue work
             if selected_parent_blue_work_too_low {
                 break;
@@ -389,55 +391,31 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     fn try_push_mergeset_and_build_daa_status(
         &self,
         heap: &mut BoundedSizeBlockHeap,
+        daa_status: &mut DaaStatus,
         sample_rate: u64,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
-    ) -> (bool, DaaStatus) {
+    ) -> bool {
         // If the window is full and the selected parent is less than the minimum then we break
         // because this means that there cannot be any more blocks in the past with higher blue work
         if !heap.can_push(ghostdag_data.selected_parent, selected_parent_blue_work).0 {
-            return (true, None);
+            return true;
         }
 
         let mut mergeset_non_daa: BlockHashSet = Default::default();
-        let selected_parent_block = SortableBlock::new(ghostdag_data.selected_parent, selected_parent_blue_work);
-        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
-        let blocks =
-            once(selected_parent_block).chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref()));
-        if selected_parent_daa_score >= self.sampling_activation_daa_score {
-            // Define the DAA window lowest accepted blue score in ghostdag_data POV
-            let lowest_daa_blue_score = self.difficulty_manager.lowest_daa_blue_score(ghostdag_data);
-            let mut index: u64 = 0;
-            for block in blocks {
-                if self.ghostdag_store.get_blue_score(block.hash).unwrap() < lowest_daa_blue_score {
-                    mergeset_non_daa.insert(block.hash);
-                } else {
-                    index += 1;
-                    if sample_rate <= 1 || (selected_parent_daa_score + index) % sample_rate == 0 {
-                        heap.try_push(block.hash, block.blue_work);
-                    }
+        for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
+            match block {
+                SampledBlock::Sampled(block) => {
+                    heap.try_push(block.hash, block.blue_work);
                 }
-            }
-        } else {
-            // The selected parent is below the sampling activation DAA score, so we rely on the already stored
-            // non DAA mergeset instead of evaluating it on the fly because the current rules defining what is
-            // considered non-DAA are different after the sampling activation.
-            mergeset_non_daa = (*self.daa_store.get_mergeset_non_daa(ghostdag_data.selected_parent).unwrap()).clone();
-            let mut index: u64 = 0;
-            for block in blocks {
-                if !mergeset_non_daa.contains(&block.hash) {
-                    index += 1;
-                    if sample_rate <= 1 || (selected_parent_daa_score + index) % sample_rate == 0 {
-                        // If it's smaller than minimum then we won't be able to add the rest because we iterate in
-                        // descending blue work order.
-                        if !heap.try_push(block.hash, block.blue_work) {
-                            break;
-                        }
-                    }
+                SampledBlock::NonDaa(hash) => {
+                    mergeset_non_daa.insert(hash);
                 }
+                SampledBlock::Discarded(_) => {}
             }
         }
-        (false, Some((self.difficulty_manager.calc_daa_score(ghostdag_data, &mergeset_non_daa), mergeset_non_daa)))
+        *daa_status = Some((self.difficulty_manager.calc_daa_score(ghostdag_data, &mergeset_non_daa), mergeset_non_daa));
+        false
     }
 
     fn try_push_mergeset(
@@ -453,50 +431,22 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             return true;
         }
 
-        let selected_parent_block = SortableBlock::new(ghostdag_data.selected_parent, selected_parent_blue_work);
-        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
-        let blocks =
-            once(selected_parent_block).chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref()));
-        if selected_parent_daa_score >= self.sampling_activation_daa_score {
-            // Define the DAA window lowest accepted blue score in ghostdag_data POV
-            let lowest_daa_blue_score = self.difficulty_manager.lowest_daa_blue_score(ghostdag_data);
-            let mut index: u64 = 0;
-            for block in blocks {
-                if self.ghostdag_store.get_blue_score(block.hash).unwrap() >= lowest_daa_blue_score {
-                    index += 1;
-                    if sample_rate <= 1 || (selected_parent_daa_score + index) % sample_rate == 0 {
-                        // If it's smaller than minimum then we won't be able to add the rest because we iterate in
-                        // descending blue work order.
-                        if !heap.try_push(block.hash, block.blue_work) {
-                            break;
-                        }
+        for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
+            match block {
+                SampledBlock::Sampled(block) => {
+                    if !heap.try_push(block.hash, block.blue_work) {
+                        break;
                     }
                 }
-            }
-        } else {
-            // The selected parent is below the sampling activation DAA score, so we rely on the already stored
-            // non DAA mergeset instead of evaluating it on the fly because the current rules defining what is
-            // considered non-DAA are different after the sampling activation.
-            let mergeset_non_daa = (*self.daa_store.get_mergeset_non_daa(ghostdag_data.selected_parent).unwrap()).clone();
-            let mut index: u64 = 0;
-            for block in blocks {
-                if !mergeset_non_daa.contains(&block.hash) {
-                    index += 1;
-                    if sample_rate <= 1 || (selected_parent_daa_score + index) % sample_rate == 0 {
-                        // If it's smaller than minimum then we won't be able to add the rest because we iterate in
-                        // descending blue work order.
-                        if !heap.try_push(block.hash, block.blue_work) {
-                            break;
-                        }
-                    }
-                }
+                SampledBlock::NonDaa(_) => {}
+                SampledBlock::Discarded(_) => {}
             }
         }
         false
     }
 
-    /// This function mimics `try_push_mergeset` and determines if any change to the provided window should occur when applying the mergeset.
-    fn mergeset_will_change_window(
+    /// This function mimics `try_push_mergeset` and determines if no change to the provided window should occur when applying the mergeset.
+    fn mergeset_keeps_window(
         &self,
         heap: BoundedSizeReadOnlyBlockHeap,
         sample_rate: u64,
@@ -506,54 +456,67 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         // If the window is full and the selected parent is less than the minimum then we break
         // because this means that there cannot be any more blocks in the past with higher blue work
         if !heap.can_push(ghostdag_data.selected_parent, selected_parent_blue_work).0 {
-            return false;
+            return true;
         }
 
-        let selected_parent_block = SortableBlock::new(ghostdag_data.selected_parent, selected_parent_blue_work);
-        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
-        let blocks =
-            once(selected_parent_block).chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref()));
-        if selected_parent_daa_score >= self.sampling_activation_daa_score {
-            // Define the DAA window lowest accepted blue score in ghostdag_data POV
-            let lowest_daa_blue_score = self.difficulty_manager.lowest_daa_blue_score(ghostdag_data);
-            let mut index: u64 = 0;
-            for block in blocks {
-                if self.ghostdag_store.get_blue_score(block.hash).unwrap() < lowest_daa_blue_score {
-                } else {
-                    index += 1;
+        for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
+            match block {
+                SampledBlock::Sampled(_) => {
+                    return false;
+                }
+                SampledBlock::NonDaa(_) => {}
+                SampledBlock::Discarded(block) => {
                     // If it's smaller than minimum then we won't be able to add the rest because we iterate in
                     // descending blue work order.
                     let (can_push, _) = heap.can_push(block.hash, block.blue_work);
                     if !can_push {
                         break;
                     }
-                    if sample_rate <= 1 || (selected_parent_daa_score + index) % sample_rate == 0 {
-                        return true;
-                    }
                 }
             }
+        }
+        true
+    }
+
+    fn sampled_mergeset_iterator<'a>(
+        &'a self,
+        sample_rate: u64,
+        ghostdag_data: &'a GhostdagData,
+        selected_parent_blue_work: BlueWorkType,
+    ) -> impl Iterator<Item = SampledBlock> + 'a {
+        let selected_parent_block = SortableBlock::new(ghostdag_data.selected_parent, selected_parent_blue_work);
+        let selected_parent_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
+        let (lowest_daa_blue_score, mergeset_non_daa) = if selected_parent_daa_score >= self.sampling_activation_daa_score {
+            // Define the DAA window lowest accepted blue score in ghostdag_data POV
+            (Some(self.difficulty_manager.lowest_daa_blue_score(ghostdag_data)), None)
         } else {
             // The selected parent is below the sampling activation DAA score, so we rely on the already stored
             // non DAA mergeset instead of evaluating it on the fly because the current rules defining what is
             // considered non-DAA are different after the sampling activation.
-            let mergeset_non_daa = (*self.daa_store.get_mergeset_non_daa(ghostdag_data.selected_parent).unwrap()).clone();
-            let mut index: u64 = 0;
-            for block in blocks {
-                if !mergeset_non_daa.contains(&block.hash) {
-                    index += 1;
-                    // If it's smaller than minimum then we won't be able to add the rest because we iterate in
-                    // descending blue work order.
-                    let (can_push, _) = heap.can_push(block.hash, block.blue_work);
-                    if !can_push {
-                        break;
-                    }
-                    if sample_rate <= 1 || (selected_parent_daa_score + index) % sample_rate == 0 {
-                        return true;
+            (None, Some((*self.daa_store.get_mergeset_non_daa(ghostdag_data.selected_parent).unwrap()).clone()))
+        };
+        let mut index: u64 = 0;
+
+        once(selected_parent_block).chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref())).map(
+            move |block| 'FILTER: {
+                if let Some(lowest_daa_blue_score) = lowest_daa_blue_score {
+                    if self.ghostdag_store.get_blue_score(block.hash).unwrap() < lowest_daa_blue_score {
+                        break 'FILTER SampledBlock::NonDaa(block.hash);
                     }
                 }
-            }
-        }
-        false
+                if let Some(ref mergeset_non_daa) = mergeset_non_daa {
+                    if !mergeset_non_daa.contains(&block.hash) {
+                        break 'FILTER SampledBlock::NonDaa(block.hash);
+                    }
+                }
+                index += 1;
+                if (selected_parent_daa_score + index) % sample_rate == 0 {
+                    SampledBlock::Sampled(block)
+                } else {
+                    SampledBlock::Discarded(block)
+                }
+            },
+        )
     }
 }
 
