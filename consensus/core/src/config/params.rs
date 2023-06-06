@@ -205,8 +205,8 @@ impl From<NetworkType> for Params {
 }
 
 pub const TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
-pub const SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 600; // KIP-003: 20/2 = 10 minutes, so 600 @ current BPS
-pub const PAST_MEDIAN_TIME_SAMPLE_RATE: u64 = 10; // KIP-003: every 10 seconds, so 10 @ current BPS
+pub const SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 600; // KIP-0004: 20/2 = 10 minutes, so 600 @ current BPS
+pub const PAST_MEDIAN_TIME_SAMPLE_RATE: u64 = 10; // KIP-0004: every 10 seconds, so 10 @ current BPS
 
 /// Highest proof of work difficulty target a Kaspa block can have for each network.
 /// This value is: 2^255 - 1.
@@ -219,8 +219,8 @@ pub const MAX_DIFFICULTY_TARGET_AS_F64: f64 = 5.78960446186581e76;
 pub const MIN_DIFFICULTY_WINDOW_LEN: usize = 2;
 
 pub const DIFFICULTY_WINDOW_SIZE: usize = 2641;
-pub const DIFFICULTY_SAMPLE_WINDOW_SIZE: usize = 1001; // KIP-003: 500 minutes, so 1000 + 1 @ current BPS and sample rate;
-pub const DIFFICULTY_SAMPLE_RATE: u64 = 30; // KIP-003: every 30 seconds, so 30 @ current BPS
+pub const DIFFICULTY_SAMPLE_WINDOW_SIZE: usize = 1001; // KIP-0004: 500 minutes, so 1000 + 1 @ current BPS and sample rate;
+pub const DIFFICULTY_SAMPLE_RATE: u64 = 30; // KIP-0004: every 30 seconds, so 30 @ current BPS
 
 const DEFAULT_GHOSTDAG_K: KType = 18;
 pub const MAINNET_PARAMS: Params = Params {

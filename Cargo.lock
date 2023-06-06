@@ -1617,6 +1617,7 @@ dependencies = [
  "kaspa-txscript-errors",
  "kaspa-utils",
  "log",
+ "once_cell",
  "parking_lot",
  "rand 0.8.5",
  "rand_distr",

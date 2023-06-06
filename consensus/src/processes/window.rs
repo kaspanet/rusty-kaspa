@@ -16,6 +16,7 @@ use kaspa_consensus_core::{
 use kaspa_hashes::Hash;
 use kaspa_math::Uint256;
 use kaspa_utils::refs::Refs;
+use once_cell::unsync::Lazy;
 use std::{cmp::Reverse, iter::once, ops::Deref, sync::Arc};
 
 use super::{
@@ -234,7 +235,6 @@ type DaaStatus = Option<(u64, BlockHashSet)>;
 enum SampledBlock {
     Sampled(SortableBlock),
     NonDaa(Hash),
-    Discarded(SortableBlock),
 }
 
 /// A sampled window manager implementing [KIP-0004](https://github.com/kaspanet/kips/blob/master/kip-0004.md)
@@ -306,12 +306,23 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         &self,
         ghostdag_data: &GhostdagData,
         window_type: WindowType,
-    ) -> Result<(Arc<BlockWindowHeap>, DaaStatus), RuleError> {
+        mut mergeset_non_daa_inserter: impl FnMut(Hash),
+    ) -> Result<Arc<BlockWindowHeap>, RuleError> {
         let window_size = self.window_size(ghostdag_data, window_type);
-        if window_size == 0 {
-            return Ok((Arc::new(BlockWindowHeap::new(WindowOrigin::Sampled)), None));
-        }
         let sample_rate = self.sample_rate(ghostdag_data, window_type);
+
+        // First, we handle all edge cases
+        if window_size == 0 {
+            return Ok(Arc::new(BlockWindowHeap::new(WindowOrigin::Sampled)));
+        }
+        if ghostdag_data.selected_parent == self.genesis_hash {
+            // Special case: Genesis does not enter the DAA window due to having a fixed timestamp
+            mergeset_non_daa_inserter(self.genesis_hash);
+            return Ok(Arc::new(BlockWindowHeap::new(WindowOrigin::Sampled)));
+        }
+        if ghostdag_data.selected_parent.is_origin() {
+            return Err(RuleError::InsufficientDaaWindowSize(0));
+        }
 
         let cache = match window_type {
             WindowType::SampledDifficultyWindow => Some(&self.block_window_cache_for_difficulty),
@@ -324,31 +335,44 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
                 // Only use the cached window if it originates from here
                 if let WindowOrigin::Sampled = selected_parent_binary_heap.origin() {
                     let selected_parent_blue_work = self.ghostdag_store.get_blue_work(ghostdag_data.selected_parent).unwrap();
-                    let read_only_heap = BoundedSizeReadOnlyBlockHeap::new(window_size, selected_parent_binary_heap.clone());
-                    if self.mergeset_keeps_window(read_only_heap, sample_rate, ghostdag_data, selected_parent_blue_work) {
-                        // If applying the mergeset of the current block does not change the cached window return it as is
-                        return Ok((selected_parent_binary_heap.clone(), None));
-                    }
-                    let mut window_heap = BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_binary_heap).clone());
-                    let mut daa_status = None;
-                    if ghostdag_data.selected_parent != self.genesis_hash {
-                        self.try_push_mergeset_and_build_daa_status(
-                            &mut window_heap,
-                            &mut daa_status,
-                            sample_rate,
-                            ghostdag_data,
-                            selected_parent_blue_work,
-                        );
+
+                    let mut heap =
+                        Lazy::new(|| BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_binary_heap).clone()));
+                    for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
+                        match block {
+                            SampledBlock::Sampled(block) => {
+                                heap.try_push(block.hash, block.blue_work);
+                            }
+                            SampledBlock::NonDaa(hash) => {
+                                mergeset_non_daa_inserter(hash);
+                            }
+                        }
                     }
 
-                    return Ok((Arc::new(window_heap.binary_heap), daa_status));
+                    return if let Ok(heap) = Lazy::into_value(heap) {
+                        Ok(Arc::new(heap.binary_heap))
+                    } else {
+                        Ok(selected_parent_binary_heap.clone())
+                    };
                 }
             }
         }
 
         let mut window_heap = BoundedSizeBlockHeap::new(WindowOrigin::Sampled, window_size);
-        let mut current_ghostdag: Refs<GhostdagData> = ghostdag_data.into();
-        let mut highest_daa_status: DaaStatus = None;
+        let parent_ghostdag = self.ghostdag_store.get_data(ghostdag_data.selected_parent).unwrap();
+
+        for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, parent_ghostdag.blue_work) {
+            match block {
+                SampledBlock::Sampled(block) => {
+                    window_heap.try_push(block.hash, block.blue_work);
+                }
+                SampledBlock::NonDaa(hash) => {
+                    mergeset_non_daa_inserter(hash);
+                }
+            }
+        }
+
+        let mut current_ghostdag = parent_ghostdag;
 
         // Walk down the chain until we cross the window boundaries
         loop {
@@ -368,87 +392,22 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             }
 
             let parent_ghostdag = self.ghostdag_store.get_data(current_ghostdag.selected_parent).unwrap();
-            let selected_parent_blue_work_too_low: bool = match highest_daa_status {
-                None => self.try_push_mergeset_and_build_daa_status(
-                    &mut window_heap,
-                    &mut highest_daa_status,
-                    sample_rate,
-                    &current_ghostdag,
-                    parent_ghostdag.blue_work,
-                ),
-                Some(_) => self.try_push_mergeset(&mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work),
-            };
+            let selected_parent_blue_work_too_low =
+                self.try_push_mergeset(&mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work);
             // No need to further iterate since past of selected parent has even lower blue work
             if selected_parent_blue_work_too_low {
                 break;
             }
-            current_ghostdag = parent_ghostdag.into();
+
+            current_ghostdag = parent_ghostdag;
         }
 
-        Ok((Arc::new(window_heap.binary_heap), highest_daa_status))
-    }
-
-    fn try_push_mergeset_and_build_daa_status(
-        &self,
-        heap: &mut BoundedSizeBlockHeap,
-        daa_status: &mut DaaStatus,
-        sample_rate: u64,
-        ghostdag_data: &GhostdagData,
-        selected_parent_blue_work: BlueWorkType,
-    ) -> bool {
-        // If the window is full and the selected parent is less than the minimum then we break
-        // because this means that there cannot be any more blocks in the past with higher blue work
-        if !heap.can_push(ghostdag_data.selected_parent, selected_parent_blue_work).0 {
-            return true;
-        }
-
-        let mut mergeset_non_daa: BlockHashSet = Default::default();
-        for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
-            match block {
-                SampledBlock::Sampled(block) => {
-                    heap.try_push(block.hash, block.blue_work);
-                }
-                SampledBlock::NonDaa(hash) => {
-                    mergeset_non_daa.insert(hash);
-                }
-                SampledBlock::Discarded(_) => {}
-            }
-        }
-        *daa_status = Some((self.difficulty_manager.calc_daa_score(ghostdag_data, &mergeset_non_daa), mergeset_non_daa));
-        false
+        Ok(Arc::new(window_heap.binary_heap))
     }
 
     fn try_push_mergeset(
         &self,
         heap: &mut BoundedSizeBlockHeap,
-        sample_rate: u64,
-        ghostdag_data: &GhostdagData,
-        selected_parent_blue_work: BlueWorkType,
-    ) -> bool {
-        // If the window is full and the selected parent is less than the minimum then we break
-        // because this means that there cannot be any more blocks in the past with higher blue work
-        if !heap.can_push(ghostdag_data.selected_parent, selected_parent_blue_work).0 {
-            return true;
-        }
-
-        for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
-            match block {
-                SampledBlock::Sampled(block) => {
-                    if !heap.try_push(block.hash, block.blue_work) {
-                        break;
-                    }
-                }
-                SampledBlock::NonDaa(_) => {}
-                SampledBlock::Discarded(_) => {}
-            }
-        }
-        false
-    }
-
-    /// This function mimics `try_push_mergeset` and determines if no change to the provided window should occur when applying the mergeset.
-    fn mergeset_keeps_window(
-        &self,
-        heap: BoundedSizeReadOnlyBlockHeap,
         sample_rate: u64,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
@@ -461,20 +420,15 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 
         for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
             match block {
-                SampledBlock::Sampled(_) => {
-                    return false;
-                }
-                SampledBlock::NonDaa(_) => {}
-                SampledBlock::Discarded(block) => {
-                    // If it's smaller than minimum then we won't be able to add the rest because we iterate in
-                    // descending blue work order.
-                    if !heap.can_push(block.hash, block.blue_work) {
+                SampledBlock::Sampled(block) => {
+                    if !heap.try_push(block.hash, block.blue_work) {
                         break;
                     }
                 }
+                SampledBlock::NonDaa(_) => {}
             }
         }
-        true
+        false
     }
 
     fn sampled_mergeset_iterator<'a>(
@@ -488,20 +442,20 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         let blue_score_threshold = self.difficulty_manager.lowest_daa_blue_score(ghostdag_data);
         let mut index: u64 = 0;
 
-        once(selected_parent_block).chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref())).map(
-            move |block| {
+        once(selected_parent_block)
+            .chain(ghostdag_data.descending_mergeset_without_selected_parent(self.ghostdag_store.deref()))
+            .filter_map(move |block| {
                 if self.ghostdag_store.get_blue_score(block.hash).unwrap() < blue_score_threshold {
-                    SampledBlock::NonDaa(block.hash)
+                    Some(SampledBlock::NonDaa(block.hash))
                 } else {
                     index += 1;
                     if (selected_parent_daa_score + index) % sample_rate == 0 {
-                        SampledBlock::Sampled(block)
+                        Some(SampledBlock::Sampled(block))
                     } else {
-                        SampledBlock::Discarded(block)
+                        None
                     }
                 }
-            },
-        )
+            })
     }
 }
 
@@ -509,7 +463,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     for SampledWindowManager<T, U, V, W>
 {
     fn block_window(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError> {
-        self.build_block_window(ghostdag_data, window_type).map(|(window, _)| window)
+        self.build_block_window(ghostdag_data, window_type, |_| {})
     }
 
     fn calc_daa_window(&self, ghostdag_data: &GhostdagData, window: Arc<BlockWindowHeap>) -> DaaWindow {
@@ -519,10 +473,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     }
 
     fn block_daa_window(&self, ghostdag_data: &GhostdagData) -> Result<DaaWindow, RuleError> {
-        let (window, daa_status) = self.build_block_window(ghostdag_data, WindowType::SampledDifficultyWindow)?;
-        let (daa_score, mergeset_non_daa) = daa_status.unwrap_or_else(|| {
-            self.difficulty_manager.calc_daa_score_and_mergeset_non_daa_blocks(ghostdag_data, self.ghostdag_store.deref())
-        });
+        let mut mergeset_non_daa = BlockHashSet::default();
+        let window = self.build_block_window(ghostdag_data, WindowType::SampledDifficultyWindow, |hash| {
+            mergeset_non_daa.insert(hash);
+        })?;
+        let daa_score = self.difficulty_manager.calc_daa_score(ghostdag_data, &mergeset_non_daa);
         Ok(DaaWindow::new(window, daa_score, mergeset_non_daa))
     }
 
@@ -543,6 +498,9 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     fn window_size(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {
         match window_type {
             WindowType::SampledDifficultyWindow => self.difficulty_window_size,
+            // We aim to return a full window such that it contains what would be the sampled window. Note that the
+            // product below addresses also the worst-case scenario where the last sampled block is exactly `sample_rate`
+            // blocks from the end of the full window
             WindowType::FullDifficultyWindow => self.difficulty_window_size * self.difficulty_sample_rate as usize,
             WindowType::SampledMedianTimeWindow => self.past_median_time_window_size,
             WindowType::VaryingWindow(size) => size,
@@ -702,22 +660,15 @@ impl BoundedSizeBlockHeap {
         self.binary_heap.len() == self.size_bound
     }
 
-    fn can_push(&self, hash: Hash, blue_work: BlueWorkType) -> (bool, Reverse<SortableBlock>) {
+    fn can_push(&self, hash: Hash, blue_work: BlueWorkType) -> bool {
         let r_sortable_block = Reverse(SortableBlock { hash, blue_work });
         if self.reached_size_bound() {
             let max = self.binary_heap.peek().unwrap();
             // Returns false if heap is full and the suggested block is greater than the max. Since the heap is reversed,
-            // pushing the suggested block would involve to remove a block with a higher blue work.
-            return (*max >= r_sortable_block, r_sortable_block);
+            // pushing the suggested block would involve removing a block with a higher blue work.
+            return *max >= r_sortable_block;
         }
-        (true, r_sortable_block)
-    }
-
-    fn force_push(&mut self, block: Reverse<SortableBlock>) {
-        if self.reached_size_bound() {
-            self.binary_heap.pop(); // Remove the max block (because it's reverse, it'll be the block with the least blue work)
-        }
-        self.binary_heap.push(block);
+        true
     }
 
     fn try_push(&mut self, hash: Hash, blue_work: BlueWorkType) -> bool {
@@ -731,32 +682,6 @@ impl BoundedSizeBlockHeap {
             self.binary_heap.pop(); // Remove the max block (because it's reverse, it'll be the block with the least blue work)
         }
         self.binary_heap.push(r_sortable_block);
-        true
-    }
-}
-
-struct BoundedSizeReadOnlyBlockHeap {
-    binary_heap: Arc<BlockWindowHeap>,
-    size_bound: usize,
-}
-
-impl BoundedSizeReadOnlyBlockHeap {
-    fn new(size_bound: usize, binary_heap: Arc<BlockWindowHeap>) -> Self {
-        Self { size_bound, binary_heap }
-    }
-
-    fn reached_size_bound(&self) -> bool {
-        self.binary_heap.len() == self.size_bound
-    }
-
-    fn can_push(&self, hash: Hash, blue_work: BlueWorkType) -> bool {
-        let r_sortable_block = Reverse(SortableBlock { hash, blue_work });
-        if self.reached_size_bound() {
-            let max = self.binary_heap.peek().unwrap();
-            // Returns false if heap is full and the suggested block is greater than the max. Since the heap is reversed,
-            // pushing the suggested block would involve removing a block with a higher blue work.
-            return *max >= r_sortable_block;
-        }
         true
     }
 }
