@@ -10,7 +10,7 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
-            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap, WindowOrigin},
+            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
             daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
@@ -117,7 +117,6 @@ pub struct HeaderProcessor {
     pub(super) timestamp_deviation_tolerance: u64,
     pub(super) target_time_per_block: u64,
     pub(super) max_block_parents: u8,
-    pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
     pub(super) skip_proof_of_work: bool,
     pub(super) max_block_level: BlockLevel,
@@ -176,7 +175,6 @@ impl HeaderProcessor {
             body_sender,
             thread_pool,
             genesis: params.genesis.clone(),
-            difficulty_window_size: params.full_difficulty_window_size,
             db,
 
             relations_stores: storage.relations_stores.clone(),
@@ -204,6 +202,7 @@ impl HeaderProcessor {
             task_manager: BlockTaskDependencyManager::new(),
             pruning_lock,
             counters,
+            // TODO (HF): make sure to pass `sampled_timestamp_deviation_tolerance` and use according to HF activation score
             timestamp_deviation_tolerance: params.full_timestamp_deviation_tolerance,
             target_time_per_block: params.target_time_per_block,
             max_block_parents: params.max_block_parents,
@@ -488,8 +487,6 @@ impl HeaderProcessor {
         );
         ctx.ghostdag_data =
             Some(self.ghostdag_managers.iter().map(|manager_by_level| Arc::new(manager_by_level.genesis_ghostdag_data())).collect());
-        ctx.block_window_for_difficulty = Some(Arc::new(BlockWindowHeap::new(WindowOrigin::Sampled)));
-        ctx.block_window_for_past_median_time = Some(Arc::new(BlockWindowHeap::new(WindowOrigin::Sampled)));
         ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
