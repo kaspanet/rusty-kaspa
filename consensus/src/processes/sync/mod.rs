@@ -11,9 +11,9 @@ use parking_lot::RwLock;
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{
-        block_window_cache::BlockWindowCacheReader, ghostdag::GhostdagStoreReader,
-        headers_selected_tip::HeadersSelectedTipStoreReader, pruning::PruningStoreReader, reachability::ReachabilityStoreReader,
-        relations::RelationsStoreReader, selected_chain::SelectedChainStoreReader, statuses::StatusesStoreReader,
+        ghostdag::GhostdagStoreReader, headers_selected_tip::HeadersSelectedTipStoreReader, pruning::PruningStoreReader,
+        reachability::ReachabilityStoreReader, relations::RelationsStoreReader, selected_chain::SelectedChainStoreReader,
+        statuses::StatusesStoreReader,
     },
 };
 
@@ -28,11 +28,10 @@ pub struct SyncManager<
     W: HeadersSelectedTipStoreReader,
     X: PruningStoreReader,
     Y: StatusesStoreReader,
-    Z: BlockWindowCacheReader,
 > {
     mergeset_size_limit: usize,
     reachability_service: MTReachabilityService<T>,
-    traversal_manager: DagTraversalManager<U, Z, T, S>,
+    traversal_manager: DagTraversalManager<U, T, S>,
     ghostdag_store: Arc<U>,
     selected_chain_store: Arc<RwLock<V>>,
     header_selected_tip_store: Arc<RwLock<W>>,
@@ -48,13 +47,12 @@ impl<
         W: HeadersSelectedTipStoreReader,
         X: PruningStoreReader,
         Y: StatusesStoreReader,
-        Z: BlockWindowCacheReader,
-    > SyncManager<S, T, U, V, W, X, Y, Z>
+    > SyncManager<S, T, U, V, W, X, Y>
 {
     pub fn new(
         mergeset_size_limit: usize,
         reachability_service: MTReachabilityService<T>,
-        traversal_manager: DagTraversalManager<U, Z, T, S>,
+        traversal_manager: DagTraversalManager<U, T, S>,
         ghostdag_store: Arc<U>,
         selected_chain_store: Arc<RwLock<V>>,
         header_selected_tip_store: Arc<RwLock<W>>,

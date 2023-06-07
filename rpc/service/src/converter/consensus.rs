@@ -41,7 +41,7 @@ impl ConsensusConverter {
         // work limit directly because the block difficulty is encoded in a block
         // with the compact form which loses precision.
         let target = Uint256::from_compact_target_bits(bits);
-        self.config.max_difficulty_f64 / target.as_f64()
+        self.config.max_difficulty_target_f64 / target.as_f64()
     }
 
     /// Converts a consensus [`Block`] into an [`RpcBlock`], optionally including transaction verbose data.
