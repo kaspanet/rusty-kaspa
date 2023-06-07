@@ -780,7 +780,6 @@ impl KaspadGoParams {
             sampled_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             past_median_time_sample_rate: 1,
             target_time_per_block: self.TargetTimePerBlock / 1_000_000,
-            next_target_time_per_block: self.TargetTimePerBlock / 1_000_000,
             sampling_activation_daa_score: u64::MAX,
             max_block_parents: self.MaxBlockParents,
             max_difficulty_target: MAX_DIFFICULTY_TARGET,
@@ -1371,7 +1370,7 @@ async fn difficulty_test() {
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
                     p.ghostdag_k = 1;
-                    p.next_target_time_per_block /= HIGH_BPS;
+                    p.target_time_per_block /= HIGH_BPS;
                     p.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
                     p.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
                     p.sampling_activation_daa_score = 0;

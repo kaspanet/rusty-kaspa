@@ -14,30 +14,39 @@ pub struct Params {
     pub net_suffix: Option<u32>,
     pub genesis: GenesisBlock,
     pub ghostdag_k: KType,
+
     /// Timestamp deviation tolerance expressed in number of blocks
     pub full_timestamp_deviation_tolerance: u64,
+
     /// Timestamp deviation tolerance expressed in number of un-sampled blocks when a sampled window is used
     pub sampled_timestamp_deviation_tolerance: u64,
+
     /// Block sample rate for filling the past median time window (selects one every N blocks)
     pub past_median_time_sample_rate: u64,
+
     /// Current/legacy target time per block
     pub target_time_per_block: u64,
-    /// New target time per block once an activating DAA score is reached
-    pub next_target_time_per_block: u64,
+
     /// DAA score from which the window sampling starts for difficulty and past median time calculation
     pub sampling_activation_daa_score: u64,
-    pub max_block_parents: u8,
+
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
     pub max_difficulty_target: Uint256,
     pub max_difficulty_target_f64: f64,
+
     /// Block sample rate for filling the difficulty window (selects one every N blocks)
     pub difficulty_sample_rate: u64,
+
     /// Size of sampled blocks window that is inspected to calculate the required difficulty of each block
     pub sampled_difficulty_window_size: usize,
+
     /// Size of full blocks window that is inspected to calculate the required difficulty of each block
     pub full_difficulty_window_size: usize,
-    // The minimum length a difficulty window (full or sampled) must have to trigger a DAA calculation
+
+    /// The minimum length a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_len: usize,
+
+    pub max_block_parents: u8,
     pub mergeset_size_limit: u64,
     pub merge_depth: u64,
     pub finality_depth: u64,
@@ -145,19 +154,15 @@ impl Params {
     /// depending on a selected parent DAA score
     #[inline]
     #[must_use]
-    pub fn target_time_per_block(&self, selected_parent_daa_score: u64) -> u64 {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
-            self.target_time_per_block
-        } else {
-            self.next_target_time_per_block
-        }
+    pub fn target_time_per_block(&self, _selected_parent_daa_score: u64) -> u64 {
+        self.target_time_per_block
     }
 
     fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
         if selected_parent_daa_score < self.sampling_activation_daa_score {
             self.target_time_per_block * self.full_difficulty_window_size as u64
         } else {
-            self.next_target_time_per_block * self.difficulty_sample_rate * (self.sampled_difficulty_window_size as u64 - 1)
+            self.target_time_per_block * self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
         }
     }
 
@@ -252,15 +257,14 @@ pub const MAINNET_PARAMS: Params = Params {
     sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
-    next_target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
-    max_block_parents: 10,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
+    max_block_parents: 10,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -310,15 +314,14 @@ pub const TESTNET_PARAMS: Params = Params {
     sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
-    next_target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
-    max_block_parents: 10,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
+    max_block_parents: 10,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -364,15 +367,14 @@ pub const SIMNET_PARAMS: Params = Params {
     sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
-    next_target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
-    max_block_parents: 10,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
+    max_block_parents: 10,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -418,15 +420,14 @@ pub const DEVNET_PARAMS: Params = Params {
     sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
-    next_target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
-    max_block_parents: 10,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
     full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
+    max_block_parents: 10,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
