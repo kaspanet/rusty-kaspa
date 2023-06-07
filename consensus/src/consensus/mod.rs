@@ -33,6 +33,7 @@ use crate::{
         virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
         ProcessingCounters,
     },
+    processes::window::{WindowManager, WindowType},
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
@@ -208,7 +209,7 @@ impl Consensus {
             services.coinbase_manager.clone(),
             services.mass_calculator.clone(),
             services.transaction_validator.clone(),
-            services.past_median_time_manager.clone(),
+            services.window_manager.clone(),
             params.max_block_mass,
             params.genesis.clone(),
             pruning_lock.clone(),
@@ -328,12 +329,12 @@ impl Consensus {
     }
 
     fn estimate_network_hashes_per_second_impl(&self, ghostdag_data: &GhostdagData, window_size: usize) -> ConsensusResult<u64> {
-        let window = match self.services.dag_traversal_manager.block_window(ghostdag_data, window_size) {
+        let window = match self.services.window_manager.block_window(ghostdag_data, WindowType::VaryingWindow(window_size)) {
             Ok(w) => w,
             Err(RuleError::InsufficientDaaWindowSize(s)) => return Err(DifficultyError::InsufficientWindowData(s).into()),
             Err(e) => panic!("unexpected error: {e}"),
         };
-        Ok(self.services.difficulty_manager.estimate_network_hashes_per_second(&window)?)
+        Ok(self.services.window_manager.estimate_network_hashes_per_second(window)?)
     }
 }
 
@@ -344,12 +345,12 @@ impl ConsensusApi for Consensus {
 
     fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
         let result = self.validate_and_insert_block_impl(BlockTask::Ordinary { block });
-        Box::pin(async move { result.await })
+        Box::pin(result)
     }
 
     fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
         let result = self.validate_and_insert_block_impl(BlockTask::Trusted { block: tb.block });
-        Box::pin(async move { result.await })
+        Box::pin(result)
     }
 
     fn validate_mempool_transaction_and_populate(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
@@ -402,7 +403,7 @@ impl ConsensusApi for Consensus {
 
     fn is_nearly_synced(&self) -> bool {
         // See comment within `config.is_nearly_synced`
-        self.config.is_nearly_synced(self.get_sink_timestamp())
+        self.config.is_nearly_synced(self.get_sink_timestamp(), self.headers_store.get_daa_score(self.get_sink()).unwrap())
     }
 
     fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
@@ -640,10 +641,11 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(hash)?;
         Ok(self
             .services
-            .dag_traversal_manager
-            .block_window(&self.ghostdag_primary_store.get_data(hash).unwrap(), self.config.difficulty_window_size)
+            .window_manager
+            .block_window(&self.ghostdag_primary_store.get_data(hash).unwrap(), WindowType::SampledDifficultyWindow)
             .unwrap()
-            .into_iter()
+            .deref()
+            .iter()
             .map(|block| block.0.hash)
             .collect())
     }

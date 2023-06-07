@@ -189,7 +189,7 @@ impl RpcApi for RpcCoreService {
 
             // A simple heuristic check which signals that the mined block is out of date
             // and should not be accepted unless user explicitly requests
-            let daa_window_size = self.config.difficulty_window_size as u64;
+            let daa_window_size = self.config.full_difficulty_window_size as u64;
             if virtual_daa_score > daa_window_size && block.header.daa_score < virtual_daa_score - daa_window_size {
                 // error = format!("Block rejected. Reason: block DAA score {0} is too far behind virtual's DAA score {1}", block.header.daa_score, virtual_daa_score)
                 return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) });
@@ -235,7 +235,8 @@ impl RpcApi for RpcCoreService {
             return Err(RpcError::CoinbasePayloadLengthAboveMax(self.config.max_coinbase_payload_len));
         }
 
-        let is_nearly_synced = self.config.is_nearly_synced(block_template.selected_parent_timestamp);
+        let is_nearly_synced =
+            self.config.is_nearly_synced(block_template.selected_parent_timestamp, block_template.selected_parent_daa_score);
         Ok(GetBlockTemplateResponse {
             block: (&block_template.block).into(),
             is_synced: self.flow_context.hub().has_peers() && is_nearly_synced,

@@ -1,8 +1,8 @@
 use crate::{
     consensus::{
         services::{
-            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbDifficultyManager, DbGhostdagManager, DbParentsManager,
-            DbPastMedianTimeManager, DbPruningPointManager,
+            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbPruningPointManager,
+            DbWindowManager,
         },
         storage::ConsensusStorage,
     },
@@ -57,8 +57,8 @@ pub struct HeaderProcessingContext {
 
     // Staging data
     pub ghostdag_data: Option<Vec<Arc<GhostdagData>>>,
-    pub block_window_for_difficulty: Option<BlockWindowHeap>,
-    pub block_window_for_past_median_time: Option<BlockWindowHeap>,
+    pub block_window_for_difficulty: Option<Arc<BlockWindowHeap>>,
+    pub block_window_for_past_median_time: Option<Arc<BlockWindowHeap>>,
     pub mergeset_non_daa: Option<BlockHashSet>,
     pub merge_depth_root: Option<Hash>,
     pub finality_point: Option<Hash>,
@@ -117,7 +117,6 @@ pub struct HeaderProcessor {
     pub(super) timestamp_deviation_tolerance: u64,
     pub(super) target_time_per_block: u64,
     pub(super) max_block_parents: u8,
-    pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
     pub(super) skip_proof_of_work: bool,
     pub(super) max_block_level: BlockLevel,
@@ -143,8 +142,7 @@ pub struct HeaderProcessor {
     // Managers and services
     pub(super) ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     pub(super) dag_traversal_manager: DbDagTraversalManager,
-    pub(super) difficulty_manager: DbDifficultyManager,
-    pub(super) past_median_time_manager: DbPastMedianTimeManager,
+    pub(super) window_manager: DbWindowManager,
     pub(super) depth_manager: DbBlockDepthManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) pruning_point_manager: DbPruningPointManager,
@@ -177,7 +175,6 @@ impl HeaderProcessor {
             body_sender,
             thread_pool,
             genesis: params.genesis.clone(),
-            difficulty_window_size: params.difficulty_window_size,
             db,
 
             relations_stores: storage.relations_stores.clone(),
@@ -196,9 +193,8 @@ impl HeaderProcessor {
 
             ghostdag_managers: services.ghostdag_managers.clone(),
             dag_traversal_manager: services.dag_traversal_manager.clone(),
-            difficulty_manager: services.difficulty_manager.clone(),
+            window_manager: services.window_manager.clone(),
             reachability_service: services.reachability_service.clone(),
-            past_median_time_manager: services.past_median_time_manager.clone(),
             depth_manager: services.depth_manager.clone(),
             pruning_point_manager: services.pruning_point_manager.clone(),
             parents_manager: services.parents_manager.clone(),
@@ -206,7 +202,8 @@ impl HeaderProcessor {
             task_manager: BlockTaskDependencyManager::new(),
             pruning_lock,
             counters,
-            timestamp_deviation_tolerance: params.timestamp_deviation_tolerance,
+            // TODO (HF): make sure to pass `sampled_timestamp_deviation_tolerance` and use according to HF activation score
+            timestamp_deviation_tolerance: params.full_timestamp_deviation_tolerance,
             target_time_per_block: params.target_time_per_block,
             max_block_parents: params.max_block_parents,
             mergeset_size_limit: params.mergeset_size_limit,
@@ -369,10 +366,10 @@ impl HeaderProcessor {
             self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap();
         }
         if let Some(window) = ctx.block_window_for_difficulty {
-            self.block_window_cache_for_difficulty.insert(ctx.hash, Arc::new(window));
+            self.block_window_cache_for_difficulty.insert(ctx.hash, window);
         }
         if let Some(window) = ctx.block_window_for_past_median_time {
-            self.block_window_cache_for_past_median_time.insert(ctx.hash, Arc::new(window));
+            self.block_window_cache_for_past_median_time.insert(ctx.hash, window);
         }
 
         self.daa_excluded_store.insert_batch(&mut batch, ctx.hash, Arc::new(ctx.mergeset_non_daa.unwrap())).unwrap();
@@ -490,8 +487,6 @@ impl HeaderProcessor {
         );
         ctx.ghostdag_data =
             Some(self.ghostdag_managers.iter().map(|manager_by_level| Arc::new(manager_by_level.genesis_ghostdag_data())).collect());
-        ctx.block_window_for_difficulty = Some(Default::default());
-        ctx.block_window_for_past_median_time = Some(Default::default());
         ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
