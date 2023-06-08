@@ -83,7 +83,7 @@ impl IbdFlow {
                 match self.ibd(relay_block).await {
                     Ok(_) => info!("IBD with peer {} completed successfully", self.router),
                     Err(e) => {
-                        info!("IBD with peer {} completed with error: {:?}", self.router, e);
+                        info!("IBD with peer {} completed with error: {}", self.router, e);
                         return Err(e);
                     }
                 }
@@ -215,6 +215,10 @@ impl IbdFlow {
 
         if pruning_points.is_empty() || pruning_points.last().unwrap().hash != proof_pruning_point {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the last pruning point in the list"));
+        }
+
+        if pruning_points.first().unwrap().hash != self.ctx.config.genesis.hash {
+            return Err(ProtocolError::Other("the first pruning point in the list is expected to be genesis"));
         }
 
         // TODO: validate pruning points before importing
