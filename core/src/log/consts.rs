@@ -9,7 +9,7 @@ pub const LOG_FILE_BASE_ROLLS: u32 = 1;
 pub const LOG_FILE_MAX_ROLLS: u32 = 8;
 pub const LOG_FILE_MAX_SIZE: u64 = 100_000_000;
 
-/// Console (stdout) log line pattern, with explicit UTC time zone denoted by the suffix Z
-pub const LOG_LINE_PATTERN_COLORED: &str = "{d(%Y-%m-%d %H:%M:%S%.3f)}Z [{h({({l}):5.5})}] {m}{n}";
-/// File log line pattern, with explicit UTC time zone denoted by the suffix Z
-pub const LOG_LINE_PATTERN: &str = "{d(%Y-%m-%d %H:%M:%S%.3f)}Z [{({l}):5.5}] {m}{n}";
+/// Console (stdout) log line pattern, with offset from the local time to UTC (UTC being +00:00)
+pub const LOG_LINE_PATTERN_COLORED: &str = "{d(%Y-%m-%d %H:%M:%S%.3f%:z)} [{h({({l}):5.5})}] {m}{n}";
+/// File log line pattern, with offset from the local time to UTC (UTC being +00:00)
+pub const LOG_LINE_PATTERN: &str = "{d(%Y-%m-%d %H:%M:%S%.3f%:z)} [{({l}):5.5}] {m}{n}";
