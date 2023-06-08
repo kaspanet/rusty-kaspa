@@ -12,7 +12,6 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
     IncomingRoute, Router,
 };
-use kaspa_utils::option::OptionExtensions;
 use std::{collections::VecDeque, ops::Deref, sync::Arc};
 use tokio::sync::mpsc::{error::TrySendError, Sender};
 
@@ -236,6 +235,6 @@ impl HandleRelayInvsFlow {
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::BlockLocator)?;
         let locator_hashes: Vec<Hash> = msg.try_into()?;
-        Ok(locator_hashes.into_iter().any(|p| consensus.get_block_status(p).has_value_and(|s| !s.is_header_only())))
+        Ok(locator_hashes.into_iter().any(|p| consensus.get_block_status(p).is_some_and(|s| !s.is_header_only())))
     }
 }

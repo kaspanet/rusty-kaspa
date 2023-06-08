@@ -94,7 +94,7 @@ impl OrphanBlocksPool {
                     .direct_parents()
                     .iter()
                     .copied()
-                    .all(|p| processing.contains_key(&p) || consensus.get_block_status(p).has_value_and(|s| !s.is_header_only()));
+                    .all(|p| processing.contains_key(&p) || consensus.get_block_status(p).is_some_and(|s| !s.is_header_only()));
                 if processable {
                     let orphan_block = entry.remove();
                     processing.insert(orphan_hash, (orphan_block.clone(), consensus.validate_and_insert_block(orphan_block)));
