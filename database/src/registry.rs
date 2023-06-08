@@ -37,6 +37,10 @@ pub enum DatabaseStorePrefixes {
     VirtualUtxoset = 27,
     VirtualState = 28,
 
+    // ---- Metadata ----
+    MultiConsensusMetadata = 124,
+    ConsensusEntries = 125,
+
     // ---- Components ----
     Addresses = 128,
     BannedAddresses = 129,
@@ -66,7 +70,7 @@ impl From<DatabaseStorePrefixes> for u8 {
 impl AsRef<[u8]> for DatabaseStorePrefixes {
     fn as_ref(&self) -> &[u8] {
         // SAFETY: enum has repr(u8)
-        std::slice::from_ref(unsafe { std::mem::transmute(self) })
+        std::slice::from_ref(unsafe { &*(self as *const Self as *const u8) })
     }
 }
 

@@ -22,6 +22,7 @@ pub struct Defaults {
     pub simnet: bool,
     pub archival: bool,
     pub sanity: bool,
+    pub yes: bool,
 }
 
 impl Default for Defaults {
@@ -43,6 +44,7 @@ impl Default for Defaults {
             simnet: false,
             archival: false,
             sanity: false,
+            yes: false,
         }
     }
 }
@@ -74,6 +76,7 @@ pub struct Args {
     pub simnet: bool,
     pub archival: bool,
     pub sanity: bool,
+    pub yes: bool,
 }
 
 pub fn cli(defaults: &Defaults) -> Command {
@@ -181,6 +184,7 @@ pub fn cli(defaults: &Defaults) -> Command {
         .arg(arg!(--simnet "Use the simulation test network"))
         .arg(arg!(--archival "Run as an archival node: avoids deleting old block data when moving the pruning point (Warning: heavy disk usage)"))
         .arg(arg!(--sanity "Enable various sanity checks which might be compute-intensive (mostly performed during pruning)"))
+        .arg(arg!(--yes "Answer yes to all interactive console questions"))
         .arg(
             Arg::new("user_agent_comments")
                 .long("uacomment")
@@ -217,6 +221,7 @@ impl Args {
             simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
             archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
             sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
+            yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
             user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
         }
     }

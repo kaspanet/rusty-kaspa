@@ -180,7 +180,7 @@ impl IbdFlow {
         syncer_header_selected_tip: Hash,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
-        info!("Starting IBD with headers proof");
+        info!("Starting IBD with headers proof with peer {}", self.router);
 
         let session = staging.session().await;
         let consensus = session.deref();
