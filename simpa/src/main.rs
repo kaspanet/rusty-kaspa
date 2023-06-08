@@ -167,8 +167,9 @@ fn main() {
 }
 
 fn adjust_consensus_params(args: &Args, params: &mut Params) {
-    // We have no actual PoW in the simulation, so the true max is most reflective
-    params.max_block_level = BlockLevel::MAX;
+    // We have no actual PoW in the simulation, so the true max is most reflective,
+    // however we avoid the actual max since it is reserved for the DB prefix scheme
+    params.max_block_level = BlockLevel::MAX - 1;
     params.genesis.timestamp = 0;
     if args.bps * args.delay > 2.0 {
         let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);

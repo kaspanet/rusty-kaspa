@@ -5,7 +5,7 @@ use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomH
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
-use kaspa_database::registry::DatabaseStorePrefixes;
+use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
@@ -246,6 +246,7 @@ pub struct DbGhostdagStore {
 
 impl DbGhostdagStore {
     pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+        assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
         let prefix = DatabaseStorePrefixes::Ghostdag.into_iter().chain(lvl_bytes).collect_vec();
         let compact_prefix = DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(lvl_bytes).collect_vec();

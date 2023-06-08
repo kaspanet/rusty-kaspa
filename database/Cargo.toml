@@ -21,3 +21,6 @@ smallvec.workspace = true
 itertools.workspace = true
 num_cpus.workspace = true
 tempfile.workspace = true
+
+enum-primitive-derive = "0.2.2"
+num-traits = "0.2.15"

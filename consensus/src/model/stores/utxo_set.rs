@@ -35,8 +35,8 @@ struct UtxoKey([u8; UTXO_KEY_SIZE]);
 
 impl AsRef<[u8]> for UtxoKey {
     fn as_ref(&self) -> &[u8] {
-        // In every practical case the index will need at most 2 bytes, so the overall DB key structure
-        // will be { prefix byte || prefix sep byte || TX ID (32 bytes) || TX INDEX (2) } = 36 bytes
+        // In every practical case a transaction output index needs at most 2 bytes, so the overall
+        // DB key structure will be { prefix byte || TX ID (32 bytes) || TX INDEX (2) } = 35 bytes
         // which fit on the smallvec without requiring heap allocation (see key.rs)
         let rposition = self.0[kaspa_hashes::HASH_SIZE..].iter().rposition(|&v| v != 0).unwrap_or(0);
         &self.0[..=kaspa_hashes::HASH_SIZE + rposition]
@@ -53,7 +53,8 @@ impl TryFrom<&[u8]> for UtxoKey {
         if slice.len() < kaspa_hashes::HASH_SIZE + 1 {
             return Err("src slice is too short");
         }
-        // If the slice is shorter than HASH len + u32 len then we pad with zeros, effectively implementing the reverse logic of `AsRef`.
+        // If the slice is shorter than HASH len + u32 len then we pad with zeros, effectively
+        // implementing the inverse logic of `AsRef`.
         let mut bytes = [0; UTXO_KEY_SIZE];
         bytes[..slice.len()].copy_from_slice(slice);
         Ok(Self(bytes))

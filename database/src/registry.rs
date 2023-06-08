@@ -1,5 +1,10 @@
-use std::{mem::transmute, slice::from_ref};
+use enum_primitive_derive::Primitive;
 
+/// We use `u8::MAX` which is never a valid block level. Also note that through
+/// the [`DatabaseStorePrefixes`] enum we make sure it is not used as a prefix as well
+pub const SEPARATOR: u8 = u8::MAX;
+
+#[derive(Primitive, Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum DatabaseStorePrefixes {
     // ---- Consensus ----
@@ -40,6 +45,10 @@ pub enum DatabaseStorePrefixes {
     UtxoIndex = 192,
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
+
+    // ---- Separator ----
+    /// Reserved as a separator
+    Separator = SEPARATOR,
 }
 
 impl From<DatabaseStorePrefixes> for Vec<u8> {
@@ -56,7 +65,8 @@ impl From<DatabaseStorePrefixes> for u8 {
 
 impl AsRef<[u8]> for DatabaseStorePrefixes {
     fn as_ref(&self) -> &[u8] {
-        from_ref(unsafe { transmute(self) })
+        // SAFETY: enum has repr(u8)
+        std::slice::from_ref(unsafe { std::mem::transmute(self) })
     }
 }
 
@@ -75,6 +85,11 @@ mod tests {
     #[test]
     fn test_as_ref() {
         let prefix = DatabaseStorePrefixes::AcceptanceData;
-        assert_eq!([1u8], prefix.as_ref());
+        assert_eq!(&[prefix as u8], prefix.as_ref());
+        assert_eq!(
+            std::mem::size_of::<u8>(),
+            std::mem::size_of::<DatabaseStorePrefixes>(),
+            "DatabaseStorePrefixes is expected to have the same memory layout of u8"
+        );
     }
 }

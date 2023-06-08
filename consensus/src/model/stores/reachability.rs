@@ -1,11 +1,11 @@
 use crate::processes::reachability::interval::Interval;
 use kaspa_consensus_core::{
     blockhash::{self, BlockHashes},
-    BlockHashMap, BlockHashSet, BlockHasher, HashMapCustomHasher,
+    BlockHashMap, BlockHashSet, BlockHasher, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_database::{
     prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter, StoreError, DB},
-    registry::DatabaseStorePrefixes,
+    registry::{DatabaseStorePrefixes, SEPARATOR},
 };
 use kaspa_hashes::Hash;
 
@@ -69,19 +69,17 @@ pub struct DbReachabilityStore {
     prefix_end: u8,
 }
 
-const DEFAULT_PREFIX_END: u8 = u8::MAX;
-
 impl DbReachabilityStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self::new_with_prefix_end(db, cache_size, DEFAULT_PREFIX_END)
+        Self::with_prefix_end(db, cache_size, DatabaseStorePrefixes::Separator.into())
     }
 
-    pub fn new_with_alternative_prefix_end(db: Arc<DB>, cache_size: u64, prefix_end: u8) -> Self {
-        assert_ne!(DEFAULT_PREFIX_END, prefix_end, "this prefix end is already used as the default one");
-        Self::new_with_prefix_end(db, cache_size, prefix_end)
+    pub fn with_block_level(db: Arc<DB>, cache_size: u64, level: BlockLevel) -> Self {
+        assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
+        Self::with_prefix_end(db, cache_size, level)
     }
 
-    fn new_with_prefix_end(db: Arc<DB>, cache_size: u64, prefix_end: u8) -> Self {
+    fn with_prefix_end(db: Arc<DB>, cache_size: u64, prefix_end: u8) -> Self {
         let store_prefix = DatabaseStorePrefixes::Reachability.into_iter().chain(once(prefix_end)).collect_vec();
         let reindex_root_prefix = DatabaseStorePrefixes::ReachabilityReindexRoot.into_iter().chain(once(prefix_end)).collect_vec();
         Self {
@@ -93,7 +91,7 @@ impl DbReachabilityStore {
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new_with_prefix_end(Arc::clone(&self.db), cache_size, self.prefix_end)
+        Self::with_prefix_end(Arc::clone(&self.db), cache_size, self.prefix_end)
     }
 }
 

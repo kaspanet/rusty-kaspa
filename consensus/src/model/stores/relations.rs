@@ -6,7 +6,7 @@ use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, DbWriter};
 use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
-use kaspa_database::registry::DatabaseStorePrefixes;
+use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
@@ -42,6 +42,7 @@ pub struct DbRelationsStore {
 
 impl DbRelationsStore {
     pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+        assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
         let parents_prefix = DatabaseStorePrefixes::RelationsParents.into_iter().chain(lvl_bytes).collect_vec();
         let children_prefix = DatabaseStorePrefixes::RelationsChildren.into_iter().chain(lvl_bytes).collect_vec();
