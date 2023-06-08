@@ -13,10 +13,9 @@ use crate::{
 
 use itertools::Itertools;
 
+use kaspa_database::registry::DatabaseStorePrefixes;
 use parking_lot::RwLock;
 use std::{cmp::max, ops::DerefMut, sync::Arc};
-
-const REACHABILITY_RELATIONS_PREFIX: &[u8] = b"reachability-";
 
 pub struct ConsensusStorage {
     // DB
@@ -74,8 +73,11 @@ impl ConsensusStorage {
         ));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), extended_pruning_size_for_caches)));
         // Reachability relations are only read during pruning, so finality depth is sufficient for cache size
-        let reachability_relations_store =
-            Arc::new(RwLock::new(DbRelationsStore::with_prefix(db.clone(), REACHABILITY_RELATIONS_PREFIX, config.finality_depth)));
+        let reachability_relations_store = Arc::new(RwLock::new(DbRelationsStore::with_prefix(
+            db.clone(),
+            DatabaseStorePrefixes::ReachabilityRelations.as_ref(),
+            config.finality_depth,
+        )));
         let ghostdag_stores = Arc::new(
             (0..=params.max_block_level)
                 .map(|level| {

@@ -4,6 +4,7 @@ use kaspa_consensus_core::{header::Header, BlockHasher, BlockLevel};
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
 use kaspa_database::prelude::{StoreError, StoreResult};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -29,9 +30,6 @@ pub trait HeaderStore: HeaderStoreReader {
     fn insert(&self, hash: Hash, header: Arc<Header>, block_level: BlockLevel) -> Result<(), StoreError>;
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
-
-const HEADERS_STORE_PREFIX: &[u8] = b"headers";
-const COMPACT_HEADER_DATA_STORE_PREFIX: &[u8] = b"compact-header-data";
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct CompactHeaderData {
@@ -59,8 +57,8 @@ impl DbHeadersStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self {
             db: Arc::clone(&db),
-            compact_headers_access: CachedDbAccess::new(Arc::clone(&db), cache_size, COMPACT_HEADER_DATA_STORE_PREFIX.to_vec()),
-            headers_access: CachedDbAccess::new(db, cache_size, HEADERS_STORE_PREFIX.to_vec()),
+            compact_headers_access: CachedDbAccess::new(Arc::clone(&db), cache_size, DatabaseStorePrefixes::HeadersCompact.into()),
+            headers_access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::Headers.into()),
         }
     }
 

@@ -6,6 +6,7 @@ use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
@@ -31,8 +32,6 @@ pub trait TipsStore: TipsStoreReader {
     fn prune_tips_with_writer(&mut self, writer: impl DbWriter, pruned_tips: &[Hash]) -> StoreResult<()>;
 }
 
-pub const STORE_NAME: &[u8] = b"body-tips";
-
 /// A DB + cache implementation of `TipsStore` trait
 #[derive(Clone)]
 pub struct DbTipsStore {
@@ -42,7 +41,7 @@ pub struct DbTipsStore {
 
 impl DbTipsStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_NAME.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, DatabaseStorePrefixes::Tips.into()) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {

@@ -53,7 +53,7 @@ impl UtxoIndexApi for UtxoIndex {
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         trace!("[{0}] retrieving utxos from {1} script public keys", IDENT, script_public_keys.len());
 
-        self.store.get_utxos_by_script_public_key(&script_public_keys)
+        self.store.get_utxos_by_script_public_key(script_public_keys)
     }
 
     /// Retrieve the stored tips of the utxoindex.
