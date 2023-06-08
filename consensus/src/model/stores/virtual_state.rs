@@ -7,6 +7,7 @@ use kaspa_consensus_core::{
 use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use kaspa_database::prelude::{StoreError, DB};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use rocksdb::WriteBatch;
@@ -72,8 +73,6 @@ impl VirtualState {
     }
 }
 
-const VIRTUAL_UTXO_SET: &[u8] = b"virtual-utxo-set";
-
 /// Used in order to group virtual related stores under a single lock
 pub struct VirtualStores {
     pub state: DbVirtualStateStore,
@@ -82,7 +81,10 @@ pub struct VirtualStores {
 
 impl VirtualStores {
     pub fn new(db: Arc<DB>, utxoset_cache_size: u64) -> Self {
-        Self { state: DbVirtualStateStore::new(db.clone()), utxo_set: DbUtxoSetStore::new(db, utxoset_cache_size, VIRTUAL_UTXO_SET) }
+        Self {
+            state: DbVirtualStateStore::new(db.clone()),
+            utxo_set: DbUtxoSetStore::new(db, utxoset_cache_size, DatabaseStorePrefixes::VirtualUtxoset.into()),
+        }
     }
 }
 
@@ -95,8 +97,6 @@ pub trait VirtualStateStore: VirtualStateStoreReader {
     fn set(&mut self, state: Arc<VirtualState>) -> StoreResult<()>;
 }
 
-const STORE_PREFIX: &[u8] = b"virtual-state";
-
 /// A DB + cache implementation of `VirtualStateStore` trait
 #[derive(Clone)]
 pub struct DbVirtualStateStore {
@@ -106,7 +106,7 @@ pub struct DbVirtualStateStore {
 
 impl DbVirtualStateStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, DatabaseStorePrefixes::VirtualState.into()) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {
