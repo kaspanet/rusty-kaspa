@@ -205,6 +205,7 @@ async fn double_search_disqualified_test() {
         .edit_consensus_params(|p| {
             p.max_block_parents = 4;
             p.mergeset_size_limit = 10;
+            p.min_difficulty_window_len = p.full_difficulty_window_size;
         })
         .build();
     let mut ctx = TestContext::new(TestConsensus::new(&config));

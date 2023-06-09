@@ -5,6 +5,7 @@ use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomH
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
+use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
@@ -234,9 +235,6 @@ pub trait GhostdagStore: GhostdagStoreReader {
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
-const STORE_PREFIX: &[u8] = b"block-ghostdag-data";
-const COMPACT_STORE_PREFIX: &[u8] = b"compact-block-ghostdag-data";
-
 /// A DB + cache implementation of `GhostdagStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbGhostdagStore {
@@ -248,9 +246,10 @@ pub struct DbGhostdagStore {
 
 impl DbGhostdagStore {
     pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+        assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
-        let prefix = STORE_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
-        let compact_prefix = COMPACT_STORE_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
+        let prefix = DatabaseStorePrefixes::Ghostdag.into_iter().chain(lvl_bytes).collect_vec();
+        let compact_prefix = DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(lvl_bytes).collect_vec();
         Self {
             db: Arc::clone(&db),
             level,
@@ -369,6 +368,10 @@ impl MemoryGhostdagStore {
             blues_anticone_sizes_map: RefCell::new(BlockHashMap::new()),
         }
     }
+
+    pub fn key_not_found_error(hash: Hash) -> StoreError {
+        StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Ghostdag.as_ref(), hash))
+    }
 }
 
 impl Default for MemoryGhostdagStore {
@@ -406,48 +409,48 @@ impl GhostdagStoreReader for MemoryGhostdagStore {
     fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError> {
         match self.blue_score_map.borrow().get(&hash) {
             Some(blue_score) => Ok(*blue_score),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError> {
         match self.blue_work_map.borrow().get(&hash) {
             Some(blue_work) => Ok(*blue_work),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_selected_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
         match self.selected_parent_map.borrow().get(&hash) {
             Some(selected_parent) => Ok(*selected_parent),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_mergeset_blues(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.mergeset_blues_map.borrow().get(&hash) {
             Some(mergeset_blues) => Ok(BlockHashes::clone(mergeset_blues)),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_mergeset_reds(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.mergeset_reds_map.borrow().get(&hash) {
             Some(mergeset_reds) => Ok(BlockHashes::clone(mergeset_reds)),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_blues_anticone_sizes(&self, hash: Hash) -> Result<HashKTypeMap, StoreError> {
         match self.blues_anticone_sizes_map.borrow().get(&hash) {
             Some(sizes) => Ok(HashKTypeMap::clone(sizes)),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_data(&self, hash: Hash) -> Result<Arc<GhostdagData>, StoreError> {
         if !self.has(hash)? {
-            return Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash)));
+            return Err(Self::key_not_found_error(hash));
         }
         Ok(Arc::new(GhostdagData::new(
             self.blue_score_map.borrow()[&hash],

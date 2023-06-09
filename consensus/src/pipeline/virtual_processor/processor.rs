@@ -1,8 +1,8 @@
 use crate::{
     consensus::{
         services::{
-            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbDifficultyManager, DbGhostdagManager, DbParentsManager,
-            DbPastMedianTimeManager, DbPruningPointManager,
+            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbPruningPointManager,
+            DbWindowManager,
         },
         storage::ConsensusStorage,
     },
@@ -41,6 +41,7 @@ use crate::{
         coinbase::CoinbaseManager,
         ghostdag::ordering::SortableBlock,
         transaction_validator::{errors::TxResult, TransactionValidator},
+        window::WindowManager,
     },
 };
 use kaspa_consensus_core::{
@@ -128,10 +129,9 @@ pub struct VirtualStateProcessor {
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) relations_service: MTRelationsService<DbRelationsStore>,
     pub(super) dag_traversal_manager: DbDagTraversalManager,
-    pub(super) difficulty_manager: DbDifficultyManager,
+    pub(super) window_manager: DbWindowManager,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) past_median_time_manager: DbPastMedianTimeManager,
     pub(super) pruning_point_manager: DbPruningPointManager,
     pub(super) parents_manager: DbParentsManager,
     pub(super) depth_manager: DbBlockDepthManager,
@@ -169,7 +169,7 @@ impl VirtualStateProcessor {
 
             genesis: params.genesis.clone(),
             max_block_parents: params.max_block_parents,
-            difficulty_window_size: params.difficulty_window_size,
+            difficulty_window_size: params.full_difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
             pruning_depth: params.pruning_depth,
 
@@ -192,10 +192,9 @@ impl VirtualStateProcessor {
             reachability_service: services.reachability_service.clone(),
             relations_service: services.relations_service.clone(),
             dag_traversal_manager: services.dag_traversal_manager.clone(),
-            difficulty_manager: services.difficulty_manager.clone(),
+            window_manager: services.window_manager.clone(),
             coinbase_manager: services.coinbase_manager.clone(),
             transaction_validator: services.transaction_validator.clone(),
-            past_median_time_manager: services.past_median_time_manager.clone(),
             pruning_point_manager: services.pruning_point_manager.clone(),
             parents_manager: services.parents_manager.clone(),
             depth_manager: services.depth_manager.clone(),
@@ -416,15 +415,12 @@ impl VirtualStateProcessor {
         let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset);
 
         // Calc virtual DAA score, difficulty bits and past median time
-        let window = self.dag_traversal_manager.block_window(&virtual_ghostdag_data, self.difficulty_window_size)?;
-        let (virtual_daa_score, mergeset_non_daa) = self
-            .difficulty_manager
-            .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &virtual_ghostdag_data);
-        let virtual_bits = self.difficulty_manager.calculate_difficulty_bits(&window);
-        let virtual_past_median_time = self.past_median_time_manager.calc_past_median_time(&virtual_ghostdag_data)?.0;
+        let virtual_daa_window = self.window_manager.block_daa_window(&virtual_ghostdag_data)?;
+        let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_ghostdag_data, &virtual_daa_window);
+        let virtual_past_median_time = self.window_manager.calc_past_median_time(&virtual_ghostdag_data)?.0;
 
         // Calc virtual UTXO state relative to selected parent
-        self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_score);
+        self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_window.daa_score);
 
         // Update the accumulated diff
         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
@@ -432,14 +428,14 @@ impl VirtualStateProcessor {
         // Build the new virtual state
         let new_virtual_state = Arc::new(VirtualState::new(
             virtual_parents,
-            virtual_daa_score,
+            virtual_daa_window.daa_score,
             virtual_bits,
             virtual_past_median_time,
             ctx.multiset_hash,
             ctx.mergeset_diff,
             ctx.accepted_tx_ids,
             ctx.mergeset_rewards,
-            mergeset_non_daa,
+            virtual_daa_window.mergeset_non_daa,
             virtual_ghostdag_data,
         ));
 
@@ -727,7 +723,14 @@ impl VirtualStateProcessor {
             header_pruning_point,
         );
         let selected_parent_timestamp = self.headers_store.get_timestamp(virtual_state.ghostdag_data.selected_parent).unwrap();
-        Ok(BlockTemplate::new(MutableBlock::new(header, txs), miner_data, coinbase.has_red_reward, selected_parent_timestamp))
+        let selected_parent_daa_score = self.headers_store.get_daa_score(virtual_state.ghostdag_data.selected_parent).unwrap();
+        Ok(BlockTemplate::new(
+            MutableBlock::new(header, txs),
+            miner_data,
+            coinbase.has_red_reward,
+            selected_parent_timestamp,
+            selected_parent_daa_score,
+        ))
     }
 
     /// Make sure pruning point-related stores are initialized
