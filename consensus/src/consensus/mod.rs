@@ -312,18 +312,20 @@ impl Consensus {
     }
 
     pub fn signal_exit(&self) {
+        trace!("exiting consensus");
         self.block_sender.send(BlockProcessingMessage::Exit).unwrap();
         self.pruning_sender.send(PruningProcessingMessage::Exit).unwrap();
-        trace!("waiting on body_processor");
+        trace!("waiting on body_processor...");
         self.body_processor.shutdown_wait();
-        trace!("waiting on body_processor");
+        trace!("waiting on header_processor...");
         self.header_processor.shutdown_wait();
-        trace!("waiting on body_processor");
+        trace!("waiting on virtual_processor...");
         self.virtual_processor.shutdown_wait();
-        trace!("waiting on body_processor");
+        trace!("waiting on pruning_processor...");
         self.pruning_processor.shutdown_wait();
-        trace!("signaling consensus shutdown");
+        trace!("signaling consensus shutdown...");
         self.notification_root.send(ConsensusNotification::ConsensusShutdown(ConsensusShutdownNotification {})).unwrap();
+        trace!("consensus exit success");
     }
 
     pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {
