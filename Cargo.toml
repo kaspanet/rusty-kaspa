@@ -169,7 +169,7 @@ num = "0.4.0"
 rand_core = { version = "0.6", features = ["std"] }
 bs58 = { version = "0.4", features = ["check"], default-features = false }
 hmac = { version = "0.12", default-features = false }
-secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+secp256k1 = { version = "0.24", features = ["global-context", "rand-std", "serde"] }
 #sha2 = {version = "0.10", default-features = false}
 zeroize = { version = "1", default-features = false, features=["alloc"] }
 ripemd = { version = "0.1", default-features = false }
