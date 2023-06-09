@@ -118,9 +118,10 @@ pub fn sign_mutable_transaction(
 pub fn sign_transaction(mtx: SignableTransaction, private_keys: &Vec<[u8; 32]>, verify_sig: bool) -> Result<SignableTransaction> {
     let mtx = sign(mtx, private_keys)?;
     if verify_sig {
-        let mtx_clone = mtx.clone();
-        log_trace!("sign_transaction mtx: {mtx_clone:?}");
-        let tx_verifiable = mtx_clone.as_verifiable();
+        // let mtx_clone = mtx.clone();
+        log_trace!("sign_transaction mtx: {mtx:?}");
+        // let tx_verifiable = mtx_clone.as_verifiable();
+        let tx_verifiable = mtx.as_verifiable();
         log_trace!("verify...");
         verify(&tx_verifiable)?;
     }

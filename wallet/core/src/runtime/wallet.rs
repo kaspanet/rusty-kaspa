@@ -16,7 +16,6 @@ use kaspa_notify::{
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
 use kaspa_rpc_core::{
-    api::rpc::RpcApi,
     notify::{connection::ChannelConnection, mode::NotificationMode},
     Notification,
 };
