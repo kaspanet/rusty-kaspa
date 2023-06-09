@@ -203,10 +203,22 @@ impl Address {
         self.prefix.to_string()
     }
 
+    // #[wasm_bindgen(getter, js_name = "networkType")]
+    // pub fn network_type(&self) -> NetworkType {
+    //     self.prefix.into()
+    // }
+
+    // #[wasm_bindgen(setter, js_name = "networkType")]
+    // pub fn set_network_type(&mut self, network_type : NetworkType) {
+    //     self.prefix = network_type.into();
+    // }
+
     #[wasm_bindgen(setter)]
     pub fn set_prefix(&mut self, prefix: &str) {
         self.prefix = Prefix::try_from(prefix).unwrap_or_else(|err| panic!("Address::prefix() - invalid prefix `{prefix}`: {err}"));
     }
+
+
 
     #[wasm_bindgen(getter)]
     pub fn payload(&self) -> String {

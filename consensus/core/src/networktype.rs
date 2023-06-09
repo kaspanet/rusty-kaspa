@@ -55,6 +55,14 @@ impl NetworkType {
     }
 }
 
+// #[wasm_bindgen] 
+// impl NetworkType {
+//     pub fn as_address_prefix_str(&self) -> String {
+//         let prefix : Prefix = self.clone().into();
+//         prefix.to_string()
+//     }
+// }
+
 impl TryFrom<Prefix> for NetworkType {
     type Error = NetworkTypeError;
     fn try_from(prefix: Prefix) -> Result<Self, Self::Error> {
