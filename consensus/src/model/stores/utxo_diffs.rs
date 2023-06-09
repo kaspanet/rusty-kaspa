@@ -4,6 +4,7 @@ use kaspa_consensus_core::{utxo::utxo_diff::UtxoDiff, BlockHasher};
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
@@ -22,8 +23,6 @@ pub trait UtxoDiffsStore: UtxoDiffsStoreReader {
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
-const STORE_PREFIX: &[u8] = b"utxo-diffs";
-
 /// A DB + cache implementation of `UtxoDifferencesStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbUtxoDiffsStore {
@@ -33,7 +32,7 @@ pub struct DbUtxoDiffsStore {
 
 impl DbUtxoDiffsStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::UtxoDiffs.into()) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {

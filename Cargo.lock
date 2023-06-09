@@ -985,6 +985,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
 
 [[package]]
+name = "enum-primitive-derive"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c375b9c5eadb68d0a6efee2999fef292f45854c3444c86f09d8ab086ba942b0e"
+dependencies = [
+ "num-traits",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "errno"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1617,6 +1628,7 @@ dependencies = [
  "kaspa-txscript-errors",
  "kaspa-utils",
  "log",
+ "once_cell",
  "parking_lot",
  "rand 0.8.5",
  "rand_distr",
@@ -1711,16 +1723,19 @@ name = "kaspa-database"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "enum-primitive-derive",
  "faster-hex",
  "indexmap",
  "itertools 0.10.5",
  "kaspa-hashes",
  "kaspa-utils",
+ "num-traits",
  "num_cpus",
  "parking_lot",
  "rand 0.8.5",
  "rocksdb",
  "serde",
+ "smallvec",
  "tempfile",
  "thiserror",
 ]

@@ -3,13 +3,11 @@ use std::sync::Arc;
 use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
 use super::utxo_set::DbUtxoSetStore;
-
-const PRUNING_UTXO_SET: &[u8] = b"pruning-utxo-set";
-const PRUNING_UTXOSET_POSITION_KEY: &[u8] = b"pruning-utxoset-position";
 
 /// Used in order to group stores related to the pruning point utxoset under a single lock
 pub struct PruningUtxosetStores {
@@ -20,8 +18,8 @@ pub struct PruningUtxosetStores {
 impl PruningUtxosetStores {
     pub fn new(db: Arc<DB>, utxoset_cache_size: u64) -> Self {
         Self {
-            utxo_set: DbUtxoSetStore::new(db.clone(), utxoset_cache_size, PRUNING_UTXO_SET),
-            utxoset_position_access: CachedDbItem::new(db, PRUNING_UTXOSET_POSITION_KEY.to_vec()),
+            utxo_set: DbUtxoSetStore::new(db.clone(), utxoset_cache_size, DatabaseStorePrefixes::PruningUtxoset.into()),
+            utxoset_position_access: CachedDbItem::new(db, DatabaseStorePrefixes::PruningUtxosetPosition.into()),
         }
     }
 

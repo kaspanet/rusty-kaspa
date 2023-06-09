@@ -2,7 +2,10 @@ use super::genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TEST
 use crate::{networktype::NetworkType, BlockLevel, KType};
 use kaspa_addresses::Prefix;
 use kaspa_math::Uint256;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    cmp::min,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
@@ -14,14 +17,39 @@ pub struct Params {
     pub net_suffix: Option<u32>,
     pub genesis: GenesisBlock,
     pub ghostdag_k: KType,
-    pub timestamp_deviation_tolerance: u64,
+
+    /// Timestamp deviation tolerance expressed in number of blocks
+    pub full_timestamp_deviation_tolerance: u64,
+
+    /// Timestamp deviation tolerance expressed in number of un-sampled blocks when a sampled window is used
+    pub sampled_timestamp_deviation_tolerance: u64,
+
+    /// Block sample rate for filling the past median time window (selects one every N blocks)
+    pub past_median_time_sample_rate: u64,
+
+    /// Current/legacy target time per block
     pub target_time_per_block: u64,
-    pub max_block_parents: u8,
+
+    /// DAA score from which the window sampling starts for difficulty and past median time calculation
+    pub sampling_activation_daa_score: u64,
+
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
-    pub max_difficulty: Uint256,
-    pub max_difficulty_f64: f64,
-    /// Size of window that is inspected to calculate the required difficulty of each block
-    pub difficulty_window_size: usize,
+    pub max_difficulty_target: Uint256,
+    pub max_difficulty_target_f64: f64,
+
+    /// Block sample rate for filling the difficulty window (selects one every N blocks)
+    pub difficulty_sample_rate: u64,
+
+    /// Size of sampled blocks window that is inspected to calculate the required difficulty of each block
+    pub sampled_difficulty_window_size: usize,
+
+    /// Size of full blocks window that is inspected to calculate the required difficulty of each block
+    pub full_difficulty_window_size: usize,
+
+    /// The minimum length a difficulty window (full or sampled) must have to trigger a DAA calculation
+    pub min_difficulty_window_len: usize,
+
+    pub max_block_parents: u8,
     pub mergeset_size_limit: u64,
     pub merge_depth: u64,
     pub finality_depth: u64,
@@ -49,23 +77,122 @@ fn unix_now() -> u64 {
 }
 
 impl Params {
-    pub fn expected_daa_window_duration_in_milliseconds(&self) -> u64 {
-        self.target_time_per_block * self.difficulty_window_size as u64
+    /// Returns the size of the full blocks window that is inspected to calculate the past median time
+    #[inline]
+    #[must_use]
+    pub fn full_past_median_time_window_size(&self) -> usize {
+        (2 * self.full_timestamp_deviation_tolerance - 1) as usize
+    }
+
+    /// Returns the size of the sampled blocks window that is inspected to calculate the past median time
+    #[inline]
+    #[must_use]
+    pub fn sampled_past_median_time_window_size(&self) -> usize {
+        let deviation_tolerance_sampled_blocks =
+            (self.sampled_timestamp_deviation_tolerance + self.past_median_time_sample_rate / 2) / self.past_median_time_sample_rate;
+        (2 * deviation_tolerance_sampled_blocks - 1) as usize
+    }
+
+    /// Returns the size of the blocks window that is inspected to calculate the past median time,
+    /// depending on a selected parent DAA score
+    #[inline]
+    #[must_use]
+    pub fn past_median_time_window_size(&self, selected_parent_daa_score: u64) -> usize {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            self.full_past_median_time_window_size()
+        } else {
+            self.sampled_past_median_time_window_size()
+        }
+    }
+
+    /// Returns the timestamp deviation tolerance,
+    /// depending on a selected parent DAA score
+    #[inline]
+    #[must_use]
+    pub fn timestamp_deviation_tolerance(&self, selected_parent_daa_score: u64) -> u64 {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            self.full_timestamp_deviation_tolerance
+        } else {
+            self.sampled_timestamp_deviation_tolerance
+        }
+    }
+
+    /// Returns the past median time sample rate,
+    /// depending on a selected parent DAA score
+    #[inline]
+    #[must_use]
+    pub fn past_median_time_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            1
+        } else {
+            self.past_median_time_sample_rate
+        }
+    }
+
+    /// Returns the size of the blocks window that is inspected to calculate the difficulty,
+    /// depending on a selected parent DAA score
+    #[inline]
+    #[must_use]
+    pub fn difficulty_window_size(&self, selected_parent_daa_score: u64) -> usize {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            self.full_difficulty_window_size
+        } else {
+            self.sampled_difficulty_window_size
+        }
+    }
+
+    /// Returns the difficulty sample rate,
+    /// depending on a selected parent DAA score
+    #[inline]
+    #[must_use]
+    pub fn difficulty_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            1
+        } else {
+            self.difficulty_sample_rate
+        }
+    }
+
+    /// Returns the target time per block,
+    /// depending on a selected parent DAA score
+    #[inline]
+    #[must_use]
+    pub fn target_time_per_block(&self, _selected_parent_daa_score: u64) -> u64 {
+        self.target_time_per_block
+    }
+
+    fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            self.target_time_per_block * self.full_difficulty_window_size as u64
+        } else {
+            self.target_time_per_block * self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
+        }
     }
 
     /// Returns the depth at which the anticone of a chain block is final (i.e., is a permanently closed set).
     /// Based on the analysis at https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf
     /// and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
     pub fn anticone_finalization_depth(&self) -> u64 {
-        self.finality_depth + self.merge_depth + 4 * self.mergeset_size_limit * self.ghostdag_k as u64 + 2 * self.ghostdag_k as u64 + 2
+        let anticone_finalization_depth = self.finality_depth
+            + self.merge_depth
+            + 4 * self.mergeset_size_limit * self.ghostdag_k as u64
+            + 2 * self.ghostdag_k as u64
+            + 2;
+
+        // In mainnet it's guaranteed that `self.pruning_depth` is greater
+        // than `anticone_finalization_depth`, but for some tests we use
+        // a smaller (unsafe) pruning depth, so we return the minimum of
+        // the two to avoid a situation where a block can be pruned and
+        // not finalized.
+        min(self.pruning_depth, anticone_finalization_depth)
     }
 
     /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
-    pub fn is_nearly_synced(&self, sink_timestamp: u64) -> bool {
+    pub fn is_nearly_synced(&self, sink_timestamp: u64, sink_daa_score: u64) -> bool {
         // We consider the node close to being synced if the sink (virtual selected parent) block
         // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
         // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
-        unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds()
+        unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds(sink_daa_score)
     }
 
     pub fn network_name(&self) -> String {
@@ -96,12 +223,23 @@ impl From<NetworkType> for Params {
     }
 }
 
-/// Highest proof of work difficulty value a Kaspa block can have for each network.
-/// It is the value 2^255 - 1.
+pub const TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
+pub const SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 600; // KIP-0004: 20/2 = 10 minutes, so 600 @ current BPS
+pub const PAST_MEDIAN_TIME_SAMPLE_RATE: u64 = 10; // KIP-0004: every 10 seconds, so 10 @ current BPS
+
+/// Highest proof of work difficulty target a Kaspa block can have for each network.
+/// This value is: 2^255 - 1.
 ///
 /// Computed value: `Uint256::from_u64(1).wrapping_shl(255) - 1.into()`
-pub const DIFFICULTY_MAX: Uint256 = Uint256([18446744073709551615, 18446744073709551615, 18446744073709551615, 9223372036854775807]);
-pub const DIFFICULTY_MAX_AS_F64: f64 = 5.78960446186581e76;
+pub const MAX_DIFFICULTY_TARGET: Uint256 =
+    Uint256([18446744073709551615, 18446744073709551615, 18446744073709551615, 9223372036854775807]);
+pub const MAX_DIFFICULTY_TARGET_AS_F64: f64 = 5.78960446186581e76;
+
+pub const MIN_DIFFICULTY_WINDOW_LEN: usize = 2;
+
+pub const DIFFICULTY_WINDOW_SIZE: usize = 2641;
+pub const DIFFICULTY_SAMPLE_WINDOW_SIZE: usize = 1001; // KIP-0004: 500 minutes, so 1000 + 1 @ current BPS and sample rate;
+pub const DIFFICULTY_SAMPLE_RATE: u64 = 30; // KIP-0004: every 30 seconds, so 30 @ current BPS
 
 const DEFAULT_GHOSTDAG_K: KType = 18;
 pub const MAINNET_PARAMS: Params = Params {
@@ -129,12 +267,18 @@ pub const MAINNET_PARAMS: Params = Params {
     net_suffix: None,
     genesis: GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
-    timestamp_deviation_tolerance: 132,
+    full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
+    sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
+    past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
+    sampling_activation_daa_score: u64::MAX,
+    max_difficulty_target: MAX_DIFFICULTY_TARGET,
+    max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
+    difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
+    sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
+    full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
+    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
-    difficulty_window_size: 2641,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -180,12 +324,18 @@ pub const TESTNET_PARAMS: Params = Params {
     net_suffix: Some(10),
     genesis: TESTNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
-    timestamp_deviation_tolerance: 132,
+    full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
+    sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
+    past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
+    sampling_activation_daa_score: u64::MAX,
+    max_difficulty_target: MAX_DIFFICULTY_TARGET,
+    max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
+    difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
+    sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
+    full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
+    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
-    difficulty_window_size: 2641,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -227,12 +377,18 @@ pub const SIMNET_PARAMS: Params = Params {
     net_suffix: None,
     genesis: SIMNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
-    timestamp_deviation_tolerance: 132,
+    full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
+    sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
+    past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
+    sampling_activation_daa_score: u64::MAX,
+    max_difficulty_target: MAX_DIFFICULTY_TARGET,
+    max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
+    difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
+    sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
+    full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
+    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
-    difficulty_window_size: 2641,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -274,12 +430,18 @@ pub const DEVNET_PARAMS: Params = Params {
     net_suffix: None,
     genesis: DEVNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
-    timestamp_deviation_tolerance: 132,
+    full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
+    sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
+    past_median_time_sample_rate: PAST_MEDIAN_TIME_SAMPLE_RATE,
     target_time_per_block: 1000,
+    sampling_activation_daa_score: u64::MAX,
+    max_difficulty_target: MAX_DIFFICULTY_TARGET,
+    max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
+    difficulty_sample_rate: DIFFICULTY_SAMPLE_RATE,
+    sampled_difficulty_window_size: DIFFICULTY_SAMPLE_WINDOW_SIZE,
+    full_difficulty_window_size: DIFFICULTY_WINDOW_SIZE,
+    min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
-    max_difficulty: DIFFICULTY_MAX,
-    max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
-    difficulty_window_size: 2641,
     mergeset_size_limit: (DEFAULT_GHOSTDAG_K as u64) * 10,
     merge_depth: 3600,
     finality_depth: 86400,
@@ -317,12 +479,12 @@ pub const DEVNET_PARAMS: Params = Params {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::params::{DIFFICULTY_MAX, DIFFICULTY_MAX_AS_F64};
+    use crate::config::params::{MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
     use kaspa_math::Uint256;
 
     #[test]
     fn test_difficulty_max_consts() {
-        assert_eq!(DIFFICULTY_MAX, Uint256::from_u64(1).wrapping_shl(255) - 1.into());
-        assert_eq!(DIFFICULTY_MAX_AS_F64, DIFFICULTY_MAX.as_f64());
+        assert_eq!(MAX_DIFFICULTY_TARGET, Uint256::from_u64(1).wrapping_shl(255) - 1.into());
+        assert_eq!(MAX_DIFFICULTY_TARGET_AS_F64, MAX_DIFFICULTY_TARGET.as_f64());
     }
 }

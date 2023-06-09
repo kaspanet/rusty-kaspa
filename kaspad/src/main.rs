@@ -135,6 +135,30 @@ fn validate_config_and_args(_config: &Arc<Config>, args: &Args) -> ConfigResult<
     Ok(())
 }
 
+fn get_user_approval_or_exit(message: &str, approve: bool) {
+    if approve {
+        return;
+    }
+    println!("{}", message);
+    let mut input = String::new();
+    match std::io::stdin().read_line(&mut input) {
+        Ok(_) => {
+            let lower = input.to_lowercase();
+            let answer = lower.as_str().strip_suffix("\r\n").or(lower.as_str().strip_suffix('\n')).unwrap_or(lower.as_str());
+            if answer == "y" || answer == "yes" {
+                // return
+            } else {
+                println!("Operation was rejected ({}), exiting..", answer);
+                exit(1);
+            }
+        }
+        Err(error) => {
+            println!("Error reading from console: {error}, exiting..");
+            exit(1);
+        }
+    }
+}
+
 pub fn main() {
     let args = Args::parse(&Defaults::default());
 
@@ -193,9 +217,11 @@ pub fn main() {
     let meta_db_dir = db_dir.join(META_DB);
 
     if args.reset_db && db_dir.exists() {
-        // TODO: add prompt that validates the choice (unless you pass -y)
+        let msg = "Reset DB was requested -- this means the current databases will be fully deleted, 
+do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm all interactive questions)";
+        get_user_approval_or_exit(msg, args.yes);
         info!("Deleting databases");
-        fs::remove_dir_all(db_dir).unwrap();
+        fs::remove_dir_all(db_dir.clone()).unwrap();
     }
 
     fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
@@ -206,7 +232,29 @@ pub fn main() {
     }
 
     // DB used for addresses store and for multi-consensus management
-    let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
+    let mut meta_db = kaspa_database::prelude::open_db(meta_db_dir.clone(), true, 1);
+
+    // TEMP: upgrade from Alpha version or any version before this one
+    if meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
+        let msg = "Node database is from an older Kaspad version and needs to be fully deleted, do you confirm the delete? (y/n)";
+        get_user_approval_or_exit(msg, args.yes);
+
+        info!("Deleting databases from previous Kaspad version");
+
+        // Drop so that deletion works
+        drop(meta_db);
+
+        // Delete
+        fs::remove_dir_all(db_dir).unwrap();
+
+        // Recreate the empty folders
+        fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
+        fs::create_dir_all(meta_db_dir.as_path()).unwrap();
+        fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+
+        // Reopen the DB
+        meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
+    }
 
     let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
     let add_peers = args.add_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect();
