@@ -33,11 +33,11 @@ use kaspa_consensus_notify::{
 use kaspa_consensusmanager::SessionLock;
 use kaspa_hashes::Hash;
 use kaspa_notify::notifier::Notify;
-use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{atomic::Ordering, Arc};
+use triggered::{Listener, Trigger};
 
 pub struct BlockBodyProcessor {
     // Channels
@@ -80,8 +80,9 @@ pub struct BlockBodyProcessor {
     // Counters
     counters: Arc<ProcessingCounters>,
 
-    // Shutdown trigger
-    shutdown_trigger: Arc<SingleTrigger>,
+    // Shutdown
+    pub shutdown_listener: Listener,
+    shutdown_trigger: Trigger,
 }
 
 impl BlockBodyProcessor {
@@ -109,6 +110,7 @@ impl BlockBodyProcessor {
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
+        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         Self {
             receiver,
             sender,
@@ -130,7 +132,8 @@ impl BlockBodyProcessor {
             task_manager: BlockTaskDependencyManager::new(),
             notification_root,
             counters,
-            shutdown_trigger: Arc::new(SingleTrigger::new()),
+            shutdown_listener,
+            shutdown_trigger,
         }
     }
 
@@ -155,7 +158,7 @@ impl BlockBodyProcessor {
         // Pass the exit signal on to the following processor
         self.sender.send(BlockProcessingMessage::Exit).unwrap();
 
-        self.shutdown_trigger.trigger.trigger();
+        self.shutdown_trigger.trigger();
     }
 
     fn queue_block(self: &Arc<BlockBodyProcessor>, task_id: TaskId) {
@@ -261,7 +264,7 @@ impl BlockBodyProcessor {
         self.commit_body(self.genesis.hash, &[], Arc::new(self.genesis.build_genesis_transactions()))
     }
 
-    pub fn shutdown_wait(&self) {
-        self.shutdown_trigger.listener.wait()
+    pub fn get_shutdown_listener(&self) -> Listener {
+        self.shutdown_listener.clone()
     }
 }

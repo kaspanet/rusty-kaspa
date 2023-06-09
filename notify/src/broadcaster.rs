@@ -9,7 +9,6 @@ use derive_more::Deref;
 use futures::select;
 use futures_util::FutureExt;
 use kaspa_core::trace;
-use parking_lot::Mutex;
 use std::{
     collections::HashMap,
     sync::{
@@ -17,7 +16,7 @@ use std::{
         Arc,
     },
 };
-use triggered::Listener as TriggerListener;
+use triggered::{Listener as TriggerListener, Trigger};
 use workflow_core::channel::Channel;
 
 type ConnectionSet<T> = HashMap<ListenerId, T>;
@@ -101,7 +100,8 @@ where
     is_closed: Arc<AtomicBool>,
     ctl_channel: Channel<Ctl<C>>,
     incoming: Receiver<N>,
-    shutdown_waits: Arc<Mutex<Vec<TriggerListener>>>,
+    shutdown_listener: TriggerListener,
+    shutdown_trigger: Trigger,
     _sync: Option<Sender<()>>,
 }
 
@@ -111,27 +111,31 @@ where
     C: Connection<Notification = N>,
 {
     pub fn new(name: &'static str, incoming: Receiver<N>) -> Self {
+        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         Self {
             name,
             ctl_channel: Channel::unbounded(),
             is_started: Arc::new(AtomicBool::new(false)),
             is_closed: Arc::new(AtomicBool::new(false)),
             incoming,
-            shutdown_waits: Arc::new(Mutex::new(Vec::new())),
             _sync: None,
+            shutdown_listener,
+            shutdown_trigger,
         }
     }
 
     #[cfg(test)]
     pub fn with_sync(name: &'static str, incoming: Receiver<N>, _sync: Option<Sender<()>>) -> Self {
+        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         Self {
             name,
             is_started: Arc::new(AtomicBool::new(false)),
             is_closed: Arc::new(AtomicBool::new(false)),
             ctl_channel: Channel::unbounded(),
             incoming,
-            shutdown_waits: Arc::new(Mutex::new(Vec::new())),
             _sync,
+            shutdown_listener,
+            shutdown_trigger,
         }
     }
 
@@ -148,8 +152,7 @@ where
 
         let ctl_recv = self.ctl_channel.receiver.clone();
         let notification_recv = self.incoming.clone();
-        let (trig, trig_lis) = triggered::trigger();
-        self.shutdown_waits.lock().push(trig_lis);
+        let shutdown_trigger = self.shutdown_trigger.clone();
 
         workflow_core::task::spawn(async move {
             // Broadcasting plan by event type
@@ -232,7 +235,7 @@ where
                             };
 
                             // Signal shutdown is finished to waiting threads
-                            trig.trigger();
+                            shutdown_trigger.trigger();
 
                             // Break out of the loop select.
                             break;
@@ -256,10 +259,7 @@ where
         if self.is_closed.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             trace!("[Broadcaster {0}] stopping...", self.name);
             self.ctl_channel.send(Ctl::Shutdown).await?;
-            let waits = self.shutdown_waits.lock().clone();
-            for l in waits.into_iter() {
-                l.await
-            }
+            self.shutdown_listener.clone().await
         };
         trace!("[Broadcaster {0}] already stopped", self.name);
         Ok(())

@@ -85,7 +85,6 @@ impl Processor {
 
                         // Signal shutdown is finished to waiting threads
                         trig.trigger();
-                        println!("triggered");
 
                         // Break out of the loop select
                         break;
@@ -152,7 +151,6 @@ impl Processor {
 
     #[cfg(test)]
     pub async fn shutdown_wait(&self) {
-        println!("waiting...");
         let waits = self.shutdown_waits.lock().clone();
         for l in waits.into_iter() {
             l.await;

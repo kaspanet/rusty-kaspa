@@ -316,13 +316,13 @@ impl Consensus {
         self.block_sender.send(BlockProcessingMessage::Exit).unwrap();
         self.pruning_sender.send(PruningProcessingMessage::Exit).unwrap();
         trace!("waiting on body_processor...");
-        self.body_processor.shutdown_wait();
+        self.body_processor.get_shutdown_listener().wait();
         trace!("waiting on header_processor...");
-        self.header_processor.shutdown_wait();
+        self.header_processor.get_shutdown_listener().wait();
         trace!("waiting on virtual_processor...");
-        self.virtual_processor.shutdown_wait();
+        self.virtual_processor.get_shutdown_listener().wait();
         trace!("waiting on pruning_processor...");
-        self.pruning_processor.shutdown_wait();
+        self.pruning_processor.get_shutdown_listener().wait();
         trace!("signaling consensus shutdown...");
         self.notification_root.send(ConsensusNotification::ConsensusShutdown(ConsensusShutdownNotification {})).unwrap();
         trace!("consensus exit success");

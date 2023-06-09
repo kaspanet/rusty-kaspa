@@ -75,7 +75,7 @@ use kaspa_notify::notifier::Notify;
 
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
-use kaspa_utils::{binary_heap::BinaryHeapExtensions, triggers::SingleTrigger};
+use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
@@ -85,6 +85,7 @@ use std::{
     ops::Deref,
     sync::{atomic::Ordering, Arc},
 };
+use triggered::{Listener, Trigger};
 
 use super::errors::{PruningImportError, PruningImportResult};
 
@@ -145,8 +146,9 @@ pub struct VirtualStateProcessor {
     // Counters
     counters: Arc<ProcessingCounters>,
 
-    // Shutdown trigger
-    shutdown_trigger: Arc<SingleTrigger>,
+    // Shutdown
+    pub shutdown_listener: Listener,
+    shutdown_trigger: Trigger,
 }
 
 impl VirtualStateProcessor {
@@ -164,6 +166,7 @@ impl VirtualStateProcessor {
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
+        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         Self {
             receiver,
             pruning_sender,
@@ -205,8 +208,8 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
-
-            shutdown_trigger: Arc::new(SingleTrigger::new()),
+            shutdown_listener,
+            shutdown_trigger,
         }
     }
 
@@ -241,7 +244,7 @@ impl VirtualStateProcessor {
         self.pruning_sender.send(PruningProcessingMessage::Exit).unwrap();
 
         // Trigger the shutdown for potential listeners
-        self.shutdown_trigger.trigger.trigger()
+        self.shutdown_trigger.trigger()
     }
 
     fn resolve_virtual(self: &Arc<Self>) {
@@ -846,8 +849,8 @@ impl VirtualStateProcessor {
         Ok(())
     }
 
-    pub fn shutdown_wait(&self) {
-        self.shutdown_trigger.listener.wait()
+    pub fn get_shutdown_listener(&self) -> Listener {
+        self.shutdown_listener.clone()
     }
 }
 

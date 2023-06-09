@@ -38,7 +38,7 @@ use kaspa_core::{debug, info, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_utils::{iter::IterExtensions, triggers::SingleTrigger};
+use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
@@ -47,6 +47,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use triggered::{Listener, Trigger};
 
 pub enum PruningProcessingMessage {
     Exit,
@@ -76,8 +77,9 @@ pub struct PruningProcessor {
     // Config
     config: Arc<Config>,
 
-    // wait for completion
-    shutdown_trigger: Arc<SingleTrigger>,
+    // Shutdown
+    pub shutdown_listener: Listener,
+    shutdown_trigger: Trigger,
 }
 
 impl Deref for PruningProcessor {
@@ -97,6 +99,7 @@ impl PruningProcessor {
         pruning_lock: SessionLock,
         config: Arc<Config>,
     ) -> Self {
+        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         Self {
             receiver,
             db,
@@ -107,7 +110,9 @@ impl PruningProcessor {
             pruning_proof_manager: services.pruning_proof_manager.clone(),
             pruning_lock,
             config,
-            shutdown_trigger: Arc::new(SingleTrigger::new()),
+
+            shutdown_listener,
+            shutdown_trigger,
         }
     }
 
@@ -131,7 +136,7 @@ impl PruningProcessor {
         }
 
         // Trigger the shutdown for potential listeners
-        self.shutdown_trigger.trigger.trigger()
+        self.shutdown_trigger.trigger()
     }
 
     fn recover_pruning_workflows_if_needed(&self) {
@@ -476,7 +481,7 @@ impl PruningProcessor {
         info!("Trusted data was rebuilt successfully following pruning");
     }
 
-    pub fn shutdown_wait(&self) {
-        self.shutdown_trigger.listener.wait()
+    pub fn get_shutdown_listener(&self) -> Listener {
+        self.shutdown_listener.clone()
     }
 }
