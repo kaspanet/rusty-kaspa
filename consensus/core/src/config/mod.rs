@@ -23,10 +23,12 @@ pub struct Config {
     // Additional consensus configuration arguments which are not consensus sensitive
     //
     pub process_genesis: bool,
-    // TODO:
-    // is_archival: bool,
-    // enable_sanity_check_pruning_utxoset: bool,
-    //
+
+    /// Indicates whether this node is an archival node
+    pub is_archival: bool,
+
+    /// Enable various sanity checks which might be compute-intensive (mostly performed during pruning)
+    pub enable_sanity_checks: bool,
 
     // TODO: move non-consensus parameters like utxoindex to a higher scoped Config
     /// Enable the UTXO index
@@ -36,9 +38,8 @@ pub struct Config {
     pub unsafe_rpc: bool,
 
     /// Allow the node to accept blocks from RPC while not synced
-    /// (this flag is mainly used for testing)
-    // TODO: add and handle a matching kaspad command argument
-    pub allow_submit_block_when_not_synced: bool,
+    /// (required when initiating a new network from genesis)
+    pub enable_unsynced_mining: bool,
 
     pub user_agent_comments: Vec<String>,
 }
@@ -49,9 +50,11 @@ impl Config {
             params,
             perf: PERF_PARAMS,
             process_genesis: true,
+            is_archival: false,
+            enable_sanity_checks: false,
             utxoindex: false,
             unsafe_rpc: false,
-            allow_submit_block_when_not_synced: false,
+            enable_unsynced_mining: false,
             user_agent_comments: Default::default(),
         }
     }
@@ -107,6 +110,16 @@ impl ConfigBuilder {
 
     pub fn skip_proof_of_work(mut self) -> Self {
         self.config.params.skip_proof_of_work = true;
+        self
+    }
+
+    pub fn set_archival(mut self) -> Self {
+        self.config.is_archival = true;
+        self
+    }
+
+    pub fn enable_sanity_checks(mut self) -> Self {
+        self.config.enable_sanity_checks = true;
         self
     }
 

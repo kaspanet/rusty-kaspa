@@ -12,21 +12,20 @@ kaspa-hashes.workspace = true
 kaspa-muhash.workspace = true
 kaspa-merkle.workspace = true
 kaspa-math.workspace = true
-kaspa-txscript-errors.workspace = true
 kaspa-utils.workspace = true
+kaspa-addresses.workspace = true
+kaspa-txscript-errors.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 faster-hex.workspace = true
 smallvec.workspace = true
 borsh.workspace = true
-secp256k1 = { version = "0.24", features = ["global-context", "rand-std", "serde"] }
+secp256k1.workspace = true
 futures-util.workspace = true
 itertools.workspace = true
 cfg-if.workspace = true
-kaspa-addresses.workspace = true
 getrandom.workspace = true
 async-trait.workspace = true
-
 kaspa-core.workspace = true
 serde_json.workspace = true
 serde-wasm-bindgen.workspace = true
@@ -35,3 +34,6 @@ wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 rand.workspace = true
 workflow-log.workspace = true
+
+# secp256k1 = { version = "0.24", features = ["global-context", "rand-std", "serde"] }
+# secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }

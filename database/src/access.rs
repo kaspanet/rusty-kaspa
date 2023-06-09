@@ -70,15 +70,17 @@ where
         TKey: Clone + AsRef<[u8]>,
         TData: DeserializeOwned, // We need `DeserializeOwned` since the slice coming from `db.get_pinned` has short lifetime
     {
-        let db_key = DbKey::prefix_only(&self.prefix);
+        let prefix_key = DbKey::prefix_only(&self.prefix);
         let mut read_opts = ReadOptions::default();
-        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
-        self.db.iterator_opt(IteratorMode::From(db_key.as_ref(), Direction::Forward), read_opts).map(|iter_result| match iter_result {
-            Ok((key, data_bytes)) => match bincode::deserialize(&data_bytes) {
-                Ok(data) => Ok((key[self.prefix.len() + 1..].into(), data)),
+        read_opts.set_iterate_range(rocksdb::PrefixRange(prefix_key.as_ref()));
+        self.db.iterator_opt(IteratorMode::From(prefix_key.as_ref(), Direction::Forward), read_opts).map(move |iter_result| {
+            match iter_result {
+                Ok((key, data_bytes)) => match bincode::deserialize(&data_bytes) {
+                    Ok(data) => Ok((key[prefix_key.prefix_len()..].into(), data)),
+                    Err(e) => Err(e.into()),
+                },
                 Err(e) => Err(e.into()),
-            },
-            Err(e) => Err(e.into()),
+            }
         })
     }
 
@@ -187,11 +189,14 @@ where
         TKey: Clone + AsRef<[u8]>,
         TData: DeserializeOwned,
     {
-        let db_key = bucket.map_or(DbKey::prefix_only(&self.prefix), move |bucket| {
-            let mut key = DbKey::prefix_only(&self.prefix);
-            key.add_bucket(bucket);
-            key
-        });
+        let db_key = bucket.map_or_else(
+            move || DbKey::prefix_only(&self.prefix),
+            move |bucket| {
+                let mut key = DbKey::prefix_only(&self.prefix);
+                key.add_bucket(bucket);
+                key
+            },
+        );
 
         let mut read_opts = ReadOptions::default();
         read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));

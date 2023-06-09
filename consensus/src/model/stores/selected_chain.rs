@@ -1,11 +1,12 @@
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::ChainPath;
+use kaspa_database::registry::DatabaseStorePrefixes;
 use parking_lot::RwLockWriteGuard;
 use rocksdb::WriteBatch;
 
 use std::sync::Arc;
 
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbWriter};
 use kaspa_database::prelude::{CachedDbItem, DB};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_hashes::Hash;
@@ -22,12 +23,9 @@ pub trait SelectedChainStoreReader {
 /// since chain index is not append-only and thus needs to be guarded.
 pub trait SelectedChainStore: SelectedChainStoreReader {
     fn apply_changes(&mut self, batch: &mut WriteBatch, changes: ChainPath) -> StoreResult<()>;
+    fn prune_below_pruning_point(&mut self, writer: impl DbWriter, pruning_point: Hash) -> StoreResult<()>;
     fn init_with_pruning_point(&mut self, batch: &mut WriteBatch, block: Hash) -> StoreResult<()>;
 }
-
-const STORE_PREFIX_HASH_BY_INDEX: &[u8] = b"selected-chain-hash-by-index";
-const STORE_PREFIX_INDEX_BY_HASH: &[u8] = b"selected-chain-index-by-hash";
-const STORE_PREFIX_HIGHEST_INDEX: &[u8] = b"selected-chain-highest-index";
 
 /// A DB + cache implementation of `SelectedChainStore` trait, with concurrent readers support.
 #[derive(Clone)]
@@ -42,9 +40,9 @@ impl DbSelectedChainStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self {
             db: Arc::clone(&db),
-            access_hash_by_index: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX_HASH_BY_INDEX.to_vec()),
-            access_index_by_hash: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX_INDEX_BY_HASH.to_vec()),
-            access_highest_index: CachedDbItem::new(db, STORE_PREFIX_HIGHEST_INDEX.to_vec()),
+            access_hash_by_index: CachedDbAccess::new(db.clone(), cache_size, DatabaseStorePrefixes::ChainHashByIndex.into()),
+            access_index_by_hash: CachedDbAccess::new(db.clone(), cache_size, DatabaseStorePrefixes::ChainIndexByHash.into()),
+            access_highest_index: CachedDbItem::new(db, DatabaseStorePrefixes::ChainHighestIndex.into()),
         }
     }
 
@@ -91,6 +89,22 @@ impl SelectedChainStore for DbSelectedChainStore {
         }
 
         self.access_highest_index.write(BatchDbWriter::new(batch), &new_highest_index).unwrap();
+        Ok(())
+    }
+
+    fn prune_below_pruning_point(&mut self, mut writer: impl DbWriter, pruning_point: Hash) -> StoreResult<()> {
+        let mut index = self.access_index_by_hash.read(pruning_point)?;
+        while index > 0 {
+            index -= 1;
+            match self.access_hash_by_index.read(index.into()) {
+                Ok(hash) => {
+                    self.access_hash_by_index.delete(&mut writer, index.into())?;
+                    self.access_index_by_hash.delete(&mut writer, hash)?;
+                }
+                Err(StoreError::KeyNotFound(_)) => break, // This signals that data below this point has already been pruned
+                Err(e) => return Err(e),
+            }
+        }
         Ok(())
     }
 

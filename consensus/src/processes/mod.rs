@@ -8,6 +8,8 @@ pub mod past_median_time;
 pub mod pruning;
 pub mod pruning_proof;
 pub mod reachability;
+pub mod relations;
 pub mod sync;
 pub mod transaction_validator;
 pub mod traversal_manager;
+pub mod window;

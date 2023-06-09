@@ -4,6 +4,7 @@ use kaspa_consensus_core::{BlockHashSet, BlockHasher};
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
@@ -14,9 +15,8 @@ pub trait DaaStoreReader {
 pub trait DaaStore: DaaStoreReader {
     // This is append only
     fn insert(&self, hash: Hash, mergeset_non_daa: Arc<BlockHashSet>) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
-
-const STORE_PREFIX: &[u8] = b"mergeset_non_daa";
 
 /// A DB + cache implementation of `DaaStore` trait, with concurrency support.
 #[derive(Clone)]
@@ -27,7 +27,7 @@ pub struct DbDaaStore {
 
 impl DbDaaStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::NonDaaMergeset.into()) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
@@ -40,6 +40,10 @@ impl DbDaaStore {
         }
         self.access.write(BatchDbWriter::new(batch), hash, mergeset_non_daa)?;
         Ok(())
+    }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(BatchDbWriter::new(batch), hash)
     }
 }
 
@@ -56,5 +60,9 @@ impl DaaStore for DbDaaStore {
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, mergeset_non_daa)?;
         Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(DirectDbWriter::new(&self.db), hash)
     }
 }

@@ -12,29 +12,25 @@ use parking_lot::RwLock;
 use std::future::Future;
 use std::{sync::Arc, thread::JoinHandle};
 
+use crate::processes::window::WindowManager;
 use crate::{
     config::Config,
     constants::TX_VERSION,
     errors::BlockProcessResult,
     model::{
-        services::{reachability::MTReachabilityService, relations::MTRelationsService},
+        services::reachability::MTReachabilityService,
         stores::{
-            block_window_cache::BlockWindowCacheStore,
-            ghostdag::DbGhostdagStore,
-            headers::{DbHeadersStore, HeaderStoreReader},
-            pruning::PruningStoreReader,
-            reachability::DbReachabilityStore,
-            relations::DbRelationsStore,
-            DB,
+            ghostdag::DbGhostdagStore, headers::HeaderStoreReader, pruning::PruningStoreReader, reachability::DbReachabilityStore,
+            virtual_state::VirtualStores, DB,
         },
     },
     params::Params,
     pipeline::{body_processor::BlockBodyProcessor, virtual_processor::VirtualStateProcessor, ProcessingCounters},
-    processes::{past_median_time::PastMedianTimeManager, traversal_manager::DagTraversalManager},
     test_helpers::header_from_precomputed_hash,
 };
 
-use super::{Consensus, DbGhostdagManager, VirtualStores};
+use super::services::{DbDagTraversalManager, DbGhostdagManager, DbWindowManager};
+use super::Consensus;
 
 pub struct TestConsensus {
     consensus: Arc<Consensus>,
@@ -48,7 +44,7 @@ impl TestConsensus {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
         Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), notification_root, counters)),
+            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
             params: config.params.clone(),
             db_lifetime: Default::default(),
         }
@@ -60,7 +56,7 @@ impl TestConsensus {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
         Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), notification_root, counters)),
+            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
             params: config.params.clone(),
             db_lifetime,
         }
@@ -73,7 +69,7 @@ impl TestConsensus {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
         Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), notification_root, counters)),
+            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
             params: config.params.clone(),
             db_lifetime,
         }
@@ -90,19 +86,16 @@ impl TestConsensus {
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
         let mut header = header_from_precomputed_hash(hash, parents);
-        let ghostdag_data = self.consensus.ghostdag_manager.ghostdag(header.direct_parents());
+        let ghostdag_data = self.consensus.services.ghostdag_primary_manager.ghostdag(header.direct_parents());
         header.pruning_point = self
             .consensus
-            .pruning_manager
-            .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_store.read().get().unwrap());
-        let window = self.consensus.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size).unwrap();
-        let (daa_score, _) = self
-            .consensus
-            .difficulty_manager
-            .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
-        header.bits = self.consensus.difficulty_manager.calculate_difficulty_bits(&window);
-        header.daa_score = daa_score;
-        header.timestamp = self.consensus.past_median_time_manager.calc_past_median_time(&ghostdag_data).unwrap().0 + 1;
+            .services
+            .pruning_point_manager
+            .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_point_store.read().get().unwrap());
+        let daa_window = self.consensus.services.window_manager.block_daa_window(&ghostdag_data).unwrap();
+        header.bits = self.consensus.services.window_manager.calculate_difficulty_bits(&ghostdag_data, &daa_window);
+        header.daa_score = daa_window.daa_score;
+        header.timestamp = self.consensus.services.window_manager.calc_past_median_time(&ghostdag_data).unwrap().0 + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;
 
@@ -121,7 +114,7 @@ impl TestConsensus {
     ) -> MutableBlock {
         let mut header = self.build_header_with_parents(hash, parents);
         let cb_payload: Vec<u8> = header.blue_score.to_le_bytes().iter().copied() // Blue score
-            .chain(self.consensus.coinbase_manager.calc_block_subsidy(header.daa_score).to_le_bytes().iter().copied()) // Subsidy
+            .chain(self.consensus.services.coinbase_manager.calc_block_subsidy(header.daa_score).to_le_bytes().iter().copied()) // Subsidy
             .chain((0_u16).to_le_bytes().iter().copied()) // Script public key version
             .chain((0_u8).to_le_bytes().iter().copied()) // Script public key length
             .collect();
@@ -144,14 +137,16 @@ impl TestConsensus {
         self.consensus.shutdown(wait_handles)
     }
 
-    pub fn dag_traversal_manager(
-        &self,
-    ) -> &DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>> {
-        &self.consensus.dag_traversal_manager
+    pub fn window_manager(&self) -> &DbWindowManager {
+        &self.consensus.services.window_manager
+    }
+
+    pub fn dag_traversal_manager(&self) -> &DbDagTraversalManager {
+        &self.consensus.services.dag_traversal_manager
     }
 
     pub fn ghostdag_store(&self) -> &Arc<DbGhostdagStore> {
-        &self.consensus.ghostdag_store
+        &self.consensus.ghostdag_primary_store
     }
 
     pub fn reachability_store(&self) -> &Arc<RwLock<DbReachabilityStore>> {
@@ -159,7 +154,7 @@ impl TestConsensus {
     }
 
     pub fn reachability_service(&self) -> &MTReachabilityService<DbReachabilityStore> {
-        &self.consensus.reachability_service
+        &self.consensus.services.reachability_service
     }
 
     pub fn headers_store(&self) -> Arc<impl HeaderStoreReader> {
@@ -171,7 +166,7 @@ impl TestConsensus {
     }
 
     pub fn processing_counters(&self) -> &Arc<ProcessingCounters> {
-        &self.consensus.counters
+        self.consensus.processing_counters()
     }
 
     pub fn block_body_processor(&self) -> &Arc<BlockBodyProcessor> {
@@ -182,20 +177,8 @@ impl TestConsensus {
         &self.consensus.virtual_processor
     }
 
-    pub fn past_median_time_manager(
-        &self,
-    ) -> &PastMedianTimeManager<
-        DbHeadersStore,
-        DbGhostdagStore,
-        BlockWindowCacheStore,
-        DbReachabilityStore,
-        MTRelationsService<DbRelationsStore>,
-    > {
-        &self.consensus.past_median_time_manager
-    }
-
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {
-        &self.consensus.ghostdag_manager
+        &self.consensus.services.ghostdag_primary_manager
     }
 }
 

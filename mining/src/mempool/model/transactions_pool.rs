@@ -15,7 +15,6 @@ use kaspa_core::{debug, time::unix_now, warn};
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
     sync::Arc,
-    time::SystemTime,
 };
 
 use super::pool::TransactionsEdges;
@@ -68,7 +67,7 @@ impl TransactionsPool {
             parent_transactions: TransactionsEdges::default(),
             chained_transactions: TransactionsEdges::default(),
             last_expire_scan_daa_score: 0,
-            last_expire_scan_time: SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,
+            last_expire_scan_time: unix_now(),
             utxo_set: MempoolUtxoSet::new(),
         }
     }

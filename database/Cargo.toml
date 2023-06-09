@@ -17,6 +17,11 @@ thiserror.workspace = true
 rand.workspace = true
 faster-hex.workspace = true
 kaspa-hashes.workspace = true
+kaspa-utils.workspace = true
+smallvec.workspace = true
 itertools.workspace = true
 num_cpus.workspace = true
 tempfile.workspace = true
+
+enum-primitive-derive = "0.2.2"
+num-traits = "0.2.15"

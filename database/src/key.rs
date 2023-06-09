@@ -1,14 +1,10 @@
-use std::{
-    fmt::{Debug, Display},
-    str,
-};
-
-pub const SEP: u8 = b'/';
-pub const SEP_SIZE: usize = 1;
+use crate::registry::{DatabaseStorePrefixes, SEPARATOR};
+use smallvec::SmallVec;
+use std::fmt::{Debug, Display};
 
 #[derive(Clone)]
 pub struct DbKey {
-    path: Vec<u8>,
+    path: SmallVec<[u8; 36]>, // Optimized for the common case of { prefix byte || HASH (32 bytes) }
     prefix_len: usize,
 }
 
@@ -17,10 +13,7 @@ impl DbKey {
     where
         TKey: Clone + AsRef<[u8]>,
     {
-        Self {
-            path: prefix.iter().chain(std::iter::once(&SEP)).chain(key.as_ref().iter()).copied().collect(),
-            prefix_len: prefix.len() + SEP_SIZE, // Include `SEP` as part of the prefix
-        }
+        Self { path: prefix.iter().chain(key.as_ref().iter()).copied().collect(), prefix_len: prefix.len() }
     }
 
     pub fn prefix_only(prefix: &[u8]) -> Self {
@@ -32,7 +25,7 @@ impl DbKey {
     where
         TBucket: Copy + AsRef<[u8]>,
     {
-        self.path.extend(bucket.as_ref().iter());
+        self.path.extend(bucket.as_ref().iter().copied());
         self.prefix_len += bucket.as_ref().len();
     }
 
@@ -49,17 +42,39 @@ impl AsRef<[u8]> for DbKey {
 
 impl Display for DbKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (prefix, key) = self.path.split_at(self.prefix_len);
-        // We expect the prefix to be human readable
-        if let Ok(s) = str::from_utf8(prefix) {
-            f.write_str(s)?;
-        } else {
-            // Otherwise we fallback to hex parsing
-            f.write_str(&faster_hex::hex_string(&prefix[..prefix.len() - SEP_SIZE]))?; // Drop `SEP`
-            f.write_str("/")?;
+        use DatabaseStorePrefixes::*;
+        let mut pos = 0;
+
+        if self.prefix_len > 0 {
+            if let Ok(prefix) = DatabaseStorePrefixes::try_from(self.path[0]) {
+                prefix.fmt(f)?;
+                f.write_str("/")?;
+                pos += 1;
+                if self.prefix_len > 1 {
+                    match prefix {
+                        Ghostdag | GhostdagCompact | RelationsParents | RelationsChildren | Reachability => {
+                            if self.path[1] != SEPARATOR {
+                                // Expected to be a block level so we display as a number
+                                Display::fmt(&self.path[1], f)?;
+                                f.write_str("/")?;
+                            }
+                            pos += 1;
+                        }
+                        ReachabilityRelations => {
+                            if let Ok(next_prefix) = DatabaseStorePrefixes::try_from(self.path[1]) {
+                                next_prefix.fmt(f)?;
+                                f.write_str("/")?;
+                                pos += 1;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
         }
-        // We expect that key is usually more readable as hex
-        f.write_str(&faster_hex::hex_string(key))
+
+        // We expect that the key part is usually more readable as hex
+        f.write_str(&faster_hex::hex_string(&self.path[pos..]))
     }
 }
 
@@ -73,19 +88,28 @@ impl Debug for DbKey {
 mod tests {
     use super::*;
     use kaspa_hashes::{Hash, HASH_SIZE};
+    use DatabaseStorePrefixes::*;
 
     #[test]
     fn test_key_display() {
-        let key1 = DbKey::new(b"human-readable", Hash::from_u64_word(34567890));
-        let key2 = DbKey::new(&[0xC0, 0xC1, 0xF5, 0xF6], Hash::from_u64_word(345690)); // `0xC0, 0xC1, 0xF5, 0xF6` are invalid UTF-8 chars
-        let key3 = DbKey::new(b"human/readable", Hash::from_bytes([SEP; HASH_SIZE])); // Add many binary `/` to assert prefix is recognized
-        let key4 = DbKey::prefix_only(&[0xC0, 0xC1, 0xF5, 0xF6]);
-        let key5 = DbKey::prefix_only(b"direct-prefix");
+        let level = 37;
+        let key1 = DbKey::new(&[ReachabilityRelations.into(), RelationsParents.into()], Hash::from_u64_word(34567890));
+        let key2 = DbKey::new(&[Reachability.into(), Separator.into()], Hash::from_u64_word(345690));
+        let key3 = DbKey::new(&[Reachability.into(), level], Hash::from_u64_word(345690));
+        let key4 = DbKey::new(&[RelationsParents.into(), level], Hash::from_u64_word(345690));
 
-        assert!(key1.to_string().starts_with("human-readable/"));
-        assert!(key2.to_string().starts_with("c0c1f5f6/")); // Expecting hex since invalid UTF-8 was used
-        assert!(key3.to_string().starts_with("human/readable/"));
-        assert_eq!(key4.to_string(), "c0c1f5f6/");
-        assert_eq!(key5.to_string(), "direct-prefix/");
+        assert!(key1.to_string().starts_with(&format!("{:?}/{:?}/00", ReachabilityRelations, RelationsParents)));
+        assert!(key2.to_string().starts_with(&format!("{:?}/00", Reachability)));
+        assert!(key3.to_string().starts_with(&format!("{:?}/{}/00", Reachability, level)));
+        assert!(key4.to_string().starts_with(&format!("{:?}/{}/00", RelationsParents, level)));
+
+        let key5 = DbKey::new(b"human/readable", Hash::from_bytes([SEPARATOR; HASH_SIZE]));
+        let key6 = DbKey::prefix_only(&[0xC0, 0xC1, 0xF5, 0xF6]);
+        let key7 = DbKey::prefix_only(b"direct-prefix");
+
+        // Make sure display can handle arbitrary strings
+        let _ = key5.to_string();
+        let _ = key6.to_string();
+        let _ = key7.to_string();
     }
 }

@@ -19,12 +19,12 @@ use kaspa_grpc_core::{
 use kaspa_notify::{
     collector::{Collector, CollectorFrom},
     error::{Error as NotifyError, Result as NotifyResult},
-    events::{EventType, EVENT_TYPE_ARRAY},
+    events::{EventArray, EventType, EVENT_TYPE_ARRAY},
     listener::ListenerId,
     notifier::{DynNotify, Notifier},
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
-    subscription::Command,
+    subscription::{array::ArrayBuilder, Command, Mutation, SingleSubscription},
 };
 use kaspa_rpc_core::{
     api::ops::RpcApiOps,
@@ -44,6 +44,7 @@ use std::{
     },
     time::Duration,
 };
+use tokio::sync::Mutex;
 use tonic::Streaming;
 use tonic::{codec::CompressionEncoding, transport::Endpoint};
 
@@ -55,14 +56,18 @@ mod route;
 
 pub type GrpcClientCollector = CollectorFrom<RpcCoreConverter>;
 pub type GrpcClientNotify = DynNotify<Notification>;
+pub type GrpcClientNotifier = Notifier<Notification, ChannelConnection>;
+
+type DirectSubscriptions = Mutex<EventArray<SingleSubscription>>;
 
 #[derive(Debug)]
 pub struct GrpcClient {
     inner: Arc<Inner>,
     /// In multi listener mode, a full-featured Notifier
-    notifier: Option<Arc<Notifier<Notification, ChannelConnection>>>,
+    notifier: Option<Arc<GrpcClientNotifier>>,
     /// In direct mode, a Collector relaying incoming notifications to any provided DynNotify
     collector: Option<Arc<GrpcClientCollector>>,
+    subscriptions: Option<Arc<DirectSubscriptions>>,
     notification_mode: NotificationMode,
 }
 
@@ -83,34 +88,37 @@ impl GrpcClient {
         }
         let inner = Inner::connect(
             url,
-            reconnect,
             connection_event_sender,
             override_handle_stop_notify,
             timeout_duration.unwrap_or(REQUEST_TIMEOUT_DURATION),
         )
         .await?;
-
         let converter = Arc::new(RpcCoreConverter::new());
-        let (notifier, collector) = match notification_mode {
+        let (notifier, collector, subscriptions) = match notification_mode {
             NotificationMode::MultiListeners => {
                 let enabled_events = EVENT_TYPE_ARRAY[..].into();
                 let collector = Arc::new(GrpcClientCollector::new(inner.notification_channel_receiver(), converter));
                 let subscriber = Arc::new(Subscriber::new(enabled_events, inner.clone(), 0));
-                let notifier: Notifier<Notification, ChannelConnection> =
-                    Notifier::new(enabled_events, vec![collector], vec![subscriber], 10, GRPC_CLIENT);
-                (Some(Arc::new(notifier)), None)
+                let notifier: GrpcClientNotifier = Notifier::new(enabled_events, vec![collector], vec![subscriber], 10, GRPC_CLIENT);
+                (Some(Arc::new(notifier)), None, None)
             }
             NotificationMode::Direct => {
                 let collector = GrpcClientCollector::new(inner.notification_channel_receiver(), converter);
-                (None, Some(Arc::new(collector)))
+                let subscriptions = ArrayBuilder::single();
+                (None, Some(Arc::new(collector)), Some(Arc::new(Mutex::new(subscriptions))))
             }
         };
 
-        Ok(Self { inner, notifier, collector, notification_mode })
+        if reconnect {
+            // Start the connection monitor
+            inner.clone().spawn_connection_monitor(notifier.clone(), subscriptions.clone());
+        }
+
+        Ok(Self { inner, notifier, collector, subscriptions, notification_mode })
     }
 
     #[inline(always)]
-    pub fn notifier(&self) -> Option<Arc<Notifier<Notification, ChannelConnection>>> {
+    pub fn notifier(&self) -> Option<Arc<GrpcClientNotifier>> {
         self.notifier.clone()
     }
 
@@ -135,10 +143,8 @@ impl GrpcClient {
                 self.notifier.as_ref().unwrap().stop().await?;
             }
             NotificationMode::Direct => {
-                if let Some(collector) = &self.collector {
-                    if collector.is_started() {
-                        collector.clone().stop().await?;
-                    }
+                if self.collector.as_ref().unwrap().is_started() {
+                    self.collector.as_ref().unwrap().clone().stop().await?;
                 }
             }
         }
@@ -241,6 +247,8 @@ impl RpcApi for GrpcClient {
                 self.notifier.clone().unwrap().try_start_notify(id, scope)?;
             }
             NotificationMode::Direct => {
+                let event: EventType = (&scope).into();
+                self.subscriptions.as_ref().unwrap().lock().await[event].mutate(Mutation::new(Command::Start, scope.clone()));
                 self.inner.start_notify_to_client(scope).await?;
             }
         }
@@ -255,6 +263,8 @@ impl RpcApi for GrpcClient {
                     self.notifier.clone().unwrap().try_stop_notify(id, scope)?;
                 }
                 NotificationMode::Direct => {
+                    let event: EventType = (&scope).into();
+                    self.subscriptions.as_ref().unwrap().lock().await[event].mutate(Mutation::new(Command::Stop, scope.clone()));
                     self.inner.stop_notify_to_client(scope).await?;
                 }
             }
@@ -315,7 +325,7 @@ struct ServerFeatures {
 ///
 #[derive(Debug)]
 struct Inner {
-    address: String,
+    url: String,
 
     server_features: ServerFeatures,
 
@@ -367,7 +377,7 @@ impl Inner {
         };
         let notification_channel = Channel::default();
         Self {
-            address: url,
+            url,
             server_features,
             notification_channel,
             request_sender,
@@ -390,7 +400,6 @@ impl Inner {
     // TODO - remove the override (discuss how to handle this in relation to the golang client)
     async fn connect(
         url: String,
-        reconnect: bool,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
         timeout_duration: u64,
@@ -419,22 +428,17 @@ impl Inner {
         // Start the response receiving task
         inner.clone().spawn_response_receiver_task(stream);
 
-        if reconnect {
-            // Start the connection monitor
-            inner.clone().spawn_connection_monitor();
-        }
-
         Ok(inner)
     }
 
     async fn try_connect(
-        address: String,
+        url: String,
         request_sender: KaspadRequestSender,
         request_receiver: KaspadRequestReceiver,
         request_timeout: u64,
     ) -> Result<(Streaming<KaspadResponse>, ServerFeatures)> {
         // gRPC endpoint
-        let channel = Endpoint::from_shared(address.clone())?
+        let channel = Endpoint::from_shared(url.clone())?
             .timeout(tokio::time::Duration::from_millis(request_timeout))
             .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
             .tcp_keepalive(Some(tokio::time::Duration::from_millis(KEEP_ALIVE_DURATION)))
@@ -480,21 +484,40 @@ impl Inner {
         Ok((stream, server_features))
     }
 
-    async fn reconnect(self: Arc<Self>) -> Result<()> {
+    async fn reconnect(
+        self: Arc<Self>,
+        notifier: Option<Arc<GrpcClientNotifier>>,
+        subscriptions: Option<Arc<DirectSubscriptions>>,
+    ) -> RpcResult<()> {
+        assert_ne!(
+            notifier.is_some(),
+            subscriptions.is_some(),
+            "exclusively either a notifier in MultiListener mode or subscriptions in Direct mode"
+        );
         // TODO: verify if server feature have changed since first connection
-        // TODO: re-register to notifications
 
         // Try to connect to the server
-        let (stream, _) = Inner::try_connect(
-            self.address.clone(),
-            self.request_sender.clone(),
-            self.request_receiver.clone(),
-            self.timeout_duration,
-        )
-        .await?;
+        let (stream, _) =
+            Inner::try_connect(self.url.clone(), self.request_sender.clone(), self.request_receiver.clone(), self.timeout_duration)
+                .await?;
 
         // Start the response receiving task
-        self.spawn_response_receiver_task(stream);
+        self.clone().spawn_response_receiver_task(stream);
+
+        // Re-register the compounded subscription state of the notifier in MultiListener mode
+        if let Some(notifier) = notifier.as_ref() {
+            notifier.try_renew_subscriptions()?;
+        }
+
+        // Re-register the subscriptions state in Direct mode
+        if let Some(subscriptions) = subscriptions.as_ref() {
+            let subscriptions = subscriptions.lock().await;
+            for event in EVENT_TYPE_ARRAY {
+                if subscriptions[event].active() {
+                    self.clone().start_notify_to_client(subscriptions[event].scope()).await?;
+                }
+            }
+        }
 
         Ok(())
     }
@@ -651,7 +674,11 @@ impl Inner {
 
     /// Launch a task that periodically checks if the connection to the server is alive
     /// and if not that tries to reconnect to the server.
-    fn spawn_connection_monitor(self: Arc<Self>) {
+    fn spawn_connection_monitor(
+        self: Arc<Self>,
+        notifier: Option<Arc<GrpcClientNotifier>>,
+        subscriptions: Option<Arc<DirectSubscriptions>>,
+    ) {
         // Note: self is a cloned Arc here so that it can be used in the spawned task.
 
         // The task can only be spawned once
@@ -672,7 +699,7 @@ impl Inner {
                     _ = delay => {
                         trace!("[GrpcClient] running connection monitor task");
                         if !self.is_connected() {
-                            match self.clone().reconnect().await {
+                            match self.clone().reconnect(notifier.clone(), subscriptions.clone()).await {
                                 Ok(_) => {
                                     trace!("[GrpcClient] reconnection to server succeeded");
                                 },

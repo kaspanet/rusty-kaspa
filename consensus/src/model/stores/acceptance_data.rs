@@ -3,6 +3,7 @@ use kaspa_consensus_core::BlockHasher;
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use std::sync::Arc;
@@ -13,9 +14,8 @@ pub trait AcceptanceDataStoreReader {
 
 pub trait AcceptanceDataStore: AcceptanceDataStoreReader {
     fn insert(&self, hash: Hash, acceptance_data: Arc<AcceptanceData>) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
-
-const STORE_PREFIX: &[u8] = b"acceptance-data";
 
 /// A DB + cache implementation of `DbAcceptanceDataStore` trait, with concurrency support.
 #[derive(Clone)]
@@ -26,7 +26,7 @@ pub struct DbAcceptanceDataStore {
 
 impl DbAcceptanceDataStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::AcceptanceData.into()) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
@@ -39,6 +39,10 @@ impl DbAcceptanceDataStore {
         }
         self.access.write(BatchDbWriter::new(batch), hash, acceptance_data)?;
         Ok(())
+    }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(BatchDbWriter::new(batch), hash)
     }
 }
 
@@ -55,5 +59,9 @@ impl AcceptanceDataStore for DbAcceptanceDataStore {
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, acceptance_data)?;
         Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(DirectDbWriter::new(&self.db), hash)
     }
 }

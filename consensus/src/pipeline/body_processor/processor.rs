@@ -1,16 +1,15 @@
 use crate::{
+    consensus::services::DbWindowManager,
     errors::{BlockProcessResult, RuleError},
     model::{
-        services::{reachability::MTReachabilityService, relations::MTRelationsService},
+        services::reachability::MTReachabilityService,
         stores::{
             block_transactions::DbBlockTransactionsStore,
-            block_window_cache::BlockWindowCacheStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
-            relations::DbRelationsStore,
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
-            tips::DbTipsStore,
+            tips::{DbTipsStore, TipsStore},
             DB,
         },
     },
@@ -18,10 +17,7 @@ use crate::{
         deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId},
         ProcessingCounters,
     },
-    processes::{
-        coinbase::CoinbaseManager, mass::MassCalculator, past_median_time::PastMedianTimeManager,
-        transaction_validator::TransactionValidator,
-    },
+    processes::{coinbase::CoinbaseManager, mass::MassCalculator, transaction_validator::TransactionValidator},
 };
 use crossbeam_channel::{Receiver, Sender};
 use kaspa_consensus_core::{
@@ -34,6 +30,7 @@ use kaspa_consensus_notify::{
     notification::{BlockAddedNotification, Notification},
     root::ConsensusNotificationRoot,
 };
+use kaspa_consensusmanager::SessionLock;
 use kaspa_hashes::Hash;
 use kaspa_notify::notifier::Notify;
 use parking_lot::RwLock;
@@ -68,18 +65,16 @@ pub struct BlockBodyProcessor {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) past_median_time_manager: PastMedianTimeManager<
-        DbHeadersStore,
-        DbGhostdagStore,
-        BlockWindowCacheStore,
-        DbReachabilityStore,
-        MTRelationsService<DbRelationsStore>,
-    >,
+    pub(super) window_manager: DbWindowManager,
+
+    // Pruning lock
+    pruning_lock: SessionLock,
 
     // Dependency manager
     task_manager: BlockTaskDependencyManager,
 
-    pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
+    // Notifier
+    notification_root: Arc<ConsensusNotificationRoot>,
 
     // Counters
     counters: Arc<ProcessingCounters>,
@@ -91,25 +86,22 @@ impl BlockBodyProcessor {
         receiver: Receiver<BlockProcessingMessage>,
         sender: Sender<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
+
         db: Arc<DB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         ghostdag_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>,
         block_transactions_store: Arc<DbBlockTransactionsStore>,
         body_tips_store: Arc<RwLock<DbTipsStore>>,
+
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         coinbase_manager: CoinbaseManager,
         mass_calculator: MassCalculator,
         transaction_validator: TransactionValidator,
-        past_median_time_manager: PastMedianTimeManager<
-            DbHeadersStore,
-            DbGhostdagStore,
-            BlockWindowCacheStore,
-            DbReachabilityStore,
-            MTRelationsService<DbRelationsStore>,
-        >,
+        window_manager: DbWindowManager,
         max_block_mass: u64,
         genesis: GenesisBlock,
+        pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
@@ -127,9 +119,10 @@ impl BlockBodyProcessor {
             coinbase_manager,
             mass_calculator,
             transaction_validator,
-            past_median_time_manager,
+            window_manager,
             max_block_mass,
             genesis,
+            pruning_lock,
             task_manager: BlockTaskDependencyManager::new(),
             notification_root,
             counters,
@@ -179,6 +172,7 @@ impl BlockBodyProcessor {
     }
 
     fn process_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<BlockStatus> {
+        let _prune_guard = self.pruning_lock.blocking_read();
         let status = self.statuses_store.read().get(block.hash()).unwrap();
         match status {
             StatusInvalid => return Err(RuleError::KnownInvalid),

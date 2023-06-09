@@ -4,6 +4,7 @@ use kaspa_consensus_core::{utxo::utxo_diff::UtxoDiff, BlockHasher};
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
@@ -19,9 +20,8 @@ pub trait UtxoDiffsStoreReader {
 
 pub trait UtxoDiffsStore: UtxoDiffsStoreReader {
     fn insert(&self, hash: Hash, utxo_diff: Arc<UtxoDiff>) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
-
-const STORE_PREFIX: &[u8] = b"utxo-diffs";
 
 /// A DB + cache implementation of `UtxoDifferencesStore` trait, with concurrency support.
 #[derive(Clone)]
@@ -32,7 +32,7 @@ pub struct DbUtxoDiffsStore {
 
 impl DbUtxoDiffsStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::UtxoDiffs.into()) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
@@ -45,6 +45,10 @@ impl DbUtxoDiffsStore {
         }
         self.access.write(BatchDbWriter::new(batch), hash, utxo_diff)?;
         Ok(())
+    }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(BatchDbWriter::new(batch), hash)
     }
 }
 
@@ -61,5 +65,9 @@ impl UtxoDiffsStore for DbUtxoDiffsStore {
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, utxo_diff)?;
         Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(DirectDbWriter::new(&self.db), hash)
     }
 }

@@ -4,7 +4,8 @@ use kaspa_consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey, DirectDbWriter};
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
+use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
@@ -32,6 +33,12 @@ pub struct CompactGhostdagData {
     pub blue_score: u64,
     pub blue_work: BlueWorkType,
     pub selected_parent: Hash,
+}
+
+impl From<&GhostdagData> for CompactGhostdagData {
+    fn from(value: &GhostdagData) -> Self {
+        Self { blue_score: value.blue_score, blue_work: value.blue_work, selected_parent: value.selected_parent }
+    }
 }
 
 impl From<ExternalGhostdagData> for GhostdagData {
@@ -173,7 +180,7 @@ impl GhostdagData {
     }
 
     pub fn to_compact(&self) -> CompactGhostdagData {
-        CompactGhostdagData { blue_score: self.blue_score, blue_work: self.blue_work, selected_parent: self.selected_parent }
+        self.into()
     }
 
     pub fn add_blue(&mut self, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &BlockHashMap<KType>) {
@@ -225,10 +232,8 @@ pub trait GhostdagStore: GhostdagStoreReader {
     /// Additionally, this means writes are semantically "append-only", which is why
     /// we can keep the `insert` method non-mutable on self. See "Parallel Processing.md" for an overview.
     fn insert(&self, hash: Hash, data: Arc<GhostdagData>) -> Result<(), StoreError>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
-
-const STORE_PREFIX: &[u8] = b"block-ghostdag-data";
-const COMPACT_STORE_PREFIX: &[u8] = b"compact-block-ghostdag-data";
 
 /// A DB + cache implementation of `GhostdagStore` trait, with concurrency support.
 #[derive(Clone)]
@@ -241,9 +246,10 @@ pub struct DbGhostdagStore {
 
 impl DbGhostdagStore {
     pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+        assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
-        let prefix = STORE_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
-        let compact_prefix = COMPACT_STORE_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
+        let prefix = DatabaseStorePrefixes::Ghostdag.into_iter().chain(lvl_bytes).collect_vec();
+        let compact_prefix = DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(lvl_bytes).collect_vec();
         Self {
             db: Arc::clone(&db),
             level,
@@ -261,12 +267,19 @@ impl DbGhostdagStore {
             return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(BatchDbWriter::new(batch), hash, data.clone())?;
-        self.compact_access.write(
-            BatchDbWriter::new(batch),
-            hash,
-            CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
-        )?;
+        self.compact_access.write(BatchDbWriter::new(batch), hash, data.to_compact())?;
         Ok(())
+    }
+
+    pub fn update_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {
+        self.access.write(BatchDbWriter::new(batch), hash, data.clone())?;
+        self.compact_access.write(BatchDbWriter::new(batch), hash, data.to_compact())?;
+        Ok(())
+    }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.compact_access.delete(BatchDbWriter::new(batch), hash)?;
+        self.access.delete(BatchDbWriter::new(batch), hash)
     }
 }
 
@@ -313,15 +326,21 @@ impl GhostdagStore for DbGhostdagStore {
         if self.access.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
-        self.access.write(DirectDbWriter::new(&self.db), hash, data.clone())?;
         if self.compact_access.has(hash)? {
-            return Err(StoreError::HashAlreadyExists(hash));
+            return Err(StoreError::DataInconsistency(format!("store has compact data for {} but is missing full data", hash)));
         }
-        self.compact_access.write(
-            DirectDbWriter::new(&self.db),
-            hash,
-            CompactGhostdagData { blue_score: data.blue_score, blue_work: data.blue_work, selected_parent: data.selected_parent },
-        )?;
+        let mut batch = WriteBatch::default();
+        self.access.write(BatchDbWriter::new(&mut batch), hash, data.clone())?;
+        self.compact_access.write(BatchDbWriter::new(&mut batch), hash, data.to_compact())?;
+        self.db.write(batch)?;
+        Ok(())
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        let mut batch = WriteBatch::default();
+        self.compact_access.delete(BatchDbWriter::new(&mut batch), hash)?;
+        self.access.delete(BatchDbWriter::new(&mut batch), hash)?;
+        self.db.write(batch)?;
         Ok(())
     }
 }
@@ -349,6 +368,10 @@ impl MemoryGhostdagStore {
             blues_anticone_sizes_map: RefCell::new(BlockHashMap::new()),
         }
     }
+
+    pub fn key_not_found_error(hash: Hash) -> StoreError {
+        StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Ghostdag.as_ref(), hash))
+    }
 }
 
 impl Default for MemoryGhostdagStore {
@@ -370,54 +393,64 @@ impl GhostdagStore for MemoryGhostdagStore {
         self.blues_anticone_sizes_map.borrow_mut().insert(hash, data.blues_anticone_sizes.clone());
         Ok(())
     }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.blue_score_map.borrow_mut().remove(&hash);
+        self.blue_work_map.borrow_mut().remove(&hash);
+        self.selected_parent_map.borrow_mut().remove(&hash);
+        self.mergeset_blues_map.borrow_mut().remove(&hash);
+        self.mergeset_reds_map.borrow_mut().remove(&hash);
+        self.blues_anticone_sizes_map.borrow_mut().remove(&hash);
+        Ok(())
+    }
 }
 
 impl GhostdagStoreReader for MemoryGhostdagStore {
     fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError> {
         match self.blue_score_map.borrow().get(&hash) {
             Some(blue_score) => Ok(*blue_score),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError> {
         match self.blue_work_map.borrow().get(&hash) {
             Some(blue_work) => Ok(*blue_work),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_selected_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
         match self.selected_parent_map.borrow().get(&hash) {
             Some(selected_parent) => Ok(*selected_parent),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_mergeset_blues(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.mergeset_blues_map.borrow().get(&hash) {
             Some(mergeset_blues) => Ok(BlockHashes::clone(mergeset_blues)),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_mergeset_reds(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.mergeset_reds_map.borrow().get(&hash) {
             Some(mergeset_reds) => Ok(BlockHashes::clone(mergeset_reds)),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_blues_anticone_sizes(&self, hash: Hash) -> Result<HashKTypeMap, StoreError> {
         match self.blues_anticone_sizes_map.borrow().get(&hash) {
             Some(sizes) => Ok(HashKTypeMap::clone(sizes)),
-            None => Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash))),
+            None => Err(Self::key_not_found_error(hash)),
         }
     }
 
     fn get_data(&self, hash: Hash) -> Result<Arc<GhostdagData>, StoreError> {
         if !self.has(hash)? {
-            return Err(StoreError::KeyNotFound(DbKey::new(STORE_PREFIX, hash)));
+            return Err(Self::key_not_found_error(hash));
         }
         Ok(Arc::new(GhostdagData::new(
             self.blue_score_map.borrow()[&hash],

@@ -2,16 +2,16 @@ use super::{ctl::Ctl, Consensus};
 use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
+use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
 use kaspa_core::time::unix_now;
-use kaspa_database::prelude::{
-    BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB,
+use kaspa_database::{
+    prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB},
+    registry::DatabaseStorePrefixes,
 };
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::Arc};
-use tokio::sync::RwLock as TokioRwLock;
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ConsensusEntry {
@@ -39,13 +39,15 @@ pub enum ConsensusEntryType {
 pub struct MultiConsensusMetadata {
     current_consensus_key: Option<u64>,
     staging_consensus_key: Option<u64>,
+    /// Max key used for a consensus entry
     max_key_used: u64,
-    /// Memorize whether this node was recently an archive node
+    /// Memorizes whether this node was recently an archive node
     is_archival_node: bool,
+    /// General serialized properties to be used cross DB versions
+    props: HashMap<Vec<u8>, Vec<u8>>,
+    /// The DB scheme version
+    version: u32,
 }
-
-const CONSENSUS_ENTRIES_PREFIX: &[u8] = b"consensus-entries-prefix";
-const MULTI_CONSENSUS_METADATA_KEY: &[u8] = b"multi-consensus-metadata-key";
 
 #[derive(Clone)]
 pub struct MultiConsensusManagementStore {
@@ -58,8 +60,8 @@ impl MultiConsensusManagementStore {
     pub fn new(db: Arc<DB>) -> Self {
         let mut store = Self {
             db: db.clone(),
-            entries: CachedDbAccess::new(db.clone(), 16, CONSENSUS_ENTRIES_PREFIX.to_vec()),
-            metadata: CachedDbItem::new(db, MULTI_CONSENSUS_METADATA_KEY.to_vec()),
+            entries: CachedDbAccess::new(db.clone(), 16, DatabaseStorePrefixes::ConsensusEntries.into()),
+            metadata: CachedDbItem::new(db, DatabaseStorePrefixes::MultiConsensusMetadata.into()),
         };
         store.init();
         store
@@ -190,9 +192,15 @@ impl ConsensusFactory for Factory {
         };
         let dir = self.db_root_dir.join(entry.directory_name.clone());
         let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
-        // TODO: pass lock to consensus
-        let session_lock = Arc::new(TokioRwLock::new(()));
-        let consensus = Arc::new(Consensus::new(db.clone(), Arc::new(config), self.notification_root.clone(), self.counters.clone()));
+
+        let session_lock = SessionLock::new();
+        let consensus = Arc::new(Consensus::new(
+            db.clone(),
+            Arc::new(config),
+            session_lock.clone(),
+            self.notification_root.clone(),
+            self.counters.clone(),
+        ));
 
         // We write the new active entry only once the instance was created successfully.
         // This way we can safely avoid processing genesis in future process runs
@@ -207,11 +215,12 @@ impl ConsensusFactory for Factory {
         let entry = self.management_store.write().new_staging_consensus_entry().unwrap();
         let dir = self.db_root_dir.join(entry.directory_name);
         let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
-        // TODO: pass lock to consensus
-        let session_lock = Arc::new(TokioRwLock::new(()));
+
+        let session_lock = SessionLock::new();
         let consensus = Arc::new(Consensus::new(
             db.clone(),
             Arc::new(self.config.to_builder().skip_adding_genesis().build()),
+            session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
         ));

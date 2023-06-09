@@ -1,5 +1,5 @@
 use crate::{
-    utxo::utxo_set_into_rpc, BlockAddedNotification, FinalityConflictNotification, FinalityConflictResolvedNotification,
+    convert::utxo::utxo_set_into_rpc, BlockAddedNotification, FinalityConflictNotification, FinalityConflictResolvedNotification,
     NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification, SinkBlueScoreChangedNotification,
     UtxosChangedNotification, VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
 };

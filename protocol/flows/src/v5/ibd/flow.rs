@@ -12,6 +12,7 @@ use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
+    BlockHashSet,
 };
 use kaspa_consensusmanager::StagingConsensus;
 use kaspa_core::{debug, info};
@@ -67,6 +68,8 @@ pub enum IbdType {
     DownloadHeadersProof,
 }
 
+// TODO: define a peer banning strategy
+
 impl IbdFlow {
     pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: Receiver<Block>) -> Self {
         Self { ctx, router, incoming_route, relay_receiver }
@@ -80,7 +83,7 @@ impl IbdFlow {
                 match self.ibd(relay_block).await {
                     Ok(_) => info!("IBD with peer {} completed successfully", self.router),
                     Err(e) => {
-                        info!("IBD with peer {} completed with error: {:?}", self.router, e);
+                        info!("IBD with peer {} completed with error: {}", self.router, e);
                         return Err(e);
                     }
                 }
@@ -91,17 +94,16 @@ impl IbdFlow {
     }
 
     async fn ibd(&mut self, relay_block: Block) -> Result<(), ProtocolError> {
-        let ci = self.ctx.consensus();
-        let session = ci.session().await;
-        let consensus = session.deref();
+        let mut session = self.ctx.consensus().session_owned().await;
 
-        let negotiation_output = self.negotiate_missing_syncer_chain_segment(consensus).await?;
-        let ibd_type = self.determine_ibd_type(consensus, &relay_block.header, negotiation_output.highest_known_syncer_chain_hash)?;
+        let negotiation_output = self.negotiate_missing_syncer_chain_segment(session.deref()).await?;
+        let ibd_type =
+            self.determine_ibd_type(session.deref(), &relay_block.header, negotiation_output.highest_known_syncer_chain_hash)?;
         match ibd_type {
             IbdType::None => return Ok(()),
             IbdType::Sync(highest_known_syncer_chain_hash) => {
                 self.sync_headers(
-                    consensus,
+                    session.deref(),
                     negotiation_output.syncer_header_selected_tip,
                     highest_known_syncer_chain_hash,
                     &relay_block,
@@ -115,6 +117,8 @@ impl IbdFlow {
                     Ok(()) => {
                         staging.commit();
                         self.ctx.on_pruning_point_utxoset_override();
+                        // This will reobtain the freshly committed staging consensus
+                        session = self.ctx.consensus().session_owned().await;
                     }
                     Err(e) => {
                         staging.cancel();
@@ -124,17 +128,12 @@ impl IbdFlow {
             }
         }
 
-        // If headers proof was downloaded this will be the freshly committed staging consensus
-        let ci = self.ctx.consensus();
-        let session = ci.session().await;
-        let consensus = session.deref();
-
         // Sync missing bodies in the past of syncer selected tip
-        self.sync_missing_block_bodies(consensus, negotiation_output.syncer_header_selected_tip).await?;
+        self.sync_missing_block_bodies(session.deref(), negotiation_output.syncer_header_selected_tip).await?;
 
         // Relay block might be in the anticone of syncer selected tip, thus
         // check its chain for missing bodies as well.
-        self.sync_missing_block_bodies(consensus, relay_block.hash()).await
+        self.sync_missing_block_bodies(session.deref(), relay_block.hash()).await
     }
 
     fn determine_ibd_type(
@@ -181,7 +180,7 @@ impl IbdFlow {
         syncer_header_selected_tip: Hash,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
-        info!("Starting IBD with headers proof");
+        info!("Starting IBD with headers proof with peer {}", self.router);
 
         let session = staging.session().await;
         let consensus = session.deref();
@@ -218,6 +217,10 @@ impl IbdFlow {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the last pruning point in the list"));
         }
 
+        if pruning_points.first().unwrap().hash != self.ctx.config.genesis.hash {
+            return Err(ProtocolError::Other("the first pruning point in the list is expected to be genesis"));
+        }
+
         // TODO: validate pruning points before importing
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
@@ -236,21 +239,28 @@ impl IbdFlow {
             entries.push(entry);
         }
 
-        let proof_hashes = proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
         let trusted_set = pkg.build_trusted_subdag(entries)?;
-        consensus.apply_pruning_proof(proof, &trusted_set);
-        consensus.import_pruning_points(pruning_points);
 
-        info!("Building the proof which was just applied (Alpha sanity test)");
-        let built_proof = consensus.get_pruning_point_proof(); // TODO: remove this sanity test when stable
-        let built_proof_hashes = built_proof.iter().flatten().map(|h| h.hash).collect::<Vec<_>>();
-        assert_eq!(proof_hashes.len(), built_proof_hashes.len(), "Locally built proof does not match the applied one");
-        for (i, (a, b)) in proof_hashes.into_iter().zip(built_proof_hashes).enumerate() {
-            if a != b {
-                panic!("Locally built proof does not match the applied one: built[{}]={}, applied[{}]={}", i, b, i, a);
+        if self.ctx.config.enable_sanity_checks {
+            let ref_proof = proof.clone();
+            consensus.apply_pruning_proof(proof, &trusted_set);
+            consensus.import_pruning_points(pruning_points);
+
+            info!("Building the proof which was just applied (sanity test)");
+            let built_proof = consensus.get_pruning_point_proof();
+            for (i, (ref_level, built_level)) in ref_proof.iter().zip(built_proof.iter()).enumerate() {
+                assert_eq!(
+                    ref_level.iter().map(|h| h.hash).collect::<BlockHashSet>(),
+                    built_level.iter().map(|h| h.hash).collect::<BlockHashSet>(),
+                    "Locally built proof for level {} does not match the applied one",
+                    i
+                );
             }
+            info!("Proof was locally built successfully");
+        } else {
+            consensus.apply_pruning_proof(proof, &trusted_set);
+            consensus.import_pruning_points(pruning_points);
         }
-        info!("Proof was locally built successfully");
 
         info!("Starting to process {} trusted blocks", trusted_set.len());
         let mut last_time = Instant::now();
@@ -456,9 +466,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
             current_daa_score = block.header.daa_score;
-            // TODO: decide if we resolve virtual separately on long IBD
-            // TODO: handle peer banning
-            // TODO: call self.ctx.on_new_block for every inserted block
             jobs.push(consensus.validate_and_insert_block(block));
         }
 

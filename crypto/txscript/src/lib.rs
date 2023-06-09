@@ -10,7 +10,7 @@ pub mod standard;
 
 use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
-use crate::opcodes::{deserialize_opcode_data, OpCodeImplementation};
+use crate::opcodes::{deserialize_next_opcode, OpCodeImplementation};
 use itertools::Itertools;
 use kaspa_consensus_core::hashing::sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues};
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
@@ -85,10 +85,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
 fn parse_script<T: VerifiableTransaction>(
     script: &[u8],
 ) -> impl Iterator<Item = Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>> + '_ {
-    script.iter().batching(|it| {
-        // reads the opcode num item here and then match to opcode
-        it.next().map(|code| deserialize_opcode_data(*code, it))
-    })
+    script.iter().batching(|it| deserialize_next_opcode(it))
 }
 
 pub fn get_sig_op_count<T: VerifiableTransaction>(signature_script: &[u8], prev_script_public_key: &ScriptPublicKey) -> u64 {
@@ -531,7 +528,7 @@ mod tests {
         }
     }
 
-    fn test_script_cases(test_cases: Vec<ScriptTestCase>) {
+    fn run_test_script_cases(test_cases: Vec<ScriptTestCase>) {
         let sig_cache = Cache::new(10_000);
         let mut reused_values = SigHashReusedValues::new();
 
@@ -583,7 +580,7 @@ mod tests {
             },
         ];
 
-        test_script_cases(test_cases)
+        run_test_script_cases(test_cases)
     }
 
     #[test]
@@ -615,7 +612,7 @@ mod tests {
             },
         ];
 
-        test_script_cases(test_cases)
+        run_test_script_cases(test_cases)
     }
 
     #[test]

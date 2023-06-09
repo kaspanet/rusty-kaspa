@@ -15,10 +15,11 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
 };
+use kaspa_core::time::unix_now;
 use kaspa_hashes::ZERO_HASH;
 
 use parking_lot::RwLock;
-use std::{collections::HashMap, sync::Arc, time::SystemTime};
+use std::{collections::HashMap, sync::Arc};
 
 pub(crate) struct ConsensusMock {
     transactions: RwLock<HashMap<TransactionId, Arc<Transaction>>>,
@@ -75,7 +76,7 @@ impl ConsensusApi for ConsensusMock {
         let coinbase_manager = CoinbaseManagerMock::new();
         let coinbase = coinbase_manager.expected_coinbase_transaction(miner_data.clone());
         txs.insert(0, coinbase.tx);
-        let now = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+        let now = unix_now();
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
         let header = Header::new_finalized(
             BLOCK_VERSION,
@@ -93,7 +94,7 @@ impl ConsensusApi for ConsensusMock {
         );
         let mutable_block = MutableBlock::new(header, txs);
 
-        Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now))
+        Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now, 0))
     }
 
     fn validate_mempool_transaction_and_populate(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {

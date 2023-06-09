@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 kaspa-core.workspace = true
+kaspa-utils.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 tokio.workspace = true
@@ -17,4 +18,5 @@ parking_lot.workspace = true
 itertools.workspace = true
 rand.workspace = true
 futures-util.workspace = true
+futures.workspace = true
 duration-string = "0.2.0"

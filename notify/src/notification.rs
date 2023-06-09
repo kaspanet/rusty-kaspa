@@ -68,6 +68,8 @@ macro_rules! full_featured {
 pub use full_featured;
 
 pub mod test_helpers {
+    use crate::subscription::Subscription;
+
     use super::*;
     use derive_more::Display;
     use kaspa_addresses::Address;

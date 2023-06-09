@@ -1,4 +1,5 @@
 use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHasher};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use std::sync::Arc;
@@ -19,9 +20,8 @@ pub trait StatusesStoreReader {
 /// TODO: can be optimized to avoid the locking if needed.
 pub trait StatusesStore: StatusesStoreReader {
     fn set(&mut self, hash: Hash, status: BlockStatus) -> StoreResult<()>;
+    fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
-
-const STORE_PREFIX: &[u8] = b"block-statuses";
 
 /// A DB + cache implementation of `StatusesStore` trait, with concurrent readers support.
 #[derive(Clone)]
@@ -32,11 +32,19 @@ pub struct DbStatusesStore {
 
 impl DbStatusesStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::Statuses.into()) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
         Self::new(Arc::clone(&self.db), cache_size)
+    }
+
+    pub fn set_batch(&mut self, batch: &mut WriteBatch, hash: Hash, status: BlockStatus) -> StoreResult<()> {
+        self.access.write(BatchDbWriter::new(batch), hash, status)
+    }
+
+    pub fn delete_batch(&self, batch: &mut WriteBatch, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(BatchDbWriter::new(batch), hash)
     }
 }
 
@@ -75,5 +83,9 @@ impl StatusesStoreReader for DbStatusesStore {
 impl StatusesStore for DbStatusesStore {
     fn set(&mut self, hash: Hash, status: BlockStatus) -> StoreResult<()> {
         self.access.write(DirectDbWriter::new(&self.db), hash, status)
+    }
+
+    fn delete(&self, hash: Hash) -> Result<(), StoreError> {
+        self.access.delete(DirectDbWriter::new(&self.db), hash)
     }
 }
