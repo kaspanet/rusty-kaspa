@@ -1,20 +1,15 @@
 extern crate derive_more;
 use super::{
-    connection::Connection,
-    error::{Error, Result},
-    events::EventArray,
-    listener::ListenerId,
-    notification::Notification,
+    connection::Connection, error::Result, events::EventArray, listener::ListenerId, notification::Notification,
     subscription::DynSubscription,
 };
 use async_channel::{Receiver, Sender};
 use core::fmt::Debug;
 use derive_more::Deref;
-use futures::{
-    future::FutureExt, // for `.fuse()`
-    select,
-};
+use futures::select;
+use futures_util::FutureExt;
 use kaspa_core::trace;
+use parking_lot::Mutex;
 use std::{
     collections::HashMap,
     sync::{
@@ -22,6 +17,7 @@ use std::{
         Arc,
     },
 };
+use triggered::Listener as TriggerListener;
 use workflow_core::channel::Channel;
 
 type ConnectionSet<T> = HashMap<ListenerId, T>;
@@ -99,11 +95,13 @@ where
     C: Connection,
 {
     name: &'static str,
-    started: Arc<AtomicBool>,
-    ctl: Channel<Ctl<C>>,
+    /// Has this broadcaster been started?
+    is_started: Arc<AtomicBool>,
+    /// Has this broadcaster been closed?
+    is_closed: Arc<AtomicBool>,
+    ctl_channel: Channel<Ctl<C>>,
     incoming: Receiver<N>,
-    shutdown: Channel<()>,
-    /// Sync channel, for handling of messages in predictable sequence; exclusively intended for tests.
+    shutdown_waits: Arc<Mutex<Vec<TriggerListener>>>,
     _sync: Option<Sender<()>>,
 }
 
@@ -115,11 +113,12 @@ where
     pub fn new(name: &'static str, incoming: Receiver<N>) -> Self {
         Self {
             name,
-            started: Arc::new(AtomicBool::default()),
-            ctl: Channel::unbounded(),
+            ctl_channel: Channel::unbounded(),
+            is_started: Arc::new(AtomicBool::new(false)),
+            is_closed: Arc::new(AtomicBool::new(false)),
             incoming,
+            shutdown_waits: Arc::new(Mutex::new(Vec::new())),
             _sync: None,
-            shutdown: Channel::oneshot(),
         }
     }
 
@@ -127,11 +126,12 @@ where
     pub fn with_sync(name: &'static str, incoming: Receiver<N>, _sync: Option<Sender<()>>) -> Self {
         Self {
             name,
-            started: Arc::new(AtomicBool::default()),
-            ctl: Channel::unbounded(),
+            is_started: Arc::new(AtomicBool::new(false)),
+            is_closed: Arc::new(AtomicBool::new(false)),
+            ctl_channel: Channel::unbounded(),
             incoming,
+            shutdown_waits: Arc::new(Mutex::new(Vec::new())),
             _sync,
-            shutdown: Channel::oneshot(),
         }
     }
 
@@ -141,18 +141,25 @@ where
 
     fn spawn_notification_broadcasting_task(self: Arc<Self>) {
         // The task can only be spawned once
-        if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
         trace!("Starting notification broadcasting task");
+
+        let ctl_recv = self.ctl_channel.receiver.clone();
+        let notification_recv = self.incoming.clone();
+        let (trig, trig_lis) = triggered::trigger();
+        self.shutdown_waits.lock().push(trig_lis);
+
         workflow_core::task::spawn(async move {
             // Broadcasting plan by event type
             let mut plan = EventArray::<Plan<C>>::default();
             // Create a store for closed connections to be removed from the plan
             let mut purge: Vec<ListenerId> = Vec::new();
+
             loop {
                 select! {
-                    ctl = self.ctl.recv().fuse() => {
+                    ctl = ctl_recv.recv().fuse() => {
                         if let Ok(ctl) = ctl {
                             match ctl {
                                 Ctl::Register(subscription, id, connection) => {
@@ -162,15 +169,21 @@ where
                                     plan[subscription.event_type()].remove(&id);
                                 },
                                 Ctl::Shutdown => {
-                                    let _ = self.shutdown.drain();
-                                    let _ = self.shutdown.try_send(());
-                                    break;
+                                    // Below causes the notification recv to consume remaining notifications.
+                                    // Afterwards it errors intoto the exit handling.
+                                    notification_recv.close();
                                 }
                             }
                         }
+                        // In case we have a sync channel, report that the command was processed.
+                        // This is for test only.
+                        #[cfg(test)]
+                        if let Some(ref sync) = self._sync {
+                            let _ = sync.try_send(());
+                        }
                     },
 
-                    notification = self.incoming.recv().fuse() => {
+                    notification = notification_recv.recv().fuse() => {
                         if let Ok(notification) = notification {
                             // Broadcast the notification...
                             let event = notification.event_type();
@@ -200,15 +213,31 @@ where
                             // Remove closed connections
                             purge.drain(..).for_each(|id| { plan[event].remove(&id); });
 
+                            // In case we have a sync channel, report that the command was processed.
+                            // This is for test only.
+                            #[cfg(test)]
+                            if let Some(ref sync) = self._sync {
+                                let _ = sync.try_send(());
+                            }
+
+                        } else if let Err(err) = notification {
+                            // We did not expect to exit...so we panic
+                            if !self.is_closed.load(Ordering::SeqCst) {
+                                panic!("[Broadcaster {0}] notifications error: {1}", self.name, err);
+                            };
+
+                            // Close and drain the ctrl channel
+                            if ctl_recv.close() {
+                                while ctl_recv.recv().await.is_ok() {};
+                            };
+
+                            // Signal shutdown is finished to waiting threads
+                            trig.trigger();
+
+                            // Break out of the loop select.
+                            break;
                         }
                     }
-                }
-
-                // In case we have a sync channel, report that the command was processed.
-                // This is for test only.
-                #[cfg(test)]
-                if let Some(ref sync) = self._sync {
-                    let _ = sync.try_send(());
                 }
             }
         });
@@ -216,24 +245,24 @@ where
 
     pub fn register(&self, subscription: DynSubscription, id: ListenerId, connection: C) -> Result<()> {
         if subscription.active() {
-            self.ctl.try_send(Ctl::Register(subscription, id, connection))?;
+            self.ctl_channel.try_send(Ctl::Register(subscription, id, connection))?;
         } else {
-            self.ctl.try_send(Ctl::Unregister(subscription, id))?;
+            self.ctl_channel.try_send(Ctl::Unregister(subscription, id))?;
         }
-        Ok(())
-    }
-
-    async fn stop_notification_broadcasting_task(&self) -> Result<()> {
-        if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            return Err(Error::AlreadyStoppedError);
-        }
-        self.ctl.try_send(Ctl::Shutdown)?;
-        self.shutdown.recv().await?;
         Ok(())
     }
 
     pub async fn stop(&self) -> Result<()> {
-        self.stop_notification_broadcasting_task().await
+        if self.is_closed.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            trace!("[Broadcaster {0}] stopping...", self.name);
+            self.ctl_channel.send(Ctl::Shutdown).await?;
+            let waits = self.shutdown_waits.lock().clone();
+            for l in waits.into_iter() {
+                l.await
+            }
+        };
+        trace!("[Broadcaster {0}] already stopped", self.name);
+        Ok(())
     }
 }
 
@@ -267,8 +296,8 @@ mod tests {
     impl Test {
         fn new(name: &'static str, listener_count: usize, steps: Vec<Step>) -> Self {
             let (sync_sender, sync_receiver) = unbounded();
-            let (notification_sender, notification_receiver) = unbounded();
-            let broadcaster = Arc::new(TestBroadcaster::with_sync("test", notification_receiver, Some(sync_sender)));
+            let notification_channel = Channel::unbounded();
+            let broadcaster = Arc::new(TestBroadcaster::with_sync("test", notification_channel.receiver.clone(), Some(sync_sender)));
             let mut listeners = Vec::with_capacity(listener_count);
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for _ in 0..listener_count {
@@ -282,9 +311,9 @@ mod tests {
                 name,
                 broadcaster: broadcaster.clone(),
                 listeners,
-                ctl_sender: broadcaster.ctl.sender.clone(),
+                ctl_sender: broadcaster.ctl_channel.sender.clone(),
                 sync_receiver,
-                notification_sender,
+                notification_sender: notification_channel.sender,
                 notification_receivers,
                 steps,
             }
@@ -350,6 +379,8 @@ mod tests {
                 }
             }
             assert!(self.broadcaster.stop().await.is_ok(), "broadcaster failed to stop");
+            assert!(self.broadcaster.ctl_channel.receiver.is_empty(), "broadcaster stopped with none empty ctl channel");
+            assert!(self.broadcaster.incoming.is_empty(), "broadcaster stopped with none empty receiver");
         }
     }
 

@@ -15,6 +15,7 @@ pub trait Connection: Clone + Debug + Send + Sync + 'static {
     fn send(&self, message: Self::Message) -> Result<(), Self::Error>;
     fn close(&self) -> bool;
     fn is_closed(&self) -> bool;
+    fn downgrade(&self);
 }
 
 #[derive(Clone, Debug)]
@@ -66,6 +67,10 @@ where
 
     fn close(&self) -> bool {
         self.sender.close()
+    }
+
+    fn downgrade(&self) {
+        self.sender.downgrade();
     }
 
     fn is_closed(&self) -> bool {

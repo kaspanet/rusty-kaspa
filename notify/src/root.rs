@@ -34,7 +34,7 @@ where
     N: Notification,
 {
     pub fn new(sender: Sender<N>) -> Self {
-        let inner = Arc::new(Inner::new(sender));
+        let inner = Arc::new(Inner::new(sender, "root_notifier"));
         Self { inner }
     }
 
@@ -49,6 +49,10 @@ where
 {
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
+    }
+
+    fn ident(&self) -> String {
+        self.inner.ident().to_owned()
     }
 }
 
@@ -77,15 +81,16 @@ where
 {
     sender: Sender<N>,
     subscriptions: RwLock<EventArray<SingleSubscription>>,
+    pub name: &'static str,
 }
 
 impl<N> Inner<N>
 where
     N: Notification,
 {
-    fn new(sender: Sender<N>) -> Self {
+    fn new(sender: Sender<N>, name: &'static str) -> Self {
         let subscriptions = RwLock::new(ArrayBuilder::single());
-        Self { sender, subscriptions }
+        Self { sender, subscriptions, name }
     }
 
     fn send(&self, notification: N) -> Result<()> {
@@ -121,6 +126,10 @@ where
 
     fn stop_notify(&self, scope: Scope) -> Result<()> {
         self.execute_subscribe_command(scope, Command::Stop)
+    }
+
+    fn ident(&self) -> &str {
+        self.name
     }
 }
 

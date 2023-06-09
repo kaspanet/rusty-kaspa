@@ -1,4 +1,4 @@
-use crate::{signals::Shutdown, task::service::AsyncServiceResult};
+use crate::{info, signals::Shutdown, task::service::AsyncServiceResult, warn};
 use futures_util::future::{select_all, try_join_all};
 use kaspa_core::core::Core;
 use kaspa_core::service::Service;
@@ -96,14 +96,17 @@ impl AsyncRuntime {
         // Stop all async services
         // All services futures are spawned as tokio tasks to enable parallelism
         trace!("async-runtime worker stopping");
-        let futures = self
-            .services
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|x| tokio::spawn(x.clone().stop()))
-            .collect::<Vec<TaskJoinHandle<AsyncServiceResult<()>>>>();
-        try_join_all(futures).await.unwrap();
+        self.services.lock().unwrap().iter().for_each(move |x| {
+            let service_name = x.clone().ident();
+            match futures::executor::block_on(x.clone().stop()) {
+                Ok(_) => {
+                    info!("[{0}] stopped successfully", service_name);
+                }
+                Err(err) => {
+                    warn!("[{0}] failed stopping operation with error: {1} - signaling exit to force closure", service_name, err);
+                }
+            }
+        });
 
         trace!("async-runtime worker exiting");
     }

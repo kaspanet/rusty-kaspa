@@ -103,6 +103,7 @@ kaspa-wrpc-server = { path = "rpc/wrpc/server" }
 kaspad = { path = "kaspad" }
 
 # external
+triggered = "0.1"
 thiserror = "1"
 faster-hex = "0.6"
 itertools = "0.10"

@@ -12,8 +12,7 @@ uuid.workspace = true
 serde.workspace = true
 borsh.workspace = true
 itertools.workspace = true
-
-triggered = "0.1"
+triggered.workspace = true
 event-listener = "2.5.3"
 
 [dev-dependencies]

@@ -1,19 +1,13 @@
-use super::{
-    error::{Error, Result},
-    notification::Notification,
-};
+use super::{error::Result, notification::Notification};
 use crate::{converter::Converter, notifier::DynNotify};
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use core::fmt::Debug;
-use futures::{
-    future::FutureExt, // for `.fuse()`
-    pin_mut,
-    select,
-};
-use futures_util::stream::StreamExt;
+use parking_lot::Mutex;
+use triggered::Listener as TriggerListener;
+
 use kaspa_core::trace;
-use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
+use kaspa_utils::channel::Channel;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -49,26 +43,32 @@ pub struct CollectorFrom<C>
 where
     C: Converter,
 {
-    recv_channel: CollectorNotificationReceiver<C::Incoming>,
+    // We most hold the whole channel (i.e. one sender) to stop unexpected channel closures.
+    incoming: Receiver<C::Incoming>,
 
     converter: Arc<C>,
 
     /// Has this collector been started?
     is_started: Arc<AtomicBool>,
 
-    collect_shutdown: Arc<DuplexTrigger>,
+    /// Has this collector been closed?
+    is_closed: Arc<AtomicBool>,
+
+    /// Shutdown wait
+    shutdown_waits: Arc<Mutex<Vec<TriggerListener>>>,
 }
 
 impl<C> CollectorFrom<C>
 where
     C: Converter + 'static,
 {
-    pub fn new(recv_channel: CollectorNotificationReceiver<C::Incoming>, converter: Arc<C>) -> Self {
+    pub fn new(incoming: Receiver<C::Incoming>, converter: Arc<C>) -> Self {
         Self {
-            recv_channel,
+            incoming,
             converter,
-            collect_shutdown: Arc::new(DuplexTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
+            is_closed: Arc::new(AtomicBool::new(false)),
+            shutdown_waits: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -81,50 +81,42 @@ where
         if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
-        let collect_shutdown = self.collect_shutdown.clone();
-        let recv_channel = self.recv_channel.clone();
         let converter = self.converter.clone();
+        let notifier_ident = notifier.ident();
 
         workflow_core::task::spawn(async move {
-            trace!("[Collector] collecting_task start");
-
-            let shutdown = collect_shutdown.request.listener.clone().fuse();
-            pin_mut!(shutdown);
-
-            let notifications = recv_channel.fuse();
-            pin_mut!(notifications);
+            trace!("[Collector for {0}] collecting task start", notifier_ident);
 
             loop {
-                select! {
-                    _ = shutdown => { break; }
-                    notification = notifications.next().fuse() => {
-                        match notification {
-                            Some(notification) => {
-                                match notifier.notify(converter.convert(notification).await) {
-                                    Ok(_) => (),
-                                    Err(err) => {
-                                        trace!("[Collector] notification sender error: {:?}", err);
-                                    },
-                                }
-                            },
-                            None => {
-                                trace!("[Collector] notifications returned None. This should never happen");
-                            }
+                let notification = self.incoming.recv().await;
+                if let Ok(notification) = notification {
+                    match notifier.notify(converter.convert(notification).await) {
+                        Ok(_) => (),
+                        Err(err) => {
+                            trace!("[Collector for {0}] notification sender error: {1}", notifier_ident, err);
                         }
+                    };
+                } else if let Err(err) = notification {
+                    // We did not expect to exit...
+                    if !self.is_closed.load(Ordering::SeqCst) {
+                        panic!("[Collector for {0}] notifications error: {1}", notifier_ident, err);
                     }
-                }
+                    break;
+                };
             }
-            collect_shutdown.response.trigger.trigger();
-            trace!("[Collector] collecting_task end");
         });
     }
 
     async fn stop_collecting_task(self: &Arc<Self>) -> Result<()> {
-        if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            return Err(Error::AlreadyStoppedError);
+        if self.is_closed.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            trace!("[Collector] stopping");
+            self.incoming.close();
+            let waits = self.shutdown_waits.lock().clone();
+            for l in waits.into_iter() {
+                l.await
+            }
         }
-        self.collect_shutdown.request.trigger.trigger();
-        self.collect_shutdown.response.listener.clone().await;
+        trace!("[Collector] already stopped");
         Ok(())
     }
 }
@@ -197,20 +189,20 @@ mod tests {
     #[tokio::test]
     async fn test_collector_from() {
         type TestConverter = ConverterFrom<IncomingNotification, OutgoingNotification>;
-        let incoming = Channel::default();
+        let incoming_channel = Channel::default();
         let collector: Arc<CollectorFrom<TestConverter>> =
-            Arc::new(CollectorFrom::new(incoming.receiver(), Arc::new(TestConverter::new())));
-        let outgoing = Channel::default();
-        let notifier = Arc::new(NotifyMock::new(outgoing.sender()));
+            Arc::new(CollectorFrom::new(incoming_channel.receiver(), Arc::new(TestConverter::new())));
+        let outgoing_channel = Channel::default();
+        let notifier = Arc::new(NotifyMock::new(outgoing_channel.sender(), "notifier_mock"));
         collector.clone().start(notifier);
 
-        assert!(incoming.send(IncomingNotification::A).await.is_ok());
-        assert!(incoming.send(IncomingNotification::B).await.is_ok());
-        assert!(incoming.send(IncomingNotification::A).await.is_ok());
+        assert!(incoming_channel.sender().send(IncomingNotification::A).await.is_ok());
+        assert!(incoming_channel.sender().send(IncomingNotification::B).await.is_ok());
+        assert!(incoming_channel.sender().send(IncomingNotification::A).await.is_ok());
 
-        assert_eq!(outgoing.recv().await.unwrap(), OutgoingNotification::A);
-        assert_eq!(outgoing.recv().await.unwrap(), OutgoingNotification::B);
-        assert_eq!(outgoing.recv().await.unwrap(), OutgoingNotification::A);
+        assert_eq!(outgoing_channel.receiver().recv().await.unwrap(), OutgoingNotification::A);
+        assert_eq!(outgoing_channel.receiver().recv().await.unwrap(), OutgoingNotification::B);
+        assert_eq!(outgoing_channel.receiver().recv().await.unwrap(), OutgoingNotification::A);
 
         assert!(collector.stop().await.is_ok());
     }

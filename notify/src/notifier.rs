@@ -32,6 +32,8 @@ where
     N: Notification,
 {
     fn notify(&self, notification: N) -> Result<()>;
+
+    fn ident(&self) -> String;
 }
 
 pub type DynNotify<N> = Arc<dyn Notify<N>>;
@@ -130,6 +132,10 @@ where
     pub async fn stop(&self) -> Result<()> {
         self.inner.clone().stop().await
     }
+
+    pub fn ident(&self) -> String {
+        self.inner.clone().ident()
+    }
 }
 
 impl<N, C> Notify<N> for Notifier<N, C>
@@ -139,6 +145,10 @@ where
 {
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
+    }
+
+    fn ident(&self) -> String {
+        self.inner.ident()
     }
 }
 
@@ -365,21 +375,34 @@ where
 
     async fn stop(self: Arc<Self>) -> Result<()> {
         if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            // 3) stop the collectors (these will consume any remaining messages in the que and pass them to broadcasters).
             trace!("[Notifier-{}] stopping collectors", self.name);
             join_all(self.collectors.iter().map(|x| x.clone().stop()))
                 .await
                 .into_iter()
                 .collect::<std::result::Result<Vec<()>, _>>()?;
-            trace!("[Notifier-{}] stopping broadcasters", self.name);
-            join_all(self.broadcasters.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+
+            // 2) stop all subscription operations.
             trace!("[Notifier-{}] stopping subscribers", self.name);
             join_all(self.subscribers.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+
+            // 3) stop the broadcasters (these will consume any remaining messages in the que and pass them to listeners).
+            trace!("[Notifier-{}] stopping broadcasters", self.name);
+            join_all(self.broadcasters.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+
+            // 4) downgrade reference to the listener's senders. this will close channels to any receivers only held by this notifier.
+            trace!("[Notifier-{}] dropping listeners", self.name);
+            self.listeners.lock().iter().for_each(move |l| l.1.downgrade());
         } else {
             trace!("[Notifier-{}] stop ignored since already stopped", self.name);
             return Err(Error::AlreadyStoppedError);
         }
         trace!("[Notifier-{}] stopped", self.name);
         Ok(())
+    }
+
+    pub fn ident(&self) -> String {
+        self.name.to_owned()
     }
 }
 
@@ -406,14 +429,15 @@ pub mod test_helpers {
         N: Notification,
     {
         sender: Sender<N>,
+        pub name: &'static str,
     }
 
     impl<N> NotifyMock<N>
     where
         N: Notification,
     {
-        pub fn new(sender: Sender<N>) -> Self {
-            Self { sender }
+        pub fn new(sender: Sender<N>, name: &'static str) -> Self {
+            Self { sender, name }
         }
     }
 
@@ -423,6 +447,10 @@ pub mod test_helpers {
     {
         fn notify(&self, notification: N) -> Result<()> {
             Ok(self.sender.try_send(notification)?)
+        }
+
+        fn ident(&self) -> String {
+            self.name.to_owned()
         }
     }
 
@@ -674,7 +702,7 @@ pub mod test_helpers {
 mod tests {
     use super::{test_helpers::*, *};
     use crate::{
-        collector::CollectorFrom,
+        collector::{CollectorFrom, CollectorNotificationChannel},
         converter::ConverterFrom,
         events::EVENT_TYPE_ARRAY,
         notification::test_helpers::*,
@@ -701,9 +729,9 @@ mod tests {
             type TestCollector = CollectorFrom<TestConverter>;
             // Build the full-featured notifier
             let (sync_sender, sync_receiver) = unbounded();
-            let (notification_sender, notification_receiver) = unbounded();
+            let notification_channel = CollectorNotificationChannel::new(unbounded());
             let (subscription_sender, subscription_receiver) = unbounded();
-            let collector = Arc::new(TestCollector::new(notification_receiver, Arc::new(TestConverter::new())));
+            let collector = Arc::new(TestCollector::new(notification_channel.receiver(), Arc::new(TestConverter::new())));
             let subscription_manager = Arc::new(SubscriptionManagerMock::new(subscription_sender));
             let subscriber = Arc::new(Subscriber::new(EVENT_TYPE_ARRAY[..].into(), subscription_manager, SUBSCRIPTION_MANAGER_ID));
             let notifier = Arc::new(TestNotifier::with_sync(
@@ -729,7 +757,7 @@ mod tests {
                 notifier,
                 subscription_receiver,
                 listeners,
-                notification_sender,
+                notification_sender: notification_channel.sender(),
                 notification_receivers,
                 sync_receiver,
                 steps,
