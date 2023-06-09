@@ -32,7 +32,8 @@ impl IndexService {
 
         // Prepare the index-processor notifier
         // No subscriber is defined here because the subscription are manually created during the construction and never changed after that.
-        let events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
+        let events: EventSwitches =
+            [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride, EventType::ConsensusShutdown].as_ref().into();
         let collector = Arc::new(Processor::new(utxoindex.clone(), consensus_notify_channel.receiver()));
         let notifier = Arc::new(IndexNotifier::new(events, vec![collector], vec![], 1, INDEX_SERVICE));
 

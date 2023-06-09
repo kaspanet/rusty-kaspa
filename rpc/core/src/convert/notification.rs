@@ -29,6 +29,7 @@ impl From<&consensus_notify::Notification> for Notification {
             consensus_notify::Notification::VirtualDaaScoreChanged(msg) => Notification::VirtualDaaScoreChanged(msg.into()),
             consensus_notify::Notification::PruningPointUtxoSetOverride(msg) => Notification::PruningPointUtxoSetOverride(msg.into()),
             consensus_notify::Notification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
+            other => panic!("trying to convert none-rpc intended consensus notification: {0}", other),
         }
     }
 }
@@ -108,6 +109,7 @@ impl From<&index_notify::Notification> for Notification {
         match item {
             index_notify::Notification::UtxosChanged(msg) => Notification::UtxosChanged(msg.into()),
             index_notify::Notification::PruningPointUtxoSetOverride(msg) => Notification::PruningPointUtxoSetOverride(msg.into()),
+            _ => unimplemented!(),
         }
     }
 }

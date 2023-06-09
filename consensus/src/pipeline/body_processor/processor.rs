@@ -33,6 +33,7 @@ use kaspa_consensus_notify::{
 use kaspa_consensusmanager::SessionLock;
 use kaspa_hashes::Hash;
 use kaspa_notify::notifier::Notify;
+use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
@@ -78,6 +79,9 @@ pub struct BlockBodyProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
+
+    // Shutdown trigger
+    shutdown_trigger: Arc<SingleTrigger>,
 }
 
 impl BlockBodyProcessor {
@@ -126,6 +130,7 @@ impl BlockBodyProcessor {
             task_manager: BlockTaskDependencyManager::new(),
             notification_root,
             counters,
+            shutdown_trigger: Arc::new(SingleTrigger::new()),
         }
     }
 
@@ -149,6 +154,8 @@ impl BlockBodyProcessor {
 
         // Pass the exit signal on to the following processor
         self.sender.send(BlockProcessingMessage::Exit).unwrap();
+
+        self.shutdown_trigger.trigger.trigger();
     }
 
     fn queue_block(self: &Arc<BlockBodyProcessor>, task_id: TaskId) {
@@ -252,5 +259,9 @@ impl BlockBodyProcessor {
 
         // Write the genesis body
         self.commit_body(self.genesis.hash, &[], Arc::new(self.genesis.build_genesis_transactions()))
+    }
+
+    pub fn shutdown_wait(&self) {
+        self.shutdown_trigger.listener.wait()
     }
 }

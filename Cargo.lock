@@ -1629,6 +1629,7 @@ dependencies = [
  "smallvec",
  "thiserror",
  "tokio",
+ "triggered",
 ]
 
 [[package]]

@@ -38,7 +38,7 @@ use kaspa_core::{debug, info, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_utils::iter::IterExtensions;
+use kaspa_utils::{iter::IterExtensions, triggers::SingleTrigger};
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
@@ -75,6 +75,9 @@ pub struct PruningProcessor {
 
     // Config
     config: Arc<Config>,
+
+    // wait for completion
+    shutdown_trigger: Arc<SingleTrigger>,
 }
 
 impl Deref for PruningProcessor {
@@ -104,20 +107,31 @@ impl PruningProcessor {
             pruning_proof_manager: services.pruning_proof_manager.clone(),
             pruning_lock,
             config,
+            shutdown_trigger: Arc::new(SingleTrigger::new()),
         }
     }
 
     pub fn worker(self: &Arc<Self>) {
-        let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() else { return; };
-
-        // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
-        // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
-        self.recover_pruning_workflows_if_needed();
-        self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
-
-        while let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() {
-            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+        match self.receiver.recv().unwrap() {
+            PruningProcessingMessage::Exit => (),
+            PruningProcessingMessage::Process { sink_ghostdag_data } => {
+                // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
+                // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
+                self.recover_pruning_workflows_if_needed();
+                self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+                loop {
+                    match self.receiver.recv().unwrap() {
+                        PruningProcessingMessage::Exit => break,
+                        PruningProcessingMessage::Process { sink_ghostdag_data } => {
+                            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+                        }
+                    };
+                }
+            }
         }
+
+        // Trigger the shutdown for potential listeners
+        self.shutdown_trigger.trigger.trigger()
     }
 
     fn recover_pruning_workflows_if_needed(&self) {
@@ -460,5 +474,9 @@ impl PruningProcessor {
             built_data.ghostdag_blocks.iter().map(|gd| gd.hash).collect::<BlockHashSet>()
         );
         info!("Trusted data was rebuilt successfully following pruning");
+    }
+
+    pub fn shutdown_wait(&self) {
+        self.shutdown_trigger.listener.wait()
     }
 }

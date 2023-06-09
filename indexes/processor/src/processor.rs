@@ -5,7 +5,9 @@ use crate::{
 use async_trait::async_trait;
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
 use kaspa_core::trace;
-use kaspa_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
+use kaspa_index_core::notification::{
+    ConsensusShutdownNotification, Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification,
+};
 use kaspa_notify::{
     collector::{Collector, CollectorNotificationReceiver},
     error::Result,
@@ -76,6 +78,7 @@ impl Processor {
                         }
                     },
                     Err(err) => {
+                        // If we do not expect to exit...
                         if !self.is_closed.load(Ordering::SeqCst) {
                             panic!("[{0}] processing error: {1}", IDENT, err);
                         }
@@ -99,6 +102,10 @@ impl Processor {
             ConsensusNotification::PruningPointUtxoSetOverride(_) => {
                 Ok(Notification::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification {}))
             }
+            ConsensusNotification::ConsensusShutdown(consensus_shutdown_notfification) => {
+                self.process_consensus_shutdown(consensus_shutdown_notfification).unwrap();
+                Ok(Notification::ConsensusShutdown(ConsensusShutdownNotification {}))
+            }
             _ => Err(IndexError::NotSupported(notification.event_type())),
         }
     }
@@ -112,6 +119,15 @@ impl Processor {
             return Ok(utxoindex.write().update(notification.accumulated_utxo_diff.clone(), notification.virtual_parents)?.into());
         };
         Err(IndexError::NotSupported(EventType::UtxosChanged))
+    }
+
+    fn process_consensus_shutdown(
+        self: &Arc<Self>,
+        notification: consensus_notification::ConsensusShutdownNotification,
+    ) -> Result<()> {
+        trace!("[{IDENT}]: processing {:?}", notification);
+        tokio::spawn(self.clone().stop());
+        Ok(())
     }
 
     pub async fn stop_collecting_task(&self) -> Result<()> {
@@ -268,5 +284,24 @@ mod tests {
         }
         pipeline.stop().await.expect("stopping the processor must succeed");
         assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
+    }
+
+    #[tokio::test]
+    async fn test_consensus_shutdown_notification() {
+        kaspa_core::log::try_init_logger("trace, kaspa-index-processor=trace");
+        let pipeline = NotifyPipeline::new();
+        pipeline.start();
+        let test_notification = consensus_notification::ConsensusShutdownNotification {};
+        pipeline
+            .consensus_sender
+            .send(ConsensusNotification::ConsensusShutdown(test_notification.clone()))
+            .await
+            .expect("expected send");
+        match pipeline.processor_receiver.recv().await.expect("expected recv") {
+            Notification::ConsensusShutdown(_) => (),
+            unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
+        pipeline.stop().await.expect("stopping the processor must succeed");
+        assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
+    }
 }

@@ -102,6 +102,7 @@ impl From<EventType> for RpcApiOps {
             EventType::VirtualDaaScoreChanged => RpcApiOps::VirtualDaaScoreChangedNotification,
             EventType::PruningPointUtxoSetOverride => RpcApiOps::PruningPointUtxoSetOverrideNotification,
             EventType::NewBlockTemplate => RpcApiOps::NewBlockTemplateNotification,
+            _ => unimplemented!(),
         }
     }
 }

@@ -60,6 +60,7 @@ impl kaspad_request::Payload {
                     command: command.into(),
                 })
             }
+            other => panic!("trying to convert none-rpc intended consensus scope: {other:?}"),
         }
     }
 }

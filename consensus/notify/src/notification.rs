@@ -41,6 +41,9 @@ pub enum Notification {
 
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
+
+    #[display(fmt = "ConsensusShutDown notification")]
+    ConsensusShutdown(ConsensusShutdownNotification),
 }
 }
 
@@ -172,3 +175,8 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct NewBlockTemplateNotification {}
+
+#[derive(Debug, Clone)]
+pub struct ConsensusShutdownNotification {}
+
+impl ConsensusShutdownNotification {}

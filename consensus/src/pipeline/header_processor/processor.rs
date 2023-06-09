@@ -40,7 +40,7 @@ use kaspa_consensus_core::{
 use kaspa_consensusmanager::SessionLock;
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
-use kaspa_utils::vec::VecExtensions;
+use kaspa_utils::{triggers::SingleTrigger, vec::VecExtensions};
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
@@ -156,6 +156,9 @@ pub struct HeaderProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
+
+    // Shutdown trigger
+    shutdown_trigger: Arc<SingleTrigger>,
 }
 
 impl HeaderProcessor {
@@ -209,6 +212,7 @@ impl HeaderProcessor {
             mergeset_size_limit: params.mergeset_size_limit,
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
+            shutdown_trigger: Arc::new(SingleTrigger::new()),
         }
     }
 
@@ -232,6 +236,9 @@ impl HeaderProcessor {
 
         // Pass the exit signal on to the following processor
         self.body_sender.send(BlockProcessingMessage::Exit).unwrap();
+
+        // Trigger the shutdown for potential listeners
+        self.shutdown_trigger.trigger.trigger();
     }
 
     fn queue_block(self: &Arc<HeaderProcessor>, task_id: TaskId) {
@@ -508,5 +515,9 @@ impl HeaderProcessor {
         self.db.write(batch).unwrap();
         drop(hst_write);
         drop(relations_write);
+    }
+
+    pub fn shutdown_wait(&self) {
+        self.shutdown_trigger.listener.wait()
     }
 }

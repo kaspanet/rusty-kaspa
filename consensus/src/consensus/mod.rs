@@ -56,13 +56,17 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
 };
-use kaspa_consensus_notify::root::ConsensusNotificationRoot;
+use kaspa_consensus_notify::{
+    notification::{ConsensusShutdownNotification, Notification as ConsensusNotification},
+    root::ConsensusNotificationRoot,
+};
 
 use crossbeam_channel::{
     bounded as bounded_crossbeam, unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender,
 };
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
+use kaspa_core::trace;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -84,6 +88,7 @@ pub struct Consensus {
 
     // Channels
     block_sender: CrossbeamSender<BlockProcessingMessage>,
+    pruning_sender: CrossbeamSender<PruningProcessingMessage>,
 
     // Processors
     pub(super) header_processor: Arc<HeaderProcessor>,
@@ -219,7 +224,7 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
-            pruning_sender,
+            pruning_sender.clone(),
             pruning_receiver.clone(),
             virtual_pool,
             params,
@@ -249,6 +254,7 @@ impl Consensus {
         Self {
             db,
             block_sender: sender,
+            pruning_sender,
             header_processor,
             body_processor,
             virtual_processor,
@@ -307,6 +313,17 @@ impl Consensus {
 
     pub fn signal_exit(&self) {
         self.block_sender.send(BlockProcessingMessage::Exit).unwrap();
+        self.pruning_sender.send(PruningProcessingMessage::Exit).unwrap();
+        trace!("waiting on body_processor");
+        self.body_processor.shutdown_wait();
+        trace!("waiting on body_processor");
+        self.header_processor.shutdown_wait();
+        trace!("waiting on body_processor");
+        self.virtual_processor.shutdown_wait();
+        trace!("waiting on body_processor");
+        self.pruning_processor.shutdown_wait();
+        trace!("signaling consensus shutdown");
+        self.notification_root.send(ConsensusNotification::ConsensusShutdown(ConsensusShutdownNotification {})).unwrap();
     }
 
     pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {
@@ -397,7 +414,6 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_sync_info(&self) -> SyncInfo {
-        // TODO: actually get those numbers
         SyncInfo::default()
     }
 
