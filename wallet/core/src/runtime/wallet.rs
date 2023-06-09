@@ -15,6 +15,11 @@ use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
+use kaspa_rpc_core::{
+    api::rpc::RpcApi,
+    notify::{connection::ChannelConnection, mode::NotificationMode},
+    Notification,
+};
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -25,11 +30,6 @@ use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
 use workflow_core::task::spawn;
 use workflow_log::log_error;
 use workflow_rpc::client::Ctl;
-use kaspa_rpc_core::{
-    api::rpc::RpcApi,
-    notify::{connection::ChannelConnection, mode::NotificationMode},
-    Notification,
-};
 
 #[derive(Clone)]
 pub struct AccountCreateArgs {

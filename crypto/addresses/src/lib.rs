@@ -218,8 +218,6 @@ impl Address {
         self.prefix = Prefix::try_from(prefix).unwrap_or_else(|err| panic!("Address::prefix() - invalid prefix `{prefix}`: {err}"));
     }
 
-
-
     #[wasm_bindgen(getter)]
     pub fn payload(&self) -> String {
         self.encode_payload()

@@ -55,7 +55,7 @@ impl NetworkType {
     }
 }
 
-// #[wasm_bindgen] 
+// #[wasm_bindgen]
 // impl NetworkType {
 //     pub fn as_address_prefix_str(&self) -> String {
 //         let prefix : Prefix = self.clone().into();
