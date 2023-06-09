@@ -117,7 +117,6 @@ impl PruningProofManager {
         genesis_hash: Hash,
         pruning_proof_m: u64,
         anticone_finalization_depth: u64,
-        difficulty_adjustment_window_size: usize,
         ghostdag_k: KType,
     ) -> Self {
         Self {
