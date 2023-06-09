@@ -3,6 +3,7 @@ use std::sync::Arc;
 use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -55,15 +56,12 @@ pub struct DbPruningStore {
     history_root_access: CachedDbItem<Hash>,
 }
 
-const PRUNING_POINT_KEY: &[u8] = b"pruning-point";
-const HISTORY_ROOT_KEY: &[u8] = b"history_root";
-
 impl DbPruningStore {
     pub fn new(db: Arc<DB>) -> Self {
         Self {
             db: Arc::clone(&db),
-            access: CachedDbItem::new(db.clone(), PRUNING_POINT_KEY.to_vec()),
-            history_root_access: CachedDbItem::new(db.clone(), HISTORY_ROOT_KEY.to_vec()),
+            access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::PruningPoint.into()),
+            history_root_access: CachedDbItem::new(db, DatabaseStorePrefixes::HistoryRoot.into()),
         }
     }
 

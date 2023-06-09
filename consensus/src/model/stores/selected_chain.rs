@@ -1,5 +1,6 @@
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::ChainPath;
+use kaspa_database::registry::DatabaseStorePrefixes;
 use parking_lot::RwLockWriteGuard;
 use rocksdb::WriteBatch;
 
@@ -26,10 +27,6 @@ pub trait SelectedChainStore: SelectedChainStoreReader {
     fn init_with_pruning_point(&mut self, batch: &mut WriteBatch, block: Hash) -> StoreResult<()>;
 }
 
-const STORE_PREFIX_HASH_BY_INDEX: &[u8] = b"selected-chain-hash-by-index";
-const STORE_PREFIX_INDEX_BY_HASH: &[u8] = b"selected-chain-index-by-hash";
-const STORE_PREFIX_HIGHEST_INDEX: &[u8] = b"selected-chain-highest-index";
-
 /// A DB + cache implementation of `SelectedChainStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbSelectedChainStore {
@@ -43,9 +40,9 @@ impl DbSelectedChainStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
         Self {
             db: Arc::clone(&db),
-            access_hash_by_index: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX_HASH_BY_INDEX.to_vec()),
-            access_index_by_hash: CachedDbAccess::new(db.clone(), cache_size, STORE_PREFIX_INDEX_BY_HASH.to_vec()),
-            access_highest_index: CachedDbItem::new(db, STORE_PREFIX_HIGHEST_INDEX.to_vec()),
+            access_hash_by_index: CachedDbAccess::new(db.clone(), cache_size, DatabaseStorePrefixes::ChainHashByIndex.into()),
+            access_index_by_hash: CachedDbAccess::new(db.clone(), cache_size, DatabaseStorePrefixes::ChainIndexByHash.into()),
+            access_highest_index: CachedDbItem::new(db, DatabaseStorePrefixes::ChainHighestIndex.into()),
         }
     }
 

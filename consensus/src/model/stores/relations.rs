@@ -6,6 +6,7 @@ use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, DbWriter};
 use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
+use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
@@ -31,9 +32,6 @@ pub trait RelationsStore: RelationsStoreReader {
     fn delete_entries(&mut self, writer: impl DbWriter, hash: Hash) -> Result<(), StoreError>;
 }
 
-const PARENTS_PREFIX: &[u8] = b"block-parents";
-const CHILDREN_PREFIX: &[u8] = b"block-children";
-
 /// A DB + cache implementation of `RelationsStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbRelationsStore {
@@ -44,9 +42,10 @@ pub struct DbRelationsStore {
 
 impl DbRelationsStore {
     pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+        assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
-        let parents_prefix = PARENTS_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
-        let children_prefix = CHILDREN_PREFIX.iter().copied().chain(lvl_bytes).collect_vec();
+        let parents_prefix = DatabaseStorePrefixes::RelationsParents.into_iter().chain(lvl_bytes).collect_vec();
+        let children_prefix = DatabaseStorePrefixes::RelationsChildren.into_iter().chain(lvl_bytes).collect_vec();
         Self {
             db: Arc::clone(&db),
             parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, parents_prefix),
@@ -55,8 +54,8 @@ impl DbRelationsStore {
     }
 
     pub fn with_prefix(db: Arc<DB>, prefix: &[u8], cache_size: u64) -> Self {
-        let parents_prefix = prefix.iter().copied().chain(PARENTS_PREFIX.iter().copied()).collect_vec();
-        let children_prefix = prefix.iter().copied().chain(CHILDREN_PREFIX.iter().copied()).collect_vec();
+        let parents_prefix = prefix.iter().copied().chain(DatabaseStorePrefixes::RelationsParents.into_iter()).collect_vec();
+        let children_prefix = prefix.iter().copied().chain(DatabaseStorePrefixes::RelationsChildren.into_iter()).collect_vec();
         Self {
             db: Arc::clone(&db),
             parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, parents_prefix),
@@ -247,14 +246,14 @@ impl RelationsStoreReader for MemoryRelationsStore {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.parents_map.get(&hash) {
             Some(parents) => Ok(BlockHashes::clone(parents)),
-            None => Err(StoreError::KeyNotFound(DbKey::new(PARENTS_PREFIX, hash))),
+            None => Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::RelationsParents.as_ref(), hash))),
         }
     }
 
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         match self.children_map.get(&hash) {
             Some(children) => Ok(BlockHashes::clone(children)),
-            None => Err(StoreError::KeyNotFound(DbKey::new(CHILDREN_PREFIX, hash))),
+            None => Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::RelationsChildren.as_ref(), hash))),
         }
     }
 

@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use kaspa_database::prelude::{CachedDbItem, DirectDbWriter, StoreResult, DB};
+use kaspa_database::{
+    prelude::{CachedDbItem, DirectDbWriter, StoreResult, DB},
+    registry::DatabaseStorePrefixes,
+};
 
 use crate::model::CirculatingSupply;
 
@@ -11,13 +14,9 @@ pub trait CirculatingSupplyStoreReader {
 
 pub trait CirculatingSupplyStore: CirculatingSupplyStoreReader {
     fn update_circulating_supply(&mut self, to_add: CirculatingSupply) -> StoreResult<u64>;
-
     fn insert(&mut self, circulating_supply: u64) -> StoreResult<()>;
-
     fn remove(&mut self) -> StoreResult<()>;
 }
-
-pub const CIRCULATING_SUPPLY_STORE_PREFIX: &[u8] = b"circulating-supply";
 
 /// A DB + cache implementation of `UtxoIndexTipsStore` trait
 #[derive(Clone)]
@@ -28,7 +27,7 @@ pub struct DbCirculatingSupplyStore {
 
 impl DbCirculatingSupplyStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, CIRCULATING_SUPPLY_STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, DatabaseStorePrefixes::CirculatingSupply.into()) }
     }
 }
 

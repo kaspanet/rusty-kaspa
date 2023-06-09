@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use kaspa_database::prelude::{CachedDbItem, DirectDbWriter, StoreError, StoreResult, DB};
+use kaspa_database::{
+    prelude::{CachedDbItem, DirectDbWriter, StoreError, StoreResult, DB},
+    registry::DatabaseStorePrefixes,
+};
 
 use kaspa_consensus_core::BlockHashSet;
 
@@ -11,11 +14,8 @@ pub trait UtxoIndexTipsStoreReader {
 
 pub trait UtxoIndexTipsStore: UtxoIndexTipsStoreReader {
     fn set_tips(&mut self, new_tips: BlockHashSet) -> StoreResult<()>;
-
     fn remove(&mut self) -> Result<(), StoreError>;
 }
-
-pub const TIPS_STORE_PREFIX: &[u8] = b"tips";
 
 /// A DB + cache implementation of `UtxoIndexTipsStore` trait
 #[derive(Clone)]
@@ -26,7 +26,7 @@ pub struct DbUtxoIndexTipsStore {
 
 impl DbUtxoIndexTipsStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), TIPS_STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::UtxoIndexTips.into()) }
     }
 }
 

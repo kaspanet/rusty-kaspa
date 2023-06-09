@@ -1,4 +1,5 @@
 use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHasher};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use std::sync::Arc;
@@ -22,8 +23,6 @@ pub trait StatusesStore: StatusesStoreReader {
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
-const STORE_PREFIX: &[u8] = b"block-statuses";
-
 /// A DB + cache implementation of `StatusesStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbStatusesStore {
@@ -33,7 +32,7 @@ pub struct DbStatusesStore {
 
 impl DbStatusesStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::Statuses.into()) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {

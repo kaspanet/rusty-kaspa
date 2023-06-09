@@ -17,7 +17,6 @@ type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOut
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
-
     fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
 }
 
@@ -36,7 +35,29 @@ struct UtxoKey([u8; UTXO_KEY_SIZE]);
 
 impl AsRef<[u8]> for UtxoKey {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        // In every practical case a transaction output index needs at most 2 bytes, so the overall
+        // DB key structure will be { prefix byte || TX ID (32 bytes) || TX INDEX (2) } = 35 bytes
+        // which fit on the smallvec without requiring heap allocation (see key.rs)
+        let rposition = self.0[kaspa_hashes::HASH_SIZE..].iter().rposition(|&v| v != 0).unwrap_or(0);
+        &self.0[..=kaspa_hashes::HASH_SIZE + rposition]
+    }
+}
+
+impl TryFrom<&[u8]> for UtxoKey {
+    type Error = &'static str;
+
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        if UTXO_KEY_SIZE < slice.len() {
+            return Err("src slice is too large");
+        }
+        if slice.len() < kaspa_hashes::HASH_SIZE + 1 {
+            return Err("src slice is too short");
+        }
+        // If the slice is shorter than HASH len + u32 len then we pad with zeros, effectively
+        // implementing the inverse logic of `AsRef`.
+        let mut bytes = [0; UTXO_KEY_SIZE];
+        bytes[..slice.len()].copy_from_slice(slice);
+        Ok(Self(bytes))
     }
 }
 
@@ -70,17 +91,17 @@ impl From<UtxoKey> for TransactionOutpoint {
 #[derive(Clone)]
 pub struct DbUtxoSetStore {
     db: Arc<DB>,
-    prefix: &'static [u8],
+    prefix: Vec<u8>,
     access: CachedDbAccess<UtxoKey, Arc<UtxoEntry>>,
 }
 
 impl DbUtxoSetStore {
-    pub fn new(db: Arc<DB>, cache_size: u64, prefix: &'static [u8]) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, prefix.to_vec()), prefix }
+    pub fn new(db: Arc<DB>, cache_size: u64, prefix: Vec<u8>) -> Self {
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, prefix.clone()), prefix }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), cache_size, self.prefix)
+        Self::new(Arc::clone(&self.db), cache_size, self.prefix.clone())
     }
 
     /// See comment at [`UtxoSetStore::write_diff`]
@@ -93,9 +114,8 @@ impl DbUtxoSetStore {
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(TransactionOutpoint, Arc<UtxoEntry>), Box<dyn Error>>> + '_ {
         self.access.iterator().map(|iter_result| match iter_result {
-            Ok((key_bytes, utxo_entry)) => match <[u8; UTXO_KEY_SIZE]>::try_from(&key_bytes[..]) {
-                Ok(utxo_key_slice) => {
-                    let utxo_key = UtxoKey(utxo_key_slice);
+            Ok((key_bytes, utxo_entry)) => match UtxoKey::try_from(key_bytes.as_ref()) {
+                Ok(utxo_key) => {
                     let outpoint: TransactionOutpoint = utxo_key.into();
                     Ok((outpoint, utxo_entry))
                 }
@@ -137,7 +157,7 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         let seek_key = from_outpoint.map(UtxoKey::from);
         Box::new(self.access.seek_iterator(None, seek_key, limit, skip_first).map(|res| {
             let (key, entry) = res?;
-            let outpoint: TransactionOutpoint = UtxoKey(<[u8; UTXO_KEY_SIZE]>::try_from(&key[..]).unwrap()).into();
+            let outpoint: TransactionOutpoint = UtxoKey::try_from(key.as_ref()).unwrap().into();
             Ok((outpoint, UtxoEntry::clone(&entry)))
         }))
     }
@@ -165,10 +185,14 @@ mod tests {
 
     #[test]
     fn test_utxo_key_conversion() {
-        let id = 2345.into();
-        let outpoint = TransactionOutpoint::new(id, 300);
-        let key: UtxoKey = outpoint.into();
-        assert_eq!(outpoint, key.into());
-        assert_eq!(key.0.to_vec(), id.as_bytes().iter().copied().chain([44, 1, 0, 0].iter().copied()).collect_vec());
+        let tx_id = 2345.into();
+        [300u32, 1, u8::MAX as u32, u16::MAX as u32, u32::MAX - 10].into_iter().for_each(|index| {
+            let outpoint = TransactionOutpoint::new(tx_id, index);
+            let key: UtxoKey = outpoint.into();
+            let bytes = key.as_ref().to_vec();
+            assert_eq!(key, bytes.as_slice().try_into().unwrap());
+            assert_eq!(outpoint, key.into());
+            assert_eq!(key.0.to_vec(), tx_id.as_bytes().iter().copied().chain(index.to_le_bytes().iter().copied()).collect_vec());
+        });
     }
 }
