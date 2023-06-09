@@ -81,10 +81,11 @@ impl Processor {
                         // If we do not expect to exit...
                         if !self.is_closed.load(Ordering::SeqCst) {
                             panic!("[{0}] processing error: {1}", IDENT, err);
-                        }
+                        };
 
                         // Signal shutdown is finished to waiting threads
                         trig.trigger();
+                        println!("triggered");
 
                         // Break out of the loop select
                         break;
@@ -136,8 +137,9 @@ impl Processor {
             self.recv_channel.close();
             let waits = self.shutdown_waits.lock().clone();
             for l in waits.into_iter() {
-                l.await
-            }
+                l.await;
+            };
+            return Ok(());
         };
         trace!("[{0}] already stopped", IDENT);
         Ok(())
@@ -150,10 +152,11 @@ impl Processor {
 
     #[cfg(test)]
     pub async fn shutdown_wait(&self) {
+        println!("waiting...");
         let waits = self.shutdown_waits.lock().clone();
         for l in waits.into_iter() {
-            l.await
-        }
+            l.await;
+        };
     }
 }
 
@@ -277,7 +280,10 @@ mod tests {
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
         pipeline.stop().await.expect("stopping the processor must succeed");
-        assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
+        assert!(pipeline.processor.is_closed(), "the processor should be closed");
+        assert!(pipeline.processor.recv_channel.is_closed(), "processor receiver is not closed");
+        assert!(pipeline.processor.recv_channel.is_empty(), "processor stopped with none empty receiver");
+        assert!(pipeline.processor.stop().await.is_ok(), "processor shouldn't error when re-stopping");
     }
 
     #[tokio::test]
@@ -296,7 +302,10 @@ mod tests {
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
         pipeline.stop().await.expect("stopping the processor must succeed");
-        assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
+        assert!(pipeline.processor.is_closed(), "the processor should be closed");
+        assert!(pipeline.processor.recv_channel.is_closed(), "processor receiver is not closed");
+        assert!(pipeline.processor.recv_channel.is_empty(), "processor stopped with none empty receiver");
+        assert!(pipeline.processor.stop().await.is_ok(), "processor shouldn't error when re-stopping");
     }
 
     #[tokio::test]
@@ -316,8 +325,8 @@ mod tests {
         }
         pipeline.processor.shutdown_wait().await;
         assert!(pipeline.processor.is_closed(), "the processor should be closed");
-        assert!(pipeline.processor_receiver.is_closed(), "processor receiver is not closed");
-        assert!(pipeline.processor_receiver.is_empty(), "processor stopped with none empty receiver");
+        assert!(pipeline.processor.recv_channel.is_closed(), "processor receiver is not closed");
+        assert!(pipeline.processor.recv_channel.is_empty(), "processor stopped with none empty receiver");
         assert!(pipeline.processor.stop().await.is_ok(), "processor shouldn't error when re-stopping");
     }
 }
