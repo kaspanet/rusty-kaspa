@@ -2,7 +2,6 @@ use kaspa_grpc_client::{GrpcClient, GrpcClientNotify};
 use kaspa_notify::{
     connection::Connection as ConnectionT,
     error::{Error as NotifyError, Result as NotifyResult},
-    events::EventType,
     listener::ListenerId,
     notification::Notification as NotificationT,
     notifier::Notify,
@@ -64,9 +63,8 @@ impl Notify<Notification> for ConnectionInner {
         self.send(Connection::into_message(&notification, &self.messenger.encoding().into()))
             .map_err(|err| NotifyError::General(err.to_string()))
     }
-
-    fn has_subscription(&self, _event: EventType) -> bool {
-        unimplemented!()
+    fn ident(&self) -> String {
+        self.id.to_string()
     }
 }
 

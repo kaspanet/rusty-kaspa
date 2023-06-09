@@ -1,5 +1,5 @@
 use derive_more::Display;
-use kaspa_consensus_core::{acceptance_data::AcceptanceData, block::Block, tx::TransactionId, utxo::utxo_diff::UtxoDiff};
+use kaspa_consensus_core::{acceptance_data::AcceptanceData, block::Block, utxo::utxo_diff::UtxoDiff};
 use kaspa_hashes::Hash;
 use kaspa_notify::{
     events::EventType,
@@ -42,19 +42,11 @@ pub enum Notification {
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
 
-    #[display(fmt = "PrunedTransactionIds notification")]
-    PrunedTransactionIds(PrunedTransactionIdsNotification),
-
-    #[display(fmt = "PruningStart notification")]
-    PruningStart(PruningStartNotification),
-
-    #[display(fmt = "PruningEnd notification")]
-    PruningEnd(PruningEndNotification),
-
     #[display(fmt = "ConsensusShutDown notification")]
-    ConsensusShutDown(ConsensusShutDownNotification),
+    ConsensusShutdown(ConsensusShutdownNotification),
 }
 }
+
 impl NotificationTrait for Notification {
     fn apply_overall_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
         match subscription.active() {
@@ -185,41 +177,6 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 pub struct NewBlockTemplateNotification {}
 
 #[derive(Debug, Clone)]
-pub struct PrunedTransactionIdsNotification {
-    pub transaction_ids: Arc<Vec<TransactionId>>,
-}
+pub struct ConsensusShutdownNotification {}
 
-impl PrunedTransactionIdsNotification {
-    pub fn new(transaction_ids: Arc<Vec<TransactionId>>) -> Self {
-        Self { transaction_ids }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct PruningStartNotification {
-    pub old_pruning_point: Arc<Hash>,
-    pub old_history_root: Arc<Hash>,
-}
-
-impl PruningStartNotification {
-    pub fn new(old_pruning_point: Arc<Hash>, old_history_root: Arc<Hash>) -> Self {
-        Self { old_pruning_point, old_history_root }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct PruningEndNotification {
-    pub new_pruning_point: Arc<Hash>,
-    pub new_history_root: Arc<Hash>,
-}
-
-impl PruningEndNotification {
-    pub fn new(new_pruning_point: Arc<Hash>, new_history_root: Arc<Hash>) -> Self {
-        Self { new_pruning_point, new_history_root }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ConsensusShutDownNotification {}
-
-impl ConsensusShutDownNotification {}
+impl ConsensusShutdownNotification {}

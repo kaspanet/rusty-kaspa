@@ -36,14 +36,11 @@ pub enum EventType {
     VirtualDaaScoreChanged,
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
-    PrunedTransactionIds,
-    PruningStart,
-    PruningEnd,
-    ConsensusShutDown,
+    ConsensusShutdown,
     }
 }
 
-pub const EVENT_COUNT: usize = 13;
+pub const EVENT_COUNT: usize = 10;
 
 /// Generic array with [`EventType`] strongly-typed index
 #[derive(Default, Clone, Copy, Debug)]

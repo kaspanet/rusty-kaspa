@@ -8,7 +8,6 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            block_transactions::BlockTransactionsStoreReader,
             ghostdag::{CompactGhostdagData, GhostdagStoreReader},
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
@@ -34,18 +33,12 @@ use kaspa_consensus_core::{
     trusted::ExternalGhostdagData,
     BlockHashSet,
 };
-use kaspa_consensus_notify::{
-    notification::Notification as ConsensusNotification,
-    notification::{PrunedTransactionIdsNotification, PruningEndNotification, PruningStartNotification},
-    root::ConsensusNotificationRoot,
-};
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_notify::{events::EventType, notifier::Notify};
-use kaspa_utils::{arc::ArcExtensions, iter::IterExtensions};
+use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
@@ -54,6 +47,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use triggered::{Listener, Trigger};
 
 pub enum PruningProcessingMessage {
     Exit,
@@ -77,14 +71,15 @@ pub struct PruningProcessor {
     pruning_point_manager: DbPruningPointManager,
     pruning_proof_manager: Arc<PruningProofManager>,
 
-    // Notifier
-    notification_root: Arc<ConsensusNotificationRoot>,
-
     // Pruning lock
     pruning_lock: SessionLock,
 
     // Config
     config: Arc<Config>,
+
+    // Shutdown
+    pub shutdown_listener: Listener,
+    shutdown_trigger: Trigger,
 }
 
 impl Deref for PruningProcessor {
@@ -101,10 +96,10 @@ impl PruningProcessor {
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
-        notification_root: Arc<ConsensusNotificationRoot>,
         pruning_lock: SessionLock,
         config: Arc<Config>,
     ) -> Self {
+        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         Self {
             receiver,
             db,
@@ -114,22 +109,34 @@ impl PruningProcessor {
             pruning_point_manager: services.pruning_point_manager.clone(),
             pruning_proof_manager: services.pruning_proof_manager.clone(),
             pruning_lock,
-            notification_root,
             config,
+
+            shutdown_listener,
+            shutdown_trigger,
         }
     }
 
     pub fn worker(self: &Arc<Self>) {
-        let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() else { return; };
-
-        // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
-        // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
-        self.recover_pruning_workflows_if_needed();
-        self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
-
-        while let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() {
-            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+        match self.receiver.recv().unwrap() {
+            PruningProcessingMessage::Exit => (),
+            PruningProcessingMessage::Process { sink_ghostdag_data } => {
+                // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
+                // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
+                self.recover_pruning_workflows_if_needed();
+                self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+                loop {
+                    match self.receiver.recv().unwrap() {
+                        PruningProcessingMessage::Exit => break,
+                        PruningProcessingMessage::Process { sink_ghostdag_data } => {
+                            self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
+                        }
+                    };
+                }
+            }
         }
+
+        // Trigger the shutdown for potential listeners
+        self.shutdown_trigger.trigger()
     }
 
     fn recover_pruning_workflows_if_needed(&self) {
@@ -256,15 +263,6 @@ impl PruningProcessor {
             .collect();
         let keep_headers: BlockHashSet = self.past_pruning_points();
 
-        self.notification_root
-            .notify(ConsensusNotification::PruningStart(PruningStartNotification::new(
-                Arc::new(
-                    self.past_pruning_points_store.get(self.pruning_point_store.read().pruning_point_index().unwrap() - 1).unwrap(),
-                ),
-                Arc::new(self.pruning_point_store.read().history_root().unwrap()),
-            )))
-            .unwrap();
-
         info!("Header and Block pruning: waiting for consensus write permissions...");
 
         let mut prune_guard = self.pruning_lock.blocking_write();
@@ -362,24 +360,6 @@ impl PruningProcessor {
                 let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
 
-                // collect pruned data to be sent over the notifier for external services
-
-                //check if we need to send before expensive operations.
-                if self.notification_root.has_subscription(EventType::PrunedTransactionIds)
-                    && self.block_transactions_store.has(current).unwrap()
-                {
-                    let pruned_transaction_ids = ArcExtensions::unwrap_or_clone(self.block_transactions_store.get(current).unwrap())
-                        .into_iter()
-                        .map(move |transaction| transaction.id())
-                        .collect();
-                    // TODO: handle error
-                    self.notification_root
-                        .notify(ConsensusNotification::PrunedTransactionIds(PrunedTransactionIdsNotification::new(Arc::new(
-                            pruned_transaction_ids,
-                        ))))
-                        .unwrap();
-                };
-
                 // Prune data related to block bodies and UTXO state
                 self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
@@ -457,13 +437,6 @@ impl PruningProcessor {
             pruning_point_write.set_history_root(&mut batch, new_pruning_point).unwrap();
             self.db.write(batch).unwrap();
             drop(pruning_point_write);
-
-            self.notification_root
-                .notify(ConsensusNotification::PruningEnd(PruningEndNotification::new(
-                    Arc::new(new_pruning_point),
-                    Arc::new(new_pruning_point),
-                )))
-                .unwrap();
         }
     }
 
@@ -506,5 +479,9 @@ impl PruningProcessor {
             built_data.ghostdag_blocks.iter().map(|gd| gd.hash).collect::<BlockHashSet>()
         );
         info!("Trusted data was rebuilt successfully following pruning");
+    }
+
+    pub fn get_shutdown_listener(&self) -> Listener {
+        self.shutdown_listener.clone()
     }
 }

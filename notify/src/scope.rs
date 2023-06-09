@@ -35,10 +35,7 @@ pub enum Scope {
     VirtualDaaScoreChanged,
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
-    PrunedTransactionIds,
-    PruningStart,
-    PruningEnd,
-    ConsensusShutDown,
+    ConsensusShutdown,
 }
 }
 
@@ -94,13 +91,4 @@ pub struct PruningPointUtxoSetOverrideScope {}
 pub struct NewBlockTemplateScope {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct PrunedTransactionIdsScope {}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct PruningStartScope {}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct PruningEndScope {}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct ConsensusShutDownScope {}
+pub struct ConsensusShutdownScope {}

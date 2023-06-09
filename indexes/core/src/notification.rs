@@ -19,6 +19,9 @@ pub enum Notification {
 
     #[display(fmt = "PruningPointUtxoSetOverride notification")]
     PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification),
+
+    #[display(fmt = "ConsensusShutdown notification")]
+    ConsensusShutdown(ConsensusShutdownNotification),
 }
 }
 
@@ -51,6 +54,9 @@ impl NotificationTrait for Notification {
 
 #[derive(Debug, Clone, Default)]
 pub struct PruningPointUtxoSetOverrideNotification {}
+
+#[derive(Debug, Clone, Default)]
+pub struct ConsensusShutdownNotification {}
 
 #[derive(Debug, Clone)]
 pub struct UtxosChangedNotification {

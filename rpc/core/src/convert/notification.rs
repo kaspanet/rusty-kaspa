@@ -109,6 +109,7 @@ impl From<&index_notify::Notification> for Notification {
         match item {
             index_notify::Notification::UtxosChanged(msg) => Notification::UtxosChanged(msg.into()),
             index_notify::Notification::PruningPointUtxoSetOverride(msg) => Notification::PruningPointUtxoSetOverride(msg.into()),
+            _ => unimplemented!(),
         }
     }
 }

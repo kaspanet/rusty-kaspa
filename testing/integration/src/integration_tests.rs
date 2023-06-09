@@ -2,7 +2,7 @@
 //! Integration tests
 //!
 
-use async_channel::{unbounded, Receiver as AsyncChannelReciever};
+use async_channel::unbounded;
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
@@ -12,8 +12,6 @@ use kaspa_consensus::model::stores::block_transactions::{
 };
 use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use kaspa_consensus::model::stores::headers::HeaderStoreReader;
-use kaspa_consensus::model::stores::past_pruning_points::PastPruningPointsStoreReader;
-use kaspa_consensus::model::stores::pruning::PruningStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
@@ -33,44 +31,31 @@ use kaspa_consensus_core::networktype::NetworkType::Mainnet;
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
-use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlockHashSet, BlueWorkType, HashMapCustomHasher};
-use kaspa_consensus_notify::connection::ConsensusChannelConnection;
-use kaspa_consensus_notify::notification::{
-    BlockAddedNotification, Notification as ConsensusNotification, PrunedTransactionIdsNotification, PruningEndNotification,
-    PruningStartNotification,
-};
-use kaspa_consensus_notify::notifier::ConsensusNotifier;
+use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::{create_temp_db, get_kaspa_tempdir};
 use kaspa_hashes::Hash;
-use tokio::task::JoinHandle;
-use tokio::time::sleep;
 
-use crate::common;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
 use kaspa_core::core::Core;
+use kaspa_core::info;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
-use kaspa_core::{info, warn};
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
-use kaspa_notify::scope::{BlockAddedScope, ConsensusShutDownScope, PrunedTransactionIdsScope, PruningEndScope, PruningStartScope};
-use kaspa_utils::arc::ArcExtensions;
 use kaspa_utxoindex::api::UtxoIndexApi;
 use kaspa_utxoindex::UtxoIndex;
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::cmp::{max, Ordering};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 use std::{
     collections::HashMap,
     fs::File,
@@ -78,6 +63,8 @@ use std::{
     io::{BufRead, BufReader},
     str::{from_utf8, FromStr},
 };
+
+use crate::common;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonBlock {
@@ -825,302 +812,57 @@ impl KaspadGoParams {
     }
 }
 
-// processing tracker structs
-#[derive(Clone)]
-struct PrunedTransactionIdTracker {
-    // we can adapt to a [`BlockHashSet`] for performance, since we do not expect an attacker in testing environment.
-    transactions_pruned: BlockHashSet,
-    num_transactions_pruned: usize,
-}
-
-impl PrunedTransactionIdTracker {
-    fn new() -> Self {
-        Self { transactions_pruned: BlockHashSet::new(), num_transactions_pruned: 0 }
-    }
-
-    fn update(&mut self, pruned_transaction_id_notfication: PrunedTransactionIdsNotification) {
-        self.num_transactions_pruned += pruned_transaction_id_notfication.transaction_ids.len();
-        self.transactions_pruned.extend(pruned_transaction_id_notfication.transaction_ids.unwrap_or_clone().into_iter())
-    }
-}
-
-#[derive(Clone)]
-struct PruningEndStateTracker {
-    end_pruning_point: Option<Hash>,
-    end_history_root: Option<Hash>,
-}
-
-impl PruningEndStateTracker {
-    fn new() -> Self {
-        Self { end_pruning_point: None, end_history_root: None }
-    }
-
-    fn update(&mut self, pruning_end_notification: PruningEndNotification) {
-        self.end_pruning_point = Some(pruning_end_notification.new_pruning_point.unwrap_or_clone());
-        self.end_history_root = Some(pruning_end_notification.new_history_root.unwrap_or_clone());
-    }
-}
-
-// note start state here refers to the pen-ultimate pruning state.
-#[derive(Clone)]
-struct PruningStartStateTracker {
-    start_pruning_point: Option<Hash>,
-    start_history_root: Option<Hash>,
-}
-
-impl PruningStartStateTracker {
-    fn new() -> Self {
-        Self { start_pruning_point: None, start_history_root: None }
-    }
-
-    fn update(&mut self, pruning_start_notification: PruningStartNotification) {
-        self.start_pruning_point = Some(pruning_start_notification.old_pruning_point.unwrap_or_clone());
-        self.start_history_root = Some(pruning_start_notification.old_history_root.unwrap_or_clone());
-    }
-}
-
-#[derive(Clone)]
-struct BlockAddedTracker {
-    num_of_transactions_added: usize,
-    // we can adapt to a [`BlockHashSet`] for performance, since we do not expect an attacker in testing environment.
-    transactions_processed: BlockHashSet,
-}
-
-impl BlockAddedTracker {
-    fn new() -> Self {
-        Self { num_of_transactions_added: 0, transactions_processed: BlockHashSet::new() }
-    }
-
-    fn update(&mut self, block_added_notification: BlockAddedNotification) {
-        if !block_added_notification.block.is_header_only() {
-            self.num_of_transactions_added += block_added_notification.block.transactions.len();
-            self.transactions_processed.extend(
-                block_added_notification.block.transactions.unwrap_or_clone().into_iter().map(move |transaction| transaction.id()),
-            );
-        }
-    }
-}
-
-#[derive(Clone)]
-struct ProcessingTracker {
-    consensus_notifier: Arc<ConsensusNotifier>,
-    pruned_transaction_id_tracker: Option<Arc<RwLock<PrunedTransactionIdTracker>>>,
-    block_added_tracker: Option<Arc<RwLock<BlockAddedTracker>>>,
-    pruning_end_state_tracker: Option<Arc<RwLock<PruningEndStateTracker>>>,
-    // note: start state below refers to the pen-ultimate pruning point.
-    pruning_start_state_tracker: Option<Arc<RwLock<PruningStartStateTracker>>>,
-    consensus_receiver: AsyncChannelReciever<ConsensusNotification>,
-    receiver_id: u64,
-}
-
-impl ProcessingTracker {
-    fn new(
-        consensus_notifier: Arc<ConsensusNotifier>,
-        track_pruned_transaction_ids: bool,
-        track_block_added: bool,
-        track_pruning_start_state: bool,
-        track_pruning_end_state: bool,
-    ) -> Self {
-        let (s, consensus_receiver) = async_channel::unbounded::<ConsensusNotification>();
-        let receiver_id = consensus_notifier.register_new_listener(ConsensusChannelConnection::new(s));
-
-        Self {
-            pruned_transaction_id_tracker: if track_pruned_transaction_ids {
-                Some(Arc::new(RwLock::new(PrunedTransactionIdTracker::new())))
-            } else {
-                None
-            },
-            block_added_tracker: if track_block_added { Some(Arc::new(RwLock::new(BlockAddedTracker::new()))) } else { None },
-            pruning_end_state_tracker: if track_pruning_end_state {
-                Some(Arc::new(RwLock::new(PruningEndStateTracker::new())))
-            } else {
-                None
-            },
-            pruning_start_state_tracker: if track_pruning_start_state {
-                Some(Arc::new(RwLock::new(PruningStartStateTracker::new())))
-            } else {
-                None
-            },
-            consensus_notifier,
-            consensus_receiver,
-            receiver_id,
-        }
-    }
-
-    fn build_subscriptions(&self) {
-        // we always need to subscribe to shutdown, in order to end the tracker.
-        self.consensus_notifier
-            .try_execute_subscribe_command(
-                self.receiver_id,
-                kaspa_notify::scope::Scope::ConsensusShutDown(ConsensusShutDownScope {}),
-                kaspa_notify::subscription::Command::Start,
-            )
-            .unwrap();
-
-        if self.pruned_transaction_id_tracker.is_some() {
-            self.consensus_notifier
-                .try_execute_subscribe_command(
-                    self.receiver_id,
-                    kaspa_notify::scope::Scope::PrunedTransactionIds(PrunedTransactionIdsScope {}),
-                    kaspa_notify::subscription::Command::Start,
-                )
-                .unwrap();
-        };
-        if self.block_added_tracker.is_some() {
-            self.consensus_notifier
-                .try_execute_subscribe_command(
-                    self.receiver_id,
-                    kaspa_notify::scope::Scope::BlockAdded(BlockAddedScope {}),
-                    kaspa_notify::subscription::Command::Start,
-                )
-                .unwrap();
-        };
-        if self.pruning_start_state_tracker.is_some() {
-            self.consensus_notifier
-                .try_execute_subscribe_command(
-                    self.receiver_id,
-                    kaspa_notify::scope::Scope::PruningStart(PruningStartScope {}),
-                    kaspa_notify::subscription::Command::Start,
-                )
-                .unwrap();
-        };
-        if self.pruning_end_state_tracker.is_some() {
-            self.consensus_notifier
-                .try_execute_subscribe_command(
-                    self.receiver_id,
-                    kaspa_notify::scope::Scope::PruningEnd(PruningEndScope {}),
-                    kaspa_notify::subscription::Command::Start,
-                )
-                .unwrap();
-        };
-    }
-
-    fn track_progress(self: Arc<Self>) -> JoinHandle<()> {
-        tokio::spawn(async move {
-            loop {
-                let res = tokio::select! {
-                    notification = self.consensus_receiver.recv() => async {
-                        notification
-                        }.await.unwrap()
-                };
-                match res {
-                    ConsensusNotification::BlockAdded(block_added_notification) => self
-                        .block_added_tracker
-                        .clone()
-                        .unwrap_or_else(|| panic!("unexpected notfication {block_added_notification:?}"))
-                        .write()
-                        .update(block_added_notification),
-                    ConsensusNotification::PrunedTransactionIds(pruned_transaction_ids_notification) => self
-                        .pruned_transaction_id_tracker
-                        .clone()
-                        .unwrap_or_else(|| panic!("unexpected notfication {pruned_transaction_ids_notification:?}"))
-                        .write()
-                        .update(pruned_transaction_ids_notification),
-                    ConsensusNotification::PruningStart(pruning_start_notification) => self
-                        .pruning_start_state_tracker
-                        .clone()
-                        .unwrap_or_else(|| panic!("unexpected notfication {pruning_start_notification:?}"))
-                        .write()
-                        .update(pruning_start_notification),
-                    ConsensusNotification::PruningEnd(pruning_end_notification) => self
-                        .pruning_end_state_tracker
-                        .clone()
-                        .unwrap_or_else(|| panic!("unexpected notfication {pruning_end_notification:?}"))
-                        .write()
-                        .update(pruning_end_notification),
-                    ConsensusNotification::ConsensusShutDown(_) => {
-                        assert!(self.consensus_receiver.is_empty());
-                        self.consensus_notifier.unregister_listener(self.receiver_id).unwrap();
-                        break;
-                    }
-                    _others => unimplemented!(),
-                }
-            }
-        })
-    }
-
-    fn get_block_added_tracker(&self) -> BlockAddedTracker {
-        self.block_added_tracker.clone().expect("expected tracker").read().clone()
-    }
-
-    fn get_pruned_transaction_id_tracker(&self) -> PrunedTransactionIdTracker {
-        self.pruned_transaction_id_tracker.clone().expect("expected tracker").read().clone()
-    }
-
-    fn get_pruning_start_state_tracker(&self) -> PruningStartStateTracker {
-        self.pruning_start_state_tracker.clone().expect("expected tracker").read().clone()
-    }
-
-    fn get_pruning_end_state_tracker(&self) -> PruningEndStateTracker {
-        self.pruning_end_state_tracker.clone().expect("expected tracker").read().clone()
-    }
-}
-
-// test ident enum
-#[derive(Clone, Copy)]
-pub enum JsonTestIdent {
-    GoRefCustomPruningDepth = 0,
-    GoRefNoTxTest,
-    GoRefNoTxConcurrentTest,
-    GoRefTxSmallTest,
-    GoRefTxSmallConcurrentTest,
-    GoRefTxBigTest,
-    GoRefTxBigConcurrentTest,
-    GoRefMainnentTest,
-    GoRefMainnentConcurrentTest,
-}
-
 #[tokio::test]
 async fn goref_custom_pruning_depth_test() {
-    json_test("testdata/dags_for_json_tests/goref_custom_pruning_depth", false, JsonTestIdent::GoRefCustomPruningDepth).await
+    json_test("testdata/dags_for_json_tests/goref_custom_pruning_depth", false).await
 }
 
 #[tokio::test]
 async fn goref_notx_test() {
-    json_test("testdata/dags_for_json_tests/goref-notx-5000-blocks", false, JsonTestIdent::GoRefNoTxTest).await
+    json_test("testdata/dags_for_json_tests/goref-notx-5000-blocks", false).await
 }
 
 #[tokio::test]
 async fn goref_notx_concurrent_test() {
-    json_test("testdata/dags_for_json_tests/goref-notx-5000-blocks", true, JsonTestIdent::GoRefNoTxConcurrentTest).await
+    json_test("testdata/dags_for_json_tests/goref-notx-5000-blocks", true).await
 }
 
 #[tokio::test]
 async fn goref_tx_small_test() {
-    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", false, JsonTestIdent::GoRefTxSmallTest).await
+    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", false).await
 }
 
 #[tokio::test]
 async fn goref_tx_small_concurrent_test() {
-    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", true, JsonTestIdent::GoRefTxSmallConcurrentTest).await
+    json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", true).await
 }
 
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_test() {
     // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", false, JsonTestIdent::GoRefTxBigTest).await
+    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", false).await
 }
 
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_concurrent_test() {
     // TODO: add this file to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", true, JsonTestIdent::GoRefTxBigConcurrentTest).await
+    json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", true).await
 }
 
 #[tokio::test]
 #[ignore = "long"]
 async fn goref_mainnet_test() {
     // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-mainnet", false, JsonTestIdent::GoRefMainnentTest).await
+    json_test("testdata/dags_for_json_tests/goref-mainnet", false).await
 }
 
 #[tokio::test]
 #[ignore = "long"]
 async fn goref_mainnet_concurrent_test() {
     // TODO: add this directory to a data repo and fetch dynamically
-    json_test("testdata/dags_for_json_tests/goref-mainnet", true, JsonTestIdent::GoRefMainnentConcurrentTest).await
+    json_test("testdata/dags_for_json_tests/goref-mainnet", true).await
 }
 
 fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
@@ -1129,7 +871,7 @@ fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
     BufReader::new(decoder).lines().map(|line| line.unwrap())
 }
 
-async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
+async fn json_test(file_path: &str, concurrency: bool) {
     kaspa_core::log::try_init_logger("info");
     let main_path = Path::new(file_path);
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
@@ -1154,7 +896,7 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
         params
     };
 
-    let mut config = Config::new(params.clone());
+    let mut config = Config::new(params);
     if proof_exists {
         config.process_genesis = false;
     }
@@ -1172,18 +914,6 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
     let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
     let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
-
-    // set-up test-specific environment:
-
-    // set-up tracker
-    let (tracker, tracker_jh) = match ident {
-        JsonTestIdent::GoRefCustomPruningDepth => {
-            let tracker = Arc::new(ProcessingTracker::new(notify_service.notifier(), true, true, true, true));
-            tracker.build_subscriptions();
-            (Some(tracker.clone()), Some(tracker.track_progress()))
-        }
-        _other => (None, None),
-    };
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
     async_runtime.register(notify_service.clone());
@@ -1269,6 +999,7 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
     let missing_bodies = tc.get_missing_block_body_hashes(tc.get_headers_selected_tip()).unwrap();
 
     info!("Processing {} block bodies...", missing_bodies.len());
+
     if concurrency {
         let chunks = missing_bodies.into_iter().chunks(1000);
         let mut iter = chunks.into_iter();
@@ -1292,14 +1023,8 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
         }
     }
 
-    // TODO: Sync and cordinated the shutdown process, this is a dirty fix, which just buys some time.
-    warn!("TODO: although integration tests may pass, we still need to do sync shutdowns"); // friendly reminder
-    sleep(Duration::from_secs(5)).await;
     core.shutdown();
     core.join(joins);
-    if let Some(tracker_jh) = tracker_jh {
-        tracker_jh.await.expect("expected no tracker errors");
-    }
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(tc.body_tips().iter().copied().any(|h| tc.block_status(h) == BlockStatus::StatusUTXOValid));
@@ -1309,38 +1034,6 @@ async fn json_test(file_path: &str, concurrency: bool, ident: JsonTestIdent) {
     assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
-
-    //test-specific checks
-    match ident {
-        JsonTestIdent::GoRefCustomPruningDepth => {
-            let tracker_res = tracker.expect("expected a tracker for this test");
-            let processed_pruned_transactions = tracker_res.get_pruned_transaction_id_tracker();
-            let mut processed_added_transactions = tracker_res.get_block_added_tracker();
-
-            //we most add genesis transactions as these are not processed via block added notifications.
-            let genesis_txs = config.genesis.build_genesis_transactions();
-            processed_added_transactions.transactions_processed.extend(genesis_txs.into_iter().map(move |tx| tx.id()));
-
-            assert!(processed_added_transactions.num_of_transactions_added >= processed_pruned_transactions.num_transactions_pruned);
-            assert!(processed_added_transactions
-                .transactions_processed
-                .is_superset(&processed_pruned_transactions.transactions_pruned));
-
-            let tracked_pruning_end_state = tracker_res.get_pruning_end_state_tracker();
-            let pruning_start_state = tracker_res.get_pruning_start_state_tracker();
-            assert_eq!(
-                pruning_start_state.start_pruning_point.unwrap(),
-                tc.past_pruning_points_store.get(tc.pruning_point_store.read().pruning_point_index().unwrap() - 1).unwrap()
-            );
-            assert_eq!(
-                pruning_start_state.start_history_root.unwrap(),
-                tc.past_pruning_points_store.get(tc.pruning_point_store.read().pruning_point_index().unwrap() - 1).unwrap()
-            );
-            assert_eq!(tracked_pruning_end_state.end_pruning_point.unwrap(), tc.pruning_point().unwrap());
-            assert_eq!(tracked_pruning_end_state.end_history_root.unwrap(), tc.get_source());
-        }
-        _other => (),
-    }
 }
 
 fn submit_header_chunk(

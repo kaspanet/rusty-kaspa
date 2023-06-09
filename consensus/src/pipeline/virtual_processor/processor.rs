@@ -85,6 +85,7 @@ use std::{
     ops::Deref,
     sync::{atomic::Ordering, Arc},
 };
+use triggered::{Listener, Trigger};
 
 use super::errors::{PruningImportError, PruningImportResult};
 
@@ -144,6 +145,10 @@ pub struct VirtualStateProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
+
+    // Shutdown
+    pub shutdown_listener: Listener,
+    shutdown_trigger: Trigger,
 }
 
 impl VirtualStateProcessor {
@@ -161,6 +166,7 @@ impl VirtualStateProcessor {
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
+        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         Self {
             receiver,
             pruning_sender,
@@ -202,6 +208,8 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
+            shutdown_listener,
+            shutdown_trigger,
         }
     }
 
@@ -234,6 +242,9 @@ impl VirtualStateProcessor {
 
         // Pass the exit signal on to the following processor
         self.pruning_sender.send(PruningProcessingMessage::Exit).unwrap();
+
+        // Trigger the shutdown for potential listeners
+        self.shutdown_trigger.trigger()
     }
 
     fn resolve_virtual(self: &Arc<Self>) {
@@ -836,6 +847,10 @@ impl VirtualStateProcessor {
         )?;
 
         Ok(())
+    }
+
+    pub fn get_shutdown_listener(&self) -> Listener {
+        self.shutdown_listener.clone()
     }
 }
 

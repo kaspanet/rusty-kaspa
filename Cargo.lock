@@ -1640,6 +1640,7 @@ dependencies = [
  "smallvec",
  "thiserror",
  "tokio",
+ "triggered",
 ]
 
 [[package]]
@@ -1707,6 +1708,7 @@ version = "0.1.0"
 dependencies = [
  "cfg-if",
  "ctrlc",
+ "futures",
  "futures-util",
  "intertrait",
  "log",
@@ -2124,7 +2126,6 @@ dependencies = [
  "kaspa-math",
  "kaspa-merkle",
  "kaspa-muhash",
- "kaspa-notify",
  "kaspa-pow",
  "kaspa-txscript",
  "kaspa-txscript-errors",

@@ -57,7 +57,7 @@ use kaspa_consensus_core::{
     BlockHashSet, ChainPath,
 };
 use kaspa_consensus_notify::{
-    notification::{ConsensusShutDownNotification, Notification as ConsensusNotification},
+    notification::{ConsensusShutdownNotification, Notification as ConsensusNotification},
     root::ConsensusNotificationRoot,
 };
 
@@ -66,6 +66,7 @@ use crossbeam_channel::{
 };
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
+use kaspa_core::trace;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -87,6 +88,7 @@ pub struct Consensus {
 
     // Channels
     block_sender: CrossbeamSender<BlockProcessingMessage>,
+    pruning_sender: CrossbeamSender<PruningProcessingMessage>,
 
     // Processors
     pub(super) header_processor: Arc<HeaderProcessor>,
@@ -222,7 +224,7 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
-            pruning_sender,
+            pruning_sender.clone(),
             pruning_receiver.clone(),
             virtual_pool,
             params,
@@ -234,15 +236,8 @@ impl Consensus {
             counters.clone(),
         ));
 
-        let pruning_processor = Arc::new(PruningProcessor::new(
-            pruning_receiver,
-            db.clone(),
-            &storage,
-            &services,
-            notification_root.clone(),
-            pruning_lock.clone(),
-            config.clone(),
-        ));
+        let pruning_processor =
+            Arc::new(PruningProcessor::new(pruning_receiver, db.clone(), &storage, &services, pruning_lock.clone(), config.clone()));
 
         // Ensure the relations stores are initialized
         header_processor.init();
@@ -259,6 +254,7 @@ impl Consensus {
         Self {
             db,
             block_sender: sender,
+            pruning_sender,
             header_processor,
             body_processor,
             virtual_processor,
@@ -316,8 +312,20 @@ impl Consensus {
     }
 
     pub fn signal_exit(&self) {
+        trace!("exiting consensus");
         self.block_sender.send(BlockProcessingMessage::Exit).unwrap();
-        self.notification_root.send(ConsensusNotification::ConsensusShutDown(ConsensusShutDownNotification {})).unwrap();
+        self.pruning_sender.send(PruningProcessingMessage::Exit).unwrap();
+        trace!("waiting on body_processor...");
+        self.body_processor.get_shutdown_listener().wait();
+        trace!("waiting on header_processor...");
+        self.header_processor.get_shutdown_listener().wait();
+        trace!("waiting on virtual_processor...");
+        self.virtual_processor.get_shutdown_listener().wait();
+        trace!("waiting on pruning_processor...");
+        self.pruning_processor.get_shutdown_listener().wait();
+        trace!("signaling consensus shutdown...");
+        self.notification_root.send(ConsensusNotification::ConsensusShutdown(ConsensusShutdownNotification {})).unwrap();
+        trace!("consensus exit success");
     }
 
     pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {
@@ -407,17 +415,8 @@ impl ConsensusApi for Consensus {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
     }
 
-    fn get_source(&self) -> Hash {
-        if self.config.is_archival {
-            // we use the history root in archival cases.
-            return self.pruning_point_store.read().history_root().unwrap();
-        }
-        self.pruning_point_store.read().pruning_point().unwrap()
-    }
-
     fn get_sync_info(&self) -> SyncInfo {
-        let count = self.get_virtual_daa_score() - self.get_header(self.get_source()).unwrap().daa_score;
-        SyncInfo { header_count: count, block_count: count }
+        SyncInfo::default()
     }
 
     fn is_nearly_synced(&self) -> bool {
