@@ -71,10 +71,6 @@ impl Connection for GrpcConnection {
     fn is_closed(&self) -> bool {
         self.inner.sender.is_closed() || self.inner.closed.load(Ordering::SeqCst)
     }
-
-    fn downgrade(&self) {
-        self.inner.sender.downgrade();
-    }
 }
 
 pub(crate) struct GrpcConnectionManager {

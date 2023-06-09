@@ -168,10 +168,6 @@ impl ConnectionT for Connection {
     fn is_closed(&self) -> bool {
         self.messenger().sink().is_closed()
     }
-
-    fn downgrade(&self) {
-        self.messenger().sink().downgrade();
-    }
 }
 
 pub type ConnectionReference = Arc<Connection>;

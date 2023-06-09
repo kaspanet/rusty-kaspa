@@ -119,6 +119,11 @@ where
         trace!("[Collector] already stopped");
         Ok(())
     }
+
+    #[cfg(test)]
+    pub fn is_closed(&self) -> bool {
+        self.is_closed.load(Ordering::SeqCst)
+    }
 }
 
 #[async_trait]
@@ -204,6 +209,10 @@ mod tests {
         assert_eq!(outgoing_channel.receiver().recv().await.unwrap(), OutgoingNotification::B);
         assert_eq!(outgoing_channel.receiver().recv().await.unwrap(), OutgoingNotification::A);
 
-        assert!(collector.stop().await.is_ok());
+        assert!(collector.clone().stop().await.is_ok());
+        assert!(collector.is_closed(), "collector is not closed");
+        assert!(incoming_channel.receiver().is_closed(), "collector receiver is not closed");
+        assert!(incoming_channel.receiver().is_empty(), "collector stopped with none empty receiver");
+        assert!(collector.stop().await.is_ok(), "collector shouldn't error when re-stopping");
     }
 }

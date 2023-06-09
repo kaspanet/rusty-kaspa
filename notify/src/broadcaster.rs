@@ -264,6 +264,11 @@ where
         trace!("[Broadcaster {0}] already stopped", self.name);
         Ok(())
     }
+
+    #[cfg(test)]
+    pub fn is_closed(&self) -> bool {
+        self.is_closed.load(Ordering::SeqCst)
+    }
 }
 
 #[cfg(test)]
@@ -379,8 +384,12 @@ mod tests {
                 }
             }
             assert!(self.broadcaster.stop().await.is_ok(), "broadcaster failed to stop");
+            assert!(self.broadcaster.is_closed(), "broadcaster is not closed");
             assert!(self.broadcaster.ctl_channel.receiver.is_empty(), "broadcaster stopped with none empty ctl channel");
+            assert!(self.broadcaster.ctl_channel.receiver.is_closed(), "broadcaster ctl receiver is not closed");
+            assert!(self.broadcaster.incoming.is_closed(), "broadcaster receiver is not closed");
             assert!(self.broadcaster.incoming.is_empty(), "broadcaster stopped with none empty receiver");
+            assert!(self.broadcaster.stop().await.is_ok(), "broadcaster shouldn't error when re-stopping");
         }
     }
 

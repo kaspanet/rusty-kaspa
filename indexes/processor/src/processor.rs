@@ -142,6 +142,19 @@ impl Processor {
         trace!("[{0}] already stopped", IDENT);
         Ok(())
     }
+
+    #[cfg(test)]
+    pub fn is_closed(&self) -> bool {
+        self.is_closed.load(Ordering::SeqCst)
+    }
+
+    #[cfg(test)]
+    pub async fn shutdown_wait(&self) {
+        let waits = self.shutdown_waits.lock().clone();
+        for l in waits.into_iter() {
+            l.await
+        }
+    }
 }
 
 #[async_trait]
@@ -301,7 +314,10 @@ mod tests {
             Notification::ConsensusShutdown(_) => (),
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
-        pipeline.stop().await.expect("stopping the processor must succeed");
-        assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
+        pipeline.processor.shutdown_wait().await;
+        assert!(pipeline.processor.is_closed(), "the processor should be closed");
+        assert!(pipeline.processor_receiver.is_closed(), "processor receiver is not closed");
+        assert!(pipeline.processor_receiver.is_empty(), "processor stopped with none empty receiver");
+        assert!(pipeline.processor.stop().await.is_ok(), "processor shouldn't error when re-stopping");
     }
 }

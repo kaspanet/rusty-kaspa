@@ -390,9 +390,14 @@ where
             trace!("[Notifier-{}] stopping broadcasters", self.name);
             join_all(self.broadcasters.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
 
-            // 4) downgrade reference to the listener's senders. this will close channels to any receivers only held by this notifier.
+            // Maybe TODO below: This will gurantee to close stale channels, but processing loops using the notfier's listeners
+            // most support que consuming exits via channel closures first.
+
+            /*
+            4) downgrade reference to the listener's senders. this will close channels to any receivers only held by this notifier.
             trace!("[Notifier-{}] dropping listeners", self.name);
             self.listeners.lock().iter().for_each(move |l| l.1.downgrade());
+            */
         } else {
             trace!("[Notifier-{}] stop ignored since already stopped", self.name);
             return Err(Error::AlreadyStoppedError);
