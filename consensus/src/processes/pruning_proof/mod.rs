@@ -2,7 +2,7 @@ use std::{
     cmp::{max, Reverse},
     collections::hash_map::Entry::Vacant,
     collections::BinaryHeap,
-    ops::DerefMut,
+    ops::{Deref, DerefMut},
     sync::Arc,
 };
 
@@ -29,13 +29,12 @@ use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
 
 use crate::{
     consensus::{
-        services::{DbDagTraversalManager, DbGhostdagManager, DbParentsManager},
+        services::{DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbWindowManager},
         storage::ConsensusStorage,
     },
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            block_window_cache::BlockWindowHeap,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
@@ -50,10 +49,16 @@ use crate::{
             DB,
         },
     },
-    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations::RelationsStoreExtensions},
+    processes::{
+        ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations::RelationsStoreExtensions,
+        window::WindowType,
+    },
 };
 
-use super::ghostdag::{mergeset::unordered_mergeset_without_selected_parent, protocol::GhostdagManager};
+use super::{
+    ghostdag::{mergeset::unordered_mergeset_without_selected_parent, protocol::GhostdagManager},
+    window::WindowManager,
+};
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -85,6 +90,7 @@ pub struct PruningProofManager {
 
     ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     traversal_manager: DbDagTraversalManager,
+    window_manager: DbWindowManager,
     parents_manager: DbParentsManager,
 
     cached_proof: RwLock<Option<CachedPruningPointData<PruningPointProof>>>,
@@ -93,8 +99,7 @@ pub struct PruningProofManager {
     max_block_level: BlockLevel,
     genesis_hash: Hash,
     pruning_proof_m: u64,
-    pruning_point_minimum_depth: u64,
-    difficulty_adjustment_window_size: usize,
+    anticone_finalization_depth: u64,
     ghostdag_k: KType,
 }
 
@@ -107,11 +112,11 @@ impl PruningProofManager {
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
         traversal_manager: DbDagTraversalManager,
+        window_manager: DbWindowManager,
         max_block_level: BlockLevel,
         genesis_hash: Hash,
         pruning_proof_m: u64,
-        pruning_point_minimum_depth: u64,
-        difficulty_adjustment_window_size: usize,
+        anticone_finalization_depth: u64,
         ghostdag_k: KType,
     ) -> Self {
         Self {
@@ -132,6 +137,7 @@ impl PruningProofManager {
 
             ghostdag_managers,
             traversal_manager,
+            window_manager,
             parents_manager,
 
             cached_proof: RwLock::new(None),
@@ -140,8 +146,7 @@ impl PruningProofManager {
             max_block_level,
             genesis_hash,
             pruning_proof_m,
-            pruning_point_minimum_depth,
-            difficulty_adjustment_window_size,
+            anticone_finalization_depth,
             ghostdag_k,
         }
     }
@@ -363,13 +368,7 @@ impl PruningProofManager {
         let mut relations_stores =
             (0..=self.max_block_level).map(|level| DbRelationsStore::new(db.clone(), level, 2 * self.pruning_proof_m)).collect_vec();
         let reachability_stores = (0..=self.max_block_level)
-            .map(|level| {
-                Arc::new(RwLock::new(DbReachabilityStore::new_with_alternative_prefix_end(
-                    db.clone(),
-                    2 * self.pruning_proof_m,
-                    level,
-                )))
-            })
+            .map(|level| Arc::new(RwLock::new(DbReachabilityStore::with_block_level(db.clone(), 2 * self.pruning_proof_m, level))))
             .collect_vec();
 
         let reachability_services = (0..=self.max_block_level)
@@ -609,7 +608,7 @@ impl PruningProofManager {
                 };
 
                 let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
-                let mut queue = BlockWindowHeap::new();
+                let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
                 let mut visited = BlockHashSet::new();
                 queue.push(Reverse(SortableBlock::new(root, self.ghostdag_stores[level].get_blue_work(root).unwrap())));
                 while let Some(current) = queue.pop() {
@@ -679,11 +678,11 @@ impl PruningProofManager {
 
         for anticone_block in anticone.iter().copied() {
             let window = self
-                .traversal_manager
-                .block_window(&self.ghostdag_stores[0].get_data(anticone_block).unwrap(), self.difficulty_adjustment_window_size)
+                .window_manager
+                .block_window(&self.ghostdag_stores[0].get_data(anticone_block).unwrap(), WindowType::FullDifficultyWindow)
                 .unwrap();
 
-            for hash in window.into_iter().map(|block| block.0.hash) {
+            for hash in window.deref().iter().map(|block| block.0.hash) {
                 if daa_window_blocks.contains_key(&hash) {
                     continue;
                 }
@@ -739,7 +738,7 @@ impl PruningProofManager {
         let pp_bs = self.headers_store.get_blue_score(pp).unwrap();
 
         // The anticone is considered final only if the pruning point is at sufficient depth from virtual
-        if virtual_state.ghostdag_data.blue_score >= pp_bs + self.pruning_point_minimum_depth {
+        if virtual_state.ghostdag_data.blue_score >= pp_bs + self.anticone_finalization_depth {
             let anticone = Arc::new(self.calculate_pruning_point_anticone_and_trusted_data(pp, virtual_state.parents.iter().copied()));
             self.cached_anticone.write().replace(CachedPruningPointData { pruning_point: pp, data: anticone.clone() });
             Ok(anticone)

@@ -4,6 +4,7 @@ use kaspa_consensus_core::{BlockHashSet, BlockHasher};
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
@@ -17,8 +18,6 @@ pub trait DaaStore: DaaStoreReader {
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
-const STORE_PREFIX: &[u8] = b"mergeset_non_daa";
-
 /// A DB + cache implementation of `DaaStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbDaaStore {
@@ -28,7 +27,7 @@ pub struct DbDaaStore {
 
 impl DbDaaStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::NonDaaMergeset.into()) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
