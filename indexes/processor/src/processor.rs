@@ -138,7 +138,7 @@ impl Processor {
             let waits = self.shutdown_waits.lock().clone();
             for l in waits.into_iter() {
                 l.await;
-            };
+            }
             return Ok(());
         };
         trace!("[{0}] already stopped", IDENT);
@@ -156,7 +156,7 @@ impl Processor {
         let waits = self.shutdown_waits.lock().clone();
         for l in waits.into_iter() {
             l.await;
-        };
+        }
     }
 }
 
