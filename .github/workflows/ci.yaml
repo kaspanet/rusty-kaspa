@@ -273,7 +273,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v3 key
+        uses: actions/checkout@v3
 
       - name: Install protoc
         run: |
