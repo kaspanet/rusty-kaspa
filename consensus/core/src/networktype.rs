@@ -39,14 +39,6 @@ impl NetworkType {
         }
     }
 
-    pub fn name(&self, suffix: Option<u32>) -> String {
-        if let Some(suffix) = suffix {
-            format!("kaspa-{}-{}", self, suffix)
-        } else {
-            format!("kaspa-{}", self)
-        }
-    }
-
     pub fn iter() -> impl Iterator<Item = Self> {
         static NETWORK_TYPES: [NetworkType; 4] =
             [NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Devnet, NetworkType::Simnet];
@@ -131,7 +123,11 @@ impl NetworkInstance {
     }
 
     pub fn name(&self) -> String {
-        self.network_type.name(self.suffix)
+        if let Some(suffix) = self.suffix {
+            format!("kaspa-{}-{}", self.network_type, suffix)
+        } else {
+            format!("kaspa-{}", self.network_type)
+        }
     }
 }
 
