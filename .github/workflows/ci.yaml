@@ -268,9 +268,9 @@ jobs:
       - name: Build wasm pack for nodejs
         run: cd wasm && wasm-pack build --target nodejs --out-dir nodejs/kaspa --features full
 
-  codecov:
-    name: Codecov
+  coverage:
     runs-on: ubuntu-latest
+    name: Produce code coverage
     steps:
       - name: Checkout sources
         uses: actions/checkout@v3
