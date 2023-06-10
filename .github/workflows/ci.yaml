@@ -270,7 +270,7 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    name: Produce code coverage
+    name: Produce Codecov
     steps:
       - name: Checkout sources
         uses: actions/checkout@v3
