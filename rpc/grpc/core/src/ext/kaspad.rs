@@ -11,6 +11,14 @@ impl KaspadRequest {
     pub fn from_notification_type(scope: &Scope, command: Command) -> Self {
         KaspadRequest { id: 0, payload: Some(kaspad_request::Payload::from_notification_type(scope, command)) }
     }
+
+    pub fn is_subscription(&self) -> bool {
+        if let Some(ref payload) = self.payload {
+            payload.is_subscription()
+        } else {
+            false
+        }
+    }
 }
 
 impl kaspad_request::Payload {
@@ -61,6 +69,23 @@ impl kaspad_request::Payload {
                 })
             }
         }
+    }
+
+    pub fn is_subscription(&self) -> bool {
+        use crate::protowire::kaspad_request::Payload;
+        matches!(
+            self,
+            Payload::NotifyBlockAddedRequest(_)
+                | Payload::NotifyVirtualChainChangedRequest(_)
+                | Payload::NotifyFinalityConflictRequest(_)
+                | Payload::NotifyUtxosChangedRequest(_)
+                | Payload::NotifySinkBlueScoreChangedRequest(_)
+                | Payload::NotifyVirtualDaaScoreChangedRequest(_)
+                | Payload::NotifyPruningPointUtxoSetOverrideRequest(_)
+                | Payload::NotifyNewBlockTemplateRequest(_)
+                | Payload::StopNotifyingUtxosChangedRequest(_)
+                | Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(_)
+        )
     }
 }
 

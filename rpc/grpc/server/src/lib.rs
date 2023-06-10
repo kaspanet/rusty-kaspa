@@ -1,110 +1,80 @@
+use connection_handler::GrpcConnectionHandler;
 use kaspa_core::{
-    info,
-    task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
+    debug,
+    task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
-use kaspa_grpc_core::{protowire::rpc_server::RpcServer, RPC_MAX_MESSAGE_SIZE};
 use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_utils::{networking::NetAddress, triggers::DuplexTrigger};
+use kaspa_utils::{networking::NetAddress, triggers::SingleTrigger};
 use std::sync::Arc;
-use tonic::{codec::CompressionEncoding, transport::Server};
 
 pub mod collector;
 pub mod connection;
+pub mod connection_handler;
 pub mod error;
-pub mod service;
 
 pub type StatusResult<T> = Result<T, tonic::Status>;
 
-const GRPC_SERVER: &str = "grpc-server";
+const GRPC_SERVICE: &str = "grpc-service";
 
-pub struct GrpcServer {
-    address: NetAddress,
-    grpc_service: Arc<service::GrpcService>,
-    shutdown: DuplexTrigger,
+pub struct GrpcService {
+    net_address: NetAddress,
+    connection_handler: Arc<GrpcConnectionHandler>,
+    shutdown: SingleTrigger,
 }
 
-impl GrpcServer {
+impl GrpcService {
     pub fn new(address: NetAddress, core_service: Arc<RpcCoreService>) -> Self {
-        let grpc_service = Arc::new(service::GrpcService::new(core_service));
-        Self { address, grpc_service, shutdown: DuplexTrigger::default() }
+        let connection_handler = Arc::new(GrpcConnectionHandler::new(core_service));
+        Self { net_address: address, connection_handler, shutdown: SingleTrigger::default() }
     }
 }
 
-impl AsyncService for GrpcServer {
+impl AsyncService for GrpcService {
     fn ident(self: Arc<Self>) -> &'static str {
-        GRPC_SERVER
+        GRPC_SERVICE
     }
 
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} starting", GRPC_SERVER);
+        trace!("{} starting", GRPC_SERVICE);
 
-        let grpc_service = self.grpc_service.clone();
-        let address = self.address;
+        // Prepare a shutdown signal receiver
+        let shutdown_signal = self.shutdown.listener.clone();
 
-        // Prepare a start shutdown signal receiver and a shutdown ended signal sender
-        let shutdown_signal = self.shutdown.request.listener.clone();
-        let shutdown_executed = self.shutdown.response.trigger.clone();
+        let connection_handler = self.connection_handler.clone();
+        let serve_address = self.net_address;
+        let server_shutdown = connection_handler.serve(serve_address);
+        connection_handler.start();
 
-        // Return a future launching the tonic server and waiting for it to shutdown
+        // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            // Start the gRPC service
-            grpc_service.start();
+            // Keep the gRPC server running until a service shutdown signal is received
+            shutdown_signal.await;
 
-            // Create a protowire RPC server
-            let svc = RpcServer::from_arc(self.grpc_service.clone())
-                .send_compressed(CompressionEncoding::Gzip)
-                .accept_compressed(CompressionEncoding::Gzip)
-                .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
-
-            // Start the tonic gRPC server
-            info!("Grpc server starting on: {}", address);
-            let result = Server::builder()
-                .add_service(svc)
-                .serve_with_shutdown(address.into(), shutdown_signal)
-                .await
-                .map_err(|err| AsyncServiceError::Service(format!("gRPC server exited with error `{err}`")));
-
-            if result.is_ok() {
-                trace!("gRPC server exited gracefully");
+            // Stop the connection handler, closing all connections and refusing new ones
+            match connection_handler.stop().await {
+                Ok(_) => {}
+                Err(err) => {
+                    debug!("gRPC: Error while stopping the connection handler: {0}", err);
+                }
             }
 
-            // Send a signal telling the shutdown is done
-            shutdown_executed.trigger();
-            result
+            // Stop the gRPC server
+            let _ = server_shutdown.send(());
+
+            Ok(())
         })
     }
 
     fn signal_exit(self: Arc<Self>) {
-        trace!("sending an exit signal to {}", GRPC_SERVER);
-        self.shutdown.request.trigger.trigger();
+        trace!("sending an exit signal to {}", GRPC_SERVICE);
+        self.shutdown.trigger.trigger();
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} stopping", GRPC_SERVER);
-        // Launch the shutdown process as a task
-        let shutdown_executed_signal = self.shutdown.response.listener.clone();
-        let grpc_service = self.grpc_service.clone();
+        trace!("{} stopping", GRPC_SERVICE);
         Box::pin(async move {
-            // Wait for the tonic server to gracefully shutdown
-            shutdown_executed_signal.await;
-
-            // Stop the gRPC service gracefully
-            match grpc_service.stop().await {
-                Ok(_) => {}
-                Err(err) => {
-                    trace!("Error while stopping the gRPC service: {0}", err);
-                }
-            }
-            match grpc_service.finalize() {
-                Ok(_) => {}
-                Err(err) => {
-                    trace!("Error while finalizing the gRPC service: {0}", err);
-                }
-            }
-            trace!("{} exiting", GRPC_SERVER);
-
-            // TODO - review error handling
+            trace!("{} exiting", GRPC_SERVICE);
             Ok(())
         })
     }

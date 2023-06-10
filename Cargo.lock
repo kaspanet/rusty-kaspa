@@ -1811,6 +1811,8 @@ dependencies = [
  "kaspa-rpc-service",
  "kaspa-utils",
  "log",
+ "once_cell",
+ "parking_lot",
  "paste",
  "prost",
  "rand 0.8.5",
