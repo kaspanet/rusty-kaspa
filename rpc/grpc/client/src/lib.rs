@@ -438,7 +438,7 @@ impl Inner {
         request_timeout: u64,
     ) -> Result<(Streaming<KaspadResponse>, ServerFeatures)> {
         // gRPC endpoint
-        let channel = Endpoint::from_shared(url.clone())?
+        let channel = Endpoint::new(url)?
             .timeout(tokio::time::Duration::from_millis(request_timeout))
             .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
             .tcp_keepalive(Some(tokio::time::Duration::from_millis(KEEP_ALIVE_DURATION)))
