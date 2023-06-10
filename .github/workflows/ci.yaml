@@ -272,8 +272,8 @@ jobs:
     name: Codecov
     runs-on: ubuntu-latest
     steps:
-      - name: Cache
-        uses: actions/cache@v3
+      - name: Checkout sources
+        uses: actions/checkout@v3 key
 
       - name: Install protoc
         run: |
@@ -286,12 +286,22 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Generate codecov.json
         run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
       
       - name: Upload to Codecov
         uses: codecov/codecov-action@v3
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           files: codecov.json
           fail_ci_if_error: true
