@@ -1,4 +1,4 @@
-name: Code-Coverage
+name: Codecov
 
 on: [pull_request, push]
 
@@ -29,8 +29,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Generate codecov.json
-        run: cargo llvm-cov test --all --codecov --output-path codecov.json
-
+        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
       - name: Upload to Codecov
         uses: codecov/codecov-action@v3
         with:
