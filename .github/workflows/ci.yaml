@@ -275,6 +275,10 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
 
+      - name: Fix CRLF on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
       - name: Install protoc
         run: |
           sudo apt update -y
