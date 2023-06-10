@@ -1,0 +1,9 @@
+coverage:
+  status:
+    patch: off
+
+    project:
+      default:
+        informational: true
+ignore:
+  - "**/*.pb.go" # Ignore all auto generated protobuf structures.
