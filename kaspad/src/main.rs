@@ -36,7 +36,7 @@ use kaspa_utxoindex::UtxoIndex;
 
 use async_channel::unbounded;
 use kaspa_core::{info, trace};
-use kaspa_grpc_server::GrpcService;
+use kaspa_grpc_server::service::GrpcService;
 use kaspa_p2p_flows::service::P2pService;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 

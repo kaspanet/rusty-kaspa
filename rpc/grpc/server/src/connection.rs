@@ -1,7 +1,4 @@
-use crate::{
-    error::{GrpcServerError, GrpcServerResult},
-    StatusResult,
-};
+use crate::error::{GrpcServerError, GrpcServerResult};
 use kaspa_core::{debug, trace};
 use kaspa_grpc_core::protowire::{kaspad_request::Payload, *};
 use kaspa_notify::{
@@ -29,6 +26,7 @@ use tokio::sync::{
 use tonic::Streaming;
 
 pub type GrpcSender = MpscSender<StatusResult<KaspadResponse>>;
+pub type StatusResult<T> = Result<T, tonic::Status>;
 
 // TODO: identify a connection by a Uuid instead of an address
 #[derive(Debug)]
