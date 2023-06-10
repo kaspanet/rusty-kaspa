@@ -267,3 +267,37 @@ jobs:
 
       - name: Build wasm pack for nodejs
         run: cd wasm && wasm-pack build --target nodejs --out-dir nodejs/kaspa --features full
+
+  codecov:
+    name: Codecov
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install protoc
+        run: |
+          sudo apt update -y
+          sudo apt install -y protobuf-compiler
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Generate codecov.json
+        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: codecov.json
+          fail_ci_if_error: true
