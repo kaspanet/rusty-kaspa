@@ -4,7 +4,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
-use kaspa_core::trace;
+use kaspa_core::{trace, info};
 use kaspa_index_core::notification::{
     ConsensusShutdownNotification, Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification,
 };
@@ -16,12 +16,11 @@ use kaspa_notify::{
     notifier::DynNotify,
 };
 use kaspa_utxoindex::api::DynUtxoIndexApi;
-use parking_lot::Mutex;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use triggered::{trigger, Listener as TriggeredListener};
+use triggered::{trigger, Listener as TriggeredListener, Trigger};
 
 /// Processor processes incoming consensus UtxosChanged and PruningPointUtxoSetOverride
 /// notifications submitting them to a UtxoIndex.
@@ -39,17 +38,29 @@ pub struct Processor {
     /// Has this collector been closed?
     is_closed: Arc<AtomicBool>,
 
-    shutdown_waits: Arc<Mutex<Vec<TriggeredListener>>>,
+    /// is core running?
+    is_core_running: Arc<AtomicBool>,
+
+    shutdown_wait: TriggeredListener,
+
+    shutdown_trigger: Trigger,
 }
 
 impl Processor {
-    pub fn new(utxoindex: DynUtxoIndexApi, recv_channel: CollectorNotificationReceiver<ConsensusNotification>) -> Self {
+    pub fn new(
+        utxoindex: DynUtxoIndexApi,
+        recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
+        is_core_running: Arc<AtomicBool>,
+    ) -> Self {
+        let (shutdown_trigger, shutdown_wait) = trigger();
         Self {
             utxoindex,
             recv_channel,
-            shutdown_waits: Arc::new(Mutex::new(Vec::new())),
             is_started: Arc::new(AtomicBool::new(false)),
             is_closed: Arc::new(AtomicBool::new(false)),
+            is_core_running,
+            shutdown_wait,
+            shutdown_trigger,
         }
     }
 
@@ -58,8 +69,6 @@ impl Processor {
         if self.is_started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
-        let (trig, lis) = trigger();
-        self.shutdown_waits.lock().push(lis);
 
         tokio::spawn(async move {
             trace!("[Processor] collecting_task start");
@@ -84,7 +93,7 @@ impl Processor {
                         };
 
                         // Signal shutdown is finished to waiting threads
-                        trig.trigger();
+                        self.shutdown_trigger.trigger();
 
                         // Break out of the loop select
                         break;
@@ -126,7 +135,10 @@ impl Processor {
         notification: consensus_notification::ConsensusShutdownNotification,
     ) -> Result<()> {
         trace!("[{IDENT}]: processing {:?}", notification);
-        tokio::spawn(self.clone().stop());
+        if !self.is_core_running.load(Ordering::SeqCst) {
+            info!("processor shutting down");
+            tokio::spawn(self.clone().stop());
+        }
         Ok(())
     }
 
@@ -134,27 +146,11 @@ impl Processor {
         if self.is_closed.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
             trace!("[{0}] stopping...", IDENT);
             self.recv_channel.close();
-            let waits = self.shutdown_waits.lock().clone();
-            for l in waits.into_iter() {
-                l.await;
-            }
+            self.shutdown_wait.clone().await;
             return Ok(());
         };
         trace!("[{0}] already stopped", IDENT);
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub fn is_closed(&self) -> bool {
-        self.is_closed.load(Ordering::SeqCst)
-    }
-
-    #[cfg(test)]
-    pub async fn shutdown_wait(&self) {
-        let waits = self.shutdown_waits.lock().clone();
-        for l in waits.into_iter() {
-            l.await;
-        }
     }
 }
 
@@ -203,7 +199,7 @@ mod tests {
             tc.init();
             let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
             let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap());
-            let processor = Arc::new(Processor::new(utxoindex, consensus_receiver));
+            let processor = Arc::new(Processor::new(utxoindex, consensus_receiver, Arc::new(AtomicBool::new(true))));
             let (processor_sender, processor_receiver) = unbounded::<Notification>();
             let notifier = Arc::new(NotifyMock::new(processor_sender, "mock_notfier"));
             Self { test_consensus: tc, consensus_sender, processor, notifier, processor_receiver, utxoindex_db_lifetime }
@@ -278,7 +274,7 @@ mod tests {
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
         pipeline.stop().await.expect("stopping the processor must succeed");
-        assert!(pipeline.processor.is_closed(), "the processor should be closed");
+        assert!(pipeline.processor.is_closed.load(Ordering::SeqCst), "the processor should be closed");
         assert!(pipeline.processor.recv_channel.is_closed(), "processor receiver is not closed");
         assert!(pipeline.processor.recv_channel.is_empty(), "processor stopped with none empty receiver");
         assert!(pipeline.processor.stop().await.is_ok(), "processor shouldn't error when re-stopping");
@@ -300,7 +296,7 @@ mod tests {
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
         pipeline.stop().await.expect("stopping the processor must succeed");
-        assert!(pipeline.processor.is_closed(), "the processor should be closed");
+        assert!(pipeline.processor.is_closed.load(Ordering::SeqCst), "the processor should be closed");
         assert!(pipeline.processor.recv_channel.is_closed(), "processor receiver is not closed");
         assert!(pipeline.processor.recv_channel.is_empty(), "processor stopped with none empty receiver");
         assert!(pipeline.processor.stop().await.is_ok(), "processor shouldn't error when re-stopping");
@@ -321,8 +317,25 @@ mod tests {
             Notification::ConsensusShutdown(_) => (),
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
-        pipeline.processor.shutdown_wait().await;
-        assert!(pipeline.processor.is_closed(), "the processor should be closed");
+
+        assert!(!pipeline.processor.is_closed.load(Ordering::SeqCst), "the processor shouldn't be closed");
+        assert!(!pipeline.processor.recv_channel.is_closed(), "processor receiver should not not closed");
+
+        pipeline.processor.is_core_running.store(false, Ordering::SeqCst);
+        
+        let test_notification = consensus_notification::ConsensusShutdownNotification {};
+        pipeline
+            .consensus_sender
+            .send(ConsensusNotification::ConsensusShutdown(test_notification.clone()))
+            .await
+            .expect("expected send");
+        match pipeline.processor_receiver.recv().await.expect("expected recv") {
+            Notification::ConsensusShutdown(_) => (),
+            unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
+        }
+
+        pipeline.processor.shutdown_wait.clone().await;
+        assert!(pipeline.processor.is_closed.load(Ordering::SeqCst), "the processor should be closed");
         assert!(pipeline.processor.recv_channel.is_closed(), "processor receiver is not closed");
         assert!(pipeline.processor.recv_channel.is_empty(), "processor stopped with none empty receiver");
         assert!(pipeline.processor.stop().await.is_ok(), "processor shouldn't error when re-stopping");

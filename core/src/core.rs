@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub struct Core {
-    pub keep_running: AtomicBool,
+    pub keep_running: Arc<AtomicBool>,
     services: Mutex<Vec<Arc<dyn Service>>>,
 }
 
@@ -17,7 +17,7 @@ impl Default for Core {
 
 impl Core {
     pub fn new() -> Core {
-        Core { keep_running: AtomicBool::new(true), services: Mutex::new(Vec::new()) }
+        Core { keep_running: Arc::new(AtomicBool::new(true)), services: Mutex::new(Vec::new()) }
     }
 
     pub fn bind<T>(&self, service: Arc<T>)

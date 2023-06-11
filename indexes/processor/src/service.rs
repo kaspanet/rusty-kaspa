@@ -13,7 +13,7 @@ use kaspa_notify::{
 };
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::DynUtxoIndexApi;
-use std::sync::Arc;
+use std::sync::{atomic::AtomicBool, Arc};
 
 const INDEX_SERVICE: &str = IDENT;
 
@@ -24,7 +24,7 @@ pub struct IndexService {
 }
 
 impl IndexService {
-    pub fn new(consensus_notifier: &Arc<ConsensusNotifier>, utxoindex: DynUtxoIndexApi) -> Self {
+    pub fn new(consensus_notifier: &Arc<ConsensusNotifier>, utxoindex: DynUtxoIndexApi, is_core_running: Arc<AtomicBool>) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
         let consensus_notify_listener_id =
@@ -34,7 +34,7 @@ impl IndexService {
         // No subscriber is defined here because the subscription are manually created during the construction and never changed after that.
         let events: EventSwitches =
             [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride, EventType::ConsensusShutdown].as_ref().into();
-        let collector = Arc::new(Processor::new(utxoindex.clone(), consensus_notify_channel.receiver()));
+        let collector = Arc::new(Processor::new(utxoindex.clone(), consensus_notify_channel.receiver(), is_core_running));
         let notifier = Arc::new(IndexNotifier::new(events, vec![collector], vec![], 1, INDEX_SERVICE));
 
         // Manually subscribe to index-processor related event types

@@ -902,6 +902,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
     }
     let config = Arc::new(config);
 
+    let core = Arc::new(Core::new());
+
     let (notification_send, notification_recv) = unbounded();
     let tc = Arc::new(TestConsensus::with_notifier(&config, notification_send));
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv));
@@ -913,14 +915,13 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
     let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
     let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
-    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
+    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone()), core.keep_running.clone()));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
     async_runtime.register(notify_service.clone());
     async_runtime.register(index_service.clone());
     async_runtime.register(Arc::new(ConsensusMonitor::new(tc.processing_counters().clone())));
 
-    let core = Arc::new(Core::new());
     core.bind(tc.clone());
     core.bind(async_runtime);
     let joins = core.start();

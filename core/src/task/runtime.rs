@@ -103,7 +103,7 @@ impl AsyncRuntime {
                     info!("[{0}] stopped successfully", service_name);
                 }
                 Err(err) => {
-                    warn!("[{0}] failed stopping operation with error: {1} - signaling exit to force closure", service_name, err);
+                    warn!("[{0}] failed stopping operation with error: {1}", service_name, err);
                 }
             }
         });
