@@ -39,6 +39,7 @@ use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{BlockValidationFuture, ConsensusApi},
     block::{Block, BlockTemplate},
+    block_count::BlockCount,
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -51,7 +52,6 @@ use kaspa_consensus_core::{
     header::Header,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
-    sync_info::SyncInfo,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
@@ -415,8 +415,21 @@ impl ConsensusApi for Consensus {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
     }
 
-    fn get_sync_info(&self) -> SyncInfo {
-        SyncInfo::default()
+    fn get_source(&self) -> Hash {
+        if self.config.is_archival {
+            // we use the history root in archival cases.
+            return self.pruning_point_store.read().history_root().unwrap();
+        }
+        self.pruning_point_store.read().pruning_point().unwrap()
+    }
+
+    /// Estimates number of blocks and headers stored in the node
+    ///
+    /// This is an estimation based on the daa score difference between the node's `source` and `sink`'s daa score,
+    /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
+    fn estimate_block_count(&self) -> BlockCount {
+        let count = self.get_virtual_daa_score() - self.get_header(self.get_source()).unwrap().daa_score;
+        BlockCount { header_count: count, block_count: count }
     }
 
     fn is_nearly_synced(&self) -> bool {

@@ -213,7 +213,7 @@ impl RpcApi for RpcCoreService {
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
         trace!("incoming GetBlockTemplate request");
 
-        if self.config.net == NetworkType::Mainnet {
+        if *self.config.net == NetworkType::Mainnet {
             return Err(RpcError::General("Mining on mainnet is not supported for the Rust Alpha version".to_owned()));
         }
 
@@ -389,7 +389,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_current_network_call(&self, _: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
-        Ok(GetCurrentNetworkResponse::new(self.config.net))
+        Ok(GetCurrentNetworkResponse::new(*self.config.net))
     }
 
     async fn get_subnetwork_call(&self, _: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse> {
@@ -422,7 +422,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_block_count_call(&self, _: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {
-        Ok(self.consensus_manager.consensus().session().await.get_sync_info())
+        Ok(self.consensus_manager.consensus().session().await.estimate_block_count())
     }
 
     async fn get_utxos_by_addresses_call(&self, request: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
@@ -484,11 +484,11 @@ impl RpcApi for RpcCoreService {
     async fn get_block_dag_info_call(&self, _: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
-        let sync_info = session.get_sync_info();
+        let block_count = session.estimate_block_count();
         Ok(GetBlockDagInfoResponse::new(
             self.config.net,
-            sync_info.block_count,
-            sync_info.header_count,
+            block_count.block_count,
+            block_count.header_count,
             session.get_tips(),
             self.consensus_converter.get_difficulty_ratio(session.get_virtual_bits()),
             session.get_virtual_past_median_time(),
