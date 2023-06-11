@@ -83,6 +83,10 @@ struct Args {
     /// the DAG in a separate consensus following the simulation phase
     #[arg(long, default_value_t = false)]
     test_pruning: bool,
+
+    /// Use the legacy full-window DAA mechanism (note: the size of this window scales with bps)
+    #[arg(long, default_value_t = false)]
+    daa_legacy: bool,
 }
 
 /// Calculates the k parameter of the GHOSTDAG protocol such that anticones lager than k will be created
@@ -180,13 +184,25 @@ fn adjust_consensus_params(args: &Args, params: &mut Params) {
         params.target_time_per_block = (1000.0 / args.bps) as u64;
         params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
         params.coinbase_maturity = (params.coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
-        params.full_difficulty_window_size = (params.full_difficulty_window_size as f64 * args.bps) as usize; // Scale the DAA window linearly with BPS
+
+        if args.daa_legacy {
+            // Scale DAA and median-time windows linearly with BPS
+            params.sampling_activation_daa_score = u64::MAX;
+            params.full_timestamp_deviation_tolerance = (params.full_timestamp_deviation_tolerance as f64 * args.bps) as u64;
+            params.full_difficulty_window_size = (params.full_difficulty_window_size as f64 * args.bps) as usize;
+        } else {
+            // Use the new sampling algorithms
+            params.sampling_activation_daa_score = 0;
+            params.past_median_time_sample_rate = (10.0 * args.bps) as u64;
+            params.sampled_timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
+            params.difficulty_sample_rate = (2.0 * args.bps) as u64;
+        }
 
         info!(
             "The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}, DAA window size={}",
             2.0 * args.delay * args.bps,
             k,
-            params.full_difficulty_window_size
+            params.difficulty_window_size(0)
         );
     }
     if args.test_pruning {
@@ -206,7 +222,7 @@ fn adjust_perf_params(args: &Args, consensus_params: &Params, perf_params: &mut 
     perf_params.block_data_cache_size = (perf_params.block_data_cache_size as f64 * args.bps.clamp(1.0, 10.0)) as u64;
 
     let daa_window_memory_budget = 1_000_000_000u64; // 1GB
-    let single_window_byte_size = consensus_params.full_difficulty_window_size as u64 * size_of::<SortableBlock>() as u64;
+    let single_window_byte_size = consensus_params.difficulty_window_size(0) as u64 * size_of::<SortableBlock>() as u64;
     let max_daa_window_cache_size = daa_window_memory_budget / single_window_byte_size;
     perf_params.block_window_cache_size = u64::min(perf_params.block_window_cache_size, max_daa_window_cache_size);
 
