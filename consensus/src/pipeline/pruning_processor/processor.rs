@@ -78,7 +78,7 @@ pub struct PruningProcessor {
     config: Arc<Config>,
 
     // Shutdown
-    pub shutdown_listener: Listener,
+    shutdown_listener: Listener,
     shutdown_trigger: Trigger,
 }
 

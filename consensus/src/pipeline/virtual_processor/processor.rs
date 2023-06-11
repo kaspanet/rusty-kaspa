@@ -147,7 +147,7 @@ pub struct VirtualStateProcessor {
     counters: Arc<ProcessingCounters>,
 
     // Shutdown
-    pub shutdown_listener: Listener,
+    shutdown_listener: Listener,
     shutdown_trigger: Trigger,
 }
 
