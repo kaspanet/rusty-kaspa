@@ -871,7 +871,7 @@ fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
 }
 
 async fn json_test(file_path: &str, concurrency: bool) {
-    kaspa_core::log::try_init_logger("info");
+    kaspa_core::log::try_init_logger("trace");
     let main_path = Path::new(file_path);
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
 
@@ -1025,6 +1025,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     core.shutdown();
     core.join(joins);
+    drop(core);
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(tc.body_tips().iter().copied().any(|h| tc.block_status(h) == BlockStatus::StatusUTXOValid));
