@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::{
     acceptance_data::AcceptanceData,
     block::{Block, BlockTemplate},
+    block_count::BlockCount,
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::{
@@ -16,7 +17,6 @@ use crate::{
     },
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
-    sync_info::SyncInfo,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
@@ -73,7 +73,12 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_sync_info(&self) -> SyncInfo {
+    /// source refers to the earliest block from which the current node has full header & block data  
+    fn get_source(&self) -> Hash {
+        unimplemented!()
+    }
+
+    fn estimate_block_count(&self) -> BlockCount {
         unimplemented!()
     }
 
