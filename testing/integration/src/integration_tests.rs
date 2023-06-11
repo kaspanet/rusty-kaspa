@@ -27,7 +27,7 @@ use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::constants::BLOCK_VERSION;
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
-use kaspa_consensus_core::networktype::NetworkType::Mainnet;
+use kaspa_consensus_core::networktype::{NetworkId, NetworkType::Mainnet};
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
@@ -772,8 +772,7 @@ impl KaspadGoParams {
         let finality_depth = self.FinalityDuration / self.TargetTimePerBlock;
         Params {
             dns_seeders: &[],
-            net: Mainnet,
-            net_suffix: None,
+            net: NetworkId { network_type: Mainnet, suffix: None },
             genesis: GENESIS,
             ghostdag_k: self.K,
             full_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,

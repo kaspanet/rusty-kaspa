@@ -213,7 +213,7 @@ impl RpcApi for RpcCoreService {
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
         trace!("incoming GetBlockTemplate request");
 
-        if self.config.net == NetworkType::Mainnet {
+        if *self.config.net == NetworkType::Mainnet {
             return Err(RpcError::General("Mining on mainnet is not supported for the Rust Alpha version".to_owned()));
         }
 
@@ -389,7 +389,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_current_network_call(&self, _: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
-        Ok(GetCurrentNetworkResponse::new(self.config.net))
+        Ok(GetCurrentNetworkResponse::new(*self.config.net))
     }
 
     async fn get_subnetwork_call(&self, _: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse> {
