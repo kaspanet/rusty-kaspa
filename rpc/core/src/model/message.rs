@@ -1,6 +1,6 @@
 use crate::model::*;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_consensus_core::sync_info::SyncInfo;
+use kaspa_consensus_core::block_count::BlockCount;
 use kaspa_notify::subscription::{single::UtxosChangedSubscription, Command};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -381,7 +381,7 @@ impl GetBlocksResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockCountRequest {}
 
-pub type GetBlockCountResponse = SyncInfo;
+pub type GetBlockCountResponse = BlockCount;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
