@@ -141,7 +141,6 @@ impl Rpc for GrpcConnectionHandler {
         }
 
         let remote_address = request.remote_addr().ok_or_else(|| {
-            // TODO: perhaps use Uuid for connection id and allow optional address
             tonic::Status::new(tonic::Code::InvalidArgument, "Incoming connection opening request has no remote address".to_string())
         })?;
 
