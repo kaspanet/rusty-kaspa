@@ -216,6 +216,7 @@ impl VirtualStateProcessor {
     pub fn worker(self: &Arc<Self>) {
         'outer: while let Ok(msg) = self.receiver.recv() {
             if msg.is_exit_message() {
+                info!("exiting: virtual-processor");
                 break;
             }
 

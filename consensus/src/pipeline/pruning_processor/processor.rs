@@ -118,7 +118,9 @@ impl PruningProcessor {
 
     pub fn worker(self: &Arc<Self>) {
         match self.receiver.recv().unwrap() {
-            PruningProcessingMessage::Exit => (),
+            PruningProcessingMessage::Exit => {
+                info!("exiting: pruning-processor");
+            }
             PruningProcessingMessage::Process { sink_ghostdag_data } => {
                 // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
                 // in order to make sure the node is already connected and receiving blocks before we start background recovery operations

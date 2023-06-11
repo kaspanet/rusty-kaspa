@@ -98,10 +98,9 @@ impl AsyncRuntime {
         trace!("async-runtime worker stopping");
         self.services.lock().unwrap().iter().for_each(move |x| {
             let service_name = x.clone().ident();
+            info!("exiting: {0}", service_name);
             match futures::executor::block_on(x.clone().stop()) {
-                Ok(_) => {
-                    info!("[{0}] stopped successfully", service_name);
-                }
+                Ok(_) => (),
                 Err(err) => {
                     warn!("[{0}] failed stopping operation with error: {1}", service_name, err);
                 }

@@ -369,6 +369,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     core.bind(async_runtime);
 
     core.run();
+    drop(core);
 
     trace!("Kaspad is finished...");
 }

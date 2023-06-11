@@ -31,6 +31,7 @@ use kaspa_consensus_notify::{
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::SessionLock;
+use kaspa_core::info;
 use kaspa_hashes::Hash;
 use kaspa_notify::notifier::Notify;
 use parking_lot::RwLock;
@@ -140,7 +141,10 @@ impl BlockBodyProcessor {
     pub fn worker(self: &Arc<BlockBodyProcessor>) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
-                BlockProcessingMessage::Exit => break,
+                BlockProcessingMessage::Exit => {
+                    info!("exiting: block-body--processor");
+                    break;
+                }
                 BlockProcessingMessage::Process(task, result_transmitter) => {
                     if let Some(task_id) = self.task_manager.register(task, result_transmitter) {
                         let processor = self.clone();

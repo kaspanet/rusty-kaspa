@@ -38,6 +38,7 @@ use kaspa_consensus_core::{
     BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
+use kaspa_core::info;
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_utils::vec::VecExtensions;
@@ -224,7 +225,10 @@ impl HeaderProcessor {
     pub fn worker(self: &Arc<HeaderProcessor>) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
-                BlockProcessingMessage::Exit => break,
+                BlockProcessingMessage::Exit => {
+                    info!("exiting: header-processor");
+                    break;
+                }
                 BlockProcessingMessage::Process(task, result_transmitter) => {
                     if let Some(task_id) = self.task_manager.register(task, result_transmitter) {
                         let processor = self.clone();
