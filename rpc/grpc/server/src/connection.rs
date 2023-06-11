@@ -552,7 +552,6 @@ impl Connection for GrpcConnection {
             true
         } else {
             // This means the connection was already closed
-            debug!("gRPC: Connection close was called more than once, client-id: {}", self.identity());
             false
         }
     }
@@ -575,12 +574,7 @@ impl GrpcConnectionManager {
 
     pub fn register(&self, connection: GrpcConnection) {
         debug!("gRPC: Register a new connection from {connection}");
-        let prev_connection = self.connections.lock().insert(connection.identity(), connection);
-        if let Some(prev) = prev_connection {
-            if !prev.is_closed() {
-                prev.close();
-            }
-        }
+        self.connections.lock().insert(connection.identity(), connection).map(|x| x.close());
     }
 
     pub fn is_full(&self) -> bool {
@@ -588,13 +582,14 @@ impl GrpcConnectionManager {
     }
 
     pub fn unregister(&self, net_address: SocketAddr) {
-        if let Some(connection) = self.connections.lock().remove(&net_address) {
-            debug!("gRPC: Unregister the gRPC connection from {connection}");
-            if !connection.is_closed() {
+        match self.connections.lock().remove(&net_address) {
+            Some(connection) => {
+                debug!("gRPC: Unregister the gRPC connection from {connection}");
                 connection.close();
             }
-        } else {
-            debug!("gRPC: Connection from {net_address} has already been unregistered");
+            None => {
+                debug!("gRPC: Connection from {net_address} has already been unregistered");
+            }
         }
     }
 
