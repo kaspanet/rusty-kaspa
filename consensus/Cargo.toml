@@ -36,7 +36,6 @@ rocksdb.workspace = true
 kaspa-database.workspace = true
 kaspa-consensusmanager.workspace = true
 once_cell.workspace = true
-triggered.workspace = true
 
 crossbeam-channel = "0.5"
 async-channel = "1.8.0"
