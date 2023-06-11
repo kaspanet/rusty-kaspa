@@ -126,11 +126,7 @@ impl NetworkId {
     }
 
     pub fn name(&self) -> String {
-        if let Some(suffix) = self.suffix {
-            format!("kaspa-{}-{}", self.network_type, suffix)
-        } else {
-            format!("kaspa-{}", self.network_type)
-        }
+        self.to_string()
     }
 }
 
@@ -173,7 +169,11 @@ impl FromStr for NetworkId {
 
 impl Display for NetworkId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.name())
+        if let Some(suffix) = self.suffix {
+            write!(f, "kaspa-{}-{}", self.network_type, suffix)
+        } else {
+            write!(f, "kaspa-{}", self.network_type)
+        }
     }
 }
 
@@ -190,6 +190,8 @@ mod tests {
             assert_eq!(ni, NetworkId::from_str(ni.to_string().as_str()).unwrap());
             assert_eq!(nt, *NetworkId::from_str(nis.to_string().as_str()).unwrap());
             assert_eq!(nis, NetworkId::from_str(nis.to_string().as_str()).unwrap());
+
+            assert_eq!(nis, NetworkId::from_str(nis.name().as_str()).unwrap());
         }
     }
 
