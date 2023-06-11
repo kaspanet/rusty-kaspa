@@ -121,8 +121,12 @@ pub struct NetworkId {
 }
 
 impl NetworkId {
-    pub fn new(network_type: NetworkType, suffix: Option<u32>) -> Self {
-        Self { network_type, suffix }
+    pub const fn new(network_type: NetworkType) -> Self {
+        Self { network_type, suffix: None }
+    }
+
+    pub const fn with_suffix(network_type: NetworkType, suffix: u32) -> Self {
+        Self { network_type, suffix: Some(suffix) }
     }
 
     pub fn name(&self) -> String {
@@ -140,7 +144,7 @@ impl Deref for NetworkId {
 
 impl From<NetworkType> for NetworkId {
     fn from(value: NetworkType) -> Self {
-        Self::new(value, None)
+        Self::new(value)
     }
 }
 
@@ -162,7 +166,7 @@ impl FromStr for NetworkId {
         let suffix = parts.next().map(|x| u32::from_str(x).map_err(|_| NetworkIdError::InvalidSuffix(x.to_string()))).transpose()?;
         match parts.next() {
             Some(extra_token) => Err(NetworkIdError::UnexpectedExtraToken(extra_token.to_string())),
-            None => Ok(Self::new(network_type, suffix)),
+            None => Ok(Self { network_type, suffix }),
         }
     }
 }
@@ -185,7 +189,7 @@ mod tests {
     fn test_network_id_parse_roundtrip() {
         for nt in NetworkType::iter() {
             let ni = NetworkId::from(nt);
-            let nis = NetworkId::new(nt, Some(1));
+            let nis = NetworkId::with_suffix(nt, 1);
             assert_eq!(nt, *NetworkId::from_str(ni.to_string().as_str()).unwrap());
             assert_eq!(ni, NetworkId::from_str(ni.to_string().as_str()).unwrap());
             assert_eq!(nt, *NetworkId::from_str(nis.to_string().as_str()).unwrap());
@@ -204,8 +208,8 @@ mod tests {
         }
 
         let tests = vec![
-            Test { name: "Valid mainnet", expr: "kaspa-mainnet", expected: Ok(NetworkId::new(NetworkType::Mainnet, None)) },
-            Test { name: "Valid testnet", expr: "kaspa-testnet-88", expected: Ok(NetworkId::new(NetworkType::Testnet, Some(88))) },
+            Test { name: "Valid mainnet", expr: "kaspa-mainnet", expected: Ok(NetworkId::new(NetworkType::Mainnet)) },
+            Test { name: "Valid testnet", expr: "kaspa-testnet-88", expected: Ok(NetworkId::with_suffix(NetworkType::Testnet, 88)) },
             Test { name: "Missing prefix", expr: "testnet", expected: Err(NetworkIdError::InvalidPrefix("testnet".to_string())) },
             Test { name: "Invalid prefix", expr: "K-testnet", expected: Err(NetworkIdError::InvalidPrefix("K".to_string())) },
             Test {

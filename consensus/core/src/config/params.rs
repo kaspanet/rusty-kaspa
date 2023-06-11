@@ -265,7 +265,7 @@ pub const MAINNET_PARAMS: Params = Params {
         // This DNS seeder is run by Tim
         "kaspadns.kaspacalc.net",
     ],
-    net: NetworkId { network_type: NetworkType::Mainnet, suffix: None },
+    net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
@@ -321,7 +321,7 @@ pub const TESTNET_PARAMS: Params = Params {
         // This DNS seeder is run by Tiram
         "seeder1-testnet.kaspad.net",
     ],
-    net: NetworkId { network_type: NetworkType::Testnet, suffix: Some(10) },
+    net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
@@ -373,7 +373,7 @@ pub const TESTNET_PARAMS: Params = Params {
 
 pub const SIMNET_PARAMS: Params = Params {
     dns_seeders: &[],
-    net: NetworkId { network_type: NetworkType::Simnet, suffix: None },
+    net: NetworkId::new(NetworkType::Simnet),
     genesis: SIMNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
@@ -425,7 +425,7 @@ pub const SIMNET_PARAMS: Params = Params {
 
 pub const DEVNET_PARAMS: Params = Params {
     dns_seeders: &[],
-    net: NetworkId { network_type: NetworkType::Devnet, suffix: None },
+    net: NetworkId::new(NetworkType::Devnet),
     genesis: DEVNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
