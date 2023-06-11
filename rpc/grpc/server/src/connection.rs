@@ -30,8 +30,8 @@ pub type StatusResult<T> = Result<T, tonic::Status>;
 
 #[derive(Debug)]
 struct Inner {
-    pub net_address: SocketAddr,
-    pub outgoing_route: GrpcSender,
+    net_address: SocketAddr,
+    outgoing_route: GrpcSender,
     /// Used on connection close to signal the connection receive loop to exit
     shutdown_signal: Mutex<Option<OneshotSender<()>>>,
 }
