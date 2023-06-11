@@ -56,10 +56,7 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
 };
-use kaspa_consensus_notify::{
-    notification::{ConsensusShutdownNotification, Notification as ConsensusNotification},
-    root::ConsensusNotificationRoot,
-};
+use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
 use crossbeam_channel::{
     bounded as bounded_crossbeam, unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender,
@@ -236,8 +233,15 @@ impl Consensus {
             counters.clone(),
         ));
 
-        let pruning_processor =
-            Arc::new(PruningProcessor::new(pruning_receiver, db.clone(), &storage, &services, pruning_lock.clone(), config.clone()));
+        let pruning_processor = Arc::new(PruningProcessor::new(
+            pruning_receiver,
+            db.clone(),
+            &storage,
+            &services,
+            notification_root.clone(),
+            pruning_lock.clone(),
+            config.clone(),
+        ));
 
         // Ensure the relations stores are initialized
         header_processor.init();
@@ -312,19 +316,7 @@ impl Consensus {
     }
 
     pub fn signal_exit(&self) {
-        trace!("exiting consensus");
         self.block_sender.send(BlockProcessingMessage::Exit).unwrap();
-        self.pruning_sender.send(PruningProcessingMessage::Exit).unwrap();
-        trace!("waiting on body_processor...");
-        self.body_processor.get_shutdown_listener().wait();
-        trace!("waiting on header_processor...");
-        self.header_processor.get_shutdown_listener().wait();
-        trace!("waiting on virtual_processor...");
-        self.virtual_processor.get_shutdown_listener().wait();
-        trace!("waiting on pruning_processor...");
-        self.pruning_processor.get_shutdown_listener().wait();
-        trace!("signaling consensus shutdown...");
-        self.notification_root.send(ConsensusNotification::ConsensusShutdown(ConsensusShutdownNotification {})).unwrap();
         trace!("consensus exit success");
     }
 

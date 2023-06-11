@@ -33,11 +33,16 @@ use kaspa_consensus_core::{
     trusted::ExternalGhostdagData,
     BlockHashSet,
 };
+use kaspa_consensus_notify::{
+    notification::{ConsensusShutdownNotification, Notification as ConsensusNotification},
+    root::ConsensusNotificationRoot,
+};
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_notify::notifier::Notify;
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
@@ -47,7 +52,6 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use triggered::{Listener, Trigger};
 
 pub enum PruningProcessingMessage {
     Exit,
@@ -71,15 +75,14 @@ pub struct PruningProcessor {
     pruning_point_manager: DbPruningPointManager,
     pruning_proof_manager: Arc<PruningProofManager>,
 
+    // Notifier
+    notification_root: Arc<ConsensusNotificationRoot>,
+
     // Pruning lock
     pruning_lock: SessionLock,
 
     // Config
     config: Arc<Config>,
-
-    // Shutdown
-    shutdown_listener: Listener,
-    shutdown_trigger: Trigger,
 }
 
 impl Deref for PruningProcessor {
@@ -96,10 +99,10 @@ impl PruningProcessor {
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
+        notification_root: Arc<ConsensusNotificationRoot>,
         pruning_lock: SessionLock,
         config: Arc<Config>,
     ) -> Self {
-        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         Self {
             receiver,
             db,
@@ -108,19 +111,15 @@ impl PruningProcessor {
             ghostdag_managers: services.ghostdag_managers.clone(),
             pruning_point_manager: services.pruning_point_manager.clone(),
             pruning_proof_manager: services.pruning_proof_manager.clone(),
+            notification_root,
             pruning_lock,
             config,
-
-            shutdown_listener,
-            shutdown_trigger,
         }
     }
 
     pub fn worker(self: &Arc<Self>) {
         match self.receiver.recv().unwrap() {
-            PruningProcessingMessage::Exit => {
-                debug!("Exiting: pruning-processor");
-            }
+            PruningProcessingMessage::Exit => (),
             PruningProcessingMessage::Process { sink_ghostdag_data } => {
                 // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
                 // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
@@ -132,13 +131,17 @@ impl PruningProcessor {
                         PruningProcessingMessage::Process { sink_ghostdag_data } => {
                             self.advance_pruning_point_and_candidate_if_possible(sink_ghostdag_data);
                         }
-                    };
+                    }
                 }
             }
-        }
+        };
 
-        // Trigger the shutdown for potential listeners
-        self.shutdown_trigger.trigger()
+        // This Processor is last last-in-line...
+        // Send a ConsensusShutdown notification
+        // TODO: handle notify errors
+        let _ = self.notification_root.notify(ConsensusNotification::ConsensusShutdown(ConsensusShutdownNotification {}));
+
+        debug!("Exiting: pruning-processor");
     }
 
     fn recover_pruning_workflows_if_needed(&self) {
@@ -481,9 +484,5 @@ impl PruningProcessor {
             built_data.ghostdag_blocks.iter().map(|gd| gd.hash).collect::<BlockHashSet>()
         );
         info!("Trusted data was rebuilt successfully following pruning");
-    }
-
-    pub fn get_shutdown_listener(&self) -> Listener {
-        self.shutdown_listener.clone()
     }
 }

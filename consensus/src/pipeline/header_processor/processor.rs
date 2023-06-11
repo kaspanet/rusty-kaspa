@@ -46,7 +46,6 @@ use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{atomic::Ordering, Arc};
-use triggered::{Listener, Trigger};
 
 use super::super::ProcessingCounters;
 
@@ -158,10 +157,6 @@ pub struct HeaderProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
-
-    // Shutdown
-    shutdown_listener: Listener,
-    shutdown_trigger: Trigger,
 }
 
 impl HeaderProcessor {
@@ -176,7 +171,6 @@ impl HeaderProcessor {
         pruning_lock: SessionLock,
         counters: Arc<ProcessingCounters>,
     ) -> Self {
-        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         Self {
             receiver,
             body_sender,
@@ -216,19 +210,13 @@ impl HeaderProcessor {
             mergeset_size_limit: params.mergeset_size_limit,
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
-
-            shutdown_listener,
-            shutdown_trigger,
         }
     }
 
     pub fn worker(self: &Arc<HeaderProcessor>) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
-                BlockProcessingMessage::Exit => {
-                    debug!("Exiting: header-processor");
-                    break;
-                }
+                BlockProcessingMessage::Exit => break,
                 BlockProcessingMessage::Process(task, result_transmitter) => {
                     if let Some(task_id) = self.task_manager.register(task, result_transmitter) {
                         let processor = self.clone();
@@ -240,14 +228,13 @@ impl HeaderProcessor {
             };
         }
 
+        debug!("Exiting: header-processor");
+
         // Wait until all workers are idle before exiting
         self.task_manager.wait_for_idle();
 
         // Pass the exit signal on to the following processor
         self.body_sender.send(BlockProcessingMessage::Exit).unwrap();
-
-        // Trigger the shutdown for potential listeners
-        self.shutdown_trigger.trigger();
     }
 
     fn queue_block(self: &Arc<HeaderProcessor>, task_id: TaskId) {
@@ -524,9 +511,5 @@ impl HeaderProcessor {
         self.db.write(batch).unwrap();
         drop(hst_write);
         drop(relations_write);
-    }
-
-    pub fn get_shutdown_listener(&self) -> Listener {
-        self.shutdown_listener.clone()
     }
 }

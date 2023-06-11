@@ -22,7 +22,7 @@ impl<T: Shutdown + Send + Sync> Signals<T> {
             let v = signals.iterations.fetch_add(1, Ordering::SeqCst);
             if v > 1 {
                 println!("^SIGNAL - halting");
-                std::process::exit(1);
+                std::process::exit(0);
             }
 
             println!("^SIGNAL - shutting down... (CTRL+C again to halt)");
