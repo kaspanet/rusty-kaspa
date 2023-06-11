@@ -108,6 +108,9 @@ pub enum NetworkIdError {
 
     #[error("Invalid network suffix: {0}. Only 32 bits unsigned integer (u32) are supported.")]
     InvalidSuffix(String),
+
+    #[error("Unexpected extra token: {0}.")]
+    UnexpectedExtraToken(String),
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
@@ -154,14 +157,17 @@ impl From<NetworkId> for Prefix {
 impl FromStr for NetworkId {
     type Err = NetworkIdError;
     fn from_str(network_name: &str) -> Result<Self, Self::Err> {
-        let mut parts = network_name.split('-');
+        let mut parts = network_name.split('-').fuse();
         let prefix = parts.next().unwrap_or_default();
         if prefix != "kaspa" {
             return Err(NetworkIdError::InvalidPrefix(prefix.to_string()));
         }
         let network_type = NetworkType::from_str(parts.next().unwrap_or_default())?;
         let suffix = parts.next().map(|x| u32::from_str(x).map_err(|_| NetworkIdError::InvalidSuffix(x.to_string()))).transpose()?;
-        Ok(Self::new(network_type, suffix))
+        match parts.next() {
+            Some(extra_token) => Err(NetworkIdError::UnexpectedExtraToken(extra_token.to_string())),
+            None => Ok(Self::new(network_type, suffix)),
+        }
     }
 }
 
@@ -211,6 +217,11 @@ mod tests {
                 expected: Err(NetworkTypeError::InvalidNetworkType("gamenet".to_string()).into()),
             },
             Test { name: "Invalid suffix", expr: "kaspa-testnet-x", expected: Err(NetworkIdError::InvalidSuffix("x".to_string())) },
+            Test {
+                name: "Unexpected extra token",
+                expr: "kaspa-testnet-10-x",
+                expected: Err(NetworkIdError::UnexpectedExtraToken("x".to_string())),
+            },
         ];
 
         for test in tests {
