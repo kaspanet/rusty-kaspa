@@ -328,7 +328,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config,
         core.clone(),
     ));
-    let grpc_server = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_server.service()));
+    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_server.service()));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
@@ -337,7 +337,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         async_runtime.register(index_service)
     };
     async_runtime.register(rpc_core_server.clone());
-    async_runtime.register(grpc_server);
+    async_runtime.register(grpc_service);
     async_runtime.register(p2p_service);
     async_runtime.register(monitor);
 
