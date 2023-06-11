@@ -1,6 +1,7 @@
 use crate::{
     collector::{GrpcServiceCollector, GrpcServiceConverter},
-    connection::{GrpcConnection, GrpcConnectionManager},
+    connection::GrpcConnection,
+    manager::Manager,
 };
 use futures::{FutureExt, Stream};
 use kaspa_core::{debug, info};
@@ -35,7 +36,7 @@ pub struct GrpcConnectionHandler {
     core_service: Arc<RpcCoreService>,
     core_channel: NotificationChannel,
     core_listener_id: ListenerId,
-    connection_manager: GrpcConnectionManager,
+    connection_manager: Manager,
     notifier: Arc<Notifier<Notification, GrpcConnection>>,
     running: AtomicBool,
 }
@@ -55,7 +56,7 @@ impl GrpcConnectionHandler {
         let subscriber = Arc::new(Subscriber::new(core_events, core_service.notifier(), core_listener_id));
         let notifier: Arc<Notifier<Notification, GrpcConnection>> =
             Arc::new(Notifier::new(core_events, vec![collector], vec![subscriber], 10, GRPC_SERVER));
-        let connection_manager = GrpcConnectionManager::new(Self::max_connections());
+        let connection_manager = Manager::new(Self::max_connections());
 
         Self { core_service, core_channel, core_listener_id, connection_manager, notifier, running: AtomicBool::new(false) }
     }

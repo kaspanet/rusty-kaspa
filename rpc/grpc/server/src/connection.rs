@@ -1,4 +1,7 @@
-use crate::error::{GrpcServerError, GrpcServerResult};
+use crate::{
+    error::{GrpcServerError, GrpcServerResult},
+    manager::Manager,
+};
 use kaspa_core::{debug, trace};
 use kaspa_grpc_core::protowire::{kaspad_request::Payload, *};
 use kaspa_notify::{
@@ -17,7 +20,7 @@ use kaspa_rpc_core::{api::rpc::RpcApi, Notification};
 use kaspa_rpc_service::service::RpcCoreService;
 use once_cell::unsync::Lazy;
 use parking_lot::Mutex;
-use std::{collections::HashMap, fmt::Display, io::ErrorKind, net::SocketAddr, sync::Arc};
+use std::{fmt::Display, io::ErrorKind, net::SocketAddr, sync::Arc};
 use tokio::select;
 use tokio::sync::{
     mpsc::Sender as MpscSender,
@@ -51,7 +54,7 @@ impl GrpcConnection {
     pub fn new(
         net_address: SocketAddr,
         core_service: Arc<RpcCoreService>,
-        connection_manager: GrpcConnectionManager,
+        connection_manager: Manager,
         notifier: Arc<Notifier<Notification, GrpcConnection>>,
         mut incoming_stream: Streaming<KaspadRequest>,
         outgoing_route: GrpcSender,
@@ -561,42 +564,3 @@ impl Connection for GrpcConnection {
     }
 }
 
-#[derive(Clone)]
-pub struct GrpcConnectionManager {
-    connections: Arc<Mutex<HashMap<SocketAddr, GrpcConnection>>>,
-    max_connections: usize,
-}
-
-impl GrpcConnectionManager {
-    pub fn new(max_connections: usize) -> Self {
-        Self { connections: Arc::new(Mutex::new(HashMap::new())), max_connections }
-    }
-
-    pub fn register(&self, connection: GrpcConnection) {
-        debug!("gRPC: Register a new connection from {connection}");
-        self.connections.lock().insert(connection.identity(), connection).map(|x| x.close());
-    }
-
-    pub fn is_full(&self) -> bool {
-        self.connections.lock().len() >= self.max_connections
-    }
-
-    pub fn unregister(&self, net_address: SocketAddr) {
-        match self.connections.lock().remove(&net_address) {
-            Some(connection) => {
-                debug!("gRPC: Unregister the gRPC connection from {connection}");
-                connection.close();
-            }
-            None => {
-                debug!("gRPC: Connection from {net_address} has already been unregistered");
-            }
-        }
-    }
-
-    pub fn terminate_all_connections(&self) {
-        let connections = self.connections.lock().drain().map(|(_, r)| r).collect::<Vec<_>>();
-        for connection in connections {
-            connection.close();
-        }
-    }
-}
