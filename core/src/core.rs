@@ -1,6 +1,6 @@
 use crate::service::Service;
 use crate::signals::Shutdown;
-use crate::trace;
+use crate::{info, trace};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -71,7 +71,7 @@ impl Shutdown for Core {
         {
             for service in self.services.lock().unwrap().iter() {
                 let ident = service.clone().ident();
-                trace!("shutting down: {}", ident);
+                info!("shutting down: {}", ident);
                 service.clone().stop();
             }
         }

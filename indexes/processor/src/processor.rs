@@ -4,7 +4,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
-use kaspa_core::{trace, info};
+use kaspa_core::{info, trace};
 use kaspa_index_core::notification::{
     ConsensusShutdownNotification, Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification,
 };
@@ -322,7 +322,7 @@ mod tests {
         assert!(!pipeline.processor.recv_channel.is_closed(), "processor receiver should not not closed");
 
         pipeline.processor.is_core_running.store(false, Ordering::SeqCst);
-        
+
         let test_notification = consensus_notification::ConsensusShutdownNotification {};
         pipeline
             .consensus_sender
