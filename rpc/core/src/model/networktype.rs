@@ -1,4 +1,4 @@
-use kaspa_consensus_core::networktype::{NetworkInstance, NetworkType};
+use kaspa_consensus_core::networktype::{NetworkId, NetworkType};
 
 pub type RpcNetworkType = NetworkType;
-pub type RpcNetworkInstance = NetworkInstance;
+pub type RpcNetworkId = NetworkId;

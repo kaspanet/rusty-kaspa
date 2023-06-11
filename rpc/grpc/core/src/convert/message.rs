@@ -582,7 +582,7 @@ try_from!(item: &protowire::GetBlockCountResponseMessage, RpcResult<kaspa_rpc_co
 try_from!(&protowire::GetBlockDagInfoRequestMessage, kaspa_rpc_core::GetBlockDagInfoRequest);
 try_from!(item: &protowire::GetBlockDagInfoResponseMessage, RpcResult<kaspa_rpc_core::GetBlockDagInfoResponse>, {
     Self {
-        network: kaspa_rpc_core::RpcNetworkInstance::from_str(&item.network_name)?,
+        network: kaspa_rpc_core::RpcNetworkId::from_str(&item.network_name)?,
         block_count: item.block_count,
         header_count: item.header_count,
         tip_hashes: item.tip_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,

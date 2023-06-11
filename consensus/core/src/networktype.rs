@@ -99,7 +99,7 @@ impl Display for NetworkType {
 }
 
 #[derive(thiserror::Error, PartialEq, Eq, Debug, Clone)]
-pub enum NetworkInstanceError {
+pub enum NetworkIdError {
     #[error("Invalid network name prefix: {0}. The expected prefix is 'kaspa'.")]
     InvalidPrefix(String),
 
@@ -112,12 +112,12 @@ pub enum NetworkInstanceError {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub struct NetworkInstance {
+pub struct NetworkId {
     pub network_type: NetworkType,
     pub suffix: Option<u32>,
 }
 
-impl NetworkInstance {
+impl NetworkId {
     pub fn new(network_type: NetworkType, suffix: Option<u32>) -> Self {
         Self { network_type, suffix }
     }
@@ -131,7 +131,7 @@ impl NetworkInstance {
     }
 }
 
-impl Deref for NetworkInstance {
+impl Deref for NetworkId {
     type Target = NetworkType;
 
     fn deref(&self) -> &Self::Target {
@@ -139,34 +139,33 @@ impl Deref for NetworkInstance {
     }
 }
 
-impl From<NetworkType> for NetworkInstance {
+impl From<NetworkType> for NetworkId {
     fn from(value: NetworkType) -> Self {
         Self::new(value, None)
     }
 }
 
-impl From<NetworkInstance> for Prefix {
-    fn from(net: NetworkInstance) -> Self {
+impl From<NetworkId> for Prefix {
+    fn from(net: NetworkId) -> Self {
         (*net).into()
     }
 }
 
-impl FromStr for NetworkInstance {
-    type Err = NetworkInstanceError;
+impl FromStr for NetworkId {
+    type Err = NetworkIdError;
     fn from_str(network_name: &str) -> Result<Self, Self::Err> {
         let mut parts = network_name.split('-');
         let prefix = parts.next().unwrap_or_default();
         if prefix != "kaspa" {
-            return Err(NetworkInstanceError::InvalidPrefix(prefix.to_string()));
+            return Err(NetworkIdError::InvalidPrefix(prefix.to_string()));
         }
         let network_type = NetworkType::from_str(parts.next().unwrap_or_default())?;
-        let suffix =
-            parts.next().map(|x| u32::from_str(x).map_err(|_| NetworkInstanceError::InvalidSuffix(x.to_string()))).transpose()?;
+        let suffix = parts.next().map(|x| u32::from_str(x).map_err(|_| NetworkIdError::InvalidSuffix(x.to_string()))).transpose()?;
         Ok(Self::new(network_type, suffix))
     }
 }
 
-impl Display for NetworkInstance {
+impl Display for NetworkId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.name())
     }
@@ -177,38 +176,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_network_instance_parse_roundtrip() {
+    fn test_network_id_parse_roundtrip() {
         for nt in NetworkType::iter() {
-            let ni = NetworkInstance::from(nt);
-            let nis = NetworkInstance::new(nt, Some(1));
-            assert_eq!(nt, *NetworkInstance::from_str(ni.to_string().as_str()).unwrap());
-            assert_eq!(ni, NetworkInstance::from_str(ni.to_string().as_str()).unwrap());
-            assert_eq!(nt, *NetworkInstance::from_str(nis.to_string().as_str()).unwrap());
-            assert_eq!(nis, NetworkInstance::from_str(nis.to_string().as_str()).unwrap());
+            let ni = NetworkId::from(nt);
+            let nis = NetworkId::new(nt, Some(1));
+            assert_eq!(nt, *NetworkId::from_str(ni.to_string().as_str()).unwrap());
+            assert_eq!(ni, NetworkId::from_str(ni.to_string().as_str()).unwrap());
+            assert_eq!(nt, *NetworkId::from_str(nis.to_string().as_str()).unwrap());
+            assert_eq!(nis, NetworkId::from_str(nis.to_string().as_str()).unwrap());
         }
     }
 
     #[test]
-    fn test_network_instance_parse() {
+    fn test_network_id_parse() {
         struct Test {
             name: &'static str,
             expr: &'static str,
-            expected: Result<NetworkInstance, NetworkInstanceError>,
+            expected: Result<NetworkId, NetworkIdError>,
         }
 
         let tests = vec![
-            Test { name: "Valid mainnet", expr: "kaspa-mainnet", expected: Ok(NetworkInstance::new(NetworkType::Mainnet, None)) },
-            Test {
-                name: "Valid testnet",
-                expr: "kaspa-testnet-88",
-                expected: Ok(NetworkInstance::new(NetworkType::Testnet, Some(88))),
-            },
-            Test {
-                name: "Missing prefix",
-                expr: "testnet",
-                expected: Err(NetworkInstanceError::InvalidPrefix("testnet".to_string())),
-            },
-            Test { name: "Invalid prefix", expr: "K-testnet", expected: Err(NetworkInstanceError::InvalidPrefix("K".to_string())) },
+            Test { name: "Valid mainnet", expr: "kaspa-mainnet", expected: Ok(NetworkId::new(NetworkType::Mainnet, None)) },
+            Test { name: "Valid testnet", expr: "kaspa-testnet-88", expected: Ok(NetworkId::new(NetworkType::Testnet, Some(88))) },
+            Test { name: "Missing prefix", expr: "testnet", expected: Err(NetworkIdError::InvalidPrefix("testnet".to_string())) },
+            Test { name: "Invalid prefix", expr: "K-testnet", expected: Err(NetworkIdError::InvalidPrefix("K".to_string())) },
             Test {
                 name: "Missing network",
                 expr: "kaspa-",
@@ -219,15 +210,11 @@ mod tests {
                 expr: "kaspa-gamenet",
                 expected: Err(NetworkTypeError::InvalidNetworkType("gamenet".to_string()).into()),
             },
-            Test {
-                name: "Invalid suffix",
-                expr: "kaspa-testnet-x",
-                expected: Err(NetworkInstanceError::InvalidSuffix("x".to_string())),
-            },
+            Test { name: "Invalid suffix", expr: "kaspa-testnet-x", expected: Err(NetworkIdError::InvalidSuffix("x".to_string())) },
         ];
 
         for test in tests {
-            assert_eq!(NetworkInstance::from_str(test.expr), test.expected, "{}: unexpected result", test.name);
+            assert_eq!(NetworkId::from_str(test.expr), test.expected, "{}: unexpected result", test.name);
         }
     }
 }

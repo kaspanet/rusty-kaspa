@@ -1,6 +1,6 @@
 use super::genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET_GENESIS};
 use crate::{
-    networktype::{NetworkInstance, NetworkType},
+    networktype::{NetworkId, NetworkType},
     BlockLevel, KType,
 };
 use kaspa_addresses::Prefix;
@@ -16,7 +16,7 @@ use std::{
 #[derive(Clone, Debug)]
 pub struct Params {
     pub dns_seeders: &'static [&'static str],
-    pub net: NetworkInstance,
+    pub net: NetworkId,
     pub genesis: GenesisBlock,
     pub ghostdag_k: KType,
 
@@ -265,7 +265,7 @@ pub const MAINNET_PARAMS: Params = Params {
         // This DNS seeder is run by Tim
         "kaspadns.kaspacalc.net",
     ],
-    net: NetworkInstance { network_type: NetworkType::Mainnet, suffix: None },
+    net: NetworkId { network_type: NetworkType::Mainnet, suffix: None },
     genesis: GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
@@ -321,7 +321,7 @@ pub const TESTNET_PARAMS: Params = Params {
         // This DNS seeder is run by Tiram
         "seeder1-testnet.kaspad.net",
     ],
-    net: NetworkInstance { network_type: NetworkType::Testnet, suffix: Some(10) },
+    net: NetworkId { network_type: NetworkType::Testnet, suffix: Some(10) },
     genesis: TESTNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
@@ -373,7 +373,7 @@ pub const TESTNET_PARAMS: Params = Params {
 
 pub const SIMNET_PARAMS: Params = Params {
     dns_seeders: &[],
-    net: NetworkInstance { network_type: NetworkType::Simnet, suffix: None },
+    net: NetworkId { network_type: NetworkType::Simnet, suffix: None },
     genesis: SIMNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
@@ -425,7 +425,7 @@ pub const SIMNET_PARAMS: Params = Params {
 
 pub const DEVNET_PARAMS: Params = Params {
     dns_seeders: &[],
-    net: NetworkInstance { network_type: NetworkType::Devnet, suffix: None },
+    net: NetworkId { network_type: NetworkType::Devnet, suffix: None },
     genesis: DEVNET_GENESIS,
     ghostdag_k: DEFAULT_GHOSTDAG_K,
     full_timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,

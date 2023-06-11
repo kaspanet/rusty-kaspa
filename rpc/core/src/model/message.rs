@@ -389,7 +389,7 @@ pub struct GetBlockDagInfoRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockDagInfoResponse {
-    pub network: RpcNetworkInstance,
+    pub network: RpcNetworkId,
     pub block_count: u64,
     pub header_count: u64,
     pub tip_hashes: Vec<RpcHash>,
@@ -402,7 +402,7 @@ pub struct GetBlockDagInfoResponse {
 
 impl GetBlockDagInfoResponse {
     pub fn new(
-        network: RpcNetworkInstance,
+        network: RpcNetworkId,
         block_count: u64,
         header_count: u64,
         tip_hashes: Vec<RpcHash>,
