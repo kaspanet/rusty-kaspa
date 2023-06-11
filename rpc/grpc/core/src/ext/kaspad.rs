@@ -13,11 +13,7 @@ impl KaspadRequest {
     }
 
     pub fn is_subscription(&self) -> bool {
-        if let Some(ref payload) = self.payload {
-            payload.is_subscription()
-        } else {
-            false
-        }
+        self.payload.as_ref().is_some_and(|x| x.is_subscription())
     }
 }
 
