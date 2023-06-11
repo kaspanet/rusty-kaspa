@@ -871,7 +871,7 @@ fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> {
 }
 
 async fn json_test(file_path: &str, concurrency: bool) {
-    kaspa_core::log::try_init_logger("trace");
+    kaspa_core::log::try_init_logger("info");
     let main_path = Path::new(file_path);
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
 
