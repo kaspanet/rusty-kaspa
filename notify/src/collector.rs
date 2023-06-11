@@ -43,7 +43,6 @@ pub struct CollectorFrom<C>
 where
     C: Converter,
 {
-    // We most hold the whole channel (i.e. one sender) to stop unexpected channel closures.
     incoming: Receiver<C::Incoming>,
 
     converter: Arc<C>,

@@ -178,5 +178,3 @@ pub struct NewBlockTemplateNotification {}
 
 #[derive(Debug, Clone)]
 pub struct ConsensusShutdownNotification {}
-
-impl ConsensusShutdownNotification {}

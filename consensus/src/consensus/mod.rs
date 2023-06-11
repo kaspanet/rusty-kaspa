@@ -63,7 +63,6 @@ use crossbeam_channel::{
 };
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
-use kaspa_core::trace;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -85,7 +84,6 @@ pub struct Consensus {
 
     // Channels
     block_sender: CrossbeamSender<BlockProcessingMessage>,
-    pruning_sender: CrossbeamSender<PruningProcessingMessage>,
 
     // Processors
     pub(super) header_processor: Arc<HeaderProcessor>,
@@ -221,7 +219,7 @@ impl Consensus {
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
             virtual_receiver,
-            pruning_sender.clone(),
+            pruning_sender,
             pruning_receiver.clone(),
             virtual_pool,
             params,
@@ -258,7 +256,6 @@ impl Consensus {
         Self {
             db,
             block_sender: sender,
-            pruning_sender,
             header_processor,
             body_processor,
             virtual_processor,
@@ -317,7 +314,6 @@ impl Consensus {
 
     pub fn signal_exit(&self) {
         self.block_sender.send(BlockProcessingMessage::Exit).unwrap();
-        trace!("consensus exit success");
     }
 
     pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {

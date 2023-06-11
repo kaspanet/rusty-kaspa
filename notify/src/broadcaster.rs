@@ -172,8 +172,9 @@ where
                                     plan[subscription.event_type()].remove(&id);
                                 },
                                 Ctl::Shutdown => {
-                                    // Below causes the notification recv to consume remaining notifications.
-                                    // Afterwards it errors intoto the exit handling.
+                                    // Below causes the notification recv to
+                                    // 1) consume remaining notifications.
+                                    // 2) exit the processing loop
                                     notification_recv.close();
                                 }
                             }
