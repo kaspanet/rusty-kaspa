@@ -371,5 +371,5 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     core.run();
     drop(core);
 
-    trace!("Kaspad is finished...");
+    println!("Kaspad is finished...");
 }
