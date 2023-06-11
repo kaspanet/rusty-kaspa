@@ -746,6 +746,7 @@ impl Inner {
         self.stop_connector_monitor().await?;
         self.stop_timeout_monitor().await?;
         self.stop_response_receiver_task().await?;
+        self.request_receiver.close();
         Ok(())
     }
 
