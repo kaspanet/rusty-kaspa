@@ -16,8 +16,7 @@ use kaspa_notify::{
     },
     subscriber::SubscriptionManager,
 };
-use kaspa_rpc_core::{api::rpc::RpcApi, Notification};
-use kaspa_rpc_service::service::RpcCoreService;
+use kaspa_rpc_core::{api::rpc::DynRpcService, Notification};
 use once_cell::unsync::Lazy;
 use parking_lot::Mutex;
 use std::{fmt::Display, io::ErrorKind, net::SocketAddr, sync::Arc};
@@ -53,7 +52,7 @@ impl Display for GrpcConnection {
 impl GrpcConnection {
     pub fn new(
         net_address: SocketAddr,
-        core_service: Arc<RpcCoreService>,
+        core_service: DynRpcService,
         connection_manager: Manager,
         notifier: Arc<Notifier<Notification, GrpcConnection>>,
         mut incoming_stream: Streaming<KaspadRequest>,
@@ -142,7 +141,7 @@ impl GrpcConnection {
         self.inner.net_address
     }
 
-    async fn handle_request(request: KaspadRequest, core_service: &Arc<RpcCoreService>) -> GrpcServerResult<KaspadResponse> {
+    async fn handle_request(request: KaspadRequest, core_service: &DynRpcService) -> GrpcServerResult<KaspadResponse> {
         let mut response: KaspadResponse = if let Some(payload) = request.payload {
             match payload {
                 Payload::GetProcessMetricsRequest(ref request) => match request.try_into() {
@@ -563,4 +562,3 @@ impl Connection for GrpcConnection {
         self.inner.shutdown_signal.lock().is_none()
     }
 }
-

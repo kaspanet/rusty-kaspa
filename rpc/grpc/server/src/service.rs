@@ -18,7 +18,7 @@ pub struct GrpcService {
 
 impl GrpcService {
     pub fn new(address: NetAddress, core_service: Arc<RpcCoreService>) -> Self {
-        let connection_handler = Arc::new(GrpcConnectionHandler::new(core_service));
+        let connection_handler = Arc::new(GrpcConnectionHandler::new(core_service.clone(), core_service.notifier()));
         Self { net_address: address, connection_handler, shutdown: SingleTrigger::default() }
     }
 }

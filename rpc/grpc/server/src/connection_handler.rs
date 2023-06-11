@@ -14,10 +14,10 @@ use kaspa_grpc_core::{
 };
 use kaspa_notify::{events::EVENT_TYPE_ARRAY, listener::ListenerId, notifier::Notifier, subscriber::Subscriber};
 use kaspa_rpc_core::{
+    api::rpc::DynRpcService,
     notify::{channel::NotificationChannel, connection::ChannelConnection},
     Notification, RpcResult,
 };
-use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::networking::NetAddress;
 use std::{
     pin::Pin,
@@ -33,7 +33,8 @@ use tonic::{codec::CompressionEncoding, transport::Server as TonicServer, Reques
 
 /// A protowire gRPC connections handler.
 pub struct GrpcConnectionHandler {
-    core_service: Arc<RpcCoreService>,
+    core_service: DynRpcService,
+    core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
     core_channel: NotificationChannel,
     core_listener_id: ListenerId,
     connection_manager: Manager,
@@ -44,21 +45,29 @@ pub struct GrpcConnectionHandler {
 const GRPC_SERVER: &str = "grpc-server";
 
 impl GrpcConnectionHandler {
-    pub fn new(core_service: Arc<RpcCoreService>) -> Self {
+    pub fn new(core_service: DynRpcService, core_notifier: Arc<Notifier<Notification, ChannelConnection>>) -> Self {
         // Prepare core objects
         let core_channel = NotificationChannel::default();
-        let core_listener_id = core_service.notifier().register_new_listener(ChannelConnection::new(core_channel.sender()));
+        let core_listener_id = core_notifier.register_new_listener(ChannelConnection::new(core_channel.sender()));
 
         // Prepare internals
         let core_events = EVENT_TYPE_ARRAY[..].into();
         let converter = Arc::new(GrpcServiceConverter::new());
         let collector = Arc::new(GrpcServiceCollector::new(core_channel.receiver(), converter));
-        let subscriber = Arc::new(Subscriber::new(core_events, core_service.notifier(), core_listener_id));
+        let subscriber = Arc::new(Subscriber::new(core_events, core_notifier.clone(), core_listener_id));
         let notifier: Arc<Notifier<Notification, GrpcConnection>> =
             Arc::new(Notifier::new(core_events, vec![collector], vec![subscriber], 10, GRPC_SERVER));
         let connection_manager = Manager::new(Self::max_connections());
 
-        Self { core_service, core_channel, core_listener_id, connection_manager, notifier, running: AtomicBool::new(false) }
+        Self {
+            core_service,
+            core_notifier,
+            core_channel,
+            core_listener_id,
+            connection_manager,
+            notifier,
+            running: AtomicBool::new(false),
+        }
     }
 
     /// Launches a gRPC server listener loop
@@ -111,7 +120,7 @@ impl GrpcConnectionHandler {
         self.connection_manager.terminate_all_connections();
 
         // Unregister from the core service notifier
-        self.core_service.notifier().unregister_listener(self.core_listener_id)?;
+        self.core_notifier.unregister_listener(self.core_listener_id)?;
         self.core_channel.receiver().close();
 
         // Stop the internal notifier

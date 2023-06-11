@@ -1805,6 +1805,7 @@ dependencies = [
  "futures",
  "h2",
  "kaspa-core",
+ "kaspa-grpc-client",
  "kaspa-grpc-core",
  "kaspa-notify",
  "kaspa-rpc-core",
