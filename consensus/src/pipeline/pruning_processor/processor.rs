@@ -136,12 +136,12 @@ impl PruningProcessor {
             }
         };
 
+        debug!("Exiting: pruning-processor");
+
         // This Processor is last last-in-line...
         // Send a ConsensusShutdown notification
         // TODO: handle notify errors
         let _ = self.notification_root.notify(ConsensusNotification::ConsensusShutdown(ConsensusShutdownNotification {}));
-
-        debug!("Exiting: pruning-processor");
     }
 
     fn recover_pruning_workflows_if_needed(&self) {
