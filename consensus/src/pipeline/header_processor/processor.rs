@@ -38,7 +38,7 @@ use kaspa_consensus_core::{
     BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::info;
+use kaspa_core::{info, trace};
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_utils::vec::VecExtensions;
@@ -226,7 +226,7 @@ impl HeaderProcessor {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
                 BlockProcessingMessage::Exit => {
-                    info!("exiting: header-processor");
+                    trace!("exiting: header-processor");
                     break;
                 }
                 BlockProcessingMessage::Process(task, result_transmitter) => {

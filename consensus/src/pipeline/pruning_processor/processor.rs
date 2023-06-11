@@ -34,7 +34,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{debug, info, warn, trace};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -119,7 +119,7 @@ impl PruningProcessor {
     pub fn worker(self: &Arc<Self>) {
         match self.receiver.recv().unwrap() {
             PruningProcessingMessage::Exit => {
-                info!("exiting: pruning-processor");
+                trace!("exiting: pruning-processor");
             }
             PruningProcessingMessage::Process { sink_ghostdag_data } => {
                 // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
