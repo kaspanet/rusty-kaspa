@@ -1,4 +1,4 @@
-use crate::{signals::Shutdown, task::service::AsyncServiceResult, warn, debug};
+use crate::{debug, signals::Shutdown, task::service::AsyncServiceResult, warn};
 use futures_util::future::{select_all, try_join_all};
 use kaspa_core::core::Core;
 use kaspa_core::service::Service;

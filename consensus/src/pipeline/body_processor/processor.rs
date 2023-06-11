@@ -31,7 +31,7 @@ use kaspa_consensus_notify::{
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{trace, debug};
+use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_notify::notifier::Notify;
 use parking_lot::RwLock;

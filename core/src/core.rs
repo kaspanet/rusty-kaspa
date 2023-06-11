@@ -1,6 +1,6 @@
 use crate::service::Service;
 use crate::signals::Shutdown;
-use crate::{info, trace, debug};
+use crate::{debug, trace};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
