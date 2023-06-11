@@ -119,7 +119,7 @@ impl PruningProcessor {
     pub fn worker(self: &Arc<Self>) {
         match self.receiver.recv().unwrap() {
             PruningProcessingMessage::Exit => {
-                trace!("exiting: pruning-processor");
+                debug!("Exiting: pruning-processor");
             }
             PruningProcessingMessage::Process { sink_ghostdag_data } => {
                 // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive

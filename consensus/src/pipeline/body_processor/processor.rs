@@ -31,7 +31,7 @@ use kaspa_consensus_notify::{
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::trace;
+use kaspa_core::{trace, debug};
 use kaspa_hashes::Hash;
 use kaspa_notify::notifier::Notify;
 use parking_lot::RwLock;
@@ -142,7 +142,7 @@ impl BlockBodyProcessor {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
                 BlockProcessingMessage::Exit => {
-                    trace!("exiting: block-body--processor");
+                    debug!("Exiting: block-body-processor");
                     break;
                 }
                 BlockProcessingMessage::Process(task, result_transmitter) => {

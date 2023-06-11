@@ -1,4 +1,4 @@
-use crate::{signals::Shutdown, task::service::AsyncServiceResult, warn};
+use crate::{signals::Shutdown, task::service::AsyncServiceResult, warn, debug};
 use futures_util::future::{select_all, try_join_all};
 use kaspa_core::core::Core;
 use kaspa_core::service::Service;
@@ -98,7 +98,7 @@ impl AsyncRuntime {
         trace!("async-runtime worker stopping");
         self.services.lock().unwrap().iter().for_each(move |x| {
             let service_name = x.clone().ident();
-            trace!("exiting: {0}", service_name);
+            debug!("Exiting: {0}", service_name);
             match futures::executor::block_on(x.clone().stop()) {
                 Ok(_) => (),
                 Err(err) => {
