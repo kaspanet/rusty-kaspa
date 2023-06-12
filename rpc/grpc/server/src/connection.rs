@@ -2,7 +2,7 @@ use crate::{
     error::{GrpcServerError, GrpcServerResult},
     manager::Manager,
 };
-use kaspa_core::{debug, trace};
+use kaspa_core::debug;
 use kaspa_grpc_core::protowire::{kaspad_request::Payload, *};
 use kaspa_notify::{
     connection::Connection as ConnectionT,
@@ -562,8 +562,7 @@ impl ConnectionT for Connection {
             let _ = signal.send(());
         } else {
             // This means the connection was already closed.
-            // The typical use case is the manager terminating all connections.
-            trace!("gRPC: Connection close was called more than once, client-id: {}", self.identity());
+            // The typical case is the manager terminating all connections.
             return false;
         }
         self.inner.manager.unregister(self.net_address());
