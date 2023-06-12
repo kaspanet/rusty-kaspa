@@ -13,12 +13,13 @@ const GRPC_SERVICE: &str = "grpc-service";
 pub struct GrpcService {
     net_address: NetAddress,
     core_service: Arc<RpcCoreService>,
+    rpc_max_clients: usize,
     shutdown: SingleTrigger,
 }
 
 impl GrpcService {
-    pub fn new(address: NetAddress, core_service: Arc<RpcCoreService>) -> Self {
-        Self { net_address: address, core_service, shutdown: SingleTrigger::default() }
+    pub fn new(address: NetAddress, core_service: Arc<RpcCoreService>, rpc_max_clients: usize) -> Self {
+        Self { net_address: address, core_service, rpc_max_clients, shutdown: SingleTrigger::default() }
     }
 }
 
@@ -33,7 +34,8 @@ impl AsyncService for GrpcService {
         // Prepare a shutdown signal receiver
         let shutdown_signal = self.shutdown.listener.clone();
 
-        let grpc_adaptor = Adaptor::server(self.net_address, self.core_service.clone(), self.core_service.notifier());
+        let grpc_adaptor =
+            Adaptor::server(self.net_address, self.core_service.clone(), self.core_service.notifier(), self.rpc_max_clients);
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {

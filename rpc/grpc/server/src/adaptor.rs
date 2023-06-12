@@ -33,8 +33,9 @@ impl Adaptor {
         serve_address: NetAddress,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
+        max_connections: usize,
     ) -> Arc<Self> {
-        let manager = Manager::new(Self::max_connections());
+        let manager = Manager::new(max_connections);
         let connection_handler = Arc::new(ConnectionHandler::new(core_service.clone(), core_notifier, manager.clone()));
         let server_termination = connection_handler.serve(serve_address);
         connection_handler.start();
@@ -47,10 +48,6 @@ impl Adaptor {
 
     pub async fn terminate(&self) -> RpcResult<()> {
         self.connection_handler.stop().await
-    }
-
-    pub fn max_connections() -> usize {
-        24
     }
 }
 

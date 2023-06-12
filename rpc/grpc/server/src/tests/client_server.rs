@@ -74,7 +74,7 @@ fn create_server() -> Arc<Adaptor> {
     let core_service = Arc::new(RpcCoreMock {});
     let core_notifier: Arc<Notifier<Notification, ChannelConnection>> =
         Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), vec![], vec![], 1, "rpc-core"));
-    Adaptor::server(get_free_net_address(), core_service, core_notifier)
+    Adaptor::server(get_free_net_address(), core_service, core_notifier, 128)
 }
 
 async fn create_client(server_address: NetAddress) -> GrpcClient {
