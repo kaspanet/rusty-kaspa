@@ -1,6 +1,6 @@
 use crate::{
     collector::{GrpcServiceCollector, GrpcServiceConverter},
-    connection::GrpcConnection,
+    connection::Connection,
     manager::Manager,
 };
 use futures::{FutureExt, Stream};
@@ -32,20 +32,19 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{codec::CompressionEncoding, transport::Server as TonicServer, Request, Response};
 
 /// A protowire gRPC connections handler.
-pub struct GrpcConnectionHandler {
+pub struct ConnectionHandler {
     core_service: DynRpcService,
     core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
-    core_channel: NotificationChannel,
     core_listener_id: ListenerId,
-    connection_manager: Manager,
-    notifier: Arc<Notifier<Notification, GrpcConnection>>,
+    manager: Manager,
+    notifier: Arc<Notifier<Notification, Connection>>,
     running: AtomicBool,
 }
 
 const GRPC_SERVER: &str = "grpc-server";
 
-impl GrpcConnectionHandler {
-    pub fn new(core_service: DynRpcService, core_notifier: Arc<Notifier<Notification, ChannelConnection>>) -> Self {
+impl ConnectionHandler {
+    pub fn new(core_service: DynRpcService, core_notifier: Arc<Notifier<Notification, ChannelConnection>>, manager: Manager) -> Self {
         // Prepare core objects
         let core_channel = NotificationChannel::default();
         let core_listener_id = core_notifier.register_new_listener(ChannelConnection::new(core_channel.sender()));
@@ -55,19 +54,10 @@ impl GrpcConnectionHandler {
         let converter = Arc::new(GrpcServiceConverter::new());
         let collector = Arc::new(GrpcServiceCollector::new(core_channel.receiver(), converter));
         let subscriber = Arc::new(Subscriber::new(core_events, core_notifier.clone(), core_listener_id));
-        let notifier: Arc<Notifier<Notification, GrpcConnection>> =
+        let notifier: Arc<Notifier<Notification, Connection>> =
             Arc::new(Notifier::new(core_events, vec![collector], vec![subscriber], 10, GRPC_SERVER));
-        let connection_manager = Manager::new(Self::max_connections());
 
-        Self {
-            core_service,
-            core_notifier,
-            core_channel,
-            core_listener_id,
-            connection_manager,
-            notifier,
-            running: AtomicBool::new(false),
-        }
+        Self { core_service, core_notifier, core_listener_id, manager, notifier, running: AtomicBool::new(false) }
     }
 
     /// Launches a gRPC server listener loop
@@ -96,7 +86,7 @@ impl GrpcConnectionHandler {
     }
 
     #[inline(always)]
-    pub fn notifier(&self) -> Arc<Notifier<Notification, GrpcConnection>> {
+    pub fn notifier(&self) -> Arc<Notifier<Notification, Connection>> {
         self.notifier.clone()
     }
 
@@ -116,21 +106,16 @@ impl GrpcConnectionHandler {
         // Refuse new incoming connections
         self.running.store(false, Ordering::SeqCst);
 
-        // Close all existing connections
-        self.connection_manager.terminate_all_connections();
-
         // Unregister from the core service notifier
         self.core_notifier.unregister_listener(self.core_listener_id)?;
-        self.core_channel.receiver().close();
 
         // Stop the internal notifier
         self.notifier().stop().await?;
 
-        Ok(())
-    }
+        // Close all existing connections
+        self.manager.terminate_all_connections();
 
-    pub fn max_connections() -> usize {
-        24
+        Ok(())
     }
 
     pub fn outgoing_route_channel_size() -> usize {
@@ -139,7 +124,7 @@ impl GrpcConnectionHandler {
 }
 
 #[tonic::async_trait]
-impl Rpc for GrpcConnectionHandler {
+impl Rpc for ConnectionHandler {
     type MessageStreamStream = Pin<Box<dyn Stream<Item = Result<KaspadResponse, tonic::Status>> + Send + Sync + 'static>>;
 
     async fn message_stream(
@@ -154,7 +139,7 @@ impl Rpc for GrpcConnectionHandler {
             tonic::Status::new(tonic::Code::InvalidArgument, "Incoming connection opening request has no remote address".to_string())
         })?;
 
-        if self.connection_manager.is_full() {
+        if self.manager.is_full() {
             return Err(tonic::Status::new(
                 tonic::Code::PermissionDenied,
                 "The gRPC service has reached full capacity and accepts no new connection".to_string(),
@@ -168,18 +153,17 @@ impl Rpc for GrpcConnectionHandler {
         let incoming_stream = request.into_inner();
 
         // Build the connection object & register it
-        let connection = GrpcConnection::new(
+        let connection = Connection::new(
             remote_address,
             self.core_service.clone(),
-            self.connection_manager.clone(),
+            self.manager.clone(),
             self.notifier(),
             incoming_stream,
             outgoing_route,
         );
-        self.connection_manager.register(connection);
+        self.manager.register(connection);
 
         // Return connection stream
-        let response_stream = ReceiverStream::new(outgoing_receiver);
-        Ok(Response::new(Box::pin(response_stream)))
+        Ok(Response::new(Box::pin(ReceiverStream::new(outgoing_receiver))))
     }
 }

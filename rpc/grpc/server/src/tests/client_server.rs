@@ -1,5 +1,5 @@
 use super::rpc_core_mock::RpcCoreMock;
-use crate::connection_handler::GrpcConnectionHandler;
+use crate::adaptor::Adaptor;
 use kaspa_core::debug;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::{events::EVENT_TYPE_ARRAY, notifier::Notifier};
@@ -14,33 +14,40 @@ async fn test_server_client() {
 
     // Create and start the server
     let server = create_server();
-    let server_address = get_free_net_address();
-    let _shutdown_signal = server.serve(server_address);
-    server.start();
 
     // Create and start a client
     debug!("Client 1 ==========================");
-    let client = create_client(server_address).await;
-    assert!(client.disconnect().await.is_ok(), "error disconnecting the client");
+    let client1 = create_client(server.serve_address()).await;
+    assert!(client1.disconnect().await.is_ok(), "error disconnecting the client");
     // Wait for disconnection completion
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     // Create and start a client
     debug!("Client 2 ==========================");
-    let client = create_client(server_address).await;
-    assert!(client.disconnect().await.is_ok(), "error disconnecting the client");
+    let client2 = create_client(server.serve_address()).await;
+    assert!(client2.disconnect().await.is_ok(), "error disconnecting the client");
+    drop(client2);
     // Wait for disconnection completion
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Create and start a client
+    debug!("Client 3 ==========================");
+    let _client3 = create_client(server.serve_address()).await;
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     // Stop the server
-    assert!(server.stop().await.is_ok(), "error stopping the server");
+    assert!(server.terminate().await.is_ok(), "error stopping the server");
+    drop(server);
+
+    // Wait for server termination
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 }
 
-fn create_server() -> Arc<GrpcConnectionHandler> {
+fn create_server() -> Arc<Adaptor> {
     let core_service = Arc::new(RpcCoreMock {});
     let core_notifier: Arc<Notifier<Notification, ChannelConnection>> =
         Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), vec![], vec![], 1, "rpc-core"));
-    Arc::new(GrpcConnectionHandler::new(core_service, core_notifier))
+    Adaptor::server(get_free_net_address(), core_service, core_notifier)
 }
 
 async fn create_client(server_address: NetAddress) -> GrpcClient {
@@ -51,7 +58,6 @@ async fn create_client(server_address: NetAddress) -> GrpcClient {
 fn get_free_net_address() -> NetAddress {
     let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = socket.local_addr().unwrap().port();
-
     drop(socket);
     ContextualNetAddress::unspecified().normalize(port)
 }

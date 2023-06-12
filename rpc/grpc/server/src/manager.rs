@@ -1,12 +1,12 @@
-use crate::connection::GrpcConnection;
+use crate::connection::Connection;
 use kaspa_core::debug;
-use kaspa_notify::connection::Connection;
+use kaspa_notify::connection::Connection as ConnectionT;
 use parking_lot::Mutex;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Manager {
-    connections: Arc<Mutex<HashMap<SocketAddr, GrpcConnection>>>,
+    connections: Arc<Mutex<HashMap<SocketAddr, Connection>>>,
     max_connections: usize,
 }
 
@@ -15,7 +15,7 @@ impl Manager {
         Self { connections: Arc::new(Mutex::new(HashMap::new())), max_connections }
     }
 
-    pub fn register(&self, connection: GrpcConnection) {
+    pub fn register(&self, connection: Connection) {
         debug!("gRPC: Register a new connection from {connection}");
         self.connections.lock().insert(connection.identity(), connection).map(|x| x.close());
     }
@@ -28,10 +28,9 @@ impl Manager {
         match self.connections.lock().remove(&net_address) {
             Some(connection) => {
                 debug!("gRPC: Unregister the gRPC connection from {connection}");
-                connection.close();
             }
             None => {
-                debug!("gRPC: Connection from {net_address} has already been unregistered");
+                debug!("gRPC: Unregister the gRPC connection from {net_address} failed for address not found");
             }
         }
     }

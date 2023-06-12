@@ -5,7 +5,7 @@ use crate::{
 use kaspa_core::{debug, trace};
 use kaspa_grpc_core::protowire::{kaspad_request::Payload, *};
 use kaspa_notify::{
-    connection::Connection,
+    connection::Connection as ConnectionT,
     error::Error as NotificationError,
     listener::ListenerId,
     notifier::Notifier,
@@ -32,38 +32,47 @@ pub type StatusResult<T> = Result<T, tonic::Status>;
 
 #[derive(Debug)]
 struct Inner {
+    /// The socket address of this client
     net_address: SocketAddr,
+
+    /// The outgoing route for sending messages to this client
     outgoing_route: GrpcSender,
+
+    /// The manager of active connections
+    manager: Manager,
+
     /// Used on connection close to signal the connection receive loop to exit
     shutdown_signal: Mutex<Option<OneshotSender<()>>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct GrpcConnection {
+pub struct Connection {
     inner: Arc<Inner>,
 }
 
-impl Display for GrpcConnection {
+impl Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.inner.net_address)
     }
 }
 
-impl GrpcConnection {
+impl Connection {
     pub fn new(
         net_address: SocketAddr,
         core_service: DynRpcService,
-        connection_manager: Manager,
-        notifier: Arc<Notifier<Notification, GrpcConnection>>,
+        manager: Manager,
+        notifier: Arc<Notifier<Notification, Connection>>,
         mut incoming_stream: Streaming<KaspadRequest>,
         outgoing_route: GrpcSender,
     ) -> Self {
         let (shutdown_sender, mut shutdown_receiver) = oneshot_channel();
-        let connection =
-            Self { inner: Arc::new(Inner { net_address, outgoing_route, shutdown_signal: Mutex::new(Some(shutdown_sender)) }) };
+        let connection = Self {
+            inner: Arc::new(Inner { net_address, outgoing_route, manager, shutdown_signal: Mutex::new(Some(shutdown_sender)) }),
+        };
         let connection_clone = connection.clone();
         let outgoing_route = connection.inner.outgoing_route.clone();
         // Start the connection receive loop
+        debug!("gRPC: Connection receive loop - starting for client {}", connection);
         tokio::spawn(async move {
             let listener_id: Lazy<ListenerId, _> = Lazy::new(|| notifier.clone().register_new_listener(connection.clone()));
             loop {
@@ -123,11 +132,11 @@ impl GrpcConnection {
                     }
                 }
             }
-            trace!("gRPC: Connection receive loop - terminated for client {}", connection);
+            debug!("gRPC: Connection receive loop - terminated for client {}", connection);
             if let Ok(listener_id) = Lazy::into_value(listener_id) {
                 let _ = notifier.unregister_listener(listener_id);
             }
-            connection_manager.unregister(net_address);
+            connection.close();
         });
 
         connection_clone
@@ -286,7 +295,7 @@ impl GrpcConnection {
     async fn handle_subscription(
         request: KaspadRequest,
         listener_id: ListenerId,
-        notifier: &Arc<Notifier<Notification, GrpcConnection>>,
+        notifier: &Arc<Notifier<Notification, Connection>>,
     ) -> GrpcServerResult<KaspadResponse> {
         let mut response: KaspadResponse = if let Some(payload) = request.payload {
             match payload {
@@ -527,7 +536,7 @@ pub enum GrpcEncoding {
     ProtowireResponse = 0,
 }
 
-impl Connection for GrpcConnection {
+impl ConnectionT for Connection {
     type Notification = Notification;
     type Message = Arc<StatusResult<KaspadResponse>>;
     type Encoding = GrpcEncoding;
@@ -551,11 +560,14 @@ impl Connection for GrpcConnection {
     fn close(&self) -> bool {
         if let Some(signal) = self.inner.shutdown_signal.lock().take() {
             let _ = signal.send(());
-            true
         } else {
-            // This means the connection was already closed
-            false
+            // This means the connection was already closed.
+            // The typical use case is the manager terminating all connections.
+            trace!("gRPC: Connection close was called more than once, client-id: {}", self.identity());
+            return false;
         }
+        self.inner.manager.unregister(self.net_address());
+        true
     }
 
     fn is_closed(&self) -> bool {

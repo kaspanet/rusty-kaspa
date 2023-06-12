@@ -1,4 +1,4 @@
-use crate::connection_handler::GrpcConnectionHandler;
+use crate::adaptor::Adaptor;
 use kaspa_core::{
     debug,
     task::service::{AsyncService, AsyncServiceFuture},
@@ -12,14 +12,13 @@ const GRPC_SERVICE: &str = "grpc-service";
 
 pub struct GrpcService {
     net_address: NetAddress,
-    connection_handler: Arc<GrpcConnectionHandler>,
+    core_service: Arc<RpcCoreService>,
     shutdown: SingleTrigger,
 }
 
 impl GrpcService {
     pub fn new(address: NetAddress, core_service: Arc<RpcCoreService>) -> Self {
-        let connection_handler = Arc::new(GrpcConnectionHandler::new(core_service.clone(), core_service.notifier()));
-        Self { net_address: address, connection_handler, shutdown: SingleTrigger::default() }
+        Self { net_address: address, core_service, shutdown: SingleTrigger::default() }
     }
 }
 
@@ -34,10 +33,7 @@ impl AsyncService for GrpcService {
         // Prepare a shutdown signal receiver
         let shutdown_signal = self.shutdown.listener.clone();
 
-        let connection_handler = self.connection_handler.clone();
-        let serve_address = self.net_address;
-        let server_shutdown = connection_handler.serve(serve_address);
-        connection_handler.start();
+        let grpc_adaptor = Adaptor::server(self.net_address, self.core_service.clone(), self.core_service.notifier());
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
@@ -45,16 +41,13 @@ impl AsyncService for GrpcService {
             shutdown_signal.await;
 
             // Stop the connection handler, closing all connections and refusing new ones
-            match connection_handler.stop().await {
+            match grpc_adaptor.terminate().await {
                 Ok(_) => {}
                 Err(err) => {
                     debug!("gRPC: Error while stopping the connection handler: {0}", err);
                 }
             }
-
-            // Stop the gRPC server
-            let _ = server_shutdown.send(());
-
+            // On exit, the adaptor is dropped, causing the server termination
             Ok(())
         })
     }
