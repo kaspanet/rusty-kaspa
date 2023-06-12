@@ -428,6 +428,7 @@ impl Inner {
         // Start the response receiving task
         inner.clone().spawn_response_receiver_task(stream);
 
+        trace!("gRPC client: connected");
         Ok(inner)
     }
 
@@ -438,7 +439,7 @@ impl Inner {
         request_timeout: u64,
     ) -> Result<(Streaming<KaspadResponse>, ServerFeatures)> {
         // gRPC endpoint
-        let channel = Endpoint::from_shared(url.clone())?
+        let channel = Endpoint::new(url)?
             .timeout(tokio::time::Duration::from_millis(request_timeout))
             .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
             .tcp_keepalive(Some(tokio::time::Duration::from_millis(KEEP_ALIVE_DURATION)))
@@ -469,7 +470,7 @@ impl Inner {
         let mut server_features = ServerFeatures::default();
         match stream.message().await? {
             Some(ref msg) => {
-                trace!("GetInfo got response {:?}", msg);
+                trace!("gRPC client: try_connect - GetInfo got a response");
                 let response: RpcResult<GetInfoResponse> = msg.try_into();
                 if let Ok(response) = response {
                     server_features.handle_stop_notify = response.has_notify_command;
@@ -477,6 +478,7 @@ impl Inner {
                 }
             }
             None => {
+                trace!("gRPC client: try_connect - stream closed by the server");
                 return Err(Error::String("gRPC stream was closed by the server".to_string()));
             }
         }
@@ -519,6 +521,7 @@ impl Inner {
             }
         }
 
+        trace!("gRPC client: reconnected");
         Ok(())
     }
 
@@ -565,7 +568,7 @@ impl Inner {
             let mut request: KaspadRequest = request.into();
             request.id = id;
 
-            trace!("resolver call: {:?}", request);
+            trace!("gRPC client: resolver call: {:?}", request);
             if request.payload.is_some() {
                 let receiver = self.resolver().register_request(op, &request);
                 self.request_sender.send(request).await.map_err(|_| Error::ChannelRecvError)?;
@@ -585,11 +588,12 @@ impl Inner {
 
         // The task can only be spawned once
         if self.timeout_is_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            trace!("[GrpcClient] spawn request timeout monitor ignored since already spawned");
+            trace!("gRPC client: timeout task - spawn request ignored since already spawned");
             return;
         }
 
         tokio::spawn(async move {
+            trace!("gRPC client: timeout task - started");
             let shutdown = self.timeout_shutdown.request.listener.clone().fuse();
             pin_mut!(shutdown);
 
@@ -601,16 +605,16 @@ impl Inner {
                 select! {
                     _ = shutdown => { break; },
                     _ = delay => {
-                        trace!("[GrpcClient] running timeout task");
+                        trace!("gRPC client: timeout task - running");
                         let timeout = Duration::from_millis(self.timeout_duration);
                         self.resolver().remove_expired_requests(timeout);
                     },
                 }
             }
-
-            trace!("[GrpcClient] terminating timeout task");
             self.timeout_is_running.store(false, Ordering::SeqCst);
             self.timeout_shutdown.response.trigger.trigger();
+
+            trace!("gRPC client: timeout task - terminated");
         });
     }
 
@@ -620,7 +624,7 @@ impl Inner {
 
         // The task can only be spawned once
         if self.receiver_is_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            trace!("[GrpcClient] spawn response receiver task ignored since already spawned");
+            trace!("gRPC client: response receiver task - spawn ignored since already spawned");
             return;
         }
 
@@ -628,9 +632,8 @@ impl Inner {
         self.send_connection_event(ConnectionEvent::Connected);
 
         tokio::spawn(async move {
+            trace!("gRPC client: response receiver task - started");
             loop {
-                trace!("[GrpcClient] response receiver loop");
-
                 let shutdown = self.receiver_shutdown.request.listener.clone();
                 pin_mut!(shutdown);
 
@@ -646,7 +649,7 @@ impl Inner {
                                         self.handle_response(response);
                                     },
                                     None =>{
-                                        trace!("[GrpcClient] the connection to the server is closed");
+                                        trace!("gRPC client: response receiver task - the connection to the server is closed");
 
                                         // A reconnection is needed
                                         break;
@@ -654,14 +657,12 @@ impl Inner {
                                 }
                             },
                             Err(err) => {
-                                trace!("[GrpcClient] the response receiver gets an error from the server: {:?}", err);
+                                trace!("gRPC client: response receiver task - the response receiver gets an error from the server: {:?}", err);
                             }
                         }
                     }
                 }
             }
-            trace!("[GrpcClient] terminating response receiver");
-
             // Mark as not connected
             self.receiver_is_running.store(false, Ordering::SeqCst);
             self.send_connection_event(ConnectionEvent::Disconnected);
@@ -669,6 +670,8 @@ impl Inner {
             if self.receiver_shutdown.request.listener.is_triggered() {
                 self.receiver_shutdown.response.trigger.trigger();
             }
+
+            trace!("gRPC client: response receiver task - terminated");
         });
     }
 
@@ -683,11 +686,12 @@ impl Inner {
 
         // The task can only be spawned once
         if self.connector_is_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            trace!("[GrpcClient] spawn connection monitor ignored since already spawned");
+            trace!("gRPC client: connection monitor task - spawn ignored since already spawned");
             return;
         }
 
         tokio::spawn(async move {
+            trace!("gRPC client: connection monitor task - started");
             let shutdown = self.connector_shutdown.request.listener.clone().fuse();
             pin_mut!(shutdown);
             loop {
@@ -697,44 +701,44 @@ impl Inner {
                 select! {
                     _ = shutdown => { break; },
                     _ = delay => {
-                        trace!("[GrpcClient] running connection monitor task");
+                        trace!("gRPC client: connection monitor task - running");
                         if !self.is_connected() {
                             match self.clone().reconnect(notifier.clone(), subscriptions.clone()).await {
                                 Ok(_) => {
-                                    trace!("[GrpcClient] reconnection to server succeeded");
+                                    trace!("gRPC client: reconnection to server succeeded");
                                 },
                                 Err(err) => {
-                                    trace!("[GrpcClient] reconnection to server failed with error {err:?}");
+                                    trace!("gRPC client: reconnection to server failed with error {err:?}");
                                 }
                             }
                         }
                     },
                 }
             }
-            trace!("[GrpcClient] terminating connection monitor");
             self.connector_is_running.store(false, Ordering::SeqCst);
             self.connector_shutdown.response.trigger.trigger();
+            trace!("gRPC client: connection monitor task - terminating");
         });
     }
 
     fn handle_response(&self, response: KaspadResponse) {
         if response.is_notification() {
-            trace!("[GrpcClient] handle_response received a notification");
+            trace!("gRPC client: handle_response received a notification");
             match Notification::try_from(&response) {
                 Ok(notification) => {
                     let event: EventType = (&notification).into();
-                    trace!("[GrpcClient] handle_response received notification: {:?}", event);
+                    trace!("gRPC client: handle_response received notification: {:?}", event);
 
                     // Here we ignore any returned error
                     match self.notification_channel.try_send(notification) {
                         Ok(_) => {}
                         Err(err) => {
-                            trace!("[GrpcClient] error while trying to send a notification to the notifier: {:?}", err);
+                            trace!("gRPC client: error while trying to send a notification to the notifier: {:?}", err);
                         }
                     }
                 }
                 Err(err) => {
-                    trace!("[GrpcClient] handle_response error converting response into notification: {:?}", err);
+                    trace!("gRPC client: handle_response error converting response into notification: {:?}", err);
                 }
             }
         } else if response.payload.is_some() {
@@ -743,9 +747,11 @@ impl Inner {
     }
 
     async fn disconnect(&self) -> Result<()> {
+        self.stop_connector_monitor().await?;
         self.stop_timeout_monitor().await?;
         self.stop_response_receiver_task().await?;
-        self.stop_connector_monitor().await?;
+        self.request_receiver.close();
+        trace!("gRPC client: disconnected");
         Ok(())
     }
 
@@ -793,17 +799,17 @@ impl Inner {
 #[async_trait]
 impl SubscriptionManager for Inner {
     async fn start_notify(&self, _: ListenerId, scope: Scope) -> NotifyResult<()> {
-        trace!("[GrpcClient] start_notify: {:?}", scope);
+        trace!("gRPC client: start_notify: {:?}", scope);
         self.start_notify_to_client(scope).await.map_err(|err| NotifyError::General(err.to_string()))?;
         Ok(())
     }
 
     async fn stop_notify(&self, _: ListenerId, scope: Scope) -> NotifyResult<()> {
         if self.handle_stop_notify() {
-            trace!("[GrpcClient] stop_notify: {:?}", scope);
+            trace!("gRPC client: stop_notify: {:?}", scope);
             self.stop_notify_to_client(scope).await.map_err(|err| NotifyError::General(err.to_string()))?;
         } else {
-            trace!("[GrpcClient] stop_notify ignored because not supported by the server: {:?}", scope);
+            trace!("gRPC client: stop_notify ignored because not supported by the server: {:?}", scope);
         }
         Ok(())
     }
