@@ -36,7 +36,7 @@ use kaspa_utxoindex::UtxoIndex;
 
 use async_channel::unbounded;
 use kaspa_core::{info, trace};
-use kaspa_grpc_server::GrpcServer;
+use kaspa_grpc_server::service::GrpcService;
 use kaspa_p2p_flows::service::P2pService;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 
@@ -328,7 +328,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config,
         core.clone(),
     ));
-    let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
+    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_server.service(), args.rpc_max_clients));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
@@ -337,7 +337,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         async_runtime.register(index_service)
     };
     async_runtime.register(rpc_core_server.clone());
-    async_runtime.register(grpc_server);
+    async_runtime.register(grpc_service);
     async_runtime.register(p2p_service);
     async_runtime.register(monitor);
 
