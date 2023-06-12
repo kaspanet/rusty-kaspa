@@ -80,6 +80,9 @@ pub enum RpcError {
     NetworkTypeError(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
 
     #[error(transparent)]
+    NetworkIdError(#[from] kaspa_consensus_core::networktype::NetworkIdError),
+
+    #[error(transparent)]
     NotificationError(#[from] kaspa_notify::error::Error),
 
     #[error(transparent)]
