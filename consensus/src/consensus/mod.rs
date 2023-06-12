@@ -66,6 +66,7 @@ use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_utils::triggers::Listener;
 
 use std::thread::{self, JoinHandle};
 use std::{
@@ -84,6 +85,9 @@ pub struct Consensus {
 
     // Channels
     block_sender: CrossbeamSender<BlockProcessingMessage>,
+
+    // Exit Listener
+    pub exit_listener: Listener,
 
     // Processors
     pub(super) header_processor: Arc<HeaderProcessor>,
@@ -155,6 +159,9 @@ impl Consensus {
             CrossbeamSender<PruningProcessingMessage>,
             CrossbeamReceiver<PruningProcessingMessage>,
         ) = bounded_crossbeam(2);
+
+        // Exit trigger / listener
+        let (exit_trigger, exit_listener) = triggered::trigger();
 
         //
         // Thread-pools
@@ -239,6 +246,7 @@ impl Consensus {
             notification_root.clone(),
             pruning_lock.clone(),
             config.clone(),
+            exit_trigger,
         ));
 
         // Ensure the relations stores are initialized
@@ -256,6 +264,7 @@ impl Consensus {
         Self {
             db,
             block_sender: sender,
+            exit_listener,
             header_processor,
             body_processor,
             virtual_processor,
@@ -314,6 +323,10 @@ impl Consensus {
 
     pub fn signal_exit(&self) {
         self.block_sender.send(BlockProcessingMessage::Exit).unwrap();
+
+        // We wait for all processing to complete before returning,
+        // This is required for ordered shutdown waiting in core.
+        self.exit_listener.wait();
     }
 
     pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {

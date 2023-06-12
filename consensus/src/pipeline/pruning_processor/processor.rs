@@ -52,6 +52,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use triggered::Trigger;
 
 pub enum PruningProcessingMessage {
     Exit,
@@ -83,6 +84,9 @@ pub struct PruningProcessor {
 
     // Config
     config: Arc<Config>,
+
+    // Exit Trigger
+    exit_trigger: Trigger,
 }
 
 impl Deref for PruningProcessor {
@@ -102,6 +106,7 @@ impl PruningProcessor {
         notification_root: Arc<ConsensusNotificationRoot>,
         pruning_lock: SessionLock,
         config: Arc<Config>,
+        exit_trigger: Trigger,
     ) -> Self {
         Self {
             receiver,
@@ -114,6 +119,7 @@ impl PruningProcessor {
             notification_root,
             pruning_lock,
             config,
+            exit_trigger,
         }
     }
 
@@ -138,10 +144,15 @@ impl PruningProcessor {
 
         debug!("Exiting: pruning-processor");
 
-        // This Processor is last last-in-line...
+        // This Processor is last-in-line...
+        // As such we write consensus exit code below.
+
         // Send a ConsensusShutdown notification
         // TODO: handle notify errors
         let _ = self.notification_root.notify(ConsensusNotification::ConsensusShutdown(ConsensusShutdownNotification {}));
+
+        // Alert threads waiting on consensus to exit
+        self.exit_trigger.trigger();
     }
 
     fn recover_pruning_workflows_if_needed(&self) {
