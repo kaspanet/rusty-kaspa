@@ -32,6 +32,7 @@ where
     N: Notification,
 {
     fn notify(&self, notification: N) -> Result<()>;
+    fn close(&self);
 }
 
 pub type DynNotify<N> = Arc<dyn Notify<N>>;
@@ -139,6 +140,12 @@ where
 {
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
+    }
+
+    fn close(&self) {
+        self.inner.listeners.lock().values().for_each(|x| x.close());
+        self.inner.subscribers.iter().for_each(|s| s.close());
+        self.inner.notification_channel.sender.close();
     }
 }
 
@@ -423,6 +430,10 @@ pub mod test_helpers {
     {
         fn notify(&self, notification: N) -> Result<()> {
             Ok(self.sender.try_send(notification)?)
+        }
+
+        fn close(&self) {
+            self.sender.close();
         }
     }
 
@@ -811,6 +822,7 @@ mod tests {
                     }
                 }
             }
+            self.notification_sender.close();
             assert!(self.notifier.stop().await.is_ok(), "notifier failed to stop");
         }
     }

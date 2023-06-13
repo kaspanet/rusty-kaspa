@@ -8,7 +8,7 @@ use futures::{
     select,
 };
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
-use kaspa_core::trace;
+use kaspa_core::{trace, warn};
 use kaspa_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
 use kaspa_notify::{
     collector::{Collector, CollectorNotificationReceiver},
@@ -17,7 +17,7 @@ use kaspa_notify::{
     notification::Notification as NotificationTrait,
     notifier::DynNotify,
 };
-use kaspa_utils::triggers::DuplexTrigger;
+use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utxoindex::api::DynUtxoIndexApi;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -37,7 +37,7 @@ pub struct Processor {
     /// Has this collector been started?
     is_started: Arc<AtomicBool>,
 
-    collect_shutdown: Arc<DuplexTrigger>,
+    collect_shutdown: Arc<SingleTrigger>,
 }
 
 impl Processor {
@@ -45,7 +45,7 @@ impl Processor {
         Self {
             utxoindex,
             recv_channel,
-            collect_shutdown: Arc::new(DuplexTrigger::new()),
+            collect_shutdown: Arc::new(SingleTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -60,10 +60,6 @@ impl Processor {
 
             loop {
                 select! {
-                    // TODO: make sure we process all pending consensus events before exiting.
-                    // Ideally this should be done through a carefully ordered shutdown process
-                    _ = self.collect_shutdown.request.listener.clone().fuse() => break,
-
                     notification = self.recv_channel.recv().fuse() => {
                         match notification {
                             Ok(notification) => {
@@ -81,14 +77,16 @@ impl Processor {
                                     }
                                 }
                             },
-                            Err(err) => {
-                                trace!("[Processor] error while receiving a consensus notification: {err:?}");
+                            Err(_) => {
+                                warn!("[Indexes Processor] notification stream ended");
+                                notifier.close();
+                                break;
                             }
                         }
                     }
                 }
             }
-            self.collect_shutdown.response.trigger.trigger();
+            self.collect_shutdown.trigger.trigger();
             trace!("[Processor] collecting_task end");
         });
     }
@@ -120,8 +118,7 @@ impl Processor {
         if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Error::AlreadyStoppedError);
         }
-        self.collect_shutdown.request.trigger.trigger();
-        self.collect_shutdown.response.listener.clone().await;
+        self.collect_shutdown.listener.clone().await;
         Ok(())
     }
 }
@@ -236,6 +233,7 @@ mod tests {
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
         assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
+        pipeline.consensus_sender.close();
         pipeline.processor.clone().stop().await.expect("stopping the processor must succeed");
     }
 
@@ -253,6 +251,7 @@ mod tests {
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
         assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
+        pipeline.consensus_sender.close();
         pipeline.processor.clone().stop().await.expect("stopping the processor must succeed");
     }
 }

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use core::fmt::Debug;
-use kaspa_core::trace;
+use kaspa_core::{trace, warn};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -14,10 +14,7 @@ use super::{
     scope::Scope,
     subscription::{Command, Mutation},
 };
-use futures::{
-    future::FutureExt, // for `.fuse()`
-    select,
-};
+use futures::{future::FutureExt, select};
 use workflow_core::channel::Channel;
 
 /// A manager of subscriptions to notifications for registered listeners
@@ -36,11 +33,6 @@ pub trait SubscriptionManager: Send + Sync + Debug {
 
 pub type DynSubscriptionManager = Arc<dyn SubscriptionManager>;
 
-#[derive(Clone, Debug)]
-enum Ctl {
-    Shutdown,
-}
-
 /// A subscriber handling subscription messages executing them into a [SubscriptionManager].
 #[derive(Debug)]
 pub struct Subscriber {
@@ -56,7 +48,6 @@ pub struct Subscriber {
     /// Has this subscriber been started?
     started: Arc<AtomicBool>,
 
-    ctl: Channel<Ctl>,
     incoming: Channel<Mutation>,
     shutdown: Channel<()>,
 }
@@ -68,7 +59,6 @@ impl Subscriber {
             subscription_manager,
             listener_id,
             started: Arc::new(AtomicBool::default()),
-            ctl: Channel::unbounded(),
             incoming: Channel::unbounded(),
             shutdown: Channel::oneshot(),
         }
@@ -88,18 +78,6 @@ impl Subscriber {
         workflow_core::task::spawn(async move {
             loop {
                 select! {
-                    ctl = self.ctl.recv().fuse() => {
-                        if let Ok(ctl) = ctl {
-                            match ctl {
-                                Ctl::Shutdown => {
-                                    let _ = self.shutdown.drain();
-                                    let _ = self.shutdown.try_send(());
-                                    break;
-                                }
-                            }
-                        }
-                    },
-
                     mutation = self.incoming.recv().fuse() => {
                         if let Ok(mutation) = mutation {
                             if self.enabled_events[mutation.event_type()] {
@@ -107,6 +85,11 @@ impl Subscriber {
                                     trace!("[Subscriber] the subscription command returned an error: {:?}", err);
                                 }
                             }
+                        } else {
+                            warn!("[Subscriber] notification stream ended");
+                            let _ = self.shutdown.drain();
+                            let _ = self.shutdown.try_send(());
+                            break;
                         }
                     }
                 }
@@ -123,13 +106,16 @@ impl Subscriber {
         if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Error::AlreadyStoppedError);
         }
-        self.ctl.try_send(Ctl::Shutdown)?;
         self.shutdown.recv().await?;
         Ok(())
     }
 
     pub async fn stop(self: &Arc<Self>) -> Result<()> {
         self.stop_subscription_receiver_task().await
+    }
+
+    pub fn close(&self) {
+        self.incoming.sender.close();
     }
 }
 

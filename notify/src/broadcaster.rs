@@ -14,7 +14,7 @@ use futures::{
     future::FutureExt, // for `.fuse()`
     select,
 };
-use kaspa_core::trace;
+use kaspa_core::{trace, warn};
 use std::{
     collections::HashMap,
     sync::{
@@ -89,7 +89,6 @@ where
 {
     Register(DynSubscription, ListenerId, C),
     Unregister(DynSubscription, ListenerId),
-    Shutdown,
 }
 
 #[derive(Debug)]
@@ -161,11 +160,6 @@ where
                                 Ctl::Unregister(subscription, id) => {
                                     plan[subscription.event_type()].remove(&id);
                                 },
-                                Ctl::Shutdown => {
-                                    let _ = self.shutdown.drain();
-                                    let _ = self.shutdown.try_send(());
-                                    break;
-                                }
                             }
                         }
                     },
@@ -200,6 +194,21 @@ where
                             // Remove closed connections
                             purge.drain(..).for_each(|id| { plan[event].remove(&id); });
 
+                        } else {
+                            warn!("[Broadcaster] notification stream ended");
+                            // TODO: not sure about this
+                            plan.iter().for_each(|p| {
+                                p.0.values().for_each(|s| {
+                                    s.values().for_each(|m| {
+                                        m.values().for_each(|c| {
+                                            c.close();
+                                        })
+                                    })
+                                })
+                            });
+                            let _ = self.shutdown.drain();
+                            let _ = self.shutdown.try_send(());
+                            break;
                         }
                     }
                 }
@@ -227,7 +236,6 @@ where
         if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Error::AlreadyStoppedError);
         }
-        self.ctl.try_send(Ctl::Shutdown)?;
         self.shutdown.recv().await?;
         Ok(())
     }
@@ -349,6 +357,7 @@ mod tests {
                     }
                 }
             }
+            self.notification_sender.close();
             assert!(self.broadcaster.stop().await.is_ok(), "broadcaster failed to stop");
         }
     }

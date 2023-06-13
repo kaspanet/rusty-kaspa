@@ -297,6 +297,10 @@ impl Consensus {
         self.statuses_store.read().get(hash).unwrap()
     }
 
+    pub fn session_lock(&self) -> SessionLock {
+        self.pruning_lock.clone()
+    }
+
     pub fn notification_root(&self) -> Arc<ConsensusNotificationRoot> {
         self.notification_root.clone()
     }

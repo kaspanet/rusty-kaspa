@@ -6,14 +6,10 @@ use crate::{converter::Converter, notifier::DynNotify};
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use core::fmt::Debug;
-use futures::{
-    future::FutureExt, // for `.fuse()`
-    pin_mut,
-    select,
-};
+use futures::{future::FutureExt, pin_mut, select};
 use futures_util::stream::StreamExt;
-use kaspa_core::trace;
-use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
+use kaspa_core::{trace, warn};
+use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -56,7 +52,7 @@ where
     /// Has this collector been started?
     is_started: Arc<AtomicBool>,
 
-    collect_shutdown: Arc<DuplexTrigger>,
+    collect_shutdown: Arc<SingleTrigger>,
 }
 
 impl<C> CollectorFrom<C>
@@ -67,7 +63,7 @@ where
         Self {
             recv_channel,
             converter,
-            collect_shutdown: Arc::new(DuplexTrigger::new()),
+            collect_shutdown: Arc::new(SingleTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -88,15 +84,11 @@ where
         workflow_core::task::spawn(async move {
             trace!("[Collector] collecting_task start");
 
-            let shutdown = collect_shutdown.request.listener.clone().fuse();
-            pin_mut!(shutdown);
-
             let notifications = recv_channel.fuse();
             pin_mut!(notifications);
 
             loop {
                 select! {
-                    _ = shutdown => { break; }
                     notification = notifications.next().fuse() => {
                         match notification {
                             Some(notification) => {
@@ -108,13 +100,15 @@ where
                                 }
                             },
                             None => {
-                                trace!("[Collector] notifications returned None. This should never happen");
+                                warn!("[Collector] notification stream ended");
+                                notifier.close();
+                                break;
                             }
                         }
                     }
                 }
             }
-            collect_shutdown.response.trigger.trigger();
+            collect_shutdown.trigger.trigger();
             trace!("[Collector] collecting_task end");
         });
     }
@@ -123,8 +117,7 @@ where
         if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return Err(Error::AlreadyStoppedError);
         }
-        self.collect_shutdown.request.trigger.trigger();
-        self.collect_shutdown.response.listener.clone().await;
+        self.collect_shutdown.listener.clone().await;
         Ok(())
     }
 }
@@ -212,6 +205,7 @@ mod tests {
         assert_eq!(outgoing.recv().await.unwrap(), OutgoingNotification::B);
         assert_eq!(outgoing.recv().await.unwrap(), OutgoingNotification::A);
 
+        incoming.close();
         assert!(collector.stop().await.is_ok());
     }
 }
