@@ -663,6 +663,9 @@ impl Inner {
             self.receiver_is_running.store(false, Ordering::SeqCst);
             self.send_connection_event(ConnectionEvent::Disconnected);
 
+            // Close the notification channel so that notifiers/collectors/subscribers can be joined on
+            self.notification_channel.close();
+
             if self.receiver_shutdown.request.listener.is_triggered() {
                 self.receiver_shutdown.response.trigger.trigger();
             }
