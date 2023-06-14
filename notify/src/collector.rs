@@ -100,7 +100,7 @@ where
                                 }
                             },
                             None => {
-                                warn!("[Collector] notification stream ended");
+                                warn!("[{}] notification stream ended", std::any::type_name::<Self>());
                                 notifier.close();
                                 break;
                             }

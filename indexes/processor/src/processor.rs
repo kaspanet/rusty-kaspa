@@ -78,7 +78,7 @@ impl Processor {
                                 }
                             },
                             Err(_) => {
-                                warn!("[Indexes Processor] notification stream ended");
+                                warn!("[{}] notification stream ended", std::any::type_name::<Self>());
                                 notifier.close();
                                 break;
                             }

@@ -195,7 +195,7 @@ where
                             purge.drain(..).for_each(|id| { plan[event].remove(&id); });
 
                         } else {
-                            warn!("[Broadcaster] notification stream ended");
+                            warn!("[{}] notification stream ended", std::any::type_name::<Self>());
                             let _ = self.shutdown.drain();
                             let _ = self.shutdown.try_send(());
                             break;

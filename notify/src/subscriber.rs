@@ -86,7 +86,7 @@ impl Subscriber {
                                 }
                             }
                         } else {
-                            warn!("[Subscriber] notification stream ended");
+                            warn!("[{}] notification stream ended", std::any::type_name::<Self>());
                             let _ = self.shutdown.drain();
                             let _ = self.shutdown.try_send(());
                             break;
