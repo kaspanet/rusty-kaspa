@@ -9,12 +9,11 @@ extern crate derive_more;
 use crate::events::EventSwitches;
 
 use super::{
-    error::{Error, Result},
+    error::Result,
     listener::ListenerId,
     scope::Scope,
     subscription::{Command, Mutation},
 };
-use futures::{future::FutureExt, select};
 use workflow_core::channel::Channel;
 
 /// A manager of subscriptions to notifications for registered listeners
@@ -74,26 +73,24 @@ impl Subscriber {
         if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
-        trace!("Starting notification broadcasting task");
+        trace!("[Subscriber] starting notification collecting task");
         workflow_core::task::spawn(async move {
-            loop {
-                select! {
-                    mutation = self.incoming.recv().fuse() => {
-                        if let Ok(mutation) = mutation {
-                            if self.enabled_events[mutation.event_type()] {
-                                if let Err(err) = self.subscription_manager.clone().execute_subscribe_command(self.listener_id, mutation.scope, mutation.command).await {
-                                    trace!("[Subscriber] the subscription command returned an error: {:?}", err);
-                                }
-                            }
-                        } else {
-                            warn!("[{}] notification stream ended", std::any::type_name::<Self>());
-                            let _ = self.shutdown.drain();
-                            let _ = self.shutdown.try_send(());
-                            break;
-                        }
+            while let Ok(mutation) = self.incoming.recv().await {
+                if self.enabled_events[mutation.event_type()] {
+                    if let Err(err) = self
+                        .subscription_manager
+                        .clone()
+                        .execute_subscribe_command(self.listener_id, mutation.scope, mutation.command)
+                        .await
+                    {
+                        trace!("[Subscriber] the subscription command returned an error: {:?}", err);
                     }
                 }
             }
+
+            warn!("[{}] notification stream ended", std::any::type_name::<Self>());
+            let _ = self.shutdown.drain();
+            let _ = self.shutdown.try_send(());
         });
     }
 
@@ -102,16 +99,13 @@ impl Subscriber {
         Ok(())
     }
 
-    async fn stop_subscription_receiver_task(self: &Arc<Self>) -> Result<()> {
-        if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            return Err(Error::AlreadyStoppedError);
-        }
+    async fn join_subscription_receiver_task(self: &Arc<Self>) -> Result<()> {
         self.shutdown.recv().await?;
         Ok(())
     }
 
-    pub async fn stop(self: &Arc<Self>) -> Result<()> {
-        self.stop_subscription_receiver_task().await
+    pub async fn join(self: &Arc<Self>) -> Result<()> {
+        self.join_subscription_receiver_task().await
     }
 
     pub fn close(&self) {

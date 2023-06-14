@@ -128,8 +128,8 @@ where
         self.inner.unregister_listener(id)
     }
 
-    pub async fn stop(&self) -> Result<()> {
-        self.inner.clone().stop().await
+    pub async fn join(&self) -> Result<()> {
+        self.inner.clone().join().await
     }
 }
 
@@ -380,19 +380,19 @@ where
         })
     }
 
-    async fn stop(self: Arc<Self>) -> Result<()> {
-        if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+    async fn join(self: Arc<Self>) -> Result<()> {
+        if self.started.load(Ordering::SeqCst) {
             trace!("[Notifier-{}] stopping collectors", self.name);
-            join_all(self.collectors.iter().map(|x| x.clone().stop()))
+            join_all(self.collectors.iter().map(|x| x.clone().join()))
                 .await
                 .into_iter()
                 .collect::<std::result::Result<Vec<()>, _>>()?;
             trace!("[Notifier-{}] stopping broadcasters", self.name);
-            join_all(self.broadcasters.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+            join_all(self.broadcasters.iter().map(|x| x.join())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
             trace!("[Notifier-{}] stopping subscribers", self.name);
-            join_all(self.subscribers.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+            join_all(self.subscribers.iter().map(|x| x.join())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
         } else {
-            trace!("[Notifier-{}] stop ignored since already stopped", self.name);
+            trace!("[Notifier-{}] join ignored since it was never started", self.name);
             return Err(Error::AlreadyStoppedError);
         }
         trace!("[Notifier-{}] stopped", self.name);
@@ -833,7 +833,7 @@ mod tests {
                 }
             }
             self.notification_sender.close();
-            assert!(self.notifier.stop().await.is_ok(), "notifier failed to stop");
+            assert!(self.notifier.join().await.is_ok(), "notifier failed to stop");
         }
     }
 

@@ -1,19 +1,12 @@
 extern crate derive_more;
 use super::{
-    connection::Connection,
-    error::{Error, Result},
-    events::EventArray,
-    listener::ListenerId,
-    notification::Notification,
+    connection::Connection, error::Result, events::EventArray, listener::ListenerId, notification::Notification,
     subscription::DynSubscription,
 };
 use async_channel::{Receiver, Sender};
 use core::fmt::Debug;
 use derive_more::Deref;
-use futures::{
-    future::FutureExt, // for `.fuse()`
-    select,
-};
+use futures::{future::FutureExt, select};
 use kaspa_core::{trace, warn};
 use std::{
     collections::HashMap,
@@ -222,16 +215,13 @@ where
         Ok(())
     }
 
-    async fn stop_notification_broadcasting_task(&self) -> Result<()> {
-        if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            return Err(Error::AlreadyStoppedError);
-        }
+    async fn join_notification_broadcasting_task(&self) -> Result<()> {
         self.shutdown.recv().await?;
         Ok(())
     }
 
-    pub async fn stop(&self) -> Result<()> {
-        self.stop_notification_broadcasting_task().await
+    pub async fn join(&self) -> Result<()> {
+        self.join_notification_broadcasting_task().await
     }
 }
 
@@ -348,7 +338,7 @@ mod tests {
                 }
             }
             self.notification_sender.close();
-            assert!(self.broadcaster.stop().await.is_ok(), "broadcaster failed to stop");
+            assert!(self.broadcaster.join().await.is_ok(), "broadcaster failed to stop");
         }
     }
 

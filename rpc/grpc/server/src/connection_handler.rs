@@ -110,7 +110,7 @@ impl ConnectionHandler {
         self.core_notifier.unregister_listener(self.core_listener_id)?;
 
         // Stop the internal notifier
-        self.notifier().stop().await?;
+        self.notifier().join().await?;
 
         // Close all existing connections
         self.manager.terminate_all_connections();
