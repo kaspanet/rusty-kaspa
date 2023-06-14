@@ -6,7 +6,7 @@ use async_channel::unbounded;
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
-use kaspa_consensus::consensus::test_consensus::TestConsensus;
+use kaspa_consensus::consensus::test_consensus::{TestConsensus, TestConsensusFactory};
 use kaspa_consensus::model::stores::block_transactions::{
     BlockTransactionsStore, BlockTransactionsStoreReader, DbBlockTransactionsStore,
 };
@@ -910,7 +910,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let external_block_store = DbBlockTransactionsStore::new(external_storage, config.perf.block_data_cache_size);
 
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
-    let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(MockFactory::new(tc.clone()))));
+    let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
 
@@ -1033,31 +1033,6 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
-}
-
-struct MockFactory {
-    tc: Arc<TestConsensus>,
-}
-
-impl MockFactory {
-    fn new(tc: Arc<TestConsensus>) -> Self {
-        Self { tc }
-    }
-}
-
-impl kaspa_consensusmanager::ConsensusFactory for MockFactory {
-    fn new_active_consensus(&self) -> (kaspa_consensusmanager::ConsensusInstance, kaspa_consensusmanager::DynConsensusCtl) {
-        let ci = kaspa_consensusmanager::ConsensusInstance::new(self.tc.session_lock(), self.tc.consensus_clone());
-        (ci, self.tc.consensus_clone() as kaspa_consensusmanager::DynConsensusCtl)
-    }
-
-    fn new_staging_consensus(&self) -> (kaspa_consensusmanager::ConsensusInstance, kaspa_consensusmanager::DynConsensusCtl) {
-        unimplemented!()
-    }
-
-    fn close(&self) {
-        self.tc.notification_root().close();
-    }
 }
 
 fn submit_header_chunk(
