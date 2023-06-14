@@ -6,7 +6,7 @@ use async_channel::unbounded;
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
-use kaspa_consensus::consensus::test_consensus::TestConsensus;
+use kaspa_consensus::consensus::test_consensus::{TestConsensus, TestConsensusFactory};
 use kaspa_consensus::model::stores::block_transactions::{
     BlockTransactionsStore, BlockTransactionsStoreReader, DbBlockTransactionsStore,
 };
@@ -910,8 +910,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let external_block_store = DbBlockTransactionsStore::new(external_storage, config.perf.block_data_cache_size);
 
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
-    let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
-    let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
+    let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
+    let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
@@ -920,7 +920,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     async_runtime.register(Arc::new(ConsensusMonitor::new(tc.processing_counters().clone())));
 
     let core = Arc::new(Core::new());
-    core.bind(tc.clone());
+    core.bind(consensus_manager);
     core.bind(async_runtime);
     let joins = core.start();
 
