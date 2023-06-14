@@ -196,16 +196,6 @@ where
 
                         } else {
                             warn!("[Broadcaster] notification stream ended");
-                            // TODO: not sure about this
-                            plan.iter().for_each(|p| {
-                                p.0.values().for_each(|s| {
-                                    s.values().for_each(|m| {
-                                        m.values().for_each(|c| {
-                                            c.close();
-                                        })
-                                    })
-                                })
-                            });
                             let _ = self.shutdown.drain();
                             let _ = self.shutdown.try_send(());
                             break;

@@ -143,7 +143,12 @@ where
     }
 
     fn close(&self) {
-        self.inner.listeners.lock().values().for_each(|x| x.close());
+        // Unregister all listeners (closing them)
+        let listener_ids = self.inner.listeners.lock().keys().copied().collect::<Vec<_>>();
+        listener_ids.into_iter().for_each(|id| {
+            let _ = self.unregister_listener(id);
+        });
+
         self.inner.subscribers.iter().for_each(|s| s.close());
         self.inner.notification_channel.sender.close();
     }
@@ -281,6 +286,7 @@ where
 
             // This is very unlikely to happen but still, check for duplicates
             if let Entry::Vacant(e) = listeners.entry(id) {
+                trace!("[Notifier-{}] registering listener {id}", self.name);
                 let listener = Listener::new(connection);
                 e.insert(listener);
                 return id;
@@ -292,6 +298,7 @@ where
         // Cancel all remaining subscriptions
         let mut subscriptions = vec![];
         if let Some(listener) = self.listeners.lock().get(&id) {
+            trace!("[Notifier-{}] unregistering listener {id}", self.name);
             subscriptions.extend(listener.subscriptions.iter().filter_map(|subscription| {
                 if subscription.active() {
                     Some(subscription.scope())
@@ -299,13 +306,16 @@ where
                     None
                 }
             }));
-            listener.close();
         }
         subscriptions.drain(..).for_each(|scope| {
             let _ = self.clone().stop_notify(id, scope);
         });
-        // Remove listener
-        self.listeners.lock().remove(&id);
+
+        // Remove & close listener
+        if let Some(listener) = self.listeners.lock().remove(&id) {
+            trace!("[Notifier-{}] closing listener {id}", self.name);
+            listener.close();
+        }
         Ok(())
     }
 
