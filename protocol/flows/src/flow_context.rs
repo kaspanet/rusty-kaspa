@@ -142,6 +142,10 @@ impl FlowContext {
         self.connection_manager.write().replace(connection_manager);
     }
 
+    pub fn drop_connection_manager(&self) {
+        self.connection_manager.write().take();
+    }
+
     pub fn connection_manager(&self) -> Option<Arc<ConnectionManager>> {
         self.connection_manager.read().clone()
     }

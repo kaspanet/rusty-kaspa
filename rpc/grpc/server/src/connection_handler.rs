@@ -64,7 +64,7 @@ impl ConnectionHandler {
     pub(crate) fn serve(self: &Arc<Self>, serve_address: NetAddress) -> OneshotSender<()> {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
-        info!("gRPC Server starting on: {}", serve_address);
+        info!("GRPC Server starting on: {}", serve_address);
         tokio::spawn(async move {
             let protowire_server = RpcServer::from_arc(connection_handler.clone())
                 .send_compressed(CompressionEncoding::Gzip)
@@ -78,7 +78,7 @@ impl ConnectionHandler {
                 .await;
 
             match serve_result {
-                Ok(_) => info!("gRPC Server stopped: {}", serve_address),
+                Ok(_) => info!("GRPC Server stopped: {}", serve_address),
                 Err(err) => panic!("gRPC Server {serve_address} stopped with error: {err:?}"),
             }
         });
