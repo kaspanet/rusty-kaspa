@@ -537,6 +537,10 @@ impl Inner {
         self.receiver_is_running.load(Ordering::SeqCst)
     }
 
+    fn will_reconnect(&self) -> bool {
+        self.connector_is_running.load(Ordering::SeqCst)
+    }
+
     #[inline(always)]
     fn handle_message_id(&self) -> bool {
         self.server_features.handle_message_id
@@ -664,7 +668,9 @@ impl Inner {
             self.send_connection_event(ConnectionEvent::Disconnected);
 
             // Close the notification channel so that notifiers/collectors/subscribers can be joined on
-            self.notification_channel.close();
+            if !self.will_reconnect() {
+                self.notification_channel.close();
+            }
 
             if self.receiver_shutdown.request.listener.is_triggered() {
                 self.receiver_shutdown.response.trigger.trigger();
