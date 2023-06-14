@@ -142,16 +142,7 @@ where
         self.inner.notify(notification)
     }
 
-    fn close(&self) {
-        // Unregister all listeners (closing them)
-        let listener_ids = self.inner.listeners.lock().keys().copied().collect::<Vec<_>>();
-        listener_ids.into_iter().for_each(|id| {
-            let _ = self.unregister_listener(id);
-        });
-
-        self.inner.subscribers.iter().for_each(|s| s.close());
-        self.inner.notification_channel.sender.close();
-    }
+    fn close(&self) {}
 }
 
 #[async_trait]
@@ -387,10 +378,24 @@ where
                 .await
                 .into_iter()
                 .collect::<std::result::Result<Vec<()>, _>>()?;
+
+            // Once collectors exit, we can signal broadcasters
+            self.notification_channel.sender.close();
+
             trace!("[Notifier-{}] stopping broadcasters", self.name);
             join_all(self.broadcasters.iter().map(|x| x.join())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+
+            // Once broadcasters exit, we can close the subscribers
+            self.subscribers.iter().for_each(|s| s.close());
+
             trace!("[Notifier-{}] stopping subscribers", self.name);
             join_all(self.subscribers.iter().map(|x| x.join())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+
+            // Finally, we unregister all listeners (closing them)
+            let listener_ids = self.listeners.lock().keys().copied().collect::<Vec<_>>();
+            listener_ids.into_iter().for_each(|id| {
+                let _ = self.unregister_listener(id);
+            });
         } else {
             trace!("[Notifier-{}] join ignored since it was never started", self.name);
             return Err(Error::AlreadyStoppedError);
