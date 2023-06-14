@@ -4,6 +4,7 @@ use kaspa_consensus_core::{
     subnets::SUBNETWORK_ID_COINBASE, tx::Transaction,
 };
 use kaspa_consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
+use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
 use kaspa_core::{core::Core, service::Service};
 use kaspa_database::utils::{create_temp_db, DbLifetime};
 use kaspa_hashes::Hash;
@@ -201,5 +202,31 @@ impl Service for TestConsensus {
 
     fn stop(self: Arc<TestConsensus>) {
         self.consensus.signal_exit()
+    }
+}
+
+/// A factory which always returns the same consensus instance. Does not support the staging API.
+pub struct TestConsensusFactory {
+    tc: Arc<TestConsensus>,
+}
+
+impl TestConsensusFactory {
+    pub fn new(tc: Arc<TestConsensus>) -> Self {
+        Self { tc }
+    }
+}
+
+impl ConsensusFactory for TestConsensusFactory {
+    fn new_active_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
+        let ci = ConsensusInstance::new(self.tc.session_lock(), self.tc.consensus_clone());
+        (ci, self.tc.consensus_clone() as DynConsensusCtl)
+    }
+
+    fn new_staging_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
+        unimplemented!()
+    }
+
+    fn close(&self) {
+        self.tc.notification_root().close();
     }
 }
