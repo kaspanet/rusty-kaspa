@@ -7,7 +7,7 @@ use async_channel::{Receiver, Sender};
 use core::fmt::Debug;
 use derive_more::Deref;
 use futures::{future::FutureExt, select};
-use kaspa_core::{trace, warn};
+use kaspa_core::{debug, trace};
 use std::{
     collections::HashMap,
     sync::{
@@ -188,7 +188,7 @@ where
                             purge.drain(..).for_each(|id| { plan[event].remove(&id); });
 
                         } else {
-                            warn!("[{}] notification stream ended", std::any::type_name::<Self>());
+                            debug!("[{}] notification stream ended", std::any::type_name::<Self>());
                             let _ = self.shutdown.drain();
                             let _ = self.shutdown.try_send(());
                             break;

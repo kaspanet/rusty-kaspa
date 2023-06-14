@@ -4,7 +4,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
-use kaspa_core::{trace, warn};
+use kaspa_core::{debug, trace};
 use kaspa_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
 use kaspa_notify::{
     collector::{Collector, CollectorNotificationReceiver},
@@ -68,7 +68,7 @@ impl Processor {
                 }
             }
 
-            warn!("[{}] notification stream ended", std::any::type_name::<Self>());
+            debug!("[{}] notification stream ended", std::any::type_name::<Self>());
             // Propagate channel closing
             notifier.close();
             self.collect_shutdown.trigger.trigger();

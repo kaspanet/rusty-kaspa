@@ -3,7 +3,7 @@ use crate::{converter::Converter, notifier::DynNotify};
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use core::fmt::Debug;
-use kaspa_core::{trace, warn};
+use kaspa_core::{debug, trace};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -90,7 +90,7 @@ where
                 }
             }
 
-            warn!("[{}] notification stream ended", std::any::type_name::<Self>());
+            debug!("[{}] notification stream ended", std::any::type_name::<Self>());
             // Propagate channel closing
             notifier.close();
             collect_shutdown.trigger.trigger();

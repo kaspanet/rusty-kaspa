@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use kaspa_consensus_core::api::{ConsensusApi, DynConsensus};
-use kaspa_core::{core::Core, service::Service, warn};
+use kaspa_core::{core::Core, debug, service::Service};
 use parking_lot::RwLock;
 use std::{collections::VecDeque, ops::Deref, sync::Arc, thread::JoinHandle};
 
@@ -141,7 +141,7 @@ impl ConsensusManager {
 
         // All consensus instances have been shutdown and we are exiting, so close the factory. Internally this closes
         // the notification root sender channel, leading to a graceful shutdown of the notification sub-system.
-        warn!("[Consensus manager] all consensus threads exited");
+        debug!("[Consensus manager] all consensus threads exited");
         self.factory.close();
     }
 }

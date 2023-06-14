@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use core::fmt::Debug;
-use kaspa_core::{trace, warn};
+use kaspa_core::{debug, trace};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -88,7 +88,7 @@ impl Subscriber {
                 }
             }
 
-            warn!("[{}] notification stream ended", std::any::type_name::<Self>());
+            debug!("[{}] notification stream ended", std::any::type_name::<Self>());
             let _ = self.shutdown.drain();
             let _ = self.shutdown.try_send(());
         });
