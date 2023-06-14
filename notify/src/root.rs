@@ -41,6 +41,14 @@ where
     pub fn send(&self, notification: N) -> Result<()> {
         self.inner.send(notification)
     }
+
+    pub fn close(&self) -> bool {
+        self.inner.sender.close()
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.inner.sender.is_closed()
+    }
 }
 
 impl<N> Notify<N> for Root<N>
@@ -49,6 +57,10 @@ where
 {
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
+    }
+
+    fn close(&self) {
+        self.close();
     }
 }
 

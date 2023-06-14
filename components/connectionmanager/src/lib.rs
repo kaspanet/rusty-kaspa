@@ -12,6 +12,7 @@ use itertools::Itertools;
 use kaspa_addressmanager::{AddressManager, NetAddress};
 use kaspa_core::{debug, info, warn};
 use kaspa_p2p_lib::Peer;
+use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::Mutex as ParkingLotMutex;
 use rand::{seq::SliceRandom, thread_rng};
 use tokio::{
@@ -32,7 +33,7 @@ pub struct ConnectionManager {
     address_manager: Arc<ParkingLotMutex<AddressManager>>,
     connection_requests: TokioMutex<HashMap<SocketAddr, ConnectionRequest>>,
     force_next_iteration: UnboundedSender<()>,
-    shutdown_signal: UnboundedSender<()>,
+    shutdown_signal: SingleTrigger,
 }
 
 #[derive(Clone, Debug)]
@@ -58,7 +59,6 @@ impl ConnectionManager {
         address_manager: Arc<ParkingLotMutex<AddressManager>>,
     ) -> Arc<Self> {
         let (tx, rx) = unbounded_channel::<()>();
-        let (shutdown_signal_tx, shutdown_signal_rx) = unbounded_channel();
         let manager = Arc::new(Self {
             p2p_adaptor,
             outbound_target,
@@ -66,24 +66,27 @@ impl ConnectionManager {
             address_manager,
             connection_requests: Default::default(),
             force_next_iteration: tx,
-            shutdown_signal: shutdown_signal_tx,
+            shutdown_signal: SingleTrigger::new(),
             dns_seeders,
             default_port,
         });
-        manager.clone().start_event_loop(rx, shutdown_signal_rx);
+        manager.clone().start_event_loop(rx);
         manager.force_next_iteration.send(()).unwrap();
         manager
     }
 
-    fn start_event_loop(self: Arc<Self>, mut rx: UnboundedReceiver<()>, mut shutdown_signal_rx: UnboundedReceiver<()>) {
+    fn start_event_loop(self: Arc<Self>, mut rx: UnboundedReceiver<()>) {
         let mut ticker = interval(Duration::from_secs(30));
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         tokio::spawn(async move {
             loop {
+                if self.shutdown_signal.trigger.is_triggered() {
+                    break;
+                }
                 select! {
                     _ = rx.recv() => self.clone().handle_event().await,
                     _ = ticker.tick() => self.clone().handle_event().await,
-                    _ = shutdown_signal_rx.recv() => break,
+                    _ = self.shutdown_signal.listener.clone() => break,
                 }
             }
             debug!("Connection manager event loop exiting");
@@ -107,7 +110,7 @@ impl ConnectionManager {
     }
 
     pub async fn stop(&self) {
-        self.shutdown_signal.send(()).unwrap();
+        self.shutdown_signal.trigger.trigger()
     }
 
     async fn handle_connection_requests(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
@@ -164,6 +167,9 @@ impl ConnectionManager {
         let mut progressing = true;
         let mut connecting = true;
         while connecting && missing_connections > 0 {
+            if self.shutdown_signal.trigger.is_triggered() {
+                return;
+            }
             let mut addrs_to_connect = Vec::with_capacity(missing_connections);
             let mut jobs = Vec::with_capacity(missing_connections);
             for _ in 0..missing_connections {

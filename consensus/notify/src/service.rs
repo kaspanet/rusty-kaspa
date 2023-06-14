@@ -54,7 +54,7 @@ impl AsyncService for NotifyService {
 
             // Keep the notifier running until a service shutdown signal is received
             shutdown_signal.await;
-            match self.notifier.stop().await {
+            match self.notifier.join().await {
                 Ok(_) => Ok(()),
                 Err(err) => {
                     trace!("Error while stopping {}: {}", NOTIFY_SERVICE, err);

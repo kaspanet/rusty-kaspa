@@ -32,6 +32,7 @@ where
     N: Notification,
 {
     fn notify(&self, notification: N) -> Result<()>;
+    fn close(&self);
 }
 
 pub type DynNotify<N> = Arc<dyn Notify<N>>;
@@ -127,8 +128,8 @@ where
         self.inner.unregister_listener(id)
     }
 
-    pub async fn stop(&self) -> Result<()> {
-        self.inner.clone().stop().await
+    pub async fn join(&self) -> Result<()> {
+        self.inner.clone().join().await
     }
 }
 
@@ -139,6 +140,17 @@ where
 {
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
+    }
+
+    fn close(&self) {
+        // Unregister all listeners (closing them)
+        let listener_ids = self.inner.listeners.lock().keys().copied().collect::<Vec<_>>();
+        listener_ids.into_iter().for_each(|id| {
+            let _ = self.unregister_listener(id);
+        });
+
+        self.inner.subscribers.iter().for_each(|s| s.close());
+        self.inner.notification_channel.sender.close();
     }
 }
 
@@ -274,6 +286,7 @@ where
 
             // This is very unlikely to happen but still, check for duplicates
             if let Entry::Vacant(e) = listeners.entry(id) {
+                trace!("[Notifier-{}] registering listener {id}", self.name);
                 let listener = Listener::new(connection);
                 e.insert(listener);
                 return id;
@@ -285,6 +298,7 @@ where
         // Cancel all remaining subscriptions
         let mut subscriptions = vec![];
         if let Some(listener) = self.listeners.lock().get(&id) {
+            trace!("[Notifier-{}] unregistering listener {id}", self.name);
             subscriptions.extend(listener.subscriptions.iter().filter_map(|subscription| {
                 if subscription.active() {
                     Some(subscription.scope())
@@ -292,13 +306,16 @@ where
                     None
                 }
             }));
-            listener.close();
         }
         subscriptions.drain(..).for_each(|scope| {
             let _ = self.clone().stop_notify(id, scope);
         });
-        // Remove listener
-        self.listeners.lock().remove(&id);
+
+        // Remove & close listener
+        if let Some(listener) = self.listeners.lock().remove(&id) {
+            trace!("[Notifier-{}] closing listener {id}", self.name);
+            listener.close();
+        }
         Ok(())
     }
 
@@ -363,19 +380,19 @@ where
         })
     }
 
-    async fn stop(self: Arc<Self>) -> Result<()> {
-        if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+    async fn join(self: Arc<Self>) -> Result<()> {
+        if self.started.load(Ordering::SeqCst) {
             trace!("[Notifier-{}] stopping collectors", self.name);
-            join_all(self.collectors.iter().map(|x| x.clone().stop()))
+            join_all(self.collectors.iter().map(|x| x.clone().join()))
                 .await
                 .into_iter()
                 .collect::<std::result::Result<Vec<()>, _>>()?;
             trace!("[Notifier-{}] stopping broadcasters", self.name);
-            join_all(self.broadcasters.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+            join_all(self.broadcasters.iter().map(|x| x.join())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
             trace!("[Notifier-{}] stopping subscribers", self.name);
-            join_all(self.subscribers.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+            join_all(self.subscribers.iter().map(|x| x.join())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
         } else {
-            trace!("[Notifier-{}] stop ignored since already stopped", self.name);
+            trace!("[Notifier-{}] join ignored since it was never started", self.name);
             return Err(Error::AlreadyStoppedError);
         }
         trace!("[Notifier-{}] stopped", self.name);
@@ -423,6 +440,10 @@ pub mod test_helpers {
     {
         fn notify(&self, notification: N) -> Result<()> {
             Ok(self.sender.try_send(notification)?)
+        }
+
+        fn close(&self) {
+            self.sender.close();
         }
     }
 
@@ -811,7 +832,8 @@ mod tests {
                     }
                 }
             }
-            assert!(self.notifier.stop().await.is_ok(), "notifier failed to stop");
+            self.notification_sender.close();
+            assert!(self.notifier.join().await.is_ok(), "notifier failed to stop");
         }
     }
 

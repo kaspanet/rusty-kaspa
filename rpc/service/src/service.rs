@@ -142,7 +142,7 @@ impl RpcCoreService {
     }
 
     pub async fn stop(&self) -> RpcResult<()> {
-        self.notifier().stop().await?;
+        self.notifier().join().await?;
         Ok(())
     }
 

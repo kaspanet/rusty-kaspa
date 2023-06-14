@@ -142,6 +142,10 @@ impl FlowContext {
         self.connection_manager.write().replace(connection_manager);
     }
 
+    pub fn drop_connection_manager(&self) {
+        self.connection_manager.write().take();
+    }
+
     pub fn connection_manager(&self) -> Option<Arc<ConnectionManager>> {
         self.connection_manager.read().clone()
     }
@@ -259,16 +263,16 @@ impl FlowContext {
     pub async fn on_new_block_template(&self) -> Result<(), ProtocolError> {
         // Clear current template cache
         self.mining_manager().clear_block_template();
-        // TODO: better handle notification errors
-        self.notification_root
-            .notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))
-            .map_err(|_| ProtocolError::Other("Notification error"))?;
+        // Notifications from the flow context might be ignored if the inner channel is already closing
+        // due to global shutdown, hence we ignore the possible error
+        let _ = self.notification_root.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}));
         Ok(())
     }
 
     /// Notifies that the UTXO set was reset due to pruning point change via IBD.
     pub fn on_pruning_point_utxoset_override(&self) {
-        // TODO: handle notify return error
+        // Notifications from the flow context might be ignored if the inner channel is already closing
+        // due to global shutdown, hence we ignore the possible error
         let _ = self.notification_root.notify(Notification::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification {}));
     }
 

@@ -126,8 +126,8 @@ impl Server {
                 });
             }
         } else {
-            let _ = connection.grpc_client().stop().await;
             let _ = connection.grpc_client().disconnect().await;
+            let _ = connection.grpc_client().join().await;
         }
 
         self.inner.sockets.lock().unwrap().remove(&connection.id());
@@ -160,7 +160,7 @@ impl Server {
             rpc_core.notification_channel.close();
 
             // Stop the internal notifier
-            rpc_core.wrpc_notifier.stop().await?;
+            rpc_core.wrpc_notifier.join().await?;
         } else {
             // FIXME: check if all existing connections are actually getting a call to self.disconnect(connection)
             //        else do it here

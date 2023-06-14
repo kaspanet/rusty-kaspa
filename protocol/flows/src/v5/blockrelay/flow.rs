@@ -161,6 +161,7 @@ impl HandleRelayInvsFlow {
             }
 
             info!("Accepted block {} via relay", inv.hash);
+            self.ctx.on_new_block_template().await?;
             self.ctx.on_new_block(session.deref(), block).await?;
 
             // Broadcast all *new* virtual parents. As a policy, we avoid directly relaying the new block since
@@ -171,8 +172,6 @@ impl HandleRelayInvsFlow {
                     .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(new_virtual_parent.into()) }))
                     .await;
             }
-
-            self.ctx.on_new_block_template().await?;
         }
     }
 

@@ -180,7 +180,7 @@ impl KaspaRpcClient {
         match &self.notification_mode {
             NotificationMode::MultiListeners => {
                 // log_info!("stop notifier...");
-                self.notifier.as_ref().unwrap().stop().await?;
+                self.notifier.as_ref().unwrap().join().await?;
             }
             NotificationMode::Direct => {
                 // log_info!("stop direct...");

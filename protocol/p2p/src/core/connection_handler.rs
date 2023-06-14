@@ -71,7 +71,7 @@ impl ConnectionHandler {
                 .await;
 
             match serve_result {
-                Ok(_) => debug!("P2P, Server stopped: {}", serve_address),
+                Ok(_) => info!("P2P Server stopped: {}", serve_address),
                 Err(err) => panic!("P2P, Server {serve_address} stopped with error: {err:?}"),
             }
         });

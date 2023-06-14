@@ -272,24 +272,26 @@ impl VirtualStateProcessor {
         // Emit notifications
         let accumulated_diff = Arc::new(accumulated_diff);
         let virtual_parents = Arc::new(new_virtual_state.parents.clone());
-        let _ = self
-            .notification_root
-            .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)));
-        let _ = self
-            .notification_root
-            .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(sink_ghostdag_data.blue_score)));
-        let _ = self
-            .notification_root
-            .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)));
+        self.notification_root
+            .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)))
+            .expect("expecting an open unbounded channel");
+        self.notification_root
+            .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(sink_ghostdag_data.blue_score)))
+            .expect("expecting an open unbounded channel");
+        self.notification_root
+            .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
+            .expect("expecting an open unbounded channel");
         let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink);
         // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
         let added_chain_blocks_acceptance_data =
             chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
-        let _ = self.notification_root.notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
-            chain_path.added.into(),
-            chain_path.removed.into(),
-            Arc::new(added_chain_blocks_acceptance_data),
-        )));
+        self.notification_root
+            .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+                chain_path.added.into(),
+                chain_path.removed.into(),
+                Arc::new(added_chain_blocks_acceptance_data),
+            )))
+            .expect("expecting an open unbounded channel");
     }
 
     fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {

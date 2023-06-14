@@ -5,11 +5,7 @@ use self::{
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use connection_event::ConnectionEvent;
-use futures::{
-    future::FutureExt, // for `.fuse()`
-    pin_mut,
-    select,
-};
+use futures::{future::FutureExt, pin_mut, select};
 use kaspa_core::{debug, trace};
 use kaspa_grpc_core::{
     channel::NotificationChannel,
@@ -136,15 +132,15 @@ impl GrpcClient {
         }
     }
 
-    /// Stops RPC services.
-    pub async fn stop(&self) -> Result<()> {
+    /// Joins on RPC services.
+    pub async fn join(&self) -> Result<()> {
         match &self.notification_mode {
             NotificationMode::MultiListeners => {
-                self.notifier.as_ref().unwrap().stop().await?;
+                self.notifier.as_ref().unwrap().join().await?;
             }
             NotificationMode::Direct => {
                 if self.collector.as_ref().unwrap().is_started() {
-                    self.collector.as_ref().unwrap().clone().stop().await?;
+                    self.collector.as_ref().unwrap().clone().join().await?;
                 }
             }
         }
@@ -541,6 +537,10 @@ impl Inner {
         self.receiver_is_running.load(Ordering::SeqCst)
     }
 
+    fn will_reconnect(&self) -> bool {
+        self.connector_is_running.load(Ordering::SeqCst)
+    }
+
     #[inline(always)]
     fn handle_message_id(&self) -> bool {
         self.server_features.handle_message_id
@@ -666,6 +666,11 @@ impl Inner {
             // Mark as not connected
             self.receiver_is_running.store(false, Ordering::SeqCst);
             self.send_connection_event(ConnectionEvent::Disconnected);
+
+            // Close the notification channel so that notifiers/collectors/subscribers can be joined on
+            if !self.will_reconnect() {
+                self.notification_channel.close();
+            }
 
             if self.receiver_shutdown.request.listener.is_triggered() {
                 self.receiver_shutdown.response.trigger.trigger();
