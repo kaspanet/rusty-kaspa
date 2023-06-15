@@ -16,8 +16,8 @@ use kaspa_consensus::{
     processes::ghostdag::ordering::SortableBlock,
 };
 use kaspa_consensus_core::{
-    api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::BlockProcessResult, header::Header, BlockHashSet,
-    BlockLevel, HashMapCustomHasher,
+    api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
+    header::Header, BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{info, warn};
@@ -87,25 +87,6 @@ struct Args {
     /// Use the legacy full-window DAA mechanism (note: the size of this window scales with bps)
     #[arg(long, default_value_t = false)]
     daa_legacy: bool,
-}
-
-/// Calculates the k parameter of the GHOSTDAG protocol such that anticones lager than k will be created
-/// with probability less than `delta` (follows eq. 1 from section 4.2 of the PHANTOM paper)
-/// `x` is expected to be 2Dλ where D is the maximal network delay and λ is the block mining rate.
-/// `delta` is an upper bound for the probability of anticones larger than k.
-/// Returns the minimal k such that the above conditions hold.
-fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
-    assert!(x > 0.0);
-    assert!(delta > 0.0 && delta < 1.0);
-    let (mut k_hat, mut sigma, mut fraction, exp) = (0u64, 0.0, 1.0, std::f64::consts::E.powf(-x));
-    loop {
-        sigma += exp * fraction;
-        if 1.0 - sigma < delta {
-            return k_hat;
-        }
-        k_hat += 1;
-        fraction *= x / k_hat as f64 // Computes x^k_hat/k_hat!
-    }
 }
 
 fn main() {
