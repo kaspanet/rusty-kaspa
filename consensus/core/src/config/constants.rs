@@ -26,20 +26,20 @@ pub mod consensus {
     // ~~~~~~~~~~~~~~~~~~ Timestamp deviation & Median time ~~~~~~~~~~~~~~~~~~
     //
 
-    /// **Legacy** timestamp deviation tolerance corresponding to 2 minutes with 1 BPS
+    /// **Legacy** timestamp deviation tolerance (seconds)
     pub const LEGACY_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
 
-    /// **New** timestamp deviation tolerance expressed in time units (seconds).
-    /// KIP-0004: 610 (~10 minutes)
-    pub const NEW_TIMESTAMP_DEVIATION_TOLERANCE_DURATION: u64 = 610;
+    /// **New** timestamp deviation tolerance (seconds).
+    /// KIP-0004: 605 (~10 minutes)
+    pub const NEW_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 605;
 
     /// The desired interval between samples of the median time window (seconds).
     /// KIP-0004: 10 seconds
     pub const PAST_MEDIAN_TIME_SAMPLE_INTERVAL: u64 = 10;
 
-    /// Timestamp deviation tolerance expressed in sample interval units (independent of BPS)
-    pub const SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE: u64 =
-        NEW_TIMESTAMP_DEVIATION_TOLERANCE_DURATION / PAST_MEDIAN_TIME_SAMPLE_INTERVAL;
+    /// Size of the **sampled** median time window (independent of BPS)
+    pub const MEDIAN_TIME_SAMPLED_WINDOW_SIZE: u64 =
+        ((2 * NEW_TIMESTAMP_DEVIATION_TOLERANCE - 1) + PAST_MEDIAN_TIME_SAMPLE_INTERVAL - 1) / PAST_MEDIAN_TIME_SAMPLE_INTERVAL;
 
     //
     // ~~~~~~~~~~~~~~~~~~~~~~~~~ Max difficulty target ~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -24,14 +24,17 @@ pub struct Params {
     pub genesis: GenesisBlock,
     pub ghostdag_k: KType,
 
-    /// Timestamp deviation tolerance expressed in number of blocks
-    pub full_timestamp_deviation_tolerance: u64,
+    /// Legacy timestamp deviation tolerance
+    pub legacy_timestamp_deviation_tolerance: u64,
 
-    /// Timestamp deviation tolerance expressed in number of un-sampled blocks when a sampled window is used
-    pub sampled_timestamp_deviation_tolerance: u64,
+    /// New timestamp deviation tolerance (activated with sampling)
+    pub new_timestamp_deviation_tolerance: u64,
 
     /// Block sample rate for filling the past median time window (selects one every N blocks)
     pub past_median_time_sample_rate: u64,
+
+    /// Size of sampled blocks window that is inspected to calculate the past median time of each block
+    pub past_median_time_sampled_window_size: u64,
 
     /// Current/legacy target time per block
     pub target_time_per_block: u64,
@@ -41,6 +44,8 @@ pub struct Params {
 
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
     pub max_difficulty_target: Uint256,
+
+    /// Highest allowed proof of work difficulty as a floating number
     pub max_difficulty_target_f64: f64,
 
     /// Block sample rate for filling the difficulty window (selects one every N blocks)
@@ -50,7 +55,7 @@ pub struct Params {
     pub sampled_difficulty_window_size: usize,
 
     /// Size of full blocks window that is inspected to calculate the required difficulty of each block
-    pub full_difficulty_window_size: usize,
+    pub legacy_difficulty_window_size: usize,
 
     /// The minimum length a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_len: usize,
@@ -83,20 +88,18 @@ fn unix_now() -> u64 {
 }
 
 impl Params {
-    /// Returns the size of the full blocks window that is inspected to calculate the past median time
+    /// Returns the size of the full blocks window that is inspected to calculate the past median time (legacy)
     #[inline]
     #[must_use]
-    pub fn full_past_median_time_window_size(&self) -> usize {
-        (2 * self.full_timestamp_deviation_tolerance - 1) as usize
+    pub fn legacy_past_median_time_window_size(&self) -> usize {
+        (2 * self.legacy_timestamp_deviation_tolerance - 1) as usize
     }
 
     /// Returns the size of the sampled blocks window that is inspected to calculate the past median time
     #[inline]
     #[must_use]
     pub fn sampled_past_median_time_window_size(&self) -> usize {
-        let deviation_tolerance_sampled_blocks =
-            (self.sampled_timestamp_deviation_tolerance + self.past_median_time_sample_rate / 2) / self.past_median_time_sample_rate;
-        (2 * deviation_tolerance_sampled_blocks - 1) as usize
+        self.past_median_time_sampled_window_size as usize
     }
 
     /// Returns the size of the blocks window that is inspected to calculate the past median time,
@@ -105,7 +108,7 @@ impl Params {
     #[must_use]
     pub fn past_median_time_window_size(&self, selected_parent_daa_score: u64) -> usize {
         if selected_parent_daa_score < self.sampling_activation_daa_score {
-            self.full_past_median_time_window_size()
+            self.legacy_past_median_time_window_size()
         } else {
             self.sampled_past_median_time_window_size()
         }
@@ -117,9 +120,9 @@ impl Params {
     #[must_use]
     pub fn timestamp_deviation_tolerance(&self, selected_parent_daa_score: u64) -> u64 {
         if selected_parent_daa_score < self.sampling_activation_daa_score {
-            self.full_timestamp_deviation_tolerance
+            self.legacy_timestamp_deviation_tolerance
         } else {
-            self.sampled_timestamp_deviation_tolerance
+            self.new_timestamp_deviation_tolerance
         }
     }
 
@@ -141,7 +144,7 @@ impl Params {
     #[must_use]
     pub fn difficulty_window_size(&self, selected_parent_daa_score: u64) -> usize {
         if selected_parent_daa_score < self.sampling_activation_daa_score {
-            self.full_difficulty_window_size
+            self.legacy_difficulty_window_size
         } else {
             self.sampled_difficulty_window_size
         }
@@ -167,9 +170,17 @@ impl Params {
         self.target_time_per_block
     }
 
+    pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            self.legacy_difficulty_window_size as u64
+        } else {
+            self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
+        }
+    }
+
     fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
         if selected_parent_daa_score < self.sampling_activation_daa_score {
-            self.target_time_per_block * self.full_difficulty_window_size as u64
+            self.target_time_per_block * self.legacy_difficulty_window_size as u64
         } else {
             self.target_time_per_block * self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
         }
@@ -253,16 +264,17 @@ pub const MAINNET_PARAMS: Params = Params {
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
-    full_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
-    sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
+    legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
+    new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
+    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
     sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
-    full_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
@@ -309,16 +321,17 @@ pub const TESTNET_PARAMS: Params = Params {
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
-    full_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
-    sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
+    legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
+    new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
+    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
     sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
-    full_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
@@ -365,13 +378,14 @@ pub const TESTNET_11_PARAMS: Params = Params {
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 11),
     genesis: TESTNET_GENESIS,
-    full_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
-    sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
+    legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
+    new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
+    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     sampling_activation_daa_score: 0, // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
-    full_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
 
     //
@@ -423,16 +437,17 @@ pub const SIMNET_PARAMS: Params = Params {
     net: NetworkId::new(NetworkType::Simnet),
     genesis: SIMNET_GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
-    full_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
-    sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
+    legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
+    new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
+    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
     sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
-    full_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
@@ -475,16 +490,17 @@ pub const DEVNET_PARAMS: Params = Params {
     net: NetworkId::new(NetworkType::Devnet),
     genesis: DEVNET_GENESIS,
     ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
-    full_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
-    sampled_timestamp_deviation_tolerance: SAMPLE_TIMESTAMP_DEVIATION_TOLERANCE,
+    legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
+    new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
+    past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     target_time_per_block: 1000,
     sampling_activation_daa_score: u64::MAX,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
     sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
-    full_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,

@@ -242,7 +242,7 @@ async fn ghostdag_test() {
             .edit_consensus_params(|p| {
                 p.genesis.hash = string_to_hash(&test.genesis_id);
                 p.ghostdag_k = test.k;
-                p.min_difficulty_window_len = p.full_difficulty_window_size;
+                p.min_difficulty_window_len = p.legacy_difficulty_window_size;
             })
             .build();
         let consensus = TestConsensus::new(&config);
@@ -404,7 +404,7 @@ async fn header_in_isolation_validation_test() {
         block.header.hash = 2.into();
 
         let now = unix_now();
-        let block_ts = now + config.full_timestamp_deviation_tolerance * config.target_time_per_block + 2000;
+        let block_ts = now + config.legacy_timestamp_deviation_tolerance * config.target_time_per_block + 2000;
         block.header.timestamp = block_ts;
         match consensus.validate_and_insert_block(block.to_immutable()).await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
@@ -538,8 +538,9 @@ async fn median_time_test() {
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
                     p.sampling_activation_daa_score = 0;
-                    p.sampled_timestamp_deviation_tolerance = 120;
+                    p.new_timestamp_deviation_tolerance = 120;
                     p.past_median_time_sample_rate = 3;
+                    p.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
                 })
                 .build(),
         },
@@ -775,9 +776,10 @@ impl KaspadGoParams {
             net: NetworkId { network_type: Mainnet, suffix: None },
             genesis: GENESIS,
             ghostdag_k: self.K,
-            full_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
-            sampled_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
+            legacy_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
+            new_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             past_median_time_sample_rate: 1,
+            past_median_time_sampled_window_size: 2 * self.TimestampDeviationTolerance - 1,
             target_time_per_block: self.TargetTimePerBlock / 1_000_000,
             sampling_activation_daa_score: u64::MAX,
             max_block_parents: self.MaxBlockParents,
@@ -785,7 +787,7 @@ impl KaspadGoParams {
             max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
             difficulty_sample_rate: 1,
             sampled_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            full_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+            legacy_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             min_difficulty_window_len: self.DifficultyAdjustmentWindowSize,
             mergeset_size_limit: self.MergeSetSizeLimit,
             merge_depth: self.MergeDepth,
@@ -885,13 +887,13 @@ async fn json_test(file_path: &str, concurrency: bool) {
             let genesis_block = json_line_to_block(second_line);
             params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
         }
-        params.min_difficulty_window_len = params.full_difficulty_window_size;
+        params.min_difficulty_window_len = params.legacy_difficulty_window_size;
         params
     } else {
         let genesis_block = json_line_to_block(first_line);
         let mut params = DEVNET_PARAMS;
         params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
-        params.min_difficulty_window_len = params.full_difficulty_window_size;
+        params.min_difficulty_window_len = params.legacy_difficulty_window_size;
         params
     };
 
@@ -1327,6 +1329,7 @@ async fn difficulty_test() {
     const SAMPLE_RATE: u64 = 6;
     const PMT_DEVIATION_TOLERANCE: u64 = 20;
     const PMT_SAMPLE_RATE: u64 = 3;
+    const PMT_SAMPLED_WINDOW_SIZE: u64 = 13;
     const HIGH_BPS_SAMPLED_WINDOW_SIZE: usize = 12;
     const HIGH_BPS: u64 = 4;
     let tests = vec![
@@ -1337,11 +1340,11 @@ async fn difficulty_test() {
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
                     p.ghostdag_k = 1;
-                    p.full_difficulty_window_size = FULL_WINDOW_SIZE;
+                    p.legacy_difficulty_window_size = FULL_WINDOW_SIZE;
                     p.sampling_activation_daa_score = u64::MAX;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
-                    p.full_timestamp_deviation_tolerance = 60;
+                    p.legacy_timestamp_deviation_tolerance = 60;
                 })
                 .build(),
         },
@@ -1358,7 +1361,8 @@ async fn difficulty_test() {
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.past_median_time_sample_rate = PMT_SAMPLE_RATE;
-                    p.sampled_timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
+                    p.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.new_timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),
         },
@@ -1376,7 +1380,8 @@ async fn difficulty_test() {
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
-                    p.sampled_timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE * HIGH_BPS;
+                    p.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.new_timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
                 })
                 .build(),
         },
@@ -1600,7 +1605,7 @@ async fn selected_chain_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.min_difficulty_window_len = p.full_difficulty_window_size;
+            p.min_difficulty_window_len = p.legacy_difficulty_window_size;
         })
         .build();
     let consensus = TestConsensus::new(&config);

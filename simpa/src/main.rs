@@ -12,7 +12,7 @@ use kaspa_consensus::{
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
     },
-    params::{Params, DEVNET_PARAMS},
+    params::{Params, TestnetHighBps, DEVNET_PARAMS, TESTNET_11_PARAMS},
     processes::ghostdag::ordering::SortableBlock,
 };
 use kaspa_consensus_core::{
@@ -87,11 +87,15 @@ struct Args {
     /// Use the legacy full-window DAA mechanism (note: the size of this window scales with bps)
     #[arg(long, default_value_t = false)]
     daa_legacy: bool,
+
+    /// Use testnet-11 consensus params
+    #[arg(long, default_value_t = false)]
+    testnet11: bool,
 }
 
 fn main() {
     // Get CLI arguments
-    let args = Args::parse();
+    let mut args = Args::parse();
 
     // Initialize the logger
     kaspa_core::log::init_logger(None, &args.log_level);
@@ -110,7 +114,8 @@ fn main() {
             args.miners
         );
     }
-    let mut params = DEVNET_PARAMS;
+    args.bps = if args.testnet11 { TestnetHighBps::bps() as f64 } else { args.bps };
+    let mut params = if args.testnet11 { TESTNET_11_PARAMS } else { DEVNET_PARAMS };
     let mut perf_params = PERF_PARAMS;
     adjust_consensus_params(&args, &mut params);
     adjust_perf_params(&args, &params, &mut perf_params);
@@ -156,7 +161,14 @@ fn adjust_consensus_params(args: &Args, params: &mut Params) {
     // however we avoid the actual max since it is reserved for the DB prefix scheme
     params.max_block_level = BlockLevel::MAX - 1;
     params.genesis.timestamp = 0;
-    if args.bps * args.delay > 2.0 {
+    if args.testnet11 {
+        info!(
+            "Using kaspa-testnet-11 configuration (GHOSTDAG K={}, DAA window size={}, Median time window size={})",
+            params.ghostdag_k,
+            params.difficulty_window_size(0),
+            params.past_median_time_window_size(0),
+        );
+    } else if args.bps * args.delay > 2.0 {
         let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
         params.ghostdag_k = k;
@@ -169,18 +181,18 @@ fn adjust_consensus_params(args: &Args, params: &mut Params) {
         if args.daa_legacy {
             // Scale DAA and median-time windows linearly with BPS
             params.sampling_activation_daa_score = u64::MAX;
-            params.full_timestamp_deviation_tolerance = (params.full_timestamp_deviation_tolerance as f64 * args.bps) as u64;
-            params.full_difficulty_window_size = (params.full_difficulty_window_size as f64 * args.bps) as usize;
+            params.legacy_timestamp_deviation_tolerance = (params.legacy_timestamp_deviation_tolerance as f64 * args.bps) as u64;
+            params.legacy_difficulty_window_size = (params.legacy_difficulty_window_size as f64 * args.bps) as usize;
         } else {
             // Use the new sampling algorithms
             params.sampling_activation_daa_score = 0;
             params.past_median_time_sample_rate = (10.0 * args.bps) as u64;
-            params.sampled_timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
+            params.new_timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
             params.difficulty_sample_rate = (2.0 * args.bps) as u64;
         }
 
         info!(
-            "The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}, DAA window size={}",
+            "The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}, DAA window size={})",
             2.0 * args.delay * args.bps,
             k,
             params.difficulty_window_size(0)
@@ -188,8 +200,8 @@ fn adjust_consensus_params(args: &Args, params: &mut Params) {
     }
     if args.test_pruning {
         params.pruning_proof_m = 16;
-        params.full_difficulty_window_size = 64;
-        params.full_timestamp_deviation_tolerance = 16;
+        params.legacy_difficulty_window_size = 64;
+        params.legacy_timestamp_deviation_tolerance = 16;
         params.finality_depth = 128;
         params.merge_depth = 128;
         params.mergeset_size_limit = 32;

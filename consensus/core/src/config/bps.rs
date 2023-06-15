@@ -25,6 +25,10 @@ pub fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
 pub struct Bps<const BPS: u64>;
 
 impl<const BPS: u64> Bps<BPS> {
+    pub const fn bps() -> u64 {
+        BPS
+    }
+
     /// Returns the GHOSTDAG K value which was pre-computed for this BPS
     /// (see [`calculate_ghostdag_k`] and [`gen_ghostdag_table`] for the full calculation)
     #[rustfmt::skip]
