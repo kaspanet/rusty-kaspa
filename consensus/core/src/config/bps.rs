@@ -46,6 +46,7 @@ impl<const BPS: u64> Bps<BPS> {
         1000 / BPS
     }
 
+    /// Returns the max number of direct parents a block can have
     pub const fn max_block_parents() -> u8 {
         let val = (Self::ghostdag_k() / 2) as u8;
         if val < 10 {
@@ -77,8 +78,10 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     pub const fn pruning_proof_m() -> u64 {
-        // TODO: consult whether this can be lower
-        BPS * LEGACY_PRUNING_PROOF_M
+        // Since the important levels remain logarithmically long, it seems that this
+        // constant does not need to scale with BPS.
+        // TODO: finalize this
+        PRUNING_PROOF_M
     }
 
     /// Sample rate for sampling blocks to the median time window (in block units, hence dependent on BPS)
@@ -96,7 +99,7 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     // TODO: we might need to increase max_block_level (at least for mainnet) as a function of BPS
-    // since higher BPS means lower difficulty targets -> less zeros in pow hash
+    // since higher BPS means easier difficulty puzzles -> less zeros in pow hash
     // pub const fn max_block_level() -> u64 {  }
 }
 

@@ -87,8 +87,8 @@ pub mod consensus {
     /// TODO: finalize this value (consider 6-24 hours)
     pub const NEW_FINALITY_DURATION: u64 = 43_200; // 12 hours
 
-    /// **Legacy** value of the pruning proof `M` parameter for 1 BPS networks
-    pub const LEGACY_PRUNING_PROOF_M: u64 = 1000;
+    /// The value of the pruning proof `M` parameter
+    pub const PRUNING_PROOF_M: u64 = 1000;
 
     //
     // ~~~~~~~~~~~~~~~~~~~ Coinbase ~~~~~~~~~~~~~~~~~~~
