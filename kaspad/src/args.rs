@@ -19,6 +19,7 @@ pub struct Defaults {
     pub rpc_max_clients: usize,
     pub enable_unsynced_mining: bool,
     pub testnet: bool,
+    pub testnet_suffix: u32,
     pub devnet: bool,
     pub simnet: bool,
     pub archival: bool,
@@ -42,6 +43,7 @@ impl Default for Defaults {
             rpc_max_clients: 128,
             enable_unsynced_mining: false,
             testnet: false,
+            testnet_suffix: 10,
             devnet: false,
             simnet: false,
             archival: false,
@@ -75,6 +77,7 @@ pub struct Args {
     pub rpc_max_clients: usize,
     pub enable_unsynced_mining: bool,
     pub testnet: bool,
+    pub testnet_suffix: u32,
     pub devnet: bool,
     pub simnet: bool,
     pub archival: bool,
@@ -191,6 +194,14 @@ pub fn cli(defaults: &Defaults) -> Command {
         .arg(arg!(--"enable-unsynced-mining" "Allow the node to accept blocks from RPC while not synced (this flag is mainly used for testing)"))
         .arg(arg!(--utxoindex "Enable the UTXO index"))
         .arg(arg!(--testnet "Use the test network"))
+        .arg(
+            Arg::new("netsuffix")
+                .long("netsuffix")
+                .value_name("netsuffix")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u32))
+                .help("Testnet network suffix number"),
+        )
         .arg(arg!(--devnet "Use the development test network"))
         .arg(arg!(--simnet "Use the simulation test network"))
         .arg(arg!(--archival "Run as an archival node: avoids deleting old block data when moving the pruning point (Warning: heavy disk usage)"))
@@ -229,6 +240,7 @@ impl Args {
             enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
             utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
+            testnet_suffix: m.get_one::<u32>("netsuffix").cloned().unwrap_or(defaults.testnet_suffix),
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
             simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
             archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),

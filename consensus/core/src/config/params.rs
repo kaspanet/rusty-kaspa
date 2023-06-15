@@ -240,6 +240,22 @@ impl From<NetworkType> for Params {
     }
 }
 
+impl From<NetworkId> for Params {
+    fn from(value: NetworkId) -> Self {
+        match value.network_type {
+            NetworkType::Mainnet => MAINNET_PARAMS,
+            NetworkType::Testnet => match value.suffix {
+                Some(10) => TESTNET_PARAMS,
+                Some(11) => TESTNET_11_PARAMS,
+                Some(x) => panic!("Testnet suffix {} is not supported", x),
+                None => panic!("Testnet suffix not provided"),
+            },
+            NetworkType::Devnet => DEVNET_PARAMS,
+            NetworkType::Simnet => SIMNET_PARAMS,
+        }
+    }
+}
+
 pub const MAINNET_PARAMS: Params = Params {
     dns_seeders: &[
         // This DNS seeder is run by Wolfie
