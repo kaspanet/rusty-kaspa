@@ -35,7 +35,7 @@ impl TryFrom<(Wallet, &Secret)> for Cache {
         let accounts: Collection<AccountId, Account> = payload.0.accounts.try_into()?;
         let metadata: Collection<AccountId, Metadata> = wallet.metadata.try_into()?;
         let user_hint = wallet.user_hint;
-        let transaction_records : Collection<TransactionRecordId,TransactionRecord> = payload.0.transaction_records.try_into()?;
+        let transaction_records: Collection<TransactionRecordId, TransactionRecord> = payload.0.transaction_records.try_into()?;
 
         Ok(Cache { prv_key_data, prv_key_data_info, accounts, metadata, transaction_records, user_hint })
     }

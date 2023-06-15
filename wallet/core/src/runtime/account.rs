@@ -571,7 +571,6 @@ impl Account {
 pub struct AccountMap(Arc<Mutex<HashMap<AccountId, Arc<Account>>>>);
 
 impl AccountMap {
-
     pub fn inner(&self) -> MutexGuard<HashMap<AccountId, Arc<Account>>> {
         self.0.lock().unwrap()
     }
@@ -601,5 +600,4 @@ impl AccountMap {
     pub fn cloned_flat_list(&self) -> Vec<Arc<Account>> {
         self.inner().values().cloned().collect()
     }
-
 }

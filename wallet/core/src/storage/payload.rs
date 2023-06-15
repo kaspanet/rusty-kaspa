@@ -4,12 +4,11 @@ use crate::secret::Secret;
 use crate::storage::{Account, Encryptable, PrvKeyData, PrvKeyDataId, PrvKeyDataPayload, TransactionRecord};
 use kaspa_bip32::Mnemonic;
 
-
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Payload {
     pub prv_key_data: Vec<PrvKeyData>,
     pub accounts: Vec<Account>,
-    pub transaction_records : Vec<TransactionRecord>,
+    pub transaction_records: Vec<TransactionRecord>,
 }
 
 impl Payload {

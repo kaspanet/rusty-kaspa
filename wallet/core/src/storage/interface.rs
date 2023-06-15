@@ -78,7 +78,6 @@ pub trait TransactionRecordStore: Send + Sync {
 #[async_trait]
 // pub trait Interface: Sized + Send + Sync {
 pub trait Interface: Send + Sync {
-
     // initialize wallet storage
     async fn create(&self) -> Result<()>;
     // establish an open state (load wallet data cache, connect to the database etc.)
@@ -126,5 +125,4 @@ pub trait Interface: Send + Sync {
     // async fn transaction_record_store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&TransactionRecord]) -> Result<()>;
     // async fn transaction_record_remove(&self, ctx: &Arc<dyn AccessContextT>, id: &[&TransactionRecordId]) -> Result<()>;
     // ---
-
 }

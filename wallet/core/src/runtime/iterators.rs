@@ -74,10 +74,7 @@ pub struct PrvKeyDataIterator {
 }
 
 impl PrvKeyDataIterator {
-    pub fn new(
-        store: &Arc<dyn Interface>,
-        options: IteratorOptions,
-    ) -> PrvKeyDataIterator {
+    pub fn new(store: &Arc<dyn Interface>, options: IteratorOptions) -> PrvKeyDataIterator {
         PrvKeyDataIterator { store: store.clone(), options, iter: None }
     }
 }

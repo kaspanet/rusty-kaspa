@@ -161,7 +161,6 @@ impl Wallet {
     }
 
     pub async fn reset(&self) -> Result<()> {
-
         let accounts = self.inner.active_accounts.cloned_flat_list();
         let futures = accounts.iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
@@ -451,16 +450,16 @@ impl Wallet {
         // let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?.derive_path(derivation_path)?;
 
         let stored_account = storage::Account::new(
-            "imported-wallet".to_string(), // name
-            "Imported Wallet".to_string(), // title
-            storage::AccountKind::V0, // kind
-            0, // account index
-            false, // public visibility
+            "imported-wallet".to_string(),       // name
+            "Imported Wallet".to_string(),       // title
+            storage::AccountKind::V0,            // kind
+            0,                                   // account index
+            false,                               // public visibility
             PubKeyData::new(vec![], None, None), // TODO - pub keydata
-            prv_key_data.id, // privkey id
-            false, // ecdsa
-            1, // min signatures
-            0, // cosigner_index
+            prv_key_data.id,                     // privkey id
+            false,                               // ecdsa
+            1,                                   // min signatures
+            0,                                   // cosigner_index
         );
 
         let prefix = AddressPrefix::Mainnet;
@@ -668,10 +667,7 @@ mod test {
     use crate::{
         signer::sign_mutable_transaction,
         tx::MutableTransaction,
-        utxo::{
-            UtxoOrdering,
-            UtxoSet,
-        },
+        utxo::{UtxoOrdering, UtxoSet},
     };
 
     // TODO - re-export subnets

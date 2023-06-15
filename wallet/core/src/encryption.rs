@@ -89,7 +89,6 @@ impl<T> From<T> for Encryptable<T> {
     }
 }
 
-
 pub struct Decrypted<T>(pub(crate) T);
 // where
 //     T: Zeroize;
