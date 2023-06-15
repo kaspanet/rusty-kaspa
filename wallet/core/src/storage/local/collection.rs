@@ -50,19 +50,32 @@ where
         Ok(())
     }
 
-    pub fn remove_item(&mut self, id: &Id) -> Option<Arc<Data>> {
-        if let Some(data) = self.map.remove(id) {
-            self.vec.retain(|d| d.id() != id);
-            Some(data)
-        } else {
-            None
-        }
+    pub fn extend(&mut self, list: &[(Id, Data)]) -> Result<()> {
+        let ids = list.iter().map(|(id, _)| id).collect::<Vec<_>>();
+        self.remove(&ids)?;
+
+        list.iter().for_each(|(id, data)| {
+            let data = Arc::new((*data).clone());
+            self.map.insert(id.clone(), data.clone());
+            self.vec.push(data);
+        });
+
+        Ok(())
     }
 
-    pub fn remove(&mut self, ids: &[Id]) -> Result<()> {
+    // pub fn remove(&mut self, id: &Id) -> Option<Arc<Data>> {
+    //     if let Some(data) = self.map.remove(id) {
+    //         self.vec.retain(|d| d.id() != id);
+    //         Some(data)
+    //     } else {
+    //         None
+    //     }
+    // }
+
+    pub fn remove(&mut self, ids: &[&Id]) -> Result<()> {
         self.vec.retain(|data| {
             let id = data.id();
-            if ids.contains(id) {
+            if ids.contains(&id) {
                 self.map.remove(id);
                 false
             } else {
@@ -83,7 +96,7 @@ where
 
             let data = Arc::new((*data).clone());
             self.map.insert(id.clone(), data.clone());
-            self.vec.push(data.clone());
+            self.vec.push(data);
         }
         Ok(())
     }
@@ -129,33 +142,3 @@ where
         Ok(collection.vec.iter().map(|data| (**data).clone()).collect::<Vec<_>>())
     }
 }
-
-// impl Serialize for Hash {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         if serializer.is_human_readable() {
-//             let mut hex = [0u8; HASH_SIZE * 2];
-//             faster_hex::hex_encode(&self.0, &mut hex).expect("The output is exactly twice the size of the input");
-//             serializer.serialize_str(str::from_utf8(&hex).expect("hex is always valid UTF-8"))
-//         } else {
-//             serializer.serialize_bytes(&self.0)
-//         }
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for Hash {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         if deserializer.is_human_readable() {
-//             let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-//             FromStr::from_str(&s).map_err(serde::de::Error::custom)
-//         } else {
-//             let s = <Vec<u8> as Deserialize>::deserialize(deserializer)?;
-//             Ok(Self::try_from_slice(&s).map_err(D::Error::custom)?)
-//         }
-//     }
-// }

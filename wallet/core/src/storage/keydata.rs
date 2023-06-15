@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-
-// use crate::account::AccountId;
 use crate::address::create_xpub_from_mnemonic;
 use crate::result::Result;
 use crate::secret::Secret;
@@ -21,8 +19,10 @@ impl KeyDataId {
     pub fn new_from_slice(vec: &[u8]) -> Self {
         Self(<[u8; 8]>::try_from(<&[u8]>::clone(&vec)).expect("Error: invalid slice size for id"))
     }
+}
 
-    pub fn to_hex(&self) -> String {
+impl ToHex for KeyDataId {
+    fn to_hex(&self) -> String {
         self.0.to_vec().to_hex()
     }
 }
@@ -66,11 +66,11 @@ pub type PrvKeyDataMap = HashMap<PrvKeyDataId, PrvKeyData>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct KeyDataPayload {
+pub struct PrvKeyDataPayload {
     pub mnemonic: String,
 }
 
-impl KeyDataPayload {
+impl PrvKeyDataPayload {
     pub fn new(mnemonic: String) -> Self {
         Self { mnemonic }
     }
@@ -80,7 +80,7 @@ impl KeyDataPayload {
     }
 }
 
-impl Zeroize for KeyDataPayload {
+impl Zeroize for PrvKeyDataPayload {
     fn zeroize(&mut self) {
         self.mnemonic.zeroize();
     }
@@ -90,7 +90,8 @@ impl Zeroize for KeyDataPayload {
 #[serde(rename_all = "camelCase")]
 pub struct PrvKeyData {
     pub id: PrvKeyDataId,
-    pub payload: Encryptable<KeyDataPayload>,
+    pub name: Option<String>,
+    pub payload: Encryptable<PrvKeyDataPayload>,
 }
 
 impl PrvKeyData {
@@ -108,40 +109,55 @@ impl PrvKeyData {
     pub fn as_mnemonic(&self, payment_secret: Option<Secret>) -> Result<Mnemonic> {
         let payload = self.payload.decrypt(payment_secret)?;
         let words = payload.as_ref().mnemonic.as_str();
-        // Mnemonic::new(phrase, language)
-        let mnemonic = Mnemonic::new(words, Language::English)?;
-        Ok(mnemonic)
-        // Ok(())
+        Ok(Mnemonic::new(words, Language::English)?)
+    }
+}
+
+impl TryFrom<(Mnemonic, Option<Secret>)> for PrvKeyData {
+    type Error = Error;
+    fn try_from((mnemonic, payment_secret): (Mnemonic, Option<Secret>)) -> Result<Self> {
+        let key_data_payload = PrvKeyDataPayload::new(mnemonic.phrase().to_string());
+        let key_data_payload_id = key_data_payload.id();
+        let key_data_payload = Encryptable::Plain(key_data_payload);
+
+        let mut prv_key_data = PrvKeyData::new(key_data_payload_id, None, key_data_payload);
+
+        if let Some(payment_secret) = payment_secret {
+            prv_key_data.encrypt(payment_secret)?;
+        }
+
+        Ok(prv_key_data)
     }
 }
 
 impl Zeroize for PrvKeyData {
     fn zeroize(&mut self) {
         self.id.zeroize();
+        self.name.zeroize();
+        // TODO - review zeroize
         // self.payload.zeroize();
         // self.mnemonics.zeroize();
-        // TODO
     }
 }
 
 impl Drop for PrvKeyData {
     fn drop(&mut self) {
-        // TODO
-
+        // TODO - review zeroize
         // self.encrypted_mnemonics.zeroize();
     }
 }
 
 impl PrvKeyData {
-    pub fn new(id: PrvKeyDataId, payload: Encryptable<KeyDataPayload>) -> Self {
-        Self { id, payload }
+    pub fn new(id: PrvKeyDataId, name: Option<String>, payload: Encryptable<PrvKeyDataPayload>) -> Self {
+        Self { id, payload, name }
     }
 
     pub fn new_from_mnemonic(mnemonic: &str) -> Self {
-        // TODO - check that mnemonic is valid
+        let mnemonic = mnemonic.trim();
         Self {
             id: PrvKeyDataId::new_from_slice(&sha256_hash(mnemonic.as_bytes()).unwrap().as_ref()[0..8]),
-            payload: Encryptable::Plain(KeyDataPayload::new(mnemonic.to_string())),
+            payload: Encryptable::Plain(PrvKeyDataPayload::new(mnemonic.to_string())),
+            name: None,
         }
     }
 
@@ -154,18 +170,19 @@ impl PrvKeyData {
 #[derive(Clone)]
 pub struct PrvKeyDataInfo {
     pub id: PrvKeyDataId,
+    pub name: Option<String>,
     pub is_encrypted: bool,
 }
 
 impl From<&PrvKeyData> for PrvKeyDataInfo {
     fn from(data: &PrvKeyData) -> Self {
-        Self::new(data.id, data.payload.is_encrypted())
+        Self::new(data.id, data.name.clone(), data.payload.is_encrypted())
     }
 }
 
 impl PrvKeyDataInfo {
-    pub fn new(id: PrvKeyDataId, is_encrypted: bool) -> Self {
-        Self { id, is_encrypted }
+    pub fn new(id: PrvKeyDataId, name: Option<String>, is_encrypted: bool) -> Self {
+        Self { id, name, is_encrypted }
     }
 
     pub fn is_encrypted(&self) -> bool {

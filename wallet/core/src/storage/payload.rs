@@ -1,22 +1,24 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::storage::{Account, Encryptable, KeyDataPayload, PrvKeyData, PrvKeyDataId};
+use crate::storage::{Account, Encryptable, PrvKeyData, PrvKeyDataId, PrvKeyDataPayload, TransactionRecord};
 use kaspa_bip32::Mnemonic;
+
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Payload {
     pub prv_key_data: Vec<PrvKeyData>,
     pub accounts: Vec<Account>,
+    pub transaction_records : Vec<TransactionRecord>,
 }
 
 impl Payload {
     pub fn add_prv_key_data(&mut self, mnemonic: Mnemonic, payment_secret: Option<Secret>) -> Result<PrvKeyData> {
-        let key_data_payload = KeyDataPayload::new(mnemonic.phrase().to_string());
+        let key_data_payload = PrvKeyDataPayload::new(mnemonic.phrase().to_string());
         let key_data_payload_id = key_data_payload.id();
         let key_data_payload = Encryptable::Plain(key_data_payload);
 
-        let mut prv_key_data = PrvKeyData::new(key_data_payload_id, key_data_payload);
+        let mut prv_key_data = PrvKeyData::new(key_data_payload_id, None, key_data_payload);
         if let Some(payment_secret) = payment_secret {
             prv_key_data.encrypt(payment_secret)?;
         }

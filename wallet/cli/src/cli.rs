@@ -1,9 +1,12 @@
 use crate::actions::*;
+use crate::error::Error;
 use crate::helpers;
 use crate::result::Result;
 use async_trait::async_trait;
 use futures::*;
 use kaspa_wallet_core::accounts::gen0::import::*;
+use kaspa_wallet_core::imports::ToHex;
+use kaspa_wallet_core::iterator::IteratorOptions;
 use kaspa_wallet_core::storage::AccountKind;
 use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
 use kaspa_wallet_core::{Address, AddressPrefix};
@@ -97,7 +100,7 @@ impl WalletCli {
                 let account_kind = AccountKind::Bip32;
                 let mut args = AccountCreateArgs::new(title, account_kind, wallet_password, Some(payment_password));
                 let res = self.wallet.create_wallet(&args).await;
-                let (path, mnemonic) = if let Err(err) = res {
+                let mnemonic = if let Err(err) = res {
                     if !matches!(err, Error::WalletAlreadyExists) {
                         return Err(err.into());
                     }
@@ -116,7 +119,7 @@ impl WalletCli {
 
                 // let mnemonic_phrase = String::from_utf8_lossy(secret.as_ref());
                 term.writeln(format!("Default account mnemonic:\n{}\n", mnemonic.phrase()));
-                term.writeln(format!("Wrote the wallet into '{}'\n", path.to_str().unwrap()));
+                // term.writeln(format!("Wrote the wallet into '{}'\n", path.to_str().unwrap()));
 
                 // - TODO - Select created as a current account
             }
@@ -132,10 +135,10 @@ impl WalletCli {
                 let password = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
                 let mut _payment_secret = Option::<Secret>::None;
 
-                if self.wallet.is_account_key_encrypted(&account, password.clone()).await? {
+                if self.wallet.is_account_key_encrypted(&account).await?.is_some_and(|flag| flag) {
                     _payment_secret = Some(Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec()));
                 }
-                let keydata = self.wallet.get_account_keydata(account.prv_key_data_id, password.clone()).await?;
+                let keydata = self.wallet.get_prv_key_data(password.clone(), &account.prv_key_data_id).await?;
                 if keydata.is_none() {
                     return Err("It is read only wallet.".into());
                 }
@@ -173,10 +176,10 @@ impl WalletCli {
                 let password = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
                 let mut payment_secret = Option::<Secret>::None;
 
-                if self.wallet.is_account_key_encrypted(&account, password.clone()).await? {
+                if self.wallet.is_account_key_encrypted(&account).await?.is_some_and(|f| f) {
                     payment_secret = Some(Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec()));
                 }
-                let keydata = self.wallet.get_account_keydata(account.prv_key_data_id, password.clone()).await?;
+                let keydata = self.wallet.get_prv_key_data(password.clone(), &account.prv_key_data_id).await?;
                 if keydata.is_none() {
                     return Err("It is read only wallet.".into());
                 }
@@ -257,13 +260,26 @@ impl WalletCli {
 
             // ~~~
             Action::List => {
-                let map = self.wallet.account_map().locked_map();
-                for (prv_key_data_id, list) in map.iter() {
-                    term.writeln(format!("key: {}", prv_key_data_id.to_hex()));
-                    for account in list.iter() {
-                        term.writeln(account.get_ls_string());
+                let mut keys = self.wallet.keys(IteratorOptions::default());
+                while let Some(keys) = keys.next().await? {
+                    for key in keys {
+                        term.writeln(format!("key: {}", key.id.to_hex()));
+                        let mut accounts = self.wallet.accounts(Some(key.id), IteratorOptions::default());
+                        while let Some(accounts) = accounts.next().await? {
+                            for account in accounts {
+                                term.writeln(format!("account: {}", account.id.to_hex()));
+                            }
+                        }
                     }
                 }
+
+                // let map = self.wallet.account_map().locked_map();
+                // for (prv_key_data_id, list) in map.iter() {
+                //     term.writeln(format!("key: {}", prv_key_data_id.to_hex()));
+                //     for account in list.iter() {
+                //         term.writeln(account.get_ls_string());
+                //     }
+                // }
             }
             Action::Select => {
                 if argv.is_empty() {
@@ -271,10 +287,16 @@ impl WalletCli {
                 } else {
                     let name = argv.remove(0);
                     let account = {
-                        let accounts = self.wallet.account_list()?;
-                        accounts.iter().position(|account| account.name() == name).map(|index| accounts.get(index).unwrap().clone())
+                        // let accounts = ;
+                        self.wallet
+                            .connected_accounts()
+                            .inner()
+                            .values()
+                            .find(|account| account.name() == name)
+                            .ok_or(Error::AccountNotFound(name))?
+                            .clone()
                     };
-                    self.wallet.select(account).await?;
+                    self.wallet.select(Some(account)).await?;
                 }
             }
             Action::Open => {

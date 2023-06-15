@@ -19,13 +19,21 @@ impl Store {
     }
 }
 
-impl Default for Store {
-    fn default() -> Self {
-        Self::new(super::DEFAULT_WALLET_FOLDER, super::DEFAULT_WALLET_FILE).unwrap()
-    }
-}
+// impl Default for Store {
+//     fn default() -> Self {
+//         Self::new(super::DEFAULT_WALLET_FOLDER, super::DEFAULT_WALLET_FILE).unwrap()
+//     }
+// }
 
 impl Store {
+    pub fn default_wallet_store() -> Self {
+        Self::new(super::DEFAULT_STORAGE_FOLDER, super::DEFAULT_WALLET_FILE).unwrap()
+    }
+
+    pub fn default_settings_store() -> Self {
+        Self::new(super::DEFAULT_STORAGE_FOLDER, super::DEFAULT_SETTINGS_FILE).unwrap()
+    }
+
     pub fn new(folder: &str, name: &str) -> Result<Store> {
         let filename = if runtime::is_web() {
             PathBuf::from(name) //filename.file_name().ok_or(Error::InvalidFilename(format!("{}", filename.display())))?)

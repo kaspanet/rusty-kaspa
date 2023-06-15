@@ -104,6 +104,12 @@ pub enum Error {
     #[error("private key {0} not found")]
     PrivateKeyNotFound(String),
 
+    #[error("private key {0} already exists")]
+    PrivateKeyAlreadyExists(String),
+
+    #[error("wallet secret is required")]
+    WalletSecretRequired,
+
     #[error("task aborted")]
     Aborted,
 }

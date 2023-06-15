@@ -31,6 +31,9 @@ pub enum Error {
 
     #[error(transparent)]
     ParseIntError(#[from] std::num::ParseIntError),
+
+    #[error("account '{0}' not found")]
+    AccountNotFound(String),
 }
 
 impl Error {

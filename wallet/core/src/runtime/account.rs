@@ -12,7 +12,6 @@ use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoOrdering, UtxoSet};
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
 use futures::future::join_all;
-use itertools::Itertools;
 use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, Language, Mnemonic, PrivateKey, SecretKey};
 use kaspa_notify::listener::ListenerId;
@@ -89,6 +88,12 @@ impl AccountId {
     }
 }
 
+impl ToHex for AccountId {
+    fn to_hex(&self) -> String {
+        format!("{:x}", self.0)
+    }
+}
+
 impl Serialize for AccountId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -128,7 +133,8 @@ pub struct Inner {
 /// HD-key derivation (derived from a wallet or from an an external secret)
 #[wasm_bindgen(inspectable)]
 pub struct Account {
-    id: AccountId,
+    #[wasm_bindgen(skip)]
+    pub id: AccountId,
     inner: Arc<Mutex<Inner>>,
     wallet: Arc<Wallet>,
     utxos: UtxoSet,
@@ -139,7 +145,6 @@ pub struct Account {
     pub account_index: u64,
     #[wasm_bindgen(skip)]
     pub prv_key_data_id: PrvKeyDataId,
-    // pub prv_key_data_id: Option<PrvKeyDataId>,
     pub ecdsa: bool,
     #[wasm_bindgen(skip)]
     pub derivation: Arc<AddressDerivationManager>,
@@ -150,7 +155,7 @@ pub struct Account {
 }
 
 impl Account {
-    pub async fn try_new_with_args(
+    pub async fn try_new_arc_with_args(
         wallet: &Arc<Wallet>,
         name: &str,
         title: &str,
@@ -160,7 +165,7 @@ impl Account {
         pub_key_data: PubKeyData,
         ecdsa: bool,
         address_prefix: AddressPrefix,
-    ) -> Result<Self> {
+    ) -> Result<Arc<Self>> {
         let minimum_signatures = pub_key_data.minimum_signatures.unwrap_or(1) as usize;
         let derivation =
             AddressDerivationManager::new(address_prefix, account_kind, &pub_key_data, ecdsa, minimum_signatures, None, None).await?;
@@ -180,7 +185,7 @@ impl Account {
 
         let inner = Inner { listener_id: None, stored };
 
-        Ok(Account {
+        Ok(Arc::new(Account {
             id: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
             wallet: wallet.clone(),
             utxos: UtxoSet::default(),
@@ -194,11 +199,14 @@ impl Account {
             derivation,
             task_ctl: DuplexChannel::oneshot(),
             notification_channel: Channel::<Notification>::unbounded(),
-            // virtual_daa_score: Arc::new(AtomicU64::default()),
-        })
+        }))
     }
 
-    pub async fn try_new_from_storage(wallet: &Arc<Wallet>, stored: &storage::Account, address_prefix: AddressPrefix) -> Result<Self> {
+    pub async fn try_new_arc_from_storage(
+        wallet: &Arc<Wallet>,
+        stored: &storage::Account,
+        address_prefix: AddressPrefix,
+    ) -> Result<Arc<Self>> {
         let minimum_signatures = stored.pub_key_data.minimum_signatures.unwrap_or(1) as usize;
         let derivation = AddressDerivationManager::new(
             address_prefix,
@@ -213,7 +221,7 @@ impl Account {
 
         let inner = Inner { listener_id: None, stored: stored.clone() };
 
-        Ok(Account {
+        Ok(Arc::new(Account {
             id: AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index),
             wallet: wallet.clone(),
             utxos: UtxoSet::default(),
@@ -227,8 +235,7 @@ impl Account {
             derivation,
             task_ctl: DuplexChannel::oneshot(),
             notification_channel: Channel::<Notification>::unbounded(),
-            // virtual_daa_score: Arc::new(AtomicU64::default()),
-        })
+        }))
     }
 
     pub async fn update_balance(self: &Arc<Account>) -> Result<u64> {
@@ -500,6 +507,8 @@ impl Account {
 
     /// handle connection event
     pub async fn connect(self: &Arc<Self>) -> Result<()> {
+        self.wallet.connected_accounts().insert(self.clone());
+
         // self.is_connected.store(true, Ordering::SeqCst);
         // self.register_notification_listener().await?;
         self.scan_utxos(Some(128), None).await?;
@@ -508,6 +517,7 @@ impl Account {
 
     /// handle disconnection event
     pub async fn disconnect(&self) -> Result<()> {
+        self.wallet.connected_accounts().remove(&self.id);
         // self.is_connected.store(false, Ordering::SeqCst);
         // self.unregister_notification_listener().await?;
         Ok(())
@@ -557,80 +567,39 @@ impl Account {
     }
 }
 
-pub type AccountList = Vec<Arc<Account>>;
-
 #[derive(Default, Clone)]
-pub struct AccountMap(Arc<Mutex<HashMap<PrvKeyDataId, AccountList>>>);
+pub struct AccountMap(Arc<Mutex<HashMap<AccountId, Arc<Account>>>>);
 
 impl AccountMap {
-    pub fn locked_map(&self) -> MutexGuard<HashMap<PrvKeyDataId, AccountList>> {
+
+    pub fn inner(&self) -> MutexGuard<HashMap<AccountId, Arc<Account>>> {
         self.0.lock().unwrap()
     }
 
     pub fn clear(&self) {
-        self.0.lock().unwrap().clear();
+        self.inner().clear();
     }
 
-    pub fn extend(&self, accounts: Vec<Arc<Account>>) -> Result<()> {
-        let mut map = self.0.lock().unwrap();
-        for account in accounts.into_iter() {
-            if let Some(list) = map.get_mut(&account.prv_key_data_id) {
-                list.push(account.clone());
-            } else {
-                map.insert(account.prv_key_data_id, vec![account.clone()]);
-                // map.insert(account.prv_key_data_id, AccountList::new_with_accounts(&[account]));
-            }
-        }
-
-        Ok(())
+    pub fn get(&self, account_id: &AccountId) -> Option<Arc<Account>> {
+        self.inner().get(account_id).cloned()
     }
 
-    pub fn insert(&self, account: Arc<Account>) -> Result<()> {
-        // let account = Arc::new(account);
-        let mut map = self.0.lock().unwrap();
-        if let Some(list) = map.get_mut(&account.prv_key_data_id) {
-            list.push(account.clone());
-        } else {
-            map.insert(account.prv_key_data_id, vec![account.clone()]);
-            // map.insert(account.prv_key_data_id, AccountList::new_with_accounts(&[account]));
-        }
-
-        Ok(())
+    pub fn extend(&self, accounts: Vec<Arc<Account>>) {
+        let mut map = self.inner();
+        let accounts = accounts.into_iter().map(|a| (a.id, a)); //.collect::<Vec<_>>();
+        map.extend(accounts);
     }
 
-    pub fn remove(&self, account: &Account) -> Result<()> {
-        let mut map = self.0.lock().unwrap();
-        if let Some(list) = map.get_mut(&account.prv_key_data_id) {
-            list.retain(|existing_account| account.id != existing_account.id);
-        } else {
-            log_warning!("AccountMap::remove(): unknown account - no such prv_key_data_id: {}", account.prv_key_data_id.to_hex());
-        }
-        Ok(())
+    pub fn insert(&self, account: Arc<Account>) {
+        self.inner().insert(account.id, account);
     }
 
-    pub fn get_prv_key_data_list(&self, prv_key_data_id: &PrvKeyDataId) -> Result<AccountList> {
-        let map = self.0.lock().unwrap();
-        if let Some(list) = map.get(prv_key_data_id) {
-            Ok(list.clone())
-        } else {
-            Ok(AccountList::default())
-        }
+    pub fn remove(&self, id: &AccountId) {
+        self.inner().remove(id);
     }
 
-    pub fn cloned_flat_list(&self) -> Result<AccountList> {
-        Ok(
-            self
-            .0
-            .lock()
-            .unwrap()
-            .values()
-            .cloned()
-            .collect_vec()
-            // .into_iter()
-            // .map(|list| list.0)
-            .into_iter()
-            .flatten()
-            .collect_vec(), // .into()
-        )
+    pub fn cloned_flat_list(&self) -> Vec<Arc<Account>> {
+        self.inner().values().cloned().collect()
     }
+
 }

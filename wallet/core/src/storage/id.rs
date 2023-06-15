@@ -3,7 +3,7 @@ use std::fmt::Debug;
 // use std::fmt::Display;
 use std::hash::Hash;
 
-use crate::storage::{Account, AccountId, Metadata, PrvKeyData, PrvKeyDataId, TransactionRecord, TransactionRecordId};
+use crate::storage::{Account, AccountId, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord, TransactionRecordId};
 
 pub trait IdT {
     type Id: Eq + Hash + Debug;
@@ -17,6 +17,13 @@ impl IdT for PrvKeyData {
     }
 }
 
+impl IdT for PrvKeyDataInfo {
+    type Id = PrvKeyDataId;
+    fn id(&self) -> &PrvKeyDataId {
+        &self.id
+    }
+}
+
 impl IdT for Account {
     type Id = AccountId;
     fn id(&self) -> &AccountId {
@@ -24,12 +31,12 @@ impl IdT for Account {
     }
 }
 
-impl IdT for Metadata {
-    type Id = AccountId;
-    fn id(&self) -> &AccountId {
-        &self.id
-    }
-}
+// impl IdT for Metadata {
+//     type Id = AccountId;
+//     fn id(&self) -> &AccountId {
+//         &self.id
+//     }
+// }
 
 impl IdT for TransactionRecord {
     type Id = TransactionRecordId;

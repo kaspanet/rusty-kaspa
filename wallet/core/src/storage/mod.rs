@@ -8,17 +8,18 @@ pub mod local;
 pub mod metadata;
 pub mod payload;
 pub mod transaction;
-pub mod wallet;
+pub mod wasm;
+// pub mod wallet;
 
 pub use account::Account;
 pub use id::IdT;
 pub use interface::{AccessContextT, AccountStore, Interface, MetadataStore, PrvKeyDataStore, TransactionRecordStore};
 // pub use iterator::{Iterator, IteratorOptions};
-pub use keydata::{KeyDataPayload, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PubKeyData, PubKeyDataId};
+pub use keydata::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload, PubKeyData, PubKeyDataId};
 pub use metadata::Metadata;
 pub use payload::Payload;
 pub use transaction::{TransactionRecord, TransactionRecordId};
-pub use wallet::Wallet;
+// pub use wallet::Wallet;
 
 pub use crate::runtime::{AccountId, AccountKind};
 
@@ -27,6 +28,7 @@ mod tests {
     use super::*;
     use crate::result::Result;
     use crate::secret::Secret;
+    use crate::storage::local::wallet::Wallet;
 
     #[tokio::test]
     async fn test_wallet_store_wallet_store_load() -> Result<()> {
@@ -35,7 +37,7 @@ mod tests {
         // loading of account references and a wallet instance and confirms
         // that the serialized data is as expected.
 
-        let store = local::Store::new(local::DEFAULT_WALLET_FOLDER, "test-wallet-store")?;
+        let store = local::Store::new(local::DEFAULT_STORAGE_FOLDER, "test-wallet-store")?;
 
         let mut payload = Payload::default();
 
@@ -44,12 +46,12 @@ mod tests {
         let mnemonic1 = "caution guide valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light nut invite fiction visa hamster coyote".to_string();
         let mnemonic2 = "nut invite fiction visa hamster coyote guide caution valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light".to_string();
 
-        let key_data_payload1 = KeyDataPayload::new(mnemonic1.clone());
-        let prv_key_data1 = PrvKeyData::new(key_data_payload1.id(), Encryptable::Plain(key_data_payload1));
+        let key_data_payload1 = PrvKeyDataPayload::new(mnemonic1.clone());
+        let prv_key_data1 = PrvKeyData::new(key_data_payload1.id(), None, Encryptable::Plain(key_data_payload1));
 
-        let key_data_payload2 = KeyDataPayload::new(mnemonic2.clone());
+        let key_data_payload2 = PrvKeyDataPayload::new(mnemonic2.clone());
         let prv_key_data2 =
-            PrvKeyData::new(key_data_payload2.id(), Encryptable::Plain(key_data_payload2).into_encrypted(password.clone())?);
+            PrvKeyData::new(key_data_payload2.id(), None, Encryptable::Plain(key_data_payload2).into_encrypted(password.clone())?);
 
         let pub_key_data1 = PubKeyData::new(vec!["abc".to_string()], None, None);
         let pub_key_data2 = PubKeyData::new(vec!["xyz".to_string()], None, None);
@@ -89,7 +91,7 @@ mod tests {
 
         let payload_json = serde_json::to_string(&payload).unwrap();
         // let settings = WalletSettings::new(account_id);
-        Wallet::try_store(&store, global_password.clone(), payload).await?;
+        Wallet::try_store_payload(&store, global_password.clone(), payload).await?;
 
         let w2 = Wallet::try_load(&store).await?;
         let w2payload = w2.payload.decrypt::<Payload>(global_password.clone()).unwrap();

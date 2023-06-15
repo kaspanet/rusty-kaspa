@@ -69,53 +69,26 @@ where
     }
 }
 
+// TODO review zeroize functionality on drop
+// impl<T> Drop for Encryptable<T>
+// // // where T : DefaultIsZeroes
+// // where
+// //     T: Clone + Serialize + DeserializeOwned + Zeroize,
+// {
+//     fn drop(&mut self) {
+//         match self {
+//             Self::Plain(v) => v.zeroize(),
+//             Self::XChaCha20Poly1305(v) => {},
+//         }
+//     }
+// }
+
 impl<T> From<T> for Encryptable<T> {
     fn from(value: T) -> Self {
         Encryptable::Plain(value)
     }
 }
 
-// impl<T> From<Encrypted> for Encryptable<T> {
-//     fn from(value: T) -> Self {
-//         Encryptable::Plain(value)
-//     }
-// }
-
-// impl From<Vec<u8>> for Encryptable<Vec<u8>> {
-// impl<T> Serialize for Encryptable<T>
-// where T: Serialize
-// {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//         // T: Serialize,
-//     {
-//         match self {
-//             Encryptable::Plain(v) => {
-//                 let v = serde_json::to_value(v).map_err(serde::ser::Error::custom)?;
-//                 serializer.serialize_newtype_struct("Encryptable", &v)
-//             },
-//             Encryptable::XChaCha20Poly1305(encrypted) => {
-
-//                 serializer.serialize_str(&hex_string(&encrypted.payload))
-//             }
-
-//         }
-//     }
-// }
-
-// impl<'de, T> Deserialize<'de> for Encryptable<T> {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-
-//         let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-//         let mut data = vec![0u8; s.len() / 2];
-//         hex_decode(s.as_bytes(), &mut data).map_err(serde::de::Error::custom)?;
-//         Ok(Self::new(data))
-//     }
-// }
 
 pub struct Decrypted<T>(pub(crate) T);
 // where
@@ -153,7 +126,6 @@ impl<T> DerefMut for Decrypted<T>
 // where
 //     T: Zeroize,
 {
-    // type Target = T;
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -193,6 +165,10 @@ pub struct Encrypted {
 impl Encrypted {
     pub fn new(payload: Vec<u8>) -> Self {
         Encrypted { payload }
+    }
+
+    pub fn replace(&mut self, from: Encrypted) {
+        self.payload = from.payload;
     }
 
     pub fn decrypt<T>(&self, secret: Secret) -> Result<Decrypted<T>>
