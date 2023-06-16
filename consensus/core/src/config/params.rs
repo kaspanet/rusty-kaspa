@@ -24,10 +24,10 @@ pub struct Params {
     pub genesis: GenesisBlock,
     pub ghostdag_k: KType,
 
-    /// Legacy timestamp deviation tolerance
+    /// Legacy timestamp deviation tolerance (in seconds)
     pub legacy_timestamp_deviation_tolerance: u64,
 
-    /// New timestamp deviation tolerance (activated with sampling)
+    /// New timestamp deviation tolerance (in seconds, activated with sampling)
     pub new_timestamp_deviation_tolerance: u64,
 
     /// Block sample rate for filling the past median time window (selects one every N blocks)
@@ -36,7 +36,7 @@ pub struct Params {
     /// Size of sampled blocks window that is inspected to calculate the past median time of each block
     pub past_median_time_sampled_window_size: u64,
 
-    /// Current/legacy target time per block
+    /// Target time per block (in milliseconds)
     pub target_time_per_block: u64,
 
     /// DAA score from which the window sampling starts for difficulty and past median time calculation

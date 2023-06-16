@@ -13,9 +13,6 @@ pub mod consensus {
     /// Estimated upper bound on network delay in seconds
     pub const NETWORK_DELAY_BOUND: u64 = 5;
 
-    /// Estimation of the average network delay in seconds
-    pub const NETWORK_DELAY_AVERAGE: u64 = 2;
-
     /// **Desired** upper bound on the probability of anticones larger than k
     pub const GHOSTDAG_TAIL_DELTA: f64 = 0.01;
 
