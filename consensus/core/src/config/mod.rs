@@ -47,9 +47,13 @@ pub struct Config {
 
 impl Config {
     pub fn new(params: Params) -> Self {
+        Self::with_perf(params, PERF_PARAMS)
+    }
+
+    pub fn with_perf(params: Params, perf: PerfParams) -> Self {
         Self {
             params,
-            perf: PERF_PARAMS,
+            perf,
             process_genesis: true,
             is_archival: false,
             enable_sanity_checks: false,
@@ -90,6 +94,11 @@ impl ConfigBuilder {
 
     pub fn set_perf_params(mut self, perf: PerfParams) -> Self {
         self.config.perf = perf;
+        self
+    }
+
+    pub fn adjust_perf_params_to_consensus_params(mut self) -> Self {
+        self.config.perf.adjust_to_consensus_params(&self.config.params);
         self
     }
 

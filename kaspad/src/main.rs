@@ -32,7 +32,7 @@ use args::{Args, Defaults};
 // ~~~
 
 // TODO: testnet 11 tasks:
-// coinbase rewards, perf args, p2p, rpc and flow ctx config, testnet 11 ports
+// coinbase rewards, p2p, rpc and flow ctx config
 
 use kaspa_consensus::config::ConfigBuilder;
 use kaspa_utxoindex::UtxoIndex;
@@ -113,7 +113,12 @@ pub fn main() {
         _ => panic!("only a single net should be activated"),
     };
 
-    let config = Arc::new(ConfigBuilder::new(network.into()).apply_args(|config| args.apply_to_config(config)).build());
+    let config = Arc::new(
+        ConfigBuilder::new(network.into())
+            .adjust_perf_params_to_consensus_params()
+            .apply_args(|config| args.apply_to_config(config))
+            .build(),
+    );
 
     // Make sure config and args form a valid set of properties
     if let Err(err) = validate_config_and_args(&config, &args) {

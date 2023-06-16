@@ -101,6 +101,10 @@ pub mod perf {
     //! The constants in this module should all be revisited if mainnet consensus parameters change.
     //!
 
+    use crate::{config::params::Params, header::Header, BlueWorkType};
+    use kaspa_hashes::Hash;
+    use std::mem::size_of;
+
     /// The default target depth for reachability reindexes.
     pub const DEFAULT_REINDEX_DEPTH: u64 = 100;
 
@@ -108,11 +112,19 @@ pub mod perf {
     /// algorithm to encounter for blocks out of the selected chain.
     pub const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
 
+    const BASELINE_HEADER_DATA_CACHE_SIZE: u64 = 10_000;
+    const BASELINE_BLOCK_DATA_CACHE_SIZE: u64 = 200;
+    const BASELINE_BLOCK_WINDOW_CACHE_SIZE: u64 = 2000;
+    const BASELINE_UTXOSET_CACHE_SIZE: u64 = 10_000;
+
     #[derive(Clone, Debug)]
     pub struct PerfParams {
         //
         // Cache sizes
         //
+        /// Preferred cache size for headers store
+        pub headers_cache_size: u64,
+
         /// Preferred cache size for header-related data
         pub header_data_cache_size: u64,
 
@@ -140,13 +152,58 @@ pub mod perf {
     }
 
     pub const PERF_PARAMS: PerfParams = PerfParams {
-        header_data_cache_size: 10_000,
-        block_data_cache_size: 200,
-        utxo_set_cache_size: 10_000,
-        block_window_cache_size: 2000,
+        headers_cache_size: BASELINE_HEADER_DATA_CACHE_SIZE,
+        header_data_cache_size: BASELINE_HEADER_DATA_CACHE_SIZE,
+        block_data_cache_size: BASELINE_BLOCK_DATA_CACHE_SIZE,
+        utxo_set_cache_size: BASELINE_UTXOSET_CACHE_SIZE,
+        block_window_cache_size: BASELINE_BLOCK_WINDOW_CACHE_SIZE,
         block_processors_num_threads: 0,
         virtual_processor_num_threads: 0,
     };
+
+    impl PerfParams {
+        pub fn adjust_to_consensus_params(&mut self, consensus_params: &Params) {
+            let bps = 1000 / consensus_params.target_time_per_block;
+            self.block_data_cache_size *= bps.clamp(1, 10); // Allow caching up to 10x over the baseline
+            self.block_window_cache_size = calculate_difficulty_window_cache_size(consensus_params);
+            self.headers_cache_size = calculate_headers_cache_size(consensus_params);
+        }
+    }
+
+    /// Bounds the cache size according to the "memory budget" (represented in bytes) and the approximate size of each unit in bytes
+    pub fn bounded_cache_size(desired_size: u64, memory_budget_bytes: u64, approx_unit_bytes: usize) -> u64 {
+        let max_cache_size = memory_budget_bytes / approx_unit_bytes as u64;
+        u64::min(desired_size, max_cache_size)
+    }
+
+    pub fn calculate_difficulty_window_cache_size(consensus_params: &Params) -> u64 {
+        let window_memory_budget = 1_000_000_000u64; // 1GB
+        let single_window_byte_size = consensus_params.difficulty_window_size(0) * (size_of::<Hash>() + size_of::<BlueWorkType>());
+        bounded_cache_size(BASELINE_BLOCK_WINDOW_CACHE_SIZE, window_memory_budget, single_window_byte_size)
+    }
+
+    pub fn calculate_headers_cache_size(consensus_params: &Params) -> u64 {
+        let headers_memory_budget = 1_000_000_000u64; // 1GB
+        let bps = 1000 / consensus_params.target_time_per_block;
+        let approx_header_byte_size = approx_header_parents(consensus_params) * size_of::<Hash>() + size_of::<Header>();
+        bounded_cache_size(bps * BASELINE_HEADER_DATA_CACHE_SIZE, headers_memory_budget, approx_header_byte_size)
+    }
+
+    pub fn approx_direct_header_parents(consensus_params: &Params) -> usize {
+        let bps = 1000 / consensus_params.target_time_per_block as usize;
+        let avg_delay = 2;
+        bps * avg_delay
+    }
+
+    pub fn approx_header_parents(consensus_params: &Params) -> usize {
+        approx_direct_header_parents(consensus_params) * 2 // 2x for multi-levels
+    }
+
+    pub fn approx_mergeset_size(consensus_params: &Params) -> usize {
+        let bps = 1000 / consensus_params.target_time_per_block as usize;
+        let avg_delay = 2;
+        bps * avg_delay
+    }
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use itertools::Itertools;
 use kaspa_consensus::{
     config::ConfigBuilder,
     consensus::Consensus,
-    constants::perf::{PerfParams, PERF_PARAMS},
+    constants::perf::PerfParams,
     model::stores::{
         block_transactions::BlockTransactionsStoreReader,
         ghostdag::{GhostdagStoreReader, KType},
@@ -13,18 +13,17 @@ use kaspa_consensus::{
         relations::RelationsStoreReader,
     },
     params::{Params, TestnetHighBps, DEVNET_PARAMS, TESTNET_11_PARAMS},
-    processes::ghostdag::ordering::SortableBlock,
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
-    header::Header, BlockHashSet, BlockLevel, HashMapCustomHasher,
+    BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{info, warn};
 use kaspa_database::utils::{create_temp_db_with_parallelism, load_existing_db};
 use kaspa_hashes::Hash;
 use simulator::network::KaspaNetworkSimulator;
-use std::{collections::VecDeque, mem::size_of, sync::Arc};
+use std::{collections::VecDeque, sync::Arc};
 
 pub mod simulator;
 
@@ -115,11 +114,13 @@ fn main() {
         );
     }
     args.bps = if args.testnet11 { TestnetHighBps::bps() as f64 } else { args.bps };
-    let mut params = if args.testnet11 { TESTNET_11_PARAMS } else { DEVNET_PARAMS };
-    let mut perf_params = PERF_PARAMS;
-    adjust_consensus_params(&args, &mut params);
-    adjust_perf_params(&args, &params, &mut perf_params);
-    let mut builder = ConfigBuilder::new(params).set_perf_params(perf_params).skip_proof_of_work().enable_sanity_checks();
+    let params = if args.testnet11 { TESTNET_11_PARAMS } else { DEVNET_PARAMS };
+    let mut builder = ConfigBuilder::new(params)
+        .apply_args(|config| apply_args_to_consensus_params(&args, &mut config.params))
+        .apply_args(|config| apply_args_to_perf_params(&args, &mut config.perf))
+        .adjust_perf_params_to_consensus_params()
+        .skip_proof_of_work()
+        .enable_sanity_checks();
     if !args.test_pruning {
         builder = builder.set_archival();
     }
@@ -156,7 +157,7 @@ fn main() {
     drop(consensus);
 }
 
-fn adjust_consensus_params(args: &Args, params: &mut Params) {
+fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
     // We have no actual PoW in the simulation, so the true max is most reflective,
     // however we avoid the actual max since it is reserved for the DB prefix scheme
     params.max_block_level = BlockLevel::MAX - 1;
@@ -210,21 +211,7 @@ fn adjust_consensus_params(args: &Args, params: &mut Params) {
     }
 }
 
-fn adjust_perf_params(args: &Args, consensus_params: &Params, perf_params: &mut PerfParams) {
-    // Allow caching up to ~2000 full blocks
-    perf_params.block_data_cache_size = (perf_params.block_data_cache_size as f64 * args.bps.clamp(1.0, 10.0)) as u64;
-
-    let daa_window_memory_budget = 1_000_000_000u64; // 1GB
-    let single_window_byte_size = consensus_params.difficulty_window_size(0) as u64 * size_of::<SortableBlock>() as u64;
-    let max_daa_window_cache_size = daa_window_memory_budget / single_window_byte_size;
-    perf_params.block_window_cache_size = u64::min(perf_params.block_window_cache_size, max_daa_window_cache_size);
-
-    let headers_memory_budget = 1_000_000_000u64; // 1GB
-    let approx_header_num_parents = (args.bps * args.delay) as u64 * 2; // x2 for multi-levels
-    let approx_header_byte_size = approx_header_num_parents * size_of::<Hash>() as u64 + size_of::<Header>() as u64;
-    let max_headers_cache_size = headers_memory_budget / approx_header_byte_size;
-    perf_params.header_data_cache_size = u64::min(perf_params.header_data_cache_size, max_headers_cache_size);
-
+fn apply_args_to_perf_params(args: &Args, perf_params: &mut PerfParams) {
     if let Some(processors_pool_threads) = args.processors_threads {
         perf_params.block_processors_num_threads = processors_pool_threads;
     }
