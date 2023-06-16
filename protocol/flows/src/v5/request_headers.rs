@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{cmp::max, sync::Arc};
 
 use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_hashes::Hash;
@@ -61,12 +61,13 @@ impl RequestHeadersFlow {
 
             // max_blocks MUST be > merge_set_size_limit
             while low != high {
-                const MAX_BLOCKS: usize = 1 << 10;
+                const MAX_BLOCKS: usize = 1 << 11;
+                let max_blocks = max(MAX_BLOCKS, self.ctx.config.mergeset_size_limit as usize + 1);
                 debug!("Getting block headers between {} and {}", high, low);
 
                 // We spawn the I/O-intensive operation of reading a bunch of headers as a tokio blocking task
                 let (block_headers, last) =
-                    session.spawn_blocking(move |c| Self::get_headers_between(c, low, high, MAX_BLOCKS)).await?;
+                    session.spawn_blocking(move |c| Self::get_headers_between(c, low, high, max_blocks)).await?;
                 debug!("Got {} header hashes above {}", block_headers.len(), low);
                 low = last;
                 self.router.enqueue(make_message!(Payload::BlockHeaders, BlockHeadersMessage { block_headers })).await?;
