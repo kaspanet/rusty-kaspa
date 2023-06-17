@@ -39,6 +39,10 @@ impl RequestHeadersFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        const MAX_BLOCKS: usize = 1 << 10;
+        // Internal consensus logic requires that `max_blocks > mergeset_size_limit`
+        let max_blocks = max(MAX_BLOCKS, self.ctx.config.mergeset_size_limit as usize + 1);
+
         loop {
             let msg = dequeue!(self.incoming_route, Payload::RequestHeaders)?;
             let (high, mut low) = msg.try_into()?;
@@ -61,8 +65,6 @@ impl RequestHeadersFlow {
 
             // max_blocks MUST be > merge_set_size_limit
             while low != high {
-                const MAX_BLOCKS: usize = 1 << 11;
-                let max_blocks = max(MAX_BLOCKS, self.ctx.config.mergeset_size_limit as usize + 1);
                 debug!("Getting block headers between {} and {}", high, low);
 
                 // We spawn the I/O-intensive operation of reading a bunch of headers as a tokio blocking task
