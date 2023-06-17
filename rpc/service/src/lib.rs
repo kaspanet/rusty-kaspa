@@ -5,12 +5,12 @@ use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{
     core::Core,
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
-    trace,
+    trace, warn,
 };
 use kaspa_index_core::notifier::IndexNotifier;
 use kaspa_mining::manager::MiningManager;
 use kaspa_p2p_flows::flow_context::FlowContext;
-use kaspa_utils::triggers::DuplexTrigger;
+use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utxoindex::api::DynUtxoIndexApi;
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ const RPC_CORE_SERVICE: &str = "rpc-core-service";
 /// [`RpcCoreServer`] encapsulates and exposes a [`RpcCoreService`] as an [`AsyncService`].
 pub struct RpcCoreServer {
     service: Arc<RpcCoreService>,
-    shutdown: DuplexTrigger,
+    shutdown: SingleTrigger,
 }
 
 impl RpcCoreServer {
@@ -47,7 +47,7 @@ impl RpcCoreServer {
             config,
             core,
         ));
-        Self { service, shutdown: DuplexTrigger::default() }
+        Self { service, shutdown: SingleTrigger::default() }
     }
 
     #[inline(always)]
@@ -67,36 +67,33 @@ impl AsyncService for RpcCoreServer {
         trace!("{} starting", RPC_CORE_SERVICE);
         let service = self.service.clone();
 
-        // Prepare a start shutdown signal receiver and a shutdown ended signal sender
-        let shutdown_signal = self.shutdown.request.listener.clone();
-        let shutdown_executed = self.shutdown.response.trigger.clone();
+        // Prepare a shutdown signal receiver
+        let shutdown_signal = self.shutdown.listener.clone();
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
-            // TODO - check error handling
             service.start();
             shutdown_signal.await;
-            shutdown_executed.trigger();
-            Ok(())
+            match self.service.join().await {
+                Ok(_) => Ok(()),
+                Err(err) => {
+                    warn!("Error while stopping {}: {}", RPC_CORE_SERVICE, err);
+                    Err(AsyncServiceError::Service(err.to_string()))
+                }
+            }
         })
     }
 
     fn signal_exit(self: Arc<Self>) {
         trace!("sending an exit signal to {}", RPC_CORE_SERVICE);
-        self.shutdown.request.trigger.trigger();
+        self.shutdown.trigger.trigger();
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         trace!("{} stopping", RPC_CORE_SERVICE);
-        let service = self.service.clone();
-        let shutdown_executed_signal = self.shutdown.response.listener.clone();
         Box::pin(async move {
-            // Wait for the service start task to exit
-            shutdown_executed_signal.await;
-
             trace!("{} exiting", RPC_CORE_SERVICE);
-            // Stop the service
-            service.stop().await.map_err(|err| AsyncServiceError::Service(format!("Error while stopping {RPC_CORE_SERVICE}: `{err}`")))
+            Ok(())
         })
     }
 }
