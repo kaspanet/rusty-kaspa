@@ -59,10 +59,6 @@ where
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
     }
-
-    fn close(&self) {
-        self.close();
-    }
 }
 
 #[async_trait]

@@ -69,8 +69,6 @@ impl Processor {
             }
 
             debug!("[Index processor] notification stream ended");
-            // Propagate channel closing
-            notifier.close();
             self.collect_shutdown.trigger.trigger();
             trace!("[Index processor] collecting task ended");
         });

@@ -32,7 +32,6 @@ where
     N: Notification,
 {
     fn notify(&self, notification: N) -> Result<()>;
-    fn close(&self);
 }
 
 pub type DynNotify<N> = Arc<dyn Notify<N>>;
@@ -141,8 +140,6 @@ where
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
     }
-
-    fn close(&self) {}
 }
 
 #[async_trait]
@@ -447,10 +444,6 @@ pub mod test_helpers {
     {
         fn notify(&self, notification: N) -> Result<()> {
             Ok(self.sender.try_send(notification)?)
-        }
-
-        fn close(&self) {
-            self.sender.close();
         }
     }
 

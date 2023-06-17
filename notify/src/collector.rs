@@ -92,8 +92,6 @@ where
             }
 
             debug!("[Collector {}] notification stream ended", self.name);
-            // Propagate channel closing
-            notifier.close();
             collect_shutdown.trigger.trigger();
             trace!("[Collector {}] collecting task ended", self.name);
         });
