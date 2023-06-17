@@ -170,6 +170,13 @@ impl Params {
         self.target_time_per_block
     }
 
+    /// Returns the expected number of blocks per second
+    #[inline]
+    #[must_use]
+    pub fn bps(&self) -> u64 {
+        1000 / self.target_time_per_block
+    }
+
     pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
         if selected_parent_daa_score < self.sampling_activation_daa_score {
             self.legacy_difficulty_window_size as u64

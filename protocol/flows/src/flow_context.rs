@@ -44,12 +44,69 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::Duration,
 };
-use tokio::sync::RwLock as AsyncRwLock;
+use tokio::sync::{
+    mpsc::{unbounded_channel, UnboundedSender},
+    RwLock as AsyncRwLock,
+};
+use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 use uuid::Uuid;
 
 /// The P2P protocol version. Currently the only one supported.
 const PROTOCOL_VERSION: u32 = 5;
+
+#[derive(Debug, PartialEq)]
+pub enum BlockSource {
+    Relay,
+    Submit,
+}
+
+pub struct AcceptedBlockLogger {
+    sender: UnboundedSender<(Hash, BlockSource)>,
+}
+
+impl AcceptedBlockLogger {
+    pub fn new(bps: usize) -> Self {
+        let (sender, receiver) = unbounded_channel();
+
+        tokio::spawn(async move {
+            let chunk_stream = UnboundedReceiverStream::new(receiver).chunks_timeout(bps, Duration::from_secs(1));
+            tokio::pin!(chunk_stream);
+            while let Some(chunk) = chunk_stream.next().await {
+                if let Some((i, h)) =
+                    chunk.iter().filter_map(|(h, s)| if *s == BlockSource::Relay { Some(*h) } else { None }).enumerate().last()
+                {
+                    let count = i + 1; // i is the last index
+                    match count {
+                        1 => info!("Accepted block {} via relay", h),
+                        n => info!("Accepted {} blocks ... {} via relay", n, h),
+                    }
+                    if count == chunk.len() {
+                        // At this point we know there are no `submit` blocks, so we can avoid the second filter
+                        continue;
+                    }
+                }
+
+                if let Some((i, h)) =
+                    chunk.iter().filter_map(|(h, s)| if *s == BlockSource::Submit { Some(*h) } else { None }).enumerate().last()
+                {
+                    let count = i + 1; // i is the last index
+                    match count {
+                        1 => info!("Accepted block {} via submit block", h),
+                        n => info!("Accepted {} blocks ... {} via submit block", n, h),
+                    }
+                }
+            }
+        });
+
+        Self { sender }
+    }
+
+    pub fn log(&self, hash: Hash, source: BlockSource) {
+        self.sender.send((hash, source)).unwrap();
+    }
+}
 
 pub struct FlowContextInner {
     pub node_id: PeerId,
@@ -66,6 +123,9 @@ pub struct FlowContextInner {
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: Arc<MiningManager>,
     notification_root: Arc<ConsensusNotificationRoot>,
+
+    // Special sampling logger used only for high-bps networks where logs must be throttled
+    accepted_block_logger: Option<AcceptedBlockLogger>,
 }
 
 #[derive(Clone)]
@@ -122,7 +182,6 @@ impl FlowContext {
             inner: Arc::new(FlowContextInner {
                 node_id: Uuid::new_v4().into(),
                 consensus_manager,
-                config,
                 orphans_pool: AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS)),
                 shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
@@ -134,6 +193,8 @@ impl FlowContext {
                 connection_manager: Default::default(),
                 mining_manager,
                 notification_root,
+                accepted_block_logger: if config.bps() > 1 { Some(AcceptedBlockLogger::new(config.bps() as usize)) } else { None },
+                config,
             }),
         }
     }
@@ -215,8 +276,8 @@ impl FlowContext {
         self.orphans_pool.write().await.unorphan_blocks(consensus, root).await
     }
 
-    /// Adds the given block to the DAG and propagates it.
-    pub async fn add_block(&self, consensus: &dyn ConsensusApi, block: Block) -> Result<(), ProtocolError> {
+    /// Adds the rpc-submitted block to the DAG and propagates it to peers.
+    pub async fn submit_rpc_block(&self, consensus: &dyn ConsensusApi, block: Block) -> Result<(), ProtocolError> {
         if block.transactions.is_empty() {
             return Err(RuleError::NoTransactions)?;
         }
@@ -225,10 +286,22 @@ impl FlowContext {
             warn!("Validation failed for block {}: {}", hash, err);
             return Err(err)?;
         }
+        self.log_block_acceptance(hash, BlockSource::Submit);
         self.on_new_block_template().await?;
         self.on_new_block(consensus, block).await?;
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
         Ok(())
+    }
+
+    pub fn log_block_acceptance(&self, hash: Hash, source: BlockSource) {
+        if let Some(logger) = self.accepted_block_logger.as_ref() {
+            logger.log(hash, source)
+        } else {
+            match source {
+                BlockSource::Relay => info!("Accepted block {} via relay", hash),
+                BlockSource::Submit => info!("Accepted block {} via submit block", hash),
+            }
+        }
     }
 
     /// Updates the mempool after a new block arrival, relays newly unorphaned transactions

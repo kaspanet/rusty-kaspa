@@ -16,7 +16,7 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{core::Core, debug, info, kaspad_env::version, signals::Shutdown, trace, warn};
+use kaspa_core::{core::Core, debug, kaspad_env::version, signals::Shutdown, trace, warn};
 use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
@@ -198,11 +198,8 @@ impl RpcApi for RpcCoreService {
         }
 
         trace!("incoming SubmitBlockRequest for block {}", hash);
-        match self.flow_context.add_block(session.deref(), block.clone()).await {
-            Ok(_) => {
-                info!("Accepted block {} via submit block", hash);
-                Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
-            }
+        match self.flow_context.submit_rpc_block(session.deref(), block.clone()).await {
+            Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
             Err(err) => {
                 warn!("The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}", err, err);
                 // error = format!("Block rejected. Reason: {}", err))

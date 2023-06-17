@@ -163,8 +163,7 @@ pub mod perf {
 
     impl PerfParams {
         pub fn adjust_to_consensus_params(&mut self, consensus_params: &Params) {
-            let bps = 1000 / consensus_params.target_time_per_block;
-            self.block_data_cache_size *= bps.clamp(1, 10); // Allow caching up to 10x over the baseline
+            self.block_data_cache_size *= consensus_params.bps().clamp(1, 10); // Allow caching up to 10x over the baseline
             self.block_window_cache_size = calculate_difficulty_window_cache_size(consensus_params);
             self.headers_cache_size = calculate_headers_cache_size(consensus_params);
         }
@@ -184,15 +183,13 @@ pub mod perf {
 
     pub fn calculate_headers_cache_size(consensus_params: &Params) -> u64 {
         let headers_memory_budget = 1_000_000_000u64; // 1GB
-        let bps = 1000 / consensus_params.target_time_per_block;
         let approx_header_byte_size = approx_header_parents(consensus_params) * size_of::<Hash>() + size_of::<Header>();
-        bounded_cache_size(bps * BASELINE_HEADER_DATA_CACHE_SIZE, headers_memory_budget, approx_header_byte_size)
+        bounded_cache_size(consensus_params.bps() * BASELINE_HEADER_DATA_CACHE_SIZE, headers_memory_budget, approx_header_byte_size)
     }
 
     pub fn approx_direct_header_parents(consensus_params: &Params) -> usize {
-        let bps = 1000 / consensus_params.target_time_per_block as usize;
         let avg_delay = 2;
-        bps * avg_delay
+        consensus_params.bps() as usize * avg_delay
     }
 
     pub fn approx_header_parents(consensus_params: &Params) -> usize {
@@ -200,9 +197,8 @@ pub mod perf {
     }
 
     pub fn approx_mergeset_size(consensus_params: &Params) -> usize {
-        let bps = 1000 / consensus_params.target_time_per_block as usize;
         let avg_delay = 2;
-        bps * avg_delay
+        consensus_params.bps() as usize * avg_delay
     }
 }
 

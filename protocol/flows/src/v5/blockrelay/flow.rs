@@ -1,5 +1,5 @@
 use crate::{
-    flow_context::{FlowContext, RequestScope},
+    flow_context::{BlockSource, FlowContext, RequestScope},
     flow_trait::Flow,
     flowcontext::orphans::ORPHAN_RESOLUTION_RANGE,
 };
@@ -159,7 +159,7 @@ impl HandleRelayInvsFlow {
                 Err(rule_error) => return Err(rule_error.into()),
             }
 
-            info!("Accepted block {} via relay", inv.hash);
+            self.ctx.log_block_acceptance(inv.hash, BlockSource::Relay);
             self.ctx.on_new_block_template().await?;
             self.ctx.on_new_block(session.deref(), block).await?;
 
