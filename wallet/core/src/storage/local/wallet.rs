@@ -5,22 +5,19 @@ use crate::secret::Secret;
 use workflow_core::runtime;
 use workflow_store::fs;
 
-use crate::storage::{Decrypted, Encrypted, Metadata, Payload, PrvKeyData, PrvKeyDataId};
+use crate::storage::{Decrypted, Encrypted, Hint, Metadata, Payload, PrvKeyData, PrvKeyDataId};
 
 use crate::storage::local::Store;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Wallet {
-    // pub settings: WalletSettings,
-    pub user_hint: Option<String>,
+    pub user_hint: Option<Hint>,
     pub payload: Encrypted,
     pub metadata: Vec<Metadata>,
 }
 
 impl Wallet {
-    // pub fn try_new(secret: Secret, settings: WalletSettings, payload: Payload) -> Result<Self> {
     pub fn try_new(secret: Secret, payload: Payload) -> Result<Self> {
-        // let metadata = payload.accounts.iter().filter(|account| account.is_visible).map(|account| account.clone()).collect();
         let metadata =
             payload.accounts.iter().filter_map(|account| if account.is_visible { Some(account.clone()) } else { None }).collect();
         let payload = Decrypted::new(payload).encrypt(secret)?;
@@ -40,7 +37,6 @@ impl Wallet {
         }
     }
 
-    // pub async fn try_store(store: &Store, secret: Secret, settings: WalletSettings, payload: Payload) -> Result<()> {
     pub async fn try_store_payload(store: &Store, secret: Secret, payload: Payload) -> Result<()> {
         let wallet = Wallet::try_new(secret, payload)?;
         store.ensure_dir().await?;
@@ -49,7 +45,6 @@ impl Wallet {
     }
 
     pub async fn try_store(&self, store: &Store) -> Result<()> {
-        // let wallet = Wallet::try_new(secret, payload)?;
         store.ensure_dir().await?;
         fs::write_json(store.filename(), self).await?;
         Ok(())

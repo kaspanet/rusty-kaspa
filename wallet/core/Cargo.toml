@@ -58,6 +58,7 @@ md-5.workspace = true
 aes.workspace = true
 pbkdf2.workspace = true
 derivative.workspace = true
+downcast.workspace = true
 
 [dependencies.web-sys]
 workspace = true

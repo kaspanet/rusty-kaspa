@@ -7,6 +7,7 @@ use futures::*;
 use kaspa_wallet_core::accounts::gen0::import::*;
 use kaspa_wallet_core::imports::ToHex;
 use kaspa_wallet_core::iterator::IteratorOptions;
+use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
 use kaspa_wallet_core::storage::AccountKind;
 use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
 use kaspa_wallet_core::{Address, AddressPrefix};
@@ -98,30 +99,32 @@ impl WalletCli {
                 let wallet_password = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
                 let payment_password = Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec());
                 let account_kind = AccountKind::Bip32;
-                let mut args = AccountCreateArgs::new(title, account_kind, wallet_password, Some(payment_password));
-                let res = self.wallet.create_wallet(&args).await;
-                let mnemonic = if let Err(err) = res {
-                    if !matches!(err, Error::WalletAlreadyExists) {
+                let mut wallet_args = WalletCreateArgs::new(None, false);
+                let account_args = AccountCreateArgs::new(title, account_kind, wallet_password, Some(payment_password));
+
+                let mnemonic = match self.wallet.create_wallet(&wallet_args, &account_args).await {
+                    Ok(mnemonic) => mnemonic,
+                    Err(Error::WalletAlreadyExists) => {
+                        let overwrite = term
+                            .ask(false, "Wallet already exists. Are you sure you want to override it (type 'y' to approve)?: ")
+                            .await?
+                            .trim()
+                            .to_string()
+                            .to_lowercase();
+                        if overwrite.ne("y") {
+                            return Ok(());
+                        } else {
+                            wallet_args.overwrite_wallet = true;
+                            self.wallet.create_wallet(&wallet_args, &account_args).await?
+                        }
+                    }
+                    Err(err) => {
                         return Err(err.into());
                     }
-                    let override_it = term
-                        .ask(false, "Wallet already exists. Are you sure you want to override it (type 'y' to approve)?: ")
-                        .await?;
-                    let override_it = override_it.trim().to_string();
-                    if !override_it.eq("y") {
-                        return Ok(());
-                    }
-                    args.override_wallet = true;
-                    self.wallet.create_wallet(&args).await?
-                } else {
-                    res.ok().unwrap()
                 };
 
-                // let mnemonic_phrase = String::from_utf8_lossy(secret.as_ref());
-                term.writeln(format!("Default account mnemonic:\n{}\n", mnemonic.phrase()));
-                // term.writeln(format!("Wrote the wallet into '{}'\n", path.to_str().unwrap()));
-
-                // - TODO - Select created as a current account
+                term.writeln("Default account mnemonic:");
+                term.writeln(mnemonic.phrase());
             }
             Action::Broadcast => {
                 self.wallet.broadcast().await?;

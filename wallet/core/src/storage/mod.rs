@@ -1,6 +1,7 @@
 pub use crate::encryption::{Decrypted, Encryptable, Encrypted};
 
 pub mod account;
+pub mod hint;
 pub mod id;
 pub mod interface;
 pub mod keydata;
@@ -9,17 +10,15 @@ pub mod metadata;
 pub mod payload;
 pub mod transaction;
 pub mod wasm;
-// pub mod wallet;
 
 pub use account::Account;
+pub use hint::Hint;
 pub use id::IdT;
 pub use interface::{AccessContextT, AccountStore, Interface, MetadataStore, PrvKeyDataStore, TransactionRecordStore};
-// pub use iterator::{Iterator, IteratorOptions};
 pub use keydata::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload, PubKeyData, PubKeyDataId};
 pub use metadata::Metadata;
 pub use payload::Payload;
 pub use transaction::{TransactionRecord, TransactionRecordId};
-// pub use wallet::Wallet;
 
 pub use crate::runtime::{AccountId, AccountKind};
 

@@ -30,8 +30,6 @@ impl AccountIterator {
         filter: Option<PrvKeyDataId>,
         options: IteratorOptions,
     ) -> AccountIterator {
-        // let storage_iterator = store.accounts().await;
-
         AccountIterator { wallet: wallet.clone(), store: store.clone(), filter, options, iter: None }
     }
 
@@ -50,7 +48,7 @@ impl Iterator for AccountIterator {
 
     async fn next(&mut self) -> Result<Option<Vec<Self::Item>>> {
         if self.iter.is_none() {
-            self.iter = Some(self.store.clone().as_account_store().iter(self.filter, self.options.clone()).await?);
+            self.iter = Some(self.store.clone().as_account_store()?.iter(self.filter, self.options.clone()).await?);
         }
 
         // use underlying iterator to fetch accounts
@@ -85,7 +83,7 @@ impl Iterator for PrvKeyDataIterator {
 
     async fn next(&mut self) -> Result<Option<Vec<Self::Item>>> {
         if self.iter.is_none() {
-            self.iter = Some(self.store.as_prv_key_data_store().iter(self.options.clone()).await?);
+            self.iter = Some(self.store.as_prv_key_data_store()?.iter(self.options.clone()).await?);
         }
 
         if let Some(keydata) = self.iter.as_mut().unwrap().next().await? {

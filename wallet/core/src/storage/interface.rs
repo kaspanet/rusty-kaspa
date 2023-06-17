@@ -3,6 +3,7 @@ use crate::iterator::*;
 use crate::result::Result;
 use crate::secret::Secret;
 use async_trait::async_trait;
+use downcast::{downcast_sync, AnySync};
 
 use crate::storage::*;
 
@@ -75,54 +76,54 @@ pub trait TransactionRecordStore: Send + Sync {
     async fn remove(&self, id: &[&TransactionRecordId]) -> Result<()>;
 }
 
+pub struct CreateArgs {
+    pub name: Option<String>,
+    pub user_hint: Option<String>,
+    pub overwrite_wallet: bool,
+}
+
+impl CreateArgs {
+    pub fn new(name: Option<String>, user_hint: Option<String>, overwrite_wallet: bool) -> Self {
+        Self { name, user_hint, overwrite_wallet }
+    }
+}
+
+pub struct OpenArgs {
+    pub name: Option<String>,
+}
+
+impl OpenArgs {
+    pub fn new(name: Option<String>) -> Self {
+        Self { name }
+    }
+}
+
 #[async_trait]
-// pub trait Interface: Sized + Send + Sync {
-pub trait Interface: Send + Sync {
+pub trait Interface: Send + Sync + AnySync {
     // initialize wallet storage
-    async fn create(&self) -> Result<()>;
+    async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()>;
+
     // establish an open state (load wallet data cache, connect to the database etc.)
-    async fn open(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()>;
+    async fn open(&self, ctx: &Arc<dyn AccessContextT>, args: OpenArgs) -> Result<()>;
+
     // flush writable operations (invoked after multiple store and remove operations)
     async fn commit(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()>;
+
     // stop the storage subsystem
     async fn close(&self) -> Result<()>;
 
     // ~~~
 
-    fn as_prv_key_data_store(&self) -> Arc<dyn PrvKeyDataStore>;
-    fn as_account_store(&self) -> Arc<dyn AccountStore>;
-    fn as_metadata_store(&self) -> Arc<dyn MetadataStore>;
-    fn as_transaction_record_store(&self) -> Arc<dyn TransactionRecordStore>;
+    // phishing hint (user-created text string identifying authenticity of the wallet)
+    async fn get_user_hint(&self) -> Result<Option<Hint>>;
+    async fn set_user_hint(&self, hint: Option<Hint>) -> Result<()>;
 
-    // ------
-    // - an alternative flat (no traits) structure example:
-    //
-    // async fn prv_key_data_iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>>;
-    // async fn prv_key_data_load(&self, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>>;
-    // async fn prv_key_data_store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&PrvKeyData]) -> Result<()>;
-    // async fn prv_key_data_remove(&self, ctx: &Arc<dyn AccessContextT>, id: &[&PrvKeyDataId]) -> Result<()>;
-    // ---
-    // async fn account_iter(
-    //     self: Arc<Self>,
-    //     prv_key_data_id_filter: Option<PrvKeyDataId>,
-    //     options: IteratorOptions,
-    // ) -> Box<dyn Iterator<Item = Arc<Account>>>;
-    // async fn account_len(self : Arc<Self>, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize>;
-    // async fn account_load(&self, ids: &[AccountId]) -> Result<Vec<Arc<Account>>>;
-    // async fn account_store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&Account]) -> Result<()>;
-    // async fn account_remove(&self, ctx: &Arc<dyn AccessContextT>, id: &[AccountId]) -> Result<()>;
-    // ---
-    // async fn metadata_iter(
-    //     self: Arc<Self>,
-    //     prv_key_data_id_filter: Option<PrvKeyDataId>,
-    //     options: IteratorOptions,
-    // ) -> Box<dyn Iterator<Item = Arc<Metadata>>>;
-    //
-    // async fn metadata_load(&self, id: &[AccountId]) -> Result<Vec<Metadata>>;
-    // ---
-    // async fn transaction_record_iter(self: Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = TransactionRecordId>>;
-    // async fn transaction_record_load(&self, id: &[&TransactionRecordId]) -> Result<Vec<TransactionRecord>>;
-    // async fn transaction_record_store(&self, ctx: &Arc<dyn AccessContextT>, data: &[&TransactionRecord]) -> Result<()>;
-    // async fn transaction_record_remove(&self, ctx: &Arc<dyn AccessContextT>, id: &[&TransactionRecordId]) -> Result<()>;
-    // ---
+    // ~~~
+
+    fn as_prv_key_data_store(&self) -> Result<Arc<dyn PrvKeyDataStore>>;
+    fn as_account_store(&self) -> Result<Arc<dyn AccountStore>>;
+    fn as_metadata_store(&self) -> Result<Arc<dyn MetadataStore>>;
+    fn as_transaction_record_store(&self) -> Result<Arc<dyn TransactionRecordStore>>;
 }
+
+downcast_sync!(dyn Interface);

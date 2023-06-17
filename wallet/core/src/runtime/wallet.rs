@@ -3,7 +3,7 @@ use crate::result::Result;
 use crate::runtime::iterators::*;
 use crate::runtime::{Account, AccountId, AccountMap};
 use crate::secret::Secret;
-use crate::storage::interface::AccessContext;
+use crate::storage::interface::{AccessContext, CreateArgs};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::{self, AccessContextT, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
 use crate::utxo::UtxoEntryReference;
@@ -33,18 +33,34 @@ use workflow_core::task::spawn;
 use workflow_log::log_error;
 use workflow_rpc::client::Ctl;
 
+pub struct WalletCreateArgs {
+    pub user_hint: Option<String>,
+    pub overwrite_wallet: bool,
+}
+
+impl WalletCreateArgs {
+    pub fn new(user_hint: Option<String>, overwrite_wallet: bool) -> Self {
+        Self { user_hint, overwrite_wallet }
+    }
+}
+
+impl From<(Option<String>, &WalletCreateArgs)> for CreateArgs {
+    fn from((name, args): (Option<String>, &WalletCreateArgs)) -> Self {
+        CreateArgs::new(name, args.user_hint.clone(), args.overwrite_wallet)
+    }
+}
+
 #[derive(Clone)]
 pub struct AccountCreateArgs {
     pub title: String,
     pub account_kind: storage::AccountKind,
     pub wallet_password: Secret,
     pub payment_password: Option<Secret>,
-    pub override_wallet: bool,
 }
 
 impl AccountCreateArgs {
     pub fn new(title: String, account_kind: storage::AccountKind, wallet_password: Secret, payment_password: Option<Secret>) -> Self {
-        Self { title, account_kind, wallet_password, payment_password, override_wallet: false }
+        Self { title, account_kind, wallet_password, payment_password }
     }
 }
 
@@ -123,7 +139,8 @@ impl Wallet {
 
         let multiplexer = Multiplexer::new();
 
-        let store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
+        // let store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
+        let store = Arc::new(LocalStore::try_new()?);
 
         let wallet = Wallet {
             // rpc_client : rpc.clone(),
@@ -180,11 +197,12 @@ impl Wallet {
 
         let ctx = Arc::new(AccessContext::new(Some(secret)));
         let ctx: Arc<dyn AccessContextT> = ctx;
-        let local_store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
-        local_store.open(&ctx).await?;
+        // let local_store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
+        let local_store = Arc::new(LocalStore::try_new()?);
+        local_store.open(&ctx, OpenArgs::new(None)).await?;
         // let iface : Arc<dyn Interface> = local_store;
-        let store_accounts = local_store.as_account_store();
-        let mut iter = store_accounts.clone().iter(None, IteratorOptions::default()).await?;
+        let store_accounts = local_store.as_account_store()?;
+        let mut iter = store_accounts.iter(None, IteratorOptions::default()).await?;
         // while let Some(ids) = iter.next().await {
         while let Some(accounts) = iter.next().await? {
             // let accounts = store_accounts.load(&ctx, &ids).await?;
@@ -213,11 +231,11 @@ impl Wallet {
 
     pub async fn get_prv_key_data(&self, wallet_secret: Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(Some(wallet_secret)));
-        self.inner.store.as_prv_key_data_store().load_key_data(&ctx, id).await
+        self.inner.store.as_prv_key_data_store()?.load_key_data(&ctx, id).await
     }
 
     pub async fn get_prv_key_info(&self, account: &Account) -> Result<Option<Arc<PrvKeyDataInfo>>> {
-        self.inner.store.as_prv_key_data_store().load_key_info(&account.prv_key_data_id).await
+        self.inner.store.as_prv_key_data_store()?.load_key_info(&account.prv_key_data_id).await
     }
 
     pub async fn is_account_key_encrypted(&self, account: &Account) -> Result<Option<bool>> {
@@ -330,14 +348,14 @@ impl Wallet {
     ) -> Result<Arc<Account>> {
         let prefix: AddressPrefix = self.network().into();
 
-        let account_storage = self.inner.store.clone().as_account_store();
+        let account_storage = self.inner.store.clone().as_account_store()?;
         let account_index = account_storage.clone().len(Some(prv_key_data_id)).await? as u64;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         let prv_key_data = self
             .inner
             .store
-            .as_prv_key_data_store()
+            .as_prv_key_data_store()?
             .load_key_data(&ctx, &prv_key_data_id)
             .await?
             .ok_or(Error::PrivateKeyNotFound(prv_key_data_id.to_hex()))?;
@@ -372,24 +390,33 @@ impl Wallet {
         Ok(account)
     }
 
-    pub async fn create_wallet(self: &Arc<Wallet>, args: &AccountCreateArgs) -> Result<Mnemonic> {
+    pub async fn create_wallet(
+        self: &Arc<Wallet>,
+        wallet_args: &WalletCreateArgs,
+        account_args: &AccountCreateArgs,
+    ) -> Result<Mnemonic> {
+        log_info!("running create_wallet A");
         self.reset().await?;
 
-        self.inner.store.create().await?;
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(Some(account_args.wallet_password.clone())));
+
+        // self.inner.store.create(&ctx, CreateArgs::new(None, wallet_args.override_wallet)).await?;
+        self.inner.store.create(&ctx, (None, wallet_args).into()).await?;
 
         let prefix: AddressPrefix = self.network().into();
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
-        let payment_secret = args.payment_password.clone();
+        let payment_secret = account_args.payment_password.clone();
         let mnemonic = Mnemonic::create_random()?;
         let account_index = 0;
         let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), payment_secret.clone()))?;
-        let xpub_key = prv_key_data.create_xpub(payment_secret, args.account_kind, account_index).await?;
+        let xpub_key = prv_key_data.create_xpub(payment_secret, account_args.account_kind, account_index).await?;
         let pub_key_data = PubKeyData::new(vec![xpub_key.to_string(Some(xpub_prefix))], None, None);
+        log_info!("running create_wallet B");
 
         let stored_account = storage::Account::new(
-            args.title.replace(' ', "-").to_lowercase(),
-            args.title.clone(),
-            args.account_kind,
+            account_args.title.replace(' ', "-").to_lowercase(),
+            account_args.title.clone(),
+            account_args.account_kind,
             account_index,
             false,
             pub_key_data,
@@ -399,16 +426,19 @@ impl Wallet {
             0,
         );
 
-        let prv_key_data_store = self.inner.store.as_prv_key_data_store();
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(Some(args.wallet_password.clone())));
+        let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
+        log_info!("running create_wallet - store 1");
         prv_key_data_store.store(&ctx, prv_key_data).await?;
-        let account_store = self.inner.store.as_account_store();
+        let account_store = self.inner.store.as_account_store()?;
+        log_info!("running create_wallet - store 2");
         account_store.store(&[&stored_account]).await?;
         self.inner.store.commit(&ctx).await?;
 
+        log_info!("running create_wallet - C");
         let account = Account::try_new_arc_from_storage(self, &stored_account, prefix).await?;
         self.select(Some(account.clone())).await?;
 
+        log_info!("running create_wallet - D");
         // - TODO autoload ???
         account.start().await?;
 
@@ -440,7 +470,7 @@ impl Wallet {
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(Some(wallet_secret)));
 
         let prv_key_data = PrvKeyData::new_from_mnemonic(&keydata.mnemonic);
-        let prv_key_data_store = self.inner.store.as_prv_key_data_store();
+        let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
         if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
         }
@@ -467,7 +497,7 @@ impl Wallet {
         let account = Account::try_new_arc_from_storage(self, &stored_account, prefix).await?;
 
         prv_key_data_store.store(&ctx, prv_key_data).await?;
-        let account_store = self.inner.store.as_account_store();
+        let account_store = self.inner.store.as_account_store()?;
         account_store.store(&[&stored_account]).await?;
         self.inner.store.commit(&ctx).await?;
         // payload.prv_key_data.push(prv_key_data);

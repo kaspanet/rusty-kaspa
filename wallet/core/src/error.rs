@@ -56,6 +56,9 @@ pub enum Error {
     #[error("Wallet already exists")]
     WalletAlreadyExists,
 
+    #[error("Wallet is not loaded")]
+    WalletNotLoaded,
+
     #[error("invalid filename: {0}")]
     InvalidFilename(String),
 
