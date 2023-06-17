@@ -394,11 +394,10 @@ where
             debug!("[Notifier {}] stopping subscribers", self.name);
             join_all(self.subscribers.iter().map(|x| x.join())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
 
-            // Finally, we unregister all listeners (closing them)
-            let listener_ids = self.listeners.lock().keys().copied().collect::<Vec<_>>();
-            listener_ids.into_iter().for_each(|id| {
-                let _ = self.unregister_listener(id);
-            });
+            // Finally, we close all listeners, propagating shutdown by closing their channel when they have one
+            // Note that unregistering listeners is no longer meaningful since both broadcasters and subscribers were stopped
+            debug!("[Notifier {}] closing listeners", self.name);
+            self.listeners.lock().values().for_each(|x| x.close());
         } else {
             trace!("[Notifier {}] join ignored since it was never started", self.name);
             return Err(Error::AlreadyStoppedError);
