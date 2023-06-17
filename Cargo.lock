@@ -2357,6 +2357,7 @@ dependencies = [
  "kaspa-rpc-macros",
  "kaspa-rpc-service",
  "kaspa-utils",
+ "log",
  "num_cpus",
  "paste",
  "serde",
