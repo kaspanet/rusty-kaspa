@@ -10,7 +10,7 @@ use crate::{
 };
 use async_channel::Sender;
 use async_trait::async_trait;
-use kaspa_core::trace;
+use kaspa_core::{debug, trace};
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -43,6 +43,7 @@ where
     }
 
     pub fn close(&self) -> bool {
+        debug!("[Notification root] closing");
         self.inner.sender.close()
     }
 
@@ -70,13 +71,13 @@ where
     N: Notification,
 {
     async fn start_notify(&self, _: ListenerId, scope: Scope) -> Result<()> {
-        trace!("[Notification-Root] start sending notifications of scope {scope:?}");
+        trace!("[Notification root] start sending notifications of scope {scope:?}");
         self.inner.start_notify(scope)?;
         Ok(())
     }
 
     async fn stop_notify(&self, _: ListenerId, scope: Scope) -> Result<()> {
-        trace!("[Notification-Root] stop notifications of scope {scope:?}");
+        trace!("[Notification root] stop notifications of scope {scope:?}");
         self.inner.stop_notify(scope)?;
         Ok(())
     }

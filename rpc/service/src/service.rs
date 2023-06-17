@@ -95,9 +95,13 @@ impl RpcCoreService {
         consensus_events[EventType::UtxosChanged] = false;
         consensus_events[EventType::PruningPointUtxoSetOverride] = index_notifier.is_none();
         let consensus_converter = Arc::new(ConsensusConverter::new(consensus_manager.clone(), config.clone()));
-        let consensus_collector =
-            Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver(), consensus_converter.clone()));
-        let consensus_subscriber = Arc::new(Subscriber::new(consensus_events, consensus_notifier, consensus_notify_listener_id));
+        let consensus_collector = Arc::new(CollectorFromConsensus::new(
+            "rpc-core <= consensus",
+            consensus_notify_channel.receiver(),
+            consensus_converter.clone(),
+        ));
+        let consensus_subscriber =
+            Arc::new(Subscriber::new("rpc-core => consensus", consensus_events, consensus_notifier, consensus_notify_listener_id));
 
         let mut collectors: Vec<DynCollector<Notification>> = vec![consensus_collector];
         let mut subscribers = vec![consensus_subscriber];
@@ -110,8 +114,10 @@ impl RpcCoreService {
                 index_notifier.clone().register_new_listener(IndexChannelConnection::new(index_notify_channel.sender()));
 
             let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
-            let index_collector = Arc::new(CollectorFromIndex::new(index_notify_channel.receiver(), index_converter.clone()));
-            let index_subscriber = Arc::new(Subscriber::new(index_events, index_notifier.clone(), index_notify_listener_id));
+            let index_collector =
+                Arc::new(CollectorFromIndex::new("rpc-core <= index", index_notify_channel.receiver(), index_converter.clone()));
+            let index_subscriber =
+                Arc::new(Subscriber::new("rpc-core => index", index_events, index_notifier.clone(), index_notify_listener_id));
 
             collectors.push(index_collector);
             subscribers.push(index_subscriber);
@@ -121,7 +127,7 @@ impl RpcCoreService {
         let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
 
         // Create the rcp-core notifier
-        let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
+        let notifier = Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1));
 
         Self {
             consensus_manager,
@@ -141,7 +147,7 @@ impl RpcCoreService {
         self.notifier().start();
     }
 
-    pub async fn stop(&self) -> RpcResult<()> {
+    pub async fn join(&self) -> RpcResult<()> {
         self.notifier().join().await?;
         Ok(())
     }

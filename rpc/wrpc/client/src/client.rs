@@ -152,9 +152,9 @@ impl KaspaRpcClient {
         let notifier = if matches!(notification_mode, NotificationMode::MultiListeners) {
             let enabled_events = EVENT_TYPE_ARRAY[..].into();
             let converter = Arc::new(RpcCoreConverter::new());
-            let collector = Arc::new(RpcCoreCollector::new(inner.notification_channel_receiver(), converter));
-            let subscriber = Arc::new(Subscriber::new(enabled_events, inner.clone(), 0));
-            Some(Arc::new(Notifier::new(enabled_events, vec![collector], vec![subscriber], 3, WRPC_CLIENT)))
+            let collector = Arc::new(RpcCoreCollector::new(WRPC_CLIENT, inner.notification_channel_receiver(), converter));
+            let subscriber = Arc::new(Subscriber::new(WRPC_CLIENT, enabled_events, inner.clone(), 0));
+            Some(Arc::new(Notifier::new(WRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], 3)))
         } else {
             None
         };

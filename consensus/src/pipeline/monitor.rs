@@ -12,7 +12,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+const MONITOR: &str = "consensus-monitor";
+
 pub struct ConsensusMonitor {
+    // TODO: change the termination process using a chanel instead so we can (biased) select in the worker
+    //       or use a shutdown-aware sleep service
     terminate: AtomicBool,
     // Counters
     counters: Arc<ProcessingCounters>,
@@ -68,7 +72,7 @@ impl ConsensusMonitor {
 // service trait implementation for Monitor
 impl AsyncService for ConsensusMonitor {
     fn ident(self: Arc<Self>) -> &'static str {
-        "consensus-monitor"
+        MONITOR
     }
 
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
@@ -79,10 +83,15 @@ impl AsyncService for ConsensusMonitor {
     }
 
     fn signal_exit(self: Arc<Self>) {
+        trace!("sending an exit signal to {}", MONITOR);
         self.terminate.store(true, Ordering::SeqCst);
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        Box::pin(async move { Ok(()) })
+        trace!("{} stopping", MONITOR);
+        Box::pin(async move {
+            trace!("{} exiting", MONITOR);
+            Ok(())
+        })
     }
 }

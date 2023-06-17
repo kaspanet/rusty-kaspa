@@ -52,10 +52,10 @@ impl ConnectionHandler {
         // Prepare internals
         let core_events = EVENT_TYPE_ARRAY[..].into();
         let converter = Arc::new(GrpcServiceConverter::new());
-        let collector = Arc::new(GrpcServiceCollector::new(core_channel.receiver(), converter));
-        let subscriber = Arc::new(Subscriber::new(core_events, core_notifier.clone(), core_listener_id));
+        let collector = Arc::new(GrpcServiceCollector::new(GRPC_SERVER, core_channel.receiver(), converter));
+        let subscriber = Arc::new(Subscriber::new(GRPC_SERVER, core_events, core_notifier, core_listener_id));
         let notifier: Arc<Notifier<Notification, Connection>> =
-            Arc::new(Notifier::new(core_events, vec![collector], vec![subscriber], 10, GRPC_SERVER));
+            Arc::new(Notifier::new(GRPC_SERVER, core_events, vec![collector], vec![subscriber], 10));
 
         Self { core_service, core_notifier, core_listener_id, manager, notifier, running: AtomicBool::new(false) }
     }
@@ -78,7 +78,7 @@ impl ConnectionHandler {
                 .await;
 
             match serve_result {
-                Ok(_) => info!("GRPC Server stopped: {}", serve_address),
+                Ok(_) => info!("GRPC Server stopped on: {}", serve_address),
                 Err(err) => panic!("gRPC Server {serve_address} stopped with error: {err:?}"),
             }
         });
