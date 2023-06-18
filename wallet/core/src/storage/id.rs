@@ -1,7 +1,7 @@
+use kaspa_utils::hex::ToHex;
 use std::cmp::Eq;
 use std::fmt::Debug;
 use std::hash::Hash;
-use kaspa_utils::hex::ToHex;
 
 use crate::storage::{Account, AccountId, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord, TransactionRecordId};
 
