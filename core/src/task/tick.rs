@@ -17,6 +17,9 @@ impl TickService {
         Self { shutdown_trigger: shutdown, shutdown_listener: monitor }
     }
 
+    /// Waits until `duration` has elapsed when the service is started.
+    /// 
+    /// Returns immediately when the service is stopped.
     pub async fn tick(&self, duration: Duration) {
         let shutdown_listener = self.shutdown_listener.clone();
         loop {
