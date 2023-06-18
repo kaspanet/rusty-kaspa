@@ -5,7 +5,7 @@ extern crate self as address_manager;
 use std::{collections::HashSet, sync::Arc};
 
 use itertools::Itertools;
-use kaspa_core::time::unix_now;
+use kaspa_core::{debug, time::unix_now};
 use kaspa_database::prelude::{StoreResultExtensions, DB};
 use kaspa_utils::networking::IpAddress;
 use parking_lot::Mutex;
@@ -31,7 +31,10 @@ impl AddressManager {
     }
 
     pub fn add_address(&mut self, address: NetAddress) {
-        // TODO: Don't add non routable addresses
+        if address.ip.is_loopback() || address.ip.is_unspecified() {
+            debug!("[Address manager] skipping local address {}", address.ip);
+            return;
+        }
 
         if self.address_store.has(address) {
             return;

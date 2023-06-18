@@ -39,17 +39,12 @@ impl Hub {
                         // If peer is outbound then connection initialization was already performed as part of the connect logic
                         if new_router.is_outbound() {
                             info!("P2P Connected to outgoing peer {}", new_router);
-                            let prev = self.peers.write().insert(new_router.key(), new_router);
-                            if let Some(previous_router) = prev {
-                                // This is not supposed to ever happen
-                                previous_router.close().await;
-                                debug!("P2P, Hub event loop, removing peer with duplicate key: {}", previous_router.key());
-                            }
+                            self.insert_new_router(new_router).await;
                         } else {
                             match initializer.initialize_connection(new_router.clone()).await {
                                 Ok(()) => {
                                     info!("P2P Connected to incoming peer {}", new_router);
-                                    self.peers.write().insert(new_router.key(), new_router);
+                                    self.insert_new_router(new_router).await;
                                 }
                                 Err(err) => {
                                     // Ignoring the router
@@ -71,6 +66,15 @@ impl Hub {
             }
             debug!("P2P, Hub event loop exiting");
         });
+    }
+
+    async fn insert_new_router(&self, new_router: Arc<Router>) {
+        let prev = self.peers.write().insert(new_router.key(), new_router);
+        if let Some(previous_router) = prev {
+            // This is not supposed to ever happen but can on rare race-conditions
+            previous_router.close().await;
+            warn!("P2P, Hub event loop, removing peer with duplicate key: {}", previous_router.key());
+        }
     }
 
     /// Send a message to a specific peer

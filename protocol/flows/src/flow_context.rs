@@ -443,6 +443,9 @@ impl ConnectionInitializer for FlowContext {
         if self.hub.has_peer(router.key()) {
             return Err(ProtocolError::PeerAlreadyExists(router.key()));
         }
+        if self.node_id == router.identity() {
+            return Err(ProtocolError::LoopbackConnection(router.key()));
+        }
 
         if peer_version.network != network_name {
             return Err(ProtocolError::WrongNetwork(network_name, peer_version.network));
