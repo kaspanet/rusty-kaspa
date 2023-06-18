@@ -2,9 +2,7 @@ use super::rpc_core_mock::RpcCoreMock;
 use crate::adaptor::Adaptor;
 use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{events::EVENT_TYPE_ARRAY, notifier::Notifier};
 use kaspa_rpc_core::notify::mode::NotificationMode;
-use kaspa_rpc_core::{notify::connection::ChannelConnection, Notification};
 use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
 use std::sync::Arc;
 
@@ -12,8 +10,12 @@ use std::sync::Arc;
 async fn test_client_server_connections() {
     kaspa_core::log::try_init_logger("info, kaspa_grpc_core=trace, kaspa_grpc_server=trace, kaspa_grpc_client=trace");
 
+    // Create and start a fake core service
+    let core_service = Arc::new(RpcCoreMock::new());
+    core_service.start();
+
     // Create and start the server
-    let server = create_server();
+    let server = create_server(core_service.clone());
     assert!(!server.has_connections(), "server should have no client when just started");
 
     info!("=================================================================================");
@@ -57,6 +59,9 @@ async fn test_client_server_connections() {
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     assert_eq!(server.active_connections().len(), 1, "server should have one client left connected");
 
+    // Stop the fake service
+    core_service.join().await;
+
     // Stop the server
     assert!(server.terminate().await.is_ok(), "error stopping the server");
 
@@ -70,11 +75,8 @@ async fn test_client_server_connections() {
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 }
 
-fn create_server() -> Arc<Adaptor> {
-    let core_service = Arc::new(RpcCoreMock {});
-    let core_notifier: Arc<Notifier<Notification, ChannelConnection>> =
-        Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), vec![], vec![], 1, "rpc-core"));
-    Adaptor::server(get_free_net_address(), core_service, core_notifier, 128)
+fn create_server(core_service: Arc<RpcCoreMock>) -> Arc<Adaptor> {
+    Adaptor::server(get_free_net_address(), core_service.clone(), core_service.core_notifier(), 128)
 }
 
 async fn create_client(server_address: NetAddress) -> GrpcClient {

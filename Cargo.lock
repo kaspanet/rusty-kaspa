@@ -1714,6 +1714,7 @@ dependencies = [
  "num_cpus",
  "thiserror",
  "tokio",
+ "triggered",
  "wasm-bindgen",
  "workflow-log",
 ]
@@ -2357,6 +2358,7 @@ dependencies = [
  "kaspa-rpc-macros",
  "kaspa-rpc-service",
  "kaspa-utils",
+ "log",
  "num_cpus",
  "paste",
  "serde",
