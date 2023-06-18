@@ -133,7 +133,8 @@ impl WrpcService {
         let service = self.clone();
         tokio::spawn(async move {
             let _ = termination_receiver.await;
-            service.server.clone().stop().unwrap_or_else(|err| warn!("wRPC unable to signal shutdown: `{err}`"));
+            service.server.stop().unwrap_or_else(|err| warn!("wRPC unable to signal shutdown: `{err}`"));
+            service.server.join().await.unwrap_or_else(|err| warn!("wRPC error: `{err}"));
         });
 
         // Spawn a task running the server
@@ -172,6 +173,7 @@ impl AsyncService for WrpcService {
             // Keep the gRPC server running until a service shutdown signal is received
             shutdown_signal.await;
 
+            // Wait for the notifier to shutdown
             self.clone()
                 .rpc_handler
                 .server
@@ -179,9 +181,8 @@ impl AsyncService for WrpcService {
                 .await
                 .map_err(|err| AsyncServiceError::Service(format!("Notification system error: `{err}`")))?;
 
-            // Signal server termination and wait for server shutdown
+            // Signal server termination
             drop(terminate_server);
-            self.server.join().await.map_err(|err| AsyncServiceError::Service(format!("wRPC error: `{err}`")))?;
 
             Ok(())
         })
