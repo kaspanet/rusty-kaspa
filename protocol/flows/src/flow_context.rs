@@ -15,6 +15,7 @@ use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager};
 use kaspa_core::{
     debug, info,
     kaspad_env::{name, version},
+    task::tick::TickService,
 };
 use kaspa_core::{time::unix_now, warn};
 use kaspa_hashes::Hash;
@@ -121,6 +122,7 @@ pub struct FlowContextInner {
     pub address_manager: Arc<Mutex<AddressManager>>,
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: Arc<MiningManager>,
+    pub(crate) tick_service: Arc<TickService>,
     notification_root: Arc<ConsensusNotificationRoot>,
 
     // Special sampling logger used only for high-bps networks where logs must be throttled
@@ -177,6 +179,7 @@ impl FlowContext {
         address_manager: Arc<Mutex<AddressManager>>,
         config: Arc<Config>,
         mining_manager: Arc<MiningManager>,
+        tick_service: Arc<TickService>,
         notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
         let hub = Hub::new();
@@ -201,6 +204,7 @@ impl FlowContext {
                 address_manager,
                 connection_manager: Default::default(),
                 mining_manager,
+                tick_service,
                 notification_root,
                 accepted_block_logger: if config.bps() > 1 { Some(AcceptedBlockLogger::new(config.bps() as usize)) } else { None },
                 orphan_resolution_range,

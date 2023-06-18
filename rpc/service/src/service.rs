@@ -16,7 +16,14 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{core::Core, debug, kaspad_env::version, signals::Shutdown, trace, warn};
+use kaspa_core::{
+    core::Core,
+    debug,
+    kaspad_env::version,
+    signals::Shutdown,
+    task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
+    trace, warn,
+};
 use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
@@ -38,7 +45,7 @@ use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
-use kaspa_utils::channel::Channel;
+use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::DynUtxoIndexApi;
 use std::{iter::once, ops::Deref, sync::Arc, vec};
 
@@ -70,6 +77,7 @@ pub struct RpcCoreService {
     index_converter: Arc<IndexConverter>,
     protocol_converter: Arc<ProtocolConverter>,
     core: Arc<Core>,
+    shutdown: SingleTrigger,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -95,9 +103,13 @@ impl RpcCoreService {
         consensus_events[EventType::UtxosChanged] = false;
         consensus_events[EventType::PruningPointUtxoSetOverride] = index_notifier.is_none();
         let consensus_converter = Arc::new(ConsensusConverter::new(consensus_manager.clone(), config.clone()));
-        let consensus_collector =
-            Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver(), consensus_converter.clone()));
-        let consensus_subscriber = Arc::new(Subscriber::new(consensus_events, consensus_notifier, consensus_notify_listener_id));
+        let consensus_collector = Arc::new(CollectorFromConsensus::new(
+            "rpc-core <= consensus",
+            consensus_notify_channel.receiver(),
+            consensus_converter.clone(),
+        ));
+        let consensus_subscriber =
+            Arc::new(Subscriber::new("rpc-core => consensus", consensus_events, consensus_notifier, consensus_notify_listener_id));
 
         let mut collectors: Vec<DynCollector<Notification>> = vec![consensus_collector];
         let mut subscribers = vec![consensus_subscriber];
@@ -110,8 +122,10 @@ impl RpcCoreService {
                 index_notifier.clone().register_new_listener(IndexChannelConnection::new(index_notify_channel.sender()));
 
             let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
-            let index_collector = Arc::new(CollectorFromIndex::new(index_notify_channel.receiver(), index_converter.clone()));
-            let index_subscriber = Arc::new(Subscriber::new(index_events, index_notifier.clone(), index_notify_listener_id));
+            let index_collector =
+                Arc::new(CollectorFromIndex::new("rpc-core <= index", index_notify_channel.receiver(), index_converter.clone()));
+            let index_subscriber =
+                Arc::new(Subscriber::new("rpc-core => index", index_events, index_notifier.clone(), index_notify_listener_id));
 
             collectors.push(index_collector);
             subscribers.push(index_subscriber);
@@ -121,7 +135,7 @@ impl RpcCoreService {
         let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
 
         // Create the rcp-core notifier
-        let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
+        let notifier = Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1));
 
         Self {
             consensus_manager,
@@ -134,14 +148,16 @@ impl RpcCoreService {
             index_converter,
             protocol_converter,
             core,
+            shutdown: SingleTrigger::default(),
         }
     }
 
-    pub fn start(&self) {
+    pub fn start_impl(&self) {
         self.notifier().start();
     }
 
-    pub async fn stop(&self) -> RpcResult<()> {
+    pub async fn join(&self) -> RpcResult<()> {
+        trace!("{} joining notifier", RPC_CORE_SERVICE);
         self.notifier().join().await?;
         Ok(())
     }
@@ -632,5 +648,48 @@ impl RpcApi for RpcCoreService {
     async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         self.notifier.clone().stop_notify(id, scope).await?;
         Ok(())
+    }
+}
+
+const RPC_CORE_SERVICE: &str = "rpc-core-service";
+
+// It might be necessary to opt this out in the context of wasm32
+
+impl AsyncService for RpcCoreService {
+    fn ident(self: Arc<Self>) -> &'static str {
+        RPC_CORE_SERVICE
+    }
+
+    fn start(self: Arc<Self>) -> AsyncServiceFuture {
+        trace!("{} starting", RPC_CORE_SERVICE);
+        let service = self.clone();
+
+        // Prepare a shutdown signal receiver
+        let shutdown_signal = self.shutdown.listener.clone();
+
+        // Launch the service and wait for a shutdown signal
+        Box::pin(async move {
+            service.clone().start_impl();
+            shutdown_signal.await;
+            match service.join().await {
+                Ok(_) => Ok(()),
+                Err(err) => {
+                    warn!("Error while stopping {}: {}", RPC_CORE_SERVICE, err);
+                    Err(AsyncServiceError::Service(err.to_string()))
+                }
+            }
+        })
+    }
+
+    fn signal_exit(self: Arc<Self>) {
+        trace!("sending an exit signal to {}", RPC_CORE_SERVICE);
+        self.shutdown.trigger.trigger();
+    }
+
+    fn stop(self: Arc<Self>) -> AsyncServiceFuture {
+        Box::pin(async move {
+            trace!("{} stopped", RPC_CORE_SERVICE);
+            Ok(())
+        })
     }
 }

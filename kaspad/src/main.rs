@@ -13,11 +13,12 @@ use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::kaspad_env::version;
+use kaspa_core::task::tick::TickService;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::manager::MiningManager;
 use kaspa_p2p_flows::flow_context::FlowContext;
-use kaspa_rpc_service::RpcCoreServer;
+use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::networking::ContextualNetAddress;
 
 use std::fs;
@@ -214,6 +215,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     // ---
 
+    let tick_service = Arc::new(TickService::new());
     let (notification_send, notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
     let counters = Arc::new(ProcessingCounters::default());
@@ -229,7 +231,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         counters.clone(),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
-    let monitor = Arc::new(ConsensusMonitor::new(counters));
+    let monitor = Arc::new(ConsensusMonitor::new(counters, tick_service.clone()));
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
@@ -250,6 +252,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         address_manager,
         config.clone(),
         mining_manager.clone(),
+        tick_service.clone(),
         notification_root,
     ));
     let p2p_service = Arc::new(P2pService::new(
@@ -263,7 +266,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config.default_p2p_port(),
     ));
 
-    let rpc_core_server = Arc::new(RpcCoreServer::new(
+    let rpc_core_service = Arc::new(RpcCoreService::new(
         consensus_manager.clone(),
         notify_service.notifier(),
         index_service.as_ref().map(|x| x.notifier()),
@@ -273,15 +276,16 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config,
         core.clone(),
     ));
-    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_server.service(), args.rpc_max_clients));
+    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
+    async_runtime.register(tick_service);
     async_runtime.register(notify_service);
     if let Some(index_service) = index_service {
         async_runtime.register(index_service)
     };
-    async_runtime.register(rpc_core_server.clone());
+    async_runtime.register(rpc_core_service.clone());
     async_runtime.register(grpc_service);
     async_runtime.register(p2p_service);
     async_runtime.register(monitor);
@@ -294,7 +298,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             listen_address.as_ref().map(|listen_address| {
                 Arc::new(WrpcService::new(
                     wrpc_service_tasks,
-                    Some(rpc_core_server.service()),
+                    Some(rpc_core_service.clone()),
                     encoding,
                     WrpcServerOptions {
                         listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
