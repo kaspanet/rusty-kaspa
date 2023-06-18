@@ -216,6 +216,10 @@ impl Interface for LocalStore {
         Ok(self.inner.lock().unwrap().is_some())
     }
 
+    async fn descriptor(&self) -> Result<Option<String>> {
+        Ok(Some(self.inner()?.store.filename_as_string()))
+    }
+
     async fn commit(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
         log_info!("*** COMMITING ***");
         self.inner()?.store(ctx).await?;
@@ -248,7 +252,7 @@ impl Interface for LocalStore {
 
 #[async_trait]
 impl PrvKeyDataStore for LocalStoreInner {
-    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Result<Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>>> {
+    async fn iter_with_options(self: Arc<Self>, options: IteratorOptions) -> Result<Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>>> {
         Ok(Box::new(KeydataIterator::new(self, options)))
     }
 
@@ -284,7 +288,7 @@ impl PrvKeyDataStore for LocalStoreInner {
 
 #[async_trait]
 impl AccountStore for LocalStoreInner {
-    async fn iter(
+    async fn iter_with_options(
         self: Arc<Self>,
         prv_key_data_id_filter: Option<PrvKeyDataId>,
         options: IteratorOptions,
@@ -338,7 +342,7 @@ impl AccountStore for LocalStoreInner {
 
 #[async_trait]
 impl MetadataStore for LocalStoreInner {
-    async fn iter(
+    async fn iter_with_options(
         self: Arc<Self>,
         filter: Option<PrvKeyDataId>,
         options: IteratorOptions,

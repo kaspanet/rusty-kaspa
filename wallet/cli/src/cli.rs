@@ -6,9 +6,8 @@ use async_trait::async_trait;
 use futures::*;
 use kaspa_wallet_core::accounts::gen0::import::*;
 use kaspa_wallet_core::imports::ToHex;
-use kaspa_wallet_core::iterator::IteratorOptions;
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
-use kaspa_wallet_core::storage::{AccountKind, IdT, PrvKeyDataId};
+use kaspa_wallet_core::storage::{AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
 use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
 use kaspa_wallet_core::{Address, AddressPrefix};
 use serde::de::DeserializeOwned;
@@ -18,7 +17,7 @@ use textwrap::wrap;
 use workflow_core::abortable::Abortable;
 use workflow_core::channel::*;
 use workflow_core::enums::EnumTrait;
-use workflow_core::runtime;
+use workflow_core::runtime as application_runtime;
 use workflow_log::*;
 use workflow_terminal::Terminal;
 pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget};
@@ -126,7 +125,7 @@ impl WalletCli {
                             &term,
                             "Please select private key",
                             &mut argv,
-                            self.wallet.store().as_prv_key_data_store()?.iter(IteratorOptions::default()).await?,
+                            self.wallet.store().as_prv_key_data_store()?.iter().await?,
                         )
                         .await?;
 
@@ -261,7 +260,7 @@ impl WalletCli {
                             let wallet_secret =
                                 Secret::new(term.ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());
                             self.wallet.import_gen0_keydata(import_secret, wallet_secret).await?;
-                        } else if runtime::is_web() {
+                        } else if application_runtime::is_web() {
                             return Err("'kaspanet' web wallet storage not found at this domain name".into());
                         } else {
                             return Err("KDX/kaspanet keydata file not found".into());
@@ -276,14 +275,14 @@ impl WalletCli {
 
             // ~~~
             Action::List => {
-                let mut keys = self.wallet.keys(IteratorOptions::default());
+                let mut keys = self.wallet.keys();
                 while let Some(keys) = keys.next().await? {
                     for key in keys {
-                        term.writeln(format!("key: {}", key.id.to_hex()));
-                        let mut accounts = self.wallet.accounts(Some(key.id), IteratorOptions::default());
+                        term.writeln(format!("{key}"));
+                        let mut accounts = self.wallet.accounts(Some(key.id));
                         while let Some(accounts) = accounts.next().await? {
                             for account in accounts {
-                                term.writeln(format!("account: {}", account.id.to_hex()));
+                                term.writeln(format!("    {}", account.get_ls_string()));
                             }
                         }
                     }
@@ -301,17 +300,19 @@ impl WalletCli {
                 if argv.is_empty() {
                     self.wallet.select(None).await?;
                 } else {
-                    let name = argv.remove(0);
-                    let account = {
-                        // let accounts = ;
-                        self.wallet
-                            .active_accounts()
-                            .inner()
-                            .values()
-                            .find(|account| account.name() == name)
-                            .ok_or(Error::AccountNotFound(name))?
-                            .clone()
-                    };
+                    // let name = argv.remove(0);
+                    // let account = {
+                    //     // let accounts = ;
+                    //     self.wallet
+                    //         .active_accounts()
+                    //         .inner()
+                    //         .values()
+                    //         .find(|account| account.name() == name)
+                    //         .ok_or(Error::AccountNotFound(name))?
+                    //         .clone()
+                    // };
+
+                    let account = select_account(&term, &self.wallet).await?;
                     self.wallet.select(Some(account)).await?;
                 }
             }
@@ -443,7 +444,7 @@ impl WalletCli {
 
         let wallet_args = WalletCreateArgs::new(None, hint, true);
         let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_password, Some(payment_password));
-        let mnemonic = self.wallet.create_wallet(&wallet_args, &account_args).await?;
+        let (mnemonic, descriptor) = self.wallet.create_wallet(&wallet_args, &account_args).await?;
 
         ["", "---", "", "IMPORTANT:", ""].into_iter().for_each(|line| term.writeln(line));
 
@@ -460,9 +461,17 @@ impl WalletCli {
         .into_iter()
         .for_each(|line| term.writeln(line));
 
-        ["", "Never share your mnemonic with anyone!", "---", "", "Your default wallet account mnemonic:", mnemonic.phrase(), ""]
+        // descriptor
+
+        ["", "Never share your mnemonic with anyone!", "---", "", "Your default wallet account mnemonic:", mnemonic.phrase()]
             .into_iter()
             .for_each(|line| term.writeln(line));
+
+        term.writeln("");
+        if let Some(descriptor) = descriptor {
+            term.writeln(format!("Your wallet is stored in: {}", descriptor));
+            term.writeln("");
+        }
 
         Ok(())
     }
@@ -531,6 +540,93 @@ impl Cli for WalletCli {
 }
 
 impl WalletCli {}
+
+// use kaspa_wallet_core::storage;
+use kaspa_wallet_core::runtime;
+async fn select_account(
+    term: &Arc<Terminal>,
+    // prompt: &str,
+    // argv: &mut Vec<String>,
+    // iface : &Arc<dyn Interface>,
+    wallet: &Arc<Wallet>,
+    // mut iter: Box<dyn kaspa_wallet_core::iterator::Iterator<Item = Arc<T>>>,
+) -> Result<Arc<runtime::Account>> {
+    let mut selection = None;
+    // let list: Vec<Arc<T>> = iter.collect().await?;
+
+    // if !argv.is_empty() {
+    //     let text = argv.remove(0);
+    //     let matched = list
+    //         .into_iter()
+    //         // - TODO match by name
+    //         .filter(|item| item.id().to_hex().starts_with(&text))
+    //         .collect::<Vec<_>>();
+
+    //     if matched.len() == 1 {
+    //         return Ok(matched.first().cloned().unwrap());
+    //     } else {
+    //         return Err(Error::MultipleMatches(text));
+    //     }
+    // }
+
+    let mut list_by_key = Vec::<(Arc<PrvKeyDataInfo>, Vec<(usize, Arc<runtime::Account>)>)>::new();
+    let mut flat_list = Vec::<Arc<runtime::Account>>::new();
+
+    // let mut seq: usize = 0;
+    let mut keys = wallet.keys();
+    while let Some(keys) = keys.next().await? {
+        for key in keys {
+            let mut prv_key_accounts = Vec::new();
+            // term.writeln(format!("key: {}", key.id.to_hex()));
+            let mut accounts = wallet.accounts(Some(key.id));
+            while let Some(accounts) = accounts.next().await? {
+                for account in accounts {
+                    // term.writeln(format!("account: {}", account.id.to_hex()));
+                    prv_key_accounts.push((flat_list.len(), account.clone()));
+                    flat_list.push(account.clone());
+                    // seq += 1;
+                }
+            }
+
+            list_by_key.push((key.clone(), prv_key_accounts));
+        }
+    }
+
+    while selection.is_none() {
+        list_by_key.iter().for_each(|(prv_key_data_info, accounts)| {
+            term.writeln(format!("{prv_key_data_info}"));
+
+            accounts.iter().for_each(|(seq, account)| {
+                term.writeln(format!("    {seq}: {}", account.get_ls_string()));
+            })
+        });
+
+        // list.iter().enumerate().for_each(|(seq, item)| {
+        //     term.writeln(format!("{}: {} ({})", seq + 1, item, item.id().to_hex()));
+        // });
+
+        let text = term
+            .ask(false, &format!("Please select account ({}..{}) or <enter> to abort: ", 0, flat_list.len() - 1))
+            .await?
+            .trim()
+            .to_string();
+        if text.is_empty() {
+            term.writeln("aborting...");
+            return Err(Error::UserAbort);
+        } else {
+            // if let Ok(v) = serde_json::from_str::<T>(text.as_str()) {
+            //     selection = Some(v);
+            // } else {
+            match text.parse::<usize>() {
+                Ok(seq) if seq > 0 && seq < flat_list.len() => selection = flat_list.get(seq).cloned(),
+                _ => {}
+            };
+            // }
+        }
+    }
+
+    Ok(selection.unwrap())
+}
 
 #[allow(dead_code)]
 // async fn select_item<T>(term : &Arc<Terminal>, prompt: &str, argv : &mut Vec<String>, mut iter : impl kaspa_wallet_core::iterator::Iterator<Item = T>) -> Result<T>

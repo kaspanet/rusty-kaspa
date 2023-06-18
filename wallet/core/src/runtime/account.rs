@@ -14,12 +14,14 @@ use faster_hex::hex_string;
 use futures::future::join_all;
 use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, Language, Mnemonic, PrivateKey, SecretKey};
+use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
 use kaspa_notify::listener::ListenerId;
 use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
 use serde::Serializer;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+// use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use workflow_core::abortable::Abortable;
@@ -49,14 +51,20 @@ pub struct Scan {
     pub address_manager: Arc<AddressManager>,
     pub window_size: u32,
     pub extent: ScanExtent,
+    pub balance: Arc<AtomicU64>,
 }
 
 impl Scan {
-    pub fn new(address_manager: Arc<AddressManager>) -> Scan {
-        Scan { address_manager, window_size: DEFAULT_WINDOW_SIZE, extent: ScanExtent::EmptyWindow }
+    pub fn new(address_manager: Arc<AddressManager>, balance: &Arc<AtomicU64>) -> Scan {
+        Scan { address_manager, window_size: DEFAULT_WINDOW_SIZE, extent: ScanExtent::EmptyWindow, balance: balance.clone() }
     }
-    pub fn new_with_args(address_manager: Arc<AddressManager>, window_size: u32, extent: ScanExtent) -> Scan {
-        Scan { address_manager, window_size, extent }
+    pub fn new_with_args(
+        address_manager: Arc<AddressManager>,
+        window_size: u32,
+        extent: ScanExtent,
+        balance: &Arc<AtomicU64>,
+    ) -> Scan {
+        Scan { address_manager, window_size, extent, balance: balance.clone() }
     }
 }
 
@@ -142,7 +150,8 @@ pub struct Account {
     inner: Arc<Mutex<Inner>>,
     wallet: Arc<Wallet>,
     utxos: UtxoSet,
-    balance: Arc<AtomicU64>,
+    // balance: Arc<AtomicU64>,
+    balance: Mutex<Option<u64>>,
     is_connected: AtomicBool,
     #[wasm_bindgen(js_name = "accountKind")]
     pub account_kind: AccountKind,
@@ -193,7 +202,7 @@ impl Account {
             id: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
             wallet: wallet.clone(),
             utxos: UtxoSet::default(),
-            balance: Arc::new(AtomicU64::new(0)),
+            balance: Mutex::new(None), // Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind,
@@ -229,7 +238,7 @@ impl Account {
             id: AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index),
             wallet: wallet.clone(),
             utxos: UtxoSet::default(),
-            balance: Arc::new(AtomicU64::new(0)),
+            balance: Mutex::new(None), //Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
@@ -244,7 +253,7 @@ impl Account {
 
     pub async fn update_balance(self: &Arc<Account>) -> Result<u64> {
         let balance = self.utxos.calculate_balance().await?;
-        self.balance.store(balance, std::sync::atomic::Ordering::SeqCst);
+        self.balance.lock().unwrap().replace(balance); //store(balance, std::sync::atomic::Ordering::SeqCst);
         let balance_update = Arc::new(BalanceUpdate { account_id: self.id, balance });
         self.wallet
             .multiplexer
@@ -264,10 +273,21 @@ impl Account {
         self.inner.lock().unwrap().stored.name.clone()
     }
 
+    pub fn balance(&self) -> Option<u64> {
+        *self.balance.lock().unwrap()
+    }
+
+    pub fn balance_as_string(&self) -> Option<String> {
+        self.balance().map(|b| {
+            let f = b / SOMPI_PER_KASPA;
+            format!("{}", f)
+        })
+    }
+
     pub fn get_ls_string(&self) -> String {
         let name = self.name();
-        let balance = self.balance.load(std::sync::atomic::Ordering::SeqCst);
-        format!("{balance} - {name}")
+        let balance = self.balance_as_string().map(|s| format!("{s} KAS")).unwrap_or_else(|| "n/a".to_string());
+        format!("{name} - {balance}")
     }
 
     pub fn inner(&self) -> MutexGuard<Inner> {
@@ -277,6 +297,7 @@ impl Account {
     pub async fn scan_address_manager(self: &Arc<Self>, scan: Scan) -> Result<()> {
         let mut cursor = 0;
 
+        // let mut balance = 0;
         let mut last_address_index = std::cmp::max(scan.address_manager.index()?, scan.window_size);
 
         'scan: loop {
@@ -312,7 +333,8 @@ impl Account {
 
             if balance != 0 {
                 println!("scan_address_managet() balance increment: {balance}");
-                self.balance.fetch_add(balance, Ordering::SeqCst);
+                scan.balance.fetch_add(balance, Ordering::SeqCst);
+                // balance += utxo_balance;
 
                 // - TODO - post balance update to the multiplexer?
             } else {
@@ -338,7 +360,9 @@ impl Account {
 
     pub async fn scan_utxos(self: &Arc<Self>, window_size: Option<u32>, extent: Option<u32>) -> Result<()> {
         self.utxos.clear();
-        self.balance.store(0, Ordering::SeqCst);
+        // self.balance.store(0, Ordering::SeqCst);
+
+        let balance = Arc::new(AtomicU64::new(0));
 
         let window_size = window_size.unwrap_or(DEFAULT_WINDOW_SIZE);
         let extent = match extent {
@@ -347,12 +371,14 @@ impl Account {
         };
 
         let scans = vec![
-            self.scan_address_manager(Scan::new_with_args(self.derivation.receive_address_manager(), window_size, extent)),
-            self.scan_address_manager(Scan::new_with_args(self.derivation.change_address_manager(), window_size, extent)),
+            self.scan_address_manager(Scan::new_with_args(self.derivation.receive_address_manager(), window_size, extent, &balance)),
+            self.scan_address_manager(Scan::new_with_args(self.derivation.change_address_manager(), window_size, extent, &balance)),
         ];
 
         join_all(scans).await.into_iter().collect::<Result<Vec<_>>>()?;
 
+        // let balance = balance.load(std::sync::atomic::Ordering::SeqCst);
+        self.balance.lock().unwrap().replace(balance.load(std::sync::atomic::Ordering::SeqCst));
         // - TODO - post balance updates to the wallet
         self.utxos.order(UtxoOrdering::AscendingAmount)?;
 
@@ -563,13 +589,19 @@ impl Account {
     }
 }
 
-#[wasm_bindgen]
-impl Account {
-    #[wasm_bindgen(getter)]
-    pub fn balance(&self) -> u64 {
-        self.balance.load(std::sync::atomic::Ordering::SeqCst)
-    }
-}
+// #[wasm_bindgen]
+// impl Account {
+//     #[wasm_bindgen(getter)]
+//     pub fn get_balance(&self) -> JsValue {
+//         // self.balance.load(std::sync::atomic::Ordering::SeqCst)
+//     }
+// }
+
+// impl Display for Account {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "{} ({})", self.name.as_ref().unwrap_or(&"-".to_string()), self.id.to_hex())
+//     }
+// }
 
 #[derive(Default, Clone)]
 pub struct AccountMap(Arc<Mutex<HashMap<AccountId, Arc<Account>>>>);

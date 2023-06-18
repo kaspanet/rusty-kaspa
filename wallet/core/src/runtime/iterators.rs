@@ -20,11 +20,14 @@ pub struct AccountIterator {
     filter: Option<PrvKeyDataId>,
     options: IteratorOptions,
     iter: Option<Box<dyn Iterator<Item = Arc<storage::Account>>>>,
-    // prefix: AddressPrefix,
 }
 
 impl AccountIterator {
-    pub fn new(
+    pub fn new(wallet: &Arc<Wallet>, store: &Arc<dyn Interface>, filter: Option<PrvKeyDataId>) -> AccountIterator {
+        AccountIterator { wallet: wallet.clone(), store: store.clone(), filter, options: IteratorOptions::default(), iter: None }
+    }
+
+    pub fn new_with_options(
         wallet: &Arc<Wallet>,
         store: &Arc<dyn Interface>,
         filter: Option<PrvKeyDataId>,
@@ -48,7 +51,7 @@ impl Iterator for AccountIterator {
 
     async fn next(&mut self) -> Result<Option<Vec<Self::Item>>> {
         if self.iter.is_none() {
-            self.iter = Some(self.store.clone().as_account_store()?.iter(self.filter, self.options.clone()).await?);
+            self.iter = Some(self.store.clone().as_account_store()?.iter_with_options(self.filter, self.options.clone()).await?);
         }
 
         // use underlying iterator to fetch accounts
@@ -72,7 +75,10 @@ pub struct PrvKeyDataIterator {
 }
 
 impl PrvKeyDataIterator {
-    pub fn new(store: &Arc<dyn Interface>, options: IteratorOptions) -> PrvKeyDataIterator {
+    pub fn new(store: &Arc<dyn Interface>) -> PrvKeyDataIterator {
+        Self::new_with_options(store, IteratorOptions::default())
+    }
+    pub fn new_with_options(store: &Arc<dyn Interface>, options: IteratorOptions) -> PrvKeyDataIterator {
         PrvKeyDataIterator { store: store.clone(), options, iter: None }
     }
 }
@@ -83,7 +89,7 @@ impl Iterator for PrvKeyDataIterator {
 
     async fn next(&mut self) -> Result<Option<Vec<Self::Item>>> {
         if self.iter.is_none() {
-            self.iter = Some(self.store.as_prv_key_data_store()?.iter(self.options.clone()).await?);
+            self.iter = Some(self.store.as_prv_key_data_store()?.iter_with_options(self.options.clone()).await?);
         }
 
         if let Some(keydata) = self.iter.as_mut().unwrap().next().await? {

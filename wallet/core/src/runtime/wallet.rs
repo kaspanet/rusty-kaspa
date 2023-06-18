@@ -203,7 +203,6 @@ impl Wallet {
         // - TODO - RESET?
         self.reset().await?;
 
-        use crate::iterator::*;
         use storage::interface::*;
         use storage::local::interface::*;
 
@@ -214,7 +213,7 @@ impl Wallet {
         local_store.open(&ctx, OpenArgs::new(None)).await?;
         // let iface : Arc<dyn Interface> = local_store;
         let store_accounts = local_store.as_account_store()?;
-        let mut iter = store_accounts.iter(None, IteratorOptions::default()).await?;
+        let mut iter = store_accounts.iter(None).await?;
         // while let Some(ids) = iter.next().await {
         while let Some(accounts) = iter.next().await? {
             // let accounts = store_accounts.load(&ctx, &ids).await?;
@@ -406,7 +405,7 @@ impl Wallet {
         self: &Arc<Wallet>,
         wallet_args: &WalletCreateArgs,
         account_args: &AccountCreateArgs,
-    ) -> Result<Mnemonic> {
+    ) -> Result<(Mnemonic, Option<String>)> {
         log_info!("running create_wallet A");
         self.reset().await?;
 
@@ -414,6 +413,7 @@ impl Wallet {
 
         // self.inner.store.create(&ctx, CreateArgs::new(None, wallet_args.override_wallet)).await?;
         self.inner.store.create(&ctx, (None, wallet_args).into()).await?;
+        let descriptor = self.inner.store.descriptor().await?;
 
         let prefix: AddressPrefix = self.network().into();
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
@@ -454,7 +454,7 @@ impl Wallet {
         // - TODO autoload ???
         account.start().await?;
 
-        Ok(mnemonic)
+        Ok((mnemonic, descriptor))
     }
 
     pub async fn dump_unencrypted(&self) -> Result<()> {
@@ -697,16 +697,12 @@ impl Wallet {
         self.inner.store.exists(name).await
     }
 
-    pub fn keys(self: &Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>> {
-        Box::new(PrvKeyDataIterator::new(&self.inner.store, options))
+    pub fn keys(self: &Arc<Self>) -> Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>> {
+        Box::new(PrvKeyDataIterator::new(&self.inner.store))
     }
 
-    pub fn accounts(
-        self: &Arc<Self>,
-        filter: Option<PrvKeyDataId>,
-        options: IteratorOptions,
-    ) -> Box<dyn Iterator<Item = Arc<Account>>> {
-        Box::new(AccountIterator::new(self, &self.inner.store, filter, options))
+    pub fn accounts(self: &Arc<Self>, filter: Option<PrvKeyDataId>) -> Box<dyn Iterator<Item = Arc<Account>>> {
+        Box::new(AccountIterator::new(self, &self.inner.store, filter))
     }
 }
 

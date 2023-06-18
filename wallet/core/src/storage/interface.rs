@@ -37,7 +37,11 @@ impl AccessContextT for AccessContext {
 
 #[async_trait]
 pub trait PrvKeyDataStore: Send + Sync {
-    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Result<Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>>>;
+    async fn iter(self: Arc<Self>) -> Result<Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>>> {
+        self.iter_with_options(IteratorOptions::default()).await
+    }
+
+    async fn iter_with_options(self: Arc<Self>, options: IteratorOptions) -> Result<Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>>>;
     async fn load_key_info(&self, id: &PrvKeyDataId) -> Result<Option<Arc<PrvKeyDataInfo>>>;
     async fn load_key_data(&self, ctx: &Arc<dyn AccessContextT>, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>>;
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: PrvKeyData) -> Result<()>;
@@ -46,7 +50,11 @@ pub trait PrvKeyDataStore: Send + Sync {
 
 #[async_trait]
 pub trait AccountStore: Send + Sync {
-    async fn iter(
+    async fn iter(self: Arc<Self>, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<Box<dyn Iterator<Item = Arc<Account>>>> {
+        self.iter_with_options(prv_key_data_id_filter, IteratorOptions::default()).await
+    }
+
+    async fn iter_with_options(
         self: Arc<Self>,
         prv_key_data_id_filter: Option<PrvKeyDataId>,
         options: IteratorOptions,
@@ -59,12 +67,15 @@ pub trait AccountStore: Send + Sync {
 
 #[async_trait]
 pub trait MetadataStore: Send + Sync {
-    async fn iter(
+    async fn iter(self: Arc<Self>, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<Box<dyn Iterator<Item = Arc<Metadata>>>> {
+        self.iter_with_options(prv_key_data_id_filter, IteratorOptions::default()).await
+    }
+
+    async fn iter_with_options(
         self: Arc<Self>,
         prv_key_data_id_filter: Option<PrvKeyDataId>,
         options: IteratorOptions,
     ) -> Result<Box<dyn Iterator<Item = Arc<Metadata>>>>;
-
     async fn load(&self, id: &[AccountId]) -> Result<Vec<Arc<Metadata>>>;
 }
 
@@ -116,6 +127,10 @@ pub trait Interface: Send + Sync + AnySync {
 
     // stop the storage subsystem
     async fn close(&self) -> Result<()>;
+
+    // ~~~
+
+    async fn descriptor(&self) -> Result<Option<String>>;
 
     // ~~~
 
