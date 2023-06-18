@@ -47,7 +47,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedSender},
+    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     RwLock as AsyncRwLock,
 };
 use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
@@ -63,15 +63,27 @@ pub enum BlockSource {
 }
 
 pub struct AcceptedBlockLogger {
+    bps: usize,
     sender: UnboundedSender<(Hash, BlockSource)>,
+    receiver: Mutex<Option<UnboundedReceiver<(Hash, BlockSource)>>>,
 }
 
 impl AcceptedBlockLogger {
     pub fn new(bps: usize) -> Self {
         let (sender, receiver) = unbounded_channel();
+        Self { bps, sender, receiver: Mutex::new(Some(receiver)) }
+    }
 
+    pub fn log(&self, hash: Hash, source: BlockSource) {
+        self.sender.send((hash, source)).unwrap();
+    }
+
+    /// Start the logger listener. Must be called from an async tokio context
+    fn start(&self) {
+        let chunk_limit = self.bps * 2;
+        let receiver = self.receiver.lock().take().expect("expected to be called once");
         tokio::spawn(async move {
-            let chunk_stream = UnboundedReceiverStream::new(receiver).chunks_timeout(bps, Duration::from_secs(1));
+            let chunk_stream = UnboundedReceiverStream::new(receiver).chunks_timeout(chunk_limit, Duration::from_secs(1));
             tokio::pin!(chunk_stream);
             while let Some(chunk) = chunk_stream.next().await {
                 if let Some((i, h)) =
@@ -80,7 +92,7 @@ impl AcceptedBlockLogger {
                     let count = i + 1; // i is the last index
                     match count {
                         1 => info!("Accepted block {} via relay", h),
-                        n => info!("Accepted {} blocks ... {} via relay", n, h),
+                        n => info!("Accepted {} blocks ...{} via relay", n, h),
                     }
                     if count == chunk.len() {
                         // At this point we know there are no `submit` blocks, so we can avoid the second filter
@@ -94,17 +106,11 @@ impl AcceptedBlockLogger {
                     let count = i + 1; // i is the last index
                     match count {
                         1 => info!("Accepted block {} via submit block", h),
-                        n => info!("Accepted {} blocks ... {} via submit block", n, h),
+                        n => info!("Accepted {} blocks ...{} via submit block", n, h),
                     }
                 }
             }
         });
-
-        Self { sender }
-    }
-
-    pub fn log(&self, hash: Hash, source: BlockSource) {
-        self.sender.send((hash, source)).unwrap();
     }
 }
 
@@ -196,6 +202,12 @@ impl FlowContext {
                 accepted_block_logger: if config.bps() > 1 { Some(AcceptedBlockLogger::new(config.bps() as usize)) } else { None },
                 config,
             }),
+        }
+    }
+
+    pub fn start_async_services(&self) {
+        if let Some(logger) = self.accepted_block_logger.as_ref() {
+            logger.start();
         }
     }
 
