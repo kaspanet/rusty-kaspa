@@ -315,7 +315,7 @@ impl Router {
 
     /// Closes the router, signals exit, and cleans up all resources so that underlying connections will be aborted correctly.
     /// Returns true of this is the first call to close
-    pub async fn close(&self) -> bool {
+    pub async fn close(self: &Arc<Router>) -> bool {
         // Acquire state mutex and send the shutdown signal
         // NOTE: Using a block to drop the lock asap
         {
@@ -339,7 +339,7 @@ impl Router {
         self.routing_map.write().clear();
 
         // Send a close notification to the central Hub
-        self.hub_sender.send(HubEvent::PeerClosing(self.key())).await.expect("hub receiver should never drop before senders");
+        self.hub_sender.send(HubEvent::PeerClosing(self.clone())).await.expect("hub receiver should never drop before senders");
 
         true
     }
