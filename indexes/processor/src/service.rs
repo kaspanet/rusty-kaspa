@@ -89,9 +89,8 @@ impl AsyncService for IndexService {
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} stopping", INDEX_SERVICE);
         Box::pin(async move {
-            trace!("{} exiting", INDEX_SERVICE);
+            trace!("{} stopped", INDEX_SERVICE);
             Ok(())
         })
     }

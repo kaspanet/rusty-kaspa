@@ -59,9 +59,8 @@ impl AsyncService for GrpcService {
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} stopping", GRPC_SERVICE);
         Box::pin(async move {
-            trace!("{} exiting", GRPC_SERVICE);
+            trace!("{} stopped", GRPC_SERVICE);
             Ok(())
         })
     }

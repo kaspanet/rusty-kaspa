@@ -73,9 +73,8 @@ impl AsyncService for NotifyService {
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} stopping", NOTIFY_SERVICE);
         Box::pin(async move {
-            trace!("{} exiting", NOTIFY_SERVICE);
+            trace!("{} stopped", NOTIFY_SERVICE);
             Ok(())
         })
     }

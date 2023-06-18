@@ -97,7 +97,6 @@ impl AsyncRuntime {
 
         // Stop all async services
         // All services futures are spawned as tokio tasks to enable parallelism
-        trace!("async-runtime worker stopping");
         let futures = self
             .services
             .lock()
@@ -107,7 +106,7 @@ impl AsyncRuntime {
             .collect::<Vec<TaskJoinHandle<AsyncServiceResult<()>>>>();
         try_join_all(futures).await.unwrap();
 
-        trace!("async-runtime worker exiting");
+        trace!("async-runtime worker stopped");
     }
 
     pub fn signal_exit(self: Arc<AsyncRuntime>) {

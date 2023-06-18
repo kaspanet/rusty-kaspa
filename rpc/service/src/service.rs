@@ -689,9 +689,8 @@ impl AsyncService for RpcCoreService {
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} stopping", RPC_CORE_SERVICE);
         Box::pin(async move {
-            trace!("{} exiting", RPC_CORE_SERVICE);
+            trace!("{} stopped", RPC_CORE_SERVICE);
             Ok(())
         })
     }

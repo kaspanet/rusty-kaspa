@@ -88,9 +88,8 @@ impl AsyncService for ConsensusMonitor {
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} stopping", MONITOR);
         Box::pin(async move {
-            trace!("{} exiting", MONITOR);
+            trace!("{} stopped", MONITOR);
             Ok(())
         })
     }

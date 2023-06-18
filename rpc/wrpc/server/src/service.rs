@@ -194,9 +194,8 @@ impl AsyncService for WrpcService {
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} stopping", WRPC_SERVER);
         Box::pin(async move {
-            trace!("{} exiting", WRPC_SERVER);
+            trace!("{} stopped", WRPC_SERVER);
             Ok(())
         })
     }
