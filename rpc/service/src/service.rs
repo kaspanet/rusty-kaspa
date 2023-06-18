@@ -227,8 +227,8 @@ impl RpcApi for RpcCoreService {
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
         trace!("incoming GetBlockTemplate request");
 
-        if *self.config.net == NetworkType::Mainnet {
-            return Err(RpcError::General("Mining on mainnet is not supported for the Rust Alpha version".to_owned()));
+        if *self.config.net == NetworkType::Mainnet && !self.config.enable_mainnet_mining {
+            return Err(RpcError::General("Mining on mainnet is not supported for initial Rust versions".to_owned()));
         }
 
         // Make sure the pay address prefix matches the config network type

@@ -18,6 +18,7 @@ pub struct Defaults {
     pub inbound_limit: usize,
     pub rpc_max_clients: usize,
     pub enable_unsynced_mining: bool,
+    pub enable_mainnet_mining: bool,
     pub testnet: bool,
     pub testnet_suffix: u32,
     pub devnet: bool,
@@ -42,6 +43,7 @@ impl Default for Defaults {
             inbound_limit: 128,
             rpc_max_clients: 128,
             enable_unsynced_mining: false,
+            enable_mainnet_mining: false,
             testnet: false,
             testnet_suffix: 10,
             devnet: false,
@@ -76,6 +78,7 @@ pub struct Args {
     pub inbound_limit: usize,
     pub rpc_max_clients: usize,
     pub enable_unsynced_mining: bool,
+    pub enable_mainnet_mining: bool,
     pub testnet: bool,
     pub testnet_suffix: u32,
     pub devnet: bool,
@@ -192,6 +195,13 @@ pub fn cli(defaults: &Defaults) -> Command {
         )
         .arg(arg!(--"reset-db" "Reset database before starting node. It's needed when switching between subnetworks."))
         .arg(arg!(--"enable-unsynced-mining" "Allow the node to accept blocks from RPC while not synced (this flag is mainly used for testing)"))
+        .arg(
+            Arg::new("enable-mainnet-mining")
+                .long("enable-mainnet-mining")
+                .action(ArgAction::SetTrue)
+                .hide(true)
+                .help("Allow mainnet mining (do not use unless you know what you are doing)"),
+        )
         .arg(arg!(--utxoindex "Enable the UTXO index"))
         .arg(arg!(--testnet "Use the test network"))
         .arg(
@@ -238,6 +248,7 @@ impl Args {
             rpc_max_clients: m.get_one::<usize>("rpcmaxclients").cloned().unwrap_or(defaults.rpc_max_clients),
             reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
             enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
+            enable_mainnet_mining: m.get_one::<bool>("enable-mainnet-mining").cloned().unwrap_or(defaults.enable_mainnet_mining),
             utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
             testnet_suffix: m.get_one::<u32>("netsuffix").cloned().unwrap_or(defaults.testnet_suffix),
@@ -254,6 +265,7 @@ impl Args {
         config.utxoindex = self.utxoindex;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
+        config.enable_mainnet_mining = self.enable_mainnet_mining;
         config.is_archival = self.archival;
         // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
         config.enable_sanity_checks = true;

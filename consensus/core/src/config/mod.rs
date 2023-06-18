@@ -42,6 +42,9 @@ pub struct Config {
     /// (required when initiating a new network from genesis)
     pub enable_unsynced_mining: bool,
 
+    /// Allow mainnet mining. Until a stable Beta version we keep this option off by default
+    pub enable_mainnet_mining: bool,
+
     pub user_agent_comments: Vec<String>,
 }
 
@@ -60,6 +63,7 @@ impl Config {
             utxoindex: false,
             unsafe_rpc: false,
             enable_unsynced_mining: false,
+            enable_mainnet_mining: false,
             user_agent_comments: Default::default(),
         }
     }

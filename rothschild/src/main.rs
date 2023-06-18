@@ -107,6 +107,7 @@ async fn main() {
 
     info!("Using Rothschild with private key {} and address {}", schnorr_key.display_secret(), String::from(&kaspa_addr));
     let info = rpc_client.get_block_dag_info().await.unwrap();
+    info!("Node block-DAG info: {:?}", info);
     let coinbase_maturity = match info.network.suffix {
         Some(11) => TESTNET11_PARAMS.coinbase_maturity,
         None | Some(_) => TESTNET_PARAMS.coinbase_maturity,

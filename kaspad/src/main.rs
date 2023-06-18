@@ -33,7 +33,7 @@ use args::{Args, Defaults};
 // ~~~
 
 // TODO: testnet 11 tasks:
-// coinbase rewards, verify all configs, mainnet mining
+// coinbase rewards
 
 use kaspa_consensus::config::ConfigBuilder;
 use kaspa_utxoindex::UtxoIndex;
