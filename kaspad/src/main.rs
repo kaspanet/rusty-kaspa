@@ -307,6 +307,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         address_manager,
         config.clone(),
         mining_manager.clone(),
+        tick_service.clone(),
         notification_root,
     ));
     let p2p_service = Arc::new(P2pService::new(
