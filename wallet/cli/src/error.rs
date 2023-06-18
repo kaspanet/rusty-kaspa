@@ -9,6 +9,9 @@ pub enum Error {
     #[error("Error: {0}")]
     Custom(String),
 
+    #[error("Action aborted by the user")]
+    UserAbort,
+
     #[error("Wallet error: {0}")]
     WalletError(#[from] WalletError),
 
@@ -34,6 +37,21 @@ pub enum Error {
 
     #[error("account '{0}' not found")]
     AccountNotFound(String),
+
+    #[error("please create a wallet")]
+    WalletDoesNotExist,
+
+    #[error("please open a wallet")]
+    WalletIsNotOpen,
+
+    #[error("Unrecognized argument '{0}', accepted arguments are: {1}")]
+    UnrecognizedArgument(String, String),
+
+    #[error("multiple matches for argument '{0}'; please be more specific.")]
+    MultipleMatches(String),
+
+    #[error("account type must be <bip32|multisig|legacy>")]
+    InvalidAccountKind,
 }
 
 impl Error {

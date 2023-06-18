@@ -6,6 +6,7 @@ use faster_hex::{hex_decode, hex_string};
 use kaspa_bip32::{ExtendedPublicKey, Language, Mnemonic};
 use serde::Serializer;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 #[allow(unused_imports)]
 use workflow_core::runtime;
 use zeroize::Zeroize;
@@ -187,6 +188,12 @@ impl PrvKeyDataInfo {
 
     pub fn is_encrypted(&self) -> bool {
         self.is_encrypted
+    }
+}
+
+impl Display for PrvKeyDataInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ({})", self.name.as_ref().unwrap_or(&"-".to_string()), self.id.to_hex())
     }
 }
 

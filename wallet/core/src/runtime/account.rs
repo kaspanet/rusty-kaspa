@@ -24,6 +24,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use workflow_core::abortable::Abortable;
 use workflow_core::channel::{Channel, DuplexChannel};
+use workflow_core::enums::Describe;
 
 #[derive(Default, Clone)]
 pub struct Estimate {
@@ -59,13 +60,16 @@ impl Scan {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Describe, Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
+#[serde(rename_all = "lowercase")]
 #[wasm_bindgen]
 pub enum AccountKind {
-    V0,
+    #[describe("Legacy account (kaspanet.io Web Wallet, KDX)")]
+    Legacy,
     #[default]
+    #[describe("Bip32 account")]
     Bip32,
+    #[describe("MultiSignature account")]
     MultiSig,
 }
 
@@ -507,7 +511,7 @@ impl Account {
 
     /// handle connection event
     pub async fn connect(self: &Arc<Self>) -> Result<()> {
-        self.wallet.connected_accounts().insert(self.clone());
+        self.wallet.active_accounts().insert(self.clone());
 
         // self.is_connected.store(true, Ordering::SeqCst);
         // self.register_notification_listener().await?;
@@ -517,7 +521,7 @@ impl Account {
 
     /// handle disconnection event
     pub async fn disconnect(&self) -> Result<()> {
-        self.wallet.connected_accounts().remove(&self.id);
+        self.wallet.active_accounts().remove(&self.id);
         // self.is_connected.store(false, Ordering::SeqCst);
         // self.unregister_notification_listener().await?;
         Ok(())

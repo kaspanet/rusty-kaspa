@@ -113,6 +113,12 @@ pub enum Error {
     #[error("wallet secret is required")]
     WalletSecretRequired,
 
+    #[error("wallet secrets do not match")]
+    WalletSecretMatch,
+
+    #[error("payment secrets do not match")]
+    PaymentSecretMatch,
+
     #[error("task aborted")]
     Aborted,
 }

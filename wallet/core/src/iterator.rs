@@ -22,4 +22,12 @@ pub trait Iterator: Send + Sync {
     async fn is_empty(&mut self) -> Result<bool> {
         Ok(self.len().await? == 0)
     }
+
+    async fn collect(&mut self) -> Result<Vec<Self::Item>> {
+        let mut result = Vec::new();
+        while let Some(chunk) = self.next().await? {
+            result.extend(chunk);
+        }
+        Ok(result)
+    }
 }

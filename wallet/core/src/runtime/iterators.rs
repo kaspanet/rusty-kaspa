@@ -34,7 +34,7 @@ impl AccountIterator {
     }
 
     async fn load_or_create(&self, stored: &storage::Account, prefix: AddressPrefix) -> Result<Arc<Account>> {
-        if let Some(account) = self.wallet.connected_accounts().get(&stored.id) {
+        if let Some(account) = self.wallet.active_accounts().get(&stored.id) {
             Ok(account)
         } else {
             Account::try_new_arc_from_storage(&self.wallet, stored, prefix).await

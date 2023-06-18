@@ -100,8 +100,13 @@ impl OpenArgs {
 
 #[async_trait]
 pub trait Interface: Send + Sync + AnySync {
+    // checks if the wallet storage is present
+    async fn exists(&self, name: Option<&str>) -> Result<bool>;
+
     // initialize wallet storage
     async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()>;
+
+    async fn is_open(&self) -> Result<bool>;
 
     // establish an open state (load wallet data cache, connect to the database etc.)
     async fn open(&self, ctx: &Arc<dyn AccessContextT>, args: OpenArgs) -> Result<()>;

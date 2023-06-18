@@ -8,12 +8,16 @@ use kaspa_wallet_core::accounts::gen0::import::*;
 use kaspa_wallet_core::imports::ToHex;
 use kaspa_wallet_core::iterator::IteratorOptions;
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
-use kaspa_wallet_core::storage::AccountKind;
+use kaspa_wallet_core::storage::{AccountKind, IdT, PrvKeyDataId};
 use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
 use kaspa_wallet_core::{Address, AddressPrefix};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::sync::{Arc, Mutex};
+use textwrap::wrap;
 use workflow_core::abortable::Abortable;
 use workflow_core::channel::*;
+use workflow_core::enums::EnumTrait;
 use workflow_core::runtime;
 use workflow_log::*;
 use workflow_terminal::Terminal;
@@ -93,38 +97,47 @@ impl WalletCli {
             //     }
             // }
             Action::Create => {
-                use kaspa_wallet_core::error::Error;
+                let is_open = self.wallet.is_open().await?;
 
-                let title = term.ask(false, "Wallet title: ").await?.trim().to_string();
-                let wallet_password = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
-                let payment_password = Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec());
-                let account_kind = AccountKind::Bip32;
-                let mut wallet_args = WalletCreateArgs::new(None, false);
-                let account_args = AccountCreateArgs::new(title, account_kind, wallet_password, Some(payment_password));
+                let op = if argv.is_empty() { if is_open { "account" } else { "wallet" }.to_string() } else { argv.remove(0) };
 
-                let mnemonic = match self.wallet.create_wallet(&wallet_args, &account_args).await {
-                    Ok(mnemonic) => mnemonic,
-                    Err(Error::WalletAlreadyExists) => {
-                        let overwrite = term
-                            .ask(false, "Wallet already exists. Are you sure you want to override it (type 'y' to approve)?: ")
-                            .await?
-                            .trim()
-                            .to_string()
-                            .to_lowercase();
-                        if overwrite.ne("y") {
-                            return Ok(());
+                match op.as_str() {
+                    "wallet" => {
+                        let wallet_name = if argv.is_empty() {
+                            None
                         } else {
-                            wallet_args.overwrite_wallet = true;
-                            self.wallet.create_wallet(&wallet_args, &account_args).await?
-                        }
-                    }
-                    Err(err) => {
-                        return Err(err.into());
-                    }
-                };
+                            let name = argv.remove(0);
+                            let name = name.trim().to_string();
 
-                term.writeln("Default account mnemonic:");
-                term.writeln(mnemonic.phrase());
+                            Some(name)
+                        };
+
+                        let wallet_name = wallet_name.as_deref();
+                        self.create_wallet(wallet_name, term).await?;
+                    }
+                    "account" => {
+                        if !is_open {
+                            return Err(Error::WalletIsNotOpen);
+                        }
+
+                        let account_kind: AccountKind = select_variant(&term, "Please select account type", &mut argv).await?;
+
+                        let prv_key_data_info = select_item(
+                            &term,
+                            "Please select private key",
+                            &mut argv,
+                            self.wallet.store().as_prv_key_data_store()?.iter(IteratorOptions::default()).await?,
+                        )
+                        .await?;
+
+                        self.create_account(prv_key_data_info.id, account_kind, term).await?;
+                    }
+                    _ => {
+                        term.writeln("\n\rError:\n\r");
+                        term.writeln("Usage:\n\rcreate <account|wallet>");
+                        return Ok(());
+                    }
+                }
             }
             Action::Broadcast => {
                 self.wallet.broadcast().await?;
@@ -292,7 +305,7 @@ impl WalletCli {
                     let account = {
                         // let accounts = ;
                         self.wallet
-                            .connected_accounts()
+                            .active_accounts()
                             .inner()
                             .values()
                             .find(|account| account.name() == name)
@@ -373,6 +386,114 @@ impl WalletCli {
                 .unwrap_or_else(|err| log_error!("WalletCli::notification_pipe_task() unable to signal task shutdown: `{err}`"));
         });
     }
+
+    // ---
+
+    async fn create_wallet(&self, name: Option<&str>, term: Arc<Terminal>) -> Result<()> {
+        use kaspa_wallet_core::error::Error;
+
+        if self.wallet.exists(name).await? {
+            term.writeln("WARNING - A previously created wallet already exists!");
+
+            let overwrite = term
+                .ask(false, "Are you sure you want to overwrite it (type 'y' to approve)?: ")
+                .await?
+                .trim()
+                .to_string()
+                .to_lowercase();
+            if overwrite.ne("y") {
+                return Ok(());
+            }
+        }
+
+        let account_title = term.ask(false, "Default account title: ").await?.trim().to_string();
+        let account_name = account_title.replace(' ', "-").to_lowercase();
+
+        log_info!("");
+        log_info!("\"Phishing hint\" is a secret word or a phrase that is displayed when you open your wallet.");
+        log_info!("If you do not see the hint when opening your wallet, you may be accessing a fake wallet designed to steal your private key.");
+        log_info!("If this occurs, stop using the wallet immediately, check the domain name and seek help on social networks (Kaspa Discord or Telegram).");
+        log_info!("");
+        let hint = term.ask(false, "Create phishing hint (optional, press <enter> to skip): ").await?.trim().to_string();
+        let hint = if hint.is_empty() { None } else { Some(hint) };
+
+        let wallet_password = Secret::new(term.ask(true, "Enter wallet encryption password: ").await?.trim().as_bytes().to_vec());
+        if wallet_password.as_ref().is_empty() {
+            return Err(Error::WalletSecretRequired.into());
+        }
+        let wallet_password_validate =
+            Secret::new(term.ask(true, "Re-enter wallet encryption password: ").await?.trim().as_bytes().to_vec());
+        if wallet_password_validate.as_ref() != wallet_password.as_ref() {
+            return Err(Error::WalletSecretMatch.into());
+        }
+
+        let payment_password = Secret::new(
+            term.ask(true, "Enter payment (private key encryption) password (optional): ").await?.trim().as_bytes().to_vec(),
+        );
+        if !payment_password.as_ref().is_empty() {
+            let payment_password_validate = Secret::new(
+                term.ask(true, "Enter payment (private key encryption) password (optional): ").await?.trim().as_bytes().to_vec(),
+            );
+            if payment_password_validate.as_ref() != payment_password.as_ref() {
+                return Err(Error::PaymentSecretMatch.into());
+            }
+        }
+
+        let account_kind = AccountKind::Bip32;
+
+        let wallet_args = WalletCreateArgs::new(None, hint, true);
+        let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_password, Some(payment_password));
+        let mnemonic = self.wallet.create_wallet(&wallet_args, &account_args).await?;
+
+        ["", "---", "", "IMPORTANT:", ""].into_iter().for_each(|line| term.writeln(line));
+
+        wrap(
+            "Your mnemonic phrase allows your to re-create your private key. \
+            The person who has access to this mnemonic will have full control of \
+            the Kaspa stored in it. Keep your mnemonic safe. Write it down and \
+            store it in a safe, preferably in a fire-resistant location. Do not \
+            store your mnemonic on this computer or a mobile device. This wallet \
+            will never ask you for this mnemonic phrase unless you manually \
+            initial a private key recovery.",
+            70,
+        )
+        .into_iter()
+        .for_each(|line| term.writeln(line));
+
+        ["", "Never share your mnemonic with anyone!", "---", "", "Your default wallet account mnemonic:", mnemonic.phrase(), ""]
+            .into_iter()
+            .for_each(|line| term.writeln(line));
+
+        Ok(())
+    }
+
+    async fn create_account(&self, _prv_key_data_id: PrvKeyDataId, account_kind: AccountKind, term: Arc<Terminal>) -> Result<()> {
+        use kaspa_wallet_core::error::Error;
+
+        if matches!(account_kind, AccountKind::MultiSig) {
+            return Err(Error::Custom(
+                "MultiSig accounts are not currently supported (will be available in the future version)".to_string(),
+            )
+            .into());
+        }
+
+        let title = term.ask(false, "Account title: ").await?.trim().to_string();
+        let name = title.replace(' ', "-").to_lowercase();
+
+        let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
+        if wallet_secret.as_ref().is_empty() {
+            return Err(Error::WalletSecretRequired.into());
+        }
+
+        let payment_password = Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec());
+
+        // let account_kind = AccountKind::Bip32;
+        let _account_args = AccountCreateArgs::new(name, title, account_kind, wallet_secret, Some(payment_password));
+
+        // self.wallet.create_bip32_account(wallet_secret, payment_secret, prv_key_data_id, &account_args).await?;
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -410,6 +531,98 @@ impl Cli for WalletCli {
 }
 
 impl WalletCli {}
+
+#[allow(dead_code)]
+// async fn select_item<T>(term : &Arc<Terminal>, prompt: &str, argv : &mut Vec<String>, mut iter : impl kaspa_wallet_core::iterator::Iterator<Item = T>) -> Result<T>
+async fn select_item<T>(
+    term: &Arc<Terminal>,
+    prompt: &str,
+    argv: &mut Vec<String>,
+    mut iter: Box<dyn kaspa_wallet_core::iterator::Iterator<Item = Arc<T>>>,
+) -> Result<Arc<T>>
+where
+    T: std::fmt::Display + IdT + Clone + Send + Sync + 'static,
+{
+    let mut selection = None;
+    let list: Vec<Arc<T>> = iter.collect().await?;
+
+    if !argv.is_empty() {
+        let text = argv.remove(0);
+        let matched = list
+            .into_iter()
+            // - TODO match by name
+            .filter(|item| item.id().to_hex().starts_with(&text))
+            .collect::<Vec<_>>();
+
+        if matched.len() == 1 {
+            return Ok(matched.first().cloned().unwrap());
+        } else {
+            return Err(Error::MultipleMatches(text));
+        }
+    }
+
+    while selection.is_none() {
+        list.iter().enumerate().for_each(|(seq, item)| {
+            term.writeln(format!("{}: {} ({})", seq + 1, item, item.id().to_hex()));
+        });
+
+        let text = term.ask(false, &format!("{prompt} ({}..{}) or <enter> to abort: ", 0, list.len() - 1)).await?.trim().to_string();
+        if text.is_empty() {
+            term.writeln("aborting...");
+            return Err(Error::UserAbort);
+        } else {
+            // if let Ok(v) = serde_json::from_str::<T>(text.as_str()) {
+            //     selection = Some(v);
+            // } else {
+            match text.parse::<usize>() {
+                Ok(seq) if seq > 0 && seq < list.len() => selection = list.get(seq).cloned(),
+                _ => {}
+            };
+            // }
+        }
+    }
+
+    Ok(selection.unwrap())
+}
+
+async fn select_variant<T>(term: &Arc<Terminal>, prompt: &str, argv: &mut Vec<String>) -> Result<T>
+where
+    T: EnumTrait<T> + DeserializeOwned + Clone + Serialize,
+{
+    if !argv.is_empty() {
+        let text = argv.remove(0);
+        if let Ok(v) = serde_json::from_str::<T>(text.as_str()) {
+            return Ok(v);
+        } else {
+            let accepted = T::list().iter().map(|v| serde_json::to_string(v).unwrap()).collect::<Vec<_>>().join(", ");
+            return Err(Error::UnrecognizedArgument(text, accepted));
+        }
+    }
+
+    let mut selection = None;
+    let list = T::list();
+    while selection.is_none() {
+        list.iter().enumerate().for_each(|(seq, item)| {
+            let name = serde_json::to_string(item).unwrap();
+            term.writeln(format!("{}: '{name}' - {}", seq, item.descr()));
+        });
+
+        let text = term.ask(false, &format!("{prompt} ({}..{}) or <enter> to abort: ", 0, list.len() - 1)).await?.trim().to_string();
+        if text.is_empty() {
+            term.writeln("aborting...");
+            return Err(Error::UserAbort);
+        } else if let Ok(v) = serde_json::from_str::<T>(text.as_str()) {
+            selection = Some(v);
+        } else {
+            match text.parse::<usize>() {
+                Ok(seq) if seq > 0 && seq < list.len() => selection = list.get(seq).cloned(),
+                _ => {}
+            };
+        }
+    }
+
+    Ok(selection.unwrap())
+}
 
 pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     let wallet = Arc::new(Wallet::try_new().await?);

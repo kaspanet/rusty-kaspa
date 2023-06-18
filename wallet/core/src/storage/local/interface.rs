@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use crate::imports::*;
 use crate::iterator::*;
@@ -60,9 +62,15 @@ impl TryFrom<(&Cache, &Secret)> for Wallet {
 pub(crate) struct LocalStoreInner {
     pub cache: Mutex<Cache>,
     pub store: Store,
+    pub modified: AtomicBool,
 }
 
 impl LocalStoreInner {
+    // pub async fn exists(folder: &str, name : Option<&str>) -> Result<bool> {
+    //     let store = Store::new(folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
+    //     store.exists().await
+    // }
+
     pub async fn try_create(ctx: &Arc<dyn AccessContextT>, folder: &str, args: CreateArgs) -> Result<Self> {
         let store = Store::new(folder, &args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string()))?;
 
@@ -73,8 +81,9 @@ impl LocalStoreInner {
             let payload = Payload::default();
             let wallet = Wallet::try_new(secret.clone(), payload)?;
             let cache = Mutex::new(Cache::try_from((wallet, &secret))?);
+            let modified = AtomicBool::new(false);
 
-            Ok(Self { cache, store })
+            Ok(Self { cache, store, modified })
         }
     }
 
@@ -84,8 +93,9 @@ impl LocalStoreInner {
         let secret = ctx.wallet_secret().await.expect("wallet requires an encryption secret");
         let wallet = Wallet::try_load(&store).await?;
         let cache = Mutex::new(Cache::try_from((wallet, &secret))?);
+        let modified = AtomicBool::new(false);
 
-        Ok(Self { cache, store })
+        Ok(Self { cache, store, modified })
     }
 
     pub fn cache(&self) -> MutexGuard<Cache> {
@@ -104,8 +114,29 @@ impl LocalStoreInner {
         let secret = ctx.wallet_secret().await.ok_or(Error::WalletSecretRequired)?;
         let wallet = Wallet::try_from((&*self.cache(), &secret))?;
         wallet.try_store(&self.store).await?;
+        self.set_modified(false);
 
         Ok(())
+    }
+
+    #[inline]
+    pub fn set_modified(&self, modified: bool) {
+        self.modified.store(modified, Ordering::SeqCst);
+    }
+
+    #[inline]
+    pub fn is_modified(&self) -> bool {
+        self.modified.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for LocalStoreInner {
+    fn drop(&mut self) {
+        if self.is_modified() {
+            panic!("LocalStoreInner::drop called while modified flag is true");
+        }
+
+        // if self.cache()
     }
 }
 
@@ -159,6 +190,12 @@ impl Interface for LocalStore {
         Ok(self.inner()?)
     }
 
+    async fn exists(&self, name: Option<&str>) -> Result<bool> {
+        let location = self.location.lock().unwrap().clone().unwrap();
+        let store = Store::new(&location.folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
+        store.exists().await
+    }
+
     async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()> {
         log_info!("INTERFACE: creating wallet");
         let location = self.location.lock().unwrap().clone().unwrap();
@@ -175,6 +212,10 @@ impl Interface for LocalStore {
         Ok(())
     }
 
+    async fn is_open(&self) -> Result<bool> {
+        Ok(self.inner.lock().unwrap().is_some())
+    }
+
     async fn commit(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
         log_info!("*** COMMITING ***");
         self.inner()?.store(ctx).await?;
@@ -182,6 +223,16 @@ impl Interface for LocalStore {
     }
 
     async fn close(&self) -> Result<()> {
+        if self.inner()?.is_modified() {
+            panic!("LocalStore::close called while modified flag is true");
+        }
+
+        if !self.is_open().await? {
+            panic!("LocalStore::close called while wallet is not open");
+        }
+
+        self.inner.lock().unwrap().take();
+
         Ok(())
     }
 
@@ -217,6 +268,7 @@ impl PrvKeyDataStore for LocalStoreInner {
         let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret.clone())?;
         prv_key_data_map.insert(prv_key_data.id, prv_key_data);
         self.cache().prv_key_data.replace(prv_key_data_map.encrypt(wallet_secret)?);
+        self.set_modified(true);
         Ok(())
     }
 
@@ -225,6 +277,7 @@ impl PrvKeyDataStore for LocalStoreInner {
         let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret.clone())?;
         prv_key_data_map.remove(prv_key_data_id);
         self.cache().prv_key_data.replace(prv_key_data_map.encrypt(wallet_secret)?);
+        self.set_modified(true);
         Ok(())
     }
 }
@@ -269,11 +322,16 @@ impl AccountStore for LocalStoreInner {
         cache.metadata.remove(&remove)?;
         cache.metadata.extend(&extend)?;
 
+        self.set_modified(true);
+
         Ok(())
     }
 
     async fn remove(&self, ids: &[&AccountId]) -> Result<()> {
         self.cache().accounts.remove(ids)?;
+
+        self.set_modified(true);
+
         Ok(())
     }
 }
@@ -304,10 +362,14 @@ impl TransactionRecordStore for LocalStoreInner {
     }
 
     async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()> {
-        self.cache().transaction_records.store(transaction_records)
+        self.cache().transaction_records.store(transaction_records)?;
+        self.set_modified(true);
+        Ok(())
     }
 
     async fn remove(&self, ids: &[&TransactionRecordId]) -> Result<()> {
-        self.cache().transaction_records.remove(ids)
+        self.cache().transaction_records.remove(ids)?;
+        self.set_modified(true);
+        Ok(())
     }
 }

@@ -165,7 +165,7 @@ impl AddressDerivationManager {
         let mut change_pubkey_managers = vec![];
         for xpub in keys {
             let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind {
-                AccountKind::V0 => {
+                AccountKind::Legacy => {
                     // TODO! WalletAccountV0::from_extended_public_key is not yet implemented
                     Arc::new(WalletDerivationManagerV0::from_extended_public_key_str(xpub, cosigner_index).await?)
                 }
@@ -303,7 +303,7 @@ pub fn create_address(
         return create_multisig_address(keys);
     }
 
-    if matches!(account_kind, Some(AccountKind::V0)) {
+    if matches!(account_kind, Some(AccountKind::Legacy)) {
         PubkeyDerivationManagerV0::create_address(&keys[0], prefix, ecdsa)
     } else {
         PubkeyDerivationManager::create_address(&keys[0], prefix, ecdsa)
@@ -320,7 +320,7 @@ pub async fn create_xpub_from_mnemonic(
     let xkey = ExtendedPrivateKey::<secp256k1::SecretKey>::new(seed)?;
 
     let (secret_key, attrs) = match account_kind {
-        AccountKind::V0 => WalletDerivationManagerV0::derive_extened_key_from_master_key(xkey, true, account_index).await?,
+        AccountKind::Legacy => WalletDerivationManagerV0::derive_extened_key_from_master_key(xkey, true, account_index).await?,
         AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xkey, true, account_index).await?,
         _ => WalletDerivationManager::derive_extened_key_from_master_key(xkey, false, account_index).await?,
     };
@@ -337,7 +337,7 @@ pub fn build_derivate_path(
     address_type: AddressType,
 ) -> Result<DerivationPath> {
     match account_kind {
-        AccountKind::V0 => WalletDerivationManagerV0::build_derivate_path(false, account_index, None, Some(address_type)),
+        AccountKind::Legacy => WalletDerivationManagerV0::build_derivate_path(false, account_index, None, Some(address_type)),
         AccountKind::Bip32 => WalletDerivationManager::build_derivate_path(false, account_index, None, Some(address_type)),
         AccountKind::MultiSig => {
             WalletDerivationManager::build_derivate_path(true, account_index, Some(cosigner_index), Some(address_type))

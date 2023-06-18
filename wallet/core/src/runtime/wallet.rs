@@ -34,13 +34,14 @@ use workflow_log::log_error;
 use workflow_rpc::client::Ctl;
 
 pub struct WalletCreateArgs {
+    pub name: Option<String>,
     pub user_hint: Option<String>,
     pub overwrite_wallet: bool,
 }
 
 impl WalletCreateArgs {
-    pub fn new(user_hint: Option<String>, overwrite_wallet: bool) -> Self {
-        Self { user_hint, overwrite_wallet }
+    pub fn new(name: Option<String>, user_hint: Option<String>, overwrite_wallet: bool) -> Self {
+        Self { name, user_hint, overwrite_wallet }
     }
 }
 
@@ -52,6 +53,7 @@ impl From<(Option<String>, &WalletCreateArgs)> for CreateArgs {
 
 #[derive(Clone)]
 pub struct AccountCreateArgs {
+    pub name: String,
     pub title: String,
     pub account_kind: storage::AccountKind,
     pub wallet_password: Secret,
@@ -59,8 +61,14 @@ pub struct AccountCreateArgs {
 }
 
 impl AccountCreateArgs {
-    pub fn new(title: String, account_kind: storage::AccountKind, wallet_password: Secret, payment_password: Option<Secret>) -> Self {
-        Self { title, account_kind, wallet_password, payment_password }
+    pub fn new(
+        name: String,
+        title: String,
+        account_kind: storage::AccountKind,
+        wallet_password: Secret,
+        payment_password: Option<Secret>,
+    ) -> Self {
+        Self { name, title, account_kind, wallet_password, payment_password }
     }
 }
 
@@ -169,7 +177,11 @@ impl Wallet {
         &self.inner
     }
 
-    pub fn connected_accounts(&self) -> &AccountMap {
+    pub fn store(&self) -> &Arc<dyn Interface> {
+        &self.inner.store
+    }
+
+    pub fn active_accounts(&self) -> &AccountMap {
         &self.inner.active_accounts
     }
 
@@ -365,7 +377,7 @@ impl Wallet {
         let pub_key_data = PubKeyData::new(vec![xpub_key.to_string(Some(xpub_prefix))], None, None);
 
         let stored_account = storage::Account::new(
-            args.title.replace(' ', "-").to_lowercase(),
+            args.name.clone(),
             args.title.clone(),
             args.account_kind,
             account_index,
@@ -482,7 +494,7 @@ impl Wallet {
         let stored_account = storage::Account::new(
             "imported-wallet".to_string(),       // name
             "Imported Wallet".to_string(),       // title
-            storage::AccountKind::V0,            // kind
+            storage::AccountKind::Legacy,        // kind
             0,                                   // account index
             false,                               // public visibility
             PubKeyData::new(vec![], None, None), // TODO - pub keydata
@@ -674,6 +686,16 @@ impl Wallet {
     //     }
     //     Ok(())
     // }
+
+    // pub fn store(&self) -> &Arc<
+
+    pub async fn is_open(&self) -> Result<bool> {
+        self.inner.store.is_open().await
+    }
+
+    pub async fn exists(&self, name: Option<&str>) -> Result<bool> {
+        self.inner.store.exists(name).await
+    }
 
     pub fn keys(self: &Arc<Self>, options: IteratorOptions) -> Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>> {
         Box::new(PrvKeyDataIterator::new(&self.inner.store, options))
