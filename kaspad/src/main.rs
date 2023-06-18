@@ -17,7 +17,7 @@ use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::manager::MiningManager;
 use kaspa_p2p_flows::flow_context::FlowContext;
-use kaspa_rpc_service::RpcCoreServer;
+use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::networking::ContextualNetAddress;
 
 use std::fs;
@@ -318,7 +318,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config.default_p2p_port(),
     ));
 
-    let rpc_core_server = Arc::new(RpcCoreServer::new(
+    let rpc_core_service = Arc::new(RpcCoreService::new(
         consensus_manager.clone(),
         notify_service.notifier(),
         index_service.as_ref().map(|x| x.notifier()),
@@ -328,7 +328,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config,
         core.clone(),
     ));
-    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_server.service(), args.rpc_max_clients));
+    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
@@ -336,7 +336,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     if let Some(index_service) = index_service {
         async_runtime.register(index_service)
     };
-    async_runtime.register(rpc_core_server.clone());
+    async_runtime.register(rpc_core_service.clone());
     async_runtime.register(grpc_service);
     async_runtime.register(p2p_service);
     async_runtime.register(monitor);
@@ -349,7 +349,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             listen_address.as_ref().map(|listen_address| {
                 Arc::new(WrpcService::new(
                     wrpc_service_tasks,
-                    Some(rpc_core_server.service()),
+                    Some(rpc_core_service.clone()),
                     encoding,
                     WrpcServerOptions {
                         listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String

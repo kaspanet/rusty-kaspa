@@ -16,7 +16,14 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{core::Core, debug, info, kaspad_env::version, signals::Shutdown, trace, warn};
+use kaspa_core::{
+    core::Core,
+    debug, info,
+    kaspad_env::version,
+    signals::Shutdown,
+    task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
+    trace, warn,
+};
 use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
@@ -38,7 +45,7 @@ use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
-use kaspa_utils::channel::Channel;
+use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::DynUtxoIndexApi;
 use std::{iter::once, ops::Deref, sync::Arc, vec};
 
@@ -70,6 +77,7 @@ pub struct RpcCoreService {
     index_converter: Arc<IndexConverter>,
     protocol_converter: Arc<ProtocolConverter>,
     core: Arc<Core>,
+    shutdown: SingleTrigger,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -140,14 +148,16 @@ impl RpcCoreService {
             index_converter,
             protocol_converter,
             core,
+            shutdown: SingleTrigger::default(),
         }
     }
 
-    pub fn start(&self) {
+    pub fn start_impl(&self) {
         self.notifier().start();
     }
 
     pub async fn join(&self) -> RpcResult<()> {
+        trace!("{} joining notifier", RPC_CORE_SERVICE);
         self.notifier().join().await?;
         Ok(())
     }
@@ -640,5 +650,49 @@ impl RpcApi for RpcCoreService {
     async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         self.notifier.clone().stop_notify(id, scope).await?;
         Ok(())
+    }
+}
+
+const RPC_CORE_SERVICE: &str = "rpc-core-service";
+
+// It might be necessary to opt this out in the context of wasm32
+
+impl AsyncService for RpcCoreService {
+    fn ident(self: Arc<Self>) -> &'static str {
+        RPC_CORE_SERVICE
+    }
+
+    fn start(self: Arc<Self>) -> AsyncServiceFuture {
+        trace!("{} starting", RPC_CORE_SERVICE);
+        let service = self.clone();
+
+        // Prepare a shutdown signal receiver
+        let shutdown_signal = self.shutdown.listener.clone();
+
+        // Launch the service and wait for a shutdown signal
+        Box::pin(async move {
+            service.clone().start_impl();
+            shutdown_signal.await;
+            match service.join().await {
+                Ok(_) => Ok(()),
+                Err(err) => {
+                    warn!("Error while stopping {}: {}", RPC_CORE_SERVICE, err);
+                    Err(AsyncServiceError::Service(err.to_string()))
+                }
+            }
+        })
+    }
+
+    fn signal_exit(self: Arc<Self>) {
+        trace!("sending an exit signal to {}", RPC_CORE_SERVICE);
+        self.shutdown.trigger.trigger();
+    }
+
+    fn stop(self: Arc<Self>) -> AsyncServiceFuture {
+        trace!("{} stopping", RPC_CORE_SERVICE);
+        Box::pin(async move {
+            trace!("{} exiting", RPC_CORE_SERVICE);
+            Ok(())
+        })
     }
 }
