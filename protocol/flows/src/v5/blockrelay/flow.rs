@@ -1,7 +1,6 @@
 use crate::{
     flow_context::{BlockSource, FlowContext, RequestScope},
     flow_trait::Flow,
-    flowcontext::orphans::ORPHAN_RESOLUTION_RANGE,
 };
 use kaspa_consensus_core::{api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_core::{debug, info};
@@ -230,7 +229,7 @@ impl HandleRelayInvsFlow {
         self.router
             .enqueue(make_message!(
                 Payload::RequestBlockLocator,
-                RequestBlockLocatorMessage { high_hash: Some(hash.into()), limit: ORPHAN_RESOLUTION_RANGE }
+                RequestBlockLocatorMessage { high_hash: Some(hash.into()), limit: self.ctx.orphan_resolution_range() }
             ))
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::BlockLocator)?;

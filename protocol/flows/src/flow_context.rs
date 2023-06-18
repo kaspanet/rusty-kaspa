@@ -1,8 +1,4 @@
-use crate::flowcontext::{
-    orphans::{OrphanBlocksPool, MAX_ORPHANS},
-    process_queue::ProcessQueue,
-    transactions::TransactionsSpread,
-};
+use crate::flowcontext::{orphans::OrphanBlocksPool, process_queue::ProcessQueue, transactions::TransactionsSpread};
 use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
@@ -55,6 +51,9 @@ use uuid::Uuid;
 
 /// The P2P protocol version. Currently the only one supported.
 const PROTOCOL_VERSION: u32 = 5;
+
+/// See `check_orphan_resolution_range`
+const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
 
 #[derive(Debug, PartialEq)]
 pub enum BlockSource {
@@ -127,6 +126,9 @@ pub struct FlowContextInner {
 
     // Special sampling logger used only for high-bps networks where logs must be throttled
     accepted_block_logger: Option<AcceptedBlockLogger>,
+
+    // Orphan parameters
+    orphan_resolution_range: u32,
 }
 
 #[derive(Clone)]
@@ -179,11 +181,15 @@ impl FlowContext {
         notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
         let hub = Hub::new();
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + f64::log2(config.bps() as f64).round() as u32;
+        // The maximum amount of orphans allowed in the orphans pool. This number is an
+        // approximation of how many orphans there can possibly be on average.
+        let max_orphans = 2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k as usize;
         Self {
             inner: Arc::new(FlowContextInner {
                 node_id: Uuid::new_v4().into(),
                 consensus_manager,
-                orphans_pool: AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS)),
+                orphans_pool: AsyncRwLock::new(OrphanBlocksPool::new(max_orphans)),
                 shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
                 shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
@@ -195,9 +201,18 @@ impl FlowContext {
                 mining_manager,
                 notification_root,
                 accepted_block_logger: if config.bps() > 1 { Some(AcceptedBlockLogger::new(config.bps() as usize)) } else { None },
+                orphan_resolution_range,
                 config,
             }),
         }
+    }
+
+    pub fn block_invs_channel_size(&self) -> usize {
+        self.config.bps() as usize * Router::incoming_flow_baseline_channel_size()
+    }
+
+    pub fn orphan_resolution_range(&self) -> u32 {
+        self.orphan_resolution_range
     }
 
     pub fn start_async_services(&self) {

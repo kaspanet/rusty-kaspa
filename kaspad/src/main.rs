@@ -32,7 +32,7 @@ use args::{Args, Defaults};
 // ~~~
 
 // TODO: testnet 11 tasks:
-// coinbase rewards, p2p, rpc and flow ctx config
+// coinbase rewards, verify all configs, mainnet mining
 
 use kaspa_consensus::config::ConfigBuilder;
 use kaspa_utxoindex::UtxoIndex;

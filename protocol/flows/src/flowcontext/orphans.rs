@@ -9,16 +9,6 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::process_queue::ProcessQueue;
 
-/// The maximum amount of blockLocator hashes to search for known
-/// blocks. See check_orphan_resolution_range for further details
-pub const ORPHAN_RESOLUTION_RANGE: u32 = 5;
-
-/// The maximum amount of orphans allowed in the orphans pool. This number is an
-/// approximation of how many orphans there can possibly be on average. It is based on:
-/// 2^ORPHAN_RESOLUTION_RANGE * Ghostdag K.
-/// TODO (HF): revisit when block rate changes
-pub const MAX_ORPHANS: usize = 600;
-
 pub struct OrphanBlocksPool {
     /// NOTES:
     /// 1. We use IndexMap for cheap random eviction
