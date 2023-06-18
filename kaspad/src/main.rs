@@ -13,6 +13,7 @@ use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::kaspad_env::version;
+use kaspa_core::task::tick::TickService;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::manager::MiningManager;
@@ -269,6 +270,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     // ---
 
+    let tick_service = Arc::new(TickService::new());
     let (notification_send, notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
     let counters = Arc::new(ProcessingCounters::default());
@@ -284,7 +286,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         counters.clone(),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
-    let monitor = Arc::new(ConsensusMonitor::new(counters));
+    let monitor = Arc::new(ConsensusMonitor::new(counters, tick_service.clone()));
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
@@ -332,6 +334,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
+    async_runtime.register(tick_service);
     async_runtime.register(notify_service);
     if let Some(index_service) = index_service {
         async_runtime.register(index_service)

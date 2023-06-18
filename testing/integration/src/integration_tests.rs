@@ -35,6 +35,7 @@ use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
+use kaspa_core::task::tick::TickService;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::{create_temp_db, get_kaspa_tempdir};
 use kaspa_hashes::Hash;
@@ -901,6 +902,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     }
     let config = Arc::new(config);
 
+    let tick_service = Arc::new(TickService::default());
     let (notification_send, notification_recv) = unbounded();
     let tc = Arc::new(TestConsensus::with_notifier(&config, notification_send));
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv));
@@ -917,7 +919,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let async_runtime = Arc::new(AsyncRuntime::new(2));
     async_runtime.register(notify_service.clone());
     async_runtime.register(index_service.clone());
-    async_runtime.register(Arc::new(ConsensusMonitor::new(tc.processing_counters().clone())));
+    async_runtime.register(Arc::new(ConsensusMonitor::new(tc.processing_counters().clone(), tick_service)));
 
     let core = Arc::new(Core::new());
     core.bind(consensus_manager);

@@ -1,7 +1,10 @@
 use super::ProcessingCounters;
 use kaspa_core::{
     info,
-    task::service::{AsyncService, AsyncServiceFuture},
+    task::{
+        service::{AsyncService, AsyncServiceFuture},
+        tick::TickService,
+    },
     trace,
 };
 use std::{
@@ -20,11 +23,14 @@ pub struct ConsensusMonitor {
     terminate: AtomicBool,
     // Counters
     counters: Arc<ProcessingCounters>,
+
+    // Tick service
+    tick_service: Arc<TickService>,
 }
 
 impl ConsensusMonitor {
-    pub fn new(counters: Arc<ProcessingCounters>) -> ConsensusMonitor {
-        ConsensusMonitor { terminate: AtomicBool::new(false), counters }
+    pub fn new(counters: Arc<ProcessingCounters>, tick_service: Arc<TickService>) -> ConsensusMonitor {
+        ConsensusMonitor { terminate: AtomicBool::new(false), counters, tick_service }
     }
 
     pub async fn worker(self: &Arc<ConsensusMonitor>) {
@@ -32,7 +38,7 @@ impl ConsensusMonitor {
         let mut last_log_time = Instant::now();
         let snapshot_interval = 10;
         loop {
-            tokio::time::sleep(Duration::from_secs(snapshot_interval)).await;
+            self.tick_service.tick(Duration::from_secs(snapshot_interval)).await;
 
             if self.terminate.load(Ordering::SeqCst) {
                 break;

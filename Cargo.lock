@@ -1714,6 +1714,7 @@ dependencies = [
  "num_cpus",
  "thiserror",
  "tokio",
+ "triggered",
  "wasm-bindgen",
  "workflow-log",
 ]
