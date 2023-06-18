@@ -63,12 +63,12 @@ pub mod consensus {
     pub const LEGACY_DIFFICULTY_WINDOW_SIZE: usize = 2641;
 
     /// **New** difficulty window duration expressed in time units (seconds).
-    /// KIP-0004: 30,000 (500 minutes)
-    pub const NEW_DIFFICULTY_WINDOW_DURATION: u64 = 30_000;
+    /// TODO: KIP-0004: 30,000 (500 minutes)
+    pub const NEW_DIFFICULTY_WINDOW_DURATION: u64 = 2000;
 
     /// The desired interval between samples of the difficulty window (seconds).
-    /// KIP-0004: 30 seconds
-    pub const DIFFICULTY_WINDOW_SAMPLE_INTERVAL: u64 = 30;
+    /// TODO: KIP-0004: 30 seconds
+    pub const DIFFICULTY_WINDOW_SAMPLE_INTERVAL: u64 = 2;
 
     /// Size of the **sampled** difficulty window (independent of BPS)
     pub const DIFFICULTY_SAMPLED_WINDOW_SIZE: u64 = NEW_DIFFICULTY_WINDOW_DURATION / DIFFICULTY_WINDOW_SAMPLE_INTERVAL;
