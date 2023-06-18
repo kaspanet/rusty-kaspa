@@ -3,24 +3,18 @@ use kaspa_core::{
     info,
     task::{
         service::{AsyncService, AsyncServiceFuture},
-        tick::TickService,
+        tick::{TickReason, TickService},
     },
     trace,
 };
 use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 const MONITOR: &str = "consensus-monitor";
 
 pub struct ConsensusMonitor {
-    // TODO: change the termination process using a chanel instead so we can (biased) select in the worker
-    //       or use a shutdown-aware sleep service
-    terminate: AtomicBool,
     // Counters
     counters: Arc<ProcessingCounters>,
 
@@ -30,7 +24,7 @@ pub struct ConsensusMonitor {
 
 impl ConsensusMonitor {
     pub fn new(counters: Arc<ProcessingCounters>, tick_service: Arc<TickService>) -> ConsensusMonitor {
-        ConsensusMonitor { terminate: AtomicBool::new(false), counters, tick_service }
+        ConsensusMonitor { counters, tick_service }
     }
 
     pub async fn worker(self: &Arc<ConsensusMonitor>) {
@@ -38,9 +32,7 @@ impl ConsensusMonitor {
         let mut last_log_time = Instant::now();
         let snapshot_interval = 10;
         loop {
-            self.tick_service.tick(Duration::from_secs(snapshot_interval)).await;
-
-            if self.terminate.load(Ordering::SeqCst) {
+            if let TickReason::Shutdown = self.tick_service.tick(Duration::from_secs(snapshot_interval)).await {
                 break;
             }
 
@@ -90,7 +82,7 @@ impl AsyncService for ConsensusMonitor {
 
     fn signal_exit(self: Arc<Self>) {
         trace!("sending an exit signal to {}", MONITOR);
-        self.terminate.store(true, Ordering::SeqCst);
+        self.tick_service.shutdown();
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
