@@ -80,33 +80,28 @@ impl AcceptedBlockLogger {
 
     /// Start the logger listener. Must be called from an async tokio context
     fn start(&self) {
-        let chunk_limit = self.bps * 2;
+        let chunk_limit = self.bps * 4; // We prefer that the 1 sec timeout forces the log, but nonetheless still want a reasonable bound on each chunk
         let receiver = self.receiver.lock().take().expect("expected to be called once");
         tokio::spawn(async move {
             let chunk_stream = UnboundedReceiverStream::new(receiver).chunks_timeout(chunk_limit, Duration::from_secs(1));
             tokio::pin!(chunk_stream);
             while let Some(chunk) = chunk_stream.next().await {
                 if let Some((i, h)) =
-                    chunk.iter().filter_map(|(h, s)| if *s == BlockSource::Relay { Some(*h) } else { None }).enumerate().last()
-                {
-                    let count = i + 1; // i is the last index
-                    match count {
-                        1 => info!("Accepted block {} via relay", h),
-                        n => info!("Accepted {} blocks ...{} via relay", n, h),
-                    }
-                    if count == chunk.len() {
-                        // At this point we know there are no `submit` blocks, so we can avoid the second filter
-                        continue;
-                    }
-                }
-
-                if let Some((i, h)) =
                     chunk.iter().filter_map(|(h, s)| if *s == BlockSource::Submit { Some(*h) } else { None }).enumerate().last()
                 {
-                    let count = i + 1; // i is the last index
-                    match count {
-                        1 => info!("Accepted block {} via submit block", h),
-                        n => info!("Accepted {} blocks ...{} via submit block", n, h),
+                    let submit = i + 1; // i is the last index so i + 1 is the number of submit blocks
+                    let relay = chunk.len() - submit;
+                    match (submit, relay) {
+                        (1, 0) => info!("Accepted block {} via submit block", h),
+                        (n, 0) => info!("Accepted {} blocks ...{} via submit block", n, h),
+                        (1, m) => info!("Accepted {} blocks via relay and 1 block {} via submit block", m, h),
+                        (n, m) => info!("Accepted {} blocks via relay and {} blocks ...{} via submit block", m, n, h),
+                    }
+                } else {
+                    let h = chunk.last().expect("chunk is never empty").0;
+                    match chunk.len() {
+                        1 => info!("Accepted block {} via relay", h),
+                        n => info!("Accepted {} blocks ...{} via relay", n, h),
                     }
                 }
             }
