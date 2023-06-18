@@ -82,7 +82,6 @@ impl AsyncService for ConsensusMonitor {
 
     fn signal_exit(self: Arc<Self>) {
         trace!("sending an exit signal to {}", MONITOR);
-        self.tick_service.shutdown();
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {

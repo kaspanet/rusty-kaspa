@@ -1,5 +1,4 @@
 use std::{sync::Arc, time::Duration};
-use tokio::select;
 use triggered::{trigger, Listener, Trigger};
 
 use super::service::{AsyncService, AsyncServiceFuture};
@@ -29,11 +28,9 @@ impl TickService {
     ///
     /// Returns immediately when the service is stopped.
     pub async fn tick(&self, duration: Duration) -> TickReason {
-        let shutdown_listener = self.shutdown_listener.clone();
-        select! {
-            biased;
-            _ = shutdown_listener => { TickReason::Shutdown }
-            _ = tokio::time::sleep(duration) => { TickReason::Wakeup }
+        match tokio::time::timeout(duration, self.shutdown_listener.clone()).await {
+            Ok(()) => TickReason::Shutdown,
+            Err(_) => TickReason::Wakeup,
         }
     }
 

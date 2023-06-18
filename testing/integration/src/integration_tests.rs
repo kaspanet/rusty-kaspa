@@ -917,6 +917,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
+    async_runtime.register(tick_service.clone());
     async_runtime.register(notify_service.clone());
     async_runtime.register(index_service.clone());
     async_runtime.register(Arc::new(ConsensusMonitor::new(tc.processing_counters().clone(), tick_service)));
