@@ -180,7 +180,10 @@ impl FlowContext {
         notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
         let hub = Hub::new();
-        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + f64::log2(config.bps() as f64).round() as u32;
+
+        // TODO: initial experiments show that this value is good for high bps as well so for now we avoid the log
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE; //  + f64::log2(config.bps() as f64).round() as u32
+
         // The maximum amount of orphans allowed in the orphans pool. This number is an
         // approximation of how many orphans there can possibly be on average.
         let max_orphans = 2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k as usize;
