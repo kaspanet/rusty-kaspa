@@ -11,7 +11,7 @@ use futures_util::future::join_all;
 use itertools::Itertools;
 use kaspa_addressmanager::{AddressManager, NetAddress};
 use kaspa_core::{debug, info, warn};
-use kaspa_p2p_lib::Peer;
+use kaspa_p2p_lib::{common::ProtocolError, ConnectionError, Peer};
 use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::Mutex as ParkingLotMutex;
 use rand::{seq::SliceRandom, thread_rng};
@@ -127,7 +127,7 @@ impl ConnectionManager {
 
             if !is_connected && request.next_attempt <= SystemTime::now() {
                 debug!("Connecting to peer request {}", address);
-                if self.p2p_adaptor.connect_peer(address.to_string()).await.is_none() {
+                if self.p2p_adaptor.connect_peer(address.to_string()).await.is_err() {
                     debug!("Failed connecting to peer request {}", address);
                     if request.is_permanent {
                         const MAX_ACCOUNTABLE_ATTEMPTS: u32 = 4;
@@ -203,13 +203,20 @@ impl ConnectionManager {
             }
 
             for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addrs_to_connect) {
-                if res.is_none() {
-                    debug!("Failed connecting to {:?}", net_addr);
-                    self.address_manager.lock().mark_connection_failure(net_addr);
-                } else {
-                    self.address_manager.lock().mark_connection_success(net_addr);
-                    missing_connections -= 1;
-                    progressing = true;
+                match res {
+                    Ok(_) => {
+                        self.address_manager.lock().mark_connection_success(net_addr);
+                        missing_connections -= 1;
+                        progressing = true;
+                    }
+                    Err(ConnectionError::ProtocolError(ProtocolError::PeerAlreadyExists(_))) => {
+                        // We avoid marking the existing connection as connection failure
+                        debug!("Failed connecting to {:?}, peer already exists", net_addr);
+                    }
+                    Err(err) => {
+                        debug!("Failed connecting to {:?}, err: {}", net_addr, err);
+                        self.address_manager.lock().mark_connection_failure(net_addr);
+                    }
                 }
             }
         }

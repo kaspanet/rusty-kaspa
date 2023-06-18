@@ -49,7 +49,11 @@ impl Hub {
                                 Err(err) => {
                                     // Ignoring the router
                                     new_router.close().await;
-                                    warn!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
+                                    if matches!(err, ProtocolError::LoopbackConnection(_) | ProtocolError::PeerAlreadyExists(_)) {
+                                        debug!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
+                                    } else {
+                                        warn!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
+                                    }
                                 }
                             }
                         }
