@@ -1,7 +1,7 @@
 pub use super::{
-    bps::Bps,
+    bps::{Bps, Testnet11Bps},
     constants::consensus::*,
-    genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET_GENESIS},
+    genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET11_GENESIS, TESTNET_GENESIS},
 };
 use crate::{
     networktype::{NetworkId, NetworkType},
@@ -253,7 +253,7 @@ impl From<NetworkId> for Params {
             NetworkType::Mainnet => MAINNET_PARAMS,
             NetworkType::Testnet => match value.suffix {
                 Some(10) => TESTNET_PARAMS,
-                Some(11) => TESTNET_11_PARAMS,
+                Some(11) => TESTNET11_PARAMS,
                 Some(x) => panic!("Testnet suffix {} is not supported", x),
                 None => panic!("Testnet suffix not provided"),
             },
@@ -392,15 +392,12 @@ pub const TESTNET_PARAMS: Params = Params {
     pruning_proof_m: 1000,
 };
 
-/// Bps-related constants generator for testnet 11
-pub type TestnetHighBps = Bps<10>;
-
-pub const TESTNET_11_PARAMS: Params = Params {
+pub const TESTNET11_PARAMS: Params = Params {
     dns_seeders: &[
         // No seeders yet
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 11),
-    genesis: TESTNET_GENESIS,
+    genesis: TESTNET11_GENESIS,
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
     new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
@@ -414,17 +411,17 @@ pub const TESTNET_11_PARAMS: Params = Params {
     //
     // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
     //
-    ghostdag_k: TestnetHighBps::ghostdag_k(),
-    target_time_per_block: TestnetHighBps::target_time_per_block(),
-    past_median_time_sample_rate: TestnetHighBps::past_median_time_sample_rate(),
-    difficulty_sample_rate: TestnetHighBps::difficulty_adjustment_sample_rate(),
-    max_block_parents: TestnetHighBps::max_block_parents(),
-    mergeset_size_limit: TestnetHighBps::mergeset_size_limit(),
-    merge_depth: TestnetHighBps::merge_depth_bound(),
-    finality_depth: TestnetHighBps::finality_depth(),
-    pruning_depth: TestnetHighBps::pruning_depth(),
-    pruning_proof_m: TestnetHighBps::pruning_proof_m(),
-    coinbase_maturity: TestnetHighBps::coinbase_maturity(),
+    ghostdag_k: Testnet11Bps::ghostdag_k(),
+    target_time_per_block: Testnet11Bps::target_time_per_block(),
+    past_median_time_sample_rate: Testnet11Bps::past_median_time_sample_rate(),
+    difficulty_sample_rate: Testnet11Bps::difficulty_adjustment_sample_rate(),
+    max_block_parents: Testnet11Bps::max_block_parents(),
+    mergeset_size_limit: Testnet11Bps::mergeset_size_limit(),
+    merge_depth: Testnet11Bps::merge_depth_bound(),
+    finality_depth: Testnet11Bps::finality_depth(),
+    pruning_depth: Testnet11Bps::pruning_depth(),
+    pruning_proof_m: Testnet11Bps::pruning_proof_m(),
+    coinbase_maturity: Testnet11Bps::coinbase_maturity(),
 
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,

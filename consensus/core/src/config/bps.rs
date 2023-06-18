@@ -20,6 +20,9 @@ pub fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
     }
 }
 
+/// Bps-related constants generator for testnet 11
+pub type Testnet11Bps = Bps<10>;
+
 /// Struct representing network blocks-per-second. Provides a bunch of const functions
 /// computing various constants which are functions of the BPS value
 pub struct Bps<const BPS: u64>;

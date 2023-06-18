@@ -141,6 +141,15 @@ pub const TESTNET_GENESIS: GenesisBlock = GenesisBlock {
     ],
 };
 
+pub const TESTNET11_GENESIS: GenesisBlock = GenesisBlock {
+    hash: Hash::from_bytes([
+        0xf0, 0xa3, 0x15, 0x04, 0xfb, 0x4b, 0xf8, 0x83, 0xd0, 0xdd, 0x2a, 0x75, 0x1c, 0x7d, 0xac, 0x06, 0x1a, 0xb4, 0xc6, 0x33, 0x00,
+        0xc5, 0x4f, 0xd2, 0x64, 0xd8, 0xe3, 0x06, 0x99, 0xda, 0x51, 0x54,
+    ]),
+    bits: 520421375, // see `gen_testnet11_genesis`
+    ..TESTNET_GENESIS
+};
+
 pub const SIMNET_GENESIS: GenesisBlock = GenesisBlock {
     hash: Hash::from_bytes([
         0x41, 0x1f, 0x8c, 0xd2, 0x6f, 0x3d, 0x41, 0xae, 0xa3, 0x9e, 0x78, 0x57, 0x39, 0x27, 0xda, 0x24, 0xd2, 0x39, 0x95, 0x70, 0x5b,
@@ -202,15 +211,28 @@ pub const DEVNET_GENESIS: GenesisBlock = GenesisBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::merkle::calc_hash_merkle_root;
+    use crate::{config::bps::Testnet11Bps, merkle::calc_hash_merkle_root};
 
     #[test]
     fn test_genesis_hashes() {
-        [GENESIS, TESTNET_GENESIS, SIMNET_GENESIS, DEVNET_GENESIS].into_iter().for_each(|genesis| {
+        [GENESIS, TESTNET_GENESIS, TESTNET11_GENESIS, SIMNET_GENESIS, DEVNET_GENESIS].into_iter().for_each(|genesis| {
             let block: Block = (&genesis).into();
             assert_eq!(calc_hash_merkle_root(block.transactions.iter()), block.header.hash_merkle_root);
             assert_hashes_eq(block.hash(), genesis.hash);
         });
+    }
+
+    #[test]
+    fn gen_testnet11_genesis() {
+        let bps = Testnet11Bps::bps();
+        let mut genesis = TESTNET_GENESIS;
+        let target = kaspa_math::Uint256::from_compact_target_bits(genesis.bits);
+        let scaled_up_target = target * bps;
+        let scaled_up_bits = scaled_up_target.compact_target_bits();
+        genesis.bits = scaled_up_bits;
+        if genesis.bits != TESTNET11_GENESIS.bits {
+            panic!("Testnet 11: new bits: {}\nnew hash: {:#04x?}", scaled_up_bits, Block::from(&genesis).hash().as_bytes());
+        }
     }
 
     fn assert_hashes_eq(got: Hash, expected: Hash) {

@@ -12,7 +12,7 @@ use kaspa_consensus::{
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
     },
-    params::{Params, TestnetHighBps, DEVNET_PARAMS, TESTNET_11_PARAMS},
+    params::{Params, Testnet11Bps, DEVNET_PARAMS, TESTNET11_PARAMS},
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
@@ -113,8 +113,8 @@ fn main() {
             args.miners
         );
     }
-    args.bps = if args.testnet11 { TestnetHighBps::bps() as f64 } else { args.bps };
-    let params = if args.testnet11 { TESTNET_11_PARAMS } else { DEVNET_PARAMS };
+    args.bps = if args.testnet11 { Testnet11Bps::bps() as f64 } else { args.bps };
+    let params = if args.testnet11 { TESTNET11_PARAMS } else { DEVNET_PARAMS };
     let mut builder = ConfigBuilder::new(params)
         .apply_args(|config| apply_args_to_consensus_params(&args, &mut config.params))
         .apply_args(|config| apply_args_to_perf_params(&args, &mut config.perf))
