@@ -176,13 +176,13 @@ pub mod perf {
     }
 
     pub fn calculate_difficulty_window_cache_size(consensus_params: &Params) -> u64 {
-        let window_memory_budget = 1_000_000_000u64; // 1GB
+        let window_memory_budget = 250_000_000u64; // 250MB
         let single_window_byte_size = consensus_params.difficulty_window_size(0) * (size_of::<Hash>() + size_of::<BlueWorkType>());
         bounded_cache_size(BASELINE_BLOCK_WINDOW_CACHE_SIZE, window_memory_budget, single_window_byte_size)
     }
 
     pub fn calculate_headers_cache_size(consensus_params: &Params) -> u64 {
-        let headers_memory_budget = 1_000_000_000u64; // 1GB
+        let headers_memory_budget = 500_000_000u64; // 500MB
         let approx_header_byte_size = approx_header_parents(consensus_params) * size_of::<Hash>() + size_of::<Header>();
         bounded_cache_size(consensus_params.bps() * BASELINE_HEADER_DATA_CACHE_SIZE, headers_memory_budget, approx_header_byte_size)
     }

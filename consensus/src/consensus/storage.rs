@@ -83,22 +83,22 @@ impl ConsensusStorage {
             perf::bounded_cache_size(pruning_size_for_caches, 100_000_000u64, size_of::<Hash>() + size_of::<BlockStatus>());
         let relations_cache_size = perf::bounded_cache_size(
             pruning_size_for_caches,
-            500_000_000u64,
+            200_000_000u64,
             size_of::<Hash>() + perf::approx_direct_header_parents(params) * size_of::<Hash>(),
         );
         let reachability_relations_cache_size = perf::bounded_cache_size(
             pruning_size_for_caches,
-            250_000_000u64,
+            100_000_000u64,
             size_of::<Hash>() + perf::approx_direct_header_parents(params) * size_of::<Hash>(),
         );
         let reachability_cache_size = perf::bounded_cache_size(
             pruning_size_for_caches,
-            1_000_000_000u64,
+            200_000_000u64,
             size_of::<ReachabilityData>() + perf::approx_mergeset_size(params) * size_of::<Hash>(),
         );
         let ghostdag_cache_size = perf::bounded_cache_size(
             pruning_size_for_caches,
-            500_000_000u64,
+            200_000_000u64,
             size_of::<GhostdagData>() + perf::approx_mergeset_size(params) * size_of::<Hash>() * 2,
         );
 
