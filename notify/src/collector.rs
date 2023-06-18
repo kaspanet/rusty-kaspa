@@ -41,8 +41,8 @@ pub struct CollectorFrom<C>
 where
     C: Converter,
 {
+    name: &'static str,
     recv_channel: CollectorNotificationReceiver<C::Incoming>,
-
     converter: Arc<C>,
 
     /// Has this collector been started?
@@ -56,8 +56,9 @@ impl<C> CollectorFrom<C>
 where
     C: Converter + 'static,
 {
-    pub fn new(recv_channel: CollectorNotificationReceiver<C::Incoming>, converter: Arc<C>) -> Self {
+    pub fn new(name: &'static str, recv_channel: CollectorNotificationReceiver<C::Incoming>, converter: Arc<C>) -> Self {
         Self {
+            name,
             recv_channel,
             converter,
             collect_shutdown: Arc::new(SingleTrigger::new()),
@@ -79,27 +80,27 @@ where
         let converter = self.converter.clone();
 
         workflow_core::task::spawn(async move {
-            trace!("[Collector] collecting_task start");
+            trace!("[Collector {}] collecting task starting", self.name);
 
             while let Ok(notification) = recv_channel.recv().await {
                 match notifier.notify(converter.convert(notification).await) {
                     Ok(_) => (),
                     Err(err) => {
-                        trace!("[{}] notification sender error: {}", std::any::type_name::<Self>(), err);
+                        trace!("[Collector {}] notification sender error: {}", self.name, err);
                     }
                 }
             }
 
-            debug!("[{}] notification stream ended", std::any::type_name::<Self>());
-            // Propagate channel closing
-            notifier.close();
+            debug!("[Collector {}] notification stream ended", self.name);
             collect_shutdown.trigger.trigger();
-            trace!("[Collector] collecting_task end");
+            trace!("[Collector {}] collecting task ended", self.name);
         });
     }
 
     async fn join_collecting_task(self: &Arc<Self>) -> Result<()> {
+        trace!("[Collector {}] joining", self.name);
         self.collect_shutdown.listener.clone().await;
+        debug!("[Collector {}] terminated", self.name);
         Ok(())
     }
 }
@@ -174,7 +175,7 @@ mod tests {
         type TestConverter = ConverterFrom<IncomingNotification, OutgoingNotification>;
         let incoming = Channel::default();
         let collector: Arc<CollectorFrom<TestConverter>> =
-            Arc::new(CollectorFrom::new(incoming.receiver(), Arc::new(TestConverter::new())));
+            Arc::new(CollectorFrom::new("test", incoming.receiver(), Arc::new(TestConverter::new())));
         let outgoing = Channel::default();
         let notifier = Arc::new(NotifyMock::new(outgoing.sender()));
         collector.clone().start(notifier);
