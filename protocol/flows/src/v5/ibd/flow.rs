@@ -100,7 +100,9 @@ impl IbdFlow {
         let ibd_type =
             self.determine_ibd_type(session.deref(), &relay_block.header, negotiation_output.highest_known_syncer_chain_hash)?;
         match ibd_type {
-            IbdType::None => return Err(ProtocolError::Other("peer has no known block and conditions for header proof aren't met")),
+            IbdType::None => {
+                return Err(ProtocolError::Other("peer has no known block and conditions for requesting headers proof are not met"))
+            }
             IbdType::Sync(highest_known_syncer_chain_hash) => {
                 self.sync_headers(
                     session.deref(),
