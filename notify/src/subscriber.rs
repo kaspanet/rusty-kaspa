@@ -35,6 +35,8 @@ pub type DynSubscriptionManager = Arc<dyn SubscriptionManager>;
 /// A subscriber handling subscription messages executing them into a [SubscriptionManager].
 #[derive(Debug)]
 pub struct Subscriber {
+    name: &'static str,
+
     /// Event types this subscriber is configured to subscribe to
     enabled_events: EventSwitches,
 
@@ -52,8 +54,14 @@ pub struct Subscriber {
 }
 
 impl Subscriber {
-    pub fn new(enabled_events: EventSwitches, subscription_manager: DynSubscriptionManager, listener_id: ListenerId) -> Self {
+    pub fn new(
+        name: &'static str,
+        enabled_events: EventSwitches,
+        subscription_manager: DynSubscriptionManager,
+        listener_id: ListenerId,
+    ) -> Self {
         Self {
+            name,
             enabled_events,
             subscription_manager,
             listener_id,
@@ -73,7 +81,7 @@ impl Subscriber {
         if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
-        trace!("[Subscriber] starting notification collecting task");
+        trace!("[Subscriber {}] starting subscription receiving task", self.name);
         workflow_core::task::spawn(async move {
             while let Ok(mutation) = self.incoming.recv().await {
                 if self.enabled_events[mutation.event_type()] {
@@ -83,12 +91,12 @@ impl Subscriber {
                         .execute_subscribe_command(self.listener_id, mutation.scope, mutation.command)
                         .await
                     {
-                        trace!("[Subscriber] the subscription command returned an error: {:?}", err);
+                        trace!("[Subscriber {}] the subscription command returned an error: {:?}", self.name, err);
                     }
                 }
             }
 
-            debug!("[{}] notification stream ended", std::any::type_name::<Self>());
+            debug!("[Subscriber {}] subscription stream ended", self.name);
             let _ = self.shutdown.drain();
             let _ = self.shutdown.try_send(());
         });
@@ -105,7 +113,10 @@ impl Subscriber {
     }
 
     pub async fn join(self: &Arc<Self>) -> Result<()> {
-        self.join_subscription_receiver_task().await
+        trace!("[Subscriber {}] joining", self.name);
+        let result = self.join_subscription_receiver_task().await;
+        debug!("[Subscriber {}] terminated", self.name);
+        result
     }
 
     pub fn close(&self) {

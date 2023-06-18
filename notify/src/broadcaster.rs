@@ -136,7 +136,7 @@ where
         if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
-        trace!("Starting notification broadcasting task");
+        trace!("[Broadcaster-{}] Starting notification broadcasting task", self.name);
         workflow_core::task::spawn(async move {
             // Broadcasting plan by event type
             let mut plan = EventArray::<Plan<C>>::default();
@@ -188,7 +188,7 @@ where
                             purge.drain(..).for_each(|id| { plan[event].remove(&id); });
 
                         } else {
-                            debug!("[{}] notification stream ended", std::any::type_name::<Self>());
+                            debug!("[Broadcaster-{}] notification stream ended", self.name);
                             let _ = self.shutdown.drain();
                             let _ = self.shutdown.try_send(());
                             break;
@@ -216,7 +216,9 @@ where
     }
 
     async fn join_notification_broadcasting_task(&self) -> Result<()> {
+        trace!("[Broadcaster-{}] joining", self.name);
         self.shutdown.recv().await?;
+        debug!("[Broadcaster-{}] terminated", self.name);
         Ok(())
     }
 

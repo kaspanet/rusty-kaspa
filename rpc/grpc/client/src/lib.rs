@@ -93,13 +93,13 @@ impl GrpcClient {
         let (notifier, collector, subscriptions) = match notification_mode {
             NotificationMode::MultiListeners => {
                 let enabled_events = EVENT_TYPE_ARRAY[..].into();
-                let collector = Arc::new(GrpcClientCollector::new(inner.notification_channel_receiver(), converter));
-                let subscriber = Arc::new(Subscriber::new(enabled_events, inner.clone(), 0));
-                let notifier: GrpcClientNotifier = Notifier::new(enabled_events, vec![collector], vec![subscriber], 10, GRPC_CLIENT);
+                let collector = Arc::new(GrpcClientCollector::new(GRPC_CLIENT, inner.notification_channel_receiver(), converter));
+                let subscriber = Arc::new(Subscriber::new(GRPC_CLIENT, enabled_events, inner.clone(), 0));
+                let notifier: GrpcClientNotifier = Notifier::new(GRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], 10);
                 (Some(Arc::new(notifier)), None, None)
             }
             NotificationMode::Direct => {
-                let collector = GrpcClientCollector::new(inner.notification_channel_receiver(), converter);
+                let collector = GrpcClientCollector::new(GRPC_CLIENT, inner.notification_channel_receiver(), converter);
                 let subscriptions = ArrayBuilder::single();
                 (None, Some(Arc::new(collector)), Some(Arc::new(Mutex::new(subscriptions))))
             }

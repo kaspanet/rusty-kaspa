@@ -1,10 +1,15 @@
-use crate::{connection::*, result::Result, router::*, server::*};
+use crate::{connection::*, router::*, server::*};
 use async_trait::async_trait;
-use kaspa_core::task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture};
+use kaspa_core::{
+    info,
+    task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
+    trace, warn,
+};
 use kaspa_rpc_core::api::ops::RpcApiOps;
 use kaspa_rpc_service::service::RpcCoreService;
+use kaspa_utils::triggers::SingleTrigger;
 use std::sync::Arc;
-use workflow_log::*;
+use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use workflow_rpc::server::prelude::*;
 pub use workflow_rpc::server::Encoding as WrpcEncoding;
 
@@ -92,9 +97,11 @@ impl RpcHandler for KaspaRpcHandler {
 ///  wRPC Server - A wrapper around and an initializer of the RpcServer
 ///
 pub struct WrpcService {
+    // TODO: see if tha Adapter/ConnectionHandler design of P2P and gRPC can be applied here too
     options: Arc<Options>,
     server: RpcServer,
     rpc_handler: Arc<KaspaRpcHandler>,
+    shutdown: SingleTrigger,
 }
 
 impl WrpcService {
@@ -107,27 +114,45 @@ impl WrpcService {
         // Create router (initializes Interface registering RPC method and notification handlers)
         let router = Arc::new(Router::new(rpc_handler.server.clone()));
         // Create a server
-        // let server = RpcServer::new_with_encoding::<KaspaRpcHandlerReference, Connection, RpcApiOps, Id64>(
         let server = RpcServer::new_with_encoding::<Server, Connection, RpcApiOps, Id64>(
             *encoding,
             rpc_handler.clone(),
             router.interface.clone(),
         );
 
-        WrpcService { options, server, rpc_handler }
+        WrpcService { options, server, rpc_handler, shutdown: SingleTrigger::default() }
     }
 
-    /// Start listening on the configured address (will yield an error if the the socket listen() fails)
-    async fn run(self: Arc<Self>) -> Result<()> {
+    /// Start listening on the configured address (will panic if the the socket listen() fails)
+    pub fn serve(self: Arc<Self>) -> OneshotSender<()> {
+        let (termination_sender, termination_receiver) = oneshot_channel::<()>();
+        let listen_address = self.options.listen_address.clone();
         self.rpc_handler.server.start();
-        let addr = &self.options.listen_address;
-        log_info!("wRPC server is listening on {}", addr);
-        self.server.listen(addr).await?;
-        Ok(())
+
+        // Spawn a task stopping the server on termination signal
+        let service = self.clone();
+        tokio::spawn(async move {
+            let _ = termination_receiver.await;
+            service.server.stop().unwrap_or_else(|err| warn!("wRPC unable to signal shutdown: `{err}`"));
+            service.server.join().await.unwrap_or_else(|err| warn!("wRPC error: `{err}"));
+        });
+
+        // Spawn a task running the server
+        info!("WRPC Server starting on: {}", listen_address);
+        tokio::spawn(async move {
+            let serve_result = self.server.listen(&listen_address).await;
+
+            match serve_result {
+                Ok(_) => info!("WRPC Server stopped on: {}", listen_address),
+                Err(err) => panic!("WRPC Server {listen_address} stopped with error: {err:?}"),
+            }
+        });
+
+        termination_sender
     }
 }
 
-const WRPC_SERVER: &str = "WRPC_SERVER";
+const WRPC_SERVER: &str = "wrpc-service";
 
 impl AsyncService for WrpcService {
     fn ident(self: Arc<Self>) -> &'static str {
@@ -135,21 +160,42 @@ impl AsyncService for WrpcService {
     }
 
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
-        Box::pin(async move { self.run().await.map_err(|err| AsyncServiceError::Service(format!("wRPC error: `{err}`"))) })
+        trace!("{} starting", WRPC_SERVER);
+
+        // Prepare a shutdown signal receiver
+        let shutdown_signal = self.shutdown.listener.clone();
+
+        // Run the server
+        trace!("{} running the wRPC server", WRPC_SERVER);
+        let terminate_server = self.clone().serve();
+
+        Box::pin(async move {
+            // Keep the gRPC server running until a service shutdown signal is received
+            shutdown_signal.await;
+
+            // Wait for the notifier to shutdown
+            self.clone()
+                .rpc_handler
+                .server
+                .join()
+                .await
+                .map_err(|err| AsyncServiceError::Service(format!("Notification system error: `{err}`")))?;
+
+            // Signal server termination
+            drop(terminate_server);
+
+            Ok(())
+        })
     }
 
     fn signal_exit(self: Arc<Self>) {
-        self.server.stop().unwrap_or_else(|err| log_trace!("wRPC unable to signal shutdown: `{err}`"));
+        trace!("sending an exit signal to {}", WRPC_SERVER);
+        self.shutdown.trigger.trigger();
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
-            self.rpc_handler
-                .server
-                .stop()
-                .await
-                .map_err(|err| AsyncServiceError::Service(format!("Notification system error: `{err}`")))?;
-            self.server.join().await.map_err(|err| AsyncServiceError::Service(format!("wRPC error: `{err}`")))?;
+            trace!("{} stopped", WRPC_SERVER);
             Ok(())
         })
     }

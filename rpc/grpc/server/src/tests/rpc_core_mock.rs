@@ -1,10 +1,41 @@
 use async_trait::async_trait;
+use kaspa_notify::events::EVENT_TYPE_ARRAY;
 use kaspa_notify::listener::ListenerId;
+use kaspa_notify::notifier::Notifier;
 use kaspa_notify::scope::Scope;
 use kaspa_rpc_core::{api::rpc::RpcApi, *};
 use kaspa_rpc_core::{notify::connection::ChannelConnection, RpcResult};
+use std::sync::Arc;
 
-pub(super) struct RpcCoreMock {}
+pub(super) type RpcCoreNotifier = Notifier<Notification, ChannelConnection>;
+
+pub(super) struct RpcCoreMock {
+    core_notifier: Arc<RpcCoreNotifier>,
+}
+
+impl RpcCoreMock {
+    pub(super) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(super) fn core_notifier(&self) -> Arc<RpcCoreNotifier> {
+        self.core_notifier.clone()
+    }
+
+    pub(super) fn start(&self) {
+        self.core_notifier.clone().start();
+    }
+    pub(super) async fn join(&self) {
+        self.core_notifier.join().await.unwrap();
+    }
+}
+
+impl Default for RpcCoreMock {
+    fn default() -> Self {
+        let core_notifier: Arc<RpcCoreNotifier> = Arc::new(Notifier::new("rpc-core", EVENT_TYPE_ARRAY[..].into(), vec![], vec![], 1));
+        Self { core_notifier }
+    }
+}
 
 #[async_trait]
 impl RpcApi for RpcCoreMock {
@@ -159,11 +190,12 @@ impl RpcApi for RpcCoreMock {
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
-    fn register_new_listener(&self, _connection: ChannelConnection) -> ListenerId {
-        0
+    fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
+        self.core_notifier.register_new_listener(connection)
     }
 
-    async fn unregister_listener(&self, _id: ListenerId) -> RpcResult<()> {
+    async fn unregister_listener(&self, id: ListenerId) -> RpcResult<()> {
+        self.core_notifier.unregister_listener(id)?;
         Ok(())
     }
 

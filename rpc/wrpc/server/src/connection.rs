@@ -63,8 +63,6 @@ impl Notify<Notification> for ConnectionInner {
         self.send(Connection::into_message(&notification, &self.messenger.encoding().into()))
             .map_err(|err| NotifyError::General(err.to_string()))
     }
-
-    fn close(&self) {}
 }
 
 /// [`Connection`] represents a currently connected WebSocket RPC channel.

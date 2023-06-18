@@ -1,8 +1,7 @@
 use crate::adaptor::Adaptor;
 use kaspa_core::{
-    debug,
     task::service::{AsyncService, AsyncServiceFuture},
-    trace,
+    trace, warn,
 };
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::{networking::NetAddress, triggers::SingleTrigger};
@@ -46,7 +45,7 @@ impl AsyncService for GrpcService {
             match grpc_adaptor.terminate().await {
                 Ok(_) => {}
                 Err(err) => {
-                    debug!("gRPC: Error while stopping the connection handler: {0}", err);
+                    warn!("{} error while stopping the connection handler: {}", GRPC_SERVICE, err);
                 }
             }
             // On exit, the adaptor is dropped, causing the server termination
@@ -60,9 +59,8 @@ impl AsyncService for GrpcService {
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} stopping", GRPC_SERVICE);
         Box::pin(async move {
-            trace!("{} exiting", GRPC_SERVICE);
+            trace!("{} stopped", GRPC_SERVICE);
             Ok(())
         })
     }

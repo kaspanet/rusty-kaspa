@@ -96,9 +96,8 @@ impl AsyncService for P2pService {
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} stopping", P2P_CORE_SERVICE);
         Box::pin(async move {
-            trace!("{} exiting", P2P_CORE_SERVICE);
+            trace!("{} stopped", P2P_CORE_SERVICE);
             Ok(())
         })
     }

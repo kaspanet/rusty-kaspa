@@ -52,27 +52,25 @@ impl Processor {
             return;
         }
         tokio::spawn(async move {
-            trace!("[Processor] collecting_task start");
+            trace!("[Index processor] collecting task starting");
 
             while let Ok(notification) = self.recv_channel.recv().await {
                 match self.process_notification(notification) {
                     Ok(notification) => match notifier.notify(notification) {
                         Ok(_) => (),
                         Err(err) => {
-                            trace!("[Processor] notification sender error: {err:?}");
+                            trace!("[Index processor] notification sender error: {err:?}");
                         }
                     },
                     Err(err) => {
-                        trace!("[Processor] error while processing a consensus notification: {err:?}");
+                        trace!("[Index processor] error while processing a consensus notification: {err:?}");
                     }
                 }
             }
 
-            debug!("[{}] notification stream ended", std::any::type_name::<Self>());
-            // Propagate channel closing
-            notifier.close();
+            debug!("[Index processor] notification stream ended");
             self.collect_shutdown.trigger.trigger();
-            trace!("[Processor] collecting_task end");
+            trace!("[Index processor] collecting task ended");
         });
     }
 
@@ -100,7 +98,9 @@ impl Processor {
     }
 
     async fn join_collecting_task(&self) -> Result<()> {
+        trace!("[Index processor] joining");
         self.collect_shutdown.listener.clone().await;
+        debug!("[Index processor] terminated");
         Ok(())
     }
 }

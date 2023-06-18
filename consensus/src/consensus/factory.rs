@@ -3,7 +3,7 @@ use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
-use kaspa_core::time::unix_now;
+use kaspa_core::{debug, time::unix_now};
 use kaspa_database::{
     prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB},
     registry::DatabaseStorePrefixes,
@@ -233,6 +233,7 @@ impl ConsensusFactory for Factory {
     }
 
     fn close(&self) {
+        debug!("Consensus factory: closing");
         self.notification_root.close();
     }
 }

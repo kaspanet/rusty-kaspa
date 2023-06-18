@@ -114,7 +114,7 @@ pub enum NetworkIdError {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "camelCase")]
 pub struct NetworkId {
     pub network_type: NetworkType,
     pub suffix: Option<u32>,
