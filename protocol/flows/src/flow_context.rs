@@ -93,8 +93,7 @@ impl AcceptedBlockLogger {
                     match (submit, relay) {
                         (1, 0) => info!("Accepted block {} via submit block", h),
                         (n, 0) => info!("Accepted {} blocks ...{} via submit block", n, h),
-                        (1, m) => info!("Accepted {} blocks via relay and 1 block {} via submit block", m, h),
-                        (n, m) => info!("Accepted {} blocks via relay and {} blocks ...{} via submit block", m, n, h),
+                        (n, m) => info!("Accepted {} blocks ...{}, {} via relay and {} via submit block", n + m, h, m, n),
                     }
                 } else {
                     let h = chunk.last().expect("chunk is never empty").0;
