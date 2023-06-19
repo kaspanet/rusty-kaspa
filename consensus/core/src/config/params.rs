@@ -397,7 +397,8 @@ pub const TESTNET_PARAMS: Params = Params {
 
 pub const TESTNET11_PARAMS: Params = Params {
     dns_seeders: &[
-        // No seeders yet
+        // This DNS seeder is run by Tiram
+        "seeder1-testnet-11.kaspad.net",
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 11),
     genesis: TESTNET11_GENESIS,
