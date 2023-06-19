@@ -22,6 +22,8 @@ kaspa-rpc-service.workspace = true
 kaspa-rpc-macros.workspace = true
 kaspa-grpc-client.workspace = true
 kaspa-utils.workspace = true
+
+log.workspace = true
 paste.workspace = true
 serde = { workspace = true, features = ["rc"] }
 thiserror.workspace = true

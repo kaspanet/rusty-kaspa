@@ -12,7 +12,7 @@ use kaspa_grpc_core::{
     },
     RPC_MAX_MESSAGE_SIZE,
 };
-use kaspa_notify::{events::EVENT_TYPE_ARRAY, listener::ListenerId, notifier::Notifier, subscriber::Subscriber};
+use kaspa_notify::{events::EVENT_TYPE_ARRAY, notifier::Notifier, subscriber::Subscriber};
 use kaspa_rpc_core::{
     api::rpc::DynRpcService,
     notify::{channel::NotificationChannel, connection::ChannelConnection},
@@ -34,8 +34,6 @@ use tonic::{codec::CompressionEncoding, transport::Server as TonicServer, Reques
 /// A protowire gRPC connections handler.
 pub struct ConnectionHandler {
     core_service: DynRpcService,
-    core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
-    core_listener_id: ListenerId,
     manager: Manager,
     notifier: Arc<Notifier<Notification, Connection>>,
     running: AtomicBool,
@@ -52,19 +50,19 @@ impl ConnectionHandler {
         // Prepare internals
         let core_events = EVENT_TYPE_ARRAY[..].into();
         let converter = Arc::new(GrpcServiceConverter::new());
-        let collector = Arc::new(GrpcServiceCollector::new(core_channel.receiver(), converter));
-        let subscriber = Arc::new(Subscriber::new(core_events, core_notifier.clone(), core_listener_id));
+        let collector = Arc::new(GrpcServiceCollector::new(GRPC_SERVER, core_channel.receiver(), converter));
+        let subscriber = Arc::new(Subscriber::new(GRPC_SERVER, core_events, core_notifier, core_listener_id));
         let notifier: Arc<Notifier<Notification, Connection>> =
-            Arc::new(Notifier::new(core_events, vec![collector], vec![subscriber], 10, GRPC_SERVER));
+            Arc::new(Notifier::new(GRPC_SERVER, core_events, vec![collector], vec![subscriber], 10));
 
-        Self { core_service, core_notifier, core_listener_id, manager, notifier, running: AtomicBool::new(false) }
+        Self { core_service, manager, notifier, running: AtomicBool::new(false) }
     }
 
     /// Launches a gRPC server listener loop
     pub(crate) fn serve(self: &Arc<Self>, serve_address: NetAddress) -> OneshotSender<()> {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
-        info!("gRPC Server starting on: {}", serve_address);
+        info!("GRPC Server starting on: {}", serve_address);
         tokio::spawn(async move {
             let protowire_server = RpcServer::from_arc(connection_handler.clone())
                 .send_compressed(CompressionEncoding::Gzip)
@@ -78,7 +76,7 @@ impl ConnectionHandler {
                 .await;
 
             match serve_result {
-                Ok(_) => info!("gRPC Server stopped: {}", serve_address),
+                Ok(_) => info!("GRPC Server stopped on: {}", serve_address),
                 Err(err) => panic!("gRPC Server {serve_address} stopped with error: {err:?}"),
             }
         });
@@ -106,11 +104,9 @@ impl ConnectionHandler {
         // Refuse new incoming connections
         self.running.store(false, Ordering::SeqCst);
 
-        // Unregister from the core service notifier
-        self.core_notifier.unregister_listener(self.core_listener_id)?;
-
-        // Stop the internal notifier
-        self.notifier().stop().await?;
+        // Wait for the internal notifier to stop
+        // Note that this requires the core service it is listening to to have closed it's listener
+        self.notifier().join().await?;
 
         // Close all existing connections
         self.manager.terminate_all_connections();

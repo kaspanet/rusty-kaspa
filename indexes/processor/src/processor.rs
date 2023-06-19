@@ -3,21 +3,17 @@ use crate::{
     IDENT,
 };
 use async_trait::async_trait;
-use futures::{
-    future::FutureExt, // for `.fuse()`
-    select,
-};
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
-use kaspa_core::trace;
+use kaspa_core::{debug, trace};
 use kaspa_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
 use kaspa_notify::{
     collector::{Collector, CollectorNotificationReceiver},
-    error::{Error, Result},
+    error::Result,
     events::EventType,
     notification::Notification as NotificationTrait,
     notifier::DynNotify,
 };
-use kaspa_utils::triggers::DuplexTrigger;
+use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utxoindex::api::DynUtxoIndexApi;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -37,7 +33,7 @@ pub struct Processor {
     /// Has this collector been started?
     is_started: Arc<AtomicBool>,
 
-    collect_shutdown: Arc<DuplexTrigger>,
+    collect_shutdown: Arc<SingleTrigger>,
 }
 
 impl Processor {
@@ -45,7 +41,7 @@ impl Processor {
         Self {
             utxoindex,
             recv_channel,
-            collect_shutdown: Arc::new(DuplexTrigger::new()),
+            collect_shutdown: Arc::new(SingleTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -56,40 +52,25 @@ impl Processor {
             return;
         }
         tokio::spawn(async move {
-            trace!("[Processor] collecting_task start");
+            trace!("[Index processor] collecting task starting");
 
-            loop {
-                select! {
-                    // TODO: make sure we process all pending consensus events before exiting.
-                    // Ideally this should be done through a carefully ordered shutdown process
-                    _ = self.collect_shutdown.request.listener.clone().fuse() => break,
-
-                    notification = self.recv_channel.recv().fuse() => {
-                        match notification {
-                            Ok(notification) => {
-                                match self.process_notification(notification){
-                                    Ok(notification) => {
-                                        match notifier.notify(notification) {
-                                            Ok(_) => (),
-                                            Err(err) => {
-                                                trace!("[Processor] notification sender error: {err:?}");
-                                            },
-                                        }
-                                    },
-                                    Err(err) => {
-                                        trace!("[Processor] error while processing a consensus notification: {err:?}");
-                                    }
-                                }
-                            },
-                            Err(err) => {
-                                trace!("[Processor] error while receiving a consensus notification: {err:?}");
-                            }
+            while let Ok(notification) = self.recv_channel.recv().await {
+                match self.process_notification(notification) {
+                    Ok(notification) => match notifier.notify(notification) {
+                        Ok(_) => (),
+                        Err(err) => {
+                            trace!("[Index processor] notification sender error: {err:?}");
                         }
+                    },
+                    Err(err) => {
+                        trace!("[Index processor] error while processing a consensus notification: {err:?}");
                     }
                 }
             }
-            self.collect_shutdown.response.trigger.trigger();
-            trace!("[Processor] collecting_task end");
+
+            debug!("[Index processor] notification stream ended");
+            self.collect_shutdown.trigger.trigger();
+            trace!("[Index processor] collecting task ended");
         });
     }
 
@@ -116,12 +97,10 @@ impl Processor {
         Err(IndexError::NotSupported(EventType::UtxosChanged))
     }
 
-    async fn stop_collecting_task(&self) -> Result<()> {
-        if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            return Err(Error::AlreadyStoppedError);
-        }
-        self.collect_shutdown.request.trigger.trigger();
-        self.collect_shutdown.response.listener.clone().await;
+    async fn join_collecting_task(&self) -> Result<()> {
+        trace!("[Index processor] joining");
+        self.collect_shutdown.listener.clone().await;
+        debug!("[Index processor] terminated");
         Ok(())
     }
 }
@@ -132,8 +111,8 @@ impl Collector<Notification> for Processor {
         self.spawn_collecting_task(notifier);
     }
 
-    async fn stop(self: Arc<Self>) -> Result<()> {
-        self.stop_collecting_task().await
+    async fn join(self: Arc<Self>) -> Result<()> {
+        self.join_collecting_task().await
     }
 }
 
@@ -236,7 +215,8 @@ mod tests {
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
         assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
-        pipeline.processor.clone().stop().await.expect("stopping the processor must succeed");
+        pipeline.consensus_sender.close();
+        pipeline.processor.clone().join().await.expect("stopping the processor must succeed");
     }
 
     #[tokio::test]
@@ -253,6 +233,7 @@ mod tests {
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
         assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
-        pipeline.processor.clone().stop().await.expect("stopping the processor must succeed");
+        pipeline.consensus_sender.close();
+        pipeline.processor.clone().join().await.expect("stopping the processor must succeed");
     }
 }

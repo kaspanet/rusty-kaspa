@@ -1,8 +1,4 @@
-use crate::flowcontext::{
-    orphans::{OrphanBlocksPool, MAX_ORPHANS},
-    process_queue::ProcessQueue,
-    transactions::TransactionsSpread,
-};
+use crate::flowcontext::{orphans::OrphanBlocksPool, process_queue::ProcessQueue, transactions::TransactionsSpread};
 use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
@@ -19,6 +15,7 @@ use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager};
 use kaspa_core::{
     debug, info,
     kaspad_env::{name, version},
+    task::tick::TickService,
 };
 use kaspa_core::{time::unix_now, warn};
 use kaspa_hashes::Hash;
@@ -34,6 +31,7 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, InvRelayBlockMessage},
     ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
+use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
 use std::{
@@ -44,12 +42,72 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::Duration,
 };
-use tokio::sync::RwLock as AsyncRwLock;
+use tokio::sync::{
+    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+    RwLock as AsyncRwLock,
+};
+use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 use uuid::Uuid;
 
 /// The P2P protocol version. Currently the only one supported.
 const PROTOCOL_VERSION: u32 = 5;
+
+/// See `check_orphan_resolution_range`
+const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
+
+#[derive(Debug, PartialEq)]
+pub enum BlockSource {
+    Relay,
+    Submit,
+}
+
+pub struct AcceptedBlockLogger {
+    bps: usize,
+    sender: UnboundedSender<(Hash, BlockSource)>,
+    receiver: Mutex<Option<UnboundedReceiver<(Hash, BlockSource)>>>,
+}
+
+impl AcceptedBlockLogger {
+    pub fn new(bps: usize) -> Self {
+        let (sender, receiver) = unbounded_channel();
+        Self { bps, sender, receiver: Mutex::new(Some(receiver)) }
+    }
+
+    pub fn log(&self, hash: Hash, source: BlockSource) {
+        self.sender.send((hash, source)).unwrap();
+    }
+
+    /// Start the logger listener. Must be called from an async tokio context
+    fn start(&self) {
+        let chunk_limit = self.bps * 4; // We prefer that the 1 sec timeout forces the log, but nonetheless still want a reasonable bound on each chunk
+        let receiver = self.receiver.lock().take().expect("expected to be called once");
+        tokio::spawn(async move {
+            let chunk_stream = UnboundedReceiverStream::new(receiver).chunks_timeout(chunk_limit, Duration::from_secs(1));
+            tokio::pin!(chunk_stream);
+            while let Some(chunk) = chunk_stream.next().await {
+                if let Some((i, h)) =
+                    chunk.iter().filter_map(|(h, s)| if *s == BlockSource::Submit { Some(*h) } else { None }).enumerate().last()
+                {
+                    let submit = i + 1; // i is the last index so i + 1 is the number of submit blocks
+                    let relay = chunk.len() - submit;
+                    match (submit, relay) {
+                        (1, 0) => info!("Accepted block {} via submit block", h),
+                        (n, 0) => info!("Accepted {} blocks ...{} via submit block", n, h),
+                        (n, m) => info!("Accepted {} blocks ...{}, {} via relay and {} via submit block", n + m, h, m, n),
+                    }
+                } else {
+                    let h = chunk.last().expect("chunk is never empty").0;
+                    match chunk.len() {
+                        1 => info!("Accepted block {} via relay", h),
+                        n => info!("Accepted {} blocks ...{} via relay", n, h),
+                    }
+                }
+            }
+        });
+    }
+}
 
 pub struct FlowContextInner {
     pub node_id: PeerId,
@@ -65,7 +123,14 @@ pub struct FlowContextInner {
     pub address_manager: Arc<Mutex<AddressManager>>,
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: Arc<MiningManager>,
+    pub(crate) tick_service: Arc<TickService>,
     notification_root: Arc<ConsensusNotificationRoot>,
+
+    // Special sampling logger used only for high-bps networks where logs must be throttled
+    accepted_block_logger: Option<AcceptedBlockLogger>,
+
+    // Orphan parameters
+    orphan_resolution_range: u32,
 }
 
 #[derive(Clone)]
@@ -115,15 +180,22 @@ impl FlowContext {
         address_manager: Arc<Mutex<AddressManager>>,
         config: Arc<Config>,
         mining_manager: Arc<MiningManager>,
+        tick_service: Arc<TickService>,
         notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
         let hub = Hub::new();
+
+        // TODO: initial experiments show that this value is good for high bps as well so for now we avoid the log
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE; //  + f64::log2(config.bps() as f64).round() as u32
+
+        // The maximum amount of orphans allowed in the orphans pool. This number is an
+        // approximation of how many orphans there can possibly be on average.
+        let max_orphans = 2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k as usize;
         Self {
             inner: Arc::new(FlowContextInner {
                 node_id: Uuid::new_v4().into(),
                 consensus_manager,
-                config,
-                orphans_pool: AsyncRwLock::new(OrphanBlocksPool::new(MAX_ORPHANS)),
+                orphans_pool: AsyncRwLock::new(OrphanBlocksPool::new(max_orphans)),
                 shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
                 shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
@@ -133,13 +205,35 @@ impl FlowContext {
                 address_manager,
                 connection_manager: Default::default(),
                 mining_manager,
+                tick_service,
                 notification_root,
+                accepted_block_logger: if config.bps() > 1 { Some(AcceptedBlockLogger::new(config.bps() as usize)) } else { None },
+                orphan_resolution_range,
+                config,
             }),
+        }
+    }
+
+    pub fn block_invs_channel_size(&self) -> usize {
+        self.config.bps() as usize * Router::incoming_flow_baseline_channel_size()
+    }
+
+    pub fn orphan_resolution_range(&self) -> u32 {
+        self.orphan_resolution_range
+    }
+
+    pub fn start_async_services(&self) {
+        if let Some(logger) = self.accepted_block_logger.as_ref() {
+            logger.start();
         }
     }
 
     pub fn set_connection_manager(&self, connection_manager: Arc<ConnectionManager>) {
         self.connection_manager.write().replace(connection_manager);
+    }
+
+    pub fn drop_connection_manager(&self) {
+        self.connection_manager.write().take();
     }
 
     pub fn connection_manager(&self) -> Option<Arc<ConnectionManager>> {
@@ -196,6 +290,11 @@ impl FlowContext {
     }
 
     pub async fn add_orphan(&self, orphan_block: Block) {
+        if self.is_log_throttled() {
+            debug!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
+        } else {
+            info!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
+        }
         self.orphans_pool.write().await.add_orphan(orphan_block)
     }
 
@@ -208,11 +307,20 @@ impl FlowContext {
     }
 
     pub async fn unorphan_blocks(&self, consensus: &dyn ConsensusApi, root: Hash) -> Vec<Block> {
-        self.orphans_pool.write().await.unorphan_blocks(consensus, root).await
+        let unorphaned_blocks = self.orphans_pool.write().await.unorphan_blocks(consensus, root).await;
+        match unorphaned_blocks.len() {
+            0 => {}
+            1 => info!("Unorphaned block {}", unorphaned_blocks[0].hash()),
+            n => match self.is_log_throttled() {
+                true => info!("Unorphaned {} blocks ...{}", n, unorphaned_blocks.last().unwrap().hash()),
+                false => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).reusable_format(", ")),
+            },
+        }
+        unorphaned_blocks
     }
 
-    /// Adds the given block to the DAG and propagates it.
-    pub async fn add_block(&self, consensus: &dyn ConsensusApi, block: Block) -> Result<(), ProtocolError> {
+    /// Adds the rpc-submitted block to the DAG and propagates it to peers.
+    pub async fn submit_rpc_block(&self, consensus: &dyn ConsensusApi, block: Block) -> Result<(), ProtocolError> {
         if block.transactions.is_empty() {
             return Err(RuleError::NoTransactions)?;
         }
@@ -221,10 +329,26 @@ impl FlowContext {
             warn!("Validation failed for block {}: {}", hash, err);
             return Err(err)?;
         }
+        self.log_block_acceptance(hash, BlockSource::Submit);
         self.on_new_block_template().await?;
         self.on_new_block(consensus, block).await?;
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
         Ok(())
+    }
+
+    pub fn log_block_acceptance(&self, hash: Hash, source: BlockSource) {
+        if let Some(logger) = self.accepted_block_logger.as_ref() {
+            logger.log(hash, source)
+        } else {
+            match source {
+                BlockSource::Relay => info!("Accepted block {} via relay", hash),
+                BlockSource::Submit => info!("Accepted block {} via submit block", hash),
+            }
+        }
+    }
+
+    pub fn is_log_throttled(&self) -> bool {
+        self.accepted_block_logger.is_some()
     }
 
     /// Updates the mempool after a new block arrival, relays newly unorphaned transactions
@@ -259,16 +383,16 @@ impl FlowContext {
     pub async fn on_new_block_template(&self) -> Result<(), ProtocolError> {
         // Clear current template cache
         self.mining_manager().clear_block_template();
-        // TODO: better handle notification errors
-        self.notification_root
-            .notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))
-            .map_err(|_| ProtocolError::Other("Notification error"))?;
+        // Notifications from the flow context might be ignored if the inner channel is already closing
+        // due to global shutdown, hence we ignore the possible error
+        let _ = self.notification_root.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}));
         Ok(())
     }
 
     /// Notifies that the UTXO set was reset due to pruning point change via IBD.
     pub fn on_pruning_point_utxoset_override(&self) {
-        // TODO: handle notify return error
+        // Notifications from the flow context might be ignored if the inner channel is already closing
+        // due to global shutdown, hence we ignore the possible error
         let _ = self.notification_root.notify(Notification::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification {}));
     }
 
@@ -337,6 +461,9 @@ impl ConnectionInitializer for FlowContext {
         // Avoid duplicate connections
         if self.hub.has_peer(router.key()) {
             return Err(ProtocolError::PeerAlreadyExists(router.key()));
+        }
+        if self.node_id == router.identity() {
+            return Err(ProtocolError::LoopbackConnection(router.key()));
         }
 
         if peer_version.network != network_name {

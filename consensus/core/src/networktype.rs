@@ -23,15 +23,6 @@ pub enum NetworkType {
 }
 
 impl NetworkType {
-    pub fn default_p2p_port(&self) -> u16 {
-        match self {
-            NetworkType::Mainnet => 16111,
-            NetworkType::Testnet => 16211,
-            NetworkType::Simnet => 16511,
-            NetworkType::Devnet => 16611,
-        }
-    }
-
     pub fn default_rpc_port(&self) -> u16 {
         match self {
             NetworkType::Mainnet => 16110,
@@ -141,6 +132,23 @@ impl NetworkId {
 
     pub fn name(&self) -> String {
         self.to_string()
+    }
+
+    pub fn default_p2p_port(&self) -> u16 {
+        // We define the P2P port on the [`networkId`] type in order to adapt testnet ports according to testnet suffix,
+        // hence avoiding repeatedly failing P2P handshakes between nodes on different networks. RPC does not have
+        // this reasoning so we keep it on the same port in order to simplify RPC client management (hence [`default_rpc_port`]
+        // is defined on the [`NetworkType`] struct
+        match self.network_type {
+            NetworkType::Mainnet => 16111,
+            NetworkType::Testnet => match self.suffix {
+                Some(10) => 16211,
+                Some(11) => 16311,
+                None | Some(_) => 16411,
+            },
+            NetworkType::Simnet => 16511,
+            NetworkType::Devnet => 16611,
+        }
     }
 }
 

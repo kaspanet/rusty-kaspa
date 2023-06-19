@@ -205,8 +205,9 @@ impl BlockBodyProcessor {
         self.commit_body(block.hash(), block.header.direct_parents(), block.transactions.clone());
 
         // Send a BlockAdded notification
-        // TODO: handle notify errors
-        let _ = self.notification_root.notify(Notification::BlockAdded(BlockAddedNotification::new(block.to_owned())));
+        self.notification_root
+            .notify(Notification::BlockAdded(BlockAddedNotification::new(block.to_owned())))
+            .expect("expecting an open unbounded channel");
 
         // Report counters
         self.counters.body_counts.fetch_add(1, Ordering::Relaxed);
