@@ -18,7 +18,7 @@ use kaspa_consensus_notify::{
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{
     core::Core,
-    debug, info,
+    debug,
     kaspad_env::version,
     signals::Shutdown,
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
@@ -205,19 +205,17 @@ impl RpcApi for RpcCoreService {
 
             // A simple heuristic check which signals that the mined block is out of date
             // and should not be accepted unless user explicitly requests
-            let daa_window_size = self.config.full_difficulty_window_size as u64;
-            if virtual_daa_score > daa_window_size && block.header.daa_score < virtual_daa_score - daa_window_size {
+            let daa_window_block_duration = self.config.daa_window_duration_in_blocks(virtual_daa_score);
+            if virtual_daa_score > daa_window_block_duration && block.header.daa_score < virtual_daa_score - daa_window_block_duration
+            {
                 // error = format!("Block rejected. Reason: block DAA score {0} is too far behind virtual's DAA score {1}", block.header.daa_score, virtual_daa_score)
                 return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) });
             }
         }
 
         trace!("incoming SubmitBlockRequest for block {}", hash);
-        match self.flow_context.add_block(session.deref(), block.clone()).await {
-            Ok(_) => {
-                info!("Accepted block {} via submit block", hash);
-                Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
-            }
+        match self.flow_context.submit_rpc_block(session.deref(), block.clone()).await {
+            Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
             Err(err) => {
                 warn!("The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}", err, err);
                 // error = format!("Block rejected. Reason: {}", err))
@@ -229,8 +227,8 @@ impl RpcApi for RpcCoreService {
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
         trace!("incoming GetBlockTemplate request");
 
-        if *self.config.net == NetworkType::Mainnet {
-            return Err(RpcError::General("Mining on mainnet is not supported for the Rust Alpha version".to_owned()));
+        if *self.config.net == NetworkType::Mainnet && !self.config.enable_mainnet_mining {
+            return Err(RpcError::General("Mining on mainnet is not supported for initial Rust versions".to_owned()));
         }
 
         // Make sure the pay address prefix matches the config network type

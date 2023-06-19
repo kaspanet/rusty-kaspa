@@ -1,5 +1,7 @@
-use std::sync::Arc;
+use std::{cmp::max, sync::Arc};
 
+use kaspa_consensus_core::api::ConsensusApi;
+use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, make_message,
@@ -37,12 +39,16 @@ impl RequestHeadersFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
+        const MAX_BLOCKS: usize = 1 << 10;
+        // Internal consensus logic requires that `max_blocks > mergeset_size_limit`
+        let max_blocks = max(MAX_BLOCKS, self.ctx.config.mergeset_size_limit as usize + 1);
+
         loop {
             let msg = dequeue!(self.incoming_route, Payload::RequestHeaders)?;
             let (high, mut low) = msg.try_into()?;
 
             let consensus = self.ctx.consensus();
-            let mut session = consensus.session().await;
+            let mut session = consensus.session_owned().await;
 
             match session.is_chain_ancestor_of(low, high) {
                 Ok(is_ancestor) => {
@@ -59,28 +65,38 @@ impl RequestHeadersFlow {
 
             // max_blocks MUST be > merge_set_size_limit
             while low != high {
-                const MAX_BLOCKS: usize = 1 << 10;
                 debug!("Getting block headers between {} and {}", high, low);
-                let (hashes, _) = match session.get_hashes_between(low, high, MAX_BLOCKS) {
-                    Ok(hashes) => hashes,
-                    Err(e) => return Err(e.into()),
-                };
 
-                debug!("Got {} header hashes above {}", hashes.len(), low);
-                low = *hashes.last().unwrap();
-                let mut block_headers = Vec::with_capacity(hashes.len());
-                for hash in hashes {
-                    block_headers.push(<pb::BlockHeader>::from(&*session.get_header(hash)?));
-                }
-
+                // We spawn the I/O-intensive operation of reading a bunch of headers as a tokio blocking task
+                let (block_headers, last) =
+                    session.spawn_blocking(move |c| Self::get_headers_between(c, low, high, max_blocks)).await?;
+                debug!("Got {} header hashes above {}", block_headers.len(), low);
+                low = last;
                 self.router.enqueue(make_message!(Payload::BlockHeaders, BlockHeadersMessage { block_headers })).await?;
 
-                drop(session); // Avoid holding the session through dequeue calls
                 dequeue!(self.incoming_route, Payload::RequestNextHeaders)?;
-                session = consensus.session().await;
+                session = consensus.session_owned().await;
             }
 
             self.router.enqueue(make_message!(Payload::DoneHeaders, DoneHeadersMessage {})).await?;
         }
+    }
+
+    /// Helper function to get a bunch of headers between `low` and `high` and to parse them into pb structs.
+    /// Returns the hash of the highest block obtained, to be used as `low` for the next call
+    fn get_headers_between(
+        consensus: &dyn ConsensusApi,
+        low: Hash,
+        high: Hash,
+        max_blocks: usize,
+    ) -> Result<(Vec<pb::BlockHeader>, Hash), ProtocolError> {
+        let hashes = consensus.get_hashes_between(low, high, max_blocks)?.0;
+        let last = *hashes.last().expect("caller ensured that high and low are valid and different");
+        debug!("obtained {} header hashes above {}", hashes.len(), low);
+        let mut block_headers = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            block_headers.push(<pb::BlockHeader>::from(&*consensus.get_header(hash)?));
+        }
+        Ok((block_headers, last))
     }
 }

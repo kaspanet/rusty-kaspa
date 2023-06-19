@@ -1,7 +1,10 @@
 use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Peer, Router};
 use kaspa_core::{debug, info, warn};
 use parking_lot::RwLock;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{hash_map::Entry::Occupied, HashMap},
+    sync::Arc,
+};
 use tokio::sync::mpsc::Receiver as MpscReceiver;
 
 use super::peer::PeerKey;
@@ -9,7 +12,7 @@ use super::peer::PeerKey;
 #[derive(Debug)]
 pub(crate) enum HubEvent {
     NewPeer(Arc<Router>),
-    PeerClosing(PeerKey),
+    PeerClosing(Arc<Router>),
 }
 
 /// Hub of active peers (represented as Router objects). Note that all public methods of this type are exposed through the Adaptor
@@ -36,35 +39,46 @@ impl Hub {
                         // If peer is outbound then connection initialization was already performed as part of the connect logic
                         if new_router.is_outbound() {
                             info!("P2P Connected to outgoing peer {}", new_router);
-                            let prev = self.peers.write().insert(new_router.key(), new_router);
-                            if let Some(previous_router) = prev {
-                                // This is not supposed to ever happen
-                                previous_router.close().await;
-                                debug!("P2P, Hub event loop, removing peer with duplicate key: {}", previous_router.key());
-                            }
+                            self.insert_new_router(new_router).await;
                         } else {
                             match initializer.initialize_connection(new_router.clone()).await {
                                 Ok(()) => {
                                     info!("P2P Connected to incoming peer {}", new_router);
-                                    self.peers.write().insert(new_router.key(), new_router);
+                                    self.insert_new_router(new_router).await;
                                 }
                                 Err(err) => {
                                     // Ignoring the router
                                     new_router.close().await;
-                                    warn!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
+                                    if matches!(err, ProtocolError::LoopbackConnection(_) | ProtocolError::PeerAlreadyExists(_)) {
+                                        debug!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
+                                    } else {
+                                        warn!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
+                                    }
                                 }
                             }
                         }
                     }
-                    HubEvent::PeerClosing(peer_key) => {
-                        if let Some(router) = self.peers.write().remove(&peer_key) {
-                            debug!("P2P, Hub event loop, removing peer, router-id: {}", router.identity());
+                    HubEvent::PeerClosing(router) => {
+                        if let Occupied(entry) = self.peers.write().entry(router.key()) {
+                            if Arc::ptr_eq(entry.get(), &router) {
+                                entry.remove_entry();
+                                debug!("P2P, Hub event loop, removing peer, router-id: {}", router.identity());
+                            }
                         }
                     }
                 }
             }
             debug!("P2P, Hub event loop exiting");
         });
+    }
+
+    async fn insert_new_router(&self, new_router: Arc<Router>) {
+        let prev = self.peers.write().insert(new_router.key(), new_router);
+        if let Some(previous_router) = prev {
+            // This is not supposed to ever happen but can on rare race-conditions
+            previous_router.close().await;
+            warn!("P2P, Hub event loop, removing peer with duplicate key: {}", previous_router.key());
+        }
     }
 
     /// Send a message to a specific peer

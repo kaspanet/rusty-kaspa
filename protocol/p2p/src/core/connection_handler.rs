@@ -124,27 +124,32 @@ impl ConnectionHandler {
         address: String,
         retry_attempts: u8,
         retry_interval: Duration,
-    ) -> Option<Arc<Router>> {
-        for counter in 0..retry_attempts {
+    ) -> Result<Arc<Router>, ConnectionError> {
+        let mut counter = 0;
+        loop {
+            counter += 1;
             match self.connect(address.clone()).await {
                 Ok(router) => {
                     debug!("P2P, Client connected, peer: {:?}", address);
-                    return Some(router);
+                    return Ok(router);
                 }
                 Err(ConnectionError::ProtocolError(err)) => {
                     // On protocol errors we avoid retrying
                     debug!("P2P, connect retry #{} failed with error {:?}, peer: {:?}, aborting retries", counter, err, address);
-                    break;
+                    return Err(ConnectionError::ProtocolError(err));
                 }
                 Err(err) => {
-                    debug!("P2P, connect retry #{} failed with error {:?}, peer: {:?}", counter, err, address);
-                    // Await `retry_interval` time before retrying
-                    tokio::time::sleep(retry_interval).await;
+                    if counter < retry_attempts {
+                        debug!("P2P, connect retry #{} failed with error {:?}, peer: {:?}", counter, err, address);
+                        // Await `retry_interval` time before retrying
+                        tokio::time::sleep(retry_interval).await;
+                    } else {
+                        debug!("P2P, Client connection retry #{} - all failed", retry_attempts);
+                        return Err(err);
+                    }
                 }
             }
         }
-        debug!("P2P, Client connection retry #{} - all failed", retry_attempts);
-        None
     }
 
     // TODO: revisit the below constants

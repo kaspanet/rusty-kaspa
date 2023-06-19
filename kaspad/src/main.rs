@@ -8,7 +8,7 @@ use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::config::{ConfigError, ConfigResult};
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::networktype::{NetworkId, NetworkType};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
@@ -32,6 +32,9 @@ use args::{Args, Defaults};
 // use clap::Parser;
 // ~~~
 
+// TODO: testnet 11 tasks:
+// coinbase rewards
+
 use kaspa_consensus::config::ConfigBuilder;
 use kaspa_utxoindex::UtxoIndex;
 
@@ -48,69 +51,6 @@ const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
 const META_DB: &str = "meta";
 const DEFAULT_LOG_DIR: &str = "logs";
-
-// TODO: refactor the shutdown sequence into a predefined controlled sequence
-
-/*
-/// Kaspa Node launch arguments
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// Directory to store data
-    #[arg(short = 'b', long = "appdir")]
-    app_dir: Option<String>,
-
-    /// Interface/port to listen for gRPC connections (default port: 16110, testnet: 16210)
-    #[arg(long = "rpclisten")]
-    rpc_listen: Option<String>,
-
-    /// Activate the utxoindex
-    #[arg(long = "utxoindex")]
-    utxoindex: bool,
-
-    /// Interface/port to listen for wRPC Borsh connections (default: 127.0.0.1:17110)
-    #[clap(long = "rpclisten-borsh", default_missing_value = "abc")]
-    // #[arg()]
-    wrpc_listen_borsh: Option<String>,
-
-    /// Interface/port to listen for wRPC JSON connections (default: 127.0.0.1:18110)
-    #[arg(long = "rpclisten-json")]
-    wrpc_listen_json: Option<String>,
-
-    /// Enable verbose logging of wRPC data exchange
-    #[arg(long = "wrpc-verbose")]
-    wrpc_verbose: bool,
-
-    /// Logging level for all subsystems {off, error, warn, info, debug, trace}
-    ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
-    #[arg(short = 'd', long = "loglevel", default_value = "info")]
-    log_level: String,
-
-    #[arg(long = "connect")]
-    connect: Option<String>,
-
-    #[arg(long = "listen")]
-    listen: Option<String>,
-
-    #[arg(long = "reset-db")]
-    reset_db: bool,
-
-    #[arg(long = "outpeers", default_value = "8")]
-    target_outbound: usize,
-
-    #[arg(long = "maxinpeers", default_value = "128")]
-    inbound_limit: usize,
-
-    #[arg(long = "testnet")]
-    testnet: bool,
-
-    #[arg(long = "devnet")]
-    devnet: bool,
-
-    #[arg(long = "simnet")]
-    simnet: bool,
-}
- */
 
 fn get_home_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -166,15 +106,20 @@ pub fn main() {
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
 
-    let network_type = match (args.testnet, args.devnet, args.simnet) {
-        (false, false, false) => NetworkType::Mainnet,
-        (true, false, false) => NetworkType::Testnet,
-        (false, true, false) => NetworkType::Devnet,
-        (false, false, true) => NetworkType::Simnet,
+    let network = match (args.testnet, args.devnet, args.simnet) {
+        (false, false, false) => NetworkType::Mainnet.into(),
+        (true, false, false) => NetworkId::with_suffix(NetworkType::Testnet, args.testnet_suffix),
+        (false, true, false) => NetworkType::Devnet.into(),
+        (false, false, true) => NetworkType::Simnet.into(),
         _ => panic!("only a single net should be activated"),
     };
 
-    let config = Arc::new(ConfigBuilder::new(network_type.into()).apply_args(|config| args.apply_to_config(config)).build());
+    let config = Arc::new(
+        ConfigBuilder::new(network.into())
+            .adjust_perf_params_to_consensus_params()
+            .apply_args(|config| args.apply_to_config(config))
+            .build(),
+    );
 
     // Make sure config and args form a valid set of properties
     if let Err(err) = validate_config_and_args(&config, &args) {
