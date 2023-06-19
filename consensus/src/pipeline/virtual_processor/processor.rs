@@ -103,7 +103,6 @@ pub struct VirtualStateProcessor {
     // Config
     pub(super) genesis: GenesisBlock,
     pub(super) max_block_parents: u8,
-    pub(super) difficulty_window_size: usize,
     pub(super) mergeset_size_limit: u64,
     pub(super) pruning_depth: u64,
 
@@ -169,7 +168,6 @@ impl VirtualStateProcessor {
 
             genesis: params.genesis.clone(),
             max_block_parents: params.max_block_parents,
-            difficulty_window_size: params.full_difficulty_window_size,
             mergeset_size_limit: params.mergeset_size_limit,
             pruning_depth: params.pruning_depth,
 

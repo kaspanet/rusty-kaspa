@@ -5,26 +5,25 @@ use itertools::Itertools;
 use kaspa_consensus::{
     config::ConfigBuilder,
     consensus::Consensus,
-    constants::perf::{PerfParams, PERF_PARAMS},
+    constants::perf::PerfParams,
     model::stores::{
         block_transactions::BlockTransactionsStoreReader,
         ghostdag::{GhostdagStoreReader, KType},
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
     },
-    params::{Params, DEVNET_PARAMS},
-    processes::ghostdag::ordering::SortableBlock,
+    params::{Params, Testnet11Bps, DEVNET_PARAMS, TESTNET11_PARAMS},
 };
 use kaspa_consensus_core::{
-    api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::BlockProcessResult, header::Header, BlockHashSet,
-    BlockLevel, HashMapCustomHasher,
+    api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
+    BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{info, warn};
 use kaspa_database::utils::{create_temp_db_with_parallelism, load_existing_db};
 use kaspa_hashes::Hash;
 use simulator::network::KaspaNetworkSimulator;
-use std::{collections::VecDeque, mem::size_of, sync::Arc};
+use std::{collections::VecDeque, sync::Arc};
 
 pub mod simulator;
 
@@ -83,30 +82,19 @@ struct Args {
     /// the DAG in a separate consensus following the simulation phase
     #[arg(long, default_value_t = false)]
     test_pruning: bool,
-}
 
-/// Calculates the k parameter of the GHOSTDAG protocol such that anticones lager than k will be created
-/// with probability less than `delta` (follows eq. 1 from section 4.2 of the PHANTOM paper)
-/// `x` is expected to be 2Dλ where D is the maximal network delay and λ is the block mining rate.
-/// `delta` is an upper bound for the probability of anticones larger than k.
-/// Returns the minimal k such that the above conditions hold.
-fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
-    assert!(x > 0.0);
-    assert!(delta > 0.0 && delta < 1.0);
-    let (mut k_hat, mut sigma, mut fraction, exp) = (0u64, 0.0, 1.0, std::f64::consts::E.powf(-x));
-    loop {
-        sigma += exp * fraction;
-        if 1.0 - sigma < delta {
-            return k_hat;
-        }
-        k_hat += 1;
-        fraction *= x / k_hat as f64 // Computes x^k_hat/k_hat!
-    }
+    /// Use the legacy full-window DAA mechanism (note: the size of this window scales with bps)
+    #[arg(long, default_value_t = false)]
+    daa_legacy: bool,
+
+    /// Use testnet-11 consensus params
+    #[arg(long, default_value_t = false)]
+    testnet11: bool,
 }
 
 fn main() {
     // Get CLI arguments
-    let args = Args::parse();
+    let mut args = Args::parse();
 
     // Initialize the logger
     kaspa_core::log::init_logger(None, &args.log_level);
@@ -125,11 +113,14 @@ fn main() {
             args.miners
         );
     }
-    let mut params = DEVNET_PARAMS;
-    let mut perf_params = PERF_PARAMS;
-    adjust_consensus_params(&args, &mut params);
-    adjust_perf_params(&args, &params, &mut perf_params);
-    let mut builder = ConfigBuilder::new(params).set_perf_params(perf_params).skip_proof_of_work().enable_sanity_checks();
+    args.bps = if args.testnet11 { Testnet11Bps::bps() as f64 } else { args.bps };
+    let params = if args.testnet11 { TESTNET11_PARAMS } else { DEVNET_PARAMS };
+    let mut builder = ConfigBuilder::new(params)
+        .apply_args(|config| apply_args_to_consensus_params(&args, &mut config.params))
+        .apply_args(|config| apply_args_to_perf_params(&args, &mut config.perf))
+        .adjust_perf_params_to_consensus_params()
+        .skip_proof_of_work()
+        .enable_sanity_checks();
     if !args.test_pruning {
         builder = builder.set_archival();
     }
@@ -166,12 +157,19 @@ fn main() {
     drop(consensus);
 }
 
-fn adjust_consensus_params(args: &Args, params: &mut Params) {
+fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
     // We have no actual PoW in the simulation, so the true max is most reflective,
     // however we avoid the actual max since it is reserved for the DB prefix scheme
     params.max_block_level = BlockLevel::MAX - 1;
     params.genesis.timestamp = 0;
-    if args.bps * args.delay > 2.0 {
+    if args.testnet11 {
+        info!(
+            "Using kaspa-testnet-11 configuration (GHOSTDAG K={}, DAA window size={}, Median time window size={})",
+            params.ghostdag_k,
+            params.difficulty_window_size(0),
+            params.past_median_time_window_size(0),
+        );
+    } else if args.bps * args.delay > 2.0 {
         let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
         params.ghostdag_k = k;
@@ -180,19 +178,31 @@ fn adjust_consensus_params(args: &Args, params: &mut Params) {
         params.target_time_per_block = (1000.0 / args.bps) as u64;
         params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
         params.coinbase_maturity = (params.coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
-        params.full_difficulty_window_size = (params.full_difficulty_window_size as f64 * args.bps) as usize; // Scale the DAA window linearly with BPS
+
+        if args.daa_legacy {
+            // Scale DAA and median-time windows linearly with BPS
+            params.sampling_activation_daa_score = u64::MAX;
+            params.legacy_timestamp_deviation_tolerance = (params.legacy_timestamp_deviation_tolerance as f64 * args.bps) as u64;
+            params.legacy_difficulty_window_size = (params.legacy_difficulty_window_size as f64 * args.bps) as usize;
+        } else {
+            // Use the new sampling algorithms
+            params.sampling_activation_daa_score = 0;
+            params.past_median_time_sample_rate = (10.0 * args.bps) as u64;
+            params.new_timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
+            params.difficulty_sample_rate = (2.0 * args.bps) as u64;
+        }
 
         info!(
-            "The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}, DAA window size={}",
+            "The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}, DAA window size={})",
             2.0 * args.delay * args.bps,
             k,
-            params.full_difficulty_window_size
+            params.difficulty_window_size(0)
         );
     }
     if args.test_pruning {
         params.pruning_proof_m = 16;
-        params.full_difficulty_window_size = 64;
-        params.full_timestamp_deviation_tolerance = 16;
+        params.legacy_difficulty_window_size = 64;
+        params.legacy_timestamp_deviation_tolerance = 16;
         params.finality_depth = 128;
         params.merge_depth = 128;
         params.mergeset_size_limit = 32;
@@ -201,21 +211,7 @@ fn adjust_consensus_params(args: &Args, params: &mut Params) {
     }
 }
 
-fn adjust_perf_params(args: &Args, consensus_params: &Params, perf_params: &mut PerfParams) {
-    // Allow caching up to ~2000 full blocks
-    perf_params.block_data_cache_size = (perf_params.block_data_cache_size as f64 * args.bps.clamp(1.0, 10.0)) as u64;
-
-    let daa_window_memory_budget = 1_000_000_000u64; // 1GB
-    let single_window_byte_size = consensus_params.full_difficulty_window_size as u64 * size_of::<SortableBlock>() as u64;
-    let max_daa_window_cache_size = daa_window_memory_budget / single_window_byte_size;
-    perf_params.block_window_cache_size = u64::min(perf_params.block_window_cache_size, max_daa_window_cache_size);
-
-    let headers_memory_budget = 1_000_000_000u64; // 1GB
-    let approx_header_num_parents = (args.bps * args.delay) as u64 * 2; // x2 for multi-levels
-    let approx_header_byte_size = approx_header_num_parents * size_of::<Hash>() as u64 + size_of::<Header>() as u64;
-    let max_headers_cache_size = headers_memory_budget / approx_header_byte_size;
-    perf_params.header_data_cache_size = u64::min(perf_params.header_data_cache_size, max_headers_cache_size);
-
+fn apply_args_to_perf_params(args: &Args, perf_params: &mut PerfParams) {
     if let Some(processors_pool_threads) = args.processors_threads {
         perf_params.block_processors_num_threads = processors_pool_threads;
     }
