@@ -15,7 +15,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensusmanager::StagingConsensus;
-use kaspa_core::{debug, info};
+use kaspa_core::{debug, info, warn};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
@@ -250,15 +250,24 @@ impl IbdFlow {
 
             info!("Building the proof which was just applied (sanity test)");
             let built_proof = consensus.get_pruning_point_proof();
+            let mut mismatch_detected = false;
             for (i, (ref_level, built_level)) in ref_proof.iter().zip(built_proof.iter()).enumerate() {
-                assert_eq!(
-                    ref_level.iter().map(|h| h.hash).collect::<BlockHashSet>(),
-                    built_level.iter().map(|h| h.hash).collect::<BlockHashSet>(),
-                    "Locally built proof for level {} does not match the applied one",
-                    i
-                );
+                if ref_level.iter().map(|h| h.hash).collect::<BlockHashSet>()
+                    != built_level.iter().map(|h| h.hash).collect::<BlockHashSet>()
+                {
+                    mismatch_detected = true;
+                    warn!("Locally built proof for level {} does not match the applied one", i);
+                }
             }
-            info!("Proof was locally built successfully");
+            if mismatch_detected {
+                info!("Validating the locally built proof (sanity test fallback #2)");
+                if let Err(err) = consensus.validate_pruning_proof(&built_proof) {
+                    panic!("Locally built proof failed validation: {}", err);
+                }
+                info!("Locally built proof was validated successfully");
+            } else {
+                info!("Proof was locally built successfully");
+            }
         } else {
             consensus.apply_pruning_proof(proof, &trusted_set);
             consensus.import_pruning_points(pruning_points);
