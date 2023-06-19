@@ -105,6 +105,22 @@ impl<const BPS: u64> Bps<BPS> {
         BPS * LEGACY_COINBASE_MATURITY
     }
 
+    /// DAA score after which the pre-deflationary period switches to the deflationary period.
+    ///
+    /// This number is calculated as follows:
+    ///
+    /// - We define a year as 365.25 days
+    /// - Half a year in seconds = 365.25 / 2 * 24 * 60 * 60 = 15778800
+    /// - The network was down for three days shortly after launch
+    /// - Three days in seconds = 3 * 24 * 60 * 60 = 259200
+    pub const fn deflationary_phase_daa_score() -> u64 {
+        BPS * (15778800 - 259200)
+    }
+
+    pub const fn pre_deflationary_phase_base_subsidy() -> u64 {
+        BPS * 50000000000
+    }
+
     // TODO: we might need to increase max_block_level (at least for mainnet) as a function of BPS
     // since higher BPS means easier difficulty puzzles -> less zeros in pow hash
     // pub const fn max_block_level() -> u64 {  }
