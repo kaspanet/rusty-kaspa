@@ -152,7 +152,7 @@ impl HandleRelayInvsFlow {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
-                    self.process_orphan(session.deref(), block).await?;
+                    self.process_orphan(session.deref(), block, inv.is_indirect).await?;
                     continue;
                 }
                 Err(rule_error) => return Err(rule_error.into()),
@@ -202,14 +202,21 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn process_orphan(&mut self, consensus: &dyn ConsensusApi, block: Block) -> Result<(), ProtocolError> {
+    async fn process_orphan(
+        &mut self,
+        consensus: &dyn ConsensusApi,
+        block: Block,
+        is_indirect_inv: bool,
+    ) -> Result<(), ProtocolError> {
         // Return if the block has been orphaned from elsewhere already
         if self.ctx.is_known_orphan(block.hash()).await {
             return Ok(());
         }
 
-        // Add the block to the orphan pool if it's within orphan resolution range
-        if self.check_orphan_resolution_range(consensus, block.hash()).await? {
+        // Add the block to the orphan pool if it's within orphan resolution range.
+        // If the block is indirect it means one of its descendants was already is resolution range, so
+        // we can save the query.
+        if is_indirect_inv || self.check_orphan_resolution_range(consensus, block.hash()).await? {
             let hash = block.hash();
             self.ctx.add_orphan(block).await;
             self.enqueue_orphan_roots(consensus, hash).await;
