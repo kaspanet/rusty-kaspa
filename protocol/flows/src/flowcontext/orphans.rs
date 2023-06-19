@@ -1,9 +1,9 @@
 use futures::future::join_all;
 use indexmap::{map::Entry::Occupied, IndexMap};
 use kaspa_consensus_core::{api::ConsensusApi, block::Block};
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{debug, warn};
 use kaspa_hashes::Hash;
-use kaspa_utils::{iter::IterExtensions, option::OptionExtensions};
+use kaspa_utils::option::OptionExtensions;
 use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -32,7 +32,6 @@ impl OrphanBlocksPool {
                 debug!("Evicted {} from the orphan blocks pool", evicted);
             }
         }
-        info!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
         self.orphans.insert(orphan_block.hash(), orphan_block);
     }
 
@@ -100,11 +99,6 @@ impl OrphanBlocksPool {
                 Ok(_) => unorphaned_blocks.push(block),
                 Err(e) => warn!("Validation failed for orphan block {}: {}", block.hash(), e),
             }
-        }
-        match unorphaned_blocks.len() {
-            0 => {}
-            1 => info!("Unorphaned block {}", unorphaned_blocks[0].hash()),
-            n => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).reusable_format(", ")),
         }
         unorphaned_blocks
     }

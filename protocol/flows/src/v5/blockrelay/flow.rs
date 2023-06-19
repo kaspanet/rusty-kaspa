@@ -178,7 +178,11 @@ impl HandleRelayInvsFlow {
             if roots.is_empty() {
                 return;
             }
-            info!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
+            if self.ctx.is_log_throttled() {
+                debug!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
+            } else {
+                info!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
+            }
             self.invs_route.enqueue_indirect_invs(roots)
         }
     }

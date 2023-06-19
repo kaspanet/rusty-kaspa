@@ -31,6 +31,7 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, InvRelayBlockMessage},
     ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
+use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
 use std::{
@@ -289,6 +290,11 @@ impl FlowContext {
     }
 
     pub async fn add_orphan(&self, orphan_block: Block) {
+        if self.is_log_throttled() {
+            debug!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
+        } else {
+            info!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
+        }
         self.orphans_pool.write().await.add_orphan(orphan_block)
     }
 
@@ -301,7 +307,16 @@ impl FlowContext {
     }
 
     pub async fn unorphan_blocks(&self, consensus: &dyn ConsensusApi, root: Hash) -> Vec<Block> {
-        self.orphans_pool.write().await.unorphan_blocks(consensus, root).await
+        let unorphaned_blocks = self.orphans_pool.write().await.unorphan_blocks(consensus, root).await;
+        match unorphaned_blocks.len() {
+            0 => {}
+            1 => info!("Unorphaned block {}", unorphaned_blocks[0].hash()),
+            n => match self.is_log_throttled() {
+                true => info!("Unorphaned {} blocks ...{}", n, unorphaned_blocks.last().unwrap().hash()),
+                false => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).reusable_format(", ")),
+            },
+        }
+        unorphaned_blocks
     }
 
     /// Adds the rpc-submitted block to the DAG and propagates it to peers.
@@ -330,6 +345,10 @@ impl FlowContext {
                 BlockSource::Submit => info!("Accepted block {} via submit block", hash),
             }
         }
+    }
+
+    pub fn is_log_throttled(&self) -> bool {
+        self.accepted_block_logger.is_some()
     }
 
     /// Updates the mempool after a new block arrival, relays newly unorphaned transactions
