@@ -88,11 +88,11 @@ impl ConsensusServices {
             params.max_difficulty_target,
             params.target_time_per_block,
             params.sampling_activation_daa_score,
-            params.full_difficulty_window_size,
+            params.legacy_difficulty_window_size,
             params.sampled_difficulty_window_size,
             params.min_difficulty_window_len,
             params.difficulty_sample_rate,
-            params.full_past_median_time_window_size(),
+            params.legacy_past_median_time_window_size(),
             params.sampled_past_median_time_window_size(),
             params.past_median_time_sample_rate,
         );

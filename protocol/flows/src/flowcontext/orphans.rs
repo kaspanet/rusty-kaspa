@@ -1,23 +1,13 @@
 use futures::future::join_all;
 use indexmap::{map::Entry::Occupied, IndexMap};
 use kaspa_consensus_core::{api::ConsensusApi, block::Block};
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{debug, warn};
 use kaspa_hashes::Hash;
-use kaspa_utils::{iter::IterExtensions, option::OptionExtensions};
+use kaspa_utils::option::OptionExtensions;
 use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::process_queue::ProcessQueue;
-
-/// The maximum amount of blockLocator hashes to search for known
-/// blocks. See check_orphan_resolution_range for further details
-pub const ORPHAN_RESOLUTION_RANGE: u32 = 5;
-
-/// The maximum amount of orphans allowed in the orphans pool. This number is an
-/// approximation of how many orphans there can possibly be on average. It is based on:
-/// 2^ORPHAN_RESOLUTION_RANGE * Ghostdag K.
-/// TODO (HF): revisit when block rate changes
-pub const MAX_ORPHANS: usize = 600;
 
 pub struct OrphanBlocksPool {
     /// NOTES:
@@ -42,7 +32,6 @@ impl OrphanBlocksPool {
                 debug!("Evicted {} from the orphan blocks pool", evicted);
             }
         }
-        info!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
         self.orphans.insert(orphan_block.hash(), orphan_block);
     }
 
@@ -94,7 +83,7 @@ impl OrphanBlocksPool {
                     .direct_parents()
                     .iter()
                     .copied()
-                    .all(|p| processing.contains_key(&p) || consensus.get_block_status(p).has_value_and(|s| !s.is_header_only()));
+                    .all(|p| processing.contains_key(&p) || consensus.get_block_status(p).is_some_and(|s| !s.is_header_only()));
                 if processable {
                     let orphan_block = entry.remove();
                     processing.insert(orphan_hash, (orphan_block.clone(), consensus.validate_and_insert_block(orphan_block)));
@@ -110,11 +99,6 @@ impl OrphanBlocksPool {
                 Ok(_) => unorphaned_blocks.push(block),
                 Err(e) => warn!("Validation failed for orphan block {}: {}", block.hash(), e),
             }
-        }
-        match unorphaned_blocks.len() {
-            0 => {}
-            1 => info!("Unorphaned block {}", unorphaned_blocks[0].hash()),
-            n => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).reusable_format(", ")),
         }
         unorphaned_blocks
     }

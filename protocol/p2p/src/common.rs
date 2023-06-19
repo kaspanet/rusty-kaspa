@@ -63,6 +63,9 @@ pub enum ProtocolError {
 
     #[error("peer {0} already exists")]
     PeerAlreadyExists(PeerKey),
+
+    #[error("loopback connection - node is connecting to itself")]
+    LoopbackConnection(PeerKey),
 }
 
 impl ProtocolError {

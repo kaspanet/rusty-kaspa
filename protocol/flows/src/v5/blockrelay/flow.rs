@@ -1,7 +1,6 @@
 use crate::{
-    flow_context::{FlowContext, RequestScope},
+    flow_context::{BlockSource, FlowContext, RequestScope},
     flow_trait::Flow,
-    flowcontext::orphans::ORPHAN_RESOLUTION_RANGE,
 };
 use kaspa_consensus_core::{api::ConsensusApi, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_core::{debug, info};
@@ -12,7 +11,6 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
     IncomingRoute, Router,
 };
-use kaspa_utils::option::OptionExtensions;
 use std::{collections::VecDeque, ops::Deref, sync::Arc};
 use tokio::sync::mpsc::{error::TrySendError, Sender};
 
@@ -154,13 +152,13 @@ impl HandleRelayInvsFlow {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
-                    self.process_orphan(session.deref(), block).await?;
+                    self.process_orphan(session.deref(), block, inv.is_indirect).await?;
                     continue;
                 }
                 Err(rule_error) => return Err(rule_error.into()),
             }
 
-            info!("Accepted block {} via relay", inv.hash);
+            self.ctx.log_block_acceptance(inv.hash, BlockSource::Relay);
             self.ctx.on_new_block_template().await?;
             self.ctx.on_new_block(session.deref(), block).await?;
 
@@ -180,7 +178,11 @@ impl HandleRelayInvsFlow {
             if roots.is_empty() {
                 return;
             }
-            info!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
+            if self.ctx.is_log_throttled() {
+                debug!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
+            } else {
+                info!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
+            }
             self.invs_route.enqueue_indirect_invs(roots)
         }
     }
@@ -200,14 +202,21 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn process_orphan(&mut self, consensus: &dyn ConsensusApi, block: Block) -> Result<(), ProtocolError> {
+    async fn process_orphan(
+        &mut self,
+        consensus: &dyn ConsensusApi,
+        block: Block,
+        is_indirect_inv: bool,
+    ) -> Result<(), ProtocolError> {
         // Return if the block has been orphaned from elsewhere already
         if self.ctx.is_known_orphan(block.hash()).await {
             return Ok(());
         }
 
-        // Add the block to the orphan pool if it's within orphan resolution range
-        if self.check_orphan_resolution_range(consensus, block.hash()).await? {
+        // Add the block to the orphan pool if it's within orphan resolution range.
+        // If the block is indirect it means one of its descendants was already is resolution range, so
+        // we can save the query.
+        if is_indirect_inv || self.check_orphan_resolution_range(consensus, block.hash()).await? {
             let hash = block.hash();
             self.ctx.add_orphan(block).await;
             self.enqueue_orphan_roots(consensus, hash).await;
@@ -231,11 +240,11 @@ impl HandleRelayInvsFlow {
         self.router
             .enqueue(make_message!(
                 Payload::RequestBlockLocator,
-                RequestBlockLocatorMessage { high_hash: Some(hash.into()), limit: ORPHAN_RESOLUTION_RANGE }
+                RequestBlockLocatorMessage { high_hash: Some(hash.into()), limit: self.ctx.orphan_resolution_range() }
             ))
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::BlockLocator)?;
         let locator_hashes: Vec<Hash> = msg.try_into()?;
-        Ok(locator_hashes.into_iter().any(|p| consensus.get_block_status(p).has_value_and(|s| !s.is_header_only())))
+        Ok(locator_hashes.into_iter().any(|p| consensus.get_block_status(p).is_some_and(|s| !s.is_header_only())))
     }
 }

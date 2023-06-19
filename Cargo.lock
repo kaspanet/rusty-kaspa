@@ -1558,6 +1558,7 @@ dependencies = [
  "kaspa-core",
  "kaspa-database",
  "kaspa-utils",
+ "log",
  "parking_lot",
  "rand 0.8.5",
  "rocksdb",
