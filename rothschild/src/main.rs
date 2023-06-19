@@ -107,11 +107,25 @@ async fn main() {
 
     info!("Using Rothschild with private key {} and address {}", schnorr_key.display_secret(), String::from(&kaspa_addr));
     let info = rpc_client.get_block_dag_info().await.unwrap();
-    info!("Node block-DAG info: {:?}", info);
     let coinbase_maturity = match info.network.suffix {
         Some(11) => TESTNET11_PARAMS.coinbase_maturity,
         None | Some(_) => TESTNET_PARAMS.coinbase_maturity,
     };
+    info!(
+        "Node block-DAG info: \n\tNetwork: {}, \n\tBlock count: {}, \n\tHeader count: {}, \n\tDifficulty: {}, 
+\tMedian time: {}, \n\tDAA score: {}, \n\tPruning point: {}, \n\tTips: {}, \n\t{} virtual parents: ...{}, \n\tCoinbase maturity: {}",
+        info.network,
+        info.block_count,
+        info.header_count,
+        info.difficulty,
+        info.past_median_time,
+        info.virtual_daa_score,
+        info.pruning_point_hash,
+        info.tip_hashes.len(),
+        info.virtual_parent_hashes.len(),
+        info.virtual_parent_hashes.last().unwrap(),
+        coinbase_maturity,
+    );
 
     let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending, coinbase_maturity).await;
     let mut ticker = interval(Duration::from_secs_f64(1.0 / (args.tps as f64)));
