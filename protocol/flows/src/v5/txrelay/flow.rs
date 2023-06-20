@@ -3,10 +3,8 @@ use crate::{
     flow_trait::Flow,
     flowcontext::transactions::MAX_INV_PER_TX_INV_MSG,
 };
-use kaspa_consensus_core::{
-    api::ConsensusApi,
-    tx::{Transaction, TransactionId},
-};
+use kaspa_consensus_core::tx::{Transaction, TransactionId};
+use kaspa_consensusmanager::ConsensusProxy;
 use kaspa_mining::{
     errors::MiningManagerError,
     mempool::{
@@ -95,12 +93,12 @@ impl RelayTransactionsFlow {
             let session = consensus.session().await;
 
             // Transaction relay is disabled if the node is out of sync and thus not mining
-            if !session.is_nearly_synced() {
+            if !session.async_is_nearly_synced().await {
                 continue;
             }
 
             let requests = self.request_transactions(inv).await?;
-            self.receive_transactions(session.deref(), requests).await?;
+            self.receive_transactions(session, requests).await?;
         }
     }
 
@@ -170,7 +168,7 @@ impl RelayTransactionsFlow {
 
     async fn receive_transactions(
         &mut self,
-        consensus: &dyn ConsensusApi,
+        consensus: ConsensusProxy,
         requests: Vec<RequestScope<TransactionId>>,
     ) -> Result<(), ProtocolError> {
         // trace!("Receive {} transaction ids from {}", requests.len(), self.router.identity());
@@ -184,7 +182,12 @@ impl RelayTransactionsFlow {
                 )));
             }
             let Response::Transaction(transaction) = response else { continue; };
-            match self.ctx.mining_manager().validate_and_insert_transaction(consensus, transaction, Priority::Low, Orphan::Allowed) {
+            match self.ctx.mining_manager().clone().validate_and_insert_transaction(
+                consensus.deref(),
+                transaction,
+                Priority::Low,
+                Orphan::Allowed,
+            ) {
                 Ok(accepted_transactions) => {
                     // trace!("Broadcast {} accepted transaction ids", accepted_transactions.len());
                     self.ctx.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await?;

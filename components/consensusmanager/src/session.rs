@@ -68,9 +68,9 @@ impl ConsensusInstance {
     /// is, no pruning was performed between the calls.
     /// The caller is responsible to make sure that the lifetime of this session is not
     /// too long (~2 seconds max)
-    pub async fn session(&self) -> ConsensusSession {
-        let g = self.session_lock.read().await;
-        ConsensusSession::new(g, self.consensus.clone())
+    pub async fn session(&self) -> ConsensusSessionOwned {
+        let g = self.session_lock.read_owned().await;
+        ConsensusSessionOwned::new(g, self.consensus.clone()) // TEMP
     }
 
     /// Returns an *owned* consensus session type which can be cloned and shared across threads.
@@ -211,34 +211,6 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_tips()).await
     }
 
-    // pub async fn async_validate_pruning_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
-    //     self.clone().spawn_blocking(|c| c.validate_pruning_proof(proof)).await
-    // }
-
-    // pub async fn async_apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
-    //     self.clone().spawn_blocking(|c| c.).await
-    // }
-
-    // pub async fn async_import_pruning_points(&self, pruning_points: PruningPointsList) {
-    //     self.clone().spawn_blocking(|c| c.).await
-    // }
-
-    // pub async fn async_append_imported_pruning_point_utxos(
-    //     &self,
-    //     utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)],
-    //     current_multiset: &mut MuHash,
-    // ) {
-    //     self.clone().spawn_blocking(|c| c.).await
-    // }
-
-    // pub async fn async_import_pruning_point_utxo_set(
-    //     &self,
-    //     new_pruning_point: Hash,
-    //     imported_utxo_multiset: &mut MuHash,
-    // ) -> PruningImportResult<()> {
-    //     self.clone().spawn_blocking(|c| c.).await
-    // }
-
     pub async fn async_header_exists(&self, hash: Hash) -> bool {
         self.clone().spawn_blocking(move |c| c.header_exists(hash)).await
     }
@@ -378,7 +350,7 @@ impl ConsensusSessionOwned {
     }
 }
 
-// pub type ConsensusProxy = ConsensusSessionOwned;
+pub type ConsensusProxy = ConsensusSessionOwned;
 
 impl Deref for ConsensusSessionOwned {
     type Target = dyn ConsensusApi; // We avoid exposing the Arc itself by ref since it can be easily cloned and misused

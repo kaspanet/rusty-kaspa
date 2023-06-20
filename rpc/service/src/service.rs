@@ -214,7 +214,7 @@ impl RpcApi for RpcCoreService {
         }
 
         trace!("incoming SubmitBlockRequest for block {}", hash);
-        match self.flow_context.submit_rpc_block(session.deref(), block.clone()).await {
+        match self.flow_context.submit_rpc_block(&session, block.clone()).await {
             Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
             Err(err) => {
                 warn!("The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}", err, err);
@@ -394,7 +394,7 @@ impl RpcApi for RpcCoreService {
         let transaction_id = transaction.id();
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
-        self.flow_context.add_transaction(session.deref(), transaction, Orphan::Allowed).await.map_err(|err| {
+        self.flow_context.add_transaction(&session, transaction, Orphan::Allowed).await.map_err(|err| {
             let err = RpcError::RejectedTransaction(transaction_id, err.to_string());
             debug!("{err}");
             err

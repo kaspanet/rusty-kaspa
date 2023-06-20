@@ -767,7 +767,7 @@ impl VirtualStateProcessor {
     pub fn import_pruning_point_utxo_set(
         &self,
         new_pruning_point: Hash,
-        imported_utxo_multiset: &mut MuHash,
+        mut imported_utxo_multiset: MuHash,
     ) -> PruningImportResult<()> {
         info!("Importing the UTXO set of the pruning point {}", new_pruning_point);
         let new_pruning_point_header = self.headers_store.get_header(new_pruning_point).unwrap();

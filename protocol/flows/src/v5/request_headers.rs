@@ -50,7 +50,7 @@ impl RequestHeadersFlow {
             let consensus = self.ctx.consensus();
             let mut session = consensus.session_owned().await;
 
-            match session.is_chain_ancestor_of(low, high) {
+            match session.async_is_chain_ancestor_of(low, high).await {
                 Ok(is_ancestor) => {
                     if !is_ancestor {
                         return Err(ProtocolError::OtherOwned(format!(

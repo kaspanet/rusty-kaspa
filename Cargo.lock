@@ -1918,6 +1918,7 @@ dependencies = [
  "futures-util",
  "kaspa-addresses",
  "kaspa-consensus-core",
+ "kaspa-consensusmanager",
  "kaspa-core",
  "kaspa-hashes",
  "kaspa-muhash",

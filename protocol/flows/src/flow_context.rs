@@ -5,13 +5,13 @@ use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
+use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
-use kaspa_consensus_core::{api::ConsensusApi, errors::block::RuleError};
 use kaspa_consensus_notify::{
     notification::{NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
 };
-use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager};
+use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager, ConsensusProxy};
 use kaspa_core::{
     debug, info,
     kaspad_env::{name, version},
@@ -248,7 +248,7 @@ impl FlowContext {
         &self.hub
     }
 
-    pub fn mining_manager(&self) -> &MiningManager {
+    pub fn mining_manager(&self) -> &Arc<MiningManager> {
         &self.mining_manager
     }
 
@@ -302,11 +302,11 @@ impl FlowContext {
         self.orphans_pool.read().await.is_known_orphan(hash)
     }
 
-    pub async fn get_orphan_roots(&self, consensus: &dyn ConsensusApi, orphan: Hash) -> Option<Vec<Hash>> {
-        self.orphans_pool.read().await.get_orphan_roots(consensus, orphan)
+    pub async fn get_orphan_roots(&self, consensus: &ConsensusProxy, orphan: Hash) -> Option<Vec<Hash>> {
+        self.orphans_pool.read().await.get_orphan_roots(consensus, orphan).await
     }
 
-    pub async fn unorphan_blocks(&self, consensus: &dyn ConsensusApi, root: Hash) -> Vec<Block> {
+    pub async fn unorphan_blocks(&self, consensus: &ConsensusProxy, root: Hash) -> Vec<Block> {
         let unorphaned_blocks = self.orphans_pool.write().await.unorphan_blocks(consensus, root).await;
         match unorphaned_blocks.len() {
             0 => {}
@@ -320,7 +320,7 @@ impl FlowContext {
     }
 
     /// Adds the rpc-submitted block to the DAG and propagates it to peers.
-    pub async fn submit_rpc_block(&self, consensus: &dyn ConsensusApi, block: Block) -> Result<(), ProtocolError> {
+    pub async fn submit_rpc_block(&self, consensus: &ConsensusProxy, block: Block) -> Result<(), ProtocolError> {
         if block.transactions.is_empty() {
             return Err(RuleError::NoTransactions)?;
         }
@@ -355,14 +355,14 @@ impl FlowContext {
     /// and possibly rebroadcast manually added transactions when not in IBD.
     ///
     /// _GO-KASPAD: OnNewBlock + broadcastTransactionsAfterBlockAdded_
-    pub async fn on_new_block(&self, consensus: &dyn ConsensusApi, block: Block) -> Result<(), ProtocolError> {
+    pub async fn on_new_block(&self, consensus: &ConsensusProxy, block: Block) -> Result<(), ProtocolError> {
         let hash = block.hash();
         let blocks = self.unorphan_blocks(consensus, hash).await;
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
         for block in once(block).chain(blocks.into_iter()) {
             transactions_to_broadcast.enqueue_chunk(
-                self.mining_manager().handle_new_block_transactions(consensus, &block.transactions)?.iter().map(|x| x.id()),
+                self.mining_manager().handle_new_block_transactions(consensus.deref(), &block.transactions)?.iter().map(|x| x.id()),
             );
         }
 
@@ -373,7 +373,7 @@ impl FlowContext {
 
         if self.should_rebroadcast_transactions().await {
             transactions_to_broadcast
-                .enqueue_chunk(self.mining_manager().revalidate_high_priority_transactions(consensus)?.into_iter());
+                .enqueue_chunk(self.mining_manager().revalidate_high_priority_transactions(consensus.deref())?.into_iter());
         }
 
         self.broadcast_transactions(transactions_to_broadcast).await
@@ -403,12 +403,12 @@ impl FlowContext {
 
     pub async fn add_transaction(
         &self,
-        consensus: &dyn ConsensusApi,
+        consensus: &ConsensusProxy,
         transaction: Transaction,
         orphan: Orphan,
     ) -> Result<(), ProtocolError> {
         let accepted_transactions =
-            self.mining_manager().validate_and_insert_transaction(consensus, transaction, Priority::High, orphan)?;
+            self.mining_manager().clone().validate_and_insert_transaction(consensus.deref(), transaction, Priority::High, orphan)?;
         self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await
     }
 
