@@ -124,9 +124,261 @@ impl ConsensusSessionOwned {
         F: FnOnce(&dyn ConsensusApi) -> R + Send + 'static,
         R: Send + 'static,
     {
-        tokio::task::spawn_blocking(move || f(self.deref())).await.unwrap()
+        tokio::task::spawn_blocking(move || f(self.consensus.as_ref())).await.unwrap()
     }
 }
+
+use kaspa_consensus_core::{
+    acceptance_data::AcceptanceData,
+    block::Block,
+    block_count::BlockCount,
+    blockstatus::BlockStatus,
+    errors::consensus::ConsensusResult,
+    header::Header,
+    pruning::{PruningPointProof, PruningPointTrustedData},
+    trusted::ExternalGhostdagData,
+    tx::{TransactionOutpoint, UtxoEntry},
+    BlockHashSet, ChainPath, Hash,
+};
+
+impl ConsensusSessionOwned {
+    // pub fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
+    //     self.consensus.as_ref().validate_and_insert_block(block)
+    // }
+
+    // pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
+    //     self.consensus.as_ref().validate_and_insert_trusted_block(tb)
+    // }
+
+    pub async fn async_get_virtual_daa_score(&self) -> u64 {
+        self.clone().spawn_blocking(|c| c.get_virtual_daa_score()).await
+    }
+
+    pub async fn async_get_virtual_bits(&self) -> u32 {
+        self.clone().spawn_blocking(|c| c.get_virtual_bits()).await
+    }
+
+    pub async fn async_get_virtual_past_median_time(&self) -> u64 {
+        self.clone().spawn_blocking(|c| c.get_virtual_past_median_time()).await
+    }
+
+    pub async fn async_get_virtual_merge_depth_root(&self) -> Option<Hash> {
+        self.clone().spawn_blocking(|c| c.get_virtual_merge_depth_root()).await
+    }
+
+    pub async fn async_get_sink(&self) -> Hash {
+        self.clone().spawn_blocking(|c| c.get_sink()).await
+    }
+
+    pub async fn async_get_sink_timestamp(&self) -> u64 {
+        self.clone().spawn_blocking(|c| c.get_sink_timestamp()).await
+    }
+
+    /// source refers to the earliest block from which the current node has full header & block data  
+    pub async fn async_get_source(&self) -> Hash {
+        self.clone().spawn_blocking(|c| c.get_source()).await
+    }
+
+    pub async fn async_estimate_block_count(&self) -> BlockCount {
+        self.clone().spawn_blocking(|c| c.estimate_block_count()).await
+    }
+
+    /// Returns whether this consensus is considered synced or close to being synced.
+    ///
+    /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
+    pub async fn async_is_nearly_synced(&self) -> bool {
+        self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
+    }
+
+    pub async fn async_get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
+        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(hash)).await
+    }
+
+    pub async fn async_get_virtual_parents(&self) -> BlockHashSet {
+        self.clone().spawn_blocking(|c| c.get_virtual_parents()).await
+    }
+
+    pub async fn async_get_virtual_utxos(
+        &self,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+        skip_first: bool,
+    ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+        self.clone().spawn_blocking(move |c| c.get_virtual_utxos(from_outpoint, chunk_size, skip_first)).await
+    }
+
+    pub async fn async_get_tips(&self) -> Vec<Hash> {
+        self.clone().spawn_blocking(|c| c.get_tips()).await
+    }
+
+    // pub async fn async_validate_pruning_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
+    //     self.clone().spawn_blocking(|c| c.validate_pruning_proof(proof)).await
+    // }
+
+    // pub async fn async_apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
+    //     self.clone().spawn_blocking(|c| c.).await
+    // }
+
+    // pub async fn async_import_pruning_points(&self, pruning_points: PruningPointsList) {
+    //     self.clone().spawn_blocking(|c| c.).await
+    // }
+
+    // pub async fn async_append_imported_pruning_point_utxos(
+    //     &self,
+    //     utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)],
+    //     current_multiset: &mut MuHash,
+    // ) {
+    //     self.clone().spawn_blocking(|c| c.).await
+    // }
+
+    // pub async fn async_import_pruning_point_utxo_set(
+    //     &self,
+    //     new_pruning_point: Hash,
+    //     imported_utxo_multiset: &mut MuHash,
+    // ) -> PruningImportResult<()> {
+    //     self.clone().spawn_blocking(|c| c.).await
+    // }
+
+    pub async fn async_header_exists(&self, hash: Hash) -> bool {
+        self.clone().spawn_blocking(move |c| c.header_exists(hash)).await
+    }
+
+    pub async fn async_is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
+        self.clone().spawn_blocking(move |c| c.is_chain_ancestor_of(low, high)).await
+    }
+
+    pub async fn async_get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
+        self.clone().spawn_blocking(move |c| c.get_hashes_between(low, high, max_blocks)).await
+    }
+
+    pub async fn async_get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
+        self.clone().spawn_blocking(move |c| c.get_header(hash)).await
+    }
+
+    pub async fn async_get_headers_selected_tip(&self) -> Hash {
+        self.clone().spawn_blocking(|c| c.get_headers_selected_tip()).await
+    }
+
+    /// Returns the anticone of block `hash` from the POV of `context`, i.e. `anticone(hash) ∩ past(context)`.
+    /// Since this might be an expensive operation for deep blocks, we allow the caller to specify a limit
+    /// `max_traversal_allowed` on the maximum amount of blocks to traverse for obtaining the answer
+    pub async fn async_get_anticone_from_pov(
+        &self,
+        hash: Hash,
+        context: Hash,
+        max_traversal_allowed: Option<u64>,
+    ) -> ConsensusResult<Vec<Hash>> {
+        self.clone().spawn_blocking(move |c| c.get_anticone_from_pov(hash, context, max_traversal_allowed)).await
+    }
+
+    pub async fn async_get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.clone().spawn_blocking(move |c| c.get_anticone(hash)).await
+    }
+
+    pub async fn async_get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
+        self.clone().spawn_blocking(|c| c.get_pruning_point_proof()).await
+    }
+
+    pub async fn async_create_headers_selected_chain_block_locator(
+        &self,
+        low: Option<Hash>,
+        high: Option<Hash>,
+    ) -> ConsensusResult<Vec<Hash>> {
+        self.clone().spawn_blocking(move |c| c.create_headers_selected_chain_block_locator(low, high)).await
+    }
+
+    pub async fn async_create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
+        self.clone().spawn_blocking(move |c| c.create_block_locator_from_pruning_point(high, limit)).await
+    }
+
+    pub async fn async_pruning_point_headers(&self) -> Vec<Arc<Header>> {
+        self.clone().spawn_blocking(|c| c.pruning_point_headers()).await
+    }
+
+    pub async fn async_get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
+        self.clone().spawn_blocking(|c| c.get_pruning_point_anticone_and_trusted_data()).await
+    }
+
+    pub async fn async_get_block(&self, hash: Hash) -> ConsensusResult<Block> {
+        self.clone().spawn_blocking(move |c| c.get_block(hash)).await
+    }
+
+    pub async fn async_get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
+        self.clone().spawn_blocking(move |c| c.get_block_even_if_header_only(hash)).await
+    }
+
+    pub async fn async_get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
+        self.clone().spawn_blocking(move |c| c.get_ghostdag_data(hash)).await
+    }
+
+    pub async fn async_get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+        self.clone().spawn_blocking(move |c| c.get_block_children(hash)).await
+    }
+
+    pub async fn async_get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+        self.clone().spawn_blocking(move |c| c.get_block_parents(hash)).await
+    }
+
+    pub async fn async_get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
+        self.clone().spawn_blocking(move |c| c.get_block_status(hash)).await
+    }
+
+    pub async fn async_get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
+        self.clone().spawn_blocking(move |c| c.get_block_acceptance_data(hash)).await
+    }
+
+    /// Returns acceptance data for a set of blocks belonging to the selected parent chain.
+    ///
+    /// See `self::get_virtual_chain`
+    pub async fn async_get_blocks_acceptance_data(&self, hashes: Vec<Hash>) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+        self.clone().spawn_blocking(move |c| c.get_blocks_acceptance_data(&hashes)).await
+    }
+
+    pub async fn async_is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
+        self.clone().spawn_blocking(move |c| c.is_chain_block(hash)).await
+    }
+
+    pub async fn async_get_pruning_point_utxos(
+        &self,
+        expected_pruning_point: Hash,
+        from_outpoint: Option<TransactionOutpoint>,
+        chunk_size: usize,
+        skip_first: bool,
+    ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
+        self.clone()
+            .spawn_blocking(move |c| c.get_pruning_point_utxos(expected_pruning_point, from_outpoint, chunk_size, skip_first))
+            .await
+    }
+
+    pub async fn async_get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.clone().spawn_blocking(move |c| c.get_missing_block_body_hashes(high)).await
+    }
+
+    pub async fn async_pruning_point(&self) -> Option<Hash> {
+        self.clone().spawn_blocking(|c| c.pruning_point()).await
+    }
+
+    // TODO: Delete this function once there's no need for go-kaspad backward compatibility.
+    pub async fn async_get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.clone().spawn_blocking(move |c| c.get_daa_window(hash)).await
+    }
+
+    // TODO: Think of a better name.
+    // TODO: Delete this function once there's no need for go-kaspad backward compatibility.
+    pub async fn async_get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
+        self.clone().spawn_blocking(move |c| c.get_trusted_block_associated_ghostdag_data_block_hashes(hash)).await
+    }
+
+    pub async fn async_estimate_network_hashes_per_second(
+        &self,
+        start_hash: Option<Hash>,
+        window_size: usize,
+    ) -> ConsensusResult<u64> {
+        self.clone().spawn_blocking(move |c| c.estimate_network_hashes_per_second(start_hash, window_size)).await
+    }
+}
+
+// pub type ConsensusProxy = ConsensusSessionOwned;
 
 impl Deref for ConsensusSessionOwned {
     type Target = dyn ConsensusApi; // We avoid exposing the Arc itself by ref since it can be easily cloned and misused
