@@ -327,6 +327,7 @@ mod tests {
 
     #[test]
     fn subsidy_test() {
+        const PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY: u64 = 50000000000;
         const DEFLATIONARY_PHASE_INITIAL_SUBSIDY: u64 = 44000000000;
         const SECONDS_PER_MONTH: u64 = 2629800;
         const SECONDS_PER_HALVING: u64 = SECONDS_PER_MONTH * 12;
@@ -335,6 +336,7 @@ mod tests {
             let params = &network_id.into();
             let cbm = create_manager(params);
 
+            let pre_deflationary_phase_base_subsidy = PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY / params.bps();
             let deflationary_phase_initial_subsidy = DEFLATIONARY_PHASE_INITIAL_SUBSIDY / params.bps();
             let blocks_per_halving = SECONDS_PER_HALVING * params.bps();
 
@@ -345,10 +347,11 @@ mod tests {
             }
 
             let tests = vec![
+                Test { name: "first mined block", daa_score: 1, expected: pre_deflationary_phase_base_subsidy },
                 Test {
                     name: "before deflationary phase",
                     daa_score: params.deflationary_phase_daa_score - 1,
-                    expected: params.pre_deflationary_phase_base_subsidy,
+                    expected: pre_deflationary_phase_base_subsidy,
                 },
                 Test {
                     name: "start of deflationary phase",

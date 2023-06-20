@@ -118,7 +118,7 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     pub const fn pre_deflationary_phase_base_subsidy() -> u64 {
-        BPS * 50000000000
+        50000000000 / BPS
     }
 
     // TODO: we might need to increase max_block_level (at least for mainnet) as a function of BPS
