@@ -175,7 +175,7 @@ impl PruningProcessor {
             drop(pruning_point_write);
 
             // Inform the user
-            info!("Daily pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
+            info!("Periodic pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
 
             // Advance the pruning point utxoset to the state of the new pruning point using chain-block UTXO diffs
             self.advance_pruning_utxoset(current_pruning_info.pruning_point, new_pruning_point);
@@ -219,6 +219,8 @@ impl PruningProcessor {
             warn!("The node is configured as an archival node -- avoiding data pruning. Note this might lead to heavy disk usage.");
             return;
         }
+
+        info!("Header and Block pruning: preparing proof and anticone data...");
 
         let proof = self.pruning_proof_manager.get_pruning_point_proof();
         let data = self
@@ -290,7 +292,12 @@ impl PruningProcessor {
                 .collect_vec();
             tips_write.prune_tips_with_writer(BatchDbWriter::new(&mut batch), &pruned_tips).unwrap();
             if !pruned_tips.is_empty() {
-                info!("Header and Block pruning: pruned {} tips: {:?}", pruned_tips.len(), pruned_tips)
+                info!(
+                    "Header and Block pruning: pruned {} tips: {}...{}",
+                    pruned_tips.len(),
+                    pruned_tips.iter().take(5.min((pruned_tips.len() + 1) / 2)).reusable_format(", "),
+                    pruned_tips.iter().rev().take(5.min(pruned_tips.len() / 2)).reusable_format(", ")
+                )
             }
 
             // Prune the selected chain index below the pruning point
@@ -346,7 +353,6 @@ impl PruningProcessor {
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
                 self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
-                self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
 
                 if keep_relations.contains(&current) {
                     statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
@@ -369,11 +375,14 @@ impl PruningProcessor {
                         self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap_option();
                     });
 
+                    // Remove additional header related data
+                    self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
+                    self.depth_store.delete_batch(&mut batch, current).unwrap();
                     // Remove status completely
                     statuses_write.delete_batch(&mut batch, current).unwrap();
 
                     if !keep_headers.contains(&current) {
-                        // Prune headers
+                        // Prune the actual headers
                         self.headers_store.delete_batch(&mut batch, current).unwrap();
                     }
                 }
