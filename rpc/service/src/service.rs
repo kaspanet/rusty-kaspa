@@ -47,7 +47,7 @@ use kaspa_rpc_core::{
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
-use std::{iter::once, ops::Deref, sync::Arc, vec};
+use std::{iter::once, sync::Arc, vec};
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
@@ -183,11 +183,10 @@ impl RpcCoreService {
 #[async_trait]
 impl RpcApi for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
+        let session = self.consensus_manager.consensus().session().await;
 
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
-        let is_synced: bool = self.flow_context.hub().has_peers() && session.is_nearly_synced();
+        let is_synced: bool = self.flow_context.hub().has_peers() && session.async_is_nearly_synced().await;
 
         if !self.config.enable_unsynced_mining && !is_synced {
             // error = "Block not submitted - node is not synced"
@@ -204,7 +203,7 @@ impl RpcApi for RpcCoreService {
         let hash = block.hash();
 
         if !request.allow_non_daa_blocks {
-            let virtual_daa_score = session.get_virtual_daa_score();
+            let virtual_daa_score = session.async_get_virtual_daa_score().await;
 
             // A simple heuristic check which signals that the mined block is out of date
             // and should not be accepted unless user explicitly requests
@@ -243,8 +242,7 @@ impl RpcApi for RpcCoreService {
         let script_public_key = kaspa_txscript::pay_to_address_script(&request.pay_address);
         let extra_data = version().as_bytes().iter().chain(once(&(b'/'))).chain(&request.extra_data).cloned().collect::<Vec<_>>();
         let miner_data: MinerData = MinerData::new(script_public_key, extra_data);
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
+        let session = self.consensus_manager.consensus().session().await;
         let block_template = self.mining_manager.clone().get_block_template(&session, miner_data).await?;
 
         // Check coinbase tx payload length
@@ -262,16 +260,13 @@ impl RpcApi for RpcCoreService {
 
     async fn get_block_call(&self, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
         // TODO: test
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        let block = session.get_block_even_if_header_only(request.hash)?;
+        let session = self.consensus_manager.consensus().session().await;
+        let block = session.async_get_block_even_if_header_only(request.hash).await?;
         Ok(GetBlockResponse {
-            block: self.consensus_converter.get_block(
-                session.deref(),
-                &block,
-                request.include_transactions,
-                request.include_transactions,
-            )?,
+            block: self
+                .consensus_converter
+                .get_block(&session, &block, request.include_transactions, request.include_transactions)
+                .await?,
         })
     }
 
@@ -281,55 +276,51 @@ impl RpcApi for RpcCoreService {
             return Err(RpcError::InvalidGetBlocksRequest);
         }
 
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
+        let session = self.consensus_manager.consensus().session().await;
 
         // If low_hash is empty - use genesis instead.
         let low_hash = match request.low_hash {
             Some(low_hash) => {
                 // Make sure low_hash points to an existing and valid block
-                session.deref().get_ghostdag_data(low_hash)?;
+                session.async_get_ghostdag_data(low_hash).await?;
                 low_hash
             }
             None => self.config.genesis.hash,
         };
 
         // Get hashes between low_hash and sink
-        let sink_hash = session.get_sink();
+        let sink_hash = session.async_get_sink().await;
 
         // We use +1 because low_hash is also returned
         // max_blocks MUST be >= mergeset_size_limit + 1
         let max_blocks = self.config.mergeset_size_limit as usize + 1;
-        let (block_hashes, high_hash) = session.get_hashes_between(low_hash, sink_hash, max_blocks)?;
+        let (block_hashes, high_hash) = session.async_get_hashes_between(low_hash, sink_hash, max_blocks).await?;
 
         // If the high hash is equal to sink it means get_hashes_between didn't skip any hashes, and
         // there's space to add the sink anticone, otherwise we cannot add the anticone because
         // there's no guarantee that all of the anticone root ancestors will be present.
-        let sink_anticone = if high_hash == sink_hash { session.get_anticone(sink_hash)? } else { vec![] };
+        let sink_anticone = if high_hash == sink_hash { session.async_get_anticone(sink_hash).await? } else { vec![] };
         // Prepend low hash to make it inclusive and append the sink anticone
         let block_hashes = once(low_hash).chain(block_hashes).chain(sink_anticone).collect::<Vec<_>>();
         let blocks = if request.include_blocks {
-            block_hashes
-                .iter()
-                .cloned()
-                .map(|hash| {
-                    let block = session.get_block_even_if_header_only(hash)?;
-                    self.consensus_converter.get_block(
-                        session.deref(),
-                        &block,
-                        request.include_transactions,
-                        request.include_transactions,
-                    )
-                })
-                .collect::<RpcResult<Vec<_>>>()
+            let mut blocks = Vec::with_capacity(block_hashes.len());
+            for hash in block_hashes.iter().copied() {
+                let block = session.async_get_block_even_if_header_only(hash).await?;
+                let rpc_block = self
+                    .consensus_converter
+                    .get_block(&session, &block, request.include_transactions, request.include_transactions)
+                    .await?;
+                blocks.push(rpc_block)
+            }
+            blocks
         } else {
-            Ok(vec![])
-        }?;
+            Vec::new()
+        };
         Ok(GetBlocksResponse { block_hashes, blocks })
     }
 
     async fn get_info_call(&self, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
-        let is_nearly_synced = self.consensus_manager.consensus().session().await.is_nearly_synced();
+        let is_nearly_synced = self.consensus_manager.consensus().session().await.async_is_nearly_synced().await;
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
             mempool_size: self.mining_manager.clone().transaction_count(true, false).await as u64,
@@ -345,20 +336,18 @@ impl RpcApi for RpcCoreService {
         let Some(transaction) = self.mining_manager.clone().get_transaction(request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool).await else {
             return Err(RpcError::TransactionNotFound(request.transaction_id));
         };
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        Ok(GetMempoolEntryResponse::new(self.consensus_converter.get_mempool_entry(session.deref(), &transaction)))
+        let session = self.consensus_manager.consensus().session().await;
+        Ok(GetMempoolEntryResponse::new(self.consensus_converter.get_mempool_entry(&session, &transaction)))
     }
 
     async fn get_mempool_entries_call(&self, request: GetMempoolEntriesRequest) -> RpcResult<GetMempoolEntriesResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
+        let session = self.consensus_manager.consensus().session().await;
         let (transactions, orphans) =
             self.mining_manager.clone().get_all_transactions(!request.filter_transaction_pool, request.include_orphan_pool).await;
         let mempool_entries = transactions
             .iter()
             .chain(orphans.iter())
-            .map(|transaction| self.consensus_converter.get_mempool_entry(session.deref(), transaction))
+            .map(|transaction| self.consensus_converter.get_mempool_entry(&session, transaction))
             .collect();
         Ok(GetMempoolEntriesResponse::new(mempool_entries))
     }
@@ -367,8 +356,7 @@ impl RpcApi for RpcCoreService {
         &self,
         request: GetMempoolEntriesByAddressesRequest,
     ) -> RpcResult<GetMempoolEntriesByAddressesResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
+        let session = self.consensus_manager.consensus().session().await;
         let script_public_keys = request.addresses.iter().map(pay_to_address_script).collect();
         let grouped_txs = self
             .mining_manager
@@ -382,7 +370,7 @@ impl RpcApi for RpcCoreService {
                 let address = extract_script_pub_key_address(script_public_key, self.config.prefix())
                     .expect("script public key is convertible into an address");
                 self.consensus_converter.get_mempool_entries_by_address(
-                    session.deref(),
+                    &session,
                     address,
                     owner_transactions,
                     &grouped_txs.transactions,
@@ -395,8 +383,7 @@ impl RpcApi for RpcCoreService {
     async fn submit_transaction_call(&self, request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
         let transaction: Transaction = (&request.transaction).try_into()?;
         let transaction_id = transaction.id();
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
+        let session = self.consensus_manager.consensus().session().await;
         self.flow_context.add_transaction(&session, transaction, Orphan::Allowed).await.map_err(|err| {
             let err = RpcError::RejectedTransaction(transaction_id, err.to_string());
             debug!("{err}");
@@ -414,24 +401,22 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_selected_tip_hash_call(&self, _: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse> {
-        Ok(GetSelectedTipHashResponse::new(self.consensus_manager.consensus().session().await.get_sink()))
+        Ok(GetSelectedTipHashResponse::new(self.consensus_manager.consensus().session().await.async_get_sink().await))
     }
 
     async fn get_sink_blue_score_call(&self, _: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        Ok(GetSinkBlueScoreResponse::new(session.get_ghostdag_data(session.get_sink())?.blue_score))
+        let session = self.consensus_manager.consensus().session().await;
+        Ok(GetSinkBlueScoreResponse::new(session.async_get_ghostdag_data(session.async_get_sink().await).await?.blue_score))
     }
 
     async fn get_virtual_chain_from_block_call(
         &self,
         request: GetVirtualChainFromBlockRequest,
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        let virtual_chain = session.get_virtual_chain_from_block(request.start_hash)?;
+        let session = self.consensus_manager.consensus().session().await;
+        let virtual_chain = session.async_get_virtual_chain_from_block(request.start_hash).await?;
         let accepted_transaction_ids = if request.include_accepted_transaction_ids {
-            self.consensus_converter.get_virtual_chain_accepted_transaction_ids(session.deref(), &virtual_chain)?
+            self.consensus_converter.get_virtual_chain_accepted_transaction_ids(&session, &virtual_chain).await?
         } else {
             vec![]
         };
@@ -439,7 +424,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_block_count_call(&self, _: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {
-        Ok(self.consensus_manager.consensus().session().await.estimate_block_count())
+        Ok(self.consensus_manager.consensus().session().await.async_estimate_block_count().await)
     }
 
     async fn get_utxos_by_addresses_call(&self, request: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
@@ -499,19 +484,18 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_block_dag_info_call(&self, _: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        let block_count = session.estimate_block_count();
+        let session = self.consensus_manager.consensus().session().await;
+        let block_count = session.async_estimate_block_count().await;
         Ok(GetBlockDagInfoResponse::new(
             self.config.net,
             block_count.block_count,
             block_count.header_count,
-            session.get_tips(),
-            self.consensus_converter.get_difficulty_ratio(session.get_virtual_bits()),
-            session.get_virtual_past_median_time(),
-            session.get_virtual_parents().iter().copied().collect::<Vec<_>>(),
-            session.pruning_point().unwrap_or_default(),
-            session.get_virtual_daa_score(),
+            session.async_get_tips().await,
+            self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
+            session.async_get_virtual_past_median_time().await,
+            session.async_get_virtual_parents().await.iter().copied().collect::<Vec<_>>(),
+            session.async_pruning_point().await.unwrap_or_default(),
+            session.async_get_virtual_daa_score().await,
         ))
     }
 
@@ -530,7 +514,8 @@ impl RpcApi for RpcCoreService {
                 .consensus()
                 .session()
                 .await
-                .estimate_network_hashes_per_second(request.start_hash, request.window_size as usize)?,
+                .async_estimate_network_hashes_per_second(request.start_hash, request.window_size as usize)
+                .await?,
         ))
     }
 

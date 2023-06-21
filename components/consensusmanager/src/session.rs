@@ -2,7 +2,19 @@
 //!
 //! We use newtypes in order to simplify changing the underlying lock in the future
 
-use kaspa_consensus_core::api::{ConsensusApi, DynConsensus};
+use kaspa_consensus_core::{
+    acceptance_data::AcceptanceData,
+    api::{BlockValidationFuture, ConsensusApi, DynConsensus},
+    block::Block,
+    block_count::BlockCount,
+    blockstatus::BlockStatus,
+    errors::consensus::ConsensusResult,
+    header::Header,
+    pruning::{PruningPointProof, PruningPointTrustedData},
+    trusted::{ExternalGhostdagData, TrustedBlock},
+    tx::{Transaction, TransactionOutpoint, UtxoEntry},
+    BlockHashSet, ChainPath, Hash,
+};
 use kaspa_utils::sync::rwlock::*;
 use std::{ops::Deref, sync::Arc};
 
@@ -65,6 +77,14 @@ impl ConsensusInstance {
         Self { session_lock, consensus }
     }
 
+    /// Returns a blocking session to be used in **synced** environments.
+    /// Synced users would usually need to call something like `futures::executor::block_on` in order
+    /// to acquire the session, but we prefer leaving this decision to the caller
+    pub async fn session_blocking(&self) -> ConsensusSessionBlocking {
+        let g = self.session_lock.read().await;
+        ConsensusSessionBlocking::new(g, self.consensus.clone())
+    }
+
     /// Returns a consensus session for accessing consensus operations in a bulk.
     /// The user can safely assume that consensus state is consistent between operations, that
     /// is, no pruning was performed between the calls.
@@ -86,18 +106,18 @@ impl ConsensusInstance {
     }
 }
 
-pub struct ConsensusSession<'a> {
+pub struct ConsensusSessionBlocking<'a> {
     _session_guard: SessionReadGuard<'a>,
     consensus: DynConsensus,
 }
 
-impl<'a> ConsensusSession<'a> {
+impl<'a> ConsensusSessionBlocking<'a> {
     pub fn new(session_guard: SessionReadGuard<'a>, consensus: DynConsensus) -> Self {
         Self { _session_guard: session_guard, consensus }
     }
 }
 
-impl Deref for ConsensusSession<'_> {
+impl Deref for ConsensusSessionBlocking<'_> {
     type Target = dyn ConsensusApi; // We avoid exposing the Arc itself by ref since it can be easily cloned and misused
 
     fn deref(&self) -> &Self::Target {
@@ -130,27 +150,19 @@ impl ConsensusSessionOwned {
     }
 }
 
-use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData,
-    block::Block,
-    block_count::BlockCount,
-    blockstatus::BlockStatus,
-    errors::consensus::ConsensusResult,
-    header::Header,
-    pruning::{PruningPointProof, PruningPointTrustedData},
-    trusted::ExternalGhostdagData,
-    tx::{TransactionOutpoint, UtxoEntry},
-    BlockHashSet, ChainPath, Hash,
-};
-
 impl ConsensusSessionOwned {
-    // pub fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
-    //     self.consensus.as_ref().validate_and_insert_block(block)
-    // }
+    pub fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
+        self.consensus.validate_and_insert_block(block)
+    }
 
-    // pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
-    //     self.consensus.as_ref().validate_and_insert_trusted_block(tb)
-    // }
+    pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
+        self.consensus.validate_and_insert_trusted_block(tb)
+    }
+
+    pub fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
+        // This method performs pure calculations so no need for an async wrapper
+        self.consensus.calculate_transaction_mass(transaction)
+    }
 
     pub async fn async_get_virtual_daa_score(&self) -> u64 {
         self.clone().spawn_blocking(|c| c.get_virtual_daa_score()).await
@@ -353,11 +365,3 @@ impl ConsensusSessionOwned {
 }
 
 pub type ConsensusProxy = ConsensusSessionOwned;
-
-impl Deref for ConsensusSessionOwned {
-    type Target = dyn ConsensusApi; // We avoid exposing the Arc itself by ref since it can be easily cloned and misused
-
-    fn deref(&self) -> &Self::Target {
-        self.consensus.as_ref()
-    }
-}

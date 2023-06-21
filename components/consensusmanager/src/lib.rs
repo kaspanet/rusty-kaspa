@@ -7,7 +7,7 @@ use std::{collections::VecDeque, ops::Deref, sync::Arc, thread::JoinHandle};
 mod session;
 
 pub use session::{
-    spawn_blocking, ConsensusInstance, ConsensusProxy, ConsensusSession, SessionLock, SessionReadGuard, SessionWriteGuard,
+    spawn_blocking, ConsensusInstance, ConsensusProxy, ConsensusSessionBlocking, SessionLock, SessionReadGuard, SessionWriteGuard,
 };
 
 /// Consensus controller trait. Includes methods required to start/stop/control consensus, but which should not
