@@ -175,7 +175,7 @@ impl PruningProcessor {
             drop(pruning_point_write);
 
             // Inform the user
-            info!("Daily pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
+            info!("Periodic pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
 
             // Advance the pruning point utxoset to the state of the new pruning point using chain-block UTXO diffs
             self.advance_pruning_utxoset(current_pruning_info.pruning_point, new_pruning_point);
@@ -346,7 +346,6 @@ impl PruningProcessor {
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
                 self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
-                self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
 
                 if keep_relations.contains(&current) {
                     statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
@@ -369,11 +368,14 @@ impl PruningProcessor {
                         self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap_option();
                     });
 
+                    // Remove additional header related data
+                    self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
+                    self.depth_store.delete_batch(&mut batch, current).unwrap();
                     // Remove status completely
                     statuses_write.delete_batch(&mut batch, current).unwrap();
 
                     if !keep_headers.contains(&current) {
-                        // Prune headers
+                        // Prune the actual headers
                         self.headers_store.delete_batch(&mut batch, current).unwrap();
                     }
                 }
