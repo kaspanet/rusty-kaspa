@@ -23,13 +23,14 @@ use kaspa_consensus_core::{
     errors::block::RuleError,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
+use kaspa_consensusmanager::ConsensusProxy;
 use kaspa_core::error;
 use parking_lot::{Mutex, RwLock};
 
 pub struct MiningManager {
     block_template_builder: BlockTemplateBuilder,
     block_template_cache: Mutex<BlockTemplateCache>,
-    mempool: RwLock<Mempool>,
+    pub(crate) mempool: RwLock<Mempool>,
 }
 
 impl MiningManager {
@@ -206,5 +207,28 @@ impl MiningManager {
     /// transaction relay fee, it is considered dust.
     pub fn is_transaction_output_dust(&self, transaction_output: &TransactionOutput) -> bool {
         self.mempool.read().is_transaction_output_dust(transaction_output)
+    }
+}
+
+/// Async proxy for the mining manager
+#[derive(Clone)]
+pub struct MiningManagerProxy {
+    inner: Arc<MiningManager>,
+}
+
+impl MiningManagerProxy {
+    /// validate_and_insert_transaction validates the given transaction, and
+    /// adds it to the set of known transactions that have not yet been
+    /// added to any block.
+    ///
+    /// The returned transactions are clones of objects owned by the mempool.
+    pub async fn validate_and_insert_transaction(
+        self,
+        consensus: &ConsensusProxy,
+        transaction: Transaction,
+        priority: Priority,
+        orphan: Orphan,
+    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        consensus.clone().spawn_blocking(move |c| self.inner.validate_and_insert_transaction(c, transaction, priority, orphan)).await
     }
 }
