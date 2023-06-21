@@ -4,15 +4,14 @@ use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{ghostdag::GhostdagStoreReader, reachability::ReachabilityStoreReader, relations::RelationsStoreReader},
 };
-use indexmap::IndexSet;
 use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
     errors::traversal::{TraversalError, TraversalResult},
-    BlockHasher, ChainPath,
+    BlockHashSet, ChainPath,
 };
+use kaspa_core::trace;
 use kaspa_hashes::Hash;
-use rand::Rng;
 
 #[derive(Clone)]
 pub struct DagTraversalManager<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> {
@@ -55,18 +54,19 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         tips: impl Iterator<Item = Hash>,
         max_traversal_allowed: Option<u64>,
     ) -> TraversalResult<Vec<Hash>> {
+        /*
+           In some cases we search for the anticone of the pruning point starting from virtual parents.
+           This means we might traverse ~pruning_depth blocks which are all stored in the visited set.
+           Experiments (and theory) show that w/o completely tracking visited, the queue might grow in
+           size quadratically due to many duplicate blocks, easily resulting in OOM errors if the DAG is
+           wide. On the other hand, even at 10 BPS depth is around 2M blocks which is approx 64MB, a modest
+           memory peak which happens at most once a in a pruning period (since pruning anticone is cached).
+        */
         let mut anticone = Vec::new();
         let mut queue = VecDeque::from_iter(tips);
-        // Tracking visited blocks is only an optimization, hence it makes no sense
-        // to let this set explode in size if the traversal is deep and unbounded. However
-        // if max traversal is specified we already have a bound
-        let mut visited = BoundedSizeBlockSet::new(max_traversal_allowed.map_or(4096, |_| usize::MAX));
+        let mut visited = BlockHashSet::from_iter(queue.iter().copied());
         let mut traversal_count = 0;
         while let Some(current) = queue.pop_front() {
-            if !visited.insert(current) {
-                continue;
-            }
-
             if self.reachability_service.is_dag_ancestor_of(current, block) {
                 continue;
             }
@@ -80,12 +80,24 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
                 }
             }
 
+            if traversal_count % 10000 == 0 {
+                trace!(
+                    "[TRAVERSAL MANAGER] Traversal count: {}, queue size: {}, anticone size: {}, visited size: {}",
+                    traversal_count,
+                    queue.len(),
+                    anticone.len(),
+                    visited.len()
+                );
+            }
+
             if !self.reachability_service.is_dag_ancestor_of(block, current) {
                 anticone.push(current);
             }
 
             for parent in self.relations_store.get_parents(current).unwrap().iter().copied() {
-                queue.push_back(parent);
+                if visited.insert(parent) {
+                    queue.push_back(parent);
+                }
             }
         }
 
@@ -111,23 +123,5 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         }
 
         current
-    }
-}
-
-struct BoundedSizeBlockSet {
-    set: IndexSet<Hash, BlockHasher>,
-    size_bound: usize,
-}
-
-impl BoundedSizeBlockSet {
-    fn new(size_bound: usize) -> Self {
-        Self { set: Default::default(), size_bound }
-    }
-
-    pub fn insert(&mut self, hash: Hash) -> bool {
-        if self.set.len() == self.size_bound {
-            self.set.swap_remove_index(rand::thread_rng().gen_range(0..self.size_bound));
-        }
-        self.set.insert(hash)
     }
 }

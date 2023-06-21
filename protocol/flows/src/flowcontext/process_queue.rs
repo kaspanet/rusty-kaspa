@@ -11,6 +11,10 @@ impl<T: Copy + PartialEq + Eq + std::hash::Hash> ProcessQueue<T> {
         Self::from(HashSet::default())
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self { deque: VecDeque::with_capacity(capacity), set: HashSet::with_capacity(capacity) }
+    }
+
     pub fn len(&self) -> usize {
         self.deque.len()
     }
@@ -51,6 +55,15 @@ impl<T: Copy + PartialEq + Eq + std::hash::Hash> IntoIterator for ProcessQueue<T
 
     fn into_iter(self) -> Self::IntoIter {
         self.deque.into_iter()
+    }
+}
+
+impl<T: Copy + PartialEq + Eq + std::hash::Hash> FromIterator<T> for ProcessQueue<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let iter = iter.into_iter();
+        let mut q = Self::with_capacity(iter.size_hint().0);
+        q.enqueue_chunk(iter);
+        q
     }
 }
 
