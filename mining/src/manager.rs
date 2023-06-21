@@ -23,7 +23,7 @@ use kaspa_consensus_core::{
     errors::block::RuleError,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
-use kaspa_consensusmanager::ConsensusProxy;
+use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy};
 use kaspa_core::error;
 use parking_lot::{Mutex, RwLock};
 
@@ -217,6 +217,19 @@ pub struct MiningManagerProxy {
 }
 
 impl MiningManagerProxy {
+    pub fn new(inner: Arc<MiningManager>) -> Self {
+        Self { inner }
+    }
+
+    pub async fn get_block_template(self, consensus: &ConsensusProxy, miner_data: MinerData) -> MiningManagerResult<BlockTemplate> {
+        consensus.clone().spawn_blocking(move |c| self.inner.get_block_template(c, &miner_data)).await
+    }
+
+    /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
+    pub fn clear_block_template(&self) {
+        self.inner.clear_block_template()
+    }
+
     /// validate_and_insert_transaction validates the given transaction, and
     /// adds it to the set of known transactions that have not yet been
     /// added to any block.
@@ -230,5 +243,72 @@ impl MiningManagerProxy {
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
         consensus.clone().spawn_blocking(move |c| self.inner.validate_and_insert_transaction(c, transaction, priority, orphan)).await
+    }
+
+    pub async fn handle_new_block_transactions(
+        self,
+        consensus: &ConsensusProxy,
+        block_transactions: Arc<Vec<Transaction>>,
+    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        consensus.clone().spawn_blocking(move |c| self.inner.handle_new_block_transactions(c, &block_transactions)).await
+    }
+
+    pub async fn revalidate_high_priority_transactions(self, consensus: &ConsensusProxy) -> MiningManagerResult<Vec<TransactionId>> {
+        consensus.clone().spawn_blocking(move |c| self.inner.revalidate_high_priority_transactions(c)).await
+    }
+
+    /// Try to return a mempool transaction by its id.
+    ///
+    /// Note: the transaction is an orphan if tx.is_fully_populated() returns false.
+    pub async fn get_transaction(
+        self,
+        transaction_id: TransactionId,
+        include_transaction_pool: bool,
+        include_orphan_pool: bool,
+    ) -> Option<MutableTransaction> {
+        spawn_blocking(move || self.inner.get_transaction(&transaction_id, include_transaction_pool, include_orphan_pool))
+            .await
+            .unwrap()
+    }
+
+    /// Returns whether the mempool holds this transaction in any form.
+    pub async fn has_transaction(
+        self,
+        transaction_id: TransactionId,
+        include_transaction_pool: bool,
+        include_orphan_pool: bool,
+    ) -> bool {
+        spawn_blocking(move || self.inner.has_transaction(&transaction_id, include_transaction_pool, include_orphan_pool))
+            .await
+            .unwrap()
+    }
+
+    pub async fn transaction_count(self, include_transaction_pool: bool, include_orphan_pool: bool) -> usize {
+        spawn_blocking(move || self.inner.transaction_count(include_transaction_pool, include_orphan_pool)).await.unwrap()
+    }
+
+    pub async fn get_all_transactions(
+        self,
+        include_transaction_pool: bool,
+        include_orphan_pool: bool,
+    ) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
+        spawn_blocking(move || self.inner.get_all_transactions(include_transaction_pool, include_orphan_pool)).await.unwrap()
+    }
+
+    /// get_transactions_by_addresses returns the sending and receiving transactions for
+    /// a set of addresses.
+    ///
+    /// Note: a transaction is an orphan if tx.is_fully_populated() returns false.
+    pub async fn get_transactions_by_addresses(
+        self,
+        script_public_keys: ScriptPublicKeySet,
+        include_transaction_pool: bool,
+        include_orphan_pool: bool,
+    ) -> GroupedOwnerTransactions {
+        spawn_blocking(move || {
+            self.inner.get_transactions_by_addresses(&script_public_keys, include_transaction_pool, include_orphan_pool)
+        })
+        .await
+        .unwrap()
     }
 }

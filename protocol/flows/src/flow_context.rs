@@ -19,10 +19,8 @@ use kaspa_core::{
 };
 use kaspa_core::{time::unix_now, warn};
 use kaspa_hashes::Hash;
-use kaspa_mining::{
-    manager::MiningManager,
-    mempool::tx::{Orphan, Priority},
-};
+use kaspa_mining::manager::MiningManagerProxy;
+use kaspa_mining::mempool::tx::{Orphan, Priority};
 use kaspa_notify::notifier::Notify;
 use kaspa_p2p_lib::{
     common::ProtocolError,
@@ -122,7 +120,7 @@ pub struct FlowContextInner {
     ibd_peer_key: Arc<RwLock<Option<PeerKey>>>,
     pub address_manager: Arc<Mutex<AddressManager>>,
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
-    mining_manager: Arc<MiningManager>,
+    mining_manager: MiningManagerProxy,
     pub(crate) tick_service: Arc<TickService>,
     notification_root: Arc<ConsensusNotificationRoot>,
 
@@ -179,7 +177,7 @@ impl FlowContext {
         consensus_manager: Arc<ConsensusManager>,
         address_manager: Arc<Mutex<AddressManager>>,
         config: Arc<Config>,
-        mining_manager: Arc<MiningManager>,
+        mining_manager: MiningManagerProxy,
         tick_service: Arc<TickService>,
         notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
@@ -248,7 +246,7 @@ impl FlowContext {
         &self.hub
     }
 
-    pub fn mining_manager(&self) -> &Arc<MiningManager> {
+    pub fn mining_manager(&self) -> &MiningManagerProxy {
         &self.mining_manager
     }
 
@@ -362,7 +360,12 @@ impl FlowContext {
         let mut transactions_to_broadcast = ProcessQueue::new();
         for block in once(block).chain(blocks.into_iter()) {
             transactions_to_broadcast.enqueue_chunk(
-                self.mining_manager().handle_new_block_transactions(consensus.deref(), &block.transactions)?.iter().map(|x| x.id()),
+                self.mining_manager()
+                    .clone()
+                    .handle_new_block_transactions(consensus, block.transactions.clone())
+                    .await?
+                    .iter()
+                    .map(|x| x.id()),
             );
         }
 
@@ -373,7 +376,7 @@ impl FlowContext {
 
         if self.should_rebroadcast_transactions().await {
             transactions_to_broadcast
-                .enqueue_chunk(self.mining_manager().revalidate_high_priority_transactions(consensus.deref())?.into_iter());
+                .enqueue_chunk(self.mining_manager().clone().revalidate_high_priority_transactions(consensus).await?.into_iter());
         }
 
         self.broadcast_transactions(transactions_to_broadcast).await
@@ -408,7 +411,7 @@ impl FlowContext {
         orphan: Orphan,
     ) -> Result<(), ProtocolError> {
         let accepted_transactions =
-            self.mining_manager().clone().validate_and_insert_transaction(consensus.deref(), transaction, Priority::High, orphan)?;
+            self.mining_manager().clone().validate_and_insert_transaction(consensus, transaction, Priority::High, orphan).await?;
         self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await
     }
 

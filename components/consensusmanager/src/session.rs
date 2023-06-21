@@ -6,6 +6,8 @@ use kaspa_consensus_core::api::{ConsensusApi, DynConsensus};
 use kaspa_utils::sync::rwlock::*;
 use std::{ops::Deref, sync::Arc};
 
+pub use tokio::task::spawn_blocking;
+
 #[derive(Clone)]
 pub struct SessionOwnedReadGuard(RfRwLockOwnedReadGuard);
 
@@ -124,7 +126,7 @@ impl ConsensusSessionOwned {
         F: FnOnce(&dyn ConsensusApi) -> R + Send + 'static,
         R: Send + 'static,
     {
-        tokio::task::spawn_blocking(move || f(self.consensus.as_ref())).await.unwrap()
+        spawn_blocking(move || f(self.consensus.as_ref())).await.unwrap()
     }
 }
 

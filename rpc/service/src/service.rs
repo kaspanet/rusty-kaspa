@@ -28,7 +28,7 @@ use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
 };
-use kaspa_mining::{manager::MiningManager, mempool::tx::Orphan};
+use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
 use kaspa_notify::{
     collector::DynCollector,
     events::{EventSwitches, EventType, EVENT_TYPE_ARRAY},
@@ -69,7 +69,7 @@ use std::{iter::once, ops::Deref, sync::Arc, vec};
 pub struct RpcCoreService {
     consensus_manager: Arc<ConsensusManager>,
     notifier: Arc<Notifier<Notification, ChannelConnection>>,
-    mining_manager: Arc<MiningManager>,
+    mining_manager: MiningManagerProxy,
     flow_context: Arc<FlowContext>,
     utxoindex: DynUtxoIndexApi,
     config: Arc<Config>,
@@ -87,7 +87,7 @@ impl RpcCoreService {
         consensus_manager: Arc<ConsensusManager>,
         consensus_notifier: Arc<ConsensusNotifier>,
         index_notifier: Option<Arc<IndexNotifier>>,
-        mining_manager: Arc<MiningManager>,
+        mining_manager: MiningManagerProxy,
         flow_context: Arc<FlowContext>,
         utxoindex: DynUtxoIndexApi,
         config: Arc<Config>,
@@ -242,7 +242,7 @@ impl RpcApi for RpcCoreService {
         let miner_data: MinerData = MinerData::new(script_public_key, extra_data);
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
-        let block_template = self.mining_manager.get_block_template(session.deref(), &miner_data)?;
+        let block_template = self.mining_manager.clone().get_block_template(&session, miner_data).await?;
 
         // Check coinbase tx payload length
         if block_template.block.transactions[COINBASE_TRANSACTION_INDEX].payload.len() > self.config.max_coinbase_payload_len {
@@ -329,7 +329,7 @@ impl RpcApi for RpcCoreService {
         let is_nearly_synced = self.consensus_manager.consensus().session().await.is_nearly_synced();
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
-            mempool_size: self.mining_manager.transaction_count(true, false) as u64,
+            mempool_size: self.mining_manager.clone().transaction_count(true, false).await as u64,
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
             is_synced: self.flow_context.hub().has_peers() && is_nearly_synced,
@@ -339,7 +339,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_mempool_entry_call(&self, request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
-        let Some(transaction) = self.mining_manager.get_transaction(&request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool) else {
+        let Some(transaction) = self.mining_manager.clone().get_transaction(request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool).await else {
             return Err(RpcError::TransactionNotFound(request.transaction_id));
         };
         let consensus = self.consensus_manager.consensus();
@@ -351,7 +351,7 @@ impl RpcApi for RpcCoreService {
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
         let (transactions, orphans) =
-            self.mining_manager.get_all_transactions(!request.filter_transaction_pool, request.include_orphan_pool);
+            self.mining_manager.clone().get_all_transactions(!request.filter_transaction_pool, request.include_orphan_pool).await;
         let mempool_entries = transactions
             .iter()
             .chain(orphans.iter())
@@ -367,11 +367,11 @@ impl RpcApi for RpcCoreService {
         let consensus = self.consensus_manager.consensus();
         let session = consensus.session().await;
         let script_public_keys = request.addresses.iter().map(pay_to_address_script).collect();
-        let grouped_txs = self.mining_manager.get_transactions_by_addresses(
-            &script_public_keys,
-            !request.filter_transaction_pool,
-            request.include_orphan_pool,
-        );
+        let grouped_txs = self
+            .mining_manager
+            .clone()
+            .get_transactions_by_addresses(script_public_keys, !request.filter_transaction_pool, request.include_orphan_pool)
+            .await;
         let mempool_entries = grouped_txs
             .owners
             .iter()
