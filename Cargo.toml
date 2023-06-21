@@ -33,6 +33,7 @@ members = [
     "rpc/wrpc/proxy",
     "rpc/wrpc/wasm",
     "mining",
+    "mining/errors",
     "protocol/p2p",
     "protocol/flows",
     "components/addressmanager",
@@ -59,6 +60,7 @@ kaspa-addressmanager = { path = "components/addressmanager" }
 kaspa-connectionmanager = { path = "components/connectionmanager" }
 kaspa-consensusmanager = { path = "components/consensusmanager" }
 kaspa-mining = { path = "mining" }
+kaspa-mining-errors = { path = "mining/errors" }
 kaspa-p2p-flows = { path = "protocol/flows" }
 kaspa-p2p-lib = { path = "protocol/p2p" }
 kaspa-testing-integration = { path = "testing/integration" }
