@@ -77,32 +77,23 @@ impl ConsensusInstance {
         Self { session_lock, consensus }
     }
 
-    /// Returns a blocking session to be used in **synced** environments.
-    /// Synced users would usually need to call something like `futures::executor::block_on` in order
+    /// Returns a blocking session to be used in **non async** environments.
+    /// Users would usually need to call something like `futures::executor::block_on` in order
     /// to acquire the session, but we prefer leaving this decision to the caller
     pub async fn session_blocking(&self) -> ConsensusSessionBlocking {
         let g = self.session_lock.read().await;
         ConsensusSessionBlocking::new(g, self.consensus.clone())
     }
 
-    /// Returns a consensus session for accessing consensus operations in a bulk.
-    /// The user can safely assume that consensus state is consistent between operations, that
-    /// is, no pruning was performed between the calls.
-    /// The caller is responsible to make sure that the lifetime of this session is not
-    /// too long (~2 seconds max)
+    /// Returns a consensus session for accessing consensus operations in a bulk. The user can safely assume
+    /// that consensus state is consistent between operations, that is, no pruning was performed between the calls.
+    /// The returned object is an *owned* consensus session type which can be cloned and shared across threads.
+    /// The sharing ability is useful for spawning blocking operations on a different thread using the same
+    /// session object, see [`ConsensusSessionOwned::spawn_blocking`]. The caller is responsible to make sure
+    /// that the overall lifetime of this session is not too long (~2 seconds max)
     pub async fn session(&self) -> ConsensusSessionOwned {
         let g = self.session_lock.read_owned().await;
         ConsensusSessionOwned::new(g, self.consensus.clone()) // TEMP
-    }
-
-    /// Returns an *owned* consensus session type which can be cloned and shared across threads.
-    /// Otherwise behaves like `self.session()`. The sharing ability is also useful for spawning blocking
-    /// operations on a different thread using the same session object, see [`ConsensusSessionOwned::spawn_blocking`].
-    /// The caller is responsible to make sure that the overall lifetime of this session is not
-    /// too long (~2 seconds max)
-    pub async fn session_owned(&self) -> ConsensusSessionOwned {
-        let g = self.session_lock.read_owned().await;
-        ConsensusSessionOwned::new(g, self.consensus.clone())
     }
 }
 
@@ -344,13 +335,10 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.pruning_point()).await
     }
 
-    // TODO: Delete this function once there's no need for go-kaspad backward compatibility.
     pub async fn async_get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         self.clone().spawn_blocking(move |c| c.get_daa_window(hash)).await
     }
 
-    // TODO: Think of a better name.
-    // TODO: Delete this function once there's no need for go-kaspad backward compatibility.
     pub async fn async_get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         self.clone().spawn_blocking(move |c| c.get_trusted_block_associated_ghostdag_data_block_hashes(hash)).await
     }

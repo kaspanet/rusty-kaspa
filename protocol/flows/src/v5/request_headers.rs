@@ -48,7 +48,7 @@ impl RequestHeadersFlow {
             let (high, mut low) = msg.try_into()?;
 
             let consensus = self.ctx.consensus();
-            let mut session = consensus.session_owned().await;
+            let mut session = consensus.session().await;
 
             match session.async_is_chain_ancestor_of(low, high).await {
                 Ok(is_ancestor) => {
@@ -75,7 +75,7 @@ impl RequestHeadersFlow {
                 self.router.enqueue(make_message!(Payload::BlockHeaders, BlockHeadersMessage { block_headers })).await?;
 
                 dequeue!(self.incoming_route, Payload::RequestNextHeaders)?;
-                session = consensus.session_owned().await;
+                session = consensus.session().await;
             }
 
             self.router.enqueue(make_message!(Payload::DoneHeaders, DoneHeadersMessage {})).await?;

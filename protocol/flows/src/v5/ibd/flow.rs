@@ -93,7 +93,7 @@ impl IbdFlow {
     }
 
     async fn ibd(&mut self, relay_block: Block) -> Result<(), ProtocolError> {
-        let mut session = self.ctx.consensus().session_owned().await;
+        let mut session = self.ctx.consensus().session().await;
 
         let negotiation_output = self.negotiate_missing_syncer_chain_segment(&session).await?;
         let ibd_type =
@@ -119,7 +119,7 @@ impl IbdFlow {
                         spawn_blocking(|| staging.commit()).await.unwrap();
                         self.ctx.on_pruning_point_utxoset_override();
                         // This will reobtain the freshly committed staging consensus
-                        session = self.ctx.consensus().session_owned().await;
+                        session = self.ctx.consensus().session().await;
                     }
                     Err(e) => {
                         staging.cancel();
