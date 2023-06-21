@@ -14,7 +14,7 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointsList},
     BlockHashSet,
 };
-use kaspa_consensusmanager::{ConsensusProxy, StagingConsensus};
+use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy, StagingConsensus};
 use kaspa_core::{debug, info, warn};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -116,7 +116,7 @@ impl IbdFlow {
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_header_selected_tip, &relay_block).await {
                     Ok(()) => {
-                        staging.commit();
+                        spawn_blocking(|| staging.commit()).await.unwrap();
                         self.ctx.on_pruning_point_utxoset_override();
                         // This will reobtain the freshly committed staging consensus
                         session = self.ctx.consensus().session_owned().await;
