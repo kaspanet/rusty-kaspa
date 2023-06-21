@@ -8,6 +8,7 @@ mod tests {
             config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE},
             errors::RuleError,
             tx::{Orphan, Priority},
+            Mempool,
         },
         model::candidate_tx::CandidateTransaction,
         testutils::consensus_mock::ConsensusMock,
@@ -40,10 +41,10 @@ mod tests {
     fn test_validate_and_insert_transaction() {
         const TX_COUNT: u32 = 10;
         let consensus = Arc::new(ConsensusMock::new());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None);
+        let mut mempool = Mempool::new(Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS));
         let transactions_to_insert = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
         for transaction in transactions_to_insert.iter() {
-            let result = mining_manager.validate_and_insert_mutable_transaction(
+            let result = mempool.validate_and_insert_mutable_transaction(
                 consensus.as_ref(),
                 transaction.clone(),
                 Priority::Low,
@@ -54,7 +55,7 @@ mod tests {
 
         // The UtxoEntry was filled manually for those transactions, so the transactions won't be considered orphans.
         // Therefore, all the transactions expected to be contained in the mempool.
-        let (transactions_from_pool, _) = mining_manager.get_all_transactions(true, false);
+        let (transactions_from_pool, _) = mempool.get_all_transactions(true, false);
         assert_eq!(
             transactions_to_insert.len(),
             transactions_from_pool.len(),
@@ -91,14 +92,14 @@ mod tests {
         // The parent's transaction was inserted into the consensus, so we want to verify that
         // the child transaction is not considered an orphan and inserted into the mempool.
         let transaction_not_an_orphan = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
-        let result = mining_manager.validate_and_insert_transaction(
+        let result = mempool.validate_and_insert_transaction(
             consensus.as_ref(),
             transaction_not_an_orphan.clone(),
             Priority::Low,
             Orphan::Allowed,
         );
         assert!(result.is_ok(), "inserting the child transaction {} into the mempool failed", transaction_not_an_orphan.id());
-        let (transactions_from_pool, _) = mining_manager.get_all_transactions(true, false);
+        let (transactions_from_pool, _) = mempool.get_all_transactions(true, false);
         assert!(
             contained_by_mtxs(transaction_not_an_orphan.id(), &transactions_from_pool),
             "missing transaction {} in the mempool",
@@ -112,7 +113,7 @@ mod tests {
     #[test]
     fn test_simulated_error_in_consensus() {
         let consensus = Arc::new(ConsensusMock::new());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None);
+        let mut mempool = Mempool::new(Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS));
 
         // Build an invalid transaction with some gas and inform the consensus mock about the result it should return
         // when the mempool will submit this transaction for validation.
@@ -122,18 +123,17 @@ mod tests {
         consensus.set_status(transaction.id(), status.clone());
 
         // Try validate and insert the transaction into the mempool
-        let result = into_status(mining_manager.validate_and_insert_transaction(
-            consensus.as_ref(),
-            transaction.tx.as_ref().clone(),
-            Priority::Low,
-            Orphan::Allowed,
-        ));
+        let result = into_status(
+            mempool
+                .validate_and_insert_transaction(consensus.as_ref(), transaction.tx.as_ref().clone(), Priority::Low, Orphan::Allowed)
+                .map_err(MiningManagerError::from),
+        );
 
         assert_eq!(
             status, result,
             "Unexpected result when trying to insert an invalid transaction: expected: {status:?}, got: {result:?}",
         );
-        let pool_tx = mining_manager.get_transaction(&transaction.id(), true, true);
+        let pool_tx = mempool.get_transaction(&transaction.id(), true, true);
         assert!(pool_tx.is_none(), "Mempool contains a transaction that should have been rejected");
     }
 
@@ -142,28 +142,24 @@ mod tests {
     #[test]
     fn test_insert_double_transactions_to_mempool() {
         let consensus = Arc::new(ConsensusMock::new());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None);
+        let mut mempool = Mempool::new(Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS));
 
         let transaction = create_transaction_with_utxo_entry(0, 0);
 
         // submit the transaction to the mempool
-        let result = mining_manager.validate_and_insert_mutable_transaction(
-            consensus.as_ref(),
-            transaction.clone(),
-            Priority::Low,
-            Orphan::Allowed,
-        );
+        let result =
+            mempool.validate_and_insert_mutable_transaction(consensus.as_ref(), transaction.clone(), Priority::Low, Orphan::Allowed);
         assert!(result.is_ok(), "mempool should have accepted a valid transaction but did not");
 
         // submit the same transaction again to the mempool
-        let result = mining_manager.validate_and_insert_transaction(
+        let result = mempool.validate_and_insert_transaction(
             consensus.as_ref(),
             transaction.tx.as_ref().clone(),
             Priority::Low,
             Orphan::Allowed,
         );
         assert!(result.is_err(), "mempool should refuse a double submit of the same transaction but accepts it");
-        if let Err(MiningManagerError::MempoolError(RuleError::RejectDuplicate(transaction_id))) = result {
+        if let Err(RuleError::RejectDuplicate(transaction_id)) = result {
             assert_eq!(
                 transaction.id(),
                 transaction_id,
@@ -184,7 +180,7 @@ mod tests {
     #[test]
     fn test_double_spend_in_mempool() {
         let consensus = Arc::new(ConsensusMock::new());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None);
+        let mut mempool = Mempool::new(Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS));
 
         let transaction = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
         assert!(
@@ -193,8 +189,7 @@ mod tests {
             transaction.id()
         );
 
-        let result =
-            mining_manager.validate_and_insert_transaction(consensus.as_ref(), transaction.clone(), Priority::Low, Orphan::Allowed);
+        let result = mempool.validate_and_insert_transaction(consensus.as_ref(), transaction.clone(), Priority::Low, Orphan::Allowed);
         assert!(result.is_ok(), "the mempool should accept a valid transaction when it is able to populate its UTXO entries");
 
         let mut double_spending_transaction = transaction.clone();
@@ -205,14 +200,14 @@ mod tests {
             double_spending_transaction.id(),
             "two transactions differing by only one output value should have different ids"
         );
-        let result = mining_manager.validate_and_insert_transaction(
+        let result = mempool.validate_and_insert_transaction(
             consensus.as_ref(),
             double_spending_transaction.clone(),
             Priority::Low,
             Orphan::Allowed,
         );
         assert!(result.is_err(), "mempool should refuse a double spend transaction but accepts it");
-        if let Err(MiningManagerError::MempoolError(RuleError::RejectDoubleSpendInMempool(_, transaction_id))) = result {
+        if let Err(RuleError::RejectDoubleSpendInMempool(_, transaction_id)) = result {
             assert_eq!(
                 transaction.id(),
                 transaction_id,
@@ -232,12 +227,12 @@ mod tests {
     #[test]
     fn test_handle_new_block_transactions() {
         let consensus = Arc::new(ConsensusMock::new());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None);
+        let mut mempool = Mempool::new(Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS));
 
         const TX_COUNT: u32 = 10;
         let transactions_to_insert = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
         for transaction in transactions_to_insert.iter() {
-            let result = mining_manager.validate_and_insert_transaction(
+            let result = mempool.validate_and_insert_transaction(
                 consensus.as_ref(),
                 transaction.tx.as_ref().clone(),
                 Priority::Low,
@@ -252,14 +247,14 @@ mod tests {
         let block_with_first_part = build_block_transactions(first_part.iter().map(|mtx| mtx.tx.as_ref()));
         let block_with_rest = build_block_transactions(rest.iter().map(|mtx| mtx.tx.as_ref()));
 
-        let result = mining_manager.handle_new_block_transactions(consensus.as_ref(), &block_with_first_part);
+        let result = mempool.handle_new_block_transactions(consensus.as_ref(), &block_with_first_part);
         assert!(
             result.is_ok(),
             "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {result:?}"
         );
         for handled_tx_id in first_part.iter().map(|x| x.id()) {
             assert!(
-                mining_manager.get_transaction(&handled_tx_id, true, true).is_none(),
+                mempool.get_transaction(&handled_tx_id, true, true).is_none(),
                 "the transaction {handled_tx_id} should not be in the mempool"
             );
         }
@@ -267,20 +262,20 @@ mod tests {
         // transactions, will still be included in the mempool.
         for handled_tx_id in rest.iter().map(|x| x.id()) {
             assert!(
-                mining_manager.get_transaction(&handled_tx_id, true, true).is_some(),
+                mempool.get_transaction(&handled_tx_id, true, true).is_some(),
                 "the transaction {handled_tx_id} is lacking from the mempool"
             );
         }
 
         // Handle all the other transactions.
-        let result = mining_manager.handle_new_block_transactions(consensus.as_ref(), &block_with_rest);
+        let result = mempool.handle_new_block_transactions(consensus.as_ref(), &block_with_rest);
         assert!(
             result.is_ok(),
             "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {result:?}"            
         );
         for handled_tx_id in rest.iter().map(|x| x.id()) {
             assert!(
-                mining_manager.get_transaction(&handled_tx_id, true, true).is_none(),
+                mempool.get_transaction(&handled_tx_id, true, true).is_none(),
                 "the transaction {handled_tx_id} should no longer be in the mempool"
             );
         }
@@ -291,10 +286,10 @@ mod tests {
     // will be removed from the mempool.
     fn test_double_spend_with_block() {
         let consensus = Arc::new(ConsensusMock::new());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None);
+        let mut mempool = Mempool::new(Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS));
 
         let transaction_in_the_mempool = create_transaction_with_utxo_entry(0, 0);
-        let result = mining_manager.validate_and_insert_transaction(
+        let result = mempool.validate_and_insert_transaction(
             consensus.as_ref(),
             transaction_in_the_mempool.tx.as_ref().clone(),
             Priority::Low,
@@ -307,11 +302,11 @@ mod tests {
             transaction_in_the_mempool.tx.inputs[0].previous_outpoint;
         let block_transactions = build_block_transactions(std::iter::once(double_spend_transaction_in_the_block.tx.as_ref()));
 
-        let result = mining_manager.handle_new_block_transactions(consensus.as_ref(), &block_transactions);
+        let result = mempool.handle_new_block_transactions(consensus.as_ref(), &block_transactions);
         assert!(result.is_ok());
 
         assert!(
-            mining_manager.get_transaction(&transaction_in_the_mempool.id(), true, true).is_none(),
+            mempool.get_transaction(&transaction_in_the_mempool.id(), true, true).is_none(),
             "the transaction {} shouldn't be in the mempool since at least one output was already spent",
             transaction_in_the_mempool.id()
         );

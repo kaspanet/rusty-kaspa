@@ -1,15 +1,2 @@
-use crate::{block_template::errors::BuilderError, mempool::errors::RuleError};
-use thiserror::Error;
-
-#[derive(Error, Debug, Clone)]
-pub enum MiningManagerError {
-    /// A consensus rule error
-    #[error(transparent)]
-    BlockTemplateBuilderError(#[from] BuilderError),
-
-    /// A mempool rule error
-    #[error(transparent)]
-    MempoolError(#[from] RuleError),
-}
-
-pub type MiningManagerResult<T> = std::result::Result<T, MiningManagerError>;
+/// Re-export errors
+pub use kaspa_mining_errors::manager::*;

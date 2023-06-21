@@ -39,7 +39,7 @@ impl HandleIbdBlockRequests {
             let session = consensus.session().await;
 
             for hash in hashes {
-                let block = session.get_block(hash)?;
+                let block = session.async_get_block(hash).await?;
                 self.router.enqueue(make_message!(Payload::IbdBlock, (&block).into())).await?;
             }
         }

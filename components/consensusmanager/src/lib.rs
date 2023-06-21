@@ -6,7 +6,9 @@ use std::{collections::VecDeque, ops::Deref, sync::Arc, thread::JoinHandle};
 
 mod session;
 
-pub use session::{ConsensusInstance, ConsensusSession, SessionLock, SessionReadGuard, SessionWriteGuard};
+pub use session::{
+    spawn_blocking, ConsensusInstance, ConsensusProxy, ConsensusSessionBlocking, SessionLock, SessionReadGuard, SessionWriteGuard,
+};
 
 /// Consensus controller trait. Includes methods required to start/stop/control consensus, but which should not
 /// be exposed to ordinary users

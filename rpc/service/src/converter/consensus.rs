@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
-    api::ConsensusApi,
     block::Block,
     config::Config,
     hashing::tx::hash,
@@ -10,7 +9,7 @@ use kaspa_consensus_core::{
     ChainPath,
 };
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
-use kaspa_consensusmanager::ConsensusManager;
+use kaspa_consensusmanager::{ConsensusManager, ConsensusProxy};
 use kaspa_math::Uint256;
 use kaspa_mining::model::{owner_txs::OwnerTransactions, TransactionIdSet};
 use kaspa_notify::converter::Converter;
@@ -20,7 +19,7 @@ use kaspa_rpc_core::{
     RpcTransactionVerboseData,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
-use std::{collections::HashMap, fmt::Debug, ops::Deref, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 /// Conversion of consensus_core to rpc_core structures
 pub struct ConsensusConverter {
@@ -47,18 +46,18 @@ impl ConsensusConverter {
     /// Converts a consensus [`Block`] into an [`RpcBlock`], optionally including transaction verbose data.
     ///
     /// _GO-KASPAD: PopulateBlockWithVerboseData_
-    pub fn get_block(
+    pub async fn get_block(
         &self,
-        consensus: &dyn ConsensusApi,
+        consensus: &ConsensusProxy,
         block: &Block,
         include_transactions: bool,
         include_transaction_verbose_data: bool,
     ) -> RpcResult<RpcBlock> {
         let hash = block.hash();
-        let ghostdag_data = consensus.get_ghostdag_data(hash)?;
-        let block_status = consensus.get_block_status(hash).unwrap();
-        let children = consensus.get_block_children(hash).unwrap_or_default();
-        let is_chain_block = consensus.is_chain_block(hash)?;
+        let ghostdag_data = consensus.async_get_ghostdag_data(hash).await?;
+        let block_status = consensus.async_get_block_status(hash).await.unwrap();
+        let children = consensus.async_get_block_children(hash).await.unwrap_or_default();
+        let is_chain_block = consensus.async_is_chain_block(hash).await?;
         let verbose_data = Some(RpcBlockVerboseData {
             hash,
             difficulty: self.get_difficulty_ratio(block.header.bits),
@@ -85,7 +84,7 @@ impl ConsensusConverter {
         Ok(RpcBlock { header: (*block.header).clone(), transactions, verbose_data })
     }
 
-    pub fn get_mempool_entry(&self, consensus: &dyn ConsensusApi, transaction: &MutableTransaction) -> RpcMempoolEntry {
+    pub fn get_mempool_entry(&self, consensus: &ConsensusProxy, transaction: &MutableTransaction) -> RpcMempoolEntry {
         let is_orphan = !transaction.is_fully_populated();
         let rpc_transaction = self.get_transaction(consensus, &transaction.tx, None, true);
         RpcMempoolEntry::new(transaction.calculated_fee.unwrap_or_default(), rpc_transaction, is_orphan)
@@ -93,7 +92,7 @@ impl ConsensusConverter {
 
     pub fn get_mempool_entries_by_address(
         &self,
-        consensus: &dyn ConsensusApi,
+        consensus: &ConsensusProxy,
         address: Address,
         owner_transactions: &OwnerTransactions,
         transactions: &HashMap<TransactionId, MutableTransaction>,
@@ -105,7 +104,7 @@ impl ConsensusConverter {
 
     pub fn get_owner_entries(
         &self,
-        consensus: &dyn ConsensusApi,
+        consensus: &ConsensusProxy,
         transaction_ids: &TransactionIdSet,
         transactions: &HashMap<TransactionId, MutableTransaction>,
     ) -> Vec<RpcMempoolEntry> {
@@ -117,7 +116,7 @@ impl ConsensusConverter {
     /// _GO-KASPAD: PopulateTransactionWithVerboseData
     pub fn get_transaction(
         &self,
-        consensus: &dyn ConsensusApi,
+        consensus: &ConsensusProxy,
         transaction: &Transaction,
         header: Option<&Header>,
         include_verbose_data: bool,
@@ -158,12 +157,12 @@ impl ConsensusConverter {
         RpcTransactionOutput { value: output.value, script_public_key: output.script_public_key.clone(), verbose_data }
     }
 
-    pub fn get_virtual_chain_accepted_transaction_ids(
+    pub async fn get_virtual_chain_accepted_transaction_ids(
         &self,
-        consensus: &dyn ConsensusApi,
+        consensus: &ConsensusProxy,
         chain_path: &ChainPath,
     ) -> RpcResult<Vec<RpcAcceptedTransactionIds>> {
-        let acceptance_data = consensus.get_blocks_acceptance_data(&chain_path.added).unwrap();
+        let acceptance_data = consensus.async_get_blocks_acceptance_data(chain_path.added.clone()).await.unwrap();
         Ok(chain_path
             .added
             .iter()
@@ -187,12 +186,9 @@ impl Converter for ConsensusConverter {
     async fn convert(&self, incoming: ConsensusNotification) -> Notification {
         match incoming {
             consensus_notify::Notification::BlockAdded(msg) => {
-                let consensus = self.consensus_manager.consensus();
-                let session = consensus.session().await;
-
+                let session = self.consensus_manager.consensus().session().await;
                 // If get_block fails, rely on the infallible From implementation which will lack verbose data
-                let block = Arc::new(self.get_block(session.deref(), &msg.block, true, true).unwrap_or_else(|_| (&msg.block).into()));
-
+                let block = Arc::new(self.get_block(&session, &msg.block, true, true).await.unwrap_or_else(|_| (&msg.block).into()));
                 Notification::BlockAdded(BlockAddedNotification { block })
             }
             _ => (&incoming).into(),

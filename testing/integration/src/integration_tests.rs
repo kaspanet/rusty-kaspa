@@ -50,7 +50,7 @@ use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
-use kaspa_utxoindex::api::UtxoIndexApi;
+use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
 use std::cmp::{max, Ordering};
@@ -916,7 +916,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
-    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
+    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(UtxoIndexProxy::new(utxoindex.clone()))));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
     async_runtime.register(tick_service.clone());
@@ -995,7 +995,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
             tc.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
         }
 
-        tc.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
+        tc.import_pruning_point_utxo_set(pruning_point.unwrap(), multiset).unwrap();
         utxoindex.write().resync().unwrap();
         // TODO: Add consensus validation that the pruning point is actually the right block according to the rules (in pruning depth etc).
     }

@@ -100,7 +100,7 @@ impl UtxoIndexApi for UtxoIndex {
         trace!("[{0}] checking sync status...", IDENT);
 
         let consensus = self.consensus_manager.consensus();
-        let session = futures::executor::block_on(consensus.session());
+        let session = futures::executor::block_on(consensus.session_blocking());
 
         let utxoindex_tips = self.store.get_tips();
         match utxoindex_tips {
@@ -130,7 +130,7 @@ impl UtxoIndexApi for UtxoIndex {
 
         self.store.delete_all()?;
         let consensus = self.consensus_manager.consensus();
-        let session = futures::executor::block_on(consensus.session());
+        let session = futures::executor::block_on(consensus.session_blocking());
 
         let consensus_tips = session.get_virtual_parents();
         let mut circulating_supply: CirculatingSupply = 0;
