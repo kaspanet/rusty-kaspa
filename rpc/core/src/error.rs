@@ -86,7 +86,7 @@ pub enum RpcError {
     NotificationError(#[from] kaspa_notify::error::Error),
 
     #[error(transparent)]
-    MiningManagerError(#[from] kaspa_mining::errors::MiningManagerError),
+    MiningManagerError(#[from] kaspa_mining_errors::manager::MiningManagerError),
 
     #[error(transparent)]
     ConsensusError(#[from] kaspa_consensus_core::errors::consensus::ConsensusError),

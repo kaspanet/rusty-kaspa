@@ -1921,6 +1921,7 @@ dependencies = [
  "kaspa-consensusmanager",
  "kaspa-core",
  "kaspa-hashes",
+ "kaspa-mining-errors",
  "kaspa-muhash",
  "kaspa-txscript",
  "log",
@@ -1929,6 +1930,14 @@ dependencies = [
  "secp256k1",
  "serde",
  "smallvec",
+ "thiserror",
+]
+
+[[package]]
+name = "kaspa-mining-errors"
+version = "0.1.0"
+dependencies = [
+ "kaspa-consensus-core",
  "thiserror",
 ]
 
@@ -2054,7 +2063,7 @@ dependencies = [
  "kaspa-consensus-notify",
  "kaspa-hashes",
  "kaspa-index-core",
- "kaspa-mining",
+ "kaspa-mining-errors",
  "kaspa-notify",
  "kaspa-txscript",
  "kaspa-utils",
