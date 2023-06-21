@@ -46,7 +46,7 @@ use kaspa_rpc_core::{
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
-use kaspa_utxoindex::api::DynUtxoIndexApi;
+use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::{iter::once, ops::Deref, sync::Arc, vec};
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
@@ -71,7 +71,7 @@ pub struct RpcCoreService {
     notifier: Arc<Notifier<Notification, ChannelConnection>>,
     mining_manager: MiningManagerProxy,
     flow_context: Arc<FlowContext>,
-    utxoindex: DynUtxoIndexApi,
+    utxoindex: Option<UtxoIndexProxy>,
     config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
     index_converter: Arc<IndexConverter>,
@@ -89,7 +89,7 @@ impl RpcCoreService {
         index_notifier: Option<Arc<IndexNotifier>>,
         mining_manager: MiningManagerProxy,
         flow_context: Arc<FlowContext>,
-        utxoindex: DynUtxoIndexApi,
+        utxoindex: Option<UtxoIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
     ) -> Self {
@@ -167,12 +167,15 @@ impl RpcCoreService {
         self.notifier.clone()
     }
 
-    fn get_utxo_set_by_script_public_key<'a>(&self, addresses: impl Iterator<Item = &'a RpcAddress>) -> UtxoSetByScriptPublicKey {
+    async fn get_utxo_set_by_script_public_key<'a>(
+        &self,
+        addresses: impl Iterator<Item = &'a RpcAddress>,
+    ) -> UtxoSetByScriptPublicKey {
         self.utxoindex
-            .as_ref()
+            .clone()
             .unwrap()
-            .read()
             .get_utxos_by_script_public_keys(addresses.map(pay_to_address_script).collect())
+            .await
             .unwrap_or_default()
     }
 }
@@ -445,7 +448,7 @@ impl RpcApi for RpcCoreService {
         }
         // TODO: discuss if the entry order is part of the method requirements
         //       (the current impl does not retain an entry order matching the request addresses order)
-        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter());
+        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter()).await;
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
     }
 
@@ -453,7 +456,7 @@ impl RpcApi for RpcCoreService {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        let entry_map = self.get_utxo_set_by_script_public_key(once(&request.address));
+        let entry_map = self.get_utxo_set_by_script_public_key(once(&request.address)).await;
         let balance = entry_map.values().flat_map(|x| x.values().map(|entry| entry.amount)).sum();
         Ok(GetBalanceByAddressResponse::new(balance))
     }
@@ -465,7 +468,7 @@ impl RpcApi for RpcCoreService {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter());
+        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter()).await;
         let entries = request
             .addresses
             .iter()
@@ -483,7 +486,7 @@ impl RpcApi for RpcCoreService {
             return Err(RpcError::NoUtxoIndex);
         }
         let circulating_sompi =
-            self.utxoindex.as_ref().unwrap().read().get_circulating_supply().map_err(|e| RpcError::General(e.to_string()))?;
+            self.utxoindex.clone().unwrap().get_circulating_supply().await.map_err(|e| RpcError::General(e.to_string()))?;
         Ok(GetCoinSupplyResponse::new(MAX_SOMPI, circulating_sompi))
     }
 

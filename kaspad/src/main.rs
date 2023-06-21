@@ -20,6 +20,7 @@ use kaspa_mining::manager::{MiningManager, MiningManagerProxy};
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utxoindex::api::UtxoIndexProxy;
 
 use std::fs;
 use std::path::PathBuf;
@@ -237,7 +238,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = kaspa_database::prelude::open_db(utxoindex_db_dir, true, 1);
-        let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
+        let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
         let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
         Some(index_service)
     } else {
