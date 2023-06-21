@@ -77,6 +77,7 @@ use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender
 use itertools::Itertools;
 use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
+use rand::seq::SliceRandom;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::{
@@ -500,7 +501,20 @@ impl VirtualStateProcessor {
                 diff_point = self.calculate_utxo_state_relatively(stores, diff, diff_point, candidate);
                 if diff_point == candidate {
                     // This indicates that candidate has valid UTXO state and that `diff` represents its diff from virtual
-                    return (candidate, heap.into_sorted_iter().take(self.max_virtual_parent_candidates()).map(|s| s.hash).collect());
+
+                    // We exclude from the returned additional virtual parent candidates all blocks below
+                    // the candidate merge depth root.
+                    let candidate_ghostdag_data = self.ghostdag_primary_store.get_data(candidate).unwrap();
+                    let merge_depth_root = self.depth_manager.calc_merge_depth_root(&candidate_ghostdag_data, pruning_point);
+                    let merge_depth_root_blue_work = self.ghostdag_primary_store.get_blue_work(merge_depth_root).unwrap();
+                    return (
+                        candidate,
+                        heap.into_sorted_iter()
+                            .take(self.max_virtual_parent_candidates())
+                            .take_while(|s| s.blue_work >= merge_depth_root_blue_work)
+                            .map(|s| s.hash)
+                            .collect(),
+                    );
                 } else {
                     debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
                 }
@@ -530,14 +544,10 @@ impl VirtualStateProcessor {
         // TODO: tests
         let max_block_parents = self.max_block_parents as usize;
 
-        // Prioritize half the blocks with highest blue work and half with lowest, so the network will merge splits faster.
-        if candidates.len() >= max_block_parents {
-            let max_additional_parents = max_block_parents - 1; // We already have the selected parent
-            let mut j = candidates.len() - 1;
-            for i in max_additional_parents / 2..max_additional_parents {
-                candidates.swap(i, j);
-                j -= 1;
-            }
+        // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
+        if candidates.len() > max_block_parents / 2 {
+            // `make_contiguous` should be a no op since the deque was just built
+            candidates.make_contiguous()[max_block_parents / 2..].shuffle(&mut rand::thread_rng());
         }
 
         let mut virtual_parents = Vec::with_capacity(min(max_block_parents, candidates.len() + 1));
