@@ -49,8 +49,10 @@ impl HandleAnticoneRequests {
             // get_anticone_from_pov is expected to be called by the syncee for getting the anticone of the header selected tip
             // intersected by past of the relayed block, and is thus expected to be bounded by mergeset limit since
             // we relay blocks only if they enter virtual's mergeset. We add a 2 factor for possible sync gaps.
-            let hashes = session.get_anticone_from_pov(block, context, Some(self.ctx.config.mergeset_size_limit * 2))?;
-            let mut headers = hashes.into_iter().map(|h| session.get_header(h)).collect::<Result<Vec<_>, ConsensusError>>()?;
+            let hashes = session.async_get_anticone_from_pov(block, context, Some(self.ctx.config.mergeset_size_limit * 2)).await?;
+            let mut headers = session
+                .spawn_blocking(|c| hashes.into_iter().map(|h| c.get_header(h)).collect::<Result<Vec<_>, ConsensusError>>())
+                .await?;
             debug!("got {} headers in anticone({}) cap past({}) for peer {}", headers.len(), block, context, self.router);
 
             // Sort the headers in bottom-up topological order before sending

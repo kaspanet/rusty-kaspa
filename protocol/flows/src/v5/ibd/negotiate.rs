@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use super::IbdFlow;
-use kaspa_consensus_core::{api::ConsensusApi, blockstatus::BlockStatus};
+use kaspa_consensus_core::blockstatus::BlockStatus;
+use kaspa_consensusmanager::ConsensusProxy;
 use kaspa_core::{debug, warn};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
@@ -18,7 +19,7 @@ pub struct ChainNegotiationOutput {
 impl IbdFlow {
     pub(super) async fn negotiate_missing_syncer_chain_segment(
         &mut self,
-        consensus: &dyn ConsensusApi,
+        consensus: &ConsensusProxy,
     ) -> Result<ChainNegotiationOutput, ProtocolError> {
         /*
             Algorithm:
@@ -50,7 +51,7 @@ impl IbdFlow {
             let mut lowest_unknown_syncer_chain_hash: Option<Hash> = None;
             let mut current_highest_known_syncer_chain_hash: Option<Hash> = None;
             for &syncer_chain_hash in locator_hashes.iter() {
-                match consensus.get_block_status(syncer_chain_hash) {
+                match consensus.async_get_block_status(syncer_chain_hash).await {
                     None => {
                         // Log the unknown block and continue to the next iteration
                         lowest_unknown_syncer_chain_hash = Some(syncer_chain_hash);

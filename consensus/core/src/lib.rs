@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasher, Hasher};
 
-use kaspa_hashes::Hash;
+pub use kaspa_hashes::Hash;
 
 pub mod acceptance_data;
 pub mod api;

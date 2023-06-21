@@ -3,10 +3,8 @@ use crate::{
     flow_trait::Flow,
     flowcontext::transactions::MAX_INV_PER_TX_INV_MSG,
 };
-use kaspa_consensus_core::{
-    api::ConsensusApi,
-    tx::{Transaction, TransactionId},
-};
+use kaspa_consensus_core::tx::{Transaction, TransactionId};
+use kaspa_consensusmanager::ConsensusProxy;
 use kaspa_mining::{
     errors::MiningManagerError,
     mempool::{
@@ -20,7 +18,7 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, RequestTransactionsMessage, TransactionNotFoundMessage},
     IncomingRoute, Router,
 };
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 use tokio::time::timeout;
 
 enum Response {
@@ -95,12 +93,12 @@ impl RelayTransactionsFlow {
             let session = consensus.session().await;
 
             // Transaction relay is disabled if the node is out of sync and thus not mining
-            if !session.is_nearly_synced() {
+            if !session.async_is_nearly_synced().await {
                 continue;
             }
 
             let requests = self.request_transactions(inv).await?;
-            self.receive_transactions(session.deref(), requests).await?;
+            self.receive_transactions(session, requests).await?;
         }
     }
 
@@ -110,16 +108,14 @@ impl RelayTransactionsFlow {
     ) -> Result<Vec<RequestScope<TransactionId>>, ProtocolError> {
         // Build a vector with the transaction ids unknown in the mempool and not already requested
         // by another peer
-        let requests: Vec<_> = transaction_ids
-            .iter()
-            .filter_map(|transaction_id| {
-                if !self.is_known_transaction(transaction_id) {
-                    self.ctx.try_adding_transaction_request(transaction_id.to_owned())
-                } else {
-                    None
+        let mut requests = Vec::new();
+        for transaction_id in transaction_ids {
+            if !self.is_known_transaction(transaction_id).await {
+                if let Some(req) = self.ctx.try_adding_transaction_request(transaction_id) {
+                    requests.push(req);
                 }
-            })
-            .collect();
+            }
+        }
 
         // Request the transactions
         if !requests.is_empty() {
@@ -136,10 +132,10 @@ impl RelayTransactionsFlow {
         Ok(requests)
     }
 
-    fn is_known_transaction(&self, transaction_id: &TransactionId) -> bool {
+    async fn is_known_transaction(&self, transaction_id: TransactionId) -> bool {
         // Ask the transaction memory pool if the transaction is known
         // to it in any form (main pool or orphan).
-        self.ctx.mining_manager().has_transaction(transaction_id, true, true)
+        self.ctx.mining_manager().clone().has_transaction(transaction_id, true, true).await
     }
 
     /// Returns the next Transaction or TransactionNotFound message in msg_route,
@@ -170,7 +166,7 @@ impl RelayTransactionsFlow {
 
     async fn receive_transactions(
         &mut self,
-        consensus: &dyn ConsensusApi,
+        consensus: ConsensusProxy,
         requests: Vec<RequestScope<TransactionId>>,
     ) -> Result<(), ProtocolError> {
         // trace!("Receive {} transaction ids from {}", requests.len(), self.router.identity());
@@ -184,7 +180,13 @@ impl RelayTransactionsFlow {
                 )));
             }
             let Response::Transaction(transaction) = response else { continue; };
-            match self.ctx.mining_manager().validate_and_insert_transaction(consensus, transaction, Priority::Low, Orphan::Allowed) {
+            match self
+                .ctx
+                .mining_manager()
+                .clone()
+                .validate_and_insert_transaction(&consensus, transaction, Priority::Low, Orphan::Allowed)
+                .await
+            {
                 Ok(accepted_transactions) => {
                     // trace!("Broadcast {} accepted transaction ids", accepted_transactions.len());
                     self.ctx.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await?;
@@ -238,7 +240,7 @@ impl RequestTransactionsFlow {
             let msg = dequeue!(self.incoming_route, Payload::RequestTransactions)?;
             let tx_ids: Vec<_> = msg.try_into()?;
             for transaction_id in tx_ids {
-                if let Some(mutable_tx) = self.ctx.mining_manager().get_transaction(&transaction_id, true, false) {
+                if let Some(mutable_tx) = self.ctx.mining_manager().clone().get_transaction(transaction_id, true, false).await {
                     // trace!("Send transaction {} to {}", mutable_tx.id(), self.router.identity());
                     self.router.enqueue(make_message!(Payload::Transaction, (&*mutable_tx.tx).into())).await?;
                 } else {
