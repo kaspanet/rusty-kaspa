@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-txscript-errors"
+name = "kaspa-mining-errors"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,4 +10,4 @@ license.workspace = true
 
 [dependencies]
 thiserror.workspace = true
-secp256k1 = { version = "0.24" }
+kaspa-consensus-core.workspace = true

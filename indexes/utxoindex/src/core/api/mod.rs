@@ -3,6 +3,7 @@ use kaspa_consensus_core::{
     utxo::utxo_diff::UtxoDiff,
     BlockHashSet,
 };
+use kaspa_consensusmanager::spawn_blocking;
 use kaspa_database::prelude::StoreResult;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -51,9 +52,26 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
     fn resync(&mut self) -> UtxoIndexResult<()>;
 }
 
-// Below are of the format `Arc<Option<Box<_>>>` because:
-// 1) the utxoindex is optional, a `None` in the Option signifies no utxoindex
-// 2) there is no need for an inner Arc since we hold an Arc on the Option,
-// but alas, we need Sized for the option, hence it is in a Box.
+/// Async proxy for the UTXO index
+#[derive(Debug, Clone)]
+pub struct UtxoIndexProxy {
+    inner: Arc<RwLock<dyn UtxoIndexApi>>,
+}
 
-pub type DynUtxoIndexApi = Option<Arc<RwLock<dyn UtxoIndexApi>>>;
+impl UtxoIndexProxy {
+    pub fn new(inner: Arc<RwLock<dyn UtxoIndexApi>>) -> Self {
+        Self { inner }
+    }
+
+    pub async fn get_circulating_supply(self) -> StoreResult<u64> {
+        spawn_blocking(move || self.inner.read().get_circulating_supply()).await.unwrap()
+    }
+
+    pub async fn get_utxos_by_script_public_keys(self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
+        spawn_blocking(move || self.inner.read().get_utxos_by_script_public_keys(script_public_keys)).await.unwrap()
+    }
+
+    pub async fn update(self, utxo_diff: Arc<UtxoDiff>, tips: Arc<Vec<Hash>>) -> UtxoIndexResult<UtxoChanges> {
+        spawn_blocking(move || self.inner.write().update(utxo_diff, tips)).await.unwrap()
+    }
+}

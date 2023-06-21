@@ -77,7 +77,6 @@ impl Drop for RfRwLockReadGuard<'_> {
     }
 }
 
-#[derive(Clone)]
 pub struct RfRwLockOwnedReadGuard(Arc<RfRwLock>);
 
 impl Drop for RfRwLockOwnedReadGuard {
