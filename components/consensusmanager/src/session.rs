@@ -21,7 +21,7 @@ use std::{ops::Deref, sync::Arc};
 pub use tokio::task::spawn_blocking;
 
 #[derive(Clone)]
-pub struct SessionOwnedReadGuard(RfRwLockOwnedReadGuard);
+pub struct SessionOwnedReadGuard(Arc<RfRwLockOwnedReadGuard>);
 
 pub struct SessionReadGuard<'a>(RfRwLockReadGuard<'a>);
 
@@ -50,7 +50,7 @@ impl SessionLock {
     }
 
     pub async fn read_owned(&self) -> SessionOwnedReadGuard {
-        SessionOwnedReadGuard(self.0.clone().read_owned().await)
+        SessionOwnedReadGuard(Arc::new(self.0.clone().read_owned().await))
     }
 
     pub async fn read(&self) -> SessionReadGuard {
@@ -93,7 +93,7 @@ impl ConsensusInstance {
     /// that the overall lifetime of this session is not too long (~2 seconds max)
     pub async fn session(&self) -> ConsensusSessionOwned {
         let g = self.session_lock.read_owned().await;
-        ConsensusSessionOwned::new(g, self.consensus.clone()) // TEMP
+        ConsensusSessionOwned::new(g, self.consensus.clone())
     }
 }
 
