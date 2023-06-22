@@ -18,10 +18,6 @@ pub struct RequestPruningPointProofFlow {
 
 #[async_trait::async_trait]
 impl Flow for RequestPruningPointProofFlow {
-    fn name(&self) -> &'static str {
-        "REQUEST_PROOF"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }

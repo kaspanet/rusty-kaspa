@@ -21,10 +21,6 @@ pub struct ReceivePingsFlow {
 
 #[async_trait::async_trait]
 impl Flow for ReceivePingsFlow {
-    fn name(&self) -> &'static str {
-        "Receive pings"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
@@ -64,10 +60,6 @@ pub struct SendPingsFlow {
 
 #[async_trait::async_trait]
 impl Flow for SendPingsFlow {
-    fn name(&self) -> &'static str {
-        "Send pings"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         self.router.upgrade()
     }
