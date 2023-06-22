@@ -21,9 +21,12 @@ pub fn init<S: RelationsStore + ?Sized>(relations: &mut S) {
 /// kept topologically continuous. If any child of this `hash` will remain with no parent, we make
 /// sure to connect it to `origin`. Note that apart from the special case of `origin`, these relations
 /// are always a subset of the original header relations for this level.
+///
+/// NOTE: this algorithm does not support a batch writer bcs it might write to the same entry multiple times
+/// (and writes will not accumulate if the entry gets out of the cache in between the calls)
 pub fn delete_level_relations<W, S>(mut writer: W, relations: &mut S, hash: Hash) -> Result<(), StoreError>
 where
-    W: DbWriter,
+    W: DbWriter + DirectWriter,
     S: RelationsStore + ?Sized,
 {
     let children = relations.get_children(hash)?; // if the first entry was found, we expect all others as well, hence we unwrap below
@@ -159,9 +162,9 @@ impl<S: RelationsStore + ?Sized> RelationsStoreExtensions for S {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::stores::relations::{DbRelationsStore, RelationsStoreReader};
+    use crate::model::stores::relations::{DbRelationsStore, RelationsStoreReader, StagingRelationsStore};
     use kaspa_core::assert_match;
-    use kaspa_database::utils::create_temp_db;
+    use kaspa_database::{prelude::MemoryWriter, utils::create_temp_db};
     use std::sync::Arc;
 
     #[test]
@@ -181,7 +184,9 @@ mod tests {
         assert_eq!(relations.get_children(2.into()).unwrap().as_slice(), []);
 
         let mut batch = WriteBatch::default();
-        delete_level_relations(BatchDbWriter::new(&mut batch), &mut relations, 1.into()).unwrap();
+        let mut staging_relations = StagingRelationsStore::new(&mut relations);
+        delete_level_relations(MemoryWriter::default(), &mut staging_relations, 1.into()).unwrap();
+        staging_relations.commit(&mut batch).unwrap();
         db.write(batch).unwrap();
 
         assert_match!(relations.get_parents(1.into()), Err(StoreError::KeyNotFound(_)));
@@ -193,7 +198,9 @@ mod tests {
         assert_eq!(relations.get_children(2.into()).unwrap().as_slice(), []);
 
         let mut batch = WriteBatch::default();
-        delete_level_relations(BatchDbWriter::new(&mut batch), &mut relations, 2.into()).unwrap();
+        let mut staging_relations = StagingRelationsStore::new(&mut relations);
+        delete_level_relations(MemoryWriter::default(), &mut staging_relations, 2.into()).unwrap();
+        staging_relations.commit(&mut batch).unwrap();
         db.write(batch).unwrap();
 
         assert_match!(relations.get_parents(2.into()), Err(StoreError::KeyNotFound(_)));
