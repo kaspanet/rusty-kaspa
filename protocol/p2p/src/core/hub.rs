@@ -47,7 +47,8 @@ impl Hub {
                                     self.insert_new_router(new_router).await;
                                 }
                                 Err(err) => {
-                                    // Ignoring the router
+                                    new_router.try_sending_reject_message(&err).await;
+                                    // Ignoring the new router
                                     new_router.close().await;
                                     if matches!(err, ProtocolError::LoopbackConnection(_) | ProtocolError::PeerAlreadyExists(_)) {
                                         debug!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
@@ -60,6 +61,8 @@ impl Hub {
                     }
                     HubEvent::PeerClosing(router) => {
                         if let Occupied(entry) = self.peers.write().entry(router.key()) {
+                            // We search for the router by identity, but make sure to delete it only if it's actually the same object.
+                            // This is extremely important in cases of duplicate connection rejection etc.
                             if Arc::ptr_eq(entry.get(), &router) {
                                 entry.remove_entry();
                                 debug!("P2P, Hub event loop, removing peer, router-id: {}", router.identity());
