@@ -17,6 +17,7 @@ use crate::{
             acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
             daa::DbDaaStore,
+            depth::{DbDepthStore, DepthStoreReader},
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
@@ -77,6 +78,7 @@ use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender
 use itertools::Itertools;
 use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
+use rand::seq::SliceRandom;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::{
@@ -115,6 +117,7 @@ pub struct VirtualStateProcessor {
     pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
+    pub(super) depth_store: Arc<DbDepthStore>,
 
     // Utxo-related stores
     pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -180,6 +183,7 @@ impl VirtualStateProcessor {
             pruning_point_store: storage.pruning_point_store.clone(),
             past_pruning_points_store: storage.past_pruning_points_store.clone(),
             body_tips_store: storage.body_tips_store.clone(),
+            depth_store: storage.depth_store.clone(),
             utxo_diffs_store: storage.utxo_diffs_store.clone(),
             utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: storage.acceptance_data_store.clone(),
@@ -500,7 +504,21 @@ impl VirtualStateProcessor {
                 diff_point = self.calculate_utxo_state_relatively(stores, diff, diff_point, candidate);
                 if diff_point == candidate {
                     // This indicates that candidate has valid UTXO state and that `diff` represents its diff from virtual
-                    return (candidate, heap.into_sorted_iter().take(self.max_virtual_parent_candidates()).map(|s| s.hash).collect());
+
+                    // All blocks with lower blue work than filtering_root are:
+                    // 1. not in its future (bcs blue work is monotonic),
+                    // 2. will be removed eventually by the bounded merge check.
+                    // So we prefer doing it in advance to allow better tips to be considered.
+                    let filtering_root = self.depth_store.merge_depth_root(candidate).unwrap();
+                    let filtering_blue_work = self.ghostdag_primary_store.get_blue_work(filtering_root).unwrap_or_default();
+                    return (
+                        candidate,
+                        heap.into_sorted_iter()
+                            .take(self.max_virtual_parent_candidates())
+                            .take_while(|s| s.blue_work >= filtering_blue_work)
+                            .map(|s| s.hash)
+                            .collect(),
+                    );
                 } else {
                     debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
                 }
@@ -530,14 +548,10 @@ impl VirtualStateProcessor {
         // TODO: tests
         let max_block_parents = self.max_block_parents as usize;
 
-        // Prioritize half the blocks with highest blue work and half with lowest, so the network will merge splits faster.
-        if candidates.len() >= max_block_parents {
-            let max_additional_parents = max_block_parents - 1; // We already have the selected parent
-            let mut j = candidates.len() - 1;
-            for i in max_additional_parents / 2..max_additional_parents {
-                candidates.swap(i, j);
-                j -= 1;
-            }
+        // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
+        if candidates.len() > max_block_parents / 2 {
+            // `make_contiguous` should be a no op since the deque was just built
+            candidates.make_contiguous()[max_block_parents / 2..].shuffle(&mut rand::thread_rng());
         }
 
         let mut virtual_parents = Vec::with_capacity(min(max_block_parents, candidates.len() + 1));
