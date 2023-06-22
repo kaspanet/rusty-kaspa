@@ -14,7 +14,7 @@ use kaspa_notify::{
     notifier::DynNotify,
 };
 use kaspa_utils::triggers::SingleTrigger;
-use kaspa_utxoindex::api::DynUtxoIndexApi;
+use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -27,7 +27,9 @@ use std::sync::{
 /// into their pending local versions and relaying them to a local notifier.
 #[derive(Debug)]
 pub struct Processor {
-    utxoindex: DynUtxoIndexApi,
+    /// An optional UTXO indexer
+    utxoindex: Option<UtxoIndexProxy>,
+
     recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
 
     /// Has this collector been started?
@@ -37,7 +39,7 @@ pub struct Processor {
 }
 
 impl Processor {
-    pub fn new(utxoindex: DynUtxoIndexApi, recv_channel: CollectorNotificationReceiver<ConsensusNotification>) -> Self {
+    pub fn new(utxoindex: Option<UtxoIndexProxy>, recv_channel: CollectorNotificationReceiver<ConsensusNotification>) -> Self {
         Self {
             utxoindex,
             recv_channel,
@@ -55,7 +57,7 @@ impl Processor {
             trace!("[Index processor] collecting task starting");
 
             while let Ok(notification) = self.recv_channel.recv().await {
-                match self.process_notification(notification) {
+                match self.process_notification(notification).await {
                     Ok(notification) => match notifier.notify(notification) {
                         Ok(_) => (),
                         Err(err) => {
@@ -74,10 +76,10 @@ impl Processor {
         });
     }
 
-    fn process_notification(self: &Arc<Self>, notification: ConsensusNotification) -> IndexResult<Notification> {
+    async fn process_notification(self: &Arc<Self>, notification: ConsensusNotification) -> IndexResult<Notification> {
         match notification {
             ConsensusNotification::UtxosChanged(utxos_changed) => {
-                Ok(Notification::UtxosChanged(self.process_utxos_changed(utxos_changed)?))
+                Ok(Notification::UtxosChanged(self.process_utxos_changed(utxos_changed).await?))
             }
             ConsensusNotification::PruningPointUtxoSetOverride(_) => {
                 Ok(Notification::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification {}))
@@ -86,13 +88,13 @@ impl Processor {
         }
     }
 
-    fn process_utxos_changed(
+    async fn process_utxos_changed(
         self: &Arc<Self>,
         notification: consensus_notification::UtxosChangedNotification,
     ) -> IndexResult<UtxosChangedNotification> {
         trace!("[{IDENT}]: processing {:?}", notification);
-        if let Some(utxoindex) = self.utxoindex.as_deref() {
-            return Ok(utxoindex.write().update(notification.accumulated_utxo_diff.clone(), notification.virtual_parents)?.into());
+        if let Some(utxoindex) = self.utxoindex.clone() {
+            return Ok(utxoindex.update(notification.accumulated_utxo_diff.clone(), notification.virtual_parents).await?.into());
         };
         Err(IndexError::NotSupported(EventType::UtxosChanged))
     }
@@ -125,7 +127,7 @@ mod tests {
     use kaspa_consensusmanager::ConsensusManager;
     use kaspa_database::utils::{create_temp_db, DbLifetime};
     use kaspa_notify::notifier::test_helpers::NotifyMock;
-    use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
+    use kaspa_utxoindex::UtxoIndex;
     use rand::{rngs::SmallRng, SeedableRng};
     use std::sync::Arc;
 
@@ -148,7 +150,7 @@ mod tests {
             let tc = TestConsensus::new(&config);
             tc.init();
             let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
-            let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap());
+            let utxoindex = Some(UtxoIndexProxy::new(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap()));
             let processor = Arc::new(Processor::new(utxoindex, consensus_receiver));
             let (processor_sender, processor_receiver) = unbounded();
             let notifier = Arc::new(NotifyMock::new(processor_sender));
