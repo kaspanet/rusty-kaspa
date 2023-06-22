@@ -508,7 +508,7 @@ impl VirtualStateProcessor {
                     // All blocks with lower blue work than filtering_root are:
                     // 1. not in its future (bcs blue work is monotonic),
                     // 2. will be removed eventually by the bounded merge check.
-                    // So we prefer doing it in advance to allow better tips to be considered.
+                    // Hence as an optimization we prefer removing such blocks in advance to allow valid tips to be considered.
                     let filtering_root = self.depth_store.merge_depth_root(candidate).unwrap();
                     let filtering_blue_work = self.ghostdag_primary_store.get_blue_work(filtering_root).unwrap_or_default();
                     return (
