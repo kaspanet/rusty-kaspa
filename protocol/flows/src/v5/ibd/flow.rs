@@ -48,10 +48,6 @@ pub struct IbdFlow {
 
 #[async_trait::async_trait]
 impl Flow for IbdFlow {
-    fn name(&self) -> &'static str {
-        "IBD"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }

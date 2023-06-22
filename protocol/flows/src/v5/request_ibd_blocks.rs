@@ -11,10 +11,6 @@ pub struct HandleIbdBlockRequests {
 
 #[async_trait::async_trait]
 impl Flow for HandleIbdBlockRequests {
-    fn name(&self) -> &'static str {
-        "HANDLE_IBD_BLOCK_REQUESTS"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }

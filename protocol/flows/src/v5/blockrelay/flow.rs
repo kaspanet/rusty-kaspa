@@ -59,10 +59,6 @@ pub struct HandleRelayInvsFlow {
 
 #[async_trait::async_trait]
 impl Flow for HandleRelayInvsFlow {
-    fn name(&self) -> &'static str {
-        "HANDLE_RELAY_INVS"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }

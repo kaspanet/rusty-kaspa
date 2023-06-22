@@ -16,10 +16,6 @@ pub struct HandleRelayBlockRequests {
 
 #[async_trait::async_trait]
 impl Flow for HandleRelayBlockRequests {
-    fn name(&self) -> &'static str {
-        "HANDLE_RELAY_BLOCK_REQUESTS"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }

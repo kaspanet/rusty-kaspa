@@ -17,10 +17,6 @@ pub struct RequestBlockLocatorFlow {
 
 #[async_trait::async_trait]
 impl Flow for RequestBlockLocatorFlow {
-    fn name(&self) -> &'static str {
-        "BLOCK_LOCATOR"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }

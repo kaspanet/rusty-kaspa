@@ -18,10 +18,6 @@ pub struct HandleAnticoneRequests {
 
 #[async_trait::async_trait]
 impl Flow for HandleAnticoneRequests {
-    fn name(&self) -> &'static str {
-        "HANDLE_ANTICONE_REQUESTS"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }

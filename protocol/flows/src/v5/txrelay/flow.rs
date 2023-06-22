@@ -48,10 +48,6 @@ pub struct RelayTransactionsFlow {
 
 #[async_trait::async_trait]
 impl Flow for RelayTransactionsFlow {
-    fn name(&self) -> &'static str {
-        "RELAY_TXS"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
@@ -217,10 +213,6 @@ pub struct RequestTransactionsFlow {
 
 #[async_trait::async_trait]
 impl Flow for RequestTransactionsFlow {
-    fn name(&self) -> &'static str {
-        "REQUEST_TXS"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }

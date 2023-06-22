@@ -21,10 +21,6 @@ pub struct RequestPruningPointUtxoSetFlow {
 
 #[async_trait::async_trait]
 impl Flow for RequestPruningPointUtxoSetFlow {
-    fn name(&self) -> &'static str {
-        "PP_UTXOS"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
