@@ -20,10 +20,6 @@ pub struct RequestHeadersFlow {
 
 #[async_trait::async_trait]
 impl Flow for RequestHeadersFlow {
-    fn name(&self) -> &'static str {
-        "REQUEST_HEADERS"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }

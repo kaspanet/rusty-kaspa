@@ -108,7 +108,8 @@ impl ConnectionHandler {
             }
 
             Err(err) => {
-                // Ignoring the router
+                router.try_sending_reject_message(&err).await;
+                // Ignoring the new router
                 router.close().await;
                 debug!("P2P, handshake failed for outbound peer {}: {}", router, err);
                 return Err(ConnectionError::ProtocolError(err));
