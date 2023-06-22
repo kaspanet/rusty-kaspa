@@ -15,10 +15,9 @@ where
         tokio::spawn(async move {
             let res = self.start().await;
             if let Err(err) = res {
-                // TODO: imp complete error handler (what happens in go?)
                 if let Some(router) = self.router() {
+                    router.try_sending_reject_message(&err).await;
                     if router.close().await || !err.is_connection_closed_error() {
-                        // TODO: send and receive an explicit reject message for easier tracing of bugs causing disconnections
                         warn!("{} flow error: {}, disconnecting from peer {}.", self.name(), err, router);
                     }
                 }
