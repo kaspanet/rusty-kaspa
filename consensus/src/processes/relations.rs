@@ -155,3 +155,51 @@ pub trait RelationsStoreExtensions: RelationsStore {
 }
 
 impl<S: RelationsStore + ?Sized> RelationsStoreExtensions for S {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::stores::relations::{DbRelationsStore, RelationsStoreReader};
+    use kaspa_core::assert_match;
+    use kaspa_database::utils::create_temp_db;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_delete_level_relations_zero_cache() {
+        let (_lifetime, db) = create_temp_db();
+        let cache_size = 0;
+        let mut relations = DbRelationsStore::new(db.clone(), 0, cache_size);
+        relations.insert(ORIGIN, Default::default()).unwrap();
+        relations.insert(1.into(), Arc::new(vec![ORIGIN])).unwrap();
+        relations.insert(2.into(), Arc::new(vec![1.into()])).unwrap();
+
+        assert_eq!(relations.get_parents(ORIGIN).unwrap().as_slice(), []);
+        assert_eq!(relations.get_children(ORIGIN).unwrap().as_slice(), [1.into()]);
+        assert_eq!(relations.get_parents(1.into()).unwrap().as_slice(), [ORIGIN]);
+        assert_eq!(relations.get_children(1.into()).unwrap().as_slice(), [2.into()]);
+        assert_eq!(relations.get_parents(2.into()).unwrap().as_slice(), [1.into()]);
+        assert_eq!(relations.get_children(2.into()).unwrap().as_slice(), []);
+
+        let mut batch = WriteBatch::default();
+        delete_level_relations(BatchDbWriter::new(&mut batch), &mut relations, 1.into()).unwrap();
+        db.write(batch).unwrap();
+
+        assert_match!(relations.get_parents(1.into()), Err(StoreError::KeyNotFound(_)));
+        assert_match!(relations.get_children(1.into()), Err(StoreError::KeyNotFound(_)));
+
+        assert_eq!(relations.get_parents(ORIGIN).unwrap().as_slice(), []);
+        assert_eq!(relations.get_children(ORIGIN).unwrap().as_slice(), [2.into()]);
+        assert_eq!(relations.get_parents(2.into()).unwrap().as_slice(), [ORIGIN]);
+        assert_eq!(relations.get_children(2.into()).unwrap().as_slice(), []);
+
+        let mut batch = WriteBatch::default();
+        delete_level_relations(BatchDbWriter::new(&mut batch), &mut relations, 2.into()).unwrap();
+        db.write(batch).unwrap();
+
+        assert_match!(relations.get_parents(2.into()), Err(StoreError::KeyNotFound(_)));
+        assert_match!(relations.get_children(2.into()), Err(StoreError::KeyNotFound(_)));
+
+        assert_eq!(relations.get_parents(ORIGIN).unwrap().as_slice(), []);
+        assert_eq!(relations.get_children(ORIGIN).unwrap().as_slice(), []);
+    }
+}
