@@ -5,14 +5,16 @@ use crate::prelude::DB;
 
 /// Abstraction over direct/batched DB writing
 pub trait DbWriter {
-    const IS_BATCH: bool;
-
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,
         V: AsRef<[u8]>;
     fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error>;
 }
+
+/// A trait which is intentionally not implemented for the batch writer.
+/// Aimed for compile-time safety of operations which do not support batch writing semantics
+pub trait DirectWriter: DbWriter {}
 
 pub struct DirectDbWriter<'a> {
     db: Refs<'a, DB>,
@@ -29,8 +31,6 @@ impl<'a> DirectDbWriter<'a> {
 }
 
 impl DbWriter for DirectDbWriter<'_> {
-    const IS_BATCH: bool = false;
-
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,
@@ -44,6 +44,8 @@ impl DbWriter for DirectDbWriter<'_> {
     }
 }
 
+impl DirectWriter for DirectDbWriter<'_> {}
+
 pub struct BatchDbWriter<'a> {
     batch: &'a mut WriteBatch,
 }
@@ -55,8 +57,6 @@ impl<'a> BatchDbWriter<'a> {
 }
 
 impl DbWriter for BatchDbWriter<'_> {
-    const IS_BATCH: bool = true;
-
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,
@@ -73,8 +73,6 @@ impl DbWriter for BatchDbWriter<'_> {
 }
 
 impl<T: DbWriter> DbWriter for &mut T {
-    const IS_BATCH: bool = T::IS_BATCH;
-
     #[inline]
     fn put<K, V>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error>
     where
@@ -90,13 +88,13 @@ impl<T: DbWriter> DbWriter for &mut T {
     }
 }
 
+impl<T: DirectWriter> DirectWriter for &mut T {}
+
 /// A writer for memory stores which writes nothing to the DB
 #[derive(Default)]
 pub struct MemoryWriter;
 
 impl DbWriter for MemoryWriter {
-    const IS_BATCH: bool = false;
-
     fn put<K, V>(&mut self, _key: K, _value: V) -> Result<(), rocksdb::Error>
     where
         K: AsRef<[u8]>,
@@ -109,3 +107,5 @@ impl DbWriter for MemoryWriter {
         Ok(())
     }
 }
+
+impl DirectWriter for MemoryWriter {}

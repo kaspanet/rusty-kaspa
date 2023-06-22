@@ -18,7 +18,7 @@ use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     BlockHashMap, BlockHashSet,
 };
-use kaspa_database::prelude::{DbWriter, StoreError};
+use kaspa_database::prelude::{DbWriter, DirectWriter, StoreError};
 use kaspa_hashes::Hash;
 use std::collections::{
     hash_map::Entry::{Occupied, Vacant},
@@ -120,7 +120,7 @@ impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ?Sized> DagBuilder<'
         self.delete_block_with_writer(self.relations.default_writer(), hash)
     }
 
-    pub fn delete_block_with_writer(&mut self, writer: impl DbWriter, hash: Hash) -> &mut Self {
+    pub fn delete_block_with_writer(&mut self, writer: impl DbWriter + DirectWriter, hash: Hash) -> &mut Self {
         let mergeset = delete_reachability_relations(writer, self.relations, self.reachability, hash);
         delete_block(self.reachability, hash, &mut mergeset.iter().cloned()).unwrap();
         self

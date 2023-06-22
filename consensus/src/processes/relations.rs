@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     blockhash::{BlockHashIteratorExtensions, BlockHashes, ORIGIN},
     BlockHashSet,
 };
-use kaspa_database::prelude::{BatchDbWriter, DbWriter, StoreError};
+use kaspa_database::prelude::{BatchDbWriter, DbWriter, DirectWriter, StoreError};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
@@ -46,12 +46,10 @@ where
 /// (and writes will not accumulate if the entry gets out of the cache in between the calls)
 pub fn delete_reachability_relations<W, S, U>(mut writer: W, relations: &mut S, reachability: &U, hash: Hash) -> BlockHashSet
 where
-    W: DbWriter,
+    W: DbWriter + DirectWriter,
     S: RelationsStore + ?Sized,
     U: ReachabilityService + ?Sized,
 {
-    assert!(!W::IS_BATCH, "batch writes are not supported for this algo, see doc.");
-
     let selected_parent = reachability.get_chain_parent(hash);
     let parents = relations.get_parents(hash).unwrap();
     let children = relations.get_children(hash).unwrap();

@@ -1,11 +1,11 @@
 use itertools::Itertools;
 use kaspa_consensus_core::BlockHashSet;
 use kaspa_consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
-use kaspa_database::prelude::MemoryWriter;
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, DbWriter};
 use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
+use kaspa_database::prelude::{DirectWriter, MemoryWriter};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
@@ -24,7 +24,7 @@ pub trait RelationsStoreReader {
 
 /// Low-level write API for `RelationsStore`
 pub trait RelationsStore: RelationsStoreReader {
-    type DefaultWriter: DbWriter;
+    type DefaultWriter: DbWriter + DirectWriter;
     fn default_writer(&self) -> Self::DefaultWriter;
 
     fn set_parents(&mut self, writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
