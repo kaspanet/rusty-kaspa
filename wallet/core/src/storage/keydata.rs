@@ -28,6 +28,15 @@ impl ToHex for KeyDataId {
     }
 }
 
+impl FromHex for KeyDataId {
+    type Error = Error;
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
+        let mut data = vec![0u8; hex_str.len() / 2];
+        hex_decode(hex_str.as_bytes(), &mut data)?;
+        Ok(Self::new_from_slice(&data))
+    }
+}
+
 impl std::fmt::Debug for KeyDataId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "KeyDataId ( {:?} )", self.0)

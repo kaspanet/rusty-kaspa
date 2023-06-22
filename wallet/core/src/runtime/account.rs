@@ -6,7 +6,8 @@ use crate::result::Result;
 use crate::runtime::wallet::{BalanceUpdate, Events, Wallet};
 use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
-use crate::storage::{self, PrvKeyData, PrvKeyDataId, PubKeyData};
+use crate::storage::interface::AccessContext;
+use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
 use crate::tx::{LimitCalcStrategy, PaymentOutput, PaymentOutputs, VirtualTransaction};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoOrdering, UtxoSet};
 use crate::AddressDerivationManager;
@@ -143,9 +144,9 @@ pub struct Inner {
 
 /// Wallet `Account` data structure. An account is typically a single
 /// HD-key derivation (derived from a wallet or from an an external secret)
-#[wasm_bindgen(inspectable)]
+// #[wasm_bindgen(inspectable)]
 pub struct Account {
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub id: AccountId,
     inner: Arc<Mutex<Inner>>,
     wallet: Arc<Wallet>,
@@ -153,17 +154,17 @@ pub struct Account {
     // balance: Arc<AtomicU64>,
     balance: Mutex<Option<u64>>,
     is_connected: AtomicBool,
-    #[wasm_bindgen(js_name = "accountKind")]
+    // #[wasm_bindgen(js_name = "accountKind")]
     pub account_kind: AccountKind,
     pub account_index: u64,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub prv_key_data_id: PrvKeyDataId,
     pub ecdsa: bool,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub derivation: Arc<AddressDerivationManager>,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub task_ctl: DuplexChannel,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub notification_channel: Channel<Notification>,
 }
 
@@ -260,8 +261,6 @@ impl Account {
             .broadcast(Events::Balance(balance_update))
             .await
             .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
-        // self.wallet.multiplexer.broadcast(Events::Balance(balance_update)).await.map_err(Error::Custom("multiplexer channel error during update_balance".to_string()));
-        // self.wallet.multiplexer.broadcast(Events::Balance(self.clone())).await?;
         Ok(balance)
     }
 
@@ -403,7 +402,8 @@ impl Account {
         address: &Address,
         amount_sompi: u64,
         priority_fee_sompi: u64,
-        keydata: PrvKeyData,
+        // keydata: PrvKeyData,
+        wallet_secret: Secret,
         payment_secret: Option<Secret>,
         abortable: &Abortable,
     ) -> Result<Vec<kaspa_hashes::Hash>> {
@@ -436,6 +436,15 @@ impl Account {
         let indexes = self.derivation.addresses_indexes(&addresses)?;
         let receive_indexes = indexes.0;
         let change_indexes = indexes.1;
+
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(Some(wallet_secret)));
+        let keydata = self
+            .wallet
+            .store()
+            .as_prv_key_data_store()?
+            .load_key_data(&ctx, &self.prv_key_data_id)
+            .await?
+            .ok_or(Error::PrivateKeyNotFound(self.prv_key_data_id.to_hex()))?;
 
         let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
         let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();

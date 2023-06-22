@@ -7,7 +7,6 @@ pub mod convert;
 pub mod encryption;
 pub mod error;
 pub mod imports;
-pub mod iterator;
 pub mod keypair;
 pub mod result;
 pub mod runtime;
@@ -17,6 +16,7 @@ pub mod storage;
 pub mod tx;
 pub mod utils;
 pub mod utxo;
+pub mod wasm;
 pub mod xprivatekey;
 pub mod xpublickey;
 

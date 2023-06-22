@@ -1,6 +1,6 @@
-use crate::iterator::*;
+// use crate::iterator::*;
 use crate::result::Result;
-use crate::runtime::iterators::*;
+// use crate::runtime::iterators::*;
 use crate::runtime::{Account, AccountId, AccountMap};
 use crate::secret::Secret;
 use crate::storage::interface::{AccessContext, CreateArgs};
@@ -11,7 +11,8 @@ use crate::utxo::UtxoEntryReference;
 use crate::{accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
 use crate::{imports::*, DynRpcApi};
 use futures::future::join_all;
-use futures::{select, FutureExt};
+use futures::stream::StreamExt;
+use futures::{select, FutureExt, Stream};
 use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::Mnemonic;
 use kaspa_consensus_core::networktype::NetworkType;
@@ -105,16 +106,16 @@ pub struct Inner {
 
 /// `Wallet` data structure
 #[derive(Clone)]
-#[wasm_bindgen]
+// #[wasm_bindgen]
 pub struct Wallet {
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub rpc: Arc<DynRpcApi>,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub multiplexer: Multiplexer<Events>,
     // #[wasm_bindgen(skip)]
     // pub rpc_client: Arc<KaspaRpcClient>,
     inner: Arc<Inner>,
-    #[wasm_bindgen(skip)]
+    // #[wasm_bindgen(skip)]
     pub virtual_daa_score: Arc<AtomicU64>,
 }
 
@@ -199,27 +200,37 @@ impl Wallet {
     }
 
     // pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) => Result<()> {
-    pub async fn load(self: &Arc<Wallet>, secret: Secret, prefix: AddressPrefix) -> Result<()> {
+    pub async fn load(self: &Arc<Wallet>, secret: Secret, _prefix: AddressPrefix) -> Result<()> {
         // - TODO - RESET?
         self.reset().await?;
 
         use storage::interface::*;
         use storage::local::interface::*;
 
-        let ctx = Arc::new(AccessContext::new(Some(secret)));
-        let ctx: Arc<dyn AccessContextT> = ctx;
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(Some(secret)));
+        // let ctx: Arc<dyn AccessContextT> = ctx;
         // let local_store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
         let local_store = Arc::new(LocalStore::try_new()?);
         local_store.open(&ctx, OpenArgs::new(None)).await?;
         // let iface : Arc<dyn Interface> = local_store;
         let store_accounts = local_store.as_account_store()?;
         let mut iter = store_accounts.iter(None).await?;
+        // pin_mut!(iter);
+        // let mut iter = Box::pin(iter);
+        // let mut iter = iter;
+        // pin!(iter);
+        // let v = iter;
         // while let Some(ids) = iter.next().await {
-        while let Some(accounts) = iter.next().await? {
+
+        // iter.for_each()
+
+        while let Some(_accounts) = iter.try_next().await? {
             // let accounts = store_accounts.load(&ctx, &ids).await?;
 
-            let accounts = accounts.iter().map(|stored| Account::try_new_arc_from_storage(self, stored, prefix)).collect::<Vec<_>>();
-            let _accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
+            // let account = accounts?;
+
+            // let accounts = accounts.iter().map(|stored| Account::try_new_arc_from_storage(self, stored, prefix)).collect::<Vec<_>>();
+            // let _accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
             // let accounts = accounts.into_iter().map(Arc::new).collect::<Vec<_>>();
 
             todo!();
@@ -697,12 +708,30 @@ impl Wallet {
         self.inner.store.exists(name).await
     }
 
-    pub fn keys(self: &Arc<Self>) -> Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>> {
-        Box::new(PrvKeyDataIterator::new(&self.inner.store))
+    pub async fn keys(&self) -> Result<impl Stream<Item = Result<Arc<PrvKeyDataInfo>>>> {
+        self.inner.store.as_prv_key_data_store().unwrap().iter().await
     }
 
-    pub fn accounts(self: &Arc<Self>, filter: Option<PrvKeyDataId>) -> Box<dyn Iterator<Item = Arc<Account>>> {
-        Box::new(AccountIterator::new(self, &self.inner.store, filter))
+    pub async fn accounts(self: &Arc<Self>, filter: Option<PrvKeyDataId>) -> Result<impl Stream<Item = Result<Arc<Account>>>> {
+        let iter = self.inner.store.as_account_store().unwrap().iter(filter).await.unwrap();
+        let wallet = self.clone();
+
+        let stream = iter.then(move |stored| {
+            let wallet = wallet.clone();
+            async move {
+                // TODO - set prefix in the Wallet
+                let prefix: AddressPrefix = wallet.network().into();
+
+                let stored = stored.unwrap();
+                if let Some(account) = wallet.active_accounts().get(&stored.id) {
+                    Ok(account)
+                } else {
+                    Account::try_new_arc_from_storage(&wallet, &stored, prefix).await
+                }
+            }
+        });
+
+        Ok(Box::pin(stream))
     }
 }
 

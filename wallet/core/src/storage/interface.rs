@@ -1,5 +1,4 @@
 use crate::imports::*;
-use crate::iterator::*;
 use crate::result::Result;
 use crate::secret::Secret;
 use async_trait::async_trait;
@@ -35,13 +34,11 @@ impl AccessContextT for AccessContext {
     }
 }
 
+pub type StorageStream<T> = Pin<Box<dyn Stream<Item = Result<Arc<T>>> + Send>>;
+
 #[async_trait]
 pub trait PrvKeyDataStore: Send + Sync {
-    async fn iter(self: Arc<Self>) -> Result<Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>>> {
-        self.iter_with_options(IteratorOptions::default()).await
-    }
-
-    async fn iter_with_options(self: Arc<Self>, options: IteratorOptions) -> Result<Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>>>;
+    async fn iter(&self) -> Result<StorageStream<PrvKeyDataInfo>>;
     async fn load_key_info(&self, id: &PrvKeyDataId) -> Result<Option<Arc<PrvKeyDataInfo>>>;
     async fn load_key_data(&self, ctx: &Arc<dyn AccessContextT>, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>>;
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: PrvKeyData) -> Result<()>;
@@ -50,15 +47,7 @@ pub trait PrvKeyDataStore: Send + Sync {
 
 #[async_trait]
 pub trait AccountStore: Send + Sync {
-    async fn iter(self: Arc<Self>, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<Box<dyn Iterator<Item = Arc<Account>>>> {
-        self.iter_with_options(prv_key_data_id_filter, IteratorOptions::default()).await
-    }
-
-    async fn iter_with_options(
-        self: Arc<Self>,
-        prv_key_data_id_filter: Option<PrvKeyDataId>,
-        options: IteratorOptions,
-    ) -> Result<Box<dyn Iterator<Item = Arc<Account>>>>;
+    async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Account>>;
     async fn len(self: Arc<Self>, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize>;
     async fn load(&self, ids: &[AccountId]) -> Result<Vec<Arc<Account>>>;
     async fn store(&self, data: &[&Account]) -> Result<()>;
@@ -67,21 +56,13 @@ pub trait AccountStore: Send + Sync {
 
 #[async_trait]
 pub trait MetadataStore: Send + Sync {
-    async fn iter(self: Arc<Self>, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<Box<dyn Iterator<Item = Arc<Metadata>>>> {
-        self.iter_with_options(prv_key_data_id_filter, IteratorOptions::default()).await
-    }
-
-    async fn iter_with_options(
-        self: Arc<Self>,
-        prv_key_data_id_filter: Option<PrvKeyDataId>,
-        options: IteratorOptions,
-    ) -> Result<Box<dyn Iterator<Item = Arc<Metadata>>>>;
+    async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>>;
     async fn load(&self, id: &[AccountId]) -> Result<Vec<Arc<Metadata>>>;
 }
 
 #[async_trait]
 pub trait TransactionRecordStore: Send + Sync {
-    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Result<Box<dyn Iterator<Item = TransactionRecordId>>>;
+    async fn iter(&self) -> Result<StorageStream<TransactionRecord>>;
     async fn load(&self, id: &[TransactionRecordId]) -> Result<Vec<Arc<TransactionRecord>>>;
     async fn store(&self, data: &[&TransactionRecord]) -> Result<()>;
     async fn remove(&self, id: &[&TransactionRecordId]) -> Result<()>;
@@ -128,8 +109,7 @@ pub trait Interface: Send + Sync + AnySync {
     // stop the storage subsystem
     async fn close(&self) -> Result<()>;
 
-    // ~~~
-
+    // return storage information string (file location)
     async fn descriptor(&self) -> Result<Option<String>>;
 
     // ~~~

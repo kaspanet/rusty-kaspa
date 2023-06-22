@@ -1,66 +1,18 @@
-use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-
 use crate::imports::*;
-use crate::iterator::*;
 use crate::result::Result;
-use crate::secret::Secret;
 use crate::storage::interface::CreateArgs;
 use crate::storage::interface::OpenArgs;
-use crate::storage::local::iterators::*;
+use crate::storage::interface::StorageStream;
+use crate::storage::local::cache::*;
+use crate::storage::local::streams::*;
 use crate::storage::local::wallet::Wallet;
 use crate::storage::local::*;
 use crate::storage::*;
-use async_trait::async_trait;
-
-pub struct Cache {
-    pub user_hint: Option<Hint>,
-    pub prv_key_data: Encrypted,
-    pub prv_key_data_info: Collection<PrvKeyDataId, PrvKeyDataInfo>,
-    pub accounts: Collection<AccountId, Account>,
-    pub metadata: Collection<AccountId, Metadata>,
-    pub transaction_records: Collection<TransactionRecordId, TransactionRecord>,
-}
-
-impl TryFrom<(Wallet, &Secret)> for Cache {
-    type Error = Error;
-    fn try_from((wallet, secret): (Wallet, &Secret)) -> Result<Self> {
-        let payload = wallet.payload(secret.clone())?;
-
-        let prv_key_data_info =
-            payload.0.prv_key_data.iter().map(|pkdata| pkdata.into()).collect::<Vec<PrvKeyDataInfo>>().try_into()?;
-
-        let prv_key_data_map = payload.0.prv_key_data.into_iter().map(|pkdata| (pkdata.id, pkdata)).collect::<HashMap<_, _>>();
-        let prv_key_data: Decrypted<PrvKeyDataMap> = Decrypted::new(prv_key_data_map);
-        let prv_key_data = prv_key_data.encrypt(secret.clone())?;
-        let accounts: Collection<AccountId, Account> = payload.0.accounts.try_into()?;
-        let metadata: Collection<AccountId, Metadata> = wallet.metadata.try_into()?;
-        let user_hint = wallet.user_hint;
-        let transaction_records: Collection<TransactionRecordId, TransactionRecord> = payload.0.transaction_records.try_into()?;
-
-        Ok(Cache { prv_key_data, prv_key_data_info, accounts, metadata, transaction_records, user_hint })
-    }
-}
-
-impl TryFrom<(&Cache, &Secret)> for Wallet {
-    type Error = Error;
-
-    fn try_from((cache, secret): (&Cache, &Secret)) -> Result<Self> {
-        let prv_key_data: Decrypted<PrvKeyDataMap> = cache.prv_key_data.decrypt(secret.clone())?;
-        let prv_key_data = prv_key_data.values().cloned().collect::<Vec<_>>();
-        let accounts: Vec<Account> = (&cache.accounts).try_into()?;
-        let metadata: Vec<Metadata> = (&cache.metadata).try_into()?;
-        let transaction_records: Vec<TransactionRecord> = (&cache.transaction_records).try_into()?;
-        let payload = Payload { prv_key_data, accounts, transaction_records };
-        let payload = Decrypted::new(payload).encrypt(secret.clone())?;
-
-        Ok(Wallet { payload, metadata, user_hint: cache.user_hint.clone() })
-    }
-}
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 pub(crate) struct LocalStoreInner {
-    pub cache: Mutex<Cache>,
+    pub cache: Arc<Mutex<Cache>>,
     pub store: Store,
     pub modified: AtomicBool,
 }
@@ -80,7 +32,7 @@ impl LocalStoreInner {
             let secret = ctx.wallet_secret().await.expect("wallet requires an encryption secret");
             let payload = Payload::default();
             let wallet = Wallet::try_new(secret.clone(), payload)?;
-            let cache = Mutex::new(Cache::try_from((wallet, &secret))?);
+            let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
             let modified = AtomicBool::new(false);
 
             Ok(Self { cache, store, modified })
@@ -92,7 +44,7 @@ impl LocalStoreInner {
 
         let secret = ctx.wallet_secret().await.expect("wallet requires an encryption secret");
         let wallet = Wallet::try_load(&store).await?;
-        let cache = Mutex::new(Cache::try_from((wallet, &secret))?);
+        let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
         let modified = AtomicBool::new(false);
 
         Ok(Self { cache, store, modified })
@@ -135,8 +87,6 @@ impl Drop for LocalStoreInner {
         if self.is_modified() {
             panic!("LocalStoreInner::drop called while modified flag is true");
         }
-
-        // if self.cache()
     }
 }
 
@@ -252,8 +202,8 @@ impl Interface for LocalStore {
 
 #[async_trait]
 impl PrvKeyDataStore for LocalStoreInner {
-    async fn iter_with_options(self: Arc<Self>, options: IteratorOptions) -> Result<Box<dyn Iterator<Item = Arc<PrvKeyDataInfo>>>> {
-        Ok(Box::new(KeydataIterator::new(self, options)))
+    async fn iter(&self) -> Result<StorageStream<PrvKeyDataInfo>> {
+        Ok(Box::pin(PrvKeyDataInfoStream::new(self.cache.clone())))
     }
 
     async fn load_key_info(&self, prv_key_data_id: &PrvKeyDataId) -> Result<Option<Arc<PrvKeyDataInfo>>> {
@@ -288,12 +238,8 @@ impl PrvKeyDataStore for LocalStoreInner {
 
 #[async_trait]
 impl AccountStore for LocalStoreInner {
-    async fn iter_with_options(
-        self: Arc<Self>,
-        prv_key_data_id_filter: Option<PrvKeyDataId>,
-        options: IteratorOptions,
-    ) -> Result<Box<dyn Iterator<Item = Arc<Account>>>> {
-        Ok(Box::new(AccountIterator::new(self, prv_key_data_id_filter, options)))
+    async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Account>> {
+        Ok(Box::pin(AccountStream::new(self.cache.clone(), prv_key_data_id_filter)))
     }
 
     async fn len(self: Arc<Self>, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize> {
@@ -342,12 +288,8 @@ impl AccountStore for LocalStoreInner {
 
 #[async_trait]
 impl MetadataStore for LocalStoreInner {
-    async fn iter_with_options(
-        self: Arc<Self>,
-        filter: Option<PrvKeyDataId>,
-        options: IteratorOptions,
-    ) -> Result<Box<dyn Iterator<Item = Arc<Metadata>>>> {
-        Ok(Box::new(MetadataIterator::new(self, filter, options)))
+    async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>> {
+        Ok(Box::pin(MetadataStream::new(self.cache.clone(), prv_key_data_id_filter)))
     }
 
     async fn load(&self, ids: &[AccountId]) -> Result<Vec<Arc<Metadata>>> {
@@ -357,8 +299,8 @@ impl MetadataStore for LocalStoreInner {
 
 #[async_trait]
 impl TransactionRecordStore for LocalStoreInner {
-    async fn iter(self: Arc<Self>, options: IteratorOptions) -> Result<Box<dyn Iterator<Item = TransactionRecordId>>> {
-        Ok(Box::new(TransactionRecordIterator::new(self, options)))
+    async fn iter(&self) -> Result<StorageStream<TransactionRecord>> {
+        Ok(Box::pin(TransactionRecordStream::new(self.cache.clone())))
     }
 
     async fn load(&self, ids: &[TransactionRecordId]) -> Result<Vec<Arc<TransactionRecord>>> {

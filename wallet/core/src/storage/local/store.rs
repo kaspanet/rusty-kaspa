@@ -72,7 +72,3 @@ impl Store {
         Ok(())
     }
 }
-
-// pub struct Settings;
-
-// #[derive(Default)]

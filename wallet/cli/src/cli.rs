@@ -3,6 +3,7 @@ use crate::error::Error;
 use crate::helpers;
 use crate::result::Result;
 use async_trait::async_trait;
+use futures::stream::{Stream, StreamExt, TryStreamExt};
 use futures::*;
 use kaspa_wallet_core::accounts::gen0::import::*;
 use kaspa_wallet_core::imports::ToHex;
@@ -121,13 +122,8 @@ impl WalletCli {
 
                         let account_kind: AccountKind = select_variant(&term, "Please select account type", &mut argv).await?;
 
-                        let prv_key_data_info = select_item(
-                            &term,
-                            "Please select private key",
-                            &mut argv,
-                            self.wallet.store().as_prv_key_data_store()?.iter().await?,
-                        )
-                        .await?;
+                        let prv_key_data_info =
+                            select_item(&term, "Please select private key", &mut argv, self.wallet.keys().await?.err_into()).await?;
 
                         self.create_account(prv_key_data_info.id, account_kind, term).await?;
                     }
@@ -188,19 +184,20 @@ impl WalletCli {
                 let address = serde_json::from_str::<Address>(address)?;
                 let amount_sompi = helpers::kas_str_to_sompi(amount)?;
 
-                let password = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
+                let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
                 let mut payment_secret = Option::<Secret>::None;
 
                 if self.wallet.is_account_key_encrypted(&account).await?.is_some_and(|f| f) {
                     payment_secret = Some(Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec()));
                 }
-                let keydata = self.wallet.get_prv_key_data(password.clone(), &account.prv_key_data_id).await?;
+                let keydata = self.wallet.get_prv_key_data(wallet_secret.clone(), &account.prv_key_data_id).await?;
                 if keydata.is_none() {
                     return Err("It is read only wallet.".into());
                 }
                 let abortable = Abortable::default();
                 let ids =
-                    account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret, &abortable).await?;
+                    // account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret, &abortable).await?;
+                    account.send(&address, amount_sompi, priority_fee_sompi, wallet_secret, payment_secret, &abortable).await?;
 
                 term.writeln(format!("\r\nSending {amount} KAS to {address}, tx ids:"));
                 term.writeln(format!("{}\r\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\r\n")));
@@ -248,7 +245,7 @@ impl WalletCli {
                         let mnemonic = helpers::ask_mnemonic(&term).await?;
                         log_info!("Mnemonic: {:?}", mnemonic);
                     }
-                    "kaspanet" => {
+                    "legacy" => {
                         if exists_v0_keydata().await? {
                             let import_secret = Secret::new(
                                 term.ask(true, "Enter the password for the wallet you are importing:")
@@ -275,26 +272,14 @@ impl WalletCli {
 
             // ~~~
             Action::List => {
-                let mut keys = self.wallet.keys();
-                while let Some(keys) = keys.next().await? {
-                    for key in keys {
-                        term.writeln(format!("{key}"));
-                        let mut accounts = self.wallet.accounts(Some(key.id));
-                        while let Some(accounts) = accounts.next().await? {
-                            for account in accounts {
-                                term.writeln(format!("    {}", account.get_ls_string()));
-                            }
-                        }
+                let mut keys = self.wallet.keys().await?;
+                while let Some(key) = keys.try_next().await? {
+                    term.writeln(format!("{key}"));
+                    let mut accounts = self.wallet.accounts(Some(key.id)).await?;
+                    while let Some(account) = accounts.try_next().await? {
+                        term.writeln(format!("    {}", account.get_ls_string()));
                     }
                 }
-
-                // let map = self.wallet.account_map().locked_map();
-                // for (prv_key_data_id, list) in map.iter() {
-                //     term.writeln(format!("key: {}", prv_key_data_id.to_hex()));
-                //     for account in list.iter() {
-                //         term.writeln(account.get_ls_string());
-                //     }
-                // }
             }
             Action::Select => {
                 if argv.is_empty() {
@@ -541,55 +526,24 @@ impl Cli for WalletCli {
 
 impl WalletCli {}
 
-// use kaspa_wallet_core::storage;
 use kaspa_wallet_core::runtime;
-async fn select_account(
-    term: &Arc<Terminal>,
-    // prompt: &str,
-    // argv: &mut Vec<String>,
-    // iface : &Arc<dyn Interface>,
-    wallet: &Arc<Wallet>,
-    // mut iter: Box<dyn kaspa_wallet_core::iterator::Iterator<Item = Arc<T>>>,
-) -> Result<Arc<runtime::Account>> {
+async fn select_account(term: &Arc<Terminal>, wallet: &Arc<Wallet>) -> Result<Arc<runtime::Account>> {
     let mut selection = None;
-    // let list: Vec<Arc<T>> = iter.collect().await?;
-
-    // if !argv.is_empty() {
-    //     let text = argv.remove(0);
-    //     let matched = list
-    //         .into_iter()
-    //         // - TODO match by name
-    //         .filter(|item| item.id().to_hex().starts_with(&text))
-    //         .collect::<Vec<_>>();
-
-    //     if matched.len() == 1 {
-    //         return Ok(matched.first().cloned().unwrap());
-    //     } else {
-    //         return Err(Error::MultipleMatches(text));
-    //     }
-    // }
 
     let mut list_by_key = Vec::<(Arc<PrvKeyDataInfo>, Vec<(usize, Arc<runtime::Account>)>)>::new();
     let mut flat_list = Vec::<Arc<runtime::Account>>::new();
 
-    // let mut seq: usize = 0;
-    let mut keys = wallet.keys();
-    while let Some(keys) = keys.next().await? {
-        for key in keys {
-            let mut prv_key_accounts = Vec::new();
-            // term.writeln(format!("key: {}", key.id.to_hex()));
-            let mut accounts = wallet.accounts(Some(key.id));
-            while let Some(accounts) = accounts.next().await? {
-                for account in accounts {
-                    // term.writeln(format!("account: {}", account.id.to_hex()));
-                    prv_key_accounts.push((flat_list.len(), account.clone()));
-                    flat_list.push(account.clone());
-                    // seq += 1;
-                }
-            }
-
-            list_by_key.push((key.clone(), prv_key_accounts));
+    let mut keys = wallet.keys().await?;
+    while let Some(key) = keys.try_next().await? {
+        let mut prv_key_accounts = Vec::new();
+        let mut accounts = wallet.accounts(Some(key.id)).await?;
+        while let Some(account) = accounts.next().await {
+            let account = account?;
+            prv_key_accounts.push((flat_list.len(), account.clone()));
+            flat_list.push(account.clone());
         }
+
+        list_by_key.push((key.clone(), prv_key_accounts));
     }
 
     while selection.is_none() {
@@ -600,10 +554,6 @@ async fn select_account(
                 term.writeln(format!("    {seq}: {}", account.get_ls_string()));
             })
         });
-
-        // list.iter().enumerate().for_each(|(seq, item)| {
-        //     term.writeln(format!("{}: {} ({})", seq + 1, item, item.id().to_hex()));
-        // });
 
         let text = term
             .ask(false, &format!("Please select account ({}..{}) or <enter> to abort: ", 0, flat_list.len() - 1))
@@ -629,18 +579,17 @@ async fn select_account(
 }
 
 #[allow(dead_code)]
-// async fn select_item<T>(term : &Arc<Terminal>, prompt: &str, argv : &mut Vec<String>, mut iter : impl kaspa_wallet_core::iterator::Iterator<Item = T>) -> Result<T>
 async fn select_item<T>(
     term: &Arc<Terminal>,
     prompt: &str,
     argv: &mut Vec<String>,
-    mut iter: Box<dyn kaspa_wallet_core::iterator::Iterator<Item = Arc<T>>>,
+    iter: impl Stream<Item = Result<Arc<T>>>,
 ) -> Result<Arc<T>>
 where
     T: std::fmt::Display + IdT + Clone + Send + Sync + 'static,
 {
     let mut selection = None;
-    let list: Vec<Arc<T>> = iter.collect().await?;
+    let list = iter.try_collect::<Vec<_>>().await?;
 
     if !argv.is_empty() {
         let text = argv.remove(0);

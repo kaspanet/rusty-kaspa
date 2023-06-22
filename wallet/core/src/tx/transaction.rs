@@ -188,7 +188,7 @@ impl TryFrom<JsValue> for Transaction {
         if js_value.is_object() {
             let object = Object::from(js_value);
             let version = object.get_u16("version")?;
-            workflow_log::log_trace!("JsValue->Transaction: version: {version:?}");
+            // workflow_log::log_trace!("JsValue->Transaction: version: {version:?}");
             let lock_time = object.get_u64("lockTime")?;
             let gas = object.get_u64("gas")?;
             let payload = object.get_vec_u8("payload")?;
@@ -198,13 +198,13 @@ impl TryFrom<JsValue> for Transaction {
             }
             let subnetwork_id: SubnetworkId =
                 subnetwork_id.as_slice().try_into().map_err(|err| Error::Custom(format!("`subnetworkId` property error: `{err}`")))?;
-            workflow_log::log_trace!("JsValue->Transaction: subnetwork_id: {subnetwork_id:?}");
+            // workflow_log::log_trace!("JsValue->Transaction: subnetwork_id: {subnetwork_id:?}");
             let inputs = object
                 .get_vec("inputs")?
                 .into_iter()
                 .map(|jsv| jsv.try_into())
                 .collect::<std::result::Result<Vec<TransactionInput>, Error>>()?;
-            workflow_log::log_trace!("JsValue->Transaction: inputs.len(): {:?}", inputs.len());
+            // workflow_log::log_trace!("JsValue->Transaction: inputs.len(): {:?}", inputs.len());
             let jsv_outputs = object.get("outputs")?;
             let outputs: Vec<TransactionOutput> = if !jsv_outputs.is_array() {
                 let outputs: PaymentOutputs = jsv_outputs.try_into()?;
@@ -219,7 +219,7 @@ impl TryFrom<JsValue> for Transaction {
                     })
                     .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?
             };
-            workflow_log::log_trace!("JsValue->Transaction: outputs: {outputs:?}");
+            // workflow_log::log_trace!("JsValue->Transaction: outputs: {outputs:?}");
             Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload)
         } else {
             Err("Transaction must be an object".into())

@@ -1,7 +1,8 @@
+pub mod cache;
 pub mod collection;
 pub mod interface;
-pub mod iterators;
 pub mod store;
+pub mod streams;
 pub mod wallet;
 
 pub use collection::Collection;
