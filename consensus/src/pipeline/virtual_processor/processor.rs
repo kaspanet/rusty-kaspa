@@ -17,6 +17,7 @@ use crate::{
             acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
             daa::DbDaaStore,
+            depth::{DbDepthStore, DepthStoreReader},
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
@@ -116,6 +117,7 @@ pub struct VirtualStateProcessor {
     pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
+    pub(super) depth_store: Arc<DbDepthStore>,
 
     // Utxo-related stores
     pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -181,6 +183,7 @@ impl VirtualStateProcessor {
             pruning_point_store: storage.pruning_point_store.clone(),
             past_pruning_points_store: storage.past_pruning_points_store.clone(),
             body_tips_store: storage.body_tips_store.clone(),
+            depth_store: storage.depth_store.clone(),
             utxo_diffs_store: storage.utxo_diffs_store.clone(),
             utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: storage.acceptance_data_store.clone(),
@@ -502,16 +505,17 @@ impl VirtualStateProcessor {
                 if diff_point == candidate {
                     // This indicates that candidate has valid UTXO state and that `diff` represents its diff from virtual
 
-                    // We exclude from the returned additional virtual parent candidates all blocks below
-                    // the candidate merge depth root.
-                    let candidate_ghostdag_data = self.ghostdag_primary_store.get_data(candidate).unwrap();
-                    let merge_depth_root = self.depth_manager.calc_merge_depth_root(&candidate_ghostdag_data, pruning_point);
-                    let merge_depth_root_blue_work = self.ghostdag_primary_store.get_blue_work(merge_depth_root).unwrap();
+                    // All blocks with lower blue work than filtering_root are:
+                    // 1. not in its future (bcs blue work is monotonic),
+                    // 2. will be removed eventually by the bounded merge check.
+                    // So we prefer doing it in advance to allow better tips to be considered.
+                    let filtering_root = self.depth_store.merge_depth_root(candidate).unwrap();
+                    let filtering_blue_work = self.ghostdag_primary_store.get_blue_work(filtering_root).unwrap_or_default();
                     return (
                         candidate,
                         heap.into_sorted_iter()
                             .take(self.max_virtual_parent_candidates())
-                            .take_while(|s| s.blue_work >= merge_depth_root_blue_work)
+                            .take_while(|s| s.blue_work >= filtering_blue_work)
                             .map(|s| s.hash)
                             .collect(),
                     );
