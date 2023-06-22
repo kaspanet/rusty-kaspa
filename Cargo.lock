@@ -2350,7 +2350,6 @@ dependencies = [
  "kaspa-hashes",
  "kaspa-index-core",
  "kaspa-math",
- "kaspa-mining",
  "kaspa-mining-errors",
  "kaspa-notify",
  "kaspa-txscript",
