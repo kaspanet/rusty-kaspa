@@ -1,0 +1,13 @@
+[package]
+name = "kaspa-mining-errors"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+thiserror.workspace = true
+kaspa-consensus-core.workspace = true

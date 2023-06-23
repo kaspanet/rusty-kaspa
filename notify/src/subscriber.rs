@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use core::fmt::Debug;
-use kaspa_core::trace;
+use kaspa_core::{debug, trace};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -9,14 +9,10 @@ extern crate derive_more;
 use crate::events::EventSwitches;
 
 use super::{
-    error::{Error, Result},
+    error::Result,
     listener::ListenerId,
     scope::Scope,
     subscription::{Command, Mutation},
-};
-use futures::{
-    future::FutureExt, // for `.fuse()`
-    select,
 };
 use workflow_core::channel::Channel;
 
@@ -36,14 +32,11 @@ pub trait SubscriptionManager: Send + Sync + Debug {
 
 pub type DynSubscriptionManager = Arc<dyn SubscriptionManager>;
 
-#[derive(Clone, Debug)]
-enum Ctl {
-    Shutdown,
-}
-
 /// A subscriber handling subscription messages executing them into a [SubscriptionManager].
 #[derive(Debug)]
 pub struct Subscriber {
+    name: &'static str,
+
     /// Event types this subscriber is configured to subscribe to
     enabled_events: EventSwitches,
 
@@ -56,19 +49,23 @@ pub struct Subscriber {
     /// Has this subscriber been started?
     started: Arc<AtomicBool>,
 
-    ctl: Channel<Ctl>,
     incoming: Channel<Mutation>,
     shutdown: Channel<()>,
 }
 
 impl Subscriber {
-    pub fn new(enabled_events: EventSwitches, subscription_manager: DynSubscriptionManager, listener_id: ListenerId) -> Self {
+    pub fn new(
+        name: &'static str,
+        enabled_events: EventSwitches,
+        subscription_manager: DynSubscriptionManager,
+        listener_id: ListenerId,
+    ) -> Self {
         Self {
+            name,
             enabled_events,
             subscription_manager,
             listener_id,
             started: Arc::new(AtomicBool::default()),
-            ctl: Channel::unbounded(),
             incoming: Channel::unbounded(),
             shutdown: Channel::oneshot(),
         }
@@ -84,33 +81,24 @@ impl Subscriber {
         if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
-        trace!("Starting notification broadcasting task");
+        trace!("[Subscriber {}] starting subscription receiving task", self.name);
         workflow_core::task::spawn(async move {
-            loop {
-                select! {
-                    ctl = self.ctl.recv().fuse() => {
-                        if let Ok(ctl) = ctl {
-                            match ctl {
-                                Ctl::Shutdown => {
-                                    let _ = self.shutdown.drain();
-                                    let _ = self.shutdown.try_send(());
-                                    break;
-                                }
-                            }
-                        }
-                    },
-
-                    mutation = self.incoming.recv().fuse() => {
-                        if let Ok(mutation) = mutation {
-                            if self.enabled_events[mutation.event_type()] {
-                                if let Err(err) = self.subscription_manager.clone().execute_subscribe_command(self.listener_id, mutation.scope, mutation.command).await {
-                                    trace!("[Subscriber] the subscription command returned an error: {:?}", err);
-                                }
-                            }
-                        }
+            while let Ok(mutation) = self.incoming.recv().await {
+                if self.enabled_events[mutation.event_type()] {
+                    if let Err(err) = self
+                        .subscription_manager
+                        .clone()
+                        .execute_subscribe_command(self.listener_id, mutation.scope, mutation.command)
+                        .await
+                    {
+                        trace!("[Subscriber {}] the subscription command returned an error: {:?}", self.name, err);
                     }
                 }
             }
+
+            debug!("[Subscriber {}] subscription stream ended", self.name);
+            let _ = self.shutdown.drain();
+            let _ = self.shutdown.try_send(());
         });
     }
 
@@ -119,17 +107,20 @@ impl Subscriber {
         Ok(())
     }
 
-    async fn stop_subscription_receiver_task(self: &Arc<Self>) -> Result<()> {
-        if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            return Err(Error::AlreadyStoppedError);
-        }
-        self.ctl.try_send(Ctl::Shutdown)?;
+    async fn join_subscription_receiver_task(self: &Arc<Self>) -> Result<()> {
         self.shutdown.recv().await?;
         Ok(())
     }
 
-    pub async fn stop(self: &Arc<Self>) -> Result<()> {
-        self.stop_subscription_receiver_task().await
+    pub async fn join(self: &Arc<Self>) -> Result<()> {
+        trace!("[Subscriber {}] joining", self.name);
+        let result = self.join_subscription_receiver_task().await;
+        debug!("[Subscriber {}] terminated", self.name);
+        result
+    }
+
+    pub fn close(&self) {
+        self.incoming.sender.close();
     }
 }
 

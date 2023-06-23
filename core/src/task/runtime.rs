@@ -36,7 +36,7 @@ impl AsyncRuntime {
     where
         T: AsyncService,
     {
-        // self.services.lock().unwrap().push(AsyncServiceContainer::new(service));
+        trace!("async-runtime registering service {}", service.clone().ident());
         self.services.lock().unwrap().push(service);
     }
 
@@ -79,7 +79,8 @@ impl AsyncRuntime {
             .collect::<Vec<TaskJoinHandle<AsyncServiceResult<()>>>>();
 
         // wait for at least one service to return
-        let (result, _idx, remaining_futures) = select_all(futures).await;
+        let (result, idx, remaining_futures) = select_all(futures).await;
+        trace!("async-runtime worker had service {} returning", self.services.lock().unwrap()[idx].clone().ident());
         // if at least one service yields an error, initiate global shutdown
         // this will cause signal_exit() to be executed externally (by Core invoking `stop()`)
         match result {
@@ -91,11 +92,11 @@ impl AsyncRuntime {
         }
 
         // wait for remaining services to finish
+        trace!("async-runtime worker joining remaining {} services", remaining_futures.len());
         try_join_all(remaining_futures).await.unwrap();
 
         // Stop all async services
         // All services futures are spawned as tokio tasks to enable parallelism
-        trace!("async-runtime worker stopping");
         let futures = self
             .services
             .lock()
@@ -105,7 +106,7 @@ impl AsyncRuntime {
             .collect::<Vec<TaskJoinHandle<AsyncServiceResult<()>>>>();
         try_join_all(futures).await.unwrap();
 
-        trace!("async-runtime worker exiting");
+        trace!("async-runtime worker stopped");
     }
 
     pub fn signal_exit(self: Arc<AsyncRuntime>) {

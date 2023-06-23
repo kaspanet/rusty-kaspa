@@ -21,10 +21,6 @@ pub struct RequestPruningPointUtxoSetFlow {
 
 #[async_trait::async_trait]
 impl Flow for RequestPruningPointUtxoSetFlow {
-    fn name(&self) -> &'static str {
-        "PP_UTXOS"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
@@ -56,18 +52,19 @@ impl RequestPruningPointUtxoSetFlow {
 
         loop {
             // We avoid keeping the consensus session across the limitless dequeue call below
-            let pp_utxos = match session.get_pruning_point_utxos(expected_pp, from_outpoint, CHUNK_SIZE, chunks_sent != 0) {
-                Err(ConsensusError::UnexpectedPruningPoint) => return self.send_unexpected_pruning_point_message().await,
-                res => res,
-            }?;
-            debug!("Retrieved {} UTXOs for pruning point {}", pp_utxos.len(), expected_pp);
+            let pruning_point_utxos =
+                match session.async_get_pruning_point_utxos(expected_pp, from_outpoint, CHUNK_SIZE, chunks_sent != 0).await {
+                    Err(ConsensusError::UnexpectedPruningPoint) => return self.send_unexpected_pruning_point_message().await,
+                    res => res,
+                }?;
+            debug!("Retrieved {} UTXOs for pruning point {}", pruning_point_utxos.len(), expected_pp);
 
             // Send the chunk
             self.router
                 .enqueue(make_message!(
                     Payload::PruningPointUtxoSetChunk,
                     PruningPointUtxoSetChunkMessage {
-                        outpoint_and_utxo_entry_pairs: pp_utxos
+                        outpoint_and_utxo_entry_pairs: pruning_point_utxos
                             .iter()
                             .map(|(outpoint, entry)| { (outpoint, entry).into() })
                             .collect_vec()
@@ -83,12 +80,12 @@ impl RequestPruningPointUtxoSetFlow {
             }
 
             // This indicates that there are no more entries to query
-            if pp_utxos.len() < CHUNK_SIZE {
+            if pruning_point_utxos.len() < CHUNK_SIZE {
                 return self.send_done_message(expected_pp).await;
             }
 
             // Mark the beginning of the next chunk
-            from_outpoint = Some(pp_utxos.last().expect("not empty by prev condition").0);
+            from_outpoint = Some(pruning_point_utxos.last().expect("not empty by prev condition").0);
         }
     }
 

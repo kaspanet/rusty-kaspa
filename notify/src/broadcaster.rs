@@ -1,20 +1,13 @@
 extern crate derive_more;
 use super::{
-    connection::Connection,
-    error::{Error, Result},
-    events::EventArray,
-    listener::ListenerId,
-    notification::Notification,
+    connection::Connection, error::Result, events::EventArray, listener::ListenerId, notification::Notification,
     subscription::DynSubscription,
 };
 use async_channel::{Receiver, Sender};
 use core::fmt::Debug;
 use derive_more::Deref;
-use futures::{
-    future::FutureExt, // for `.fuse()`
-    select,
-};
-use kaspa_core::trace;
+use futures::{future::FutureExt, select};
+use kaspa_core::{debug, trace};
 use std::{
     collections::HashMap,
     sync::{
@@ -89,7 +82,6 @@ where
 {
     Register(DynSubscription, ListenerId, C),
     Unregister(DynSubscription, ListenerId),
-    Shutdown,
 }
 
 #[derive(Debug)]
@@ -144,7 +136,7 @@ where
         if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
-        trace!("Starting notification broadcasting task");
+        trace!("[Broadcaster-{}] Starting notification broadcasting task", self.name);
         workflow_core::task::spawn(async move {
             // Broadcasting plan by event type
             let mut plan = EventArray::<Plan<C>>::default();
@@ -161,11 +153,6 @@ where
                                 Ctl::Unregister(subscription, id) => {
                                     plan[subscription.event_type()].remove(&id);
                                 },
-                                Ctl::Shutdown => {
-                                    let _ = self.shutdown.drain();
-                                    let _ = self.shutdown.try_send(());
-                                    break;
-                                }
                             }
                         }
                     },
@@ -200,6 +187,11 @@ where
                             // Remove closed connections
                             purge.drain(..).for_each(|id| { plan[event].remove(&id); });
 
+                        } else {
+                            debug!("[Broadcaster-{}] notification stream ended", self.name);
+                            let _ = self.shutdown.drain();
+                            let _ = self.shutdown.try_send(());
+                            break;
                         }
                     }
                 }
@@ -223,17 +215,15 @@ where
         Ok(())
     }
 
-    async fn stop_notification_broadcasting_task(&self) -> Result<()> {
-        if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            return Err(Error::AlreadyStoppedError);
-        }
-        self.ctl.try_send(Ctl::Shutdown)?;
+    async fn join_notification_broadcasting_task(&self) -> Result<()> {
+        trace!("[Broadcaster-{}] joining", self.name);
         self.shutdown.recv().await?;
+        debug!("[Broadcaster-{}] terminated", self.name);
         Ok(())
     }
 
-    pub async fn stop(&self) -> Result<()> {
-        self.stop_notification_broadcasting_task().await
+    pub async fn join(&self) -> Result<()> {
+        self.join_notification_broadcasting_task().await
     }
 }
 
@@ -349,7 +339,8 @@ mod tests {
                     }
                 }
             }
-            assert!(self.broadcaster.stop().await.is_ok(), "broadcaster failed to stop");
+            self.notification_sender.close();
+            assert!(self.broadcaster.join().await.is_ok(), "broadcaster failed to stop");
         }
     }
 

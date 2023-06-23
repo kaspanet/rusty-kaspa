@@ -3,22 +3,18 @@ use crate::{
     IDENT,
 };
 use async_trait::async_trait;
-use futures::{
-    future::FutureExt, // for `.fuse()`
-    select,
-};
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
-use kaspa_core::trace;
+use kaspa_core::{debug, trace};
 use kaspa_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
 use kaspa_notify::{
     collector::{Collector, CollectorNotificationReceiver},
-    error::{Error, Result},
+    error::Result,
     events::EventType,
     notification::Notification as NotificationTrait,
     notifier::DynNotify,
 };
-use kaspa_utils::triggers::DuplexTrigger;
-use kaspa_utxoindex::api::DynUtxoIndexApi;
+use kaspa_utils::triggers::SingleTrigger;
+use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -31,21 +27,23 @@ use std::sync::{
 /// into their pending local versions and relaying them to a local notifier.
 #[derive(Debug)]
 pub struct Processor {
-    utxoindex: DynUtxoIndexApi,
+    /// An optional UTXO indexer
+    utxoindex: Option<UtxoIndexProxy>,
+
     recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
 
     /// Has this collector been started?
     is_started: Arc<AtomicBool>,
 
-    collect_shutdown: Arc<DuplexTrigger>,
+    collect_shutdown: Arc<SingleTrigger>,
 }
 
 impl Processor {
-    pub fn new(utxoindex: DynUtxoIndexApi, recv_channel: CollectorNotificationReceiver<ConsensusNotification>) -> Self {
+    pub fn new(utxoindex: Option<UtxoIndexProxy>, recv_channel: CollectorNotificationReceiver<ConsensusNotification>) -> Self {
         Self {
             utxoindex,
             recv_channel,
-            collect_shutdown: Arc::new(DuplexTrigger::new()),
+            collect_shutdown: Arc::new(SingleTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -56,47 +54,32 @@ impl Processor {
             return;
         }
         tokio::spawn(async move {
-            trace!("[Processor] collecting_task start");
+            trace!("[Index processor] collecting task starting");
 
-            loop {
-                select! {
-                    // TODO: make sure we process all pending consensus events before exiting.
-                    // Ideally this should be done through a carefully ordered shutdown process
-                    _ = self.collect_shutdown.request.listener.clone().fuse() => break,
-
-                    notification = self.recv_channel.recv().fuse() => {
-                        match notification {
-                            Ok(notification) => {
-                                match self.process_notification(notification){
-                                    Ok(notification) => {
-                                        match notifier.notify(notification) {
-                                            Ok(_) => (),
-                                            Err(err) => {
-                                                trace!("[Processor] notification sender error: {err:?}");
-                                            },
-                                        }
-                                    },
-                                    Err(err) => {
-                                        trace!("[Processor] error while processing a consensus notification: {err:?}");
-                                    }
-                                }
-                            },
-                            Err(err) => {
-                                trace!("[Processor] error while receiving a consensus notification: {err:?}");
-                            }
+            while let Ok(notification) = self.recv_channel.recv().await {
+                match self.process_notification(notification).await {
+                    Ok(notification) => match notifier.notify(notification) {
+                        Ok(_) => (),
+                        Err(err) => {
+                            trace!("[Index processor] notification sender error: {err:?}");
                         }
+                    },
+                    Err(err) => {
+                        trace!("[Index processor] error while processing a consensus notification: {err:?}");
                     }
                 }
             }
-            self.collect_shutdown.response.trigger.trigger();
-            trace!("[Processor] collecting_task end");
+
+            debug!("[Index processor] notification stream ended");
+            self.collect_shutdown.trigger.trigger();
+            trace!("[Index processor] collecting task ended");
         });
     }
 
-    fn process_notification(self: &Arc<Self>, notification: ConsensusNotification) -> IndexResult<Notification> {
+    async fn process_notification(self: &Arc<Self>, notification: ConsensusNotification) -> IndexResult<Notification> {
         match notification {
             ConsensusNotification::UtxosChanged(utxos_changed) => {
-                Ok(Notification::UtxosChanged(self.process_utxos_changed(utxos_changed)?))
+                Ok(Notification::UtxosChanged(self.process_utxos_changed(utxos_changed).await?))
             }
             ConsensusNotification::PruningPointUtxoSetOverride(_) => {
                 Ok(Notification::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification {}))
@@ -105,23 +88,21 @@ impl Processor {
         }
     }
 
-    fn process_utxos_changed(
+    async fn process_utxos_changed(
         self: &Arc<Self>,
         notification: consensus_notification::UtxosChangedNotification,
     ) -> IndexResult<UtxosChangedNotification> {
         trace!("[{IDENT}]: processing {:?}", notification);
-        if let Some(utxoindex) = self.utxoindex.as_deref() {
-            return Ok(utxoindex.write().update(notification.accumulated_utxo_diff.clone(), notification.virtual_parents)?.into());
+        if let Some(utxoindex) = self.utxoindex.clone() {
+            return Ok(utxoindex.update(notification.accumulated_utxo_diff.clone(), notification.virtual_parents).await?.into());
         };
         Err(IndexError::NotSupported(EventType::UtxosChanged))
     }
 
-    async fn stop_collecting_task(&self) -> Result<()> {
-        if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            return Err(Error::AlreadyStoppedError);
-        }
-        self.collect_shutdown.request.trigger.trigger();
-        self.collect_shutdown.response.listener.clone().await;
+    async fn join_collecting_task(&self) -> Result<()> {
+        trace!("[Index processor] joining");
+        self.collect_shutdown.listener.clone().await;
+        debug!("[Index processor] terminated");
         Ok(())
     }
 }
@@ -132,8 +113,8 @@ impl Collector<Notification> for Processor {
         self.spawn_collecting_task(notifier);
     }
 
-    async fn stop(self: Arc<Self>) -> Result<()> {
-        self.stop_collecting_task().await
+    async fn join(self: Arc<Self>) -> Result<()> {
+        self.join_collecting_task().await
     }
 }
 
@@ -146,7 +127,7 @@ mod tests {
     use kaspa_consensusmanager::ConsensusManager;
     use kaspa_database::utils::{create_temp_db, DbLifetime};
     use kaspa_notify::notifier::test_helpers::NotifyMock;
-    use kaspa_utxoindex::{api::DynUtxoIndexApi, UtxoIndex};
+    use kaspa_utxoindex::UtxoIndex;
     use rand::{rngs::SmallRng, SeedableRng};
     use std::sync::Arc;
 
@@ -169,7 +150,7 @@ mod tests {
             let tc = TestConsensus::new(&config);
             tc.init();
             let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
-            let utxoindex: DynUtxoIndexApi = Some(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap());
+            let utxoindex = Some(UtxoIndexProxy::new(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap()));
             let processor = Arc::new(Processor::new(utxoindex, consensus_receiver));
             let (processor_sender, processor_receiver) = unbounded();
             let notifier = Arc::new(NotifyMock::new(processor_sender));
@@ -236,7 +217,8 @@ mod tests {
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
         assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
-        pipeline.processor.clone().stop().await.expect("stopping the processor must succeed");
+        pipeline.consensus_sender.close();
+        pipeline.processor.clone().join().await.expect("stopping the processor must succeed");
     }
 
     #[tokio::test]
@@ -253,6 +235,7 @@ mod tests {
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
         assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
-        pipeline.processor.clone().stop().await.expect("stopping the processor must succeed");
+        pipeline.consensus_sender.close();
+        pipeline.processor.clone().join().await.expect("stopping the processor must succeed");
     }
 }

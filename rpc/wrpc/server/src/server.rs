@@ -5,7 +5,7 @@ use crate::{
     service::Options,
 };
 use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{events::EVENT_TYPE_ARRAY, listener::ListenerId, notifier::Notifier, subscriber::Subscriber};
+use kaspa_notify::{events::EVENT_TYPE_ARRAY, notifier::Notifier, subscriber::Subscriber};
 use kaspa_rpc_core::{
     api::rpc::DynRpcService,
     notify::{channel::NotificationChannel, connection::ChannelConnection, mode::NotificationMode},
@@ -26,8 +26,6 @@ pub type WrpcNotifier = Notifier<Notification, Connection>;
 
 struct RpcCore {
     pub service: Arc<RpcCoreService>,
-    pub notification_channel: NotificationChannel,
-    pub listener_id: ListenerId,
     pub wrpc_notifier: Arc<WrpcNotifier>,
 }
 
@@ -63,10 +61,10 @@ impl Server {
             // Prepare notification internals
             let enabled_events = EVENT_TYPE_ARRAY[..].into();
             let converter = Arc::new(WrpcServiceConverter::new());
-            let collector = Arc::new(WrpcServiceCollector::new(notification_channel.receiver(), converter));
-            let subscriber = Arc::new(Subscriber::new(enabled_events, service.notifier(), listener_id));
-            let wrpc_notifier = Arc::new(Notifier::new(enabled_events, vec![collector], vec![subscriber], tasks, WRPC_SERVER));
-            Some(RpcCore { service, notification_channel, listener_id, wrpc_notifier })
+            let collector = Arc::new(WrpcServiceCollector::new(WRPC_SERVER, notification_channel.receiver(), converter));
+            let subscriber = Arc::new(Subscriber::new(WRPC_SERVER, enabled_events, service.notifier(), listener_id));
+            let wrpc_notifier = Arc::new(Notifier::new(WRPC_SERVER, enabled_events, vec![collector], vec![subscriber], tasks));
+            Some(RpcCore { service, wrpc_notifier })
         } else {
             None
         };
@@ -126,8 +124,8 @@ impl Server {
                 });
             }
         } else {
-            let _ = connection.grpc_client().stop().await;
             let _ = connection.grpc_client().disconnect().await;
+            let _ = connection.grpc_client().join().await;
         }
 
         self.inner.sockets.lock().unwrap().remove(&connection.id());
@@ -153,14 +151,10 @@ impl Server {
         self.inner.options.verbose
     }
 
-    pub async fn stop(&self) -> Result<()> {
+    pub async fn join(&self) -> Result<()> {
         if let Some(rpc_core) = &self.inner.rpc_core {
-            // Unregister the listener into RPC service & close the channel
-            rpc_core.wrpc_notifier.unregister_listener(rpc_core.listener_id)?;
-            rpc_core.notification_channel.close();
-
-            // Stop the internal notifier
-            rpc_core.wrpc_notifier.stop().await?;
+            // Wait for the internal notifier to stop
+            rpc_core.wrpc_notifier.join().await?;
         } else {
             // FIXME: check if all existing connections are actually getting a call to self.disconnect(connection)
             //        else do it here

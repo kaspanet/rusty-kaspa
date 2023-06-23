@@ -23,10 +23,6 @@ pub struct PruningPointAndItsAnticoneRequestsFlow {
 
 #[async_trait::async_trait]
 impl Flow for PruningPointAndItsAnticoneRequestsFlow {
-    fn name(&self) -> &'static str {
-        "PP_ANTICONE"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
@@ -49,7 +45,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
             let consensus = self.ctx.consensus();
             let mut session = consensus.session().await;
 
-            let pp_headers = session.pruning_point_headers();
+            let pp_headers = session.async_pruning_point_headers().await;
             self.router
                 .enqueue(make_message!(
                     Payload::PruningPoints,
@@ -57,7 +53,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                 ))
                 .await?;
 
-            let trusted_data = session.get_pruning_point_anticone_and_trusted_data()?;
+            let trusted_data = session.async_get_pruning_point_anticone_and_trusted_data().await?;
             let pp_anticone = &trusted_data.anticone;
             let daa_window = &trusted_data.daa_window_blocks;
             let ghostdag_data = &trusted_data.ghostdag_blocks;
@@ -80,17 +76,18 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                 for hash in hashes {
                     let hash = *hash;
                     let daa_window_indices = session
-                        .get_daa_window(hash)?
+                        .async_get_daa_window(hash)
+                        .await?
                         .into_iter()
                         .map(|hash| *daa_window_hash_to_index.get(&hash).unwrap() as u64)
                         .collect_vec();
-
                     let ghostdag_data_indices = session
-                        .get_trusted_block_associated_ghostdag_data_block_hashes(hash)?
+                        .async_get_trusted_block_associated_ghostdag_data_block_hashes(hash)
+                        .await?
                         .into_iter()
                         .map(|hash| *ghostdag_data_hash_to_index.get(&hash).unwrap() as u64)
                         .collect_vec();
-                    let block = session.get_block(hash)?;
+                    let block = session.async_get_block(hash).await?;
                     self.router
                         .enqueue(make_message!(
                             Payload::BlockWithTrustedDataV4,

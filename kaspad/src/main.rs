@@ -8,17 +8,19 @@ use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::config::{ConfigError, ConfigResult};
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::networktype::{NetworkId, NetworkType};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::kaspad_env::version;
+use kaspa_core::task::tick::TickService;
 use kaspa_core::{core::Core, signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
-use kaspa_mining::manager::MiningManager;
+use kaspa_mining::manager::{MiningManager, MiningManagerProxy};
 use kaspa_p2p_flows::flow_context::FlowContext;
-use kaspa_rpc_service::RpcCoreServer;
+use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utxoindex::api::UtxoIndexProxy;
 
 use std::fs;
 use std::path::PathBuf;
@@ -31,12 +33,15 @@ use args::{Args, Defaults};
 // use clap::Parser;
 // ~~~
 
+// TODO: testnet 11 tasks:
+// coinbase rewards
+
 use kaspa_consensus::config::ConfigBuilder;
 use kaspa_utxoindex::UtxoIndex;
 
 use async_channel::unbounded;
 use kaspa_core::{info, trace};
-use kaspa_grpc_server::GrpcServer;
+use kaspa_grpc_server::service::GrpcService;
 use kaspa_p2p_flows::service::P2pService;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 
@@ -47,69 +52,6 @@ const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
 const META_DB: &str = "meta";
 const DEFAULT_LOG_DIR: &str = "logs";
-
-// TODO: refactor the shutdown sequence into a predefined controlled sequence
-
-/*
-/// Kaspa Node launch arguments
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// Directory to store data
-    #[arg(short = 'b', long = "appdir")]
-    app_dir: Option<String>,
-
-    /// Interface/port to listen for gRPC connections (default port: 16110, testnet: 16210)
-    #[arg(long = "rpclisten")]
-    rpc_listen: Option<String>,
-
-    /// Activate the utxoindex
-    #[arg(long = "utxoindex")]
-    utxoindex: bool,
-
-    /// Interface/port to listen for wRPC Borsh connections (default: 127.0.0.1:17110)
-    #[clap(long = "rpclisten-borsh", default_missing_value = "abc")]
-    // #[arg()]
-    wrpc_listen_borsh: Option<String>,
-
-    /// Interface/port to listen for wRPC JSON connections (default: 127.0.0.1:18110)
-    #[arg(long = "rpclisten-json")]
-    wrpc_listen_json: Option<String>,
-
-    /// Enable verbose logging of wRPC data exchange
-    #[arg(long = "wrpc-verbose")]
-    wrpc_verbose: bool,
-
-    /// Logging level for all subsystems {off, error, warn, info, debug, trace}
-    ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
-    #[arg(short = 'd', long = "loglevel", default_value = "info")]
-    log_level: String,
-
-    #[arg(long = "connect")]
-    connect: Option<String>,
-
-    #[arg(long = "listen")]
-    listen: Option<String>,
-
-    #[arg(long = "reset-db")]
-    reset_db: bool,
-
-    #[arg(long = "outpeers", default_value = "8")]
-    target_outbound: usize,
-
-    #[arg(long = "maxinpeers", default_value = "128")]
-    inbound_limit: usize,
-
-    #[arg(long = "testnet")]
-    testnet: bool,
-
-    #[arg(long = "devnet")]
-    devnet: bool,
-
-    #[arg(long = "simnet")]
-    simnet: bool,
-}
- */
 
 fn get_home_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -165,15 +107,20 @@ pub fn main() {
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
 
-    let network_type = match (args.testnet, args.devnet, args.simnet) {
-        (false, false, false) => NetworkType::Mainnet,
-        (true, false, false) => NetworkType::Testnet,
-        (false, true, false) => NetworkType::Devnet,
-        (false, false, true) => NetworkType::Simnet,
+    let network = match (args.testnet, args.devnet, args.simnet) {
+        (false, false, false) => NetworkType::Mainnet.into(),
+        (true, false, false) => NetworkId::with_suffix(NetworkType::Testnet, args.testnet_suffix),
+        (false, true, false) => NetworkType::Devnet.into(),
+        (false, false, true) => NetworkType::Simnet.into(),
         _ => panic!("only a single net should be activated"),
     };
 
-    let config = Arc::new(ConfigBuilder::new(network_type.into()).apply_args(|config| args.apply_to_config(config)).build());
+    let config = Arc::new(
+        ConfigBuilder::new(network.into())
+            .adjust_perf_params_to_consensus_params()
+            .apply_args(|config| args.apply_to_config(config))
+            .build(),
+    );
 
     // Make sure config and args form a valid set of properties
     if let Err(err) = validate_config_and_args(&config, &args) {
@@ -269,6 +216,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     // ---
 
+    let tick_service = Arc::new(TickService::new());
     let (notification_send, notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
     let counters = Arc::new(ProcessingCounters::default());
@@ -284,13 +232,13 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         counters.clone(),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
-    let monitor = Arc::new(ConsensusMonitor::new(counters));
+    let monitor = Arc::new(ConsensusMonitor::new(counters, tick_service.clone()));
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = kaspa_database::prelude::open_db(utxoindex_db_dir, true, 1);
-        let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
+        let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
         let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
         Some(index_service)
     } else {
@@ -298,13 +246,15 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     };
 
     let address_manager = AddressManager::new(meta_db);
-    let mining_manager = Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None));
+    let mining_manager =
+        MiningManagerProxy::new(Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None)));
 
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
         address_manager,
         config.clone(),
         mining_manager.clone(),
+        tick_service.clone(),
         notification_root,
     ));
     let p2p_service = Arc::new(P2pService::new(
@@ -318,7 +268,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config.default_p2p_port(),
     ));
 
-    let rpc_core_server = Arc::new(RpcCoreServer::new(
+    let rpc_core_service = Arc::new(RpcCoreService::new(
         consensus_manager.clone(),
         notify_service.notifier(),
         index_service.as_ref().map(|x| x.notifier()),
@@ -328,16 +278,17 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config,
         core.clone(),
     ));
-    let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
+    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
+    async_runtime.register(tick_service);
     async_runtime.register(notify_service);
     if let Some(index_service) = index_service {
         async_runtime.register(index_service)
     };
-    async_runtime.register(rpc_core_server.clone());
-    async_runtime.register(grpc_server);
+    async_runtime.register(rpc_core_service.clone());
+    async_runtime.register(grpc_service);
     async_runtime.register(p2p_service);
     async_runtime.register(monitor);
 
@@ -349,7 +300,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             listen_address.as_ref().map(|listen_address| {
                 Arc::new(WrpcService::new(
                     wrpc_service_tasks,
-                    Some(rpc_core_server.service()),
+                    Some(rpc_core_service.clone()),
                     encoding,
                     WrpcServerOptions {
                         listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String

@@ -3,7 +3,7 @@ use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
-use kaspa_core::time::unix_now;
+use kaspa_core::{debug, time::unix_now};
 use kaspa_database::{
     prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB},
     registry::DatabaseStorePrefixes,
@@ -176,6 +176,8 @@ impl Factory {
 
 impl ConsensusFactory for Factory {
     fn new_active_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
+        assert!(!self.notification_root.is_closed());
+
         let mut config = self.config.clone();
         let mut is_new_consensus = false;
         let entry = match self.management_store.write().active_consensus_entry().unwrap() {
@@ -212,6 +214,8 @@ impl ConsensusFactory for Factory {
     }
 
     fn new_staging_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
+        assert!(!self.notification_root.is_closed());
+
         let entry = self.management_store.write().new_staging_consensus_entry().unwrap();
         let dir = self.db_root_dir.join(entry.directory_name);
         let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
@@ -226,5 +230,10 @@ impl ConsensusFactory for Factory {
         ));
 
         (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))
+    }
+
+    fn close(&self) {
+        debug!("Consensus factory: closing");
+        self.notification_root.close();
     }
 }

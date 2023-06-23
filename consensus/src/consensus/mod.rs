@@ -297,6 +297,10 @@ impl Consensus {
         self.statuses_store.read().get(hash).unwrap()
     }
 
+    pub fn session_lock(&self) -> SessionLock {
+        self.pruning_lock.clone()
+    }
+
     pub fn notification_root(&self) -> Arc<ConsensusNotificationRoot> {
         self.notification_root.clone()
     }
@@ -497,7 +501,7 @@ impl ConsensusApi for Consensus {
         }
     }
 
-    fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: &mut MuHash) -> PruningImportResult<()> {
+    fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: MuHash) -> PruningImportResult<()> {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 

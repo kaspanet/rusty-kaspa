@@ -18,10 +18,6 @@ pub struct RequestIbdChainBlockLocatorFlow {
 
 #[async_trait::async_trait]
 impl Flow for RequestIbdChainBlockLocatorFlow {
-    fn name(&self) -> &'static str {
-        "IBD_CHAIN_BLOCK_LOCATOR"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
@@ -41,17 +37,18 @@ impl RequestIbdChainBlockLocatorFlow {
             let msg = dequeue!(self.incoming_route, Payload::RequestIbdChainBlockLocator)?;
             let (low, high) = msg.try_into()?;
 
-            let locator = match (self.ctx.consensus().session().await).create_headers_selected_chain_block_locator(low, high) {
-                Ok(locator) => Ok(locator),
-                Err(e) => {
-                    let orig = e.clone();
-                    if let ConsensusError::SyncManagerError(SyncManagerError::BlockNotInSelectedParentChain(_)) = e {
-                        Ok(vec![])
-                    } else {
-                        Err(orig)
+            let locator =
+                match (self.ctx.consensus().session().await).async_create_headers_selected_chain_block_locator(low, high).await {
+                    Ok(locator) => Ok(locator),
+                    Err(e) => {
+                        let orig = e.clone();
+                        if let ConsensusError::SyncManagerError(SyncManagerError::BlockNotInSelectedParentChain(_)) = e {
+                            Ok(vec![])
+                        } else {
+                            Err(orig)
+                        }
                     }
-                }
-            }?;
+                }?;
 
             self.router
                 .enqueue(make_message!(

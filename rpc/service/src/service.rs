@@ -16,12 +16,19 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{core::Core, debug, info, kaspad_env::version, signals::Shutdown, trace, warn};
+use kaspa_core::{
+    core::Core,
+    debug,
+    kaspad_env::version,
+    signals::Shutdown,
+    task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
+    trace, warn,
+};
 use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
 };
-use kaspa_mining::{manager::MiningManager, mempool::tx::Orphan};
+use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
 use kaspa_notify::{
     collector::DynCollector,
     events::{EventSwitches, EventType, EVENT_TYPE_ARRAY},
@@ -38,9 +45,9 @@ use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
-use kaspa_utils::channel::Channel;
-use kaspa_utxoindex::api::DynUtxoIndexApi;
-use std::{iter::once, ops::Deref, sync::Arc, vec};
+use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
+use kaspa_utxoindex::api::UtxoIndexProxy;
+use std::{iter::once, sync::Arc, vec};
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
@@ -62,14 +69,15 @@ use std::{iter::once, ops::Deref, sync::Arc, vec};
 pub struct RpcCoreService {
     consensus_manager: Arc<ConsensusManager>,
     notifier: Arc<Notifier<Notification, ChannelConnection>>,
-    mining_manager: Arc<MiningManager>,
+    mining_manager: MiningManagerProxy,
     flow_context: Arc<FlowContext>,
-    utxoindex: DynUtxoIndexApi,
+    utxoindex: Option<UtxoIndexProxy>,
     config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
     index_converter: Arc<IndexConverter>,
     protocol_converter: Arc<ProtocolConverter>,
     core: Arc<Core>,
+    shutdown: SingleTrigger,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -79,9 +87,9 @@ impl RpcCoreService {
         consensus_manager: Arc<ConsensusManager>,
         consensus_notifier: Arc<ConsensusNotifier>,
         index_notifier: Option<Arc<IndexNotifier>>,
-        mining_manager: Arc<MiningManager>,
+        mining_manager: MiningManagerProxy,
         flow_context: Arc<FlowContext>,
-        utxoindex: DynUtxoIndexApi,
+        utxoindex: Option<UtxoIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
     ) -> Self {
@@ -95,9 +103,13 @@ impl RpcCoreService {
         consensus_events[EventType::UtxosChanged] = false;
         consensus_events[EventType::PruningPointUtxoSetOverride] = index_notifier.is_none();
         let consensus_converter = Arc::new(ConsensusConverter::new(consensus_manager.clone(), config.clone()));
-        let consensus_collector =
-            Arc::new(CollectorFromConsensus::new(consensus_notify_channel.receiver(), consensus_converter.clone()));
-        let consensus_subscriber = Arc::new(Subscriber::new(consensus_events, consensus_notifier, consensus_notify_listener_id));
+        let consensus_collector = Arc::new(CollectorFromConsensus::new(
+            "rpc-core <= consensus",
+            consensus_notify_channel.receiver(),
+            consensus_converter.clone(),
+        ));
+        let consensus_subscriber =
+            Arc::new(Subscriber::new("rpc-core => consensus", consensus_events, consensus_notifier, consensus_notify_listener_id));
 
         let mut collectors: Vec<DynCollector<Notification>> = vec![consensus_collector];
         let mut subscribers = vec![consensus_subscriber];
@@ -110,8 +122,10 @@ impl RpcCoreService {
                 index_notifier.clone().register_new_listener(IndexChannelConnection::new(index_notify_channel.sender()));
 
             let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
-            let index_collector = Arc::new(CollectorFromIndex::new(index_notify_channel.receiver(), index_converter.clone()));
-            let index_subscriber = Arc::new(Subscriber::new(index_events, index_notifier.clone(), index_notify_listener_id));
+            let index_collector =
+                Arc::new(CollectorFromIndex::new("rpc-core <= index", index_notify_channel.receiver(), index_converter.clone()));
+            let index_subscriber =
+                Arc::new(Subscriber::new("rpc-core => index", index_events, index_notifier.clone(), index_notify_listener_id));
 
             collectors.push(index_collector);
             subscribers.push(index_subscriber);
@@ -121,7 +135,7 @@ impl RpcCoreService {
         let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
 
         // Create the rcp-core notifier
-        let notifier = Arc::new(Notifier::new(EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, RPC_CORE));
+        let notifier = Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1));
 
         Self {
             consensus_manager,
@@ -134,15 +148,17 @@ impl RpcCoreService {
             index_converter,
             protocol_converter,
             core,
+            shutdown: SingleTrigger::default(),
         }
     }
 
-    pub fn start(&self) {
+    pub fn start_impl(&self) {
         self.notifier().start();
     }
 
-    pub async fn stop(&self) -> RpcResult<()> {
-        self.notifier().stop().await?;
+    pub async fn join(&self) -> RpcResult<()> {
+        trace!("{} joining notifier", RPC_CORE_SERVICE);
+        self.notifier().join().await?;
         Ok(())
     }
 
@@ -151,12 +167,15 @@ impl RpcCoreService {
         self.notifier.clone()
     }
 
-    fn get_utxo_set_by_script_public_key<'a>(&self, addresses: impl Iterator<Item = &'a RpcAddress>) -> UtxoSetByScriptPublicKey {
+    async fn get_utxo_set_by_script_public_key<'a>(
+        &self,
+        addresses: impl Iterator<Item = &'a RpcAddress>,
+    ) -> UtxoSetByScriptPublicKey {
         self.utxoindex
-            .as_ref()
+            .clone()
             .unwrap()
-            .read()
             .get_utxos_by_script_public_keys(addresses.map(pay_to_address_script).collect())
+            .await
             .unwrap_or_default()
     }
 }
@@ -164,11 +183,10 @@ impl RpcCoreService {
 #[async_trait]
 impl RpcApi for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
+        let session = self.consensus_manager.consensus().session().await;
 
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
-        let is_synced: bool = self.flow_context.hub().has_peers() && session.is_nearly_synced();
+        let is_synced: bool = self.flow_context.hub().has_peers() && session.async_is_nearly_synced().await;
 
         if !self.config.enable_unsynced_mining && !is_synced {
             // error = "Block not submitted - node is not synced"
@@ -185,23 +203,21 @@ impl RpcApi for RpcCoreService {
         let hash = block.hash();
 
         if !request.allow_non_daa_blocks {
-            let virtual_daa_score = session.get_virtual_daa_score();
+            let virtual_daa_score = session.async_get_virtual_daa_score().await;
 
             // A simple heuristic check which signals that the mined block is out of date
             // and should not be accepted unless user explicitly requests
-            let daa_window_size = self.config.full_difficulty_window_size as u64;
-            if virtual_daa_score > daa_window_size && block.header.daa_score < virtual_daa_score - daa_window_size {
+            let daa_window_block_duration = self.config.daa_window_duration_in_blocks(virtual_daa_score);
+            if virtual_daa_score > daa_window_block_duration && block.header.daa_score < virtual_daa_score - daa_window_block_duration
+            {
                 // error = format!("Block rejected. Reason: block DAA score {0} is too far behind virtual's DAA score {1}", block.header.daa_score, virtual_daa_score)
                 return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) });
             }
         }
 
         trace!("incoming SubmitBlockRequest for block {}", hash);
-        match self.flow_context.add_block(session.deref(), block.clone()).await {
-            Ok(_) => {
-                info!("Accepted block {} via submit block", hash);
-                Ok(SubmitBlockResponse { report: SubmitBlockReport::Success })
-            }
+        match self.flow_context.submit_rpc_block(&session, block.clone()).await {
+            Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
             Err(err) => {
                 warn!("The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}", err, err);
                 // error = format!("Block rejected. Reason: {}", err))
@@ -213,8 +229,8 @@ impl RpcApi for RpcCoreService {
     async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
         trace!("incoming GetBlockTemplate request");
 
-        if self.config.net == NetworkType::Mainnet {
-            return Err(RpcError::General("Mining on mainnet is not supported for the Rust Alpha version".to_owned()));
+        if *self.config.net == NetworkType::Mainnet && !self.config.enable_mainnet_mining {
+            return Err(RpcError::General("Mining on mainnet is not supported for initial Rust versions".to_owned()));
         }
 
         // Make sure the pay address prefix matches the config network type
@@ -226,9 +242,8 @@ impl RpcApi for RpcCoreService {
         let script_public_key = kaspa_txscript::pay_to_address_script(&request.pay_address);
         let extra_data = version().as_bytes().iter().chain(once(&(b'/'))).chain(&request.extra_data).cloned().collect::<Vec<_>>();
         let miner_data: MinerData = MinerData::new(script_public_key, extra_data);
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        let block_template = self.mining_manager.get_block_template(session.deref(), &miner_data)?;
+        let session = self.consensus_manager.consensus().session().await;
+        let block_template = self.mining_manager.clone().get_block_template(&session, miner_data).await?;
 
         // Check coinbase tx payload length
         if block_template.block.transactions[COINBASE_TRANSACTION_INDEX].payload.len() > self.config.max_coinbase_payload_len {
@@ -245,16 +260,13 @@ impl RpcApi for RpcCoreService {
 
     async fn get_block_call(&self, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
         // TODO: test
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        let block = session.get_block_even_if_header_only(request.hash)?;
+        let session = self.consensus_manager.consensus().session().await;
+        let block = session.async_get_block_even_if_header_only(request.hash).await?;
         Ok(GetBlockResponse {
-            block: self.consensus_converter.get_block(
-                session.deref(),
-                &block,
-                request.include_transactions,
-                request.include_transactions,
-            )?,
+            block: self
+                .consensus_converter
+                .get_block(&session, &block, request.include_transactions, request.include_transactions)
+                .await?,
         })
     }
 
@@ -264,58 +276,54 @@ impl RpcApi for RpcCoreService {
             return Err(RpcError::InvalidGetBlocksRequest);
         }
 
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
+        let session = self.consensus_manager.consensus().session().await;
 
         // If low_hash is empty - use genesis instead.
         let low_hash = match request.low_hash {
             Some(low_hash) => {
                 // Make sure low_hash points to an existing and valid block
-                session.deref().get_ghostdag_data(low_hash)?;
+                session.async_get_ghostdag_data(low_hash).await?;
                 low_hash
             }
             None => self.config.genesis.hash,
         };
 
         // Get hashes between low_hash and sink
-        let sink_hash = session.get_sink();
+        let sink_hash = session.async_get_sink().await;
 
         // We use +1 because low_hash is also returned
         // max_blocks MUST be >= mergeset_size_limit + 1
         let max_blocks = self.config.mergeset_size_limit as usize + 1;
-        let (block_hashes, high_hash) = session.get_hashes_between(low_hash, sink_hash, max_blocks)?;
+        let (block_hashes, high_hash) = session.async_get_hashes_between(low_hash, sink_hash, max_blocks).await?;
 
         // If the high hash is equal to sink it means get_hashes_between didn't skip any hashes, and
         // there's space to add the sink anticone, otherwise we cannot add the anticone because
         // there's no guarantee that all of the anticone root ancestors will be present.
-        let sink_anticone = if high_hash == sink_hash { session.get_anticone(sink_hash)? } else { vec![] };
+        let sink_anticone = if high_hash == sink_hash { session.async_get_anticone(sink_hash).await? } else { vec![] };
         // Prepend low hash to make it inclusive and append the sink anticone
         let block_hashes = once(low_hash).chain(block_hashes).chain(sink_anticone).collect::<Vec<_>>();
         let blocks = if request.include_blocks {
-            block_hashes
-                .iter()
-                .cloned()
-                .map(|hash| {
-                    let block = session.get_block_even_if_header_only(hash)?;
-                    self.consensus_converter.get_block(
-                        session.deref(),
-                        &block,
-                        request.include_transactions,
-                        request.include_transactions,
-                    )
-                })
-                .collect::<RpcResult<Vec<_>>>()
+            let mut blocks = Vec::with_capacity(block_hashes.len());
+            for hash in block_hashes.iter().copied() {
+                let block = session.async_get_block_even_if_header_only(hash).await?;
+                let rpc_block = self
+                    .consensus_converter
+                    .get_block(&session, &block, request.include_transactions, request.include_transactions)
+                    .await?;
+                blocks.push(rpc_block)
+            }
+            blocks
         } else {
-            Ok(vec![])
-        }?;
+            Vec::new()
+        };
         Ok(GetBlocksResponse { block_hashes, blocks })
     }
 
     async fn get_info_call(&self, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
-        let is_nearly_synced = self.consensus_manager.consensus().session().await.is_nearly_synced();
+        let is_nearly_synced = self.consensus_manager.consensus().session().await.async_is_nearly_synced().await;
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
-            mempool_size: self.mining_manager.transaction_count(true, false) as u64,
+            mempool_size: self.mining_manager.clone().transaction_count(true, false).await as u64,
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
             is_synced: self.flow_context.hub().has_peers() && is_nearly_synced,
@@ -325,23 +333,21 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_mempool_entry_call(&self, request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
-        let Some(transaction) = self.mining_manager.get_transaction(&request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool) else {
+        let Some(transaction) = self.mining_manager.clone().get_transaction(request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool).await else {
             return Err(RpcError::TransactionNotFound(request.transaction_id));
         };
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        Ok(GetMempoolEntryResponse::new(self.consensus_converter.get_mempool_entry(session.deref(), &transaction)))
+        let session = self.consensus_manager.consensus().session().await;
+        Ok(GetMempoolEntryResponse::new(self.consensus_converter.get_mempool_entry(&session, &transaction)))
     }
 
     async fn get_mempool_entries_call(&self, request: GetMempoolEntriesRequest) -> RpcResult<GetMempoolEntriesResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
+        let session = self.consensus_manager.consensus().session().await;
         let (transactions, orphans) =
-            self.mining_manager.get_all_transactions(!request.filter_transaction_pool, request.include_orphan_pool);
+            self.mining_manager.clone().get_all_transactions(!request.filter_transaction_pool, request.include_orphan_pool).await;
         let mempool_entries = transactions
             .iter()
             .chain(orphans.iter())
-            .map(|transaction| self.consensus_converter.get_mempool_entry(session.deref(), transaction))
+            .map(|transaction| self.consensus_converter.get_mempool_entry(&session, transaction))
             .collect();
         Ok(GetMempoolEntriesResponse::new(mempool_entries))
     }
@@ -350,14 +356,13 @@ impl RpcApi for RpcCoreService {
         &self,
         request: GetMempoolEntriesByAddressesRequest,
     ) -> RpcResult<GetMempoolEntriesByAddressesResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
+        let session = self.consensus_manager.consensus().session().await;
         let script_public_keys = request.addresses.iter().map(pay_to_address_script).collect();
-        let grouped_txs = self.mining_manager.get_transactions_by_addresses(
-            &script_public_keys,
-            !request.filter_transaction_pool,
-            request.include_orphan_pool,
-        );
+        let grouped_txs = self
+            .mining_manager
+            .clone()
+            .get_transactions_by_addresses(script_public_keys, !request.filter_transaction_pool, request.include_orphan_pool)
+            .await;
         let mempool_entries = grouped_txs
             .owners
             .iter()
@@ -365,7 +370,7 @@ impl RpcApi for RpcCoreService {
                 let address = extract_script_pub_key_address(script_public_key, self.config.prefix())
                     .expect("script public key is convertible into an address");
                 self.consensus_converter.get_mempool_entries_by_address(
-                    session.deref(),
+                    &session,
                     address,
                     owner_transactions,
                     &grouped_txs.transactions,
@@ -378,9 +383,8 @@ impl RpcApi for RpcCoreService {
     async fn submit_transaction_call(&self, request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
         let transaction: Transaction = (&request.transaction).try_into()?;
         let transaction_id = transaction.id();
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        self.flow_context.add_transaction(session.deref(), transaction, Orphan::Allowed).await.map_err(|err| {
+        let session = self.consensus_manager.consensus().session().await;
+        self.flow_context.add_transaction(&session, transaction, Orphan::Allowed).await.map_err(|err| {
             let err = RpcError::RejectedTransaction(transaction_id, err.to_string());
             debug!("{err}");
             err
@@ -389,7 +393,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_current_network_call(&self, _: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
-        Ok(GetCurrentNetworkResponse::new(self.config.net))
+        Ok(GetCurrentNetworkResponse::new(*self.config.net))
     }
 
     async fn get_subnetwork_call(&self, _: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse> {
@@ -397,24 +401,22 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_selected_tip_hash_call(&self, _: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse> {
-        Ok(GetSelectedTipHashResponse::new(self.consensus_manager.consensus().session().await.get_sink()))
+        Ok(GetSelectedTipHashResponse::new(self.consensus_manager.consensus().session().await.async_get_sink().await))
     }
 
     async fn get_sink_blue_score_call(&self, _: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        Ok(GetSinkBlueScoreResponse::new(session.get_ghostdag_data(session.get_sink())?.blue_score))
+        let session = self.consensus_manager.consensus().session().await;
+        Ok(GetSinkBlueScoreResponse::new(session.async_get_ghostdag_data(session.async_get_sink().await).await?.blue_score))
     }
 
     async fn get_virtual_chain_from_block_call(
         &self,
         request: GetVirtualChainFromBlockRequest,
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        let virtual_chain = session.get_virtual_chain_from_block(request.start_hash)?;
+        let session = self.consensus_manager.consensus().session().await;
+        let virtual_chain = session.async_get_virtual_chain_from_block(request.start_hash).await?;
         let accepted_transaction_ids = if request.include_accepted_transaction_ids {
-            self.consensus_converter.get_virtual_chain_accepted_transaction_ids(session.deref(), &virtual_chain)?
+            self.consensus_converter.get_virtual_chain_accepted_transaction_ids(&session, &virtual_chain).await?
         } else {
             vec![]
         };
@@ -422,7 +424,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_block_count_call(&self, _: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {
-        Ok(self.consensus_manager.consensus().session().await.estimate_block_count())
+        Ok(self.consensus_manager.consensus().session().await.async_estimate_block_count().await)
     }
 
     async fn get_utxos_by_addresses_call(&self, request: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
@@ -431,7 +433,7 @@ impl RpcApi for RpcCoreService {
         }
         // TODO: discuss if the entry order is part of the method requirements
         //       (the current impl does not retain an entry order matching the request addresses order)
-        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter());
+        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter()).await;
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
     }
 
@@ -439,7 +441,7 @@ impl RpcApi for RpcCoreService {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        let entry_map = self.get_utxo_set_by_script_public_key(once(&request.address));
+        let entry_map = self.get_utxo_set_by_script_public_key(once(&request.address)).await;
         let balance = entry_map.values().flat_map(|x| x.values().map(|entry| entry.amount)).sum();
         Ok(GetBalanceByAddressResponse::new(balance))
     }
@@ -451,7 +453,7 @@ impl RpcApi for RpcCoreService {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter());
+        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter()).await;
         let entries = request
             .addresses
             .iter()
@@ -469,7 +471,7 @@ impl RpcApi for RpcCoreService {
             return Err(RpcError::NoUtxoIndex);
         }
         let circulating_sompi =
-            self.utxoindex.as_ref().unwrap().read().get_circulating_supply().map_err(|e| RpcError::General(e.to_string()))?;
+            self.utxoindex.clone().unwrap().get_circulating_supply().await.map_err(|e| RpcError::General(e.to_string()))?;
         Ok(GetCoinSupplyResponse::new(MAX_SOMPI, circulating_sompi))
     }
 
@@ -482,19 +484,18 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_block_dag_info_call(&self, _: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
-        let consensus = self.consensus_manager.consensus();
-        let session = consensus.session().await;
-        let block_count = session.estimate_block_count();
+        let session = self.consensus_manager.consensus().session().await;
+        let block_count = session.async_estimate_block_count().await;
         Ok(GetBlockDagInfoResponse::new(
             self.config.net,
             block_count.block_count,
             block_count.header_count,
-            session.get_tips(),
-            self.consensus_converter.get_difficulty_ratio(session.get_virtual_bits()),
-            session.get_virtual_past_median_time(),
-            session.get_virtual_parents().iter().copied().collect::<Vec<_>>(),
-            session.pruning_point().unwrap_or_default(),
-            session.get_virtual_daa_score(),
+            session.async_get_tips().await,
+            self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
+            session.async_get_virtual_past_median_time().await,
+            session.async_get_virtual_parents().await.iter().copied().collect::<Vec<_>>(),
+            session.async_pruning_point().await.unwrap_or_default(),
+            session.async_get_virtual_daa_score().await,
         ))
     }
 
@@ -513,7 +514,8 @@ impl RpcApi for RpcCoreService {
                 .consensus()
                 .session()
                 .await
-                .estimate_network_hashes_per_second(request.start_hash, request.window_size as usize)?,
+                .async_estimate_network_hashes_per_second(request.start_hash, request.window_size as usize)
+                .await?,
         ))
     }
 
@@ -634,5 +636,48 @@ impl RpcApi for RpcCoreService {
     async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         self.notifier.clone().stop_notify(id, scope).await?;
         Ok(())
+    }
+}
+
+const RPC_CORE_SERVICE: &str = "rpc-core-service";
+
+// It might be necessary to opt this out in the context of wasm32
+
+impl AsyncService for RpcCoreService {
+    fn ident(self: Arc<Self>) -> &'static str {
+        RPC_CORE_SERVICE
+    }
+
+    fn start(self: Arc<Self>) -> AsyncServiceFuture {
+        trace!("{} starting", RPC_CORE_SERVICE);
+        let service = self.clone();
+
+        // Prepare a shutdown signal receiver
+        let shutdown_signal = self.shutdown.listener.clone();
+
+        // Launch the service and wait for a shutdown signal
+        Box::pin(async move {
+            service.clone().start_impl();
+            shutdown_signal.await;
+            match service.join().await {
+                Ok(_) => Ok(()),
+                Err(err) => {
+                    warn!("Error while stopping {}: {}", RPC_CORE_SERVICE, err);
+                    Err(AsyncServiceError::Service(err.to_string()))
+                }
+            }
+        })
+    }
+
+    fn signal_exit(self: Arc<Self>) {
+        trace!("sending an exit signal to {}", RPC_CORE_SERVICE);
+        self.shutdown.trigger.trigger();
+    }
+
+    fn stop(self: Arc<Self>) -> AsyncServiceFuture {
+        Box::pin(async move {
+            trace!("{} stopped", RPC_CORE_SERVICE);
+            Ok(())
+        })
     }
 }

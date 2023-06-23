@@ -1558,6 +1558,7 @@ dependencies = [
  "kaspa-core",
  "kaspa-database",
  "kaspa-utils",
+ "log",
  "parking_lot",
  "rand 0.8.5",
  "rocksdb",
@@ -1714,6 +1715,7 @@ dependencies = [
  "num_cpus",
  "thiserror",
  "tokio",
+ "triggered",
  "wasm-bindgen",
  "workflow-log",
 ]
@@ -1805,12 +1807,15 @@ dependencies = [
  "futures",
  "h2",
  "kaspa-core",
+ "kaspa-grpc-client",
  "kaspa-grpc-core",
  "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
  "kaspa-utils",
  "log",
+ "once_cell",
+ "parking_lot",
  "paste",
  "prost",
  "rand 0.8.5",
@@ -1913,8 +1918,10 @@ dependencies = [
  "futures-util",
  "kaspa-addresses",
  "kaspa-consensus-core",
+ "kaspa-consensusmanager",
  "kaspa-core",
  "kaspa-hashes",
+ "kaspa-mining-errors",
  "kaspa-muhash",
  "kaspa-txscript",
  "log",
@@ -1923,6 +1930,14 @@ dependencies = [
  "secp256k1",
  "serde",
  "smallvec",
+ "thiserror",
+]
+
+[[package]]
+name = "kaspa-mining-errors"
+version = "0.1.0"
+dependencies = [
+ "kaspa-consensus-core",
  "thiserror",
 ]
 
@@ -2048,7 +2063,7 @@ dependencies = [
  "kaspa-consensus-notify",
  "kaspa-hashes",
  "kaspa-index-core",
- "kaspa-mining",
+ "kaspa-mining-errors",
  "kaspa-notify",
  "kaspa-txscript",
  "kaspa-utils",
@@ -2354,6 +2369,7 @@ dependencies = [
  "kaspa-rpc-macros",
  "kaspa-rpc-service",
  "kaspa-utils",
+ "log",
  "num_cpus",
  "paste",
  "serde",

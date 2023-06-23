@@ -16,8 +16,11 @@ pub struct Defaults {
     pub reset_db: bool,
     pub outbound_target: usize,
     pub inbound_limit: usize,
+    pub rpc_max_clients: usize,
     pub enable_unsynced_mining: bool,
+    pub enable_mainnet_mining: bool,
     pub testnet: bool,
+    pub testnet_suffix: u32,
     pub devnet: bool,
     pub simnet: bool,
     pub archival: bool,
@@ -38,8 +41,11 @@ impl Default for Defaults {
             reset_db: false,
             outbound_target: 8,
             inbound_limit: 128,
+            rpc_max_clients: 128,
             enable_unsynced_mining: false,
+            enable_mainnet_mining: false,
             testnet: false,
+            testnet_suffix: 10,
             devnet: false,
             simnet: false,
             archival: false,
@@ -70,8 +76,11 @@ pub struct Args {
     pub reset_db: bool,
     pub outbound_target: usize,
     pub inbound_limit: usize,
+    pub rpc_max_clients: usize,
     pub enable_unsynced_mining: bool,
+    pub enable_mainnet_mining: bool,
     pub testnet: bool,
+    pub testnet_suffix: u32,
     pub devnet: bool,
     pub simnet: bool,
     pub archival: bool,
@@ -176,10 +185,33 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .value_parser(clap::value_parser!(usize))
                 .help("Max number of inbound peers (default: 128)."),
         )
+        .arg(
+            Arg::new("rpcmaxclients")
+                .long("rpcmaxclients")
+                .value_name("rpcmaxclients")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
+                .help("Max number of RPC clients for standard connections (default: 128)."),
+        )
         .arg(arg!(--"reset-db" "Reset database before starting node. It's needed when switching between subnetworks."))
         .arg(arg!(--"enable-unsynced-mining" "Allow the node to accept blocks from RPC while not synced (this flag is mainly used for testing)"))
+        .arg(
+            Arg::new("enable-mainnet-mining")
+                .long("enable-mainnet-mining")
+                .action(ArgAction::SetTrue)
+                .hide(true)
+                .help("Allow mainnet mining (do not use unless you know what you are doing)"),
+        )
         .arg(arg!(--utxoindex "Enable the UTXO index"))
         .arg(arg!(--testnet "Use the test network"))
+        .arg(
+            Arg::new("netsuffix")
+                .long("netsuffix")
+                .value_name("netsuffix")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u32))
+                .help("Testnet network suffix number"),
+        )
         .arg(arg!(--devnet "Use the development test network"))
         .arg(arg!(--simnet "Use the simulation test network"))
         .arg(arg!(--archival "Run as an archival node: avoids deleting old block data when moving the pruning point (Warning: heavy disk usage)"))
@@ -213,10 +245,13 @@ impl Args {
             listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
             outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
             inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
+            rpc_max_clients: m.get_one::<usize>("rpcmaxclients").cloned().unwrap_or(defaults.rpc_max_clients),
             reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
             enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
+            enable_mainnet_mining: m.get_one::<bool>("enable-mainnet-mining").cloned().unwrap_or(defaults.enable_mainnet_mining),
             utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
+            testnet_suffix: m.get_one::<u32>("netsuffix").cloned().unwrap_or(defaults.testnet_suffix),
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
             simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
             archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
@@ -230,6 +265,7 @@ impl Args {
         config.utxoindex = self.utxoindex;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
+        config.enable_mainnet_mining = self.enable_mainnet_mining;
         config.is_archival = self.archival;
         // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
         config.enable_sanity_checks = true;
