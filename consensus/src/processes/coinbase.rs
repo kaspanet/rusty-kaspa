@@ -17,12 +17,26 @@ const LENGTH_OF_SCRIPT_PUB_KEY_LENGTH: usize = size_of::<u8>();
 const MIN_PAYLOAD_LENGTH: usize =
     LENGTH_OF_BLUE_SCORE + LENGTH_OF_SUBSIDY + LENGTH_OF_SCRIPT_PUB_KEY_VERSION + LENGTH_OF_SCRIPT_PUB_KEY_LENGTH;
 
+// We define a year as 365.25 days and a month as 365.25 / 12 = 30.4375
+// SECONDS_PER_MONTH = 30.4375 * 24 * 60 * 60
+const SECONDS_PER_MONTH: u64 = 2629800;
+
+pub const SUBSIDY_BY_MONTH_TABLE_SIZE: usize = 426;
+pub type SubsidyByMonthTable = [u64; SUBSIDY_BY_MONTH_TABLE_SIZE];
+
 #[derive(Clone)]
 pub struct CoinbaseManager {
     coinbase_payload_script_public_key_max_len: u8,
     max_coinbase_payload_len: usize,
     deflationary_phase_daa_score: u64,
     pre_deflationary_phase_base_subsidy: u64,
+    target_time_per_block: u64,
+
+    /// Precomputed number of blocks per month
+    blocks_per_month: u64,
+
+    /// Precomputed subsidy by month table
+    subsidy_by_month_table: SubsidyByMonthTable,
 }
 
 /// Struct used to streamline payload parsing
@@ -49,13 +63,31 @@ impl CoinbaseManager {
         max_coinbase_payload_len: usize,
         deflationary_phase_daa_score: u64,
         pre_deflationary_phase_base_subsidy: u64,
+        target_time_per_block: u64,
     ) -> Self {
+        assert!(1000 % target_time_per_block == 0);
+        let bps = 1000 / target_time_per_block;
+        let blocks_per_month = SECONDS_PER_MONTH * bps;
+
+        // Precomputed subsidy by month table for the actual block per second rate
+        // Here values are rounded up so that we keep the same number of rewarding months as in the original 1 BPS table.
+        // In a 10 BPS network, the induced increase in total rewards is 51 KAS (see tests::calc_high_bps_total_rewards_delta())
+        let subsidy_by_month_table: SubsidyByMonthTable = core::array::from_fn(|i| (SUBSIDY_BY_MONTH_TABLE[i] + bps - 1) / bps);
         Self {
             coinbase_payload_script_public_key_max_len,
             max_coinbase_payload_len,
             deflationary_phase_daa_score,
             pre_deflationary_phase_base_subsidy,
+            target_time_per_block,
+            blocks_per_month,
+            subsidy_by_month_table,
         }
+    }
+
+    #[cfg(test)]
+    #[inline]
+    pub fn bps(&self) -> u64 {
+        1000 / self.target_time_per_block
     }
 
     pub fn expected_coinbase_transaction<T: AsRef<[u8]>>(
@@ -182,9 +214,20 @@ impl CoinbaseManager {
             return self.pre_deflationary_phase_base_subsidy;
         }
 
-        // We define a year as 365.25 days and a month as 365.25 / 12 = 30.4375
-        // SECONDS_PER_MONTH = 30.4375 * 24 * 60 * 60
-        const SECONDS_PER_MONTH: u64 = 2629800;
+        let months_since_deflationary_phase_started =
+            ((daa_score - self.deflationary_phase_daa_score) / self.blocks_per_month) as usize;
+        if months_since_deflationary_phase_started >= self.subsidy_by_month_table.len() {
+            *(self.subsidy_by_month_table).last().unwrap()
+        } else {
+            self.subsidy_by_month_table[months_since_deflationary_phase_started]
+        }
+    }
+
+    #[cfg(test)]
+    pub fn legacy_calc_block_subsidy(&self, daa_score: u64) -> u64 {
+        if daa_score < self.deflationary_phase_daa_score {
+            return self.pre_deflationary_phase_base_subsidy;
+        }
 
         // Note that this calculation implicitly assumes that block per second = 1 (by assuming daa score diff is in second units).
         let months_since_deflationary_phase_started = (daa_score - self.deflationary_phase_daa_score) / SECONDS_PER_MONTH;
@@ -200,7 +243,8 @@ impl CoinbaseManager {
 
 /*
     This table was pre-calculated by calling `calcDeflationaryPeriodBlockSubsidyFloatCalc` (in kaspad-go) for all months until reaching 0 subsidy.
-    To regenerate this table, run `TestBuildSubsidyTable` in coinbasemanager_test.go (note the `deflationaryPhaseBaseSubsidy` therein)
+    To regenerate this table, run `TestBuildSubsidyTable` in coinbasemanager_test.go (note the `deflationaryPhaseBaseSubsidy` therein).
+    These values apply to 1 block per second.
 */
 #[rustfmt::skip]
 const SUBSIDY_BY_MONTH_TABLE: [u64; 426] = [
@@ -228,85 +272,136 @@ const SUBSIDY_BY_MONTH_TABLE: [u64; 426] = [
 mod tests {
     use super::*;
     use crate::params::MAINNET_PARAMS;
-    use kaspa_consensus_core::tx::scriptvec;
+    use kaspa_consensus_core::{
+        config::params::{Params, TESTNET11_PARAMS},
+        constants::SOMPI_PER_KASPA,
+        networktype::NetworkId,
+        tx::scriptvec,
+    };
+
+    #[test]
+    fn calc_high_bps_total_rewards_delta() {
+        const SECONDS_PER_MONTH: u64 = 2629800;
+
+        let legacy_cbm = create_legacy_manager();
+        let pre_deflationary_rewards = legacy_cbm.pre_deflationary_phase_base_subsidy * legacy_cbm.deflationary_phase_daa_score;
+        let total_rewards: u64 = pre_deflationary_rewards + SUBSIDY_BY_MONTH_TABLE.iter().map(|x| x * SECONDS_PER_MONTH).sum::<u64>();
+        let testnet_11_bps = TESTNET11_PARAMS.bps();
+        let total_high_bps_rewards_rounded_up: u64 = pre_deflationary_rewards
+            + SUBSIDY_BY_MONTH_TABLE
+                .iter()
+                .map(|x| ((x + testnet_11_bps - 1) / testnet_11_bps * testnet_11_bps) * SECONDS_PER_MONTH)
+                .sum::<u64>();
+
+        let cbm = create_manager(&TESTNET11_PARAMS);
+        let total_high_bps_rewards: u64 =
+            pre_deflationary_rewards + cbm.subsidy_by_month_table.iter().map(|x| x * cbm.blocks_per_month).sum::<u64>();
+        assert_eq!(total_high_bps_rewards_rounded_up, total_high_bps_rewards, "subsidy adjusted to bps must be rounded up");
+
+        let delta = total_high_bps_rewards as i64 - total_rewards as i64;
+
+        println!("Total rewards: {} sompi => {} KAS", total_rewards, total_rewards / SOMPI_PER_KASPA);
+        println!("Total high bps rewards: {} sompi => {} KAS", total_high_bps_rewards, total_high_bps_rewards / SOMPI_PER_KASPA);
+        println!("Delta: {} sompi => {} KAS", delta, delta / SOMPI_PER_KASPA as i64);
+    }
+
+    #[test]
+    fn subsidy_by_month_table_test() {
+        let cbm = create_legacy_manager();
+        cbm.subsidy_by_month_table.iter().enumerate().for_each(|(i, x)| {
+            assert_eq!(SUBSIDY_BY_MONTH_TABLE[i], *x, "for 1 BPS, const table and precomputed values must match");
+        });
+
+        for network_id in NetworkId::iter() {
+            let cbm = create_manager(&network_id.into());
+            cbm.subsidy_by_month_table.iter().enumerate().for_each(|(i, x)| {
+                assert_eq!(
+                    (SUBSIDY_BY_MONTH_TABLE[i] + cbm.bps() - 1) / cbm.bps(),
+                    *x,
+                    "{}: locally computed and precomputed values must match",
+                    network_id
+                );
+            });
+        }
+    }
 
     #[test]
     fn subsidy_test() {
-        let params = &MAINNET_PARAMS;
-        let cbm = CoinbaseManager::new(
-            params.coinbase_payload_script_public_key_max_len,
-            params.max_coinbase_payload_len,
-            params.deflationary_phase_daa_score,
-            params.pre_deflationary_phase_base_subsidy,
-        );
-
+        const PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY: u64 = 50000000000;
         const DEFLATIONARY_PHASE_INITIAL_SUBSIDY: u64 = 44000000000;
         const SECONDS_PER_MONTH: u64 = 2629800;
         const SECONDS_PER_HALVING: u64 = SECONDS_PER_MONTH * 12;
 
-        struct Test {
-            name: &'static str,
-            daa_score: u64,
-            expected: u64,
-        }
+        for network_id in NetworkId::iter() {
+            let params = &network_id.into();
+            let cbm = create_manager(params);
 
-        let tests = vec![
-            Test {
-                name: "before deflationary phase",
-                daa_score: params.deflationary_phase_daa_score - 1,
-                expected: params.pre_deflationary_phase_base_subsidy,
-            },
-            Test {
-                name: "start of deflationary phase",
-                daa_score: params.deflationary_phase_daa_score,
-                expected: DEFLATIONARY_PHASE_INITIAL_SUBSIDY,
-            },
-            Test {
-                name: "after one halving",
-                daa_score: params.deflationary_phase_daa_score + SECONDS_PER_HALVING,
-                expected: DEFLATIONARY_PHASE_INITIAL_SUBSIDY / 2,
-            },
-            Test {
-                name: "after 2 halvings",
-                daa_score: params.deflationary_phase_daa_score + 2 * SECONDS_PER_HALVING,
-                expected: DEFLATIONARY_PHASE_INITIAL_SUBSIDY / 4,
-            },
-            Test {
-                name: "after 5 halvings",
-                daa_score: params.deflationary_phase_daa_score + 5 * SECONDS_PER_HALVING,
-                expected: DEFLATIONARY_PHASE_INITIAL_SUBSIDY / 32,
-            },
-            Test {
-                name: "after 32 halvings",
-                daa_score: params.deflationary_phase_daa_score + 32 * SECONDS_PER_HALVING,
-                expected: DEFLATIONARY_PHASE_INITIAL_SUBSIDY / 4294967296,
-            },
-            Test {
-                name: "just before subsidy depleted",
-                daa_score: params.deflationary_phase_daa_score + 35 * SECONDS_PER_HALVING,
-                expected: 1,
-            },
-            Test {
-                name: "after subsidy depleted",
-                daa_score: params.deflationary_phase_daa_score + 36 * SECONDS_PER_HALVING,
-                expected: 0,
-            },
-        ];
+            let pre_deflationary_phase_base_subsidy = PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY / params.bps();
+            let deflationary_phase_initial_subsidy = DEFLATIONARY_PHASE_INITIAL_SUBSIDY / params.bps();
+            let blocks_per_halving = SECONDS_PER_HALVING * params.bps();
 
-        for t in tests {
-            assert_eq!(cbm.calc_block_subsidy(t.daa_score), t.expected, "test '{}' failed", t.name);
+            struct Test {
+                name: &'static str,
+                daa_score: u64,
+                expected: u64,
+            }
+
+            let tests = vec![
+                Test { name: "first mined block", daa_score: 1, expected: pre_deflationary_phase_base_subsidy },
+                Test {
+                    name: "before deflationary phase",
+                    daa_score: params.deflationary_phase_daa_score - 1,
+                    expected: pre_deflationary_phase_base_subsidy,
+                },
+                Test {
+                    name: "start of deflationary phase",
+                    daa_score: params.deflationary_phase_daa_score,
+                    expected: deflationary_phase_initial_subsidy,
+                },
+                Test {
+                    name: "after one halving",
+                    daa_score: params.deflationary_phase_daa_score + blocks_per_halving,
+                    expected: deflationary_phase_initial_subsidy / 2,
+                },
+                Test {
+                    name: "after 2 halvings",
+                    daa_score: params.deflationary_phase_daa_score + 2 * blocks_per_halving,
+                    expected: deflationary_phase_initial_subsidy / 4,
+                },
+                Test {
+                    name: "after 5 halvings",
+                    daa_score: params.deflationary_phase_daa_score + 5 * blocks_per_halving,
+                    expected: deflationary_phase_initial_subsidy / 32,
+                },
+                Test {
+                    name: "after 32 halvings",
+                    daa_score: params.deflationary_phase_daa_score + 32 * blocks_per_halving,
+                    expected: ((DEFLATIONARY_PHASE_INITIAL_SUBSIDY / 2_u64.pow(32)) + cbm.bps() - 1) / cbm.bps(),
+                },
+                Test {
+                    name: "just before subsidy depleted",
+                    daa_score: params.deflationary_phase_daa_score + 35 * blocks_per_halving,
+                    expected: 1,
+                },
+                Test {
+                    name: "after subsidy depleted",
+                    daa_score: params.deflationary_phase_daa_score + 36 * blocks_per_halving,
+                    expected: 0,
+                },
+            ];
+
+            for t in tests {
+                assert_eq!(cbm.calc_block_subsidy(t.daa_score), t.expected, "{} test '{}' failed", network_id, t.name);
+                if params.bps() == 1 {
+                    assert_eq!(cbm.legacy_calc_block_subsidy(t.daa_score), t.expected, "{} test '{}' failed", network_id, t.name);
+                }
+            }
         }
     }
 
     #[test]
     fn payload_serialization_test() {
-        let params = &MAINNET_PARAMS;
-        let cbm = CoinbaseManager::new(
-            params.coinbase_payload_script_public_key_max_len,
-            params.max_coinbase_payload_len,
-            params.deflationary_phase_daa_score,
-            params.pre_deflationary_phase_base_subsidy,
-        );
+        let cbm = create_manager(&MAINNET_PARAMS);
 
         let script_data = [33u8, 255];
         let extra_data = [2u8, 3];
@@ -350,13 +445,7 @@ mod tests {
 
     #[test]
     fn modify_payload_test() {
-        let params = &MAINNET_PARAMS;
-        let cbm = CoinbaseManager::new(
-            params.coinbase_payload_script_public_key_max_len,
-            params.max_coinbase_payload_len,
-            params.deflationary_phase_daa_score,
-            params.pre_deflationary_phase_base_subsidy,
-        );
+        let cbm = create_manager(&MAINNET_PARAMS);
 
         let script_data = [33u8, 255];
         let extra_data = [2u8, 3, 23, 98];
@@ -384,5 +473,20 @@ mod tests {
         let deserialized_data = cbm.deserialize_coinbase_payload(&payload).unwrap();
 
         assert_eq!(data2, deserialized_data);
+    }
+
+    fn create_manager(params: &Params) -> CoinbaseManager {
+        CoinbaseManager::new(
+            params.coinbase_payload_script_public_key_max_len,
+            params.max_coinbase_payload_len,
+            params.deflationary_phase_daa_score,
+            params.pre_deflationary_phase_base_subsidy,
+            params.target_time_per_block,
+        )
+    }
+
+    /// Return a CoinbaseManager with legacy golang 1 BPS properties
+    fn create_legacy_manager() -> CoinbaseManager {
+        CoinbaseManager::new(150, 204, 15778800 - 259200, 50000000000, 1000)
     }
 }
