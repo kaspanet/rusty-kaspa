@@ -64,7 +64,8 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> Bl
         };
 
         // In this case we expect the pruning point or a block above it to be the block at depth.
-        // Note that above we already verified the chain and distance conditions for this
+        // Note that above we already verified the chain and distance conditions for this.
+        // Additionally observe that if `current` is a valid hash it must not be pruned for the same reason.
         if current == ORIGIN {
             current = pruning_point;
         }

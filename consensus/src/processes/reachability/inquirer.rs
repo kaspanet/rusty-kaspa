@@ -391,8 +391,9 @@ mod tests {
 
         // Add blocks via a staging store
         {
+            let mut relations_write = relations.write();
             let mut staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
-            let mut staging_relations = StagingRelationsStore::new(relations.upgradable_read());
+            let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
             let mut builder = DagBuilder::new(&mut staging_reachability, &mut staging_relations);
             builder.init();
             builder.add_block(DagBlock::new(test.genesis.into(), vec![ORIGIN]));
@@ -404,7 +405,7 @@ mod tests {
             {
                 let mut batch = WriteBatch::default();
                 let reachability_write = staging_reachability.commit(&mut batch).unwrap();
-                let relations_write = staging_relations.commit(&mut batch).unwrap();
+                staging_relations.commit(&mut batch).unwrap();
                 db.write(batch).unwrap();
                 drop(reachability_write);
                 drop(relations_write);
@@ -443,8 +444,9 @@ mod tests {
         drop(relations_read);
 
         let mut batch = WriteBatch::default();
+        let mut relations_write = relations.write();
         let mut staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
-        let mut staging_relations = StagingRelationsStore::new(relations.upgradable_read());
+        let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
 
         for (i, block) in
             test.ids().choose_multiple(&mut rand::thread_rng(), test.blocks.len()).into_iter().chain(once(test.genesis)).enumerate()
@@ -460,7 +462,7 @@ mod tests {
                 // Commit the staging changes
                 {
                     let reachability_write = staging_reachability.commit(&mut batch).unwrap();
-                    let relations_write = staging_relations.commit(&mut batch).unwrap();
+                    staging_relations.commit(&mut batch).unwrap();
                     db.write(batch).unwrap();
                     drop(reachability_write);
                     drop(relations_write);
@@ -483,8 +485,9 @@ mod tests {
 
                 // Recapture staging stores
                 batch = WriteBatch::default();
+                relations_write = relations.write();
                 staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
-                staging_relations = StagingRelationsStore::new(relations.upgradable_read());
+                staging_relations = StagingRelationsStore::new(&mut relations_write);
             }
         }
     }
