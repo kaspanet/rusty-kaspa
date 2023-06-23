@@ -216,7 +216,7 @@ impl CoinbaseManager {
 
         let months_since_deflationary_phase_started =
             ((daa_score - self.deflationary_phase_daa_score) / self.blocks_per_month) as usize;
-        if months_since_deflationary_phase_started >= SUBSIDY_BY_MONTH_TABLE.len() {
+        if months_since_deflationary_phase_started >= self.subsidy_by_month_table.len() {
             *(self.subsidy_by_month_table).last().unwrap()
         } else {
             self.subsidy_by_month_table[months_since_deflationary_phase_started]
