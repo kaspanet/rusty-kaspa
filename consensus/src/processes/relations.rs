@@ -26,7 +26,7 @@ pub fn init<S: RelationsStore + ?Sized>(relations: &mut S) {
 /// (and writes will not accumulate if the entry gets out of the cache in between the calls)
 pub fn delete_level_relations<W, S>(mut writer: W, relations: &mut S, hash: Hash) -> Result<(), StoreError>
 where
-    W: DbWriter + DirectWriter,
+    W: DirectWriter,
     S: RelationsStore + ?Sized,
 {
     let children = relations.get_children(hash)?; // if the first entry was found, we expect all others as well, hence we unwrap below
@@ -49,7 +49,7 @@ where
 /// (and writes will not accumulate if the entry gets out of the cache in between the calls)
 pub fn delete_reachability_relations<W, S, U>(mut writer: W, relations: &mut S, reachability: &U, hash: Hash) -> BlockHashSet
 where
-    W: DbWriter + DirectWriter,
+    W: DirectWriter,
     S: RelationsStore + ?Sized,
     U: ReachabilityService + ?Sized,
 {

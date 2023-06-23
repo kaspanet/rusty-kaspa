@@ -23,7 +23,7 @@ pub trait RelationsStoreReader {
 
 /// Low-level write API for `RelationsStore`
 pub trait RelationsStore: RelationsStoreReader {
-    type DefaultWriter: DbWriter + DirectWriter;
+    type DefaultWriter: DirectWriter;
     fn default_writer(&self) -> Self::DefaultWriter;
 
     fn set_parents(&mut self, writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
