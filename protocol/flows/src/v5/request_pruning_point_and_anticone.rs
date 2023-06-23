@@ -23,10 +23,6 @@ pub struct PruningPointAndItsAnticoneRequestsFlow {
 
 #[async_trait::async_trait]
 impl Flow for PruningPointAndItsAnticoneRequestsFlow {
-    fn name(&self) -> &'static str {
-        "PP_ANTICONE"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }

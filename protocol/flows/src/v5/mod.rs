@@ -15,8 +15,7 @@ use self::{
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
-use kaspa_p2p_lib::{pb::kaspad_message::Payload as KaspadMessagePayload, KaspadMessagePayloadType, Router};
-use log::{debug, warn};
+use kaspa_p2p_lib::{KaspadMessagePayloadType, Router};
 use std::sync::Arc;
 
 mod address;
@@ -141,67 +140,12 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         )),
     ];
 
-    // TEMP: subscribe to remaining messages and ignore them
-    // NOTE: as flows are implemented, the below types should be all commented out
-    let mut unimplemented_messages_route = router.subscribe(vec![
-        // KaspadMessagePayloadType::Addresses,
-        // KaspadMessagePayloadType::Block,
-        // KaspadMessagePayloadType::Transaction,
-        // KaspadMessagePayloadType::BlockLocator,
-        // KaspadMessagePayloadType::RequestAddresses,
-        // KaspadMessagePayloadType::RequestRelayBlocks,
-        // KaspadMessagePayloadType::RequestTransactions,
-        // KaspadMessagePayloadType::IbdBlock,
-        // KaspadMessagePayloadType::InvRelayBlock,
-        // KaspadMessagePayloadType::InvTransactions,
-        // KaspadMessagePayloadType::Ping,
-        // KaspadMessagePayloadType::Pong,
-        // KaspadMessagePayloadType::Verack,
-        // KaspadMessagePayloadType::Version,
-        // KaspadMessagePayloadType::Ready,
-        // KaspadMessagePayloadType::TransactionNotFound,
-        KaspadMessagePayloadType::Reject,
-        // KaspadMessagePayloadType::PruningPointUtxoSetChunk,
-        // KaspadMessagePayloadType::RequestIbdBlocks,
-        // KaspadMessagePayloadType::UnexpectedPruningPoint,
-        // KaspadMessagePayloadType::IbdBlockLocatorHighestHash,
-        // KaspadMessagePayloadType::RequestNextPruningPointUtxoSetChunk,
-        // KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
-        // KaspadMessagePayloadType::IbdBlockLocatorHighestHashNotFound,
+    // The reject message is handled as a special case by the router
+    // KaspadMessagePayloadType::Reject,
 
-        // We do not register the below two messages since they are deprecated also in go-kaspa
-        // KaspadMessagePayloadType::BlockWithTrustedData,
-        // KaspadMessagePayloadType::IbdBlockLocator,
-
-        // KaspadMessagePayloadType::DoneBlocksWithTrustedData,
-        // KaspadMessagePayloadType::RequestPruningPointAndItsAnticone,
-        // KaspadMessagePayloadType::BlockHeaders,
-        // KaspadMessagePayloadType::RequestNextHeaders,
-        // KaspadMessagePayloadType::DoneHeaders,
-        // KaspadMessagePayloadType::RequestPruningPointUtxoSet,
-        // KaspadMessagePayloadType::RequestHeaders,
-        // KaspadMessagePayloadType::RequestBlockLocator,
-        // KaspadMessagePayloadType::PruningPoints,
-        // KaspadMessagePayloadType::RequestPruningPointProof,
-        // KaspadMessagePayloadType::PruningPointProof,
-        // KaspadMessagePayloadType::BlockWithTrustedDataV4,
-        // KaspadMessagePayloadType::TrustedData,
-        // KaspadMessagePayloadType::RequestIbdChainBlockLocator,
-        // KaspadMessagePayloadType::IbdChainBlockLocator,
-        // KaspadMessagePayloadType::RequestAnticone,
-        // KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks,
-    ]);
-
-    tokio::spawn(async move {
-        while let Some(msg) = unimplemented_messages_route.recv().await {
-            match msg.payload {
-                Some(KaspadMessagePayload::Reject(reject_msg)) => {
-                    warn!("Got a reject message {} from peer {}", reject_msg.reason, router);
-                }
-                _ => debug!("P2P unimplemented routes message: {:?}", msg),
-            }
-        }
-    });
+    // We do not register the below two messages since they are deprecated also in go-kaspa
+    // KaspadMessagePayloadType::BlockWithTrustedData,
+    // KaspadMessagePayloadType::IbdBlockLocator,
 
     flows
 }
