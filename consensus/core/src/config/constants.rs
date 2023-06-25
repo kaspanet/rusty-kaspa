@@ -27,8 +27,8 @@ pub mod consensus {
     pub const LEGACY_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
 
     /// **New** timestamp deviation tolerance (seconds).
-    /// KIP-0004: 605 (~10 minutes)
-    pub const NEW_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 605;
+    /// TODO: KIP-0004: 605 (~10 minutes)
+    pub const NEW_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
 
     /// The desired interval between samples of the median time window (seconds).
     /// KIP-0004: 10 seconds

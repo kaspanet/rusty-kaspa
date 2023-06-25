@@ -384,7 +384,11 @@ impl RpcApi for RpcCoreService {
         let transaction: Transaction = (&request.transaction).try_into()?;
         let transaction_id = transaction.id();
         let session = self.consensus_manager.consensus().session().await;
-        self.flow_context.add_transaction(&session, transaction, Orphan::Allowed).await.map_err(|err| {
+        let orphan = match request.allow_orphan {
+            true => Orphan::Allowed,
+            false => Orphan::Forbidden,
+        };
+        self.flow_context.submit_rpc_transaction(&session, transaction, orphan).await.map_err(|err| {
             let err = RpcError::RejectedTransaction(transaction_id, err.to_string());
             debug!("{err}");
             err
