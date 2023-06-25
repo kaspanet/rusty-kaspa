@@ -68,9 +68,7 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     pub const fn merge_depth_bound() -> u64 {
-        // Merge depth bound needs to be upper-bounded by DAA window *block duration* in order to prevent merging
-        // low-difficulty side-chains. TODO: finalize and decide if to make it lower
-        BPS * NEW_DIFFICULTY_WINDOW_DURATION
+        BPS * MERGE_DEPTH_DURATION
     }
 
     pub const fn finality_depth() -> u64 {

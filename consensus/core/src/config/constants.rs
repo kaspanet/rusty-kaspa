@@ -84,6 +84,14 @@ pub mod consensus {
     /// TODO: finalize this value (consider 6-24 hours)
     pub const NEW_FINALITY_DURATION: u64 = 43_200; // 12 hours
 
+    /// Merge depth bound duration (in seconds). For 1 BPS networks this equals the legacy depth
+    /// bound in block units. For higher BPS networks this should be scaled up.
+    ///
+    /// This number should be roughly equal to DAA window duration in order to prevent merging
+    /// low-difficulty side-chains (up to ~2x over DAA duration is still reasonable since creating
+    /// a mergeable low-difficulty side-chain within this bound requires a significant hashrate fraction)
+    pub const MERGE_DEPTH_DURATION: u64 = 3600;
+
     /// The value of the pruning proof `M` parameter
     pub const PRUNING_PROOF_M: u64 = 1000;
 
