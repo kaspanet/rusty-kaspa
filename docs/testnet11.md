@@ -1,4 +1,4 @@
-![image](https://github.com/ShaiW/rusty-kaspa/assets/376617/56a3dc93-5bb8-479d-8092-9963f0f8bf33)# Testnet 11
+# Testnet 11
 
 *Testnet 11* is the network where we will launch the first public 10BPS Kaspa experiment. The goal of this document is to provide a quick guide for anyone who wants to participate.
 
