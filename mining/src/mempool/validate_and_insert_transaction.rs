@@ -98,16 +98,12 @@ impl Mempool {
     ) -> RuleResult<Vec<Arc<Transaction>>> {
         // Rust rewrite:
         // - The function is relocated from OrphanPool into Mempool
-        let mut added_transactions = Vec::new();
-        let mut unorphaned_transactions =
-            self.get_unorphaned_transactions_after_accepted_transaction(consensus, accepted_transaction)?;
-        while !unorphaned_transactions.is_empty() {
-            let transaction = unorphaned_transactions.pop().unwrap();
-
+        let unorphaned_transactions = self.get_unorphaned_transactions_after_accepted_transaction(consensus, accepted_transaction)?;
+        let mut added_transactions = Vec::with_capacity(unorphaned_transactions.len() + 1); // +1 since some callers add the accepted tx itself
+        for transaction in unorphaned_transactions {
             // The returned transactions are leaving the mempool but must also be added to
             // the transaction pool so we clone.
             added_transactions.push(transaction.mtx.tx.clone());
-
             self.transaction_pool.add_mempool_transaction(transaction)?;
         }
         Ok(added_transactions)
