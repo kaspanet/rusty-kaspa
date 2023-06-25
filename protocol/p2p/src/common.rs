@@ -1,6 +1,6 @@
 use crate::{convert::error::ConversionError, core::peer::PeerKey, KaspadMessagePayloadType};
 use kaspa_consensus_core::errors::{block::RuleError, consensus::ConsensusError, pruning::PruningImportError};
-use kaspa_mining::errors::MiningManagerError;
+use kaspa_mining_errors::manager::MiningManagerError;
 use std::time::Duration;
 use thiserror::Error;
 

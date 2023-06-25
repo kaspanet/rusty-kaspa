@@ -404,7 +404,12 @@ impl FlowContext {
         // TODO: call a handler function or a predefined registered service
     }
 
-    pub async fn add_transaction(
+    /// Adds the rpc-submitted transaction to the mempool and propagates it to peers.
+    ///
+    /// Transactions submitted through rpc are considered high priority. This definition does not affect the tx selection algorithm
+    /// but only changes how we manage the lifetime of the tx. A high-priority tx does not expire and is repeatedly rebroadcasted to
+    /// peers
+    pub async fn submit_rpc_transaction(
         &self,
         consensus: &ConsensusProxy,
         transaction: Transaction,
