@@ -1,8 +1,9 @@
 use crate::core::hub::HubEvent;
-use crate::pb::KaspadMessage;
-use crate::Peer;
+use crate::pb::RejectMessage;
+use crate::pb::{kaspad_message::Payload as KaspadMessagePayload, KaspadMessage};
 use crate::{common::ProtocolError, KaspadMessagePayloadType};
-use kaspa_core::{debug, error, info, trace};
+use crate::{make_message, Peer};
+use kaspa_core::{debug, error, info, trace, warn};
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
 use seqlock::SeqLock;
@@ -162,17 +163,25 @@ impl Router {
                             match router.route_to_flow(msg) {
                                 Ok(()) => {},
                                 Err(e) => {
-                                    info!("P2P, Router receive loop - route error {} for peer: {}", e, router);
+                                    match e {
+                                        ProtocolError::IgnorableReject(reason) => debug!("P2P, got reject message: {} from peer: {}", reason, router),
+                                        ProtocolError::Rejected(reason) => warn!("P2P, got reject message: {} from peer: {}", reason, router),
+                                        e => warn!("P2P, route error: {} for peer: {}", e, router),
+                                    }
                                     break;
                                 },
                             }
                         }
                         Ok(None) => {
-                            info!("P2P, Router receive loop - incoming stream ended from peer {}", router);
+                            info!("P2P, incoming stream ended from peer {}", router);
                             break;
                         }
-                        Err(err) => {
-                            info!("P2P, Router receive loop - network error: {} from peer {}", err, router);
+                        Err(status) => {
+                            if let Some(err) = match_for_io_error(&status) {
+                                info!("P2P, network error: {} from peer {}", err, router);
+                            } else {
+                                info!("P2P, network error: {} from peer {}", status, router);
+                            }
                             break;
                         }
                     }
@@ -283,6 +292,11 @@ impl Router {
             return Err(ProtocolError::Other("received kaspad p2p message with empty payload"));
         }
         let msg_type: KaspadMessagePayloadType = msg.payload.as_ref().expect("payload was just verified").into();
+        // Handle the special case of a reject message ending the connection
+        if msg_type == KaspadMessagePayloadType::Reject {
+            let Some(KaspadMessagePayload::Reject(reject)) = msg.payload else { unreachable!() };
+            return Err(ProtocolError::from_reject_message(reject.reason));
+        }
         let op = self.routing_map.read().get(&msg_type).cloned();
         if let Some(sender) = op {
             match sender.try_send(msg) {
@@ -310,6 +324,15 @@ impl Router {
             Ok(_) => Ok(()),
             Err(TrySendError::Closed(_)) => Err(ProtocolError::ConnectionClosed),
             Err(TrySendError::Full(_)) => Err(ProtocolError::OutgoingRouteCapacityReached(self.to_string())),
+        }
+    }
+
+    /// Based on the type of the protocol error, tries sending a reject message before shutting down the connection
+    pub async fn try_sending_reject_message(&self, err: &ProtocolError) {
+        if err.can_send_outgoing_message() {
+            // Send an explicit reject message for easier tracing of logical bugs causing protocol errors.
+            // No need to handle errors since we are closing anyway
+            let _ = self.enqueue(make_message!(KaspadMessagePayload::Reject, RejectMessage { reason: err.to_reject_message() })).await;
         }
     }
 
@@ -342,5 +365,28 @@ impl Router {
         self.hub_sender.send(HubEvent::PeerClosing(self.clone())).await.expect("hub receiver should never drop before senders");
 
         true
+    }
+}
+
+fn match_for_io_error(err_status: &tonic::Status) -> Option<&std::io::Error> {
+    let mut err: &(dyn std::error::Error + 'static) = err_status;
+
+    loop {
+        if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
+            return Some(io_err);
+        }
+
+        // h2::Error do not expose std::io::Error with `source()`
+        // https://github.com/hyperium/h2/pull/462
+        if let Some(h2_err) = err.downcast_ref::<h2::Error>() {
+            if let Some(io_err) = h2_err.get_io() {
+                return Some(io_err);
+            }
+        }
+
+        err = match err.source() {
+            Some(err) => err,
+            None => return None,
+        };
     }
 }

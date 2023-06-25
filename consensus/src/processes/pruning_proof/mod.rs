@@ -325,8 +325,9 @@ impl PruningProofManager {
 
             // Prepare batch
             let mut batch = WriteBatch::default();
+            let mut reachability_relations_write = self.reachability_relations_store.write();
             let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
-            let mut staging_reachability_relations = StagingRelationsStore::new(self.reachability_relations_store.upgradable_read());
+            let mut staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
 
             // Stage
             staging_reachability_relations.insert(hash, reachability_parents_hashes.clone()).unwrap();
@@ -340,7 +341,7 @@ impl PruningProofManager {
 
             // Commit
             let reachability_write = staging_reachability.commit(&mut batch).unwrap();
-            let reachability_relations_write = staging_reachability_relations.commit(&mut batch).unwrap();
+            staging_reachability_relations.commit(&mut batch).unwrap();
 
             // Write
             self.db.write(batch).unwrap();

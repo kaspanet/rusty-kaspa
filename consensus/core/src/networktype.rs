@@ -150,6 +150,17 @@ impl NetworkId {
             NetworkType::Devnet => 16611,
         }
     }
+
+    pub fn iter() -> impl Iterator<Item = Self> {
+        static NETWORK_IDS: [NetworkId; 5] = [
+            NetworkId::new(NetworkType::Mainnet),
+            NetworkId::with_suffix(NetworkType::Testnet, 10),
+            NetworkId::with_suffix(NetworkType::Testnet, 11),
+            NetworkId::new(NetworkType::Devnet),
+            NetworkId::new(NetworkType::Simnet),
+        ];
+        NETWORK_IDS.iter().copied()
+    }
 }
 
 impl Deref for NetworkId {

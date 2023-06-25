@@ -18,10 +18,6 @@ pub struct RequestIbdChainBlockLocatorFlow {
 
 #[async_trait::async_trait]
 impl Flow for RequestIbdChainBlockLocatorFlow {
-    fn name(&self) -> &'static str {
-        "IBD_CHAIN_BLOCK_LOCATOR"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
