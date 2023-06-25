@@ -11,6 +11,7 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::info;
+use kaspa_utils::vec::VecExtensions;
 
 use super::tx::{Orphan, Priority};
 
@@ -60,8 +61,10 @@ impl Mempool {
         // transaction reference and mutably for the call to process_orphans_after_accepted_transaction
         let accepted_transaction =
             self.transaction_pool.add_transaction(transaction, consensus.get_virtual_daa_score(), priority)?.mtx.tx.clone();
-        let accepted_orphans = self.process_orphans_after_accepted_transaction(consensus, &accepted_transaction)?;
-        Ok(accepted_orphans)
+        let mut accepted_transactions = self.process_orphans_after_accepted_transaction(consensus, &accepted_transaction)?;
+        // We include the original accepted transaction as well
+        accepted_transactions.swap_insert(0, accepted_transaction);
+        Ok(accepted_transactions)
     }
 
     fn validate_transaction_pre_utxo_entry(&self, transaction: &MutableTransaction) -> RuleResult<()> {
