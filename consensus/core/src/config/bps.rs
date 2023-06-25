@@ -85,9 +85,7 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     pub const fn pruning_proof_m() -> u64 {
-        // Since the important levels remain logarithmically long, it seems that this
-        // constant does not need to scale with BPS.
-        // TODO: finalize this
+        // No need to scale this constant with BPS since the important block levels (higher) remain logarithmically long
         PRUNING_PROOF_M
     }
 
@@ -120,10 +118,6 @@ impl<const BPS: u64> Bps<BPS> {
     pub const fn pre_deflationary_phase_base_subsidy() -> u64 {
         50000000000 / BPS
     }
-
-    // TODO: we might need to increase max_block_level (at least for mainnet) as a function of BPS
-    // since higher BPS means easier difficulty puzzles -> less zeros in pow hash
-    // pub const fn max_block_level() -> u64 {  }
 }
 
 #[cfg(test)]
