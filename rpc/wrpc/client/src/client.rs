@@ -1,8 +1,10 @@
+use crate::error::Error;
 use crate::imports::*;
 use kaspa_rpc_core::notify::collector::{RpcCoreCollector, RpcCoreConverter};
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
 use std::fmt::Debug;
 use workflow_rpc::client::Ctl;
+pub use workflow_rpc::client::{ConnectOptions, ConnectResult, ConnectStrategy};
 
 // /// [`NotificationMode`] controls notification delivery process
 // #[wasm_bindgen]
@@ -27,12 +29,10 @@ struct Inner {
 
 impl Inner {
     pub fn new(encoding: Encoding, url: &str) -> Result<Inner> {
-        let re = Regex::new(r"^wrpc").unwrap();
-        let url = re.replace(url, "ws").to_string();
         // log_trace!("Kaspa wRPC::{encoding} connecting to: {url}");
         let ctl_channel = Channel::<Ctl>::unbounded();
 
-        let options = RpcClientOptions { url: &url, ctl_channel: Some(ctl_channel.clone()), ..RpcClientOptions::default() };
+        let options = RpcClientOptions { url, ctl_channel: Some(ctl_channel.clone()), ..RpcClientOptions::default() };
 
         let notification_channel = Channel::unbounded();
 
@@ -73,10 +73,9 @@ impl Inner {
                 }),
             );
         });
+
         let rpc = Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options)?);
-
         let client = Self { rpc, notification_channel, encoding, ctl_channel };
-
         Ok(client)
     }
 
@@ -164,6 +163,18 @@ impl KaspaRpcClient {
         Ok(client)
     }
 
+    pub fn url(&self) -> String {
+        self.inner.rpc.url()
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.inner.rpc.is_open()
+    }
+
+    pub fn rpc(&self) -> &Arc<RpcClient<RpcApiOps>> {
+        &self.inner.rpc
+    }
+
     /// Starts RPC services.
     pub async fn start(&self) -> Result<()> {
         match &self.notification_mode {
@@ -194,8 +205,13 @@ impl KaspaRpcClient {
     /// to the wRPC server.  If the supplied `block` call is `true`
     /// this function will block until the first successful
     /// connection.
-    pub async fn connect(&self, block: bool) -> Result<Option<Listener>> {
-        Ok(self.inner.rpc.connect(block).await?)
+    // pub async fn connect(&self, options: ConnectOptions) -> ConnectResult {
+    pub async fn connect(&self, options: ConnectOptions) -> ConnectResult<Error> {
+        Ok(self.inner.rpc.connect(options).await?)
+    }
+
+    pub async fn disconnect(&self) -> Result<()> {
+        Ok(self.inner.rpc.shutdown().await?)
     }
 
     /// Stop and shutdown RPC disconnecting existing connections
@@ -209,7 +225,7 @@ impl KaspaRpcClient {
     pub fn connect_as_task(&self) -> Result<()> {
         let self_ = self.clone();
         workflow_core::task::spawn(async move {
-            self_.inner.rpc.connect(false).await.ok();
+            self_.inner.rpc.connect(ConnectOptions::default()).await.ok();
         });
         Ok(())
     }

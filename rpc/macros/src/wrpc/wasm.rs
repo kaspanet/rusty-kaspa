@@ -47,7 +47,7 @@ impl ToTokens for RpcHandlers {
             targets_no_args.push(quote! {
 
                 #[wasm_bindgen(js_name = #fn_camel)]
-                pub async fn #fn_no_suffix(&self) -> JsResult<JsValue> {
+                pub async fn #fn_no_suffix(&self) -> Result<JsValue> {
                     let value: JsValue = js_sys::Object::new().into();
                     let request: #request_type = from_value(value)?;
                     // log_info!("request: {:#?}",request);
@@ -68,7 +68,7 @@ impl ToTokens for RpcHandlers {
             targets_with_args.push(quote! {
 
                 #[wasm_bindgen(js_name = #fn_camel)]
-                pub async fn #fn_no_suffix(&self, request: JsValue) -> JsResult<JsValue> {
+                pub async fn #fn_no_suffix(&self, request: JsValue) -> Result<JsValue> {
                     let request: #request_type = from_value(request)?;
                     let result: RpcResult<#response_type> = self.client.#fn_call(request).await;
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
@@ -140,13 +140,13 @@ impl ToTokens for RpcSubscriptions {
             targets.push(quote! {
 
                 #[wasm_bindgen(js_name = #fn_subscribe_camel)]
-                pub async fn #fn_subscribe_snake(&self) -> JsResult<()> {
+                pub async fn #fn_subscribe_snake(&self) -> Result<()> {
                     self.client.start_notify(ListenerId::default(), Scope::#scope(#sub_scope {})).await?;
                     Ok(())
                 }
 
                 #[wasm_bindgen(js_name = #fn_unsubscribe_camel)]
-                pub async fn #fn_unsubscribe_snake(&self) -> JsResult<()> {
+                pub async fn #fn_unsubscribe_snake(&self) -> Result<()> {
                     self.client.stop_notify(ListenerId::default(), Scope::#scope(#sub_scope {})).await?;
                     Ok(())
                 }

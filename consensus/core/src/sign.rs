@@ -14,7 +14,7 @@ pub enum Error {
     #[error("{0}")]
     Message(String),
 
-    #[error("Secp256k1Error: {0}")]
+    #[error("Secp256k1 -> {0}")]
     Secp256k1Error(#[from] secp256k1::Error),
 }
 
