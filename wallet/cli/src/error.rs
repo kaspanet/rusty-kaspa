@@ -6,7 +6,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Error: {0}")]
+    #[error("{0}")]
     Custom(String),
 
     #[error("Action aborted by the user")]

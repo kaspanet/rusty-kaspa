@@ -11,25 +11,25 @@ use crate::storage::*;
 /// needed for accessing stored wallet data.
 #[async_trait]
 pub trait AccessContextT: Send + Sync {
-    async fn wallet_secret(&self) -> Option<Secret>;
+    async fn wallet_secret(&self) -> Secret;
 }
 
 /// AccessContext is a wrapper for wallet secret that implements
 /// the [`AccessContextT`] trait.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct AccessContext {
-    pub(crate) wallet_secret: Option<Secret>,
+    pub(crate) wallet_secret: Secret,
 }
 
 impl AccessContext {
-    pub fn new(wallet_secret: Option<Secret>) -> Self {
+    pub fn new(wallet_secret: Secret) -> Self {
         Self { wallet_secret }
     }
 }
 
 #[async_trait]
 impl AccessContextT for AccessContext {
-    async fn wallet_secret(&self) -> Option<Secret> {
+    async fn wallet_secret(&self) -> Secret {
         self.wallet_secret.clone()
     }
 }
@@ -48,7 +48,7 @@ pub trait PrvKeyDataStore: Send + Sync {
 #[async_trait]
 pub trait AccountStore: Send + Sync {
     async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Account>>;
-    async fn len(self: Arc<Self>, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize>;
+    async fn len(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize>;
     async fn load(&self, ids: &[AccountId]) -> Result<Vec<Arc<Account>>>;
     async fn store(&self, data: &[&Account]) -> Result<()>;
     async fn remove(&self, id: &[&AccountId]) -> Result<()>;
@@ -92,13 +92,16 @@ impl OpenArgs {
 
 #[async_trait]
 pub trait Interface: Send + Sync + AnySync {
+    fn is_open(&self) -> Result<bool>;
+
+    // return storage information string (file location)
+    fn descriptor(&self) -> Result<Option<String>>;
+
     // checks if the wallet storage is present
     async fn exists(&self, name: Option<&str>) -> Result<bool>;
 
     // initialize wallet storage
     async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()>;
-
-    async fn is_open(&self) -> Result<bool>;
 
     // establish an open state (load wallet data cache, connect to the database etc.)
     async fn open(&self, ctx: &Arc<dyn AccessContextT>, args: OpenArgs) -> Result<()>;
@@ -108,9 +111,6 @@ pub trait Interface: Send + Sync + AnySync {
 
     // stop the storage subsystem
     async fn close(&self) -> Result<()>;
-
-    // return storage information string (file location)
-    async fn descriptor(&self) -> Result<Option<String>>;
 
     // ~~~
 

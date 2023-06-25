@@ -13,7 +13,7 @@ use zeroize::Zeroize;
 
 use crate::storage::{AccountKind, Encryptable};
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeyDataId(pub(crate) [u8; 8]);
 
 impl KeyDataId {

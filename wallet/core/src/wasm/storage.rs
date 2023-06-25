@@ -1,143 +1,134 @@
-use crate::imports::*;
-use crate::result::Result;
-use crate::storage::interface::CreateArgs;
-use crate::storage::interface::OpenArgs;
-use crate::storage::interface::StorageStream;
-use crate::storage::local::cache::*;
-use crate::storage::local::streams::*;
-use crate::storage::local::wallet::Wallet;
-use crate::storage::local::*;
-use crate::storage::*;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 
-pub(crate) struct LocalStoreInner {
-    pub cache: Arc<Mutex<Cache>>,
-    pub store: Store,
-    pub modified: AtomicBool,
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsValue;
+use web_sys::Element;
+
+#[wasm_bindgen]
+extern "C" {
+
+    #[wasm_bindgen(js_name="Storage")]
+    pub type Storage;
+
+    // #[wasm_bindgen(
+    //     constructor,
+    //     js_name = "Storage"
+    // )]
+    // pub fn new() -> Storage;
+
+    // #[wasm_bindgen(method, js_name = "proposeDimensions")]
+    // pub fn propose_dimensions(this: &FitAddon);
+
+    // #[wasm_bindgen(method, js_name = "fit")]
+    // pub fn fit(this: &FitAddon);
+
+
+    #[wasm_bindgen(method, js_name = "exists")]
+    async fn exists(&self, name: Option<&str>) -> Result<bool>;
+
+    // initialize wallet storage
+    #[wasm_bindgen(method, js_name = "create")]
+    async fn create(this: &Storage, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()>;
+
+    // async fn is_open(&self) -> Result<bool>;
+
+    // establish an open state (load wallet data cache, connect to the database etc.)
+    #[wasm_bindgen(method, js_name = "open")]
+    async fn open(this: &Storage, ctx: &Arc<dyn AccessContextT>, args: OpenArgs) -> Result<()>;
+
+    // flush writable operations (invoked after multiple store and remove operations)
+    #[wasm_bindgen(method, js_name = "commit")]
+    async fn commit(this: &Storage, ctx: &Arc<dyn AccessContextT>) -> Result<()>;
+
+    // stop the storage subsystem
+    #[wasm_bindgen(method, js_name = "close")]
+    async fn close(this: &Storage) -> Result<()>;
+
+    // return storage information string (file location)
+    // #[wasm_bindgen(method, js_name = "descriptor")]
+    // async fn descriptor(&self) -> Result<Option<String>>;
+
+    // ~~~
+
+    // phishing hint (user-created text string identifying authenticity of the wallet)
+    // async fn get_user_hint(&self) -> Result<Option<Hint>>;
+    // async fn set_user_hint(&self, hint: Option<Hint>) -> Result<()>;
+
+    // ~~~
+
+
+    #[wasm_bindgen(method, js_name = "getKeyInfoRange")]
+    async fn get_key_info_range(this: &Storage, start: usize, stop : usize) -> Result<PrvKeyDataInfo>;
+    #[wasm_bindgen(method, js_name = "loadKeyInfo")]
+    async fn load_key_info(this: &Storage, id: &PrvKeyDataId) -> Result<Option<Arc<PrvKeyDataInfo>>>;
+    #[wasm_bindgen(method, js_name = "loadKeyData")]
+    async fn load_key_data(this: &Storage, ctx: &Arc<dyn AccessContextT>, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>>;
+    #[wasm_bindgen(method, js_name = "storeKeyInfo")]
+    async fn store_key_info(this: &Storage, ctx: &Arc<dyn AccessContextT>, data: PrvKeyData) -> Result<()>;
+    #[wasm_bindgen(method, js_name = "storeKeyData")]
+    async fn store_key_data(this: &Storage, ctx: &Arc<dyn AccessContextT>, data: PrvKeyData) -> Result<()>;
+    #[wasm_bindgen(method, js_name = "removeKeyData")]
+    async fn remove_key_data(this: &Storage, ctx: &Arc<dyn AccessContextT>, id: &PrvKeyDataId) -> Result<()>;
+    
+    #[wasm_bindgen(method, js_name = "getAccountRange")]
+    async fn get_account_range(this: &Storage, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Account>>;
+    #[wasm_bindgen(method, js_name = "getAccountLen")]
+    async fn get_account_count(this: &Storage, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize>;
+    #[wasm_bindgen(method, js_name = "loadAccounts")]
+    async fn load_accounts(this: &Storage, ids: &[AccountId]) -> Result<Vec<Arc<Account>>>;
+    #[wasm_bindgen(method, js_name = "storeAccounts")]
+    async fn store_accounts(this: &Storage, data: &[&Account]) -> Result<()>;
+    #[wasm_bindgen(method, js_name = "removeAccounts")]
+    async fn remove_accounts(this: &Storage, id: &[&AccountId]) -> Result<()>;
+    
+    // pub trait MetadataStore: Send + Sync {
+        // async fn get_metadata_range(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>>;
+        // async fn load_metadata(&self, id: &[AccountId]) -> Result<Vec<Arc<Metadata>>>;
+        
+    #[wasm_bindgen(method, js_name = "getTransactionRecordRange")]
+    async fn get_transaction_record_range(this: &Storage) -> Result<StorageStream<TransactionRecord>>;
+    #[wasm_bindgen(method, js_name = "loadTransactionRecords")]
+    async fn load_transaction_records(this: &Storage, id: &[TransactionRecordId]) -> Result<Vec<Arc<TransactionRecord>>>;
+    #[wasm_bindgen(method, js_name = "storeTransactionRecords")]
+    async fn store_transaction_records(this: &Storage, data: &[&TransactionRecord]) -> Result<()>;
+    #[wasm_bindgen(method, js_name = "removeTransactionRecords")]
+    async fn remove_transaction_records(this: &Storage, id: &[&TransactionRecordId]) -> Result<()>;
+
 }
 
-impl LocalStoreInner {
-    // pub async fn exists(folder: &str, name : Option<&str>) -> Result<bool> {
-    //     let store = Store::new(folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
-    //     store.exists().await
-    // }
 
-    pub async fn try_create(ctx: &Arc<dyn AccessContextT>, folder: &str, args: CreateArgs) -> Result<Self> {
-        let store = Store::new(folder, &args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string()))?;
-
-        if store.exists().await? && !args.overwrite_wallet {
-            Err(Error::WalletAlreadyExists)
-        } else {
-            let secret = ctx.wallet_secret().await;
-            let payload = Payload::default();
-            let wallet = Wallet::try_new(secret.clone(), payload)?;
-            let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
-            let modified = AtomicBool::new(false);
-
-            Ok(Self { cache, store, modified })
-        }
-    }
-
-    pub async fn try_load(ctx: &Arc<dyn AccessContextT>, folder: &str, args: OpenArgs) -> Result<Self> {
-        let store = Store::new(folder, &args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string()))?;
-
-        let secret = ctx.wallet_secret().await;
-        let wallet = Wallet::try_load(&store).await?;
-        let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
-        let modified = AtomicBool::new(false);
-
-        Ok(Self { cache, store, modified })
-    }
-
-    pub fn cache(&self) -> MutexGuard<Cache> {
-        self.cache.lock().unwrap()
-    }
-
-    // pub async fn reload(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
-    //     let secret = ctx.wallet_secret().await.expect("wallet requires an encryption secret");
-    //     let wallet = Wallet::try_load(&self.store).await?;
-    //     let cache = Cache::try_from((wallet, &secret))?;
-    //     self.cache.lock().unwrap().replace(cache);
-    //     Ok(())
-    // }
-
-    pub async fn store(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
-        let secret = ctx.wallet_secret().await; //.ok_or(Error::WalletSecretRequired)?;
-        let wallet = Wallet::try_from((&*self.cache(), &secret))?;
-        wallet.try_store(&self.store).await?;
-        self.set_modified(false);
-
-        Ok(())
-    }
-
-    #[inline]
-    pub fn set_modified(&self, modified: bool) {
-        self.modified.store(modified, Ordering::SeqCst);
-    }
-
-    #[inline]
-    pub fn is_modified(&self) -> bool {
-        self.modified.load(Ordering::SeqCst)
-    }
-}
-
-impl Drop for LocalStoreInner {
-    fn drop(&mut self) {
-        if self.is_modified() {
-            panic!("LocalStoreInner::drop called while modified flag is true");
-        }
-    }
-}
-
-pub struct Location {
-    pub folder: String,
-}
-
-impl Location {
-    pub fn new(folder: &str) -> Self {
-        Self { folder: folder.to_string() }
-    }
-}
-
-impl Default for Location {
-    fn default() -> Self {
-        Self { folder: super::DEFAULT_STORAGE_FOLDER.to_string() }
-    }
+pub(crate) struct Inner {
+    storage: Storage,
 }
 
 #[derive(Clone)]
-pub(crate) struct LocalStore {
-    location: Arc<Mutex<Option<Arc<Location>>>>,
-    inner: Arc<Mutex<Option<Arc<LocalStoreInner>>>>,
+pub(crate) struct Proxy {
+    inner: Arc<Inner>,
 }
 
-impl LocalStore {
-    pub fn try_new() -> Result<Self> {
-        Ok(Self { location: Arc::new(Mutex::new(Some(Arc::new(Location::default())))), inner: Arc::new(Mutex::new(None)) })
-    }
-
-    pub fn inner(&self) -> Result<Arc<LocalStoreInner>> {
-        self.inner.lock().unwrap().as_ref().cloned().ok_or(Error::WalletNotLoaded)
+impl Proxy {
+    pub fn try_new(storage: Storage) -> Result<Self> {
+        Ok(Self{ inner : Inner { storage : Arc::new(storage) }, })
     }
 }
 
 #[async_trait]
-impl Interface for LocalStore {
+impl Interface for Proxy {
     fn as_prv_key_data_store(&self) -> Result<Arc<dyn PrvKeyDataStore>> {
-        Ok(self.inner()?)
+        Ok(self.inner)
     }
 
     fn as_account_store(&self) -> Result<Arc<dyn AccountStore>> {
-        Ok(self.inner()?)
+        Ok(self.inner)
     }
 
     fn as_metadata_store(&self) -> Result<Arc<dyn MetadataStore>> {
-        Ok(self.inner()?)
+        Ok(self.inner)
     }
 
     fn as_transaction_record_store(&self) -> Result<Arc<dyn TransactionRecordStore>> {
-        Ok(self.inner()?)
+        Ok(self.inner)
     }
 
     async fn exists(&self, name: Option<&str>) -> Result<bool> {
@@ -149,7 +140,7 @@ impl Interface for LocalStore {
     async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()> {
         log_info!("INTERFACE: creating wallet");
         let location = self.location.lock().unwrap().clone().unwrap();
-        let inner = Arc::new(LocalStoreInner::try_create(ctx, &location.folder, args).await?);
+        let inner = Arc::new(Inner::try_create(ctx, &location.folder, args).await?);
         self.inner.lock().unwrap().replace(inner);
 
         Ok(())
@@ -157,16 +148,16 @@ impl Interface for LocalStore {
 
     async fn open(&self, ctx: &Arc<dyn AccessContextT>, args: OpenArgs) -> Result<()> {
         let location = self.location.lock().unwrap().clone().unwrap();
-        let inner = Arc::new(LocalStoreInner::try_load(ctx, &location.folder, args).await?);
+        let inner = Arc::new(Inner::try_load(ctx, &location.folder, args).await?);
         self.inner.lock().unwrap().replace(inner);
         Ok(())
     }
 
-    fn is_open(&self) -> Result<bool> {
+    async fn is_open(&self) -> Result<bool> {
         Ok(self.inner.lock().unwrap().is_some())
     }
 
-    fn descriptor(&self) -> Result<Option<String>> {
+    async fn descriptor(&self) -> Result<Option<String>> {
         Ok(Some(self.inner()?.store.filename_as_string()))
     }
 
@@ -178,11 +169,11 @@ impl Interface for LocalStore {
 
     async fn close(&self) -> Result<()> {
         if self.inner()?.is_modified() {
-            panic!("LocalStore::close called while modified flag is true");
+            panic!("Proxy::close called while modified flag is true");
         }
 
-        if !self.is_open()? {
-            panic!("LocalStore::close called while wallet is not open");
+        if !self.is_open().await? {
+            panic!("Proxy::close called while wallet is not open");
         }
 
         self.inner.lock().unwrap().take();
@@ -201,7 +192,7 @@ impl Interface for LocalStore {
 }
 
 #[async_trait]
-impl PrvKeyDataStore for LocalStoreInner {
+impl PrvKeyDataStore for Inner {
     async fn iter(&self) -> Result<StorageStream<PrvKeyDataInfo>> {
         Ok(Box::pin(PrvKeyDataInfoStream::new(self.cache.clone())))
     }
@@ -237,12 +228,12 @@ impl PrvKeyDataStore for LocalStoreInner {
 }
 
 #[async_trait]
-impl AccountStore for LocalStoreInner {
+impl AccountStore for Inner {
     async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Account>> {
         Ok(Box::pin(AccountStream::new(self.cache.clone(), prv_key_data_id_filter)))
     }
 
-    async fn len(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize> {
+    async fn len(self: Arc<Self>, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize> {
         let len = match prv_key_data_id_filter {
             Some(filter) => self.cache().accounts.vec.iter().filter(|account| account.prv_key_data_id == filter).count(),
             None => self.cache().accounts.vec.len(),
@@ -287,7 +278,7 @@ impl AccountStore for LocalStoreInner {
 }
 
 #[async_trait]
-impl MetadataStore for LocalStoreInner {
+impl MetadataStore for Inner {
     async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>> {
         Ok(Box::pin(MetadataStream::new(self.cache.clone(), prv_key_data_id_filter)))
     }
@@ -298,7 +289,7 @@ impl MetadataStore for LocalStoreInner {
 }
 
 #[async_trait]
-impl TransactionRecordStore for LocalStoreInner {
+impl TransactionRecordStore for Inner {
     async fn iter(&self) -> Result<StorageStream<TransactionRecord>> {
         Ok(Box::pin(TransactionRecordStream::new(self.cache.clone())))
     }

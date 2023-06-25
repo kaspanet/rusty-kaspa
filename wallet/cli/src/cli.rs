@@ -10,7 +10,7 @@ use kaspa_wallet_core::imports::ToHex;
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
 use kaspa_wallet_core::storage::{AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
 use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
-use kaspa_wallet_core::{Address, AddressPrefix};
+use kaspa_wallet_core::{Address, AddressPrefix, ConnectOptions, ConnectStrategy};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
@@ -19,6 +19,7 @@ use workflow_core::abortable::Abortable;
 use workflow_core::channel::*;
 use workflow_core::enums::EnumTrait;
 use workflow_core::runtime as application_runtime;
+use workflow_dom::utils::window;
 use workflow_log::*;
 use workflow_terminal::Terminal;
 pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget};
@@ -75,7 +76,31 @@ impl WalletCli {
                 }
             }
             Action::Connect => {
-                self.wallet.rpc_client().connect(true).await?;
+                // TODO -
+
+                let url = if let Some(url) = argv.first().cloned() {
+                    if url.starts_with("ws://")
+                        || url.starts_with("wss://")
+                        || url.starts_with("wrpc://")
+                        || url.starts_with("wrpcs://")
+                    {
+                        Some(url)
+                    } else if application_runtime::is_web() {
+                        let location = window().location();
+                        let protocol = location
+                            .protocol()
+                            .map_err(|_| "Unable to obtain window location protocol".to_string())?
+                            .replace("http", "ws");
+                        Some(format!("{protocol}//{url}"))
+                    } else {
+                        Some(format!("ws://{url}"))
+                    }
+                } else {
+                    None
+                };
+
+                let options = ConnectOptions { block_async_connect: true, strategy: ConnectStrategy::Fallback, url };
+                self.wallet.rpc_client().connect(options).await?;
             }
             Action::Disconnect => {
                 self.wallet.rpc_client().shutdown().await?;
@@ -85,8 +110,11 @@ impl WalletCli {
                 term.writeln(response);
             }
             Action::Ping => {
-                self.wallet.ping().await?;
-                term.writeln("ok");
+                if self.wallet.ping().await {
+                    term.writeln("ping ok");
+                } else {
+                    term.writeln("ping error");
+                }
             }
             // Action::Balance => {}
             //     let accounts = self.wallet.accounts();
@@ -97,7 +125,7 @@ impl WalletCli {
             //     }
             // }
             Action::Create => {
-                let is_open = self.wallet.is_open().await?;
+                let is_open = self.wallet.is_open()?;
 
                 let op = if argv.is_empty() { if is_open { "account" } else { "wallet" }.to_string() } else { argv.remove(0) };
 
@@ -429,7 +457,7 @@ impl WalletCli {
 
         let wallet_args = WalletCreateArgs::new(None, hint, true);
         let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_password, Some(payment_password));
-        let (mnemonic, descriptor) = self.wallet.create_wallet(&wallet_args, &account_args).await?;
+        let (mnemonic, descriptor) = self.wallet.create_wallet(wallet_args, account_args).await?;
 
         ["", "---", "", "IMPORTANT:", ""].into_iter().for_each(|line| term.writeln(line));
 
@@ -670,7 +698,7 @@ where
 }
 
 pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
-    let wallet = Arc::new(Wallet::try_new().await?);
+    let wallet = Arc::new(Wallet::try_new()?);
     let cli = Arc::new(WalletCli::new(wallet.clone()));
     let term = Arc::new(Terminal::try_new_with_options(cli.clone(), options)?);
     term.init().await?;

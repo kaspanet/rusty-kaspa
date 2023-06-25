@@ -26,7 +26,15 @@ impl From<&[u8]> for Secret {
 }
 impl From<&str> for Secret {
     fn from(s: &str) -> Self {
-        Secret(s.as_bytes().to_vec())
+        Secret(s.trim().as_bytes().to_vec())
+    }
+}
+
+impl From<String> for Secret {
+    fn from(mut s: String) -> Self {
+        let secret = Secret(s.trim().as_bytes().to_vec());
+        s.zeroize();
+        secret
     }
 }
 

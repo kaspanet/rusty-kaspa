@@ -9,6 +9,7 @@ use std::sync::PoisonError;
 use wasm_bindgen::JsValue;
 use workflow_core::abortable::Aborted;
 use workflow_rpc::client::error::Error as RpcError;
+use workflow_wasm::printable::*;
 use workflow_wasm::sendable::*;
 
 use thiserror::Error;
@@ -17,37 +18,37 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Error: {0}")]
+    #[error("{0}")]
     Custom(String),
 
     #[error("please select an account")]
     AccountSelection,
 
-    #[error("RPC error: {0}")]
+    #[error("{0}")]
     KaspaRpcClientResult(#[from] KaspaRpcError),
 
-    #[error("RPC error: {0}")]
+    #[error("wRPC -> {0}")]
     RpcError(#[from] RpcError),
 
-    #[error("RPC error: {0}")]
+    #[error("Wallet wRPC -> {0}")]
     KaspaWorkflowRpcError(#[from] KaspaWorkflowRpcError),
 
-    #[error("BIP32 error: {0}")]
+    #[error("Bip32 -> {0}")]
     BIP32Error(#[from] BIP32Error),
 
-    #[error("Decoding error: {0}")]
+    #[error("Decoding -> {0}")]
     Decode(#[from] core::array::TryFromSliceError),
 
-    #[error("PoisonError error: {0}")]
+    #[error("Poison error -> {0}")]
     PoisonError(String),
 
-    #[error("Secp256k1 error: {0}")]
+    #[error("Secp256k1 -> {0}")]
     Secp256k1Error(#[from] Secp256k1Error),
 
-    #[error("consensus core sign() error: {0}")]
+    #[error("(consensus core sign()) {0}")]
     CoreSignError(#[from] CoreSignError),
 
-    #[error("SerdeJson error: {0}")]
+    #[error("SerdeJson -> {0}")]
     SerdeJson(#[from] serde_json::Error),
 
     #[error("No wallet found")]
@@ -59,16 +60,22 @@ pub enum Error {
     #[error("Wallet is not loaded")]
     WalletNotLoaded,
 
-    #[error("invalid filename: {0}")]
+    #[error("Wallet is not connected")]
+    WalletNotConnected,
+
+    #[error("The server UTXO index is not enabled")]
+    MissingUtxoIndex,
+
+    #[error("Invalid filename: {0}")]
     InvalidFilename(String),
 
-    #[error("I/O error: {0}")]
+    #[error("(I/O) {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("JsValue error: {0:?}")]
-    JsValue(Sendable<wasm_bindgen::JsValue>),
+    #[error("{0}")]
+    JsValue(Sendable<Printable>),
 
-    #[error("Base64 decode error: {0}")]
+    #[error("Base64 decode -> {0}")]
     DecodeError(#[from] DecodeError),
 
     #[error(transparent)]
@@ -80,10 +87,10 @@ pub enum Error {
     #[error(transparent)]
     Address(#[from] kaspa_addresses::AddressError),
 
-    #[error("SerdeWasmBindgen: {0:?}")]
-    SerdeWasmBindgen(Sendable<JsValue>),
+    #[error("Serde WASM bindgen -> {0}")]
+    SerdeWasmBindgen(Sendable<Printable>),
 
-    #[error("FasterHexError: {0:?}")]
+    #[error("FasterHex -> {0:?}")]
     FasterHexError(#[from] FasterHexError),
 
     #[error("{0}")]
@@ -95,10 +102,10 @@ pub enum Error {
     #[error(transparent)]
     ScriptBuilderError(#[from] kaspa_txscript::script_builder::ScriptBuilderError),
 
-    #[error("argon2 {0}")]
+    #[error("argon2 -> {0}")]
     Argon2(argon2::Error),
 
-    #[error("argon2::password_hash {0}")]
+    #[error("argon2::password_hash -> {0}")]
     Argon2ph(argon2::password_hash::Error),
 
     #[error(transparent)]
@@ -109,6 +116,9 @@ pub enum Error {
 
     #[error("private key {0} already exists")]
     PrivateKeyAlreadyExists(String),
+
+    #[error("invalid key id: {0}")]
+    KeyId(String),
 
     #[error("wallet secret is required")]
     WalletSecretRequired,
@@ -143,7 +153,10 @@ impl From<chacha20poly1305::Error> for Error {
 
 impl From<Error> for JsValue {
     fn from(value: Error) -> Self {
-        JsValue::from(value.to_string())
+        match value {
+            Error::JsValue(js_value) => js_value.as_ref().as_ref().clone(),
+            _ => JsValue::from(value.to_string()),
+        }
     }
 }
 
@@ -167,13 +180,19 @@ impl From<&str> for Error {
 
 impl From<wasm_bindgen::JsValue> for Error {
     fn from(err: wasm_bindgen::JsValue) -> Self {
-        Self::JsValue(Sendable(err))
+        Self::JsValue(Sendable(err.into()))
+    }
+}
+
+impl From<wasm_bindgen::JsError> for Error {
+    fn from(err: wasm_bindgen::JsError) -> Self {
+        Self::JsValue(Sendable(err.into()))
     }
 }
 
 impl From<serde_wasm_bindgen::Error> for Error {
     fn from(err: serde_wasm_bindgen::Error) -> Self {
-        Self::SerdeWasmBindgen(Sendable(err.into()))
+        Self::SerdeWasmBindgen(Sendable(Printable::new(err.into())))
     }
 }
 

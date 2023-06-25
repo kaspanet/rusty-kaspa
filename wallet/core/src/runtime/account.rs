@@ -3,7 +3,7 @@ use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDeri
 use crate::address::{build_derivate_paths, AddressManager};
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::wallet::{BalanceUpdate, Events, Wallet};
+use crate::runtime::wallet::{Events, Wallet};
 use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
 use crate::storage::interface::AccessContext;
@@ -22,7 +22,6 @@ use kaspa_rpc_core::api::notifications::Notification;
 use serde::Serializer;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-// use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use workflow_core::abortable::Abortable;
@@ -254,11 +253,10 @@ impl Account {
 
     pub async fn update_balance(self: &Arc<Account>) -> Result<u64> {
         let balance = self.utxos.calculate_balance().await?;
-        self.balance.lock().unwrap().replace(balance); //store(balance, std::sync::atomic::Ordering::SeqCst);
-        let balance_update = Arc::new(BalanceUpdate { account_id: self.id, balance });
+        self.balance.lock().unwrap().replace(balance);
         self.wallet
             .multiplexer
-            .broadcast(Events::Balance(balance_update))
+            .broadcast(Events::BalanceUpdate { balance, account_id: self.id })
             .await
             .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
         Ok(balance)
@@ -437,7 +435,7 @@ impl Account {
         let receive_indexes = indexes.0;
         let change_indexes = indexes.1;
 
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(Some(wallet_secret)));
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         let keydata = self
             .wallet
             .store()
