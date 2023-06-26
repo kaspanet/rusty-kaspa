@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
+use workflow_core::enums::u8_try_from;
 use wasm_bindgen::prelude::*;
 
 #[derive(thiserror::Error, PartialEq, Eq, Debug, Clone)]
@@ -12,14 +13,16 @@ pub enum NetworkTypeError {
     InvalidNetworkType(String),
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-#[wasm_bindgen]
-pub enum NetworkType {
-    Mainnet,
-    Testnet,
-    Devnet,
-    Simnet,
+u8_try_from! {
+    #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
+    #[serde(rename_all = "lowercase")]
+    #[wasm_bindgen]
+    pub enum NetworkType {
+        Mainnet,
+        Testnet,
+        Devnet,
+        Simnet,
+    }
 }
 
 impl NetworkType {
