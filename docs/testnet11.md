@@ -12,10 +12,10 @@ The goal of the first experiment is to stress load the network in terms of block
 
 On the software side, participating requires three components:
 1. *kaspad* - the Kaspa client
-2.  *kaspaminer* - the Kaspa miner (duh)
+2.  *kaspaminer* - the Kaspa miner
 3.  *Rothschild* - a transaction generator
 
-The Rothschild tool is used to create a wallet, and once the wallet has some funds within, Rothschild will continuously create transactions from that wallet back to that wallet at the prescribed rate.
+The Rothschild tool is used to create a wallet, and once the wallet has some funds within, Rothschild will continuously create transactions from that wallet back back to itself at the prescribed rate.
 
 The Rothschild wallet could be funded by either mining to it directly (either for a short period or continuously) or by asking other experiment participants for some funds (e.g. on the Discord \#testnet channel).
 
@@ -25,9 +25,9 @@ The only prerequisite is running a node that's connected to Testnet 11. Other th
 
 Since we want the test condition to be as close as possible to organic, we encourage users to diversify their roles, and the hardware they use to participate.
 
-The venue for discussing and monitoring the experiment will be the \#testnet channel on Discord. We encourage participants to describe the experience in general, and also tell us what hardware they are using and how well handles the load.
+The venue for discussing and monitoring the experiment will be the \#testnet channel on Discord. We encourage participants to describe the experience in general, and also tell us what hardware they are using and how well it handles the load.
 
-The minimal hardware requirements are 16GB or RAM, preferably a CPU with at least 8 cores, and an SSD drive with at least 50GB of free space (the 100GB for a safety margin is preferable).
+The minimal hardware requirements are 16GB of RAM, preferably a CPU with at least 8 cores, and an SSD drive with at least 50GB of free space (the 100GB for a safety margin is preferable).
 
 ## Setup Instructions
 
@@ -36,12 +36,13 @@ Testnet11 uses a dedicated P2P port (16311) so that nodes from the usual tesnet 
 We reiterate that only the included miner should be used to maintain a level playing field.
 
 First, we set-up a node:
-1. Download and extract the rusty-kaspa binaries <add URL>. Alternatively, you can compile it from source yourself by following the instructions [here](https://github.com/kaspanet/rusty-kaspa/blob/master/README.md). The rest of the instructions are written assuming the former option. If you choose to locally compile thecode, replace any command of the form ``<program> <arguments>`` with ``cargo run --bin <program> --release -- <arguments>`` (see example in the next item). All actions described below should be performed on a command line window where you navigated to the directory into which the binaries were extracted.
+1. Download and extract the rusty-kaspa binaries <add URL>. Alternatively, you can compile it from source yourself by following the instructions [here](https://github.com/kaspanet/rusty-kaspa/blob/master/README.md). The rest of the instructions are written assuming the former option. If you choose to locally compile the code, replace any command of the form ``<program> <arguments>`` with ``cargo run --bin <program> --release -- <arguments>`` (see example in the next item). All actions described below should be performed on a command line window where you navigated to the directory into which the binaries were extracted.
 2. Start the ``kaspad`` client with ``utxoindex`` enabled:
 
 ```
 kaspad --testnet --netsuffix=11 --utxoindex
 ```
+  It is **very impotrant** not to forget the ``--netsuffix=11`` flag, otherwise your node will connect to mainnet.
   If you complied the code yourself, you should instead run
 ```
 cargo run --bin kaspad --release -- --testnet --netsuffix=11 --utxoindex
@@ -50,7 +51,7 @@ cargo run --bin kaspad --release -- --testnet --netsuffix=11 --utxoindex
   
 If you want to transmit transactions, first create a Rothschild wallet
 1. Run ``rothschild`` to generate a wallet
-2. The output with provide you with a private key (that looks like a bunch of gibberish) and a public address (that looks like "kaspatest:" followed by a bunch of gibberish). For example, the output could look like this:
+2. The output will provide you with a private key (that looks like a bunch of gibberish) and a public address (that looks like "kaspatest:" followed by a bunch of gibberish). For example, the output could look like this:
      ```
      2023-06-25 18:00:58.677+00:00 [INFO ] Connected to RPC
      2023-06-25 18:00:58.677+00:00 [INFO ] Generated private key aa1c554386218eb28c4bsf6a02e5943799cf951dac7301324d88dec2d0119fce and address kaspatest:qzlpwt49f0useql6w0tzpnf8k2symdv5tu2x2pe9r9nvngw8mvx57q0tt9lr5. Send some funds to this address and rerun rothschild with `--private-key aa1c554386218eb28c4bsf6a02e5943799cf951dac7301324d88dec2d0119fce`
@@ -61,10 +62,17 @@ If you want to transmit transactions, first create a Rothschild wallet
    ```
    rothschild --private-key <private-key> -t=50
    ```
-  The last parameter ``-t=50`` means Rothschild will attempt broadcasting 50 transactions per second. We encourage participants to run with different TPS values. However, to prevent congestion, the code is hardwired not to go above 100 TPS.
+  The last parameter ``-t=50`` means Rothschild will attempt broadcasting 50 transactions per second. We encourage participants to run with different TPS values. However, in order to encourage transaction spread and to simulate organic usage we highly recommend not to go above 100 TPS.
 
 Like kaspad, the Rothschild window should remain open and undisturbed.
 
-To start mining, issue the following command:
+For mining, grab the [CPU miner](https://github.com/elichai/kaspa-miner/releases) and run it with the following flags:
+    ```
+    kaspaminer --testnet --miningaddr <address> --target-blocks-per-second=0
+    ```
 
 If you intend to run Rothschild, replace ``<address>`` with the address of the wallet generated by ``rothschild``, you should then wait for a while before your wallet accumulates enough funds. Assuming several dozen participants, 20 minutes should be more than enough. If you just mine for the sake of mining, you could use any address, such as the one provided in the example above. 
+
+The ``--target-blocks-per-second=0`` is important, without it the miner will limit itself to creating one block per second.
+
+Like the Kaspad and Rothschild windows, the miner window should also be left undisturbed, and closing it will stop the mining.
