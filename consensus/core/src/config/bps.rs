@@ -77,9 +77,13 @@ impl<const BPS: u64> Bps<BPS> {
 
     pub const fn pruning_depth() -> u64 {
         // Based on the analysis at https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf
-        // TODO: note that `Self::merge_depth_bound()` can replace one `Self::finality_depth()` unit, but for now we keep
-        // this calculation identical to the legacy calculation
-        Self::finality_depth() * 2 + 4 * Self::mergeset_size_limit() * Self::ghostdag_k() as u64 + 2 * Self::ghostdag_k() as u64 + 2
+        // and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
+        // We add an additional merge depth unit as a safety margin for anticone finalization
+        Self::finality_depth()
+            + Self::merge_depth_bound() * 2
+            + 4 * Self::mergeset_size_limit() * Self::ghostdag_k() as u64
+            + 2 * Self::ghostdag_k() as u64
+            + 2
     }
 
     pub const fn pruning_proof_m() -> u64 {
