@@ -138,7 +138,6 @@ impl Interface for Proxy {
     }
 
     async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()> {
-        log_info!("INTERFACE: creating wallet");
         let location = self.location.lock().unwrap().clone().unwrap();
         let inner = Arc::new(Inner::try_create(ctx, &location.folder, args).await?);
         self.inner.lock().unwrap().replace(inner);

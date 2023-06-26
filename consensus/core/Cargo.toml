@@ -34,6 +34,7 @@ wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 rand.workspace = true
 workflow-log.workspace = true
+workflow-core.workspace = true
 
 # secp256k1 = { version = "0.24", features = ["global-context", "rand-std", "serde"] }
 # secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }

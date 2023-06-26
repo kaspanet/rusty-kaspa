@@ -5,34 +5,63 @@ kaspa.init_console_panic_hook();
 
 (async ()=>{
     
-    let wallet = new kaspa.Wallet();
+    let wallet = new kaspa.Wallet({ 
+        resident : true,
+        networkType : kaspa.NetworkType.Mainnet,
+    });
+
     wallet.events.setHandler((args) => {
         console.log("multiplexer event: ",args);
     })
-    await wallet.start();
 
-    try {
+    let walletSecret = "secret";
 
-        // await wallet.connect();
-        await wallet.connect({
-            // url : "ws://foobar",
-            url : "wrpc://127.0.0.1:17110",
-            retry : false,
-            block : true,
-        });
-        // .catch((e) => {
-        //     console.log("connect error:",e);
-        // });
-        console.log("wallet:",wallet);
+    let descriptor = await wallet.createWallet({
+        walletSecret,
+    });
 
-        let info = await wallet.rpc.getBlockDagInfo();
-        console.log("info:", info);
+    console.log("descriptor:",descriptor);
 
-        await wallet.disconnect();
-    } catch(e) {
-        console.log("Client-side error:",e);
-        wallet.disconnect();
-    }
+    let keydata = await wallet.createPrvKeyData({
+        mnemonic : "fade insect feature mobile impose dinosaur brisk congress soul civil spoil cute maximum resemble zoo tower joke era luxury file eager business empower giggle",
+        walletSecret
+    });
+
+    console.log("keydata:",keydata);
+
+    let account = await wallet.createAccount(keydata.id, {
+        accountKind : kaspa.AccountKind.Bip32,
+        walletSecret
+    });
+
+    console.log("account:",account);
+
+    // await wallet.start();
+
+    // try {
+
+    //     // await wallet.connect();
+    //     await wallet.connect({
+    //         // url : "ws://foobar",
+    //         url : "wrpc://127.0.0.1:17110",
+    //         retry : false,
+    //         block : true,
+    //     });
+    //     // .catch((e) => {
+    //     //     console.log("connect error:",e);
+    //     // });
+    //     console.log("wallet:",wallet);
+
+    //     let info = await wallet.rpc.getBlockDagInfo();
+    //     console.log("info:", info);
+
+    //     await wallet.disconnect();
+    //     await wallet.stop();
+    // } catch(e) {
+    //     console.log("Client-side error:",e);
+    //     await wallet.disconnect();
+    //     await wallet.stop();
+    // }
 
 })();
 

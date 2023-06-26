@@ -3,7 +3,6 @@
 
 use crate::imports::*;
 use crate::runtime;
-use crate::runtime::AccountKind;
 #[allow(unused_imports)]
 use crate::secret::Secret;
 #[allow(unused_imports)]
@@ -13,10 +12,7 @@ use js_sys::BigInt;
 use js_sys::Reflect;
 #[allow(unused_imports)]
 use workflow_core::abortable::Abortable;
-// use wasm_bindgen::wasm_bindgen;
-// use wasm_bindgen::prelude::*;
 use crate::result::Result;
-// use crate::iterator::*;
 
 pub struct CacheInner {
     receive_address: Address,
@@ -41,16 +37,26 @@ impl Cache {
 
     pub async fn make_inner(account: &Arc<runtime::Account>) -> Result<CacheInner> {
         let receive_address = account.derivation.receive_address_manager.current_address().await?;
-        let change_address = account.derivation.receive_address_manager.current_address().await?;
+        let change_address = account.derivation.change_address_manager.current_address().await?;
         Ok(CacheInner { receive_address, change_address })
     }
+
+    pub fn receive_address(&self) -> Address {
+        self.inner.lock().unwrap().receive_address.clone()
+    }
+
+    pub fn change_address(&self) -> Address {
+        self.inner.lock().unwrap().change_address.clone()
+    }
+
+
 }
 
 // impl AddressCache {
 //     pub fn new() -> Self {
 // }
 
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct Account {
     inner: Arc<runtime::Account>,
@@ -83,9 +89,9 @@ impl Account {
         }
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn kind(&self) -> AccountKind {
-        self.inner.account_kind
+    #[wasm_bindgen(getter, js_name = "accountKind")]
+    pub fn account_kind(&self) -> String {
+        self.inner.account_kind.to_string()
     }
 
     #[wasm_bindgen(getter)]
@@ -103,15 +109,15 @@ impl Account {
         self.inner.ecdsa
     }
 
-    // #[wasm_bindgen(getter, js_name = "receiveAddress")]
-    // pub fn receive_address(&self) -> Address {
-    //     self.receive_address_cache.lock().unwrap().clone().unwrap()
-    // }
+    #[wasm_bindgen(getter, js_name = "receiveAddress")]
+    pub fn receive_address(&self) -> String {
+        self.cache.receive_address().to_string()
+    }
 
-    // #[wasm_bindgen(getter, js_name = "changeAddress")]
-    // pub fn change_address(&self) -> Address {
-    //     self.change_address_cache.lock().unwrap().clone().unwrap()
-    // }
+    #[wasm_bindgen(getter, js_name = "changeAddress")]
+    pub fn change_address(&self) -> String {
+        self.cache.change_address().to_string()
+    }
 
     #[wasm_bindgen(js_name = "getReceiveAddress")]
     pub async fn get_receive_address(&self) -> Result<Address> {

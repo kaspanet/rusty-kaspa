@@ -120,7 +120,7 @@ pub use kaspa_wallet_core::{
     runtime::account::Account,
     runtime::wallet::Wallet,
     signer::{js_sign_transaction as sign_transaction, Signer},
-    storage::local::Store,
+    storage::local::Storage,
     tx::{MutableTransaction, VirtualTransaction},
     utxo::{UtxoEntry, UtxoEntryReference, UtxoOrdering, UtxoSet},
 };

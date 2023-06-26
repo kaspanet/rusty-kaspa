@@ -23,10 +23,12 @@ use serde::Serializer;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use workflow_core::abortable::Abortable;
 use workflow_core::channel::{Channel, DuplexChannel};
-use workflow_core::enums::Describe;
+// use workflow_core::enums::Describe;
+use workflow_core::enums::u8_try_from;
 
 #[derive(Default, Clone)]
 pub struct Estimate {
@@ -68,18 +70,49 @@ impl Scan {
     }
 }
 
-#[derive(Describe, Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
-#[serde(rename_all = "lowercase")]
-#[wasm_bindgen]
-pub enum AccountKind {
-    #[describe("Legacy account (kaspanet.io Web Wallet, KDX)")]
-    Legacy,
-    #[default]
-    #[describe("Bip32 account")]
-    Bip32,
-    #[describe("MultiSignature account")]
-    MultiSig,
+u8_try_from! {
+    // #[derive(Describe, Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
+    #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
+    #[serde(rename_all = "lowercase")]
+    #[wasm_bindgen]
+    pub enum AccountKind {
+        // #[describe("Legacy account (kaspanet.io Web Wallet, KDX)")]
+        Legacy,
+        #[default]
+        // #[describe("Bip32 account")]
+        Bip32,
+        // #[describe("MultiSignature account")]
+        MultiSig,
+    }
 }
+
+impl ToString for AccountKind {
+    fn to_string(&self) -> String {
+        match self {
+            AccountKind::Legacy => "legacy".to_string(),
+            AccountKind::Bip32 => "bip32".to_string(),
+            AccountKind::MultiSig => "multisig".to_string(),
+        }
+    }
+}
+
+impl FromStr for AccountKind {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
+            "legacy" => Ok(AccountKind::Legacy),
+            "bip32" => Ok(AccountKind::Bip32),
+            "multisig" => Ok(AccountKind::MultiSig),
+            _ => Err(Error::InvalidAccountKind),
+        }
+    }
+}
+
+// impl Display for AccountKind {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "{}", self)
+//     }
+// }
 
 #[derive(Hash)]
 struct AccountIdHashData {

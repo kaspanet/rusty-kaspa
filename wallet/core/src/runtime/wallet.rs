@@ -38,12 +38,13 @@ use workflow_rpc::client::Ctl;
 pub struct WalletCreateArgs {
     pub name: Option<String>,
     pub user_hint: Option<String>,
+    pub wallet_secret : Secret,
     pub overwrite_wallet_storage: bool,
 }
 
 impl WalletCreateArgs {
-    pub fn new(name: Option<String>, user_hint: Option<String>, overwrite_wallet_storage: bool) -> Self {
-        Self { name, user_hint, overwrite_wallet_storage }
+    pub fn new(name: Option<String>, user_hint: Option<String>, secret : Secret, overwrite_wallet_storage: bool) -> Self {
+        Self { name, user_hint, wallet_secret: secret, overwrite_wallet_storage }
     }
 }
 
@@ -52,6 +53,20 @@ impl From<(Option<String>, &WalletCreateArgs)> for CreateArgs {
         CreateArgs::new(name, args.user_hint.clone(), args.overwrite_wallet_storage)
     }
 }
+
+
+pub struct PrvKeyDataCreateArgs {
+    pub name: Option<String>,
+    pub wallet_secret : Secret,
+    pub payment_secret : Option<Secret>,
+}
+
+impl PrvKeyDataCreateArgs {
+    pub fn new(name: Option<String>, wallet_secret : Secret, payment_secret : Option<Secret>) -> Self {
+        Self { name, wallet_secret, payment_secret }
+    }
+}
+
 
 #[derive(Clone)]
 pub struct AccountCreateArgs {
@@ -110,11 +125,22 @@ pub struct NetworkInfo {
     pub prefix: AddressPrefix,
 }
 
-impl NetworkInfo {
-    pub fn new(network_type: NetworkType) -> Self {
-        Self { network_type, prefix: network_type.into() }
+impl From<NetworkType> for NetworkInfo {
+    fn from(network_type: NetworkType) -> Self {
+        Self {
+            network_type,
+            prefix: network_type.into(),
+        }
     }
 }
+
+// impl NetworkInfo {
+//     pub fn new(network_type: NetworkType) -> Self {
+//         Self { network_type, prefix: network_type.into() }
+//     }
+// }
+
+
 
 pub struct Inner {
     active_accounts: AccountMap,
@@ -153,11 +179,20 @@ pub struct Wallet {
 }
 
 impl Wallet {
-    pub fn try_new() -> Result<Wallet> {
-        Wallet::try_with_rpc(None)
+
+    pub fn local_store() -> Result<Arc<dyn Interface>> {
+        Ok(Arc::new(LocalStore::try_new(false)?))
     }
 
-    pub fn try_with_rpc(rpc: Option<Arc<KaspaRpcClient>>) -> Result<Wallet> {
+    pub fn resident_store() -> Result<Arc<dyn Interface>> {
+        Ok(Arc::new(LocalStore::try_new(true)?))
+    }
+
+    pub fn try_new(storage : Arc<dyn Interface>, network_type : Option<NetworkType>) -> Result<Wallet> {
+        Wallet::try_with_rpc(None, storage, network_type)
+    }
+
+    pub fn try_with_rpc(rpc: Option<Arc<KaspaRpcClient>>, store : Arc<dyn Interface>, network_type : Option<NetworkType>) -> Result<Wallet> {
         // let _master_xprv =
         //     "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
 
@@ -182,7 +217,7 @@ impl Wallet {
         let multiplexer = Multiplexer::new();
 
         // let store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
-        let store = Arc::new(LocalStore::try_new()?);
+        // let store = Arc::new(LocalStore::try_new(is_resident)?);
 
         let wallet = Wallet {
             // rpc_client : rpc.clone(),
@@ -202,7 +237,7 @@ impl Wallet {
                 notification_channel: Channel::<Notification>::unbounded(),
                 address_to_account_map: Arc::new(Mutex::new(HashMap::new())),
                 virtual_daa_score: Arc::new(AtomicU64::new(0)),
-                network: Arc::new(Mutex::new(None)),
+                network: Arc::new(Mutex::new(network_type.map(|t|t.into()))),
             }),
         };
 
@@ -245,7 +280,7 @@ impl Wallet {
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
         // let ctx: Arc<dyn AccessContextT> = ctx;
         // let local_store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
-        let local_store = Arc::new(LocalStore::try_new()?);
+        let local_store = Arc::new(LocalStore::try_new(true)?);
         local_store.open(&ctx, OpenArgs::new(None)).await?;
         // let iface : Arc<dyn Interface> = local_store;
         let store_accounts = local_store.as_account_store()?;
@@ -368,7 +403,8 @@ impl Wallet {
 
     pub fn network(&self) -> Result<NetworkType> {
         let network = self.inner.network.lock().unwrap();
-        let network = network.as_ref().ok_or(Error::WalletNotConnected)?;
+        // let network = network.as_ref().ok_or(Error::WalletNotConnected)?;
+        let network = network.as_ref().ok_or(Error::MissingNetworkType)?;
         Ok(network.network_type)
     }
 
@@ -442,23 +478,54 @@ impl Wallet {
 
         account_storage.store(&[&stored_account]).await?;
         self.inner.store.clone().commit(&ctx).await?;
-
         let account = Account::try_new_arc_from_storage(self, &stored_account, prefix).await?;
         // self.inner.connected_accounts.insert(account.clone())?;
 
         // - TODO autoload ???
 
-        account.start().await?;
+        // account.start().await?;
 
         Ok(account)
     }
 
     pub async fn create_wallet(
         self: &Arc<Wallet>,
+        args: WalletCreateArgs,
+        // account_args: AccountCreateArgs,
+    // ) -> Result<(Mnemonic, Option<String>)> {
+    ) -> Result<Option<String>> {
+
+        self.reset().await?;
+
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
+        self.inner.store.create(&ctx, (None, &args).into()).await?;
+        let descriptor = self.inner.store.descriptor()?;
+        self.inner.store.commit(&ctx).await?;
+        Ok(descriptor)
+    }
+
+    pub async fn create_prv_key_data(
+        self: &Arc<Wallet>,
+        args: PrvKeyDataCreateArgs,
+    ) -> Result<(PrvKeyDataId,Mnemonic)> {
+
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
+        let payment_secret = args.payment_secret.clone();
+        let mnemonic = Mnemonic::create_random()?;
+        let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), payment_secret.clone()))?;
+        let prv_key_data_id = prv_key_data.id;
+        let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
+        prv_key_data_store.store(&ctx, prv_key_data).await?;
+        self.inner.store.commit(&ctx).await?;
+        Ok((prv_key_data_id, mnemonic))
+    }
+
+    pub async fn create_wallet_with_account(
+        self: &Arc<Wallet>,
         wallet_args: WalletCreateArgs,
         account_args: AccountCreateArgs,
-    ) -> Result<(Mnemonic, Option<String>)> {
-        log_info!("running create_wallet A");
+    ) -> Result<(Mnemonic, Option<String>, Arc<Account>)> {
+
         self.reset().await?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(account_args.wallet_secret));
@@ -475,7 +542,6 @@ impl Wallet {
         let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), payment_secret.clone()))?;
         let xpub_key = prv_key_data.create_xpub(payment_secret, account_args.account_kind, account_index).await?;
         let pub_key_data = PubKeyData::new(vec![xpub_key.to_string(Some(xpub_prefix))], None, None);
-        log_info!("running create_wallet B");
 
         let stored_account = storage::Account::new(
             account_args.title.replace(' ', "-").to_lowercase(),
@@ -491,22 +557,17 @@ impl Wallet {
         );
 
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
-        log_info!("running create_wallet - store 1");
         prv_key_data_store.store(&ctx, prv_key_data).await?;
         let account_store = self.inner.store.as_account_store()?;
-        log_info!("running create_wallet - store 2");
         account_store.store(&[&stored_account]).await?;
         self.inner.store.commit(&ctx).await?;
 
-        log_info!("running create_wallet - C");
         let account = Account::try_new_arc_from_storage(self, &stored_account, prefix).await?;
         self.select(Some(account.clone())).await?;
 
-        log_info!("running create_wallet - D");
-        // - TODO autoload ???
-        account.start().await?;
+        // account.start().await?;
 
-        Ok((mnemonic, descriptor))
+        Ok((mnemonic, descriptor, account))
     }
 
     pub async fn dump_unencrypted(&self) -> Result<()> {
@@ -848,7 +909,8 @@ mod test {
     // #[tokio::test]
     async fn wallet_test() -> Result<()> {
         println!("Creating wallet...");
-        let wallet = Arc::new(Wallet::try_new()?);
+        let resident_store = Wallet::resident_store()?;
+        let wallet = Arc::new(Wallet::try_new(resident_store, None)?);
         // let stored_accounts = vec![StoredWalletAccount{
         //     private_key_index: 0,
         //     account_kind: crate::storage::AccountKind::Bip32,

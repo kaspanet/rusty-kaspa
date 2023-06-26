@@ -1,12 +1,12 @@
 pub mod cache;
 pub mod collection;
 pub mod interface;
-pub mod store;
+pub mod storage;
 pub mod streams;
 pub mod wallet;
 
 pub use collection::Collection;
-pub use store::Store;
+pub use storage::Storage;
 pub use wallet::Wallet;
 
 pub const DEFAULT_STORAGE_FOLDER: &str = "~/.kaspa/";

@@ -63,6 +63,12 @@ pub enum Error {
     #[error("Wallet is not connected")]
     WalletNotConnected,
 
+    #[error("Unable to determine network type (wallet is not connected)")]
+    MissingNetworkType,
+
+    #[error("{0}")]
+    NetworkType(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
+
     #[error("The server UTXO index is not enabled")]
     MissingUtxoIndex,
 
@@ -131,6 +137,12 @@ pub enum Error {
 
     #[error("task aborted")]
     Aborted,
+
+    #[error("{0}")]
+    TryFromEnum(#[from] workflow_core::enums::TryFromError),
+
+    #[error("Invalid account type (must be one of: bip32|multisig|legacy")]
+    InvalidAccountKind,
 }
 
 impl From<Aborted> for Error {
