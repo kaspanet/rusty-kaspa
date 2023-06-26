@@ -865,15 +865,11 @@ mod tests {
         count: usize,
     ) -> (Vec<Transaction>, Vec<Transaction>) {
         // Make the funding amounts always different so that funding txs have different ids
-        let parent_child_pairs = (0..count)
+        (0..count)
             .map(|i| {
                 create_parent_and_children_transactions(consensus, vec![500 * SOMPI_PER_KASPA, 3_000 * SOMPI_PER_KASPA + i as u64])
             })
-            .collect::<Vec<(_, _)>>();
-        let parent_txs = parent_child_pairs.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>();
-        let child_txs = parent_child_pairs.iter().map(|(_, c)| c.clone()).collect::<Vec<_>>();
-
-        (parent_txs, child_txs)
+            .unzip()
     }
 
     fn create_parent_and_children_transactions(
