@@ -113,6 +113,8 @@ pub mod perf {
     use kaspa_hashes::Hash;
     use std::mem::size_of;
 
+    use super::consensus::NETWORK_DELAY_BOUND;
+
     /// The default target depth for reachability reindexes.
     pub const DEFAULT_REINDEX_DEPTH: u64 = 100;
 
@@ -196,17 +198,15 @@ pub mod perf {
     }
 
     pub fn approx_direct_header_parents(consensus_params: &Params) -> usize {
-        let avg_delay = 2;
-        consensus_params.bps() as usize * avg_delay
+        consensus_params.bps() as usize * NETWORK_DELAY_BOUND as usize
     }
 
     pub fn approx_header_parents(consensus_params: &Params) -> usize {
-        approx_direct_header_parents(consensus_params) * 2 // 2x for multi-levels
+        approx_direct_header_parents(consensus_params) * 4 // 4x for multi-levels
     }
 
     pub fn approx_mergeset_size(consensus_params: &Params) -> usize {
-        let avg_delay = 2;
-        consensus_params.bps() as usize * avg_delay
+        consensus_params.bps() as usize * NETWORK_DELAY_BOUND as usize
     }
 }
 
