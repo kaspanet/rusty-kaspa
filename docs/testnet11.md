@@ -15,7 +15,7 @@ On the software side, participating requires three components:
 2.  *kaspaminer* - the Kaspa miner
 3.  *Rothschild* - a transaction generator
 
-The Rothschild tool is used to create a wallet, and once the wallet has some funds within, Rothschild will continuously create transactions from that wallet back back to itself at the prescribed rate.
+The Rothschild tool is used to create a wallet, and once the wallet has some funds within, Rothschild will continuously create transactions from that wallet back to itself at the prescribed rate.
 
 The Rothschild wallet could be funded by either mining to it directly (either for a short period or continuously) or by asking other experiment participants for some funds (e.g. on the Discord \#testnet channel).
 
@@ -42,7 +42,7 @@ First, we set-up a node:
 ```
 kaspad --testnet --netsuffix=11 --utxoindex
 ```
-  It is **very impotrant** not to forget the ``--netsuffix=11`` flag, otherwise your node will connect to mainnet.
+  It is **very impotrant** not to forget the ``--netsuffix=11`` flag, otherwise your node will connect to mainnet or to the default 1 BPS tesnet.
   If you complied the code yourself, you should instead run
 ```
 cargo run --bin kaspad --release -- --testnet --netsuffix=11 --utxoindex
