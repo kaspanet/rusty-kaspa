@@ -11,8 +11,7 @@ pub trait ScriptPublicKeyTrait {
 
 impl ScriptPublicKeyTrait for ScriptPublicKey {
     fn try_from_jsvalue(js_value: JsValue) -> crate::Result<Self> {
-        if js_value.is_object() {
-            let object = Object::from(js_value);
+        if let Some(object) = Object::try_from(&js_value) {
             let version_value = object.get("version")?;
             let version = if version_value.is_string() {
                 let hex_string = version_value.as_string().unwrap();

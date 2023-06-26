@@ -185,8 +185,7 @@ impl Transaction {
 impl TryFrom<JsValue> for Transaction {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if js_value.is_object() {
-            let object = Object::from(js_value);
+        if let Some(object) = Object::try_from(&js_value) {
             let version = object.get_u16("version")?;
             // workflow_log::log_trace!("JsValue->Transaction: version: {version:?}");
             let lock_time = object.get_u64("lockTime")?;

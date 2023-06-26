@@ -65,9 +65,8 @@ impl std::fmt::Display for TransactionOutpoint {
 
 impl TryFrom<JsValue> for TransactionOutpoint {
     type Error = Error;
-    fn try_from(value: JsValue) -> Result<Self, Self::Error> {
-        if value.is_object() {
-            let object = Object::from(value);
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        if let Some(object) = Object::try_from(&js_value) {
             let transaction_id: TransactionId = object.get("transactionId")?.try_into()?;
             let index = object.get_u32("index")?;
             Ok(TransactionOutpoint::new(&transaction_id.to_string(), index)?)

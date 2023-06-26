@@ -241,8 +241,7 @@ impl Error {
 impl TryFrom<JsValue> for Header {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if js_value.is_object() {
-            let object = Object::from(js_value);
+        if let Some(object) = Object::try_from(&js_value) {
 
             let parents_by_level = object
                 .get_vec("parentsByLevel")?
