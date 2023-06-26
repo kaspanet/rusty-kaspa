@@ -7,12 +7,12 @@ use workflow_store::fs;
 /// Wallet file storage interface
 #[wasm_bindgen(inspectable)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Store {
+pub struct Storage {
     filename: PathBuf,
 }
 
 #[wasm_bindgen]
-impl Store {
+impl Storage {
     #[wasm_bindgen(getter, js_name = filename)]
     pub fn filename_as_string(&self) -> String {
         self.filename.to_str().unwrap().to_string()
@@ -25,7 +25,7 @@ impl Store {
 //     }
 // }
 
-impl Store {
+impl Storage {
     pub fn default_wallet_store() -> Self {
         Self::new(super::DEFAULT_STORAGE_FOLDER, super::DEFAULT_WALLET_FILE).unwrap()
     }
@@ -34,7 +34,7 @@ impl Store {
         Self::new(super::DEFAULT_STORAGE_FOLDER, super::DEFAULT_SETTINGS_FILE).unwrap()
     }
 
-    pub fn new(folder: &str, name: &str) -> Result<Store> {
+    pub fn new(folder: &str, name: &str) -> Result<Storage> {
         let filename = if runtime::is_web() {
             PathBuf::from(name) //filename.file_name().ok_or(Error::InvalidFilename(format!("{}", filename.display())))?)
         } else {
@@ -44,7 +44,7 @@ impl Store {
             filename
         };
 
-        Ok(Store { filename })
+        Ok(Storage { filename })
     }
 
     pub fn filename(&self) -> &PathBuf {
