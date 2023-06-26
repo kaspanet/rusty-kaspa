@@ -57,21 +57,22 @@ pub mod consensus {
     //
 
     /// Minimal size of the difficulty window. Affects the DA algorithm only at the starting period of a new net
-    pub const MIN_DIFFICULTY_WINDOW_LEN: usize = 2;
+    pub const MIN_DIFFICULTY_WINDOW_LEN: usize = 10;
 
     /// **Legacy** difficulty adjustment window size corresponding to ~46 minutes with 1 BPS
     pub const LEGACY_DIFFICULTY_WINDOW_SIZE: usize = 2641;
 
     /// **New** difficulty window duration expressed in time units (seconds).
     /// TODO: KIP-0004: 30,000 (500 minutes)
-    pub const NEW_DIFFICULTY_WINDOW_DURATION: u64 = 2000;
+    pub const NEW_DIFFICULTY_WINDOW_DURATION: u64 = 2641;
 
     /// The desired interval between samples of the difficulty window (seconds).
     /// TODO: KIP-0004: 30 seconds
-    pub const DIFFICULTY_WINDOW_SAMPLE_INTERVAL: u64 = 2;
+    pub const DIFFICULTY_WINDOW_SAMPLE_INTERVAL: u64 = 4;
 
     /// Size of the **sampled** difficulty window (independent of BPS)
-    pub const DIFFICULTY_SAMPLED_WINDOW_SIZE: u64 = NEW_DIFFICULTY_WINDOW_DURATION / DIFFICULTY_WINDOW_SAMPLE_INTERVAL;
+    pub const DIFFICULTY_SAMPLED_WINDOW_SIZE: u64 =
+        (NEW_DIFFICULTY_WINDOW_DURATION + DIFFICULTY_WINDOW_SAMPLE_INTERVAL - 1) / DIFFICULTY_WINDOW_SAMPLE_INTERVAL;
 
     //
     // ~~~~~~~~~~~~~~~~~~~ Finality & Pruning ~~~~~~~~~~~~~~~~~~~
