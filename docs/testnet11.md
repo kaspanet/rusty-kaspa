@@ -66,7 +66,7 @@ If you want to transmit transactions, first create a Rothschild wallet
 
 Like kaspad, the Rothschild window should remain open and undisturbed.
 
-For mining, grab the [CPU miner](https://github.com/elichai/kaspa-miner/releases) and run it with the following flags:
+For mining, grab the `kaspaminer` from within the latest [Go release](https://github.com/kaspanet/kaspad/releases) and run it with the following flags:
     ```
     kaspaminer --testnet --miningaddr <address> --target-blocks-per-second=0
     ```
