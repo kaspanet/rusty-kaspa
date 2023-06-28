@@ -128,7 +128,12 @@ impl IbdFlow {
                         self.router, negotiation_restart_counter
                     )));
                 }
-                warn!("IBD chain negotiation with syncer {} restarted {} times", self.router, negotiation_restart_counter);
+                if negotiation_restart_counter > self.ctx.config.bps() {
+                    // bps is just an intuitive threshold here
+                    warn!("IBD chain negotiation with syncer {} restarted {} times", self.router, negotiation_restart_counter);
+                } else {
+                    debug!("IBD chain negotiation with syncer {} restarted {} times", self.router, negotiation_restart_counter);
+                }
 
                 // An empty locator signals that the syncer chain was modified and no longer contains one of
                 // the queried hashes, so we restart the search. We use a shorter timeout here to avoid a timeout attack

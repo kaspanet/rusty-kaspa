@@ -183,8 +183,7 @@ impl FlowContext {
     ) -> Self {
         let hub = Hub::new();
 
-        // TODO: initial experiments show that this value is good for high bps as well so for now we avoid the log
-        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE; //  + f64::log2(config.bps() as f64).round() as u32
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (config.bps() as f64).log(3.0).min(2.0) as u32;
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an
         // approximation of how many orphans there can possibly be on average.

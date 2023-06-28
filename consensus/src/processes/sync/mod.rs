@@ -119,23 +119,21 @@ impl<
     }
 
     pub fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> SyncManagerResult<Vec<Hash>> {
-        let sc_read_guard = self.selected_chain_store.read();
-        let hst_read_guard = self.header_selected_tip_store.read();
-        let pp_read_guard = self.pruning_point_store.read();
+        let low = low.unwrap_or_else(|| self.pruning_point_store.read().get().unwrap().pruning_point);
+        let high = high.unwrap_or_else(|| self.header_selected_tip_store.read().get().unwrap().hash);
 
-        let low = low.unwrap_or_else(|| pp_read_guard.get().unwrap().pruning_point);
-        let high = high.unwrap_or_else(|| hst_read_guard.get().unwrap().hash);
+        let sc_read = self.selected_chain_store.read();
 
         if low == high {
             return Ok(vec![low]);
         }
 
-        let low_index = match sc_read_guard.get_by_hash(low).unwrap_option() {
+        let low_index = match sc_read.get_by_hash(low).unwrap_option() {
             Some(index) => index,
             None => return Err(SyncManagerError::BlockNotInSelectedParentChain(low)),
         };
 
-        let high_index = match sc_read_guard.get_by_hash(high).unwrap_option() {
+        let high_index = match sc_read.get_by_hash(high).unwrap_option() {
             Some(index) => index,
             None => return Err(SyncManagerError::BlockNotInSelectedParentChain(high)),
         };
@@ -148,7 +146,7 @@ impl<
         let mut step = 1;
         let mut current_index = high_index;
         while current_index > low_index {
-            locator.push(sc_read_guard.get_by_index(current_index).unwrap());
+            locator.push(sc_read.get_by_index(current_index).unwrap());
             if current_index < step {
                 break;
             }

@@ -216,7 +216,7 @@ impl OrphanPool {
 
     pub(crate) fn expire_low_priority_transactions(&mut self, consensus: &dyn ConsensusApi) -> RuleResult<()> {
         let virtual_daa_score = consensus.get_virtual_daa_score();
-        if virtual_daa_score - self.last_expire_scan < self.config.orphan_expire_scan_interval_daa_score {
+        if virtual_daa_score < self.last_expire_scan + self.config.orphan_expire_scan_interval_daa_score {
             return Ok(());
         }
 
@@ -227,7 +227,7 @@ impl OrphanPool {
             .values()
             .filter_map(|x| {
                 if (x.priority == Priority::Low)
-                    && virtual_daa_score - x.added_at_daa_score > self.config.orphan_expire_interval_daa_score
+                    && virtual_daa_score > x.added_at_daa_score + self.config.orphan_expire_interval_daa_score
                 {
                     Some(x.id())
                 } else {
