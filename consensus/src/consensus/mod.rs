@@ -321,6 +321,7 @@ impl Consensus {
         }
     }
 
+    /// Validates that a valid block *header* exists for `hash`
     fn validate_block_exists(&self, hash: Hash) -> Result<(), ConsensusError> {
         if match self.statuses_store.read().get(hash).unwrap_option() {
             Some(status) => status.is_valid(),
@@ -328,7 +329,7 @@ impl Consensus {
         } {
             Ok(())
         } else {
-            Err(ConsensusError::BlockNotFound(hash))
+            Err(ConsensusError::HeaderNotFound(hash))
         }
     }
 
@@ -597,7 +598,7 @@ impl ConsensusApi for Consensus {
 
     fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
         let Some(status) = self.statuses_store.read().get(hash).unwrap_option().filter(|&status| status.has_block_header()) else {
-            return Err(ConsensusError::BlockNotFound(hash));
+            return Err(ConsensusError::HeaderNotFound(hash));
         };
         Ok(Block {
             header: self.headers_store.get_header(hash).unwrap(),
@@ -607,7 +608,7 @@ impl ConsensusApi for Consensus {
 
     fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
         match self.get_block_status(hash) {
-            None => return Err(ConsensusError::BlockNotFound(hash)),
+            None => return Err(ConsensusError::HeaderNotFound(hash)),
             Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
             _ => {}
         };
