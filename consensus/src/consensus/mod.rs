@@ -419,7 +419,9 @@ impl ConsensusApi for Consensus {
 
     fn is_nearly_synced(&self) -> bool {
         // See comment within `config.is_nearly_synced`
-        self.config.is_nearly_synced(self.get_sink_timestamp(), self.headers_store.get_daa_score(self.get_sink()).unwrap())
+        let sink = self.get_sink();
+        let compact = self.headers_store.get_compact_header_data(sink).unwrap();
+        self.config.is_nearly_synced(compact.timestamp, compact.daa_score)
     }
 
     fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
