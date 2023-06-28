@@ -164,7 +164,7 @@ impl BlockTaskDependencyManager {
         Self { pending: Mutex::new(HashMap::new()), idle_signal: Condvar::new() }
     }
 
-    /// Registers the `(task, result_transmitters)` pair as a pending task. If a task with the same
+    /// Registers the `(task, result_transmitter)` pair as a pending task. If a task with the same
     /// hash is already pending and has a corresponding internal task group, the task group is updated
     /// with the additional task and the function returns `None` indicating that the task shall
     /// not be queued for processing yet. The function is expected to be called by a single worker
