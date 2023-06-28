@@ -227,7 +227,7 @@ impl OrphanPool {
             .values()
             .filter_map(|x| {
                 if (x.priority == Priority::Low)
-                    && virtual_daa_score - x.added_at_daa_score > self.config.orphan_expire_interval_daa_score
+                    && virtual_daa_score > x.added_at_daa_score + self.config.orphan_expire_interval_daa_score
                 {
                     Some(x.id())
                 } else {
