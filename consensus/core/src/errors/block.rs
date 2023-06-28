@@ -115,16 +115,16 @@ pub enum RuleError {
     #[error("wrong coinbase subsidy: expected {0} but got {1}")]
     WrongSubsidy(u64, u64),
 
-    #[error("Transaction {0} is found more than once in the block")]
+    #[error("transaction {0} is found more than once in the block")]
     DuplicateTransactions(TransactionId),
 
     #[error("block has invalid proof-of-work")]
     InvalidPoW,
 
-    #[error("Expected header pruning point is {0} but got {1}")]
+    #[error("expected header pruning point is {0} but got {1}")]
     WrongHeaderPruningPoint(Hash, Hash),
 
-    #[error("Expected indirect parents {0} but got {1}")]
+    #[error("expected indirect parents {0} but got {1}")]
     UnexpectedIndirectParents(TwoDimVecDisplay<Hash>, TwoDimVecDisplay<Hash>),
 
     #[error("block {0} UTXO commitment is invalid - block header indicates {1}, but calculated value is {2}")]
