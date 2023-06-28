@@ -177,3 +177,4 @@ workflow-terminal = { version = "0.3.10" }
 [profile.release]
 lto = "thin"
 strip = true
+overflow-checks = true
