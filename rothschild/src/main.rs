@@ -129,7 +129,7 @@ async fn main() {
 
     let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending, coinbase_maturity).await;
     let mut ticker = interval(Duration::from_secs_f64(1.0 / (args.tps.min(100) as f64)));
-    ticker.set_missed_tick_behavior(MissedTickBehavior::Burst);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     let mut maximize_inputs = false;
     let mut last_refresh = unix_now();
