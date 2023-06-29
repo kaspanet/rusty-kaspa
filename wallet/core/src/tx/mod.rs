@@ -46,16 +46,30 @@ pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_ha
 }
 
 #[wasm_bindgen(js_name=createTransaction)]
+pub fn js_create_transaction(
+    sig_op_count: u8,
+    ctx: &mut UtxoSelectionContext,
+    outputs: JsValue,
+    change_address: &Address,
+    minimum_signatures: u16,
+    priority_fee: Option<u64>,
+    payload: Option<Vec<u8>>,
+) -> crate::Result<MutableTransaction> {
+    let outputs: PaymentOutputs = outputs.try_into()?;
+
+    create_transaction(sig_op_count, ctx, &outputs, change_address, minimum_signatures, priority_fee, payload)
+}
+
 pub fn create_transaction(
     sig_op_count: u8,
-    utxo_selection: &SelectionContext,
+    ctx: &mut UtxoSelectionContext,
     outputs: &PaymentOutputs,
     change_address: &Address,
     minimum_signatures: u16,
     priority_fee: Option<u64>,
     payload: Option<Vec<u8>>,
 ) -> crate::Result<MutableTransaction> {
-    let entries = &utxo_selection.selected_entries;
+    let entries = ctx.selected_entries();
 
     let utxos = entries.iter().map(|reference| reference.utxo.clone()).collect::<Vec<Arc<UtxoEntry>>>();
 

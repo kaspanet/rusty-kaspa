@@ -4,8 +4,9 @@ use crate::tx::{TransactionOutpoint, TransactionOutpointInner};
 use itertools::Itertools;
 use kaspa_rpc_core::{GetUtxosByAddressesResponse, RpcUtxosByAddressesEntry};
 use serde_wasm_bindgen::from_value;
+use sorted_insert::SortedInsertBinary;
+use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering};
 use workflow_core::time::{Duration, Instant};
 use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
 
@@ -94,6 +95,26 @@ impl From<UtxoEntry> for UtxoEntryReference {
     }
 }
 
+impl Eq for UtxoEntryReference {}
+
+impl PartialEq for UtxoEntryReference {
+    fn eq(&self, other: &Self) -> bool {
+        self.amount() == other.amount()
+    }
+}
+
+impl PartialOrd for UtxoEntryReference {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.amount().cmp(&other.amount()))
+    }
+}
+
+impl Ord for UtxoEntryReference {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.amount().cmp(&other.amount())
+    }
+}
+
 #[wasm_bindgen]
 /// Result containing data produced by the `UtxoSet::select()` function
 pub struct SelectionContext {
@@ -124,21 +145,114 @@ pub enum UtxoOrdering {
     AscendingDaaScore,
 }
 
+pub struct Consumed {
+    entry: UtxoEntryReference,
+    instant: Instant,
+}
+
+impl From<(UtxoEntryReference, &Instant)> for Consumed {
+    fn from((entry, instant): (UtxoEntryReference, &Instant)) -> Self {
+        Self { entry, instant: *instant }
+    }
+}
+
 #[derive(Default)]
 pub struct Inner {
     entries: Vec<UtxoEntryReference>,
-    // ordered: AtomicU32,
-    map: HashMap<TransactionOutpointInner, UtxoEntryReference>,
-    in_use: HashMap<TransactionOutpointInner, Instant>,
+    consumed: HashMap<UtxoEntryId, Consumed>,
+    map: HashMap<UtxoEntryId, UtxoEntryReference>,
 }
 
 impl Inner {
     fn new() -> Self {
-        Self { entries: vec![], map: HashMap::default(), in_use: HashMap::default() }
+        Self { entries: vec![], map: HashMap::default(), consumed: HashMap::default() }
     }
 
     fn new_with_args(entries: Vec<UtxoEntryReference>) -> Self {
-        Self { entries, map: HashMap::default(), in_use: HashMap::default() }
+        Self { entries, map: HashMap::default(), consumed: HashMap::default() }
+    }
+}
+
+pub struct UtxoSetIterator {
+    utxos: UtxoSet,
+    cursor: usize,
+}
+
+impl UtxoSetIterator {
+    pub fn new(utxos: UtxoSet) -> Self {
+        Self { utxos, cursor: 0 }
+    }
+}
+
+impl Stream for UtxoSetIterator {
+    type Item = UtxoEntryReference;
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let entry = self.utxos.inner.lock().unwrap().entries.get(self.cursor).cloned();
+        self.cursor += 1;
+        Poll::Ready(entry)
+    }
+}
+
+#[wasm_bindgen]
+pub struct UtxoSelectionContext {
+    utxos: UtxoSet,
+    stream: Pin<Box<dyn Stream<Item = UtxoEntryReference> + Send>>,
+    selected_entries: Vec<UtxoEntryReference>,
+    selected_amount: u64,
+}
+
+impl UtxoSelectionContext {
+    pub fn new(utxos: UtxoSet) -> Self {
+        Self {
+            utxos: utxos.clone(),
+            stream: Box::pin(UtxoSetIterator { utxos, cursor: 0 }),
+            selected_entries: Vec::default(),
+            selected_amount: 0,
+        }
+    }
+
+    pub fn addresses(&self) -> Vec<Address> {
+        self.selected_entries.iter().map(|u| u.utxo.address.clone().unwrap()).collect::<Vec<Address>>()
+    }
+
+    pub fn selected_amount(&self) -> u64 {
+        self.selected_amount
+    }
+
+    pub fn selected_entries(&self) -> &Vec<UtxoEntryReference> {
+        &self.selected_entries
+    }
+
+    pub async fn select(&mut self, selection_amount: u64) -> Result<Vec<UtxoEntryReference>> {
+        let mut amount = 0u64;
+        let mut vec = vec![];
+        while let Some(entry) = self.stream.next().await {
+            amount += entry.amount();
+            self.selected_entries.push(entry.clone());
+            vec.push(entry);
+
+            if amount >= selection_amount {
+                break;
+            }
+        }
+
+        if amount < selection_amount {
+            Err(Error::InsufficientFunds)
+        } else {
+            self.selected_amount = amount;
+            Ok(vec)
+        }
+    }
+
+    pub fn commit(self) -> Result<()> {
+        let mut inner = self.utxos.inner();
+        inner.entries.retain(|entry| self.selected_entries.contains(entry));
+        let now = Instant::now();
+        self.selected_entries.into_iter().for_each(|entry| {
+            inner.consumed.insert(entry.id(), (entry, &now).into());
+        });
+
+        Ok(())
     }
 }
 
@@ -147,27 +261,15 @@ impl Inner {
 #[wasm_bindgen]
 pub struct UtxoSet {
     inner: Arc<Mutex<Inner>>,
-    ordered: Arc<AtomicU32>,
 }
 
 #[wasm_bindgen]
 impl UtxoSet {
     pub fn clear(&self) {
         let mut inner = self.inner();
+        inner.map.clear();
         inner.entries.clear();
-        inner.map.clear()
-    }
-
-    /// Insert `utxo_entry` into the `UtxoSet`.
-    /// NOTE: The insert will be ignored if already present in the inner map.
-    pub fn insert(&self, utxo_entry: UtxoEntryReference) {
-        let mut inner = self.inner();
-        if inner.map.insert(utxo_entry.utxo.outpoint.inner().clone(), utxo_entry.clone()).is_none() {
-            inner.entries.push(utxo_entry);
-            self.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
-        } else {
-            log_warning!("ignoring duplicate utxo entry insert");
-        }
+        inner.consumed.clear()
     }
 
     #[wasm_bindgen(js_name = "remove")]
@@ -193,22 +295,21 @@ impl UtxoSet {
     //     self.inner.entries.lock().unwrap().iter().find(|entry| entry.utxo.outpoint.id() == id).cloned()
     // }
 
-    #[wasm_bindgen(js_name=select)]
-    pub async fn select_utxos(&self, transaction_amount: u64, order: UtxoOrdering, mark_utxo: bool) -> Result<SelectionContext> {
-        let data = self.select(transaction_amount, order, mark_utxo).await?;
-        Ok(data)
-    }
+    // #[wasm_bindgen(js_name=select)]
+    // pub async fn select_utxos(&self, transaction_amount: u64, order: UtxoOrdering, mark_utxo: bool) -> Result<SelectionContext> {
+    //     let data = self.select(transaction_amount, order, mark_utxo).await?;
+    //     Ok(data)
+    // }
 
     pub fn from(js_value: JsValue) -> Result<UtxoSet> {
         //log_info!("js_value: {:?}", js_value);
         let r: GetUtxosByAddressesResponse = from_value(js_value)?;
         //log_info!("r: {:?}", r);
-        let entries = r.entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
+        let mut entries = r.entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
         //log_info!("entries ...");
-        let utxo_set = Self {
-            inner: Arc::new(Mutex::new(Inner::new_with_args(entries))),
-            ordered: Arc::new(AtomicU32::new(UtxoOrdering::Unordered as u32)),
-        };
+        entries.sort();
+
+        let utxo_set = Self { inner: Arc::new(Mutex::new(Inner::new_with_args(entries))) };
         //log_info!("utxo_set ...");
         Ok(utxo_set)
     }
@@ -216,48 +317,59 @@ impl UtxoSet {
 
 impl UtxoSet {
     pub fn new() -> Self {
-        Self { inner: Arc::new(Mutex::new(Inner::new())), ordered: Arc::new(AtomicU32::new(UtxoOrdering::Unordered as u32)) }
+        Self { inner: Arc::new(Mutex::new(Inner::new())) }
     }
 
     pub fn inner(&self) -> MutexGuard<Inner> {
         self.inner.lock().unwrap()
     }
 
-    pub fn remove(&self, id: UtxoEntryId) -> bool {
-        let mut inner = self.inner();
-        let index = match inner.entries.iter().position(|entry| entry.id() == id) {
-            Some(index) => index,
-            None => return false,
-        };
-
-        let entry = inner.entries.remove(index);
-        inner.map.remove(&entry.id());
-
-        true
+    pub fn create_selection_context(&self) -> UtxoSelectionContext {
+        UtxoSelectionContext::new(self.clone())
     }
 
-    pub fn order(&self, order: UtxoOrdering) -> Result<()> {
-        match order {
-            UtxoOrdering::AscendingAmount => {
-                self.inner().entries.sort_by_key(|a| a.as_ref().amount());
+    /// Insert `utxo_entry` into the `UtxoSet`.
+    /// NOTE: The insert will be ignored if already present in the inner map.
+    pub fn insert(&self, utxo_entries: Vec<UtxoEntryReference>) {
+        let mut inner = self.inner();
+
+        for utxo_entry in utxo_entries.into_iter() {
+            if let std::collections::hash_map::Entry::Vacant(e) = inner.map.entry(utxo_entry.id()) {
+                e.insert(utxo_entry.clone());
+                inner.entries.sorted_insert_asc_binary(utxo_entry);
+            } else {
+                log_warning!("ignoring duplicate utxo entry insert");
             }
-            UtxoOrdering::AscendingDaaScore => {
-                self.inner().entries.sort_by_key(|a| a.as_ref().block_daa_score());
+        }
+    }
+
+    pub fn remove(&self, id: Vec<UtxoEntryId>) -> bool {
+        let mut inner = self.inner();
+
+        let mut removed = vec![];
+        for id in id.iter() {
+            if inner.map.remove(id).is_some() {
+                removed.push(id);
             }
-            UtxoOrdering::Unordered => {}
         }
 
-        Ok(())
+        for id in removed.into_iter() {
+            if inner.consumed.remove(id).is_none() {
+                inner.entries.retain(|entry| &entry.id() != id);
+            }
+        }
+
+        true
     }
 
     pub fn extend(&self, utxo_entries: &[UtxoEntryReference]) {
         let mut inner = self.inner();
         for entry in utxo_entries {
             if inner.map.insert(entry.id(), entry.clone()).is_none() {
-                inner.entries.push(entry.clone());
+                inner.entries.sorted_insert_asc_binary(entry.clone());
             }
         }
-        self.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
+        // self.ordered.store(UtxoOrdering::Unordered as u32, Ordering::SeqCst);
     }
 
     pub async fn chunks(&self, chunk_size: usize) -> Result<Vec<Vec<UtxoEntryReference>>> {
@@ -266,26 +378,36 @@ impl UtxoSet {
         Ok(l)
     }
 
-    pub async fn update_inuse_utxos(&self) -> Result<()> {
-        let mut removeable = vec![];
+    pub async fn recover_consumed_utxos(&self) -> Result<()> {
         let checkpoint = Instant::now().checked_sub(Duration::from_secs(60)).unwrap();
-        for (key, instant) in &self.inner().in_use {
-            if instant < &checkpoint {
-                removeable.push(key.clone());
+
+        let mut inner = self.inner();
+
+        let mut removed = vec![];
+        inner.consumed.retain(|_, consumed| {
+            if consumed.instant < checkpoint {
+                // if timedout return back to entries
+                removed.push(consumed.entry.clone());
+                false
+            } else {
+                true
             }
-        }
-        let map = &mut self.inner().in_use;
-        for key in &removeable {
-            map.remove(key);
-        }
+        });
+
+        removed.into_iter().for_each(|entry| {
+            inner.entries.sorted_insert_asc_binary(entry);
+        });
 
         Ok(())
     }
 
-    pub async fn select(&self, transaction_amount: u64, order: UtxoOrdering, mark_utxo: bool) -> Result<SelectionContext> {
-        if self.ordered.load(Ordering::SeqCst) != order as u32 {
-            self.order(order)?;
-        }
+    /*
+
+    // pub async fn select(&self, transaction_amount: u64, order: UtxoOrdering, mark_utxo: bool) -> Result<SelectionContext> {
+    pub async fn select(&self, transaction_amount: u64, mark_utxo: bool) -> Result<SelectionContext> {
+        // if self.ordered.load(Ordering::SeqCst) != order as u32 {
+        //     self.order(order)?;
+        // }
 
         // TODO: move to ticker callback
         self.update_inuse_utxos().await?;
@@ -331,6 +453,8 @@ impl UtxoSet {
 
         Ok(SelectionContext { transaction_amount, total_selected_amount, selected_entries })
     }
+
+    */
 
     pub async fn calculate_balance(&self) -> Result<u64> {
         Ok(self.inner().entries.iter().map(|e| e.as_ref().utxo_entry.amount).sum())

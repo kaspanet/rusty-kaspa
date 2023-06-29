@@ -30,7 +30,7 @@ where
         !matches!(self, Self::Plain(_))
     }
 
-    pub fn decrypt(&self, secret: Option<Secret>) -> Result<Decrypted<T>> {
+    pub fn decrypt(&self, secret: Option<&Secret>) -> Result<Decrypted<T>> {
         match self {
             Self::Plain(v) => Ok(Decrypted::new(v.clone())),
             Self::XChaCha20Poly1305(v) => {
@@ -43,7 +43,7 @@ where
         }
     }
 
-    pub fn encrypt(&self, secret: Secret) -> Result<Encrypted> {
+    pub fn encrypt(&self, secret: &Secret) -> Result<Encrypted> {
         match self {
             Self::Plain(v) => {
                 Ok(Decrypted::new(v.clone()).encrypt(secret)?)
@@ -54,14 +54,14 @@ where
         }
     }
 
-    pub fn into_encrypted(&self, secret: Secret) -> Result<Self> {
+    pub fn into_encrypted(&self, secret: &Secret) -> Result<Self> {
         match self {
             Self::Plain(v) => Ok(Self::XChaCha20Poly1305(Decrypted::new(v.clone()).encrypt(secret)?)),
             Self::XChaCha20Poly1305(v) => Ok(Self::XChaCha20Poly1305(v.clone())),
         }
     }
 
-    pub fn into_decrypted(self, secret: Secret) -> Result<Self> {
+    pub fn into_decrypted(self, secret: &Secret) -> Result<Self> {
         match self {
             Self::Plain(v) => Ok(Self::Plain(v)),
             Self::XChaCha20Poly1305(v) => Ok(Self::Plain(v.decrypt::<T>(secret)?.clone())),
@@ -148,7 +148,7 @@ where
         Self(value)
     }
 
-    pub fn encrypt(&self, secret: Secret) -> Result<Encrypted> {
+    pub fn encrypt(&self, secret: &Secret) -> Result<Encrypted> {
         let json = serde_json::to_string(&self.0)?;
         let encrypted = encrypt_xchacha20poly1305(json.as_bytes(), secret)?;
         Ok(Encrypted::new(encrypted))
@@ -170,7 +170,7 @@ impl Encrypted {
         self.payload = from.payload;
     }
 
-    pub fn decrypt<T>(&self, secret: Secret) -> Result<Decrypted<T>>
+    pub fn decrypt<T>(&self, secret: &Secret) -> Result<Decrypted<T>>
     where
         T: DeserializeOwned,
         // T: Zeroize + DeserializeOwned,
@@ -237,11 +237,11 @@ pub fn argon2_sha256iv_hash(data: &[u8], byte_length: usize) -> Result<Secret> {
 #[wasm_bindgen(js_name = "encryptXChaCha20Poly1305")]
 pub fn js_encrypt_xchacha20poly1305(text: String, password: String) -> Result<String> {
     let secret = sha256_hash(password.as_bytes())?;
-    let encrypted = encrypt_xchacha20poly1305(text.as_bytes(), secret)?;
+    let encrypted = encrypt_xchacha20poly1305(text.as_bytes(), &secret)?;
     Ok(general_purpose::STANDARD.encode(encrypted))
 }
 
-pub fn encrypt_xchacha20poly1305(data: &[u8], secret: Secret) -> Result<Vec<u8>> {
+pub fn encrypt_xchacha20poly1305(data: &[u8], secret: &Secret) -> Result<Vec<u8>> {
     let private_key_bytes = argon2_sha256iv_hash(secret.as_ref(), 32)?;
     let key = Key::from_slice(private_key_bytes.as_ref());
     let cipher = XChaCha20Poly1305::new(key);
@@ -256,12 +256,12 @@ pub fn encrypt_xchacha20poly1305(data: &[u8], secret: Secret) -> Result<Vec<u8>>
 #[wasm_bindgen(js_name = "decryptXChaCha20Poly1305")]
 pub fn js_decrypt_xchacha20poly1305(text: String, password: String) -> Result<String> {
     let secret = sha256_hash(password.as_bytes())?;
-    let encrypted = decrypt_xchacha20poly1305(text.as_bytes(), secret)?;
+    let encrypted = decrypt_xchacha20poly1305(text.as_bytes(), &secret)?;
     let decoded = general_purpose::STANDARD.decode(encrypted)?;
     Ok(String::from_utf8(decoded)?)
 }
 
-pub fn decrypt_xchacha20poly1305(data: &[u8], secret: Secret) -> Result<Secret> {
+pub fn decrypt_xchacha20poly1305(data: &[u8], secret: &Secret) -> Result<Secret> {
     let private_key_bytes = argon2_sha256iv_hash(secret.as_ref(), 32)?;
     let key = Key::from_slice(private_key_bytes.as_ref());
     let cipher = XChaCha20Poly1305::new(key);
@@ -292,9 +292,10 @@ mod tests {
         let password = b"password";
         let original = b"hello world".to_vec();
         // println!("original: {}", original.to_hex());
-        let encrypted = encrypt_xchacha20poly1305(&original, password.as_ref().into()).unwrap();
+        let password = Secret::new(password.to_vec());
+        let encrypted = encrypt_xchacha20poly1305(&original, &password).unwrap();
         // println!("encrypted: {}", encrypted.to_hex());
-        let decrypted = decrypt_xchacha20poly1305(&encrypted, password.as_ref().into()).unwrap();
+        let decrypted = decrypt_xchacha20poly1305(&encrypted, &password).unwrap();
         // println!("decrypted: {}", decrypted.to_hex());
         assert_eq!(decrypted.as_ref(), original);
 

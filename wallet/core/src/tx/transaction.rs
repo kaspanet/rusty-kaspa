@@ -213,7 +213,7 @@ impl TryFrom<JsValue> for Transaction {
                     .get_vec("outputs")?
                     .into_iter()
                     .map(|jsv| {
-                        workflow_log::log_trace!("JsValue->Transaction: output : {jsv:?}");
+                        // workflow_log::log_trace!("JsValue->Transaction: output : {jsv:?}");
                         jsv.try_into()
                     })
                     .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?

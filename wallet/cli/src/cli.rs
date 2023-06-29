@@ -9,6 +9,7 @@ use kaspa_wallet_core::accounts::gen0::import::*;
 use kaspa_wallet_core::imports::ToHex;
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
 use kaspa_wallet_core::storage::{AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
+use kaspa_wallet_core::tx::PaymentOutputs;
 use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
 use kaspa_wallet_core::{Address, AddressPrefix, ConnectOptions, ConnectStrategy};
 // use serde::de::DeserializeOwned;
@@ -147,10 +148,10 @@ impl WalletCli {
                         if !is_open {
                             return Err(Error::WalletIsNotOpen);
                         }
-//- TODO
-//- TODO
-//- TODO
-//- TODO
+                        //- TODO
+                        //- TODO
+                        //- TODO
+                        //- TODO
                         // let account_kind: AccountKind = select_variant(&term, "Please select account type", &mut argv).await?;
 
                         // let prv_key_data_info =
@@ -211,7 +212,8 @@ impl WalletCli {
                 let amount = argv.get(1).unwrap();
                 let priority_fee = argv.get(2);
 
-                let priority_fee_sompi = if let Some(fee) = priority_fee { helpers::kas_str_to_sompi(fee)? } else { 0u64 };
+                let priority_fee_sompi = if let Some(fee) = priority_fee { Some(helpers::kas_str_to_sompi(fee)?) } else { None };
+
                 let address = serde_json::from_str::<Address>(address)?;
                 let amount_sompi = helpers::kas_str_to_sompi(amount)?;
 
@@ -226,9 +228,11 @@ impl WalletCli {
                     return Err("It is read only wallet.".into());
                 }
                 let abortable = Abortable::default();
+
+                let outputs = PaymentOutputs::try_from((address.clone(), amount_sompi))?;
                 let ids =
                     // account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret, &abortable).await?;
-                    account.send(&address, amount_sompi, priority_fee_sompi, wallet_secret, payment_secret, &abortable).await?;
+                    account.send(&outputs, priority_fee_sompi, false, wallet_secret, payment_secret, &abortable).await?;
 
                 term.writeln(format!("\r\nSending {amount} KAS to {address}, tx ids:"));
                 term.writeln(format!("{}\r\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\r\n")));
@@ -446,7 +450,8 @@ impl WalletCli {
 
         let payment_secret = term.ask(true, "Enter payment (private key encryption) password (optional): ").await?;
         // let payment_secret = payment_secret.trim();
-        let payment_secret = if payment_secret.trim().is_empty() { None } else { Some(Secret::new(payment_secret.trim().as_bytes().to_vec())) };
+        let payment_secret =
+            if payment_secret.trim().is_empty() { None } else { Some(Secret::new(payment_secret.trim().as_bytes().to_vec())) };
 
         // let payment_secret = Secret::new(
         //     .as_bytes().to_vec(),

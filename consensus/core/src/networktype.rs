@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
-use workflow_core::enums::u8_try_from;
 use wasm_bindgen::prelude::*;
+use workflow_core::enums::u8_try_from;
 
 #[derive(thiserror::Error, PartialEq, Eq, Debug, Clone)]
 pub enum NetworkTypeError {

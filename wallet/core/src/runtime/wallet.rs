@@ -1,6 +1,4 @@
-// use crate::iterator::*;
 use crate::result::Result;
-// use crate::runtime::iterators::*;
 use crate::runtime::{Account, AccountId, AccountMap};
 use crate::secret::Secret;
 use crate::storage::interface::{AccessContext, CreateArgs};
@@ -14,7 +12,7 @@ use futures::future::join_all;
 use futures::stream::StreamExt;
 use futures::{select, FutureExt, Stream};
 use kaspa_addresses::Prefix as AddressPrefix;
-use kaspa_bip32::Mnemonic;
+use kaspa_bip32::{Language, Mnemonic};
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_notify::{
     listener::ListenerId,
@@ -25,6 +23,7 @@ use kaspa_rpc_core::{
     notify::{connection::ChannelConnection, mode::NotificationMode},
     Notification,
 };
+use kaspa_utils::hashmap::*;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -34,16 +33,17 @@ use workflow_core::channel::{Channel, DuplexChannel, Multiplexer, Receiver};
 use workflow_core::task::spawn;
 use workflow_log::log_error;
 use workflow_rpc::client::Ctl;
+use zeroize::Zeroize;
 
 pub struct WalletCreateArgs {
     pub name: Option<String>,
     pub user_hint: Option<String>,
-    pub wallet_secret : Secret,
+    pub wallet_secret: Secret,
     pub overwrite_wallet_storage: bool,
 }
 
 impl WalletCreateArgs {
-    pub fn new(name: Option<String>, user_hint: Option<String>, secret : Secret, overwrite_wallet_storage: bool) -> Self {
+    pub fn new(name: Option<String>, user_hint: Option<String>, secret: Secret, overwrite_wallet_storage: bool) -> Self {
         Self { name, user_hint, wallet_secret: secret, overwrite_wallet_storage }
     }
 }
@@ -54,19 +54,33 @@ impl From<(Option<String>, &WalletCreateArgs)> for CreateArgs {
     }
 }
 
-
 pub struct PrvKeyDataCreateArgs {
     pub name: Option<String>,
-    pub wallet_secret : Secret,
-    pub payment_secret : Option<Secret>,
+    pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
+    pub mnemonic: Option<String>,
 }
 
 impl PrvKeyDataCreateArgs {
-    pub fn new(name: Option<String>, wallet_secret : Secret, payment_secret : Option<Secret>) -> Self {
-        Self { name, wallet_secret, payment_secret }
+    pub fn new(name: Option<String>, wallet_secret: Secret, payment_secret: Option<Secret>) -> Self {
+        Self { name, wallet_secret, payment_secret, mnemonic: None }
+    }
+
+    pub fn new_with_mnemonic(
+        name: Option<String>,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        mnemonic: Option<String>,
+    ) -> Self {
+        Self { name, wallet_secret, payment_secret, mnemonic }
     }
 }
 
+impl Zeroize for PrvKeyDataCreateArgs {
+    fn zeroize(&mut self) {
+        self.mnemonic.zeroize();
+    }
+}
 
 #[derive(Clone)]
 pub struct AccountCreateArgs {
@@ -127,10 +141,7 @@ pub struct NetworkInfo {
 
 impl From<NetworkType> for NetworkInfo {
     fn from(network_type: NetworkType) -> Self {
-        Self {
-            network_type,
-            prefix: network_type.into(),
-        }
+        Self { network_type, prefix: network_type.into() }
     }
 }
 
@@ -139,8 +150,6 @@ impl From<NetworkType> for NetworkInfo {
 //         Self { network_type, prefix: network_type.into() }
 //     }
 // }
-
-
 
 pub struct Inner {
     active_accounts: AccountMap,
@@ -179,7 +188,6 @@ pub struct Wallet {
 }
 
 impl Wallet {
-
     pub fn local_store() -> Result<Arc<dyn Interface>> {
         Ok(Arc::new(LocalStore::try_new(false)?))
     }
@@ -188,11 +196,15 @@ impl Wallet {
         Ok(Arc::new(LocalStore::try_new(true)?))
     }
 
-    pub fn try_new(storage : Arc<dyn Interface>, network_type : Option<NetworkType>) -> Result<Wallet> {
+    pub fn try_new(storage: Arc<dyn Interface>, network_type: Option<NetworkType>) -> Result<Wallet> {
         Wallet::try_with_rpc(None, storage, network_type)
     }
 
-    pub fn try_with_rpc(rpc: Option<Arc<KaspaRpcClient>>, store : Arc<dyn Interface>, network_type : Option<NetworkType>) -> Result<Wallet> {
+    pub fn try_with_rpc(
+        rpc: Option<Arc<KaspaRpcClient>>,
+        store: Arc<dyn Interface>,
+        network_type: Option<NetworkType>,
+    ) -> Result<Wallet> {
         // let _master_xprv =
         //     "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
 
@@ -237,7 +249,7 @@ impl Wallet {
                 notification_channel: Channel::<Notification>::unbounded(),
                 address_to_account_map: Arc::new(Mutex::new(HashMap::new())),
                 virtual_daa_score: Arc::new(AtomicU64::new(0)),
-                network: Arc::new(Mutex::new(network_type.map(|t|t.into()))),
+                network: Arc::new(Mutex::new(network_type.map(|t| t.into()))),
             }),
         };
 
@@ -459,7 +471,7 @@ impl Wallet {
             .await?
             .ok_or(Error::PrivateKeyNotFound(prv_key_data_id.to_hex()))?;
 
-        let xpub_key = prv_key_data.create_xpub(args.payment_secret, args.account_kind, account_index).await?;
+        let xpub_key = prv_key_data.create_xpub(args.payment_secret.as_ref(), args.account_kind, account_index).await?;
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
         let pub_key_data = PubKeyData::new(vec![xpub_key.to_string(Some(xpub_prefix))], None, None);
 
@@ -492,9 +504,8 @@ impl Wallet {
         self: &Arc<Wallet>,
         args: WalletCreateArgs,
         // account_args: AccountCreateArgs,
-    // ) -> Result<(Mnemonic, Option<String>)> {
+        // ) -> Result<(Mnemonic, Option<String>)> {
     ) -> Result<Option<String>> {
-
         self.reset().await?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
@@ -504,15 +515,15 @@ impl Wallet {
         Ok(descriptor)
     }
 
-    pub async fn create_prv_key_data(
-        self: &Arc<Wallet>,
-        args: PrvKeyDataCreateArgs,
-    ) -> Result<(PrvKeyDataId,Mnemonic)> {
-
+    pub async fn create_prv_key_data(self: &Arc<Wallet>, args: PrvKeyDataCreateArgs) -> Result<(PrvKeyDataId, Mnemonic)> {
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
-        let payment_secret = args.payment_secret.clone();
-        let mnemonic = Mnemonic::create_random()?;
-        let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), payment_secret.clone()))?;
+        let mnemonic = if let Some(mnemonic) = args.mnemonic.as_ref() {
+            let mnemonic = mnemonic.to_string();
+            Mnemonic::new(mnemonic, Language::English)?
+        } else {
+            Mnemonic::create_random()?
+        };
+        let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), args.payment_secret.as_ref()))?;
         let prv_key_data_id = prv_key_data.id;
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
         prv_key_data_store.store(&ctx, prv_key_data).await?;
@@ -525,22 +536,19 @@ impl Wallet {
         wallet_args: WalletCreateArgs,
         account_args: AccountCreateArgs,
     ) -> Result<(Mnemonic, Option<String>, Arc<Account>)> {
-
         self.reset().await?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(account_args.wallet_secret));
 
-        // self.inner.store.create(&ctx, CreateArgs::new(None, wallet_args.override_wallet)).await?;
         self.inner.store.create(&ctx, (None, &wallet_args).into()).await?;
         let descriptor = self.inner.store.descriptor()?;
-
         let prefix = self.address_prefix()?;
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
-        let payment_secret = account_args.payment_secret.clone();
         let mnemonic = Mnemonic::create_random()?;
         let account_index = 0;
-        let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), payment_secret.clone()))?;
-        let xpub_key = prv_key_data.create_xpub(payment_secret, account_args.account_kind, account_index).await?;
+        let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), account_args.payment_secret.as_ref()))?;
+        let xpub_key =
+            prv_key_data.create_xpub(account_args.payment_secret.as_ref(), account_args.account_kind, account_index).await?;
         let pub_key_data = PubKeyData::new(vec![xpub_key.to_string(Some(xpub_prefix))], None, None);
 
         let stored_account = storage::Account::new(
@@ -564,8 +572,6 @@ impl Wallet {
 
         let account = Account::try_new_arc_from_storage(self, &stored_account, prefix).await?;
         self.select(Some(account.clone())).await?;
-
-        // account.start().await?;
 
         Ok((mnemonic, descriptor, account))
     }
@@ -595,7 +601,8 @@ impl Wallet {
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
 
-        let prv_key_data = PrvKeyData::new_from_mnemonic(&keydata.mnemonic);
+        let mnemonic = Mnemonic::new(keydata.mnemonic.trim(), Language::English)?;
+        let prv_key_data = PrvKeyData::try_new_from_mnemonic(mnemonic, None)?;
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
         if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
@@ -716,35 +723,37 @@ impl Wallet {
     async fn handle_notification(&self, notification: Notification) -> Result<()> {
         //log_info!("handling notification: {:?}", notification);
 
-        match &notification {
+        match notification {
             Notification::VirtualDaaScoreChanged(data) => {
                 self.handle_daa_score_change(data.virtual_daa_score).await?;
             }
 
             Notification::UtxosChanged(utxos) => {
-                for entry in utxos.added.iter() {
-                    if let Some(address) = entry.address.as_ref() {
-                        if let Some(account) = self.address_to_account(address) {
-                            account.handle_utxo_added(entry.clone().into()).await?;
-                        } else {
-                            log_error!("receiving UTXO Changed notification for an unknown address: {}", address);
-                        }
+                let added = Arc::into_inner(utxos.added)
+                    .expect("Arc::into_inner() failure in UtxosChanged notification (added)")
+                    .into_iter()
+                    .filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
+                let added = HashMap::group_from(added);
+                for (address, entries) in added.into_iter() {
+                    if let Some(account) = self.address_to_account(&address) {
+                        let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
+                        account.handle_utxo_added(entries).await?;
                     } else {
-                        log_error!("receiving UTXO Changed 'added' notification without an address is not supported");
+                        log_error!("receiving UTXO Changed 'added' notification for an unknown address: {}", address);
                     }
                 }
 
-                for entry in utxos.removed.iter() {
-                    // self.utxos.remove(UtxoEntryReference::from(entry.clone()).id());
-                    if let Some(address) = entry.address.as_ref() {
-                        if let Some(account) = self.address_to_account(address) {
-                            let removed = account.handle_utxo_removed(UtxoEntryReference::from(entry.clone()).id()).await?;
-                            log_info!("utxo removed: {removed}, {}", entry.outpoint.transaction_id);
-                        } else {
-                            log_error!("receiving UTXO Changed notification for an unknown address: {}", address);
-                        }
+                let removed = Arc::into_inner(utxos.removed)
+                    .expect("Arc::into_inner() failure in UtxosChanged notification (added)")
+                    .into_iter()
+                    .filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
+                let removed = HashMap::group_from(removed);
+                for (address, entries) in removed.into_iter() {
+                    if let Some(account) = self.address_to_account(&address) {
+                        let entries = entries.into_iter().map(|entry| entry.outpoint.into()).collect::<Vec<_>>();
+                        account.handle_utxo_removed(entries).await?;
                     } else {
-                        log_error!("receiving UTXO Changed 'remove' notification without an address is not supported");
+                        log_error!("receiving UTXO Changed 'removed' notification for an unknown address: {}", address);
                     }
                 }
             }
@@ -877,11 +886,7 @@ mod test {
     use std::{str::FromStr, thread::sleep, time};
 
     use super::*;
-    use crate::{
-        signer::sign_mutable_transaction,
-        tx::MutableTransaction,
-        utxo::{UtxoOrdering, UtxoSet},
-    };
+    use crate::{signer::sign_mutable_transaction, tx::MutableTransaction, utxo::UtxoSet};
 
     // TODO - re-export subnets
     use crate::tx::Transaction;
@@ -899,9 +904,7 @@ mod test {
     async fn get_utxos_set_by_addresses(rpc: Arc<DynRpcApi>, addresses: Vec<Address>) -> Result<UtxoSet> {
         let utxos = rpc.get_utxos_by_addresses(addresses).await?;
         let utxo_set = UtxoSet::new();
-        for utxo in utxos {
-            utxo_set.insert(utxo.into());
-        }
+        utxo_set.insert(utxos.into_iter().map(|entry| entry.into()).collect::<Vec<_>>());
         Ok(utxo_set)
     }
 
@@ -938,7 +941,11 @@ mod test {
         let utxo_set_balance = utxo_set.calculate_balance().await?;
         println!("get_utxos_by_addresses: {utxo_set_balance:?}");
 
-        let utxo_selection = utxo_set.select(100000, UtxoOrdering::AscendingAmount, true).await?;
+        let mut ctx = utxo_set.create_selection_context();
+        // let mut ctx = UtxoSelectionContext::new(utxo_set);
+        let selected_entries = ctx.select(100_000).await?;
+
+        // let utxo_selection = utxo_set.select(100000, UtxoOrdering::AscendingAmount, true).await?;
 
         //let payload = vec![];
         let to_address = Address::try_from("kaspatest:qpakxqlesqywgkq7rg4wyhjd93kmw7trkl3gpa3vd5flyt59a43yyn8vu0w8c")?;
@@ -946,7 +953,7 @@ mod test {
         //let vtx = VirtualTransaction::new(utxo_selection, &outputs, payload);
 
         //vtx.sign();
-        let utxo = (*utxo_selection.selected_entries[0].utxo).clone();
+        let utxo = (*selected_entries[0].utxo).clone();
         //utxo.utxo_entry.is_coinbase = false;
         let selected_entries = vec![utxo];
 

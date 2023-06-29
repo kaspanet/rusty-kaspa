@@ -9,6 +9,12 @@ pub struct TransactionOutpointInner {
     pub index: TransactionIndexType,
 }
 
+impl From<cctx::TransactionOutpoint> for TransactionOutpointInner {
+    fn from(outpoint: cctx::TransactionOutpoint) -> Self {
+        TransactionOutpointInner { transaction_id: outpoint.transaction_id, index: outpoint.index }
+    }
+}
+
 /// Represents a Kaspa transaction outpoint
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -24,10 +24,12 @@ pub use crate::runtime::{AccountId, AccountKind};
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::result::Result;
     use crate::secret::Secret;
     use crate::storage::local::wallet::Wallet;
+    use kaspa_bip32::{Language, Mnemonic};
 
     #[tokio::test]
     async fn test_wallet_store_wallet_store_load() -> Result<()> {
@@ -40,17 +42,19 @@ mod tests {
 
         let mut payload = Payload::default();
 
-        let global_password = Secret::from("ABC-L4LXw2F7HEK3wJU-Rk4stbPy6c");
-        let password = Secret::from("test-123-# L4LXw2F7HEK3wJU Rk4stbPy6c");
+        let wallet_secret = Secret::from("ABC-L4LXw2F7HEK3wJU-Rk4stbPy6c");
+        let payment_secret = Secret::from("test-123-# L4LXw2F7HEK3wJU Rk4stbPy6c");
         let mnemonic1 = "caution guide valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light nut invite fiction visa hamster coyote".to_string();
         let mnemonic2 = "nut invite fiction visa hamster coyote guide caution valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light".to_string();
 
-        let key_data_payload1 = PrvKeyDataPayload::new(mnemonic1.clone());
+        let mnemonic1 = Mnemonic::new(mnemonic1, Language::English)?;
+        let key_data_payload1 = PrvKeyDataPayload::try_new(mnemonic1.clone(), Some(&payment_secret))?;
         let prv_key_data1 = PrvKeyData::new(key_data_payload1.id(), None, Encryptable::Plain(key_data_payload1));
 
-        let key_data_payload2 = PrvKeyDataPayload::new(mnemonic2.clone());
+        let mnemonic2 = Mnemonic::new(mnemonic2, Language::English)?;
+        let key_data_payload2 = PrvKeyDataPayload::try_new(mnemonic2.clone(), Some(&payment_secret))?;
         let prv_key_data2 =
-            PrvKeyData::new(key_data_payload2.id(), None, Encryptable::Plain(key_data_payload2).into_encrypted(password.clone())?);
+            PrvKeyData::new(key_data_payload2.id(), None, Encryptable::Plain(key_data_payload2).into_encrypted(&payment_secret)?);
 
         let pub_key_data1 = PubKeyData::new(vec!["abc".to_string()], None, None);
         let pub_key_data2 = PubKeyData::new(vec!["xyz".to_string()], None, None);
@@ -90,10 +94,10 @@ mod tests {
 
         let payload_json = serde_json::to_string(&payload).unwrap();
         // let settings = WalletSettings::new(account_id);
-        Wallet::try_store_payload(&store, global_password.clone(), payload).await?;
+        Wallet::try_store_payload(&store, &wallet_secret, payload).await?;
 
         let w2 = Wallet::try_load(&store).await?;
-        let w2payload = w2.payload.decrypt::<Payload>(global_password.clone()).unwrap();
+        let w2payload = w2.payload.decrypt::<Payload>(&wallet_secret).unwrap();
         println!("\n---\nwallet.metadata (plain): {:#?}\n\n", w2.metadata);
         // let w2payload_json = serde_json::to_string(w2payload.as_ref()).unwrap();
         println!("\n---nwallet.payload (decrypted): {:#?}\n\n", w2payload.as_ref());
@@ -107,13 +111,13 @@ mod tests {
         let first_mnemonic = &w2keydata1_payload.as_ref().mnemonic;
         // println!("first mnemonic (plain): {}", hex_string(first_mnemonic.as_ref()));
         println!("first mnemonic (plain): {first_mnemonic}");
-        assert_eq!(&mnemonic1, first_mnemonic);
+        assert_eq!(&mnemonic1.phrase_string(), first_mnemonic);
 
         let w2keydata2 = w2payload.as_ref().prv_key_data.get(1).unwrap();
-        let w2keydata2_payload = w2keydata2.payload.decrypt(Some(password.clone())).unwrap();
+        let w2keydata2_payload = w2keydata2.payload.decrypt(Some(&payment_secret)).unwrap();
         let second_mnemonic = &w2keydata2_payload.as_ref().mnemonic;
         println!("second mnemonic (encrypted): {second_mnemonic}");
-        assert_eq!(&mnemonic2, second_mnemonic);
+        assert_eq!(&mnemonic2.phrase_string(), second_mnemonic);
 
         Ok(())
     }

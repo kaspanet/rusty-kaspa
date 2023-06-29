@@ -82,7 +82,7 @@ impl TryFrom<JsValue> for TransactionOutput {
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
         // workflow_log::log_trace!("js_value->TransactionOutput: {js_value:?}");
         if let Some(object) = Object::try_from(&js_value) {
-            let has_address = Object::has_own(&object, &JsValue::from("address"));
+            let has_address = Object::has_own(object, &JsValue::from("address"));
             workflow_log::log_trace!("js_value->TransactionOutput: has_address:{has_address:?}");
             let value = object.get_u64("value")?;
             let script_public_key = ScriptPublicKey::try_from_jsvalue(

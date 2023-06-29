@@ -8,13 +8,13 @@ use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
-use crate::tx::{LimitCalcStrategy, PaymentOutput, PaymentOutputs, VirtualTransaction};
-use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoOrdering, UtxoSet};
+use crate::tx::{LimitCalcStrategy, PaymentOutputs, VirtualTransaction};
+use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoSet};
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
 use futures::future::join_all;
 use kaspa_addresses::Prefix as AddressPrefix;
-use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, Language, Mnemonic, PrivateKey, SecretKey};
+use kaspa_bip32::{ChildNumber, PrivateKey};
 use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
 use kaspa_notify::listener::ListenerId;
 use kaspa_notify::scope::{Scope, UtxosChangedScope};
@@ -27,7 +27,6 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use workflow_core::abortable::Abortable;
 use workflow_core::channel::{Channel, DuplexChannel};
-// use workflow_core::enums::Describe;
 use workflow_core::enums::u8_try_from;
 
 #[derive(Default, Clone)]
@@ -410,7 +409,6 @@ impl Account {
         // let balance = balance.load(std::sync::atomic::Ordering::SeqCst);
         self.balance.lock().unwrap().replace(balance.load(std::sync::atomic::Ordering::SeqCst));
         // - TODO - post balance updates to the wallet
-        self.utxos.order(UtxoOrdering::AscendingAmount)?;
 
         Ok(())
     }
@@ -430,32 +428,27 @@ impl Account {
 
     pub async fn send(
         &self,
-        address: &Address,
-        amount_sompi: u64,
-        priority_fee_sompi: u64,
-        // keydata: PrvKeyData,
+        outputs: &PaymentOutputs,
+        priority_fee_sompi: Option<u64>,
+        _include_fees_in_amount: bool,
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
         abortable: &Abortable,
     ) -> Result<Vec<kaspa_hashes::Hash>> {
-        //let fee_margin = 1000; //TODO update select_utxos to remove this fee_margin
-        let transaction_amount = amount_sompi + priority_fee_sompi;
-        let utxo_selection = self.utxos.select_utxos(transaction_amount, UtxoOrdering::AscendingAmount, true).await?;
+        let mut ctx = self.utxos.create_selection_context();
+        // let transaction_amount = outputs.amount() + priority_fee_sompi.as_ref().cloned().unwrap_or_default();
+        // ctx.select(transaction_amount);
+        // let utxo_selection = self.utxos.select_utxos(transaction_amount, UtxoOrdering::AscendingAmount, true).await?;
 
         let change_address = self.change_address().await?;
-        let outputs = PaymentOutputs { outputs: vec![PaymentOutput::new(address.clone(), amount_sompi, None)] };
-
-        let priority_fee_sompi = Some(priority_fee_sompi);
         let payload = vec![];
         let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
         let minimum_signatures = self.inner().stored.minimum_signatures;
-        let addresses = utxo_selection.selected_entries.iter().map(|u| u.utxo.address.clone().unwrap()).collect::<Vec<Address>>();
-        //let mtx = create_transaction(utxo_selection, outputs, change_address, priority_fee, payload)?;
         let vt = VirtualTransaction::new(
             sig_op_count,
             minimum_signatures,
-            &utxo_selection,
-            &outputs,
+            &mut ctx,
+            outputs,
             &change_address,
             priority_fee_sompi,
             payload,
@@ -464,16 +457,17 @@ impl Account {
         )
         .await?;
 
+        let addresses = ctx.addresses();
         let indexes = self.derivation.addresses_indexes(&addresses)?;
         let receive_indexes = indexes.0;
         let change_indexes = indexes.1;
 
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         let keydata = self
             .wallet
             .store()
             .as_prv_key_data_store()?
-            .load_key_data(&ctx, &self.prv_key_data_id)
+            .load_key_data(&access_ctx, &self.prv_key_data_id)
             .await?
             .ok_or(Error::PrivateKeyNotFound(self.prv_key_data_id.to_hex()))?;
 
@@ -486,6 +480,9 @@ impl Account {
             //println!("id: {id}\r\n");
             tx_ids.push(id);
         }
+
+        ctx.commit()?;
+
         Ok(tx_ids)
     }
 
@@ -496,10 +493,8 @@ impl Account {
         receive_indexes: Vec<u32>,
         change_indexes: Vec<u32>,
     ) -> Result<Vec<secp256k1::SecretKey>> {
-        let payload = keydata.payload.decrypt(payment_secret)?;
-
-        let mnemonic = Mnemonic::new(&payload.as_ref().mnemonic, Language::English)?;
-        let xkey = ExtendedPrivateKey::<SecretKey>::new(mnemonic.to_seed(""))?;
+        let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
+        let xkey = payload.private_key(payment_secret.as_ref())?;
 
         let cosigner_index = self.inner().stored.pub_key_data.cosigner_index.unwrap_or(0);
         let paths = build_derivate_paths(self.account_kind, self.account_index, cosigner_index)?;
@@ -619,13 +614,13 @@ impl Account {
         Ok(())
     }
 
-    pub(crate) async fn handle_utxo_added(&self, utxo: UtxoEntryReference) -> Result<()> {
-        self.utxos.insert(utxo);
+    pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>) -> Result<()> {
+        self.utxos.insert(utxos);
         Ok(())
     }
 
-    pub(crate) async fn handle_utxo_removed(&self, utxo_id: UtxoEntryId) -> Result<bool> {
-        Ok(self.utxos.remove(utxo_id))
+    pub(crate) async fn handle_utxo_removed(&self, utxo_ids: Vec<UtxoEntryId>) -> Result<bool> {
+        Ok(self.utxos.remove(utxo_ids))
     }
 }
 

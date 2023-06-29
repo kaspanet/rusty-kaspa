@@ -14,6 +14,7 @@ impl AsRef<[u8]> for Secret {
         &self.0
     }
 }
+
 impl From<Vec<u8>> for Secret {
     fn from(vec: Vec<u8>) -> Self {
         Secret(vec)

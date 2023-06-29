@@ -1,18 +1,11 @@
-// use std::sync::atomic::AtomicBool;
-// use std::sync::atomic::Ordering;
-
 use crate::imports::*;
-use crate::runtime;
-#[allow(unused_imports)]
-use crate::secret::Secret;
-#[allow(unused_imports)]
-use crate::storage::PrvKeyDataId;
-use js_sys::BigInt;
-#[allow(unused_imports)]
-use js_sys::Reflect;
-#[allow(unused_imports)]
-use workflow_core::abortable::Abortable;
 use crate::result::Result;
+use crate::runtime;
+use crate::secret::Secret;
+use crate::tx::PaymentOutputs;
+use js_sys::BigInt;
+use workflow_core::abortable::Abortable;
+use workflow_wasm::abi::ref_from_abi;
 
 pub struct CacheInner {
     receive_address: Address,
@@ -48,8 +41,6 @@ impl Cache {
     pub fn change_address(&self) -> Address {
         self.inner.lock().unwrap().change_address.clone()
     }
-
-
 }
 
 // impl AddressCache {
@@ -147,18 +138,19 @@ impl Account {
         self.inner.scan_utxos(None, None).await
     }
 
-    pub async fn send(
-        &self,
-        // address: &Address,
-        // amount_sompi: u64,
-        // priority_fee_sompi: u64,
-        // keydata: PrvKeyData,
-        // payment_secret: Option<Secret>,
-        // abortable: &Abortable,
-        // ) -> Result<Vec<kaspa_hashes::Hash>> {
-        js_value: JsValue,
-    ) -> Result<JsValue> {
-        let _args = SendArgs::try_from(js_value)?;
+    pub async fn send(&self, js_value: JsValue) -> Result<JsValue> {
+        let args = AccountSendArgs::try_from(js_value)?;
+
+        self.inner
+            .send(
+                &args.outputs,
+                args.priority_fee_sompi,
+                args.include_fees_in_amount,
+                args.wallet_secret,
+                args.payment_secret,
+                &args.abortable,
+            )
+            .await?;
 
         todo!()
     }
@@ -204,36 +196,34 @@ impl Account {
 //     }
 // }
 
-struct SendArgs {
-    // outputs : Vec<(Address, u64)>,
-    // priority_fee_sompi: u64,
-    // wallet_secret: Option<Secret>,
-    // payment_secret: Option<Secret>,
-    // abortable: Abortable,
+pub struct AccountSendArgs {
+    pub outputs: PaymentOutputs,
+    pub priority_fee_sompi: Option<u64>,
+    pub include_fees_in_amount: bool,
+
+    // pub utxos: Option<Vec<Arc<UtxoEntryReference>>>,
+    pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
+    pub abortable: Abortable,
 }
 
-impl TryFrom<JsValue> for SendArgs {
+impl TryFrom<JsValue> for AccountSendArgs {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if js_value.is_object() {
-            let _object = Object::from(js_value);
+        if let Some(object) = Object::try_from(&js_value) {
+            let outputs = PaymentOutputs::try_from(object.get("outputs")?)?;
 
-            // let outputs = object.get_vec("outputs")?;
+            let priority_fee_sompi = object.get_u64("priorityFee").ok();
+            let include_fees_in_amount = object.get_bool("includeFeesInAmount").unwrap_or(false);
+            let abortable = object.get("abortable").ok().and_then(|v| ref_from_abi!(Abortable, &v).ok()).unwrap_or_default();
 
-            // let outputs = {
-            //     let outputs = Reflect::get(&object, &JsValue::from("outputs"))?;
-            //     if outputs != JsValue::UNDEFINED {
-            //         let array = outputs.dyn_into::<Array>().map_err(|err| Error::Custom(format!("`outputs` property must be an Array")))?;
-            //         let vec = array.to_vec();
+            let wallet_secret = object.get_string("walletSecret")?.into();
+            let payment_secret = object.get("paymentSecret")?.as_string().map(|s| s.into());
 
-            //         // return Err(Error::MissingProperty(prop.to_string()));
-            //     } else {
-            //         let to = Reflect::get(&object, &JsValue::from("to"))?;
+            let send_args =
+                AccountSendArgs { outputs, priority_fee_sompi, include_fees_in_amount, wallet_secret, payment_secret, abortable };
 
-            //     }
-            // };
-
-            todo!()
+            Ok(send_args)
         } else {
             Err("Argument to Account::send() must be an object".into())
         }

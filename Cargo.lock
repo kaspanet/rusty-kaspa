@@ -1797,10 +1797,12 @@ version = "0.1.6"
 dependencies = [
  "borsh",
  "criterion",
+ "js-sys",
  "serde",
  "smallvec",
  "thiserror",
  "wasm-bindgen",
+ "workflow-wasm",
 ]
 
 [[package]]
@@ -2615,6 +2617,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2 0.10.6",
+ "sorted-insert",
  "thiserror",
  "tokio",
  "wasm-bindgen",
@@ -4151,6 +4154,12 @@ dependencies = [
  "libc",
  "winapi",
 ]
+
+[[package]]
+name = "sorted-insert"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5dd62203d74a728ae353b4d716fc2a80e8da881dfdf8bbc0c012d877a58c4030"
 
 [[package]]
 name = "spin"

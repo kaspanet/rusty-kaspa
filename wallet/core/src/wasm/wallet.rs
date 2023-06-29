@@ -5,6 +5,7 @@ use crate::result::Result;
 use crate::runtime;
 use crate::secret::Secret;
 use crate::storage;
+use crate::storage::local::interface::LocalStore;
 use crate::storage::PrvKeyDataId;
 use crate::wasm::account::Account;
 use crate::wasm::keydata::PrvKeyDataInfo;
@@ -15,8 +16,6 @@ use runtime::AccountKind;
 use workflow_wasm::channel::MultiplexerClient;
 use workflow_wasm::object::ObjectTrait;
 use workflow_wasm::sendable::Sendable;
-use crate::storage::local::interface::LocalStore;
-// use workflow_wasm::abi::ref_from_abi_as_option;
 
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
@@ -28,14 +27,11 @@ pub struct Wallet {
     pub rpc: RpcClient,
 }
 
-
-
 #[wasm_bindgen]
 impl Wallet {
     #[wasm_bindgen(constructor)]
     // pub fn constructor(js_value: JsValue) -> std::result::Result<Wallet, JsError> {
     pub fn constructor(js_value: JsValue) -> Result<Wallet> {
-
         let args = WalletCtorArgs::try_from(js_value)?;
 
         let store = Arc::new(LocalStore::try_new(args.resident)?);
@@ -145,7 +141,6 @@ impl Wallet {
         Ok(object)
     }
 
-
     // #[wasm_bindgen(js_name = "createWallet")]
     // pub async fn create_wallet(&self, wallet_args: &JsValue, account_args: &JsValue) -> Result<String> {
     // // pub async fn create_wallet(&self, args: &JsValue) -> Result<String> {
@@ -206,10 +201,9 @@ impl Wallet {
 
 #[derive(Default)]
 struct WalletCtorArgs {
-    resident : bool,
-    network_type : Option<NetworkType>,
+    resident: bool,
+    network_type: Option<NetworkType>,
 }
-
 
 impl TryFrom<JsValue> for WalletCtorArgs {
     type Error = Error;
@@ -222,12 +216,12 @@ impl TryFrom<JsValue> for WalletCtorArgs {
                 Some(NetworkType::try_from(network_type as u8)?)
             } else if let Some(network_type) = network_type.as_string() {
                 let network_type = NetworkType::from_str(network_type.as_str())?;
-                    // .ok_or(Error::Custom("networkType must be one of: mainnet|testnet|devnet|simnet".to_string()))?;
+                // .ok_or(Error::Custom("networkType must be one of: mainnet|testnet|devnet|simnet".to_string()))?;
                 Some(network_type)
             } else {
                 None
             };
-    
+
             Ok(Self { resident, network_type })
         } else {
             Ok(WalletCtorArgs::default())
@@ -238,14 +232,14 @@ impl TryFrom<JsValue> for WalletCtorArgs {
 struct WalletCreateArgs {
     pub name: Option<String>,
     pub user_hint: Option<String>,
-    pub wallet_secret : Secret,
+    pub wallet_secret: Secret,
     pub overwrite_wallet_storage: bool,
 }
 
 impl TryFrom<&JsValue> for WalletCreateArgs {
     type Error = Error;
     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(&js_value) {
+        if let Some(object) = Object::try_from(js_value) {
             Ok(WalletCreateArgs {
                 name: object.get("name")?.as_string(),
                 user_hint: object.get("hint")?.as_string(),
@@ -255,12 +249,7 @@ impl TryFrom<&JsValue> for WalletCreateArgs {
         } else if let Some(secret) = js_value.as_string() {
             // Err("WalletCreateArgs argument must be an object".into())
             // Ok(WalletCreateArgs::default())
-            Ok(WalletCreateArgs {
-                name: None,
-                user_hint: None,
-                wallet_secret: secret.into(),
-                overwrite_wallet_storage: false,
-            })
+            Ok(WalletCreateArgs { name: None, user_hint: None, wallet_secret: secret.into(), overwrite_wallet_storage: false })
         } else {
             Err("WalletCreateArgs argument must be an object or a secret".into())
         }
@@ -269,35 +258,34 @@ impl TryFrom<&JsValue> for WalletCreateArgs {
 
 impl From<WalletCreateArgs> for runtime::WalletCreateArgs {
     fn from(args: WalletCreateArgs) -> Self {
-        Self { name: args.name, user_hint: args.user_hint,wallet_secret : args.wallet_secret, overwrite_wallet_storage: args.overwrite_wallet_storage }
+        Self {
+            name: args.name,
+            user_hint: args.user_hint,
+            wallet_secret: args.wallet_secret,
+            overwrite_wallet_storage: args.overwrite_wallet_storage,
+        }
     }
 }
 
-
 struct PrvKeyDataCreateArgs {
     pub name: Option<String>,
-    pub wallet_secret : Secret,
-    pub payment_secret : Option<Secret>,
-    pub _mnemonic : Option<Secret>,
+    pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
+    pub mnemonic: Option<String>,
 }
 
 impl TryFrom<&JsValue> for PrvKeyDataCreateArgs {
     type Error = Error;
     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(&js_value) {
+        if let Some(object) = Object::try_from(js_value) {
             Ok(PrvKeyDataCreateArgs {
                 name: object.get("name")?.as_string(),
                 wallet_secret: object.get_string("walletSecret")?.into(),
-                payment_secret: object.get("paymentSecret")?.as_string().map(|s|s.into()),
-                _mnemonic : None,
+                payment_secret: object.get("paymentSecret")?.as_string().map(|s| s.into()),
+                mnemonic: object.get("mnemonic")?.as_string(),
             })
         } else if let Some(secret) = js_value.as_string() {
-            Ok(PrvKeyDataCreateArgs {
-                name: None,
-                wallet_secret: secret.into(),
-                payment_secret : None,
-                _mnemonic : None,
-            })
+            Ok(PrvKeyDataCreateArgs { name: None, wallet_secret: secret.into(), payment_secret: None, mnemonic: None })
         } else {
             Err("PrvKeyDataCreateArgs argument must be an object or a secret".into())
         }
@@ -306,9 +294,17 @@ impl TryFrom<&JsValue> for PrvKeyDataCreateArgs {
 
 impl From<PrvKeyDataCreateArgs> for runtime::PrvKeyDataCreateArgs {
     fn from(args: PrvKeyDataCreateArgs) -> Self {
-        Self { name: args.name, wallet_secret : args.wallet_secret, payment_secret: args.payment_secret }
+        Self { name: args.name, wallet_secret: args.wallet_secret, payment_secret: args.payment_secret, mnemonic: args.mnemonic }
     }
 }
+
+// impl Drop for PrvKeyDataCreateArgs {
+//     fn drop(&mut self) {
+//         self.wallet_secret.clear();
+//         self.payment_secret.clear();
+//         self.mnemonic.zeroize();
+//     }
+// }
 
 struct AccountCreateArgs {
     pub name: String,
@@ -321,8 +317,7 @@ struct AccountCreateArgs {
 impl TryFrom<&JsValue> for AccountCreateArgs {
     type Error = Error;
     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(&js_value) {
-
+        if let Some(object) = Object::try_from(js_value) {
             let kind = object.get("accountKind")?;
             let account_kind = if let Some(kind) = kind.as_f64() {
                 AccountKind::try_from(kind as u8)?
@@ -358,4 +353,3 @@ impl From<AccountCreateArgs> for runtime::AccountCreateArgs {
         }
     }
 }
-

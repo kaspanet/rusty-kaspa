@@ -28,8 +28,7 @@ impl LocalStoreInner {
     //     store.exists().await
     // }
 
-    pub async fn try_create(ctx: &Arc<dyn AccessContextT>, folder: &str, args: CreateArgs, is_resident : bool) -> Result<Self> {
-
+    pub async fn try_create(ctx: &Arc<dyn AccessContextT>, folder: &str, args: CreateArgs, is_resident: bool) -> Result<Self> {
         let store = if is_resident {
             Store::Resident
         } else {
@@ -42,12 +41,11 @@ impl LocalStoreInner {
 
         let secret = ctx.wallet_secret().await;
         let payload = Payload::default();
-        let wallet = Wallet::try_new(secret.clone(), payload)?;
+        let wallet = Wallet::try_new(&secret, payload)?;
         let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
         let modified = AtomicBool::new(false);
 
         Ok(Self { cache, store, is_modified: modified })
-
     }
 
     pub async fn try_load(ctx: &Arc<dyn AccessContextT>, folder: &str, args: OpenArgs) -> Result<Self> {
@@ -58,7 +56,7 @@ impl LocalStoreInner {
         let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
         let modified = AtomicBool::new(false);
 
-        Ok(Self { cache, store : Store::Storage(storage), is_modified: modified })
+        Ok(Self { cache, store: Store::Storage(storage), is_modified: modified })
     }
 
     pub fn cache(&self) -> MutexGuard<Cache> {
@@ -137,9 +135,12 @@ pub(crate) struct LocalStore {
 }
 
 impl LocalStore {
-    pub fn try_new(is_resident : bool) -> Result<Self> {
-        Ok(Self { location: Arc::new(Mutex::new(Some(Arc::new(Location::default())))), inner: Arc::new(Mutex::new(None)),
-        is_resident })
+    pub fn try_new(is_resident: bool) -> Result<Self> {
+        Ok(Self {
+            location: Arc::new(Mutex::new(Some(Arc::new(Location::default())))),
+            inner: Arc::new(Mutex::new(None)),
+            is_resident,
+        })
     }
 
     pub fn inner(&self) -> Result<Arc<LocalStoreInner>> {
@@ -169,10 +170,10 @@ impl Interface for LocalStore {
         // match self.inner()?.store {
         //     Store::Resident => Ok(false),
         //     Store::Storage(ref storage) => {
-                let location = self.location.lock().unwrap().clone().unwrap();
-                let store = Storage::new(&location.folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
-                store.exists().await
-            // }
+        let location = self.location.lock().unwrap().clone().unwrap();
+        let store = Storage::new(&location.folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
+        store.exists().await
+        // }
         // }
     }
 
@@ -198,12 +199,8 @@ impl Interface for LocalStore {
     fn descriptor(&self) -> Result<Option<String>> {
         let inner = self.inner()?;
         match inner.store {
-            Store::Resident => {
-                Ok(Some("Memory resident wallet".to_string()))
-            },
-            Store::Storage(ref storage) => {
-                Ok(Some(storage.filename_as_string()))
-            }
+            Store::Resident => Ok(Some("Memory resident wallet".to_string())),
+            Store::Storage(ref storage) => Ok(Some(storage.filename_as_string())),
         }
     }
 
@@ -249,25 +246,25 @@ impl PrvKeyDataStore for LocalStoreInner {
 
     async fn load_key_data(&self, ctx: &Arc<dyn AccessContextT>, prv_key_data_id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
         let wallet_secret = ctx.wallet_secret().await; //.ok_or(Error::WalletSecretRequired)?;
-        let prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret)?;
+        let prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(&wallet_secret)?;
         Ok(prv_key_data_map.get(prv_key_data_id).cloned())
     }
 
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, prv_key_data: PrvKeyData) -> Result<()> {
         let wallet_secret = ctx.wallet_secret().await; //.ok_or(Error::WalletSecretRequired)?;
-        // log_info!("prv_key_data: {:?}", self.cache().prv_key_data);
-        let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret.clone())?;
+                                                       // log_info!("prv_key_data: {:?}", self.cache().prv_key_data);
+        let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(&wallet_secret)?;
         prv_key_data_map.insert(prv_key_data.id, prv_key_data);
-        self.cache().prv_key_data.replace(prv_key_data_map.encrypt(wallet_secret)?);
+        self.cache().prv_key_data.replace(prv_key_data_map.encrypt(&wallet_secret)?);
         self.set_modified(true);
         Ok(())
     }
 
     async fn remove(&self, ctx: &Arc<dyn AccessContextT>, prv_key_data_id: &PrvKeyDataId) -> Result<()> {
         let wallet_secret = ctx.wallet_secret().await; //.ok_or(Error::WalletSecretRequired)?;
-        let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret.clone())?;
+        let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(&wallet_secret)?;
         prv_key_data_map.remove(prv_key_data_id);
-        self.cache().prv_key_data.replace(prv_key_data_map.encrypt(wallet_secret)?);
+        self.cache().prv_key_data.replace(prv_key_data_map.encrypt(&wallet_secret)?);
         self.set_modified(true);
         Ok(())
     }

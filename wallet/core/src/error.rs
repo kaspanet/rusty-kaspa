@@ -143,6 +143,12 @@ pub enum Error {
 
     #[error("Invalid account type (must be one of: bip32|multisig|legacy")]
     InvalidAccountKind,
+
+    #[error("Insufficient funds")]
+    InsufficientFunds,
+
+    #[error(transparent)]
+    Utf8Error(#[from] std::str::Utf8Error),
 }
 
 impl From<Aborted> for Error {

@@ -1,15 +1,18 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
-use std::collections::HashMap;
+// use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
-use wasm_bindgen::convert::FromWasmAbi;
+// use wasm_bindgen::convert::FromWasmAbi;
+use js_sys::Object;
 use wasm_bindgen::prelude::*;
+use workflow_wasm::object::*;
 
 mod bech32;
 
 #[derive(Error, PartialEq, Eq, Debug, Clone)]
+// #[derive(Error, Debug)]
 pub enum AddressError {
     #[error("Invalid prefix {0}")]
     InvalidPrefix(String),
@@ -20,11 +23,26 @@ pub enum AddressError {
     #[error("Invalid version {0}")]
     InvalidVersion(u8),
 
+    #[error("Invalid version {0}")]
+    InvalidVersionString(String),
+
     #[error("Invalid character {0}")]
     DecodingError(char),
 
     #[error("Checksum is invalid")]
     BadChecksum,
+
+    #[error("Invalid address")]
+    InvalidAddress,
+
+    #[error("{0}")]
+    WASM(String),
+}
+
+impl From<workflow_wasm::error::Error> for AddressError {
+    fn from(e: workflow_wasm::error::Error) -> Self {
+        AddressError::WASM(e.to_string())
+    }
 }
 
 #[derive(
@@ -293,10 +311,7 @@ impl TryFrom<String> for Address {
     type Error = AddressError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.split_once(':') {
-            Some((prefix, payload)) => Self::decode_payload(prefix.try_into()?, payload),
-            None => Err(AddressError::MissingPrefix),
-        }
+        value.as_str().try_into()
     }
 }
 
@@ -325,67 +340,23 @@ impl<'de> Deserialize<'de> for Address {
     where
         D: Deserializer<'de>,
     {
-        // let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-        // Ok(s.try_into().map_err(serde::de::Error::custom)?)
-        let address = deserializer.deserialize_any(AddressVisitor)?;
-        Ok(address)
+        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
+        s.try_into().map_err(serde::de::Error::custom)
     }
 }
 
-struct AddressVisitor;
-
-impl<'de> serde::de::Visitor<'de> for AddressVisitor {
-    type Value = Address;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(formatter, "valid address as string or Address object.")
-    }
-
-    fn visit_str<E>(self, str: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        Address::try_from(str).map_err(|_| serde::de::Error::invalid_value(serde::de::Unexpected::Str(str), &self))
-    }
-
-    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-    where
-        A: serde::de::MapAccess<'de>,
-    {
-        let key = map.next_key::<String>()?.ok_or(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
-
-        if key.eq("ptr") {
-            let value = map.next_value::<u32>()?;
-            return Ok(unsafe { Address::from_abi(value) });
+impl TryFrom<JsValue> for Address {
+    type Error = AddressError;
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        if let Some(string) = js_value.as_string() {
+            Address::try_from(string)
+        } else if let Some(object) = Object::try_from(&js_value) {
+            let prefix: Prefix = object.get_string("prefix")?.as_str().try_into()?;
+            let payload = object.get_string("payload")?; //.as_str();
+            Self::decode_payload(prefix, &payload)
+        } else {
+            Err(AddressError::InvalidAddress)
         }
-
-        if key.eq("version") || key.eq("prefix") || key.eq("payload") {
-            let mut set = HashMap::new();
-            let value = map.next_value::<String>().map_err(|_| serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
-            set.insert(key, value);
-
-            let key = map.next_key::<String>()?.ok_or(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
-            let value = map.next_value::<String>().map_err(|_| serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
-            set.insert(key, value);
-
-            let key = map.next_key::<String>()?.ok_or(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
-            let value = map.next_value::<String>().map_err(|_| serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))?;
-            set.insert(key, value);
-
-            if !set.contains_key("version") || !set.contains_key("prefix") || !set.contains_key("payload") {
-                return Err(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self));
-            }
-
-            let prefix = set.get("prefix").unwrap();
-            let payload = set.get("payload").unwrap();
-
-            let address_str = format!("{prefix}:{payload}");
-
-            return Address::try_from(address_str).map_err(|e| serde::de::Error::custom(e.to_string()));
-        }
-
-        Err(serde::de::Error::invalid_value(serde::de::Unexpected::Map, &self))
-        //Err(serde::de::Error::invalid_value(serde::de::Unexpected::Str(&format!("Invalid address: {{{key:?}:{value:?}}}")), &self))
     }
 }
 

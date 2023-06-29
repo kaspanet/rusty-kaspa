@@ -12,8 +12,8 @@ pub struct Payload {
 }
 
 impl Payload {
-    pub fn add_prv_key_data(&mut self, mnemonic: Mnemonic, payment_secret: Option<Secret>) -> Result<PrvKeyData> {
-        let key_data_payload = PrvKeyDataPayload::new(mnemonic.phrase().to_string());
+    pub fn add_prv_key_data(&mut self, mnemonic: Mnemonic, payment_secret: Option<&Secret>) -> Result<PrvKeyData> {
+        let key_data_payload = PrvKeyDataPayload::try_new(mnemonic, payment_secret)?;
         let key_data_payload_id = key_data_payload.id();
         let key_data_payload = Encryptable::Plain(key_data_payload);
 

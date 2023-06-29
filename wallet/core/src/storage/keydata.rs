@@ -3,7 +3,8 @@ use crate::result::Result;
 use crate::secret::Secret;
 use crate::{encryption::sha256_hash, imports::*};
 use faster_hex::{hex_decode, hex_string};
-use kaspa_bip32::{ExtendedPublicKey, Language, Mnemonic};
+use kaspa_bip32::{ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic};
+use secp256k1::SecretKey;
 use serde::Serializer;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -78,11 +79,19 @@ pub type PrvKeyDataMap = HashMap<PrvKeyDataId, PrvKeyData>;
 #[serde(rename_all = "camelCase")]
 pub struct PrvKeyDataPayload {
     pub mnemonic: String,
+    // pub xkey: ExtendedPrivateKey<SecretKey>,
 }
 
 impl PrvKeyDataPayload {
-    pub fn new(mnemonic: String) -> Self {
-        Self { mnemonic }
+    pub fn try_new(mnemonic: Mnemonic, _payment_secret: Option<&Secret>) -> Result<Self> {
+        Ok(Self { mnemonic: mnemonic.phrase_string() })
+    }
+
+    pub fn private_key(&self, payment_secret: Option<&Secret>) -> Result<ExtendedPrivateKey<SecretKey>> {
+        let payment_secret = payment_secret.map(|s| std::str::from_utf8(s.as_ref())).transpose()?;
+        let mnemonic = Mnemonic::new(self.mnemonic.clone(), Language::English)?;
+        let xkey = ExtendedPrivateKey::<SecretKey>::new(mnemonic.to_seed(payment_secret.unwrap_or_default()))?;
+        Ok(xkey)
     }
 
     pub fn id(&self) -> PrvKeyDataId {
@@ -107,7 +116,7 @@ pub struct PrvKeyData {
 impl PrvKeyData {
     pub async fn create_xpub(
         &self,
-        payment_secret: Option<Secret>,
+        payment_secret: Option<&Secret>,
         account_kind: AccountKind,
         account_index: u64,
     ) -> Result<ExtendedPublicKey<secp256k1::PublicKey>> {
@@ -116,17 +125,17 @@ impl PrvKeyData {
         create_xpub_from_mnemonic(seed_words, account_kind, account_index).await
     }
 
-    pub fn as_mnemonic(&self, payment_secret: Option<Secret>) -> Result<Mnemonic> {
+    pub fn as_mnemonic(&self, payment_secret: Option<&Secret>) -> Result<Mnemonic> {
         let payload = self.payload.decrypt(payment_secret)?;
         let words = payload.as_ref().mnemonic.as_str();
         Ok(Mnemonic::new(words, Language::English)?)
     }
 }
 
-impl TryFrom<(Mnemonic, Option<Secret>)> for PrvKeyData {
+impl TryFrom<(Mnemonic, Option<&Secret>)> for PrvKeyData {
     type Error = Error;
-    fn try_from((mnemonic, payment_secret): (Mnemonic, Option<Secret>)) -> Result<Self> {
-        let key_data_payload = PrvKeyDataPayload::new(mnemonic.phrase().to_string());
+    fn try_from((mnemonic, payment_secret): (Mnemonic, Option<&Secret>)) -> Result<Self> {
+        let key_data_payload = PrvKeyDataPayload::try_new(mnemonic, payment_secret)?;
         let key_data_payload_id = key_data_payload.id();
         let key_data_payload = Encryptable::Plain(key_data_payload);
 
@@ -162,16 +171,14 @@ impl PrvKeyData {
         Self { id, payload, name }
     }
 
-    pub fn new_from_mnemonic(mnemonic: &str) -> Self {
-        let mnemonic = mnemonic.trim();
-        Self {
-            id: PrvKeyDataId::new_from_slice(&sha256_hash(mnemonic.as_bytes()).unwrap().as_ref()[0..8]),
-            payload: Encryptable::Plain(PrvKeyDataPayload::new(mnemonic.to_string())),
-            name: None,
-        }
+    pub fn try_new_from_mnemonic(mnemonic: Mnemonic, secret: Option<&Secret>) -> Result<Self> {
+        let payload = PrvKeyDataPayload::try_new(mnemonic, secret)?;
+        let prv_key_data = Self { id: payload.id(), payload: Encryptable::Plain(payload), name: None };
+
+        Ok(prv_key_data)
     }
 
-    pub fn encrypt(&mut self, secret: Secret) -> Result<()> {
+    pub fn encrypt(&mut self, secret: &Secret) -> Result<()> {
         self.payload = self.payload.into_encrypted(secret)?;
         Ok(())
     }
