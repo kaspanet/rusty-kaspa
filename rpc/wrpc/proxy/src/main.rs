@@ -8,7 +8,7 @@ use kaspa_wrpc_server::{
     connection::Connection,
     router::Router,
     server::Server,
-    service::{KaspaRpcHandler, Options},
+    service::{KaspaRpcHandler, Options, ServerCounters as WrpcServerCounters},
 };
 use result::Result;
 use std::sync::Arc;
@@ -59,8 +59,9 @@ async fn main() -> Result<()> {
     log_info!("");
     log_info!("Proxy routing to `{}` on {}", network_type, options.grpc_proxy_address.as_ref().unwrap());
 
+    let counters = Arc::new(WrpcServerCounters::default());
     let tasks = threads.unwrap_or_else(num_cpus::get);
-    let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, None, options.clone()));
+    let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, None, options.clone(), counters));
 
     let router = Arc::new(Router::new(rpc_handler.server.clone()));
     let server =

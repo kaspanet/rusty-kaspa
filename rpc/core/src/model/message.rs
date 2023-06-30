@@ -678,31 +678,50 @@ pub struct PingResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetProcessMetricsRequest {}
+pub struct GetMetricsRequest {
+    pub process_metrics : bool,
+    pub consensus_metrics : bool,
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessMetrics {
+    pub uptime: u64,
+    pub memory_used: u64,
+    pub storage_used: u64,
+    pub grpc_connections: u32,
+    pub wrpc_connections: u32,
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsensusMetrics {
+    pub blocks_submitted: u64,
+    pub header_counts: u64,
+    pub dep_counts: u64,
+    pub body_counts: u64,
+    pub txs_counts: u64,
+    pub chain_block_counts: u64,
+    pub mass_counts: u64,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetProcessMetricsResponse {
-    pub uptime: u64,
-    pub memory_used: Vec<u64>,
-    pub storage_used: Vec<u64>,
-    pub grpc_connections: Vec<u64>,
-    pub wrpc_connections: Vec<u64>,
+pub struct GetMetricsResponse {
+    pub process_metrics: Option<ProcessMetrics>,
+    pub consensus_metrics: Option<ConsensusMetrics>,
     // TBD:
     //  - approx bandwidth consumption
     //  - other connection metrics
     //  - cpu usage
 }
 
-impl GetProcessMetricsResponse {
+impl GetMetricsResponse {
     pub fn new(
-        uptime: u64,
-        memory_used: Vec<u64>,
-        storage_used: Vec<u64>,
-        grpc_connections: Vec<u64>,
-        wrpc_connections: Vec<u64>,
+        process_metrics: Option<ProcessMetrics>,
+        consensus_metrics: Option<ConsensusMetrics>,
     ) -> Self {
-        Self { uptime, memory_used, storage_used, grpc_connections, wrpc_connections }
+        Self { process_metrics, consensus_metrics }
     }
 }
 

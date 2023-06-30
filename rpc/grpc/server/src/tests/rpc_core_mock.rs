@@ -56,7 +56,7 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_process_metrics_call(&self, _request: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
+    async fn get_metrics_call(&self, _request: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
         Err(RpcError::NotImplemented)
     }
 

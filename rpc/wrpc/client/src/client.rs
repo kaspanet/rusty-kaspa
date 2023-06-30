@@ -280,7 +280,7 @@ impl RpcApi for KaspaRpcClient {
             GetMempoolEntriesByAddresses,
             GetMempoolEntry,
             GetPeerAddresses,
-            GetProcessMetrics,
+            GetMetrics,
             GetSelectedTipHash,
             GetSubnetwork,
             GetUtxosByAddresses,

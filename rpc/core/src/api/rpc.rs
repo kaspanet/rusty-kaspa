@@ -27,10 +27,10 @@ pub trait RpcApi: Sync + Send + AnySync {
     async fn ping_call(&self, request: PingRequest) -> RpcResult<PingResponse>;
 
     ///
-    async fn get_process_metrics(&self) -> RpcResult<GetProcessMetricsResponse> {
-        self.get_process_metrics_call(GetProcessMetricsRequest {}).await
+    async fn get_metrics(&self, process_metrics : bool, consensus_metrics : bool) -> RpcResult<GetMetricsResponse> {
+        self.get_metrics_call(GetMetricsRequest { process_metrics, consensus_metrics }).await
     }
-    async fn get_process_metrics_call(&self, request: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse>;
+    async fn get_metrics_call(&self, request: GetMetricsRequest) -> RpcResult<GetMetricsResponse>;
 
     /// Requests the network the node is currently running against.
     async fn get_current_network(&self) -> RpcResult<RpcNetworkType> {

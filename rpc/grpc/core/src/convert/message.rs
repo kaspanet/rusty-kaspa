@@ -349,14 +349,10 @@ from!(item: RpcResult<&kaspa_rpc_core::GetCoinSupplyResponse>, protowire::GetCoi
 from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
 from!(RpcResult<&kaspa_rpc_core::PingResponse>, protowire::PingResponseMessage);
 
-from!(&kaspa_rpc_core::GetProcessMetricsRequest, protowire::GetProcessMetricsRequestMessage);
-from!(item: RpcResult<&kaspa_rpc_core::GetProcessMetricsResponse>, protowire::GetProcessMetricsResponseMessage, {
+from!(&kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMessage);
+from!(_item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
     Self {
-        uptime: item.uptime,
-        memory_used: item.memory_used.clone(),
-        storage_used: item.storage_used.clone(),
-        grpc_connections: item.grpc_connections.clone(),
-        wrpc_connections: item.wrpc_connections.clone(),
+        // TODO @tiram
         error: None,
     }
 });
@@ -675,14 +671,16 @@ try_from!(item: &protowire::GetCoinSupplyResponseMessage, RpcResult<kaspa_rpc_co
 try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
 try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
-try_from!(&protowire::GetProcessMetricsRequestMessage, kaspa_rpc_core::GetProcessMetricsRequest);
-try_from!(item: &protowire::GetProcessMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetProcessMetricsResponse>, {
+try_from!(_item : &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, 
+{
+    // TODO @tiram
+    Self { process_metrics : false, consensus_metrics : false }
+});
+try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
-        uptime: item.uptime,
-        memory_used: item.memory_used.clone(),
-        storage_used: item.storage_used.clone(),
-        grpc_connections: item.grpc_connections.clone(),
-        wrpc_connections: item.wrpc_connections.clone(),
+        // TODO @tiram
+        process_metrics : None,
+        consensus_metrics : None,
     }
 });
 

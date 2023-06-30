@@ -2389,6 +2389,7 @@ version = "0.1.6"
 dependencies = [
  "async-trait",
  "kaspa-addresses",
+ "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
  "kaspa-consensusmanager",

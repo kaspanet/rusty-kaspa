@@ -52,7 +52,7 @@ impl Router {
                 GetMempoolEntriesByAddresses,
                 GetMempoolEntry,
                 GetPeerAddresses,
-                GetProcessMetrics,
+                GetMetrics,
                 GetSelectedTipHash,
                 GetSubnetwork,
                 GetUtxosByAddresses,

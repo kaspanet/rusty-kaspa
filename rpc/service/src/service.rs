@@ -11,6 +11,7 @@ use kaspa_consensus_core::{
     networktype::NetworkType,
     tx::{Transaction, COINBASE_TRANSACTION_INDEX},
 };
+use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus_notify::{
     notifier::ConsensusNotifier,
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
@@ -47,7 +48,8 @@ use kaspa_rpc_core::{
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
-use std::{iter::once, sync::Arc, vec};
+use std::{iter::once, sync::{Arc, atomic::Ordering}, vec};
+use kaspa_wrpc_server::service::ServerCounters as WrpcServerCounters;
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
@@ -77,6 +79,8 @@ pub struct RpcCoreService {
     index_converter: Arc<IndexConverter>,
     protocol_converter: Arc<ProtocolConverter>,
     core: Arc<Core>,
+    processing_counters: Arc<ProcessingCounters>,
+    wrpc_server_counters : Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
 }
 
@@ -92,6 +96,8 @@ impl RpcCoreService {
         utxoindex: Option<UtxoIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
+        processing_counters : Arc<ProcessingCounters>,
+        wrpc_server_counters : Arc<WrpcServerCounters>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -148,6 +154,8 @@ impl RpcCoreService {
             index_converter,
             protocol_converter,
             core,
+            processing_counters,
+            wrpc_server_counters,
             shutdown: SingleTrigger::default(),
         }
     }
@@ -610,8 +618,31 @@ impl RpcApi for RpcCoreService {
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
-    async fn get_process_metrics_call(&self, _: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
-        Err(RpcError::NotImplemented)
+    async fn get_metrics_call(&self, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
+
+        let process_metrics = if req.process_metrics {
+            Some(ProcessMetrics::default())
+        } else { None };
+
+        let consensus_metrics = if req.consensus_metrics {
+            Some(ConsensusMetrics {
+                blocks_submitted : self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
+                header_counts : self.processing_counters.header_counts.load(Ordering::SeqCst),
+                dep_counts : self.processing_counters.dep_counts.load(Ordering::SeqCst),
+                body_counts : self.processing_counters.body_counts.load(Ordering::SeqCst),
+                txs_counts : self.processing_counters.txs_counts.load(Ordering::SeqCst),
+                chain_block_counts : self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
+                mass_counts : self.processing_counters.mass_counts.load(Ordering::SeqCst),
+            })
+        } else { None };
+
+        let response = GetMetricsResponse {
+            process_metrics,
+            consensus_metrics,
+        };
+
+        Ok(response)
+
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

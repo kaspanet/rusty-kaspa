@@ -181,7 +181,7 @@ impl RpcApi for GrpcClient {
     // }
 
     route!(ping_call, Ping);
-    route!(get_process_metrics_call, GetProcessMetrics);
+    route!(get_metrics_call, GetMetrics);
     route!(submit_block_call, SubmitBlock);
     route!(get_block_template_call, GetBlockTemplate);
     route!(get_block_call, GetBlock);

@@ -264,7 +264,7 @@ build_wrpc_wasm_bindgen_interface!(
         GetConnectedPeerInfo,
         GetInfo,
         GetPeerAddresses,
-        GetProcessMetrics,
+        GetMetrics,
         GetSelectedTipHash,
         GetSinkBlueScore,
         Ping,

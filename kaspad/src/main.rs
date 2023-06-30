@@ -43,7 +43,7 @@ use async_channel::unbounded;
 use kaspa_core::{info, trace};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_p2p_flows::service::P2pService;
-use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
+use kaspa_wrpc_server::service::{Options as WrpcServerOptions, ServerCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
 mod args;
 
@@ -219,7 +219,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let tick_service = Arc::new(TickService::new());
     let (notification_send, notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
-    let counters = Arc::new(ProcessingCounters::default());
+    let processing_counters = Arc::new(ProcessingCounters::default());
+    let wrpc_server_counters = Arc::new(WrpcServerCounters::default());
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db_parallelism = num_cpus::get();
@@ -229,10 +230,10 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         consensus_db_dir,
         consensus_db_parallelism,
         notification_root.clone(),
-        counters.clone(),
+        processing_counters.clone(),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
-    let monitor = Arc::new(ConsensusMonitor::new(counters, tick_service.clone()));
+    let monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
@@ -277,6 +278,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
         config,
         core.clone(),
+        processing_counters,
+        wrpc_server_counters,
     ));
     let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients));
 
@@ -292,6 +295,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     async_runtime.register(p2p_service);
     async_runtime.register(monitor);
 
+
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments
     [(args.rpclisten_borsh, WrpcEncoding::Borsh), (args.rpclisten_json, WrpcEncoding::SerdeJson)]
@@ -302,6 +306,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                     wrpc_service_tasks,
                     Some(rpc_core_service.clone()),
                     encoding,
+                    wrpc_server_counters.clone(),
                     WrpcServerOptions {
                         listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
                         verbose: args.wrpc_verbose,

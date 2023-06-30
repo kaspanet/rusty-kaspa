@@ -18,7 +18,7 @@ use workflow_core::enums::Describe;
 #[serde(rename_all = "camelCase")]
 pub enum RpcApiOps {
     Ping = 0,
-    GetProcessMetrics,
+    GetMetrics,
     GetCurrentNetwork,
     SubmitBlock,
     GetBlockTemplate,

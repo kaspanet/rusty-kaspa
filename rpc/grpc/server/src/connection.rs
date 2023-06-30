@@ -153,9 +153,9 @@ impl Connection {
     async fn handle_request(request: KaspadRequest, core_service: &DynRpcService) -> GrpcServerResult<KaspadResponse> {
         let mut response: KaspadResponse = if let Some(payload) = request.payload {
             match payload {
-                Payload::GetProcessMetricsRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_process_metrics_call(request).await.into(),
-                    Err(err) => GetProcessMetricsResponseMessage::from(err).into(),
+                Payload::GetMetricsRequest(ref request) => match request.try_into() {
+                    Ok(request) => core_service.get_metrics_call(request).await.into(),
+                    Err(err) => GetMetricsResponseMessage::from(err).into(),
                 },
                 Payload::PingRequest(ref request) => match request.try_into() {
                     Ok(request) => core_service.ping_call(request).await.into(),

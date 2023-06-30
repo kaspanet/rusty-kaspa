@@ -12,6 +12,7 @@ use std::sync::Arc;
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use workflow_rpc::server::prelude::*;
 pub use workflow_rpc::server::Encoding as WrpcEncoding;
+use std::sync::atomic::{AtomicU64,Ordering};
 
 /// Options for configuring the wRPC server
 pub struct Options {
@@ -25,6 +26,14 @@ impl Default for Options {
         Options { listen_address: "127.0.0.1:17110".to_owned(), verbose: false, grpc_proxy_address: None }
     }
 }
+
+#[derive(Debug, Default)]
+pub struct ServerCounters {
+    pub live_connections : AtomicU64,
+    pub connection_attempts : AtomicU64,
+    pub handshake_failures : AtomicU64,
+}
+
 
 /// ### KaspaRpcHandler
 ///
@@ -44,6 +53,7 @@ impl Default for Options {
 pub struct KaspaRpcHandler {
     pub server: Server,
     pub options: Arc<Options>,
+    pub counters: Arc<ServerCounters>,
 }
 
 impl KaspaRpcHandler {
@@ -52,8 +62,9 @@ impl KaspaRpcHandler {
         encoding: WrpcEncoding,
         core_service: Option<Arc<RpcCoreService>>,
         options: Arc<Options>,
+        counters : Arc<ServerCounters>,
     ) -> KaspaRpcHandler {
-        KaspaRpcHandler { server: Server::new(tasks, encoding, core_service, options.clone()), options }
+        KaspaRpcHandler { server: Server::new(tasks, encoding, core_service, options.clone()), options, counters }
     }
 }
 
@@ -62,6 +73,7 @@ impl RpcHandler for KaspaRpcHandler {
     type Context = Connection;
 
     async fn connect(self: Arc<Self>, _peer: &SocketAddr) -> WebSocketResult<()> {
+        self.counters.connection_attempts.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -82,6 +94,7 @@ impl RpcHandler for KaspaRpcHandler {
         // .await
 
         let connection = self.server.connect(peer, messenger).await.map_err(|err| err.to_string())?;
+        self.counters.live_connections.fetch_add(1, Ordering::SeqCst);
         Ok(connection)
     }
 
@@ -89,6 +102,7 @@ impl RpcHandler for KaspaRpcHandler {
     /// before dropping it. This is the last chance to cleanup and resources owned by
     /// this connection. Delegate to Server.
     async fn disconnect(self: Arc<Self>, ctx: Self::Context, _result: WebSocketResult<()>) {
+        self.counters.live_connections.fetch_sub(1, Ordering::SeqCst);
         self.server.disconnect(ctx).await;
     }
 }
@@ -102,14 +116,15 @@ pub struct WrpcService {
     server: RpcServer,
     rpc_handler: Arc<KaspaRpcHandler>,
     shutdown: SingleTrigger,
+    // counters: Arc<ServerCounters>,
 }
 
 impl WrpcService {
     /// Create and initialize RpcServer
-    pub fn new(tasks: usize, core_service: Option<Arc<RpcCoreService>>, encoding: &Encoding, options: Options) -> Self {
+    pub fn new(tasks: usize, core_service: Option<Arc<RpcCoreService>>, encoding: &Encoding, counters : Arc<ServerCounters>, options: Options) -> Self {
         let options = Arc::new(options);
         // Create handle to manage connections
-        let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, *encoding, core_service, options.clone()));
+        let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, *encoding, core_service, options.clone(), counters));
 
         // Create router (initializes Interface registering RPC method and notification handlers)
         let router = Arc::new(Router::new(rpc_handler.server.clone()));
