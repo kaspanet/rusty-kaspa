@@ -679,8 +679,8 @@ pub struct PingResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMetricsRequest {
-    pub process_metrics : bool,
-    pub consensus_metrics : bool,
+    pub process_metrics: bool,
+    pub consensus_metrics: bool,
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -691,14 +691,12 @@ pub struct ProcessMetrics {
     // pub storage_used: u64,
     // pub grpc_connections: u32,
     // pub wrpc_connections: u32,
-
-    pub borsh_live_connections : u64,
-    pub borsh_connection_attempts : u64,
-    pub borsh_handshake_failures : u64,
-    pub json_live_connections : u64,
-    pub json_connection_attempts : u64,
-    pub json_handshake_failures : u64,
-
+    pub borsh_live_connections: u64,
+    pub borsh_connection_attempts: u64,
+    pub borsh_handshake_failures: u64,
+    pub json_live_connections: u64,
+    pub json_connection_attempts: u64,
+    pub json_handshake_failures: u64,
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -725,10 +723,7 @@ pub struct GetMetricsResponse {
 }
 
 impl GetMetricsResponse {
-    pub fn new(
-        process_metrics: Option<ProcessMetrics>,
-        consensus_metrics: Option<ConsensusMetrics>,
-    ) -> Self {
+    pub fn new(process_metrics: Option<ProcessMetrics>, consensus_metrics: Option<ConsensusMetrics>) -> Self {
         Self { process_metrics, consensus_metrics }
     }
 }

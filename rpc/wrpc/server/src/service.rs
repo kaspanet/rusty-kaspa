@@ -8,12 +8,12 @@ use kaspa_core::{
 use kaspa_rpc_core::api::ops::RpcApiOps;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::triggers::SingleTrigger;
+pub use kaspa_wrpc_core::ServerCounters;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use workflow_rpc::server::prelude::*;
 pub use workflow_rpc::server::Encoding as WrpcEncoding;
-pub use kaspa_wrpc_core::ServerCounters;
-use std::sync::atomic::Ordering;
 
 /// Options for configuring the wRPC server
 pub struct Options {
@@ -27,7 +27,6 @@ impl Default for Options {
         Options { listen_address: "127.0.0.1:17110".to_owned(), verbose: false, grpc_proxy_address: None }
     }
 }
-
 
 /// ### KaspaRpcHandler
 ///
@@ -56,7 +55,7 @@ impl KaspaRpcHandler {
         encoding: WrpcEncoding,
         core_service: Option<Arc<RpcCoreService>>,
         options: Arc<Options>,
-        counters : Arc<ServerCounters>,
+        counters: Arc<ServerCounters>,
     ) -> KaspaRpcHandler {
         KaspaRpcHandler { server: Server::new(tasks, encoding, core_service, options.clone()), options, counters }
     }
@@ -115,7 +114,13 @@ pub struct WrpcService {
 
 impl WrpcService {
     /// Create and initialize RpcServer
-    pub fn new(tasks: usize, core_service: Option<Arc<RpcCoreService>>, encoding: &Encoding, counters : Arc<ServerCounters>, options: Options) -> Self {
+    pub fn new(
+        tasks: usize,
+        core_service: Option<Arc<RpcCoreService>>,
+        encoding: &Encoding,
+        counters: Arc<ServerCounters>,
+        options: Options,
+    ) -> Self {
         let options = Arc::new(options);
         // Create handle to manage connections
         let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, *encoding, core_service, options.clone(), counters));

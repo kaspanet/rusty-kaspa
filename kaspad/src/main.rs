@@ -297,27 +297,29 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     async_runtime.register(p2p_service);
     async_runtime.register(monitor);
 
-
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments
-    [(args.rpclisten_borsh, WrpcEncoding::Borsh, wrpc_borsh_counters), (args.rpclisten_json, WrpcEncoding::SerdeJson, wrpc_json_counters)]
-        .into_iter()
-        .filter_map(|(listen_address, encoding, wrpc_server_counters)| {
-            listen_address.as_ref().map(|listen_address| {
-                Arc::new(WrpcService::new(
-                    wrpc_service_tasks,
-                    Some(rpc_core_service.clone()),
-                    &encoding,
-                    wrpc_server_counters,
-                    WrpcServerOptions {
-                        listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
-                        verbose: args.wrpc_verbose,
-                        ..WrpcServerOptions::default()
-                    },
-                ))
-            })
+    [
+        (args.rpclisten_borsh, WrpcEncoding::Borsh, wrpc_borsh_counters),
+        (args.rpclisten_json, WrpcEncoding::SerdeJson, wrpc_json_counters),
+    ]
+    .into_iter()
+    .filter_map(|(listen_address, encoding, wrpc_server_counters)| {
+        listen_address.as_ref().map(|listen_address| {
+            Arc::new(WrpcService::new(
+                wrpc_service_tasks,
+                Some(rpc_core_service.clone()),
+                &encoding,
+                wrpc_server_counters,
+                WrpcServerOptions {
+                    listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
+                    verbose: args.wrpc_verbose,
+                    ..WrpcServerOptions::default()
+                },
+            ))
         })
-        .for_each(|server| async_runtime.register(server));
+    })
+    .for_each(|server| async_runtime.register(server));
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();

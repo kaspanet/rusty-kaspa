@@ -3,6 +3,7 @@
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use async_trait::async_trait;
+use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
@@ -11,7 +12,6 @@ use kaspa_consensus_core::{
     networktype::NetworkType,
     tx::{Transaction, COINBASE_TRANSACTION_INDEX},
 };
-use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus_notify::{
     notifier::ConsensusNotifier,
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
@@ -48,8 +48,12 @@ use kaspa_rpc_core::{
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
-use std::{iter::once, sync::{Arc, atomic::Ordering}, vec};
 use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
+use std::{
+    iter::once,
+    sync::{atomic::Ordering, Arc},
+    vec,
+};
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
@@ -80,14 +84,15 @@ pub struct RpcCoreService {
     protocol_converter: Arc<ProtocolConverter>,
     core: Arc<Core>,
     processing_counters: Arc<ProcessingCounters>,
-    wrpc_borsh_counters : Arc<WrpcServerCounters>,
-    wrpc_json_counters : Arc<WrpcServerCounters>,
+    wrpc_borsh_counters: Arc<WrpcServerCounters>,
+    wrpc_json_counters: Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
 }
 
 const RPC_CORE: &str = "rpc-core";
 
 impl RpcCoreService {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         consensus_manager: Arc<ConsensusManager>,
         consensus_notifier: Arc<ConsensusNotifier>,
@@ -97,9 +102,9 @@ impl RpcCoreService {
         utxoindex: Option<UtxoIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
-        processing_counters : Arc<ProcessingCounters>,
-        wrpc_borsh_counters : Arc<WrpcServerCounters>,
-        wrpc_json_counters : Arc<WrpcServerCounters>,
+        processing_counters: Arc<ProcessingCounters>,
+        wrpc_borsh_counters: Arc<WrpcServerCounters>,
+        wrpc_json_counters: Arc<WrpcServerCounters>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -622,9 +627,8 @@ impl RpcApi for RpcCoreService {
     // UNIMPLEMENTED METHODS
 
     async fn get_metrics_call(&self, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
-
         let process_metrics = if req.process_metrics {
-            Some(ProcessMetrics { 
+            Some(ProcessMetrics {
                 borsh_live_connections: self.wrpc_borsh_counters.live_connections.load(Ordering::Relaxed),
                 borsh_connection_attempts: self.wrpc_borsh_counters.connection_attempts.load(Ordering::Relaxed),
                 borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed),
@@ -632,27 +636,27 @@ impl RpcApi for RpcCoreService {
                 json_connection_attempts: self.wrpc_json_counters.connection_attempts.load(Ordering::Relaxed),
                 json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed),
             })
-        } else { None };
+        } else {
+            None
+        };
 
         let consensus_metrics = if req.consensus_metrics {
             Some(ConsensusMetrics {
-                blocks_submitted : self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
-                header_counts : self.processing_counters.header_counts.load(Ordering::SeqCst),
-                dep_counts : self.processing_counters.dep_counts.load(Ordering::SeqCst),
-                body_counts : self.processing_counters.body_counts.load(Ordering::SeqCst),
-                txs_counts : self.processing_counters.txs_counts.load(Ordering::SeqCst),
-                chain_block_counts : self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
-                mass_counts : self.processing_counters.mass_counts.load(Ordering::SeqCst),
+                blocks_submitted: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
+                header_counts: self.processing_counters.header_counts.load(Ordering::SeqCst),
+                dep_counts: self.processing_counters.dep_counts.load(Ordering::SeqCst),
+                body_counts: self.processing_counters.body_counts.load(Ordering::SeqCst),
+                txs_counts: self.processing_counters.txs_counts.load(Ordering::SeqCst),
+                chain_block_counts: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
+                mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
             })
-        } else { None };
-
-        let response = GetMetricsResponse {
-            process_metrics,
-            consensus_metrics,
+        } else {
+            None
         };
 
-        Ok(response)
+        let response = GetMetricsResponse { process_metrics, consensus_metrics };
 
+        Ok(response)
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

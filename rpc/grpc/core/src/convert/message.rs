@@ -671,16 +671,15 @@ try_from!(item: &protowire::GetCoinSupplyResponseMessage, RpcResult<kaspa_rpc_co
 try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
 try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
-try_from!(_item : &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, 
-{
+try_from!(_item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
     // TODO @tiram
-    Self { process_metrics : false, consensus_metrics : false }
+    Self { process_metrics: false, consensus_metrics: false }
 });
 try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
         // TODO @tiram
-        process_metrics : None,
-        consensus_metrics : None,
+        process_metrics: None,
+        consensus_metrics: None,
     }
 });
 
