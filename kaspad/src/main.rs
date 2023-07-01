@@ -220,7 +220,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let (notification_send, notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
     let processing_counters = Arc::new(ProcessingCounters::default());
-    let wrpc_server_counters = Arc::new(WrpcServerCounters::default());
+    let wrpc_borsh_counters = Arc::new(WrpcServerCounters::default());
+    let wrpc_json_counters = Arc::new(WrpcServerCounters::default());
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db_parallelism = num_cpus::get();
@@ -279,7 +280,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config,
         core.clone(),
         processing_counters,
-        wrpc_server_counters,
+        wrpc_borsh_counters.clone(),
+        wrpc_json_counters.clone(),
     ));
     let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients));
 
@@ -298,15 +300,15 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments
-    [(args.rpclisten_borsh, WrpcEncoding::Borsh), (args.rpclisten_json, WrpcEncoding::SerdeJson)]
-        .iter()
-        .filter_map(|(listen_address, encoding)| {
+    [(args.rpclisten_borsh, WrpcEncoding::Borsh, wrpc_borsh_counters), (args.rpclisten_json, WrpcEncoding::SerdeJson, wrpc_json_counters)]
+        .into_iter()
+        .filter_map(|(listen_address, encoding, wrpc_server_counters)| {
             listen_address.as_ref().map(|listen_address| {
                 Arc::new(WrpcService::new(
                     wrpc_service_tasks,
                     Some(rpc_core_service.clone()),
-                    encoding,
-                    wrpc_server_counters.clone(),
+                    &encoding,
+                    wrpc_server_counters,
                     WrpcServerOptions {
                         listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
                         verbose: args.wrpc_verbose,

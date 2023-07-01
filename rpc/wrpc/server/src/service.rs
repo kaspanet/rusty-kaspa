@@ -12,7 +12,8 @@ use std::sync::Arc;
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use workflow_rpc::server::prelude::*;
 pub use workflow_rpc::server::Encoding as WrpcEncoding;
-use std::sync::atomic::{AtomicU64,Ordering};
+pub use kaspa_wrpc_core::ServerCounters;
+use std::sync::atomic::Ordering;
 
 /// Options for configuring the wRPC server
 pub struct Options {
@@ -25,13 +26,6 @@ impl Default for Options {
     fn default() -> Self {
         Options { listen_address: "127.0.0.1:17110".to_owned(), verbose: false, grpc_proxy_address: None }
     }
-}
-
-#[derive(Debug, Default)]
-pub struct ServerCounters {
-    pub live_connections : AtomicU64,
-    pub connection_attempts : AtomicU64,
-    pub handshake_failures : AtomicU64,
 }
 
 

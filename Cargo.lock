@@ -2404,6 +2404,7 @@ dependencies = [
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utxoindex",
+ "kaspa-wrpc-core",
  "log",
  "tokio",
 ]
@@ -2680,6 +2681,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-wrpc-core"
+version = "0.1.6"
+
+[[package]]
 name = "kaspa-wrpc-proxy"
 version = "0.1.6"
 dependencies = [
@@ -2689,6 +2694,7 @@ dependencies = [
  "kaspa-grpc-client",
  "kaspa-rpc-core",
  "kaspa-rpc-macros",
+ "kaspa-wrpc-core",
  "kaspa-wrpc-server",
  "num_cpus",
  "thiserror",
@@ -2713,6 +2719,7 @@ dependencies = [
  "kaspa-rpc-macros",
  "kaspa-rpc-service",
  "kaspa-utils",
+ "kaspa-wrpc-core",
  "log",
  "num_cpus",
  "paste",

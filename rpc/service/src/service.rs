@@ -49,7 +49,7 @@ use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::{iter::once, sync::{Arc, atomic::Ordering}, vec};
-use kaspa_wrpc_server::service::ServerCounters as WrpcServerCounters;
+use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
@@ -80,7 +80,8 @@ pub struct RpcCoreService {
     protocol_converter: Arc<ProtocolConverter>,
     core: Arc<Core>,
     processing_counters: Arc<ProcessingCounters>,
-    wrpc_server_counters : Arc<WrpcServerCounters>,
+    wrpc_borsh_counters : Arc<WrpcServerCounters>,
+    wrpc_json_counters : Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
 }
 
@@ -97,7 +98,8 @@ impl RpcCoreService {
         config: Arc<Config>,
         core: Arc<Core>,
         processing_counters : Arc<ProcessingCounters>,
-        wrpc_server_counters : Arc<WrpcServerCounters>,
+        wrpc_borsh_counters : Arc<WrpcServerCounters>,
+        wrpc_json_counters : Arc<WrpcServerCounters>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -155,7 +157,8 @@ impl RpcCoreService {
             protocol_converter,
             core,
             processing_counters,
-            wrpc_server_counters,
+            wrpc_borsh_counters,
+            wrpc_json_counters,
             shutdown: SingleTrigger::default(),
         }
     }
@@ -621,7 +624,14 @@ impl RpcApi for RpcCoreService {
     async fn get_metrics_call(&self, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
 
         let process_metrics = if req.process_metrics {
-            Some(ProcessMetrics::default())
+            Some(ProcessMetrics { 
+                borsh_live_connections: self.wrpc_borsh_counters.live_connections.load(Ordering::Relaxed),
+                borsh_connection_attempts: self.wrpc_borsh_counters.connection_attempts.load(Ordering::Relaxed),
+                borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed),
+                json_live_connections: self.wrpc_json_counters.live_connections.load(Ordering::Relaxed),
+                json_connection_attempts: self.wrpc_json_counters.connection_attempts.load(Ordering::Relaxed),
+                json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed),
+            })
         } else { None };
 
         let consensus_metrics = if req.consensus_metrics {

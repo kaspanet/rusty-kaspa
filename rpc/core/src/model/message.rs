@@ -686,11 +686,19 @@ pub struct GetMetricsRequest {
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessMetrics {
-    pub uptime: u64,
-    pub memory_used: u64,
-    pub storage_used: u64,
-    pub grpc_connections: u32,
-    pub wrpc_connections: u32,
+    // pub uptime: u64,
+    // pub memory_used: u64,
+    // pub storage_used: u64,
+    // pub grpc_connections: u32,
+    // pub wrpc_connections: u32,
+
+    pub borsh_live_connections : u64,
+    pub borsh_connection_attempts : u64,
+    pub borsh_handshake_failures : u64,
+    pub json_live_connections : u64,
+    pub json_connection_attempts : u64,
+    pub json_handshake_failures : u64,
+
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]

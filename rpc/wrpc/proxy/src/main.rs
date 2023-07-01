@@ -8,8 +8,9 @@ use kaspa_wrpc_server::{
     connection::Connection,
     router::Router,
     server::Server,
-    service::{KaspaRpcHandler, Options, ServerCounters as WrpcServerCounters},
+    service::{KaspaRpcHandler, Options},
 };
+use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use result::Result;
 use std::sync::Arc;
 use workflow_log::*;
