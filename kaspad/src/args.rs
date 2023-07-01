@@ -117,6 +117,7 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("rpclisten")
                 .long("rpclisten")
                 .value_name("IP[:PORT]")
+                .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Interface:port to listen for gRPC connections (default port: 16110, testnet: 16210)."),
@@ -125,6 +126,7 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("rpclisten-borsh")
                 .long("rpclisten-borsh")
                 .value_name("IP[:PORT]")
+                .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(defaults.rpclisten_borsh)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
@@ -137,6 +139,7 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("rpclisten-json")
                 .long("rpclisten-json")
                 .value_name("IP[:PORT]")
+                .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value(defaults.rpclisten_json)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
