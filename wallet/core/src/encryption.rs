@@ -22,6 +22,18 @@ pub enum Encryptable<T> {
     XChaCha20Poly1305(Encrypted),
 }
 
+impl<T> Zeroize for Encryptable<T>
+where
+    T: Zeroize,
+{
+    fn zeroize(&mut self) {
+        match self {
+            Self::Plain(t) => t.zeroize(),
+            Self::XChaCha20Poly1305(e) => e.zeroize(),
+        }
+    }
+}
+
 impl<T> Encryptable<T>
 where
     T: Clone + Serialize + DeserializeOwned + Zeroize,
@@ -47,8 +59,6 @@ where
         match self {
             Self::Plain(v) => {
                 Ok(Decrypted::new(v.clone()).encrypt(secret)?)
-
-                // Ok(Encrypted::new(v))
             }
             Self::XChaCha20Poly1305(v) => Ok(v.clone()),
         }
@@ -69,20 +79,6 @@ where
     }
 }
 
-// TODO review zeroize functionality on drop
-// impl<T> Drop for Encryptable<T>
-// // // where T : DefaultIsZeroes
-// // where
-// //     T: Clone + Serialize + DeserializeOwned + Zeroize,
-// {
-//     fn drop(&mut self) {
-//         match self {
-//             Self::Plain(v) => v.zeroize(),
-//             Self::XChaCha20Poly1305(v) => {},
-//         }
-//     }
-// }
-
 impl<T> From<T> for Encryptable<T> {
     fn from(value: T) -> Self {
         Encryptable::Plain(value)
@@ -90,21 +86,24 @@ impl<T> From<T> for Encryptable<T> {
 }
 
 pub struct Decrypted<T>(pub(crate) T);
-// where
-//     T: Zeroize;
+// where T: Zeroize;
 
-// impl<T> Drop for Decrypted<T>
-// // where
-// //     T: Zeroize,
+// impl<T> Zeroize for Decrypted<T> 
+// where T: Zeroize
+
 // {
+//     fn zeroize(&mut self) {
+//         self.0.zeroize()
+//     }
+// }
+
+// impl<T> Drop for Decrypted<T> {
 //     fn drop(&mut self) {
-//         self.0.zeroize();
+//         self.0.zeroize()
 //     }
 // }
 
 impl<T> AsRef<T> for Decrypted<T>
-// where
-//     T: Zeroize,
 {
     fn as_ref(&self) -> &T {
         &self.0
@@ -112,8 +111,6 @@ impl<T> AsRef<T> for Decrypted<T>
 }
 
 impl<T> Deref for Decrypted<T>
-// where
-//     T: Zeroize,
 {
     type Target = T;
     fn deref(&self) -> &T {
@@ -122,8 +119,6 @@ impl<T> Deref for Decrypted<T>
 }
 
 impl<T> DerefMut for Decrypted<T>
-// where
-//     T: Zeroize,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
@@ -131,8 +126,6 @@ impl<T> DerefMut for Decrypted<T>
 }
 
 impl<T> AsMut<T> for Decrypted<T>
-// where
-//     T: Zeroize,
 {
     fn as_mut(&mut self) -> &mut T {
         &mut self.0
@@ -141,8 +134,7 @@ impl<T> AsMut<T> for Decrypted<T>
 
 impl<T> Decrypted<T>
 where
-    T: Serialize,
-    // T: Zeroize + Serialize,
+    T: Serialize
 {
     pub fn new(value: T) -> Self {
         Self(value)
@@ -152,13 +144,18 @@ where
         let json = serde_json::to_string(&self.0)?;
         let encrypted = encrypt_xchacha20poly1305(json.as_bytes(), secret)?;
         Ok(Encrypted::new(encrypted))
-        // encrypt()
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Encrypted {
     payload: Vec<u8>,
+}
+
+impl Zeroize for Encrypted {
+    fn zeroize(&mut self) {
+        self.payload.zeroize();
+    }
 }
 
 impl Encrypted {

@@ -183,9 +183,6 @@ impl AddressDerivationManager {
             AddressManager::new(prefix, account_kind, change_pubkey_managers, ecdsa, change_index.unwrap_or(0), minimum_signatures)?;
 
         let manager = Self {
-            // account_kind,
-            // pub_key_data: pub_key_data.clone(),
-            // ecdsa,
             receive_address_manager: Arc::new(receive_address_manager),
             change_address_manager: Arc::new(change_address_manager),
         };
@@ -323,6 +320,22 @@ pub async fn create_xpub_from_mnemonic(
         AccountKind::Legacy => WalletDerivationManagerV0::derive_extened_key_from_master_key(xkey, true, account_index).await?,
         AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xkey, true, account_index).await?,
         _ => WalletDerivationManager::derive_extened_key_from_master_key(xkey, false, account_index).await?,
+    };
+
+    let xkey = ExtendedPublicKey { public_key: secret_key.get_public_key(), attrs };
+
+    Ok(xkey)
+}
+
+pub async fn create_xpub_from_xprv(
+    xprv: ExtendedPrivateKey<secp256k1::SecretKey>,
+    account_kind: AccountKind,
+    account_index: u64,
+) -> Result<ExtendedPublicKey<secp256k1::PublicKey>> {
+    let (secret_key, attrs) = match account_kind {
+        AccountKind::Legacy => WalletDerivationManagerV0::derive_extened_key_from_master_key(xprv, true, account_index).await?,
+        AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xprv, true, account_index).await?,
+        _ => WalletDerivationManager::derive_extened_key_from_master_key(xprv, false, account_index).await?,
     };
 
     let xkey = ExtendedPublicKey { public_key: secret_key.get_public_key(), attrs };

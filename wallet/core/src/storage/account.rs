@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::storage::{AccountId, AccountKind, PrvKeyDataId, PubKeyData};
+use zeroize::Zeroize;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
@@ -49,5 +50,12 @@ impl From<crate::runtime::Account> for Account {
     fn from(account: crate::runtime::Account) -> Self {
         let inner = account.inner();
         inner.stored.clone()
+    }
+}
+
+impl Zeroize for Account {
+    fn zeroize(&mut self) {
+        self.prv_key_data_id.zeroize();
+        // TODO
     }
 }

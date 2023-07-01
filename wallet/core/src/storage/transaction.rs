@@ -1,14 +1,7 @@
 use faster_hex::hex_string;
 use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-// pub type TransactionRecordId = u64;
-
-// impl ToHex for TransactionRecordId {
-//     fn to_hex(&self) -> String {
-//         self.to_string()
-//     }
-// }
+use zeroize::Zeroize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TransactionRecordId(pub(crate) u64);
@@ -59,4 +52,10 @@ impl std::fmt::Display for TransactionRecordId {
 pub struct TransactionRecord {
     pub id: TransactionRecordId,
     // TODO
+}
+
+impl Zeroize for TransactionRecord {
+    fn zeroize(&mut self) {
+        self.id.0 = 0;
+    }
 }

@@ -15,7 +15,7 @@ pub use account::Account;
 pub use hint::Hint;
 pub use id::IdT;
 pub use interface::{AccessContextT, AccountStore, Interface, MetadataStore, PrvKeyDataStore, TransactionRecordStore};
-pub use keydata::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload, PubKeyData, PubKeyDataId};
+pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload, PubKeyData, PubKeyDataId};
 pub use metadata::Metadata;
 pub use payload::Payload;
 pub use transaction::{TransactionRecord, TransactionRecordId};
@@ -48,13 +48,19 @@ mod tests {
         let mnemonic2 = "nut invite fiction visa hamster coyote guide caution valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light".to_string();
 
         let mnemonic1 = Mnemonic::new(mnemonic1, Language::English)?;
+        let key_caps = KeyCaps::from_mnemonic_phrase(mnemonic1.phrase());
         let key_data_payload1 = PrvKeyDataPayload::try_new(mnemonic1.clone(), Some(&payment_secret))?;
-        let prv_key_data1 = PrvKeyData::new(key_data_payload1.id(), None, Encryptable::Plain(key_data_payload1));
+        let prv_key_data1 = PrvKeyData::new(key_data_payload1.id(), None, key_caps, Encryptable::Plain(key_data_payload1));
 
         let mnemonic2 = Mnemonic::new(mnemonic2, Language::English)?;
+        let key_caps = KeyCaps::from_mnemonic_phrase(mnemonic2.phrase());
         let key_data_payload2 = PrvKeyDataPayload::try_new(mnemonic2.clone(), Some(&payment_secret))?;
-        let prv_key_data2 =
-            PrvKeyData::new(key_data_payload2.id(), None, Encryptable::Plain(key_data_payload2).into_encrypted(&payment_secret)?);
+        let prv_key_data2 = PrvKeyData::new(
+            key_data_payload2.id(),
+            None,
+            key_caps,
+            Encryptable::Plain(key_data_payload2).into_encrypted(&payment_secret)?,
+        );
 
         let pub_key_data1 = PubKeyData::new(vec!["abc".to_string()], None, None);
         let pub_key_data2 = PubKeyData::new(vec!["xyz".to_string()], None, None);
@@ -108,14 +114,14 @@ mod tests {
 
         let w2keydata1 = w2payload.as_ref().prv_key_data.get(0).unwrap();
         let w2keydata1_payload = w2keydata1.payload.decrypt(None).unwrap();
-        let first_mnemonic = &w2keydata1_payload.as_ref().mnemonic;
+        let first_mnemonic = &w2keydata1_payload.as_ref().as_mnemonic()?.unwrap().phrase_string();
         // println!("first mnemonic (plain): {}", hex_string(first_mnemonic.as_ref()));
         println!("first mnemonic (plain): {first_mnemonic}");
         assert_eq!(&mnemonic1.phrase_string(), first_mnemonic);
 
         let w2keydata2 = w2payload.as_ref().prv_key_data.get(1).unwrap();
         let w2keydata2_payload = w2keydata2.payload.decrypt(Some(&payment_secret)).unwrap();
-        let second_mnemonic = &w2keydata2_payload.as_ref().mnemonic;
+        let second_mnemonic = &w2keydata2_payload.as_ref().as_mnemonic()?.unwrap().phrase_string();
         println!("second mnemonic (encrypted): {second_mnemonic}");
         assert_eq!(&mnemonic2.phrase_string(), second_mnemonic);
 

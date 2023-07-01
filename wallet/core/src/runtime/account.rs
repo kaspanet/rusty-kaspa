@@ -494,7 +494,7 @@ impl Account {
         change_indexes: Vec<u32>,
     ) -> Result<Vec<secp256k1::SecretKey>> {
         let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
-        let xkey = payload.private_key(payment_secret.as_ref())?;
+        let xkey = payload.get_xprv(payment_secret.as_ref())?;
 
         let cosigner_index = self.inner().stored.pub_key_data.cosigner_index.unwrap_or(0);
         let paths = build_derivate_paths(self.account_kind, self.account_index, cosigner_index)?;
