@@ -154,24 +154,19 @@ impl Zeroize for PrvKeyVariant {
         }
     }
 }
-
 impl Drop for PrvKeyVariant {
     fn drop(&mut self) {
-        match self {
-            PrvKeyVariant::Mnemonic(s) => s.zeroize(),
-            PrvKeyVariant::ExtendedPrivateKey(s) => s.zeroize(),
-            PrvKeyVariant::Bip39Seed(s) => s.zeroize(),
-        }
+        self.zeroize()
     }
 }
+
+impl ZeroizeOnDrop for PrvKeyVariant {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrvKeyDataPayload {
     prv_key_variant: PrvKeyVariant,
 }
-
-impl ZeroizeOnDrop for PrvKeyDataPayload {}
 
 impl PrvKeyDataPayload {
     pub fn try_new(mnemonic: Mnemonic, _payment_secret: Option<&Secret>) -> Result<Self> {
@@ -217,10 +212,17 @@ impl PrvKeyDataPayload {
 
 impl Zeroize for PrvKeyDataPayload {
     fn zeroize(&mut self) {
-        // self.mnemonic.zeroize();
         self.prv_key_variant.zeroize();
     }
 }
+
+impl Drop for PrvKeyDataPayload {
+    fn drop(&mut self) {
+        self.zeroize()
+    }
+}
+
+impl ZeroizeOnDrop for PrvKeyDataPayload {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -343,11 +345,22 @@ pub struct PubKeyData {
     pub minimum_signatures: Option<u16>,
 }
 
-impl Drop for PubKeyData {
-    fn drop(&mut self) {
+impl Zeroize for PubKeyData {
+    fn zeroize(&mut self) {
+        self.id.zeroize();
         self.keys.zeroize();
+        self.cosigner_index.zeroize();
+        self.minimum_signatures.zeroize();
     }
 }
+
+impl Drop for PubKeyData {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl ZeroizeOnDrop for PubKeyData {}
 
 impl PubKeyData {
     pub fn new(keys: Vec<String>, cosigner_index: Option<u32>, minimum_signatures: Option<u16>) -> Self {

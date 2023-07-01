@@ -14,6 +14,8 @@ pub enum Action {
     Help,
     #[describe("Settings")]
     Set,
+    #[describe("Select network type (mainnet|testnet)")]
+    Network,
     #[describe("Connect to kaspa network")]
     Connect,
     #[describe("Disconnect from kaspa network")]
@@ -66,6 +68,8 @@ pub enum Action {
     UnsubscribeDaaScore,
     #[describe("Exit the wallet shell")]
     Exit,
+    #[describe("Halt execution (testing)")]
+    Halt,
 
     #[cfg(target_arch = "wasm32")]
     #[describe("!reload web interface (used for testing)")]

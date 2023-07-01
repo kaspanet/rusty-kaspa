@@ -9,6 +9,7 @@ use crate::tx::{
 use crate::utils::{
     calculate_mass, calculate_minimum_transaction_fee, get_consensus_params_by_address, MAXIMUM_STANDARD_TRANSACTION_MASS,
 };
+// use crate::utxo::selection::UtxoSelectionContextInterface;
 use crate::utxo::{UtxoEntry, UtxoEntryReference, UtxoSelectionContext};
 use crate::Signer;
 use kaspa_addresses::Address;
@@ -432,13 +433,13 @@ impl VirtualTransaction {
                 continue;
             }
             abortable.check()?;
-            let transaction_id = tx.finalize().unwrap().to_str();
+            let transaction_id = tx.finalize().unwrap(); //.to_str();
 
             final_amount += amount_after_fee;
             log_debug!("final_amount: {final_amount}, transaction_id: {}\r\n", transaction_id);
             final_utxos.push(UtxoEntry {
                 address: Some(change_address.clone()),
-                outpoint: TransactionOutpoint::new(&transaction_id, 0).unwrap(),
+                outpoint: TransactionOutpoint::try_new(transaction_id, 0).unwrap(),
                 utxo_entry: tx::UtxoEntry {
                     amount: amount_after_fee,
                     script_public_key,
@@ -446,7 +447,12 @@ impl VirtualTransaction {
                     is_coinbase: false,
                 },
             });
-            final_inputs.push(TransactionInput::new(TransactionOutpoint::new(&transaction_id, 0).unwrap(), vec![], 0, sig_op_count));
+            final_inputs.push(TransactionInput::new(
+                TransactionOutpoint::try_new(transaction_id, 0).unwrap(),
+                vec![],
+                0,
+                sig_op_count,
+            ));
 
             transactions.push(MutableTransaction::new(&tx, &entries.into()));
         }

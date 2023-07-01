@@ -5,6 +5,7 @@ use crate::result::Result;
 use async_trait::async_trait;
 use futures::stream::{Stream, StreamExt, TryStreamExt};
 use futures::*;
+use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_wallet_core::accounts::gen0::import::*;
 use kaspa_wallet_core::imports::ToHex;
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
@@ -58,6 +59,9 @@ impl WalletCli {
             Action::Help => {
                 term.writeln("\n\rCommands:\n\r");
                 display_help(&term);
+            }
+            Action::Halt => {
+                panic!("halting...");
             }
             Action::Exit => {
                 term.writeln("bye!");
@@ -166,6 +170,18 @@ impl WalletCli {
                     }
                 }
             }
+            Action::Network => {
+                if let Some(network_type) = argv.first() {
+                    let network_type: NetworkType =
+                        network_type.trim().parse::<NetworkType>().map_err(|_| "Unknown network type: `{network_type}`")?;
+                    // .map_err(|err|err.to_string())?;
+                    term.writeln(format!("Setting network type to: {network_type}"));
+                    self.wallet.select_network(network_type)?;
+                } else {
+                    let network_type = self.wallet.network()?;
+                    term.writeln(format!("Current network type is: {network_type}"));
+                }
+            }
             Action::Broadcast => {
                 self.wallet.broadcast().await?;
             }
@@ -238,7 +254,7 @@ impl WalletCli {
                 term.writeln(format!("{}\r\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\r\n")));
             }
             Action::Address => {
-                let address = self.wallet.account()?.address().await?.to_string();
+                let address = self.wallet.account()?.receive_address().await?.to_string();
                 term.writeln(address);
             }
             Action::ShowAddresses => {
@@ -466,14 +482,20 @@ impl WalletCli {
         }
 
         let account_kind = AccountKind::Bip32;
-
-        let wallet_args = WalletCreateArgs::new(None, hint, wallet_secret.clone(), false);
+        log_info!("XXX A");
+        let wallet_args = WalletCreateArgs::new(None, hint, wallet_secret.clone(), true);
+        log_info!("XXX B");
         let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone());
+        log_info!("XXX C");
         let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_secret, payment_secret);
+        log_info!("XXX D");
         // let (mnemonic, descriptor, account) = self.wallet.create_wallet(wallet_args, account_args).await?;
         let descriptor = self.wallet.create_wallet(wallet_args).await?;
+        log_info!("XXX E");
         let (prv_key_data_id, mnemonic) = self.wallet.create_prv_key_data(prv_key_data_args).await?;
-        let _account = self.wallet.create_bip32_account(prv_key_data_id, account_args).await?;
+        log_info!("XXX F");
+        let account = self.wallet.create_bip32_account(prv_key_data_id, account_args).await?;
+        log_info!("XXX G");
 
         ["", "---", "", "IMPORTANT:", ""].into_iter().for_each(|line| term.writeln(line));
 
@@ -501,6 +523,10 @@ impl WalletCli {
             term.writeln(format!("Your wallet is stored in: {}", descriptor));
             term.writeln("");
         }
+
+        term.writeln("");
+        let receive_address = account.receive_address().await?;
+        term.writeln(format!("Your default account deposit address: {}", receive_address));
 
         Ok(())
     }
@@ -714,6 +740,9 @@ where
 // }
 
 pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
+    #[cfg(not(target_arch = "wasm32"))]
+    kaspa_core::log::init_logger(None, "info");
+
     let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None)?);
     let cli = Arc::new(WalletCli::new(wallet.clone()));
     let term = Arc::new(Terminal::try_new_with_options(cli.clone(), options)?);

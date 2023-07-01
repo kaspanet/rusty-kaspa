@@ -35,6 +35,24 @@ impl NetworkType {
         }
     }
 
+    pub fn default_borsh_rpc_port(&self) -> u16 {
+        match self {
+            NetworkType::Mainnet => 17110,
+            NetworkType::Testnet => 17210,
+            NetworkType::Simnet => 17510,
+            NetworkType::Devnet => 17610,
+        }
+    }
+
+    pub fn default_json_rpc_port(&self) -> u16 {
+        match self {
+            NetworkType::Mainnet => 18110,
+            NetworkType::Testnet => 18210,
+            NetworkType::Simnet => 18510,
+            NetworkType::Devnet => 18610,
+        }
+    }
+
     pub fn iter() -> impl Iterator<Item = Self> {
         static NETWORK_TYPES: [NetworkType; 4] =
             [NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Devnet, NetworkType::Simnet];

@@ -5,6 +5,7 @@ use crate::accounts::gen1::WalletDerivationManager;
 use crate::accounts::PubkeyDerivationManagerTrait;
 use crate::accounts::WalletDerivationManagerTrait;
 use crate::error::Error;
+use crate::runtime;
 use crate::runtime::AccountKind;
 use crate::storage::PubKeyData;
 use crate::Result;
@@ -23,7 +24,8 @@ pub struct Inner {
 }
 
 pub struct AddressManager {
-    pub prefix: Prefix,
+    // pub prefix: Prefix,
+    pub wallet: Arc<runtime::Wallet>,
     pub account_kind: AccountKind,
     pub pubkey_managers: Vec<Arc<dyn PubkeyDerivationManagerTrait>>,
     pub ecdsa: bool,
@@ -33,7 +35,8 @@ pub struct AddressManager {
 
 impl AddressManager {
     pub fn new(
-        prefix: Prefix,
+        // prefix: Prefix,
+        wallet: Arc<runtime::Wallet>,
         account_kind: AccountKind,
         pubkey_managers: Vec<Arc<dyn PubkeyDerivationManagerTrait>>,
         ecdsa: bool,
@@ -51,7 +54,7 @@ impl AddressManager {
 
         let inner = Inner { index, address_to_index_map: HashMap::new() };
 
-        Ok(Self { prefix, account_kind, pubkey_managers, ecdsa, minimum_signatures, inner: Arc::new(Mutex::new(inner)) })
+        Ok(Self { wallet, account_kind, pubkey_managers, ecdsa, minimum_signatures, inner: Arc::new(Mutex::new(inner)) })
     }
 
     pub fn inner(&self) -> MutexGuard<Inner> {
@@ -75,7 +78,8 @@ impl AddressManager {
     }
 
     fn create_address(&self, keys: Vec<secp256k1::PublicKey>) -> Result<Address> {
-        create_address(self.minimum_signatures, keys, self.prefix, self.ecdsa, Some(self.account_kind))
+        let address_prefix = self.wallet.address_prefix()?;
+        create_address(self.minimum_signatures, keys, address_prefix, self.ecdsa, Some(self.account_kind))
     }
 
     pub fn index(&self) -> Result<u32> {
@@ -147,7 +151,8 @@ pub struct AddressDerivationManager {
 
 impl AddressDerivationManager {
     pub async fn new(
-        prefix: Prefix,
+        wallet: &Arc<runtime::Wallet>,
+        // prefix: Prefix,
         account_kind: AccountKind,
         pub_key_data: &PubKeyData,
         ecdsa: bool,
@@ -176,11 +181,23 @@ impl AddressDerivationManager {
             change_pubkey_managers.push(derivator.change_pubkey_manager());
         }
 
-        let receive_address_manager =
-            AddressManager::new(prefix, account_kind, receive_pubkey_managers, ecdsa, receive_index.unwrap_or(0), minimum_signatures)?;
+        let receive_address_manager = AddressManager::new(
+            wallet.clone(),
+            account_kind,
+            receive_pubkey_managers,
+            ecdsa,
+            receive_index.unwrap_or(0),
+            minimum_signatures,
+        )?;
 
-        let change_address_manager =
-            AddressManager::new(prefix, account_kind, change_pubkey_managers, ecdsa, change_index.unwrap_or(0), minimum_signatures)?;
+        let change_address_manager = AddressManager::new(
+            wallet.clone(),
+            account_kind,
+            change_pubkey_managers,
+            ecdsa,
+            change_index.unwrap_or(0),
+            minimum_signatures,
+        )?;
 
         let manager = Self {
             receive_address_manager: Arc::new(receive_address_manager),

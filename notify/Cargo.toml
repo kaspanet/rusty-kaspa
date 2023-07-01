@@ -28,6 +28,7 @@ triggered = "0.1"
 workflow-core.workspace = true
 paste = "1.0.11"
 parking_lot.workspace = true
+workflow-log.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }

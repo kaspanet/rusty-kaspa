@@ -2264,6 +2264,7 @@ dependencies = [
  "tokio",
  "triggered",
  "workflow-core",
+ "workflow-log",
 ]
 
 [[package]]
@@ -2550,6 +2551,7 @@ dependencies = [
  "convert_case 0.5.0",
  "futures",
  "kaspa-consensus-core",
+ "kaspa-core",
  "kaspa-wallet-core",
  "kaspa-wrpc-client",
  "pad",

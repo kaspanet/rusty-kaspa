@@ -276,6 +276,21 @@ impl Args {
     }
 }
 
+// enum DefaultNetworkAddressHandler {
+//     Default,
+//     Custom(ContextualNetAddress),
+// }
+
+// impl From<DefaultNetworkAddressHandler> for ContextualNetAddress {
+
+// }
+
+// impl FromStr for DefaultNetworkAddressHandler {
+//     type Err = ();
+//     fn from_str(s: &str) -> Result<Self, Self::Err> {
+
+// }
+
 /*
 
   -V, --version                             Display version information and exit

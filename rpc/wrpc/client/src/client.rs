@@ -190,11 +190,12 @@ impl KaspaRpcClient {
     pub async fn stop(&self) -> Result<()> {
         match &self.notification_mode {
             NotificationMode::MultiListeners => {
-                // log_info!("stop notifier...");
+                log_info!("XXX stop notifier...");
                 self.notifier.as_ref().unwrap().join().await?;
+                log_info!("XXX stop notifier DONE...");
             }
             NotificationMode::Direct => {
-                // log_info!("stop direct...");
+                log_info!("XXX stop direct...");
                 // self.notification_ctl.signal(()).await?;
             }
         }
@@ -207,6 +208,7 @@ impl KaspaRpcClient {
     /// connection.
     // pub async fn connect(&self, options: ConnectOptions) -> ConnectResult {
     pub async fn connect(&self, options: ConnectOptions) -> ConnectResult<Error> {
+        log_info!("KaspaRpcClient::connect: options: {:#?}", options);
         Ok(self.inner.rpc.connect(options).await?)
     }
 

@@ -1,4 +1,5 @@
 use crate::imports::*;
+use crate::result::Result;
 use kaspa_hashes::Hash;
 use std::str::FromStr;
 
@@ -9,9 +10,44 @@ pub struct TransactionOutpointInner {
     pub index: TransactionIndexType,
 }
 
+impl TransactionOutpointInner {
+    pub fn new(transaction_id: TransactionId, index: TransactionIndexType) -> Self {
+        Self { transaction_id, index }
+    }
+}
+
 impl From<cctx::TransactionOutpoint> for TransactionOutpointInner {
     fn from(outpoint: cctx::TransactionOutpoint) -> Self {
         TransactionOutpointInner { transaction_id: outpoint.transaction_id, index: outpoint.index }
+    }
+}
+
+// impl TryFrom<JsValue> for TransactionOutpointInner {
+//     type Error = Error;
+//     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+//         Self::try_from(&js_value)
+//     }
+// }
+
+impl TryFrom<&JsValue> for TransactionOutpointInner {
+    type Error = Error;
+    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
+        if let Some(string) = js_value.as_string() {
+            let vec = string.split('-').collect::<Vec<_>>();
+            if vec.len() == 2 {
+                let transaction_id: TransactionId = vec[0].parse()?;
+                let id: u32 = vec[1].parse()?;
+                Ok(TransactionOutpointInner::new(transaction_id, id))
+            } else {
+                Err(Error::InvalidTransactionOutpoint(string))
+            }
+        } else if let Some(object) = Object::try_from(js_value) {
+            let transaction_id: TransactionId = object.get("transactionId")?.try_into()?;
+            let index = object.get_u32("index")?;
+            Ok(TransactionOutpointInner::new(transaction_id, index))
+        } else {
+            Err("outpoint is not an object".into())
+        }
     }
 }
 
@@ -32,8 +68,11 @@ impl TransactionOutpoint {
 #[wasm_bindgen]
 impl TransactionOutpoint {
     #[wasm_bindgen(constructor)]
-    pub fn new(transaction_id: &str, index: u32) -> crate::Result<TransactionOutpoint> {
-        Ok(Self { inner: Arc::new(Mutex::new(TransactionOutpointInner { transaction_id: Hash::from_str(transaction_id)?, index })) })
+    // pub fn new(transaction_id: &str, index: u32) -> crate::Result<TransactionOutpoint> {
+    //     Ok(Self { inner: Arc::new(Mutex::new(TransactionOutpointInner { transaction_id: Hash::from_str(transaction_id)?, index })) })
+    // }
+    pub fn try_new(transaction_id: TransactionId, index: u32) -> Result<TransactionOutpoint> {
+        Ok(Self { inner: Arc::new(Mutex::new(TransactionOutpointInner { transaction_id, index })) })
     }
 
     #[wasm_bindgen(js_name = "getId")]
@@ -72,22 +111,17 @@ impl std::fmt::Display for TransactionOutpoint {
 impl TryFrom<JsValue> for TransactionOutpoint {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(&js_value) {
-            let transaction_id: TransactionId = object.get("transactionId")?.try_into()?;
-            let index = object.get_u32("index")?;
-            Ok(TransactionOutpoint::new(&transaction_id.to_string(), index)?)
-        } else {
-            Err("outpoint is not an object".into())
-        }
+        let inner: TransactionOutpointInner = js_value.as_ref().try_into()?;
+        Ok(TransactionOutpoint { inner: Arc::new(Mutex::new(inner)) })
     }
 }
 
 impl TryFrom<cctx::TransactionOutpoint> for TransactionOutpoint {
     type Error = Error;
     fn try_from(outpoint: cctx::TransactionOutpoint) -> Result<Self, Self::Error> {
-        let transaction_id = outpoint.transaction_id.to_string();
+        let transaction_id = outpoint.transaction_id; //.to_string();
         let index = outpoint.index;
-        TransactionOutpoint::new(&transaction_id, index)
+        TransactionOutpoint::try_new(transaction_id, index)
     }
 }
 

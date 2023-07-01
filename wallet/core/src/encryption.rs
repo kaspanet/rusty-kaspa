@@ -57,9 +57,7 @@ where
 
     pub fn encrypt(&self, secret: &Secret) -> Result<Encrypted> {
         match self {
-            Self::Plain(v) => {
-                Ok(Decrypted::new(v.clone()).encrypt(secret)?)
-            }
+            Self::Plain(v) => Ok(Decrypted::new(v.clone()).encrypt(secret)?),
             Self::XChaCha20Poly1305(v) => Ok(v.clone()),
         }
     }
@@ -88,7 +86,7 @@ impl<T> From<T> for Encryptable<T> {
 pub struct Decrypted<T>(pub(crate) T);
 // where T: Zeroize;
 
-// impl<T> Zeroize for Decrypted<T> 
+// impl<T> Zeroize for Decrypted<T>
 // where T: Zeroize
 
 // {
@@ -103,30 +101,26 @@ pub struct Decrypted<T>(pub(crate) T);
 //     }
 // }
 
-impl<T> AsRef<T> for Decrypted<T>
-{
+impl<T> AsRef<T> for Decrypted<T> {
     fn as_ref(&self) -> &T {
         &self.0
     }
 }
 
-impl<T> Deref for Decrypted<T>
-{
+impl<T> Deref for Decrypted<T> {
     type Target = T;
     fn deref(&self) -> &T {
         &self.0
     }
 }
 
-impl<T> DerefMut for Decrypted<T>
-{
+impl<T> DerefMut for Decrypted<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<T> AsMut<T> for Decrypted<T>
-{
+impl<T> AsMut<T> for Decrypted<T> {
     fn as_mut(&mut self) -> &mut T {
         &mut self.0
     }
@@ -134,7 +128,7 @@ impl<T> AsMut<T> for Decrypted<T>
 
 impl<T> Decrypted<T>
 where
-    T: Serialize
+    T: Serialize,
 {
     pub fn new(value: T) -> Self {
         Self(value)

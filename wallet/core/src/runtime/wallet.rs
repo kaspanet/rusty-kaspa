@@ -128,7 +128,7 @@ pub enum Events {
     },
     DAAScoreChange(u64),
     BalanceUpdate {
-        balance: u64,
+        balance: Option<u64>,
         #[serde(rename = "accountId")]
         account_id: AccountId,
     },
@@ -249,7 +249,7 @@ impl Wallet {
                 notification_channel: Channel::<Notification>::unbounded(),
                 address_to_account_map: Arc::new(Mutex::new(HashMap::new())),
                 virtual_daa_score: Arc::new(AtomicU64::new(0)),
-                network: Arc::new(Mutex::new(network_type.map(|t| t.into()))),
+                network: Arc::new(Mutex::new(network_type.map(|t| t.into()).or_else(|| Some(NetworkType::Mainnet.into())))),
             }),
         };
 
@@ -273,10 +273,36 @@ impl Wallet {
     }
 
     pub async fn reset(&self) -> Result<()> {
+        log_info!("**** WALLET RESET ****");
         let accounts = self.inner.active_accounts.cloned_flat_list();
         let futures = accounts.iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
         self.inner.address_to_account_map.lock().unwrap().clear();
+
+        Ok(())
+    }
+
+    pub async fn reload(self: &Arc<Self>) -> Result<()> {
+        let accounts = self.inner.active_accounts.cloned_flat_list();
+        let futures = accounts.iter().map(|account| account.stop());
+        join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
+        self.inner.address_to_account_map.lock().unwrap().clear();
+
+        // TODO - parallelize?
+        log_info!("reloading accounts...");
+        let mut accounts = self.accounts(None).await?;
+        while let Some(account) = accounts.try_next().await? {
+            account.start().await?;
+
+            let receive_address = account.receive_address().await?;
+            let balance = account.balance();
+            let balance_string = account.balance_as_string().or_else(|| Some("--- KAS".to_string())).unwrap();
+            // balance.map(|b| sompi_
+            log_info!("{}: {} - {}", account.id(), receive_address, balance_string);
+            // log_info!("balance: {}", balance_string);
+
+            self.notify(Events::BalanceUpdate { balance, account_id: *account.id() }).await?;
+        }
 
         Ok(())
     }
@@ -288,6 +314,8 @@ impl Wallet {
 
         use storage::interface::*;
         use storage::local::interface::*;
+
+        // let address_prefix = self.address_prefix()?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
         // let ctx: Arc<dyn AccessContextT> = ctx;
@@ -306,16 +334,39 @@ impl Wallet {
 
         // iter.for_each()
 
-        while let Some(_accounts) = iter.try_next().await? {
+        // let mut accounts = vec![];
+
+        while let Some(stored_account) = iter.try_next().await? {
+            // if self.is_connected() {
+            // account.activ
+            // }
             // let accounts = store_accounts.load(&ctx, &ids).await?;
 
             // let account = accounts?;
 
+            let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
+            // accounts.push(account.clone());
+            account.start().await?;
+
+            let receive_address = account.receive_address().await?;
+            let balance = account.balance();
+            let balance_string = account.balance_as_string().or_else(|| Some("-N/A- KAS".to_string())).unwrap();
+            // balance.map(|b| sompi_
+            log_info!("{}: {} - {}", account.id(), receive_address, balance_string);
+            // log_info!("balance: {}", balance_string);
+
+            self.notify(Events::BalanceUpdate { balance, account_id: *account.id() }).await?;
+
+            // let receive_address = account.receive_address().await?;
+            // let balance = account.balance();
+            // log_info!("loaded account {}: {}", account.id(), receive_address);
+            // log_info!("balance: {:?}", balance);
+            // account.acti
             // let accounts = accounts.iter().map(|stored| Account::try_new_arc_from_storage(self, stored, prefix)).collect::<Vec<_>>();
             // let _accounts = join_all(accounts).await.into_iter().collect::<Result<Vec<_>>>()?;
             // let accounts = accounts.into_iter().map(Arc::new).collect::<Vec<_>>();
 
-            todo!();
+            // todo!();
             // self.inner.account_map.extend(accounts)?;
         }
 
@@ -359,7 +410,7 @@ impl Wallet {
     }
 
     // intended for starting async management tasks
-    pub async fn start(&self) -> Result<()> {
+    pub async fn start(self: &Arc<Self>) -> Result<()> {
         // internal event loop
         self.start_task().await?;
         // rpc services (notifier)
@@ -373,10 +424,15 @@ impl Wallet {
 
     // intended for stopping async management task
     pub async fn stop(&self) -> Result<()> {
+        log_info!("XXX stopping tasks");
+        self.stop_task().await?;
+        log_info!("XXX stopping rpc client");
         self.rpc_client().stop().await?;
+        log_info!("XXX disconnecting rpc client");
+        self.rpc_client().disconnect().await?;
+        log_info!("XXX stop done");
 
         // self.rpc.stop().await?;
-        self.stop_task().await?;
         Ok(())
     }
 
@@ -413,6 +469,15 @@ impl Wallet {
         Ok(())
     }
 
+    pub fn select_network(&self, network_type: NetworkType) -> Result<()> {
+        if self.is_connected() {
+            return Err(Error::NetworkTypeConnected);
+        }
+        let network_info = NetworkInfo::from(network_type);
+        *self.inner.network.lock().unwrap() = Some(network_info);
+        Ok(())
+    }
+
     pub fn network(&self) -> Result<NetworkType> {
         let network = self.inner.network.lock().unwrap();
         // let network = network.as_ref().ok_or(Error::WalletNotConnected)?;
@@ -422,6 +487,17 @@ impl Wallet {
 
     pub fn address_prefix(&self) -> Result<AddressPrefix> {
         Ok(self.network()?.into())
+    }
+
+    pub fn default_port(&self) -> Result<u16> {
+        let network_type = self.network()?;
+
+        let port = match self.rpc_client().encoding() {
+            WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
+            WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
+        };
+        // let port = network_type.default_wrpc_port();
+        Ok(port)
     }
 
     // pub async fn create_private_key_impl(self: &Arc<Wallet>, wallet_secret: Secret, payment_secret: Option<Secret>, save : ) -> Result<Mnemonic> {
@@ -457,12 +533,16 @@ impl Wallet {
         prv_key_data_id: PrvKeyDataId,
         args: AccountCreateArgs,
     ) -> Result<Arc<Account>> {
-        let prefix = self.address_prefix()?;
-
+        log_info!("YYY 0");
+        // let prefix = self.address_prefix()?;
+        log_info!("YYY A");
         let account_storage = self.inner.store.clone().as_account_store()?;
+        log_info!("YYY B");
         let account_index = account_storage.clone().len(Some(prv_key_data_id)).await? as u64;
+        log_info!("YYY C");
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret));
+        log_info!("YYY D");
         let prv_key_data = self
             .inner
             .store
@@ -470,10 +550,14 @@ impl Wallet {
             .load_key_data(&ctx, &prv_key_data_id)
             .await?
             .ok_or(Error::PrivateKeyNotFound(prv_key_data_id.to_hex()))?;
+        log_info!("YYY E");
 
         let xpub_key = prv_key_data.create_xpub(args.payment_secret.as_ref(), args.account_kind, account_index).await?;
+        log_info!("YYY F");
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
+        log_info!("YYY G");
         let pub_key_data = PubKeyData::new(vec![xpub_key.to_string(Some(xpub_prefix))], None, None);
+        log_info!("YYY H");
 
         let stored_account = storage::Account::new(
             args.name.clone(),
@@ -487,10 +571,13 @@ impl Wallet {
             1,
             0,
         );
+        log_info!("YYY I");
 
         account_storage.store(&[&stored_account]).await?;
+        log_info!("YYY J");
         self.inner.store.clone().commit(&ctx).await?;
-        let account = Account::try_new_arc_from_storage(self, &stored_account, prefix).await?;
+        log_info!("YYY K");
+        let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
         // self.inner.connected_accounts.insert(account.clone())?;
 
         // - TODO autoload ???
@@ -542,7 +629,7 @@ impl Wallet {
 
         self.inner.store.create(&ctx, (None, &wallet_args).into()).await?;
         let descriptor = self.inner.store.descriptor()?;
-        let prefix = self.address_prefix()?;
+        // let prefix = self.address_prefix()?;
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
         let mnemonic = Mnemonic::create_random()?;
         let account_index = 0;
@@ -570,7 +657,7 @@ impl Wallet {
         account_store.store(&[&stored_account]).await?;
         self.inner.store.commit(&ctx).await?;
 
-        let account = Account::try_new_arc_from_storage(self, &stored_account, prefix).await?;
+        let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
         self.select(Some(account.clone())).await?;
 
         Ok((mnemonic, descriptor, account))
@@ -625,9 +712,9 @@ impl Wallet {
             0,                                   // cosigner_index
         );
 
-        let prefix = AddressPrefix::Mainnet;
+        // let prefix = AddressPrefix::Mainnet;
 
-        let account = Account::try_new_arc_from_storage(self, &stored_account, prefix).await?;
+        let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
 
         prv_key_data_store.store(&ctx, prv_key_data).await?;
         let account_store = self.inner.store.as_account_store()?;
@@ -649,17 +736,30 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn check_server_state(&self) -> Result<()> {
+    pub async fn check_server_state(self: &Arc<Self>) -> Result<()> {
         let GetInfoResponse { is_synced, is_utxo_indexed: has_utxo_index, server_version, .. } = self.rpc.get_info().await?;
+        let network = self.rpc.get_current_network().await?;
 
         if !has_utxo_index {
             self.notify(Events::UtxoIndexNotEnabled).await?;
             return Err(Error::MissingUtxoIndex);
         }
 
+        *self.inner.network.lock().unwrap() = Some(network.into());
+
+        // TODO - re-initialize UTXOs
         self.inner.is_synced.store(is_synced, Ordering::SeqCst);
-        self.notify(Events::BalanceUpdate { balance: 12345, account_id: AccountId(445566) }).await?;
         self.notify(Events::ServerStatus { server_version, is_synced, has_utxo_index }).await?;
+
+        if is_synced {
+            log_info!("executing reload...");
+
+            self.reload().await?;
+        } else {
+            log_info!("server is not synced");
+        }
+
+        // self.notify(Events::BalanceUpdate { balance: 12345, account_id: AccountId(445566) }).await?;
 
         Ok(())
     }
@@ -677,7 +777,7 @@ impl Wallet {
     }
 
     /// handle connection event
-    pub async fn handle_connect(&self) -> Result<()> {
+    pub async fn handle_connect(self: &Arc<Self>) -> Result<()> {
         self.check_server_state().await?;
         self.inner.is_synced.store(false, Ordering::SeqCst);
         self.inner.is_connected.store(true, Ordering::SeqCst);
@@ -686,9 +786,9 @@ impl Wallet {
     }
 
     /// handle disconnection event
-    pub async fn handle_disconnect(&self) -> Result<()> {
+    pub async fn handle_disconnect(self: &Arc<Self>) -> Result<()> {
         self.inner.is_connected.store(false, Ordering::SeqCst);
-        self.inner.network.lock().unwrap().take();
+        // self.inner.network.lock().unwrap().take();
         self.unregister_notification_listener().await?;
         Ok(())
     }
@@ -772,7 +872,7 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn start_task(&self) -> Result<()> {
+    pub async fn start_task(self: &Arc<Self>) -> Result<()> {
         let self_ = self.clone();
         let ctl_receiver = self.rpc_client().ctl_channel_receiver();
 
@@ -785,6 +885,7 @@ impl Wallet {
             loop {
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
+                        log_info!("XXX task_ctl_receiver - exiting");
                         break;
                     },
                     notification = notification_receiver.recv().fuse() => {
@@ -859,7 +960,7 @@ impl Wallet {
     pub async fn accounts(self: &Arc<Self>, filter: Option<PrvKeyDataId>) -> Result<impl Stream<Item = Result<Arc<Account>>>> {
         let iter = self.inner.store.as_account_store().unwrap().iter(filter).await.unwrap();
         let wallet = self.clone();
-        let prefix = wallet.address_prefix()?;
+        // let prefix = wallet.address_prefix()?;
 
         let stream = iter.then(move |stored| {
             let wallet = wallet.clone();
@@ -871,7 +972,7 @@ impl Wallet {
                 if let Some(account) = wallet.active_accounts().get(&stored.id) {
                     Ok(account)
                 } else {
-                    Account::try_new_arc_from_storage(&wallet, &stored, prefix).await
+                    Account::try_new_arc_from_storage(&wallet, &stored).await
                 }
             }
         });
@@ -886,7 +987,7 @@ mod test {
     use std::{str::FromStr, thread::sleep, time};
 
     use super::*;
-    use crate::{signer::sign_mutable_transaction, tx::MutableTransaction, utxo::UtxoSet};
+    use crate::{signer::sign_mutable_transaction, tx::MutableTransaction, utxo::UtxoDb};
 
     // TODO - re-export subnets
     use crate::tx::Transaction;
@@ -901,9 +1002,9 @@ mod test {
     use workflow_rpc::client::ConnectOptions;
 
     // async fn get_utxos_set_by_addresses(rpc: Arc<KaspaRpcClient>, addresses: Vec<Address>) -> Result<UtxoSet> {
-    async fn get_utxos_set_by_addresses(rpc: Arc<DynRpcApi>, addresses: Vec<Address>) -> Result<UtxoSet> {
+    async fn get_utxos_set_by_addresses(rpc: Arc<DynRpcApi>, addresses: Vec<Address>) -> Result<UtxoDb> {
         let utxos = rpc.get_utxos_by_addresses(addresses).await?;
-        let utxo_set = UtxoSet::new();
+        let utxo_set = UtxoDb::new();
         utxo_set.insert(utxos.into_iter().map(|entry| entry.into()).collect::<Vec<_>>());
         Ok(utxo_set)
     }

@@ -9,13 +9,14 @@ use crate::signer::sign_mutable_transaction;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
 use crate::tx::{LimitCalcStrategy, PaymentOutputs, VirtualTransaction};
-use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoSet};
+use crate::utxo::{UtxoDb, UtxoEntryId, UtxoEntryReference};
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
 use futures::future::join_all;
-use kaspa_addresses::Prefix as AddressPrefix;
+// use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{ChildNumber, PrivateKey};
 use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
+use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_notify::listener::ListenerId;
 use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
@@ -181,7 +182,7 @@ pub struct Account {
     pub id: AccountId,
     inner: Arc<Mutex<Inner>>,
     wallet: Arc<Wallet>,
-    utxos: UtxoSet,
+    utxos: UtxoDb,
     // balance: Arc<AtomicU64>,
     balance: Mutex<Option<u64>>,
     is_connected: AtomicBool,
@@ -209,11 +210,11 @@ impl Account {
         prv_key_data_id: PrvKeyDataId,
         pub_key_data: PubKeyData,
         ecdsa: bool,
-        address_prefix: AddressPrefix,
+        // address_prefix: AddressPrefix,
     ) -> Result<Arc<Self>> {
         let minimum_signatures = pub_key_data.minimum_signatures.unwrap_or(1) as usize;
         let derivation =
-            AddressDerivationManager::new(address_prefix, account_kind, &pub_key_data, ecdsa, minimum_signatures, None, None).await?;
+            AddressDerivationManager::new(wallet, account_kind, &pub_key_data, ecdsa, minimum_signatures, None, None).await?;
 
         let stored = storage::Account::new(
             name.to_string(),
@@ -233,7 +234,7 @@ impl Account {
         Ok(Arc::new(Account {
             id: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
             wallet: wallet.clone(),
-            utxos: UtxoSet::default(),
+            utxos: UtxoDb::default(),
             balance: Mutex::new(None), // Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
@@ -250,11 +251,11 @@ impl Account {
     pub async fn try_new_arc_from_storage(
         wallet: &Arc<Wallet>,
         stored: &storage::Account,
-        address_prefix: AddressPrefix,
+        // address_prefix: AddressPrefix,
     ) -> Result<Arc<Self>> {
         let minimum_signatures = stored.pub_key_data.minimum_signatures.unwrap_or(1) as usize;
         let derivation = AddressDerivationManager::new(
-            address_prefix,
+            wallet,
             stored.account_kind,
             &stored.pub_key_data,
             stored.ecdsa,
@@ -269,7 +270,7 @@ impl Account {
         Ok(Arc::new(Account {
             id: AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index),
             wallet: wallet.clone(),
-            utxos: UtxoSet::default(),
+            utxos: UtxoDb::default(),
             balance: Mutex::new(None), //Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
@@ -288,10 +289,14 @@ impl Account {
         self.balance.lock().unwrap().replace(balance);
         self.wallet
             .multiplexer
-            .broadcast(Events::BalanceUpdate { balance, account_id: self.id })
+            .broadcast(Events::BalanceUpdate { balance: Some(balance), account_id: self.id })
             .await
             .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
         Ok(balance)
+    }
+
+    pub fn id(&self) -> &AccountId {
+        &self.id
     }
 
     pub fn is_connected(&self) -> bool {
@@ -307,15 +312,21 @@ impl Account {
     }
 
     pub fn balance_as_string(&self) -> Option<String> {
+        let suffix = match self.wallet.network().expect("missing network type") {
+            NetworkType::Testnet => "TKAS",
+            _ => "KAS",
+        };
+
         self.balance().map(|b| {
             let f = b / SOMPI_PER_KASPA;
-            format!("{}", f)
+            format!("{} {}", f, suffix)
         })
     }
 
     pub fn get_ls_string(&self) -> String {
         let name = self.name();
-        let balance = self.balance_as_string().map(|s| format!("{s} KAS")).unwrap_or_else(|| "n/a".to_string());
+        // let balance = self.balance_as_string().map(|s| format!("{s} KAS")).unwrap_or_else(|| "n/a".to_string());
+        let balance = self.balance_as_string().unwrap_or_else(|| "n/a".to_string());
         format!("{name} - {balance}")
     }
 
@@ -512,7 +523,7 @@ impl Account {
         Ok(private_keys)
     }
 
-    pub async fn address(&self) -> Result<Address> {
+    pub async fn receive_address(&self) -> Result<Address> {
         self.receive_address_manager()?.current_address().await
     }
 
@@ -567,6 +578,8 @@ impl Account {
     /// Stop Account service task
     pub async fn stop(&self) -> Result<()> {
         // self.stop_task().await
+
+        self.disconnect().await?;
         Ok(())
     }
 
@@ -619,8 +632,9 @@ impl Account {
         Ok(())
     }
 
-    pub(crate) async fn handle_utxo_removed(&self, utxo_ids: Vec<UtxoEntryId>) -> Result<bool> {
-        Ok(self.utxos.remove(utxo_ids))
+    pub(crate) async fn handle_utxo_removed(&self, utxo_ids: Vec<UtxoEntryId>) -> Result<()> {
+        self.utxos.remove(utxo_ids);
+        Ok(())
     }
 }
 

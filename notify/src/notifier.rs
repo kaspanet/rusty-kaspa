@@ -370,29 +370,35 @@ where
     }
 
     async fn join(self: Arc<Self>) -> Result<()> {
+        workflow_log::log_info!("XXX NOTIFIER STOP");
         trace!("[Notifier {}] joining", self.name);
         if self.started.load(Ordering::SeqCst) {
+            workflow_log::log_info!("XXX NOTIFIER JOIN A");
             debug!("[Notifier {}] stopping collectors", self.name);
             join_all(self.collectors.iter().map(|x| x.clone().join()))
                 .await
                 .into_iter()
                 .collect::<std::result::Result<Vec<()>, _>>()?;
             debug!("[Notifier {}] stopped collectors", self.name);
+            workflow_log::log_info!("XXX NOTIFIER JOIN B");
 
             // Once collectors exit, we can signal broadcasters
             self.notification_channel.sender.close();
 
+            workflow_log::log_info!("XXX NOTIFIER JOIN C");
             debug!("[Notifier {}] stopping broadcasters", self.name);
             join_all(self.broadcasters.iter().map(|x| x.join())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
 
             // Once broadcasters exit, we can close the subscribers
             self.subscribers.iter().for_each(|s| s.close());
 
+            workflow_log::log_info!("XXX NOTIFIER JOIN D");
             debug!("[Notifier {}] stopping subscribers", self.name);
             join_all(self.subscribers.iter().map(|x| x.join())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
 
             // Finally, we close all listeners, propagating shutdown by closing their channel when they have one
             // Note that unregistering listeners is no longer meaningful since both broadcasters and subscribers were stopped
+            workflow_log::log_info!("XXX NOTIFIER JOIN E");
             debug!("[Notifier {}] closing listeners", self.name);
             self.listeners.lock().values().for_each(|x| x.close());
         } else {

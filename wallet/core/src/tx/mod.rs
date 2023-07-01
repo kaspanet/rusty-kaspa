@@ -18,6 +18,7 @@ pub use virtual_transaction::*;
 
 use crate::result::Result;
 use crate::utils::*;
+// use crate::utxo::selection::UtxoSelectionContextInterface;
 use crate::utxo::*;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;

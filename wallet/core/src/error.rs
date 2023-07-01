@@ -66,6 +66,9 @@ pub enum Error {
     #[error("Unable to determine network type (wallet is not connected)")]
     MissingNetworkType,
 
+    #[error("Unable to set network type while the wallet is connected")]
+    NetworkTypeConnected,
+
     #[error("{0}")]
     NetworkType(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
 
@@ -149,6 +152,12 @@ pub enum Error {
 
     #[error(transparent)]
     Utf8Error(#[from] std::str::Utf8Error),
+
+    #[error("invalid transaction outpoint: {0}")]
+    InvalidTransactionOutpoint(String),
+
+    #[error("{0}")]
+    ParseIntError(#[from] std::num::ParseIntError),
 }
 
 impl From<Aborted> for Error {
