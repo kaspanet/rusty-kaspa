@@ -20,9 +20,15 @@ use workflow_rpc::server::prelude::*;
 #[clap(name = "proxy")]
 #[clap(version)]
 struct Args {
-    /// network type
-    #[clap(name = "network", default_value = "mainnet")]
-    network_type: NetworkType,
+    /// proxy for testnet network
+    #[clap(long)]
+    testnet: bool,
+    /// proxy for simnet network
+    #[clap(long)]
+    simnet: bool,
+    /// proxy for devnet network
+    #[clap(long)]
+    devnet: bool,
 
     /// proxy:port for gRPC server (grpc://127.0.0.1:16110)
     #[clap(name = "grpc")]
@@ -45,11 +51,25 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let Args { network_type, grpc_proxy_address, interface, verbose, threads, encoding } = Args::parse();
-    let proxy_port: u16 = 17110;
+    let Args { testnet, simnet, devnet, grpc_proxy_address, interface, verbose, threads, encoding } = Args::parse();
+
+    let network_type = if testnet {
+        NetworkType::Testnet
+    } else if simnet {
+        NetworkType::Simnet
+    } else if devnet {
+        NetworkType::Devnet
+    } else {
+        NetworkType::Mainnet
+    };
+
+    let kaspad_port = network_type.default_rpc_port();
 
     let encoding: Encoding = encoding.unwrap_or_else(|| "borsh".to_owned()).parse()?;
-    let kaspad_port = network_type.default_rpc_port();
+    let proxy_port = match encoding {
+        Encoding::Borsh => network_type.default_borsh_rpc_port(),
+        Encoding::SerdeJson => network_type.default_json_rpc_port(),
+    };
 
     let options = Arc::new(Options {
         listen_address: interface.unwrap_or_else(|| format!("wrpc://127.0.0.1:{proxy_port}")),
