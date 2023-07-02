@@ -170,7 +170,8 @@ derivative = "2.2.0"
 num = "0.4.0"
 textwrap = "0.16"
 sorted-insert = "0.2.3"
-
+dashmap = "5.4.0"
+separator = "0.4.1"
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }

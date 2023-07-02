@@ -4,12 +4,11 @@ use clap::{arg, command, Arg, Command};
 use kaspa_consensus::config::Config;
 use kaspa_core::kaspad_env::version;
 use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_wrpc_server::address::WrpcNetAddress;
 
 pub struct Defaults {
     pub appdir: &'static str,
     pub no_log_files: bool,
-    pub rpclisten_borsh: &'static str,
-    pub rpclisten_json: &'static str,
     pub unsafe_rpc: bool,
     pub async_threads: usize,
     pub utxoindex: bool,
@@ -33,8 +32,6 @@ impl Default for Defaults {
         Defaults {
             appdir: "datadir",
             no_log_files: false,
-            rpclisten_borsh: "127.0.0.1:17110",
-            rpclisten_json: "127.0.0.1:18110",
             unsafe_rpc: false,
             async_threads: num_cpus::get(),
             utxoindex: false,
@@ -62,8 +59,8 @@ pub struct Args {
     pub logdir: Option<String>,
     pub no_log_files: bool,
     pub rpclisten: Option<ContextualNetAddress>,
-    pub rpclisten_borsh: Option<ContextualNetAddress>,
-    pub rpclisten_json: Option<ContextualNetAddress>,
+    pub rpclisten_borsh: Option<WrpcNetAddress>,
+    pub rpclisten_json: Option<WrpcNetAddress>,
     pub unsafe_rpc: bool,
     pub wrpc_verbose: bool,
     pub log_level: String,
@@ -128,12 +125,9 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
-                .default_missing_value(defaults.rpclisten_borsh)
-                .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help(format!(
-                    "Interface:port to listen for wRPC Borsh connections (interop only; default: `{}`).",
-                    defaults.rpclisten_borsh
-                )),
+                .default_missing_value("default")
+                .value_parser(clap::value_parser!(WrpcNetAddress))
+                .help("Interface:port to listen for wRPC Borsh connections (default port: 17110, testnet: 17210)."),
         )
         .arg(
             Arg::new("rpclisten-json")
@@ -141,9 +135,9 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
-                .default_missing_value(defaults.rpclisten_json)
-                .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json)),
+                .default_missing_value("default")
+                .value_parser(clap::value_parser!(WrpcNetAddress))
+                .help("Interface:port to listen for wRPC JSON connections (default port: 18110, testnet: 18210)."),
         )
         .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node"))
         .arg(
@@ -237,8 +231,8 @@ impl Args {
             logdir: m.get_one::<String>("logdir").cloned(),
             no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
             rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
-            rpclisten_borsh: m.get_one::<ContextualNetAddress>("rpclisten-borsh").cloned(),
-            rpclisten_json: m.get_one::<ContextualNetAddress>("rpclisten-json").cloned(),
+            rpclisten_borsh: m.get_one::<WrpcNetAddress>("rpclisten-borsh").cloned(),
+            rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned(),
             unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
             wrpc_verbose: false,
             log_level: m.get_one::<String>("log_level").cloned().unwrap(),
@@ -275,21 +269,6 @@ impl Args {
         config.user_agent_comments = self.user_agent_comments.clone();
     }
 }
-
-// enum DefaultNetworkAddressHandler {
-//     Default,
-//     Custom(ContextualNetAddress),
-// }
-
-// impl From<DefaultNetworkAddressHandler> for ContextualNetAddress {
-
-// }
-
-// impl FromStr for DefaultNetworkAddressHandler {
-//     type Err = ();
-//     fn from_str(s: &str) -> Result<Self, Self::Err> {
-
-// }
 
 /*
 

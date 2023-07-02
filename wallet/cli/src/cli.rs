@@ -2,6 +2,8 @@ use crate::actions::*;
 use crate::error::Error;
 use crate::helpers;
 use crate::result::Result;
+use pad::PadStr;
+// use crate::settings::Settings;
 use async_trait::async_trait;
 use futures::stream::{Stream, StreamExt, TryStreamExt};
 use futures::*;
@@ -12,7 +14,8 @@ use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
 use kaspa_wallet_core::storage::{AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
 use kaspa_wallet_core::tx::PaymentOutputs;
 use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
-use kaspa_wallet_core::{Address, AddressPrefix, ConnectOptions, ConnectStrategy};
+use kaspa_wallet_core::{utils, Address, ConnectOptions, ConnectStrategy, Events, Settings};
+// use kaspa_wrpc_client::WrpcEncoding;
 // use serde::de::DeserializeOwned;
 // use serde::Serialize;
 use std::sync::{Arc, Mutex};
@@ -21,10 +24,10 @@ use workflow_core::abortable::Abortable;
 use workflow_core::channel::*;
 // use workflow_core::enums::EnumTrait;
 use workflow_core::runtime as application_runtime;
-use workflow_dom::utils::window;
+// use workflow_dom::utils::window;
 use workflow_log::*;
-use workflow_terminal::Terminal;
-pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget};
+use workflow_terminal::*;
+pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget}; //{CrLf, Terminal};
 
 struct WalletCli {
     term: Arc<Mutex<Option<Arc<Terminal>>>>,
@@ -73,36 +76,77 @@ impl WalletCli {
             Action::Set => {
                 if argv.is_empty() {
                     term.writeln("\n\rSettings:\n\r");
+
+                    let list = Settings::list();
+
+                    // let settings = self.wallet.settings().iter();
+
+                    // let len = commands.iter().map(|(c, _)| c.len()).fold(0, |a, b| a.max(b));
+
+                    let list = list
+                        .iter()
+                        .map(|setting| {
+                            let value: String = self.wallet.settings().get(setting.clone()).unwrap_or_else(|| "-".to_string());
+                            let descr = setting.descr();
+                            (setting.to_lowercase_string(), value, descr)
+                        })
+                        .collect::<Vec<(_, _, _)>>();
+                    let c1 = list.iter().map(|(c, _, _)| c.len()).fold(0, |a, b| a.max(b)) + 4;
+                    let c2 = list.iter().map(|(_, c, _)| c.len()).fold(0, |a, b| a.max(b)) + 4;
+
+                    list.iter().for_each(|(k, v, d)| {
+                        term.writeln(format!(
+                            "{}: {} \t {}",
+                            k.pad_to_width_with_alignment(c1, pad::Alignment::Right),
+                            v.pad_to_width(c2),
+                            d
+                        ));
+                    });
+
+                    // for setting in list {
+                    //     let value : String = self.wallet.settings().get(setting.clone()).unwrap_or_default();
+                    //     let descr = setting.descr();
+                    //     term.writeln(format!("\t{}:\t{}\t{}", setting.to_lowercase_string(), value, descr));
+                    //     //.map(|v|v.to_string()).unwrap_or_else(|| "-".to_string())));
+                    // }
+                    // term.writeln(format!("network : {}", settings.network.map(|v|v.to_string()).unwrap_or_else(|| "-".to_string())));
+                    // term.writeln(format!("server : {}", settings.server.unwrap_or_else(|| "-".to_string())));
+                    // term.writeln(format!("wallet : {}", settings.wallet.unwrap_or_else(|| "-".to_string())));
                     // - TODO use Store to load settings
                 } else if argv.len() != 2 {
                     term.writeln("\n\rError:\n\r");
                     term.writeln("Usage:\n\rset <key> <value>");
                     return Ok(());
+                } else {
+                    let key = argv[0].as_str();
+                    let value = argv[1].as_str().trim();
+
+                    if value.contains(' ') || value.contains('\t') {
+                        return Err(Error::Custom("Whitespace in settings is not allowed".to_string()));
+                    }
+
+                    match key {
+                        "network" => {
+                            let network: NetworkType = value.parse().map_err(|_| "Unknown network type".to_string())?;
+                            self.wallet.settings().set(Settings::Network, network).await?;
+                        }
+                        "server" => {
+                            self.wallet.settings().set(Settings::Server, value).await?;
+                        }
+                        "wallet" => {
+                            self.wallet.settings().set(Settings::Wallet, value).await?;
+                        }
+                        _ => return Err(Error::Custom(format!("Unknown setting '{}'", key))),
+                    }
+                    self.wallet.settings().try_store().await?;
                 }
             }
             Action::Connect => {
-                // TODO -
+                let url = argv.first().cloned().or_else(|| self.wallet.settings().get(Settings::Server));
 
-                let url = if let Some(url) = argv.first().cloned() {
-                    if url.starts_with("ws://")
-                        || url.starts_with("wss://")
-                        || url.starts_with("wrpc://")
-                        || url.starts_with("wrpcs://")
-                    {
-                        Some(url)
-                    } else if application_runtime::is_web() {
-                        let location = window().location();
-                        let protocol = location
-                            .protocol()
-                            .map_err(|_| "Unable to obtain window location protocol".to_string())?
-                            .replace("http", "ws");
-                        Some(format!("{protocol}//{url}"))
-                    } else {
-                        Some(format!("ws://{url}"))
-                    }
-                } else {
-                    None
-                };
+                let network_type = self.wallet.network()?;
+                let url = self.wallet.rpc_client().parse_url(url, network_type)?;
+                term.writeln(format!("Connecting to {}...", url.clone().unwrap_or_else(|| "default".to_string())));
 
                 let options = ConnectOptions { block_async_connect: true, strategy: ConnectStrategy::Fallback, url };
                 self.wallet.rpc_client().connect(options).await?;
@@ -113,6 +157,10 @@ impl WalletCli {
             Action::GetInfo => {
                 let response = self.wallet.get_info().await?;
                 term.writeln(response);
+            }
+            Action::Metrics => {
+                let response = self.wallet.rpc().get_metrics(true, true).await.map_err(|e| e.to_string())?;
+                term.writeln(format!("{:#?}", response));
             }
             Action::Ping => {
                 if self.wallet.ping().await {
@@ -177,6 +225,8 @@ impl WalletCli {
                     // .map_err(|err|err.to_string())?;
                     term.writeln(format!("Setting network type to: {network_type}"));
                     self.wallet.select_network(network_type)?;
+                    self.wallet.settings().set(Settings::Network, network_type).await?;
+                    // self.wallet.settings().try_store().await?;
                 } else {
                     let network_type = self.wallet.network()?;
                     term.writeln(format!("Current network type is: {network_type}"));
@@ -353,16 +403,25 @@ impl WalletCli {
                 }
             }
             Action::Open => {
-                let mut prefix = AddressPrefix::Mainnet;
-                if argv.contains(&"testnet".to_string()) {
-                    prefix = AddressPrefix::Testnet;
-                } else if argv.contains(&"simnet".to_string()) {
-                    prefix = AddressPrefix::Simnet;
-                } else if argv.contains(&"devnet".to_string()) {
-                    prefix = AddressPrefix::Devnet;
-                }
+                // let mut prefix = AddressPrefix::Mainnet;
+                // if argv.contains(&"testnet".to_string()) {
+                //     prefix = AddressPrefix::Testnet;
+                // } else if argv.contains(&"simnet".to_string()) {
+                //     prefix = AddressPrefix::Simnet;
+                // } else if argv.contains(&"devnet".to_string()) {
+                //     prefix = AddressPrefix::Devnet;
+                // }
+
+                // let name = if let Some(name) = argv.first().cloned() {
+                //     Some(name)
+                // } else if let Some(name) = self.wallet.settings().inner().wallet.clone() {
+                //     Some(name)
+                // } else {
+                //     None
+                // };
+
                 let secret = Secret::new(term.ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());
-                self.wallet.load(secret, prefix).await?;
+                self.wallet.load(secret, None).await?;
             }
             Action::Close => {
                 self.wallet.reset().await?;
@@ -388,10 +447,10 @@ impl WalletCli {
     }
 
     pub fn notification_pipe_task(self: &Arc<Self>) {
-        // log_info!("### starting notification processor");
         let self_ = self.clone();
-        let term = self.term().unwrap_or_else(|| panic!("WalletCli::notification_pipe_task(): `term` is not initialized"));
-        let notification_channel_receiver = self.wallet.rpc_client().notification_channel_receiver();
+        let _term = self.term().unwrap_or_else(|| panic!("WalletCli::notification_pipe_task(): `term` is not initialized"));
+        // let notification_channel_receiver = self.wallet.rpc_client().notification_channel_receiver();
+        let multiplexer = MultiplexerChannel::from(self.wallet.multiplexer());
         workflow_core::task::spawn(async move {
             // term.writeln(args.to_string());
             loop {
@@ -405,14 +464,64 @@ impl WalletCli {
                         // }
                         break;
                     },
-                    msg = notification_channel_receiver.recv().fuse() => {
+                    // msg = notification_channel_receiver.recv().fuse() => {
+                    //     if let Ok(msg) = msg {
+
+                    //         log_info!("Received RPC notification: {msg:#?}");
+                    //         let text = format!("{msg:#?}").crlf();//replace('\n',"\r\n"); //.payload);
+                    //         term.pipe_crlf.send(text).await.unwrap_or_else(|err|log_error!("WalletCli::notification_pipe_task() unable to route to term: `{err}`"));
+                    //     }
+                    // },
+
+                    msg = multiplexer.receiver.recv().fuse() => {
                         if let Ok(msg) = msg {
-                            let text = format!("{msg:#?}").replace('\n',"\r\n"); //.payload);
-                            term.pipe_crlf.send(text).await.unwrap_or_else(|err|log_error!("WalletCli::notification_pipe_task() unable to route to term: `{err}`"));
+                            match msg {
+                                Events::Connect(url) => {
+                                    log_info!("Connected to {url}");
+                                },
+                                Events::Disconnect(url) => {
+                                    log_info!("Disconnected from {url}");
+                                },
+                                Events::UtxoIndexNotEnabled => {
+                                    log_error!("Error: Kaspa node UTXO index is not enabled...")
+                                },
+                                // Events::ServerStatus {
+                                //     server_version,
+                                //     is_synced,
+                                //     has_utxo_index,
+                                // } => { },
+                                Events::DAAScoreChange(daa) => {
+                                    log_info!("DAAScoreChange: {daa:#?}");
+                                },
+                                Events::BalanceUpdate {
+                                    balance, account_id
+                                } => {
+
+                                    if let Some(balance) = balance {
+                                        let suffix = match self_.wallet.network().expect("missing network type") {
+                                            NetworkType::Testnet => "TKAS",
+                                            NetworkType::Simnet => "SKAS",
+                                            NetworkType::Devnet => "DKAS",
+                                            _ => "KAS",
+                                        };
+
+                                        let balance = utils::sompi_to_kaspa_string_with_suffix(balance,suffix);
+                                        log_info!("Balance {account_id}: {balance}");
+                                    } else {
+                                        log_info!("Balance {account_id}: - n/a -");
+                                    }
+                                },
+                                _ => { }
+                            }
                         }
+                        // log_info!("### received multiplexer notification: {msg:#?}");
+
+
                     }
                 }
             }
+
+            log_info!("### exiting notification processor");
 
             self_
                 .notifications_task_ctl
@@ -482,20 +591,12 @@ impl WalletCli {
         }
 
         let account_kind = AccountKind::Bip32;
-        log_info!("XXX A");
         let wallet_args = WalletCreateArgs::new(None, hint, wallet_secret.clone(), true);
-        log_info!("XXX B");
         let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone());
-        log_info!("XXX C");
         let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_secret, payment_secret);
-        log_info!("XXX D");
-        // let (mnemonic, descriptor, account) = self.wallet.create_wallet(wallet_args, account_args).await?;
         let descriptor = self.wallet.create_wallet(wallet_args).await?;
-        log_info!("XXX E");
         let (prv_key_data_id, mnemonic) = self.wallet.create_prv_key_data(prv_key_data_args).await?;
-        log_info!("XXX F");
         let account = self.wallet.create_bip32_account(prv_key_data_id, account_args).await?;
-        log_info!("XXX G");
 
         ["", "---", "", "IMPORTANT:", ""].into_iter().for_each(|line| term.writeln(line));
 

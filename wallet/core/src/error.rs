@@ -57,6 +57,9 @@ pub enum Error {
     #[error("Wallet already exists")]
     WalletAlreadyExists,
 
+    #[error("This wallet name is not allowed")]
+    WalletNameNotAllowed,
+
     #[error("Wallet is not loaded")]
     WalletNotLoaded,
 

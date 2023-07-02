@@ -6,6 +6,7 @@ use kaspa_consensus_core::{
     constants::*,
     mass::{self, MassCalculator},
 };
+use separator::Separatable;
 use wasm_bindgen::prelude::*;
 
 // pub const ECDSA_SIGNATURE_SIZE: u64 = 64;
@@ -161,4 +162,13 @@ pub fn get_consensus_params_by_network(network: &NetworkType) -> Params {
         NetworkType::Simnet => SIMNET_PARAMS,
         _ => DEVNET_PARAMS,
     }
+}
+
+pub fn sompi_to_kaspa_string(sompi: u64) -> String {
+    (sompi as f64 / SOMPI_PER_KASPA as f64).separated_string()
+}
+
+pub fn sompi_to_kaspa_string_with_suffix(sompi: u64, suffix: &str) -> String {
+    let kas = (sompi as f64 / SOMPI_PER_KASPA as f64).separated_string();
+    format!("{} {}", kas, suffix)
 }

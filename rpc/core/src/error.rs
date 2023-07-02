@@ -97,7 +97,7 @@ pub enum RpcError {
     #[error(transparent)]
     NodeIdError(#[from] uuid::Error),
 
-    #[error("RPC: {0}")]
+    #[error("RPC Server (remote error) -> {0}")]
     RpcSubsystem(String),
 
     #[error("{0}")]

@@ -1,6 +1,7 @@
 use crate::result::Result;
 use crate::runtime::{Account, AccountId, AccountMap};
 use crate::secret::Secret;
+use crate::settings::{Settings, SettingsStore};
 use crate::storage::interface::{AccessContext, CreateArgs};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::{self, AccessContextT, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
@@ -115,8 +116,8 @@ pub struct BalanceUpdate {
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "event", content = "data")]
 pub enum Events {
-    Connect,
-    Disconnect,
+    Connect(String),
+    Disconnect(String),
     UtxoIndexNotEnabled,
     ServerStatus {
         #[serde(rename = "serverVersion")]
@@ -171,6 +172,8 @@ pub struct Inner {
     pub virtual_daa_score: Arc<AtomicU64>,
     // ---
     pub network: Arc<Mutex<Option<NetworkInfo>>>,
+    // ---
+    pub settings: SettingsStore,
 }
 
 /// `Wallet` data structure
@@ -231,6 +234,9 @@ impl Wallet {
         // let store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
         // let store = Arc::new(LocalStore::try_new(is_resident)?);
 
+        // let settings = Settings::try_load()?;
+        // let settings = SettingsStore::default();
+
         let wallet = Wallet {
             // rpc_client : rpc.clone(),
             rpc,
@@ -250,6 +256,7 @@ impl Wallet {
                 address_to_account_map: Arc::new(Mutex::new(HashMap::new())),
                 virtual_daa_score: Arc::new(AtomicU64::new(0)),
                 network: Arc::new(Mutex::new(network_type.map(|t| t.into()).or_else(|| Some(NetworkType::Mainnet.into())))),
+                settings: SettingsStore::default(),
             }),
         };
 
@@ -289,31 +296,35 @@ impl Wallet {
         self.inner.address_to_account_map.lock().unwrap().clear();
 
         // TODO - parallelize?
-        log_info!("reloading accounts...");
-        let mut accounts = self.accounts(None).await?;
-        while let Some(account) = accounts.try_next().await? {
-            account.start().await?;
+        if self.is_open()? {
+            log_info!("reloading accounts...");
+            let mut accounts = self.accounts(None).await?;
+            while let Some(account) = accounts.try_next().await? {
+                account.start().await?;
 
-            let receive_address = account.receive_address().await?;
-            let balance = account.balance();
-            let balance_string = account.balance_as_string().or_else(|| Some("--- KAS".to_string())).unwrap();
-            // balance.map(|b| sompi_
-            log_info!("{}: {} - {}", account.id(), receive_address, balance_string);
-            // log_info!("balance: {}", balance_string);
+                let receive_address = account.receive_address().await?;
+                let balance = account.balance();
+                let balance_string = account.balance_as_string().or_else(|| Some("--- KAS".to_string())).unwrap();
+                // balance.map(|b| sompi_
+                log_info!("{}: {} - {}", account.id(), receive_address, balance_string);
+                // log_info!("balance: {}", balance_string);
 
-            self.notify(Events::BalanceUpdate { balance, account_id: *account.id() }).await?;
+                self.notify(Events::BalanceUpdate { balance, account_id: *account.id() }).await?;
+            }
         }
 
         Ok(())
     }
 
     // pub fn load_accounts(&self, stored_accounts: Vec<storage::Account>) => Result<()> {
-    pub async fn load(self: &Arc<Wallet>, secret: Secret, _prefix: AddressPrefix) -> Result<()> {
+    pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
         // - TODO - RESET?
         self.reset().await?;
 
         use storage::interface::*;
         use storage::local::interface::*;
+
+        let name = name.or_else(|| self.settings().get(Settings::Wallet));
 
         // let address_prefix = self.address_prefix()?;
 
@@ -321,7 +332,7 @@ impl Wallet {
         // let ctx: Arc<dyn AccessContextT> = ctx;
         // let local_store = Arc::new(LocalStore::try_new(None, storage::local::DEFAULT_WALLET_FILE)?);
         let local_store = Arc::new(LocalStore::try_new(true)?);
-        local_store.open(&ctx, OpenArgs::new(None)).await?;
+        local_store.open(&ctx, OpenArgs::new(name)).await?;
         // let iface : Arc<dyn Interface> = local_store;
         let store_accounts = local_store.as_account_store()?;
         let mut iter = store_accounts.iter(None).await?;
@@ -409,12 +420,38 @@ impl Wallet {
         &self.multiplexer
     }
 
+    pub fn settings(&self) -> &SettingsStore {
+        &self.inner.settings
+    }
+
+    pub async fn load_settings(&self) -> Result<()> {
+        self.settings().try_load().await?;
+        // let settings = SettingsStore::try_load().await?;
+        // self.inner.settings.replace(settings)?;
+        let settings = self.settings();
+
+        if let Some(network_type) = settings.get(Settings::Network) {
+            self.select_network(network_type).unwrap_or_else(|_| log_error!("Unable to select network type: `{}`", network_type));
+        }
+
+        if let Some(url) = settings.get::<String>(Settings::Server) {
+            self.rpc_client().set_url(url.as_str()).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
+        }
+
+        // self.inner().settings = settings;
+        Ok(())
+    }
+
     // intended for starting async management tasks
     pub async fn start(self: &Arc<Self>) -> Result<()> {
+        self.load_settings().await.unwrap_or_else(|_| log_error!("Unable to load settings, discarding..."));
         // internal event loop
         self.start_task().await?;
         // rpc services (notifier)
+
         self.rpc_client().start().await?;
+
+        // self.subscribe_daa_score().await?;
         // start async RPC connection
 
         // TODO handle reconnect flag
@@ -424,15 +461,11 @@ impl Wallet {
 
     // intended for stopping async management task
     pub async fn stop(&self) -> Result<()> {
-        log_info!("XXX stopping tasks");
-        self.stop_task().await?;
-        log_info!("XXX stopping rpc client");
-        self.rpc_client().stop().await?;
-        log_info!("XXX disconnecting rpc client");
-        self.rpc_client().disconnect().await?;
-        log_info!("XXX stop done");
+        // self.unsubscribe_daa_score().await?;
 
-        // self.rpc.stop().await?;
+        self.stop_task().await?;
+        self.rpc_client().stop().await?;
+        self.rpc_client().disconnect().await?;
         Ok(())
     }
 
@@ -751,14 +784,6 @@ impl Wallet {
         self.inner.is_synced.store(is_synced, Ordering::SeqCst);
         self.notify(Events::ServerStatus { server_version, is_synced, has_utxo_index }).await?;
 
-        if is_synced {
-            log_info!("executing reload...");
-
-            self.reload().await?;
-        } else {
-            log_info!("server is not synced");
-        }
-
         // self.notify(Events::BalanceUpdate { balance: 12345, account_id: AccountId(445566) }).await?;
 
         Ok(())
@@ -779,15 +804,29 @@ impl Wallet {
     /// handle connection event
     pub async fn handle_connect(self: &Arc<Self>) -> Result<()> {
         self.check_server_state().await?;
-        self.inner.is_synced.store(false, Ordering::SeqCst);
+        // self.inner.is_synced.store(false, Ordering::SeqCst);
         self.inner.is_connected.store(true, Ordering::SeqCst);
         self.register_notification_listener().await?;
+
+        self.subscribe_daa_score().await?;
+
+        if self.inner.is_synced.load(Ordering::SeqCst) {
+            // log_info!("executing reload...");
+
+            self.reload().await?;
+        } else {
+            log_error!("server is not synced");
+        }
+
         Ok(())
     }
 
     /// handle disconnection event
     pub async fn handle_disconnect(self: &Arc<Self>) -> Result<()> {
         self.inner.is_connected.store(false, Ordering::SeqCst);
+
+        self.unsubscribe_daa_score().await?;
+
         // self.inner.network.lock().unwrap().take();
         self.unregister_notification_listener().await?;
         Ok(())
@@ -885,7 +924,6 @@ impl Wallet {
             loop {
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
-                        log_info!("XXX task_ctl_receiver - exiting");
                         break;
                     },
                     notification = notification_receiver.recv().fuse() => {
@@ -900,13 +938,13 @@ impl Wallet {
                             match msg {
                                 Ctl::Open => {
                                     //println!("Ctl::Open:::::::");
-                                    multiplexer.broadcast(Events::Connect).await.unwrap_or_else(|err| log_error!("{err}"));
+                                    multiplexer.broadcast(Events::Connect(self_.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
                                     self_.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
                                     // self_.connect().await?;
                                 },
                                 Ctl::Close => {
                                     self_.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
-                                    multiplexer.broadcast(Events::Disconnect).await.unwrap_or_else(|err| log_error!("{err}"));
+                                    multiplexer.broadcast(Events::Disconnect(self_.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
                                     // self_.disconnect().await?;
                                 }
                             }

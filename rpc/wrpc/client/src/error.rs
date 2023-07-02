@@ -9,6 +9,9 @@ use workflow_wasm::sendable::*;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("wRPC address error -> {0}")]
+    AddressError(String),
+
     #[error("wRPC -> {0}")]
     RpcError(#[from] RpcError),
 

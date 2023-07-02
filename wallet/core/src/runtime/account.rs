@@ -15,7 +15,8 @@ use faster_hex::hex_string;
 use futures::future::join_all;
 // use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{ChildNumber, PrivateKey};
-use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
+// use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
+use crate::utils;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_notify::listener::ListenerId;
 use kaspa_notify::scope::{Scope, UtxosChangedScope};
@@ -287,11 +288,12 @@ impl Account {
     pub async fn update_balance(self: &Arc<Account>) -> Result<u64> {
         let balance = self.utxos.calculate_balance().await?;
         self.balance.lock().unwrap().replace(balance);
-        self.wallet
-            .multiplexer
-            .broadcast(Events::BalanceUpdate { balance: Some(balance), account_id: self.id })
-            .await
-            .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
+        self.wallet.notify(Events::BalanceUpdate { balance: Some(balance), account_id: self.id }).await?;
+        // self.wallet
+        //     .multiplexer
+        //     .broadcast(Events::BalanceUpdate { balance: Some(balance), account_id: self.id })
+        //     .await
+        //     .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
         Ok(balance)
     }
 
@@ -318,8 +320,9 @@ impl Account {
         };
 
         self.balance().map(|b| {
-            let f = b / SOMPI_PER_KASPA;
-            format!("{} {}", f, suffix)
+            utils::sompi_to_kaspa_string_with_suffix(b, suffix)
+            // let f = (b / SOMPI_PER_KASPA).to_formatted_string(&Locale::en);
+            // format!("{} {}", f, suffix)
         })
     }
 
@@ -346,7 +349,7 @@ impl Account {
             // window_size = scan.window_size;
             cursor = last;
 
-            log_info!("first: {}, last: {}\r\n", first, last);
+            // log_info!("first: {}, last: {}\r\n", first, last);
 
             let addresses = scan.address_manager.get_range(first..last).await?;
 
@@ -372,7 +375,7 @@ impl Account {
             let balance = refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
 
             if balance != 0 {
-                println!("scan_address_managet() balance increment: {balance}");
+                // println!("scan_address_managet() balance increment: {balance}");
                 scan.balance.fetch_add(balance, Ordering::SeqCst);
                 // balance += utxo_balance;
 
@@ -401,7 +404,7 @@ impl Account {
     pub async fn scan_utxos(self: &Arc<Self>, window_size: Option<u32>, extent: Option<u32>) -> Result<()> {
         self.utxos.clear();
         // self.balance.store(0, Ordering::SeqCst);
-
+        log_info!("***** Running UTXO Scan...");
         let balance = Arc::new(AtomicU64::new(0));
 
         let window_size = window_size.unwrap_or(DEFAULT_WINDOW_SIZE);
@@ -418,8 +421,11 @@ impl Account {
         join_all(scans).await.into_iter().collect::<Result<Vec<_>>>()?;
 
         // let balance = balance.load(std::sync::atomic::Ordering::SeqCst);
-        self.balance.lock().unwrap().replace(balance.load(std::sync::atomic::Ordering::SeqCst));
+        let balance = balance.load(std::sync::atomic::Ordering::SeqCst);
+        self.balance.lock().unwrap().replace(balance);
         // - TODO - post balance updates to the wallet
+
+        self.wallet.notify(Events::BalanceUpdate { balance: Some(balance), account_id: self.id }).await?;
 
         Ok(())
     }

@@ -32,6 +32,11 @@ impl LocalStoreInner {
         let store = if is_resident {
             Store::Resident
         } else {
+            // prevent accessing the storage named 'settings'
+            if args.name.as_ref().is_some_and(|name| name.as_str() == super::DEFAULT_SETTINGS_FILE) {
+                return Err(Error::WalletNameNotAllowed);
+            }
+
             let storage = Storage::new(folder, &args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string()))?;
             if storage.exists().await? && !args.overwrite_wallet {
                 return Err(Error::WalletAlreadyExists);
@@ -49,6 +54,11 @@ impl LocalStoreInner {
     }
 
     pub async fn try_load(ctx: &Arc<dyn AccessContextT>, folder: &str, args: OpenArgs) -> Result<Self> {
+        // prevent accessing the storage named 'settings'
+        if args.name.as_ref().is_some_and(|name| name.as_str() == super::DEFAULT_SETTINGS_FILE) {
+            return Err(Error::WalletNameNotAllowed);
+        }
+
         let storage = Storage::new(folder, &args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string()))?;
 
         let secret = ctx.wallet_secret().await;

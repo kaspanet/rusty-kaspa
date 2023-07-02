@@ -1058,6 +1058,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "5.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "907076dfda823b0b36d2a1bb5f90c96660a5bbcd7729e10727f07858f22c4edc"
+dependencies = [
+ "cfg-if 1.0.0",
+ "hashbrown 0.12.3",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "derivative"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2591,6 +2604,7 @@ dependencies = [
  "cfb-mode",
  "cfg-if 1.0.0",
  "chacha20poly1305",
+ "dashmap",
  "derivative",
  "downcast",
  "evpkdf",
@@ -2616,6 +2630,7 @@ dependencies = [
  "rand 0.8.5",
  "ripemd",
  "secp256k1",
+ "separator",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
@@ -2665,6 +2680,7 @@ dependencies = [
  "futures",
  "js-sys",
  "kaspa-addresses",
+ "kaspa-consensus-core",
  "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-rpc-macros",
@@ -2677,6 +2693,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "workflow-core",
+ "workflow-dom",
  "workflow-log",
  "workflow-rpc",
  "workflow-wasm",
@@ -3938,6 +3955,12 @@ name = "semver"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bebd363326d05ec3e2f532ab7660680f3b02130d780c299bca73469d521bc0ed"
+
+[[package]]
+name = "separator"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f97841a747eef040fcd2e7b3b9a220a7205926e60488e673d9e4926d27772ce5"
 
 [[package]]
 name = "seqlock"

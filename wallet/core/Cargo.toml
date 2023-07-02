@@ -60,7 +60,8 @@ pbkdf2.workspace = true
 derivative.workspace = true
 downcast.workspace = true
 sorted-insert.workspace = true
-
+dashmap.workspace = true
+separator.workspace = true
 
 [dependencies.web-sys]
 workspace = true

@@ -2,6 +2,7 @@ pub use crate::convert::ScriptPublicKeyTrait;
 pub use crate::error::Error;
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSerialize};
+pub use dashmap::DashMap;
 pub use futures::stream::{self, Stream, StreamExt, Then, TryStreamExt};
 pub use js_sys::{Array, Object};
 pub use kaspa_addresses::Address;

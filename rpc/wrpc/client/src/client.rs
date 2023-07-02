@@ -1,8 +1,11 @@
 use crate::error::Error;
 use crate::imports::*;
+use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_rpc_core::notify::collector::{RpcCoreCollector, RpcCoreConverter};
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
 use std::fmt::Debug;
+use workflow_core::runtime as application_runtime;
+use workflow_dom::utils::window;
 use workflow_rpc::client::Ctl;
 pub use workflow_rpc::client::{ConnectOptions, ConnectResult, ConnectStrategy};
 
@@ -81,6 +84,10 @@ impl Inner {
 
     pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
         self.notification_channel.receiver.clone()
+    }
+
+    pub fn shutdown_notification_channel(&self) -> bool {
+        self.notification_channel.receiver.close()
     }
 
     /// Start sending notifications of some type to the client.
@@ -167,6 +174,11 @@ impl KaspaRpcClient {
         self.inner.rpc.url()
     }
 
+    pub fn set_url(&self, url: &str) -> Result<()> {
+        self.inner.rpc.set_url(url)?;
+        Ok(())
+    }
+
     pub fn is_open(&self) -> bool {
         self.inner.rpc.is_open()
     }
@@ -190,12 +202,10 @@ impl KaspaRpcClient {
     pub async fn stop(&self) -> Result<()> {
         match &self.notification_mode {
             NotificationMode::MultiListeners => {
-                log_info!("XXX stop notifier...");
+                self.inner.shutdown_notification_channel();
                 self.notifier.as_ref().unwrap().join().await?;
-                log_info!("XXX stop notifier DONE...");
             }
             NotificationMode::Direct => {
-                log_info!("XXX stop direct...");
                 // self.notification_ctl.signal(()).await?;
             }
         }
@@ -208,7 +218,6 @@ impl KaspaRpcClient {
     /// connection.
     // pub async fn connect(&self, options: ConnectOptions) -> ConnectResult {
     pub async fn connect(&self, options: ConnectOptions) -> ConnectResult<Error> {
-        log_info!("KaspaRpcClient::connect: options: {:#?}", options);
         Ok(self.inner.rpc.connect(options).await?)
     }
 
@@ -246,6 +255,41 @@ impl KaspaRpcClient {
 
     pub fn ctl_channel_receiver(&self) -> Receiver<Ctl> {
         self.inner.ctl_channel.receiver.clone()
+    }
+
+    pub fn parse_url(&self, url: Option<String>, network_type: NetworkType) -> Result<Option<String>> {
+        // let url = url.unwrap_or("ws://127.0.0.1".to_string());
+
+        let url = if let Some(url) = url {
+            if url.starts_with("ws://") || url.starts_with("wss://") || url.starts_with("wrpc://") || url.starts_with("wrpcs://") {
+                Some(url)
+            } else if application_runtime::is_web() {
+                let location = window().location();
+                let protocol = location
+                    .protocol()
+                    .map_err(|_| Error::AddressError("Unable to obtain window location protocol".to_string()))?
+                    .replace("http", "ws");
+                Some(format!("{protocol}//{url}"))
+            } else {
+                Some(format!("ws://{url}"))
+            }
+        } else {
+            None
+        };
+
+        let url = url.map(|url| {
+            if url.split(':').collect::<Vec<_>>().len() < 3 {
+                let port = match self.inner.encoding {
+                    WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
+                    WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
+                };
+                format!("{url}:{port}")
+            } else {
+                url
+            }
+        });
+
+        Ok(url)
     }
 }
 

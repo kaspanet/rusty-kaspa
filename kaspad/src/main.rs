@@ -305,14 +305,14 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     ]
     .into_iter()
     .filter_map(|(listen_address, encoding, wrpc_server_counters)| {
-        listen_address.as_ref().map(|listen_address| {
+        listen_address.map(|listen_address| {
             Arc::new(WrpcService::new(
                 wrpc_service_tasks,
                 Some(rpc_core_service.clone()),
                 &encoding,
                 wrpc_server_counters,
                 WrpcServerOptions {
-                    listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
+                    listen_address: listen_address.to_address(&network.network_type, &encoding).to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
                     verbose: args.wrpc_verbose,
                     ..WrpcServerOptions::default()
                 },
