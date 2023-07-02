@@ -1,9 +1,9 @@
-use std::fmt::Display;
-use std::str::FromStr;
-use dashmap::iter::Iter;
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::local::Storage;
+use dashmap::iter::Iter;
+use std::fmt::Display;
+use std::str::FromStr;
 use workflow_core::enums::Describe;
 
 #[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
@@ -13,7 +13,7 @@ pub enum Settings {
     Network,
     #[describe("Server address (default: 127.0.0.1)")]
     Server,
-    #[describe("Wallet storage or file name (default 'kaspa'")]
+    #[describe("Wallet storage or file name (default 'kaspa')")]
     Wallet,
 }
 

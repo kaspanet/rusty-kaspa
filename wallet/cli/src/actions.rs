@@ -16,6 +16,8 @@ pub enum Action {
     Set,
     #[describe("Select network type (mainnet|testnet)")]
     Network,
+    #[describe("Set RPC server address")]
+    Server,
     #[describe("Connect to kaspa network")]
     Connect,
     #[describe("Disconnect from kaspa network")]

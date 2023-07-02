@@ -232,6 +232,15 @@ impl WalletCli {
                     term.writeln(format!("Current network type is: {network_type}"));
                 }
             }
+            Action::Server => {
+                if let Some(url) = argv.first() {
+                    self.wallet.settings().set(Settings::Server, url).await?;
+                    term.writeln(format!("Setting RPC server to: {url}"));
+                } else {
+                    let server = self.wallet.settings().get(Settings::Server).unwrap_or_else(|| "n/a".to_string());
+                    term.writeln(format!("Current RPC server is: {server}"));
+                }
+            }
             Action::Broadcast => {
                 self.wallet.broadcast().await?;
             }
