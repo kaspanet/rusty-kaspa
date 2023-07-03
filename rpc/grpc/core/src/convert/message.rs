@@ -678,6 +678,7 @@ try_from!(_item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetric
 try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
         // TODO @tiram
+        server_time: 0,
         process_metrics: None,
         consensus_metrics: None,
     }

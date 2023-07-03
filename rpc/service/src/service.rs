@@ -52,6 +52,7 @@ use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use std::{
     iter::once,
     sync::{atomic::Ordering, Arc},
+    time::{SystemTime, UNIX_EPOCH},
     vec,
 };
 
@@ -654,7 +655,11 @@ impl RpcApi for RpcCoreService {
             None
         };
 
-        let response = GetMetricsResponse { process_metrics, consensus_metrics };
+        let start = SystemTime::now();
+        let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
+        let server_time = since_the_epoch.as_millis();
+
+        let response = GetMetricsResponse { server_time, process_metrics, consensus_metrics };
 
         Ok(response)
     }
