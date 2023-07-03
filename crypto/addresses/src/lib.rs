@@ -240,6 +240,12 @@ impl Address {
     pub fn payload(&self) -> String {
         self.encode_payload()
     }
+
+    pub fn short(&self, n: usize) -> String {
+        let payload = self.encode_payload();
+        let n = std::cmp::min(n, payload.len() / 4);
+        format!("{}:{}....{}", self.prefix, &payload[0..n], &payload[payload.len() - n..])
+    }
 }
 
 impl Display for Address {
