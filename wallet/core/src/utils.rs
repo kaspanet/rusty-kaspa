@@ -164,11 +164,55 @@ pub fn get_consensus_params_by_network(network: &NetworkType) -> Params {
     }
 }
 
-pub fn sompi_to_kaspa_string(sompi: u64) -> String {
-    (sompi as f64 / SOMPI_PER_KASPA as f64).separated_string()
+#[inline]
+pub fn sompi_to_kaspa(sompi: u64) -> f64 {
+    sompi as f64 / SOMPI_PER_KASPA as f64
 }
 
-pub fn sompi_to_kaspa_string_with_suffix(sompi: u64, suffix: &str) -> String {
-    let kas = (sompi as f64 / SOMPI_PER_KASPA as f64).separated_string();
-    format!("{} {}", kas, suffix)
+#[inline]
+pub fn sompi_to_kaspa_string(sompi: u64) -> String {
+    sompi_to_kaspa(sompi).separated_string()
+}
+
+pub fn kaspa_suffix(network_type: &NetworkType) -> &'static str {
+    match network_type {
+        NetworkType::Mainnet => "KAS",
+        NetworkType::Testnet => "TKAS",
+        NetworkType::Simnet => "SKAS",
+        NetworkType::Devnet => "DKAS",
+    }
+}
+
+#[inline]
+pub fn sompi_to_kaspa_string_with_suffix(sompi: u64, network_type: &NetworkType) -> String {
+    let kas = sompi_to_kaspa(sompi).separated_string();
+    let suffix = kaspa_suffix(network_type);
+    format!("{kas} {suffix}")
+}
+
+mod wasm {
+    use super::*;
+    use crate::result::Result;
+    // use wasm_bindgen::prelude::*;
+    use workflow_wasm::jsvalue::*;
+    // use js_sys::BigInt;
+
+    #[wasm_bindgen(js_name = "sompiToKaspa")]
+    pub fn sompi_to_kaspa(sompi: JsValue) -> Result<f64> {
+        let sompi = sompi.try_as_u64()?;
+        Ok(super::sompi_to_kaspa(sompi))
+    }
+
+    #[wasm_bindgen(js_name = "sompiToKaspaString")]
+    pub fn sompi_to_kaspa_string(sompi: JsValue) -> Result<String> {
+        let sompi = sompi.try_as_u64()?;
+        Ok(super::sompi_to_kaspa_string(sompi))
+    }
+
+    #[wasm_bindgen(js_name = "sompiToKaspaStringWithSuffix")]
+    pub fn sompi_to_kaspa_string_with_suffix(sompi: JsValue, wallet: &crate::wasm::Wallet) -> Result<String> {
+        let sompi = sompi.try_as_u64()?;
+        let network_type = wallet.wallet.network()?;
+        Ok(super::sompi_to_kaspa_string_with_suffix(sompi, &network_type))
+    }
 }
