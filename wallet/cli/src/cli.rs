@@ -2,6 +2,8 @@ use crate::actions::*;
 use crate::error::Error;
 use crate::helpers;
 use crate::result::Result;
+use crate::utils::*;
+use kaspa_wallet_core::storage::interface::AccessContext;
 use pad::PadStr;
 // use crate::settings::Settings;
 use async_trait::async_trait;
@@ -9,12 +11,12 @@ use futures::stream::{Stream, StreamExt, TryStreamExt};
 use futures::*;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_wallet_core::accounts::gen0::import::*;
-use kaspa_wallet_core::imports::ToHex;
+use kaspa_wallet_core::imports::{AtomicBool, Ordering, ToHex};
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
-use kaspa_wallet_core::storage::{AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
+use kaspa_wallet_core::storage::{AccessContextT, AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
 use kaspa_wallet_core::tx::PaymentOutputs;
 use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
-use kaspa_wallet_core::{utils, Address, ConnectOptions, ConnectStrategy, Events, Settings};
+use kaspa_wallet_core::{Address, ConnectOptions, ConnectStrategy, Events, Settings};
 // use kaspa_wrpc_client::WrpcEncoding;
 // use serde::de::DeserializeOwned;
 // use serde::Serialize;
@@ -25,6 +27,7 @@ use workflow_core::channel::*;
 // use workflow_core::enums::EnumTrait;
 use workflow_core::runtime as application_runtime;
 // use workflow_dom::utils::window;
+use separator::Separatable;
 use workflow_log::*;
 use workflow_terminal::*;
 pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget}; //{CrLf, Terminal};
@@ -33,6 +36,13 @@ struct WalletCli {
     term: Arc<Mutex<Option<Arc<Terminal>>>>,
     wallet: Arc<Wallet>,
     notifications_task_ctl: DuplexChannel,
+    // ---
+    mute: Arc<AtomicBool>,
+    flags: Flags,
+    // track_balance : Arc<AtomicBool>,
+    // track_pending : Arc<AtomicBool>,
+    // track_utxo : Arc<AtomicBool>,
+    // track_daa : Arc<AtomicBool>,
 }
 
 impl workflow_log::Sink for WalletCli {
@@ -48,11 +58,21 @@ impl workflow_log::Sink for WalletCli {
 
 impl WalletCli {
     fn new(wallet: Arc<Wallet>) -> Self {
-        WalletCli { term: Arc::new(Mutex::new(None)), wallet, notifications_task_ctl: DuplexChannel::oneshot() }
+        WalletCli {
+            term: Arc::new(Mutex::new(None)),
+            wallet,
+            notifications_task_ctl: DuplexChannel::oneshot(),
+            mute: Arc::new(AtomicBool::new(false)),
+            flags: Flags::new(),
+        }
     }
 
     fn term(&self) -> Option<Arc<Terminal>> {
         self.term.lock().unwrap().as_ref().cloned()
+    }
+
+    pub fn is_mutted(&self) -> bool {
+        self.mute.load(Ordering::SeqCst)
     }
 
     async fn action(&self, action: Action, mut argv: Vec<String>, term: Arc<Terminal>) -> Result<()> {
@@ -139,6 +159,15 @@ impl WalletCli {
                         _ => return Err(Error::Custom(format!("Unknown setting '{}'", key))),
                     }
                     self.wallet.settings().try_store().await?;
+                }
+            }
+            Action::Mute => {
+                log_info!("mute is {}", toggle(&self.mute));
+            }
+            Action::Track => {
+                if let Some(attr) = argv.first() {
+                    let track: Track = attr.parse()?;
+                    self.flags.toggle(track);
                 }
             }
             Action::Connect => {
@@ -387,7 +416,8 @@ impl WalletCli {
                     term.writeln(format!("{key}"));
                     let mut accounts = self.wallet.accounts(Some(key.id)).await?;
                     while let Some(account) = accounts.try_next().await? {
-                        term.writeln(format!("    {}", account.get_ls_string()));
+                        term.writeln(format!("    {}", account.get_ls_string()?));
+                        // term.writeln(format!("    {}", account.get_ls_string()?));
                     }
                 }
             }
@@ -456,7 +486,7 @@ impl WalletCli {
     }
 
     pub fn notification_pipe_task(self: &Arc<Self>) {
-        let self_ = self.clone();
+        let this = self.clone();
         let _term = self.term().unwrap_or_else(|| panic!("WalletCli::notification_pipe_task(): `term` is not initialized"));
         // let notification_channel_receiver = self.wallet.rpc_client().notification_channel_receiver();
         let multiplexer = MultiplexerChannel::from(self.wallet.multiplexer());
@@ -465,7 +495,7 @@ impl WalletCli {
             loop {
                 select! {
 
-                    _ = self_.notifications_task_ctl.request.receiver.recv().fuse() => {
+                    _ = this.notifications_task_ctl.request.receiver.recv().fuse() => {
                         // if let Ok(msg) = msg {
                         //     let text = format!("{msg:#?}").replace('\n',"\r\n");
                         //     println!("#### text: {text:?}");
@@ -494,46 +524,65 @@ impl WalletCli {
                                 Events::UtxoIndexNotEnabled => {
                                     log_error!("Error: Kaspa node UTXO index is not enabled...")
                                 },
-                                // Events::ServerStatus {
-                                //     server_version,
-                                //     is_synced,
-                                //     has_utxo_index,
-                                // } => { },
-                                Events::DAAScoreChange(daa) => {
-                                    log_info!("DAAScoreChange: {daa:#?}");
-                                },
-                                Events::BalanceUpdate {
-                                    balance, account_id
+                                Events::ServerStatus {
+                                    is_synced,
+                                    // server_version,
+                                    // has_utxo_index,
+                                    ..
                                 } => {
+                                    // log_info!("Server version server {server_version}");
+                                    if !is_synced {
+                                        let is_open = this.wallet.is_open().unwrap_or_else(|err| { log_error!("Unable to check if wallet is open: {err}"); false });
+                                        if is_open {
+                                            log_error!("Error: Unable to sync wallet - Kaspa node is not synced...");
 
-                                    if let Some(balance) = balance {
-                                        let suffix = match self_.wallet.network().expect("missing network type") {
-                                            NetworkType::Testnet => "TKAS",
-                                            NetworkType::Simnet => "SKAS",
-                                            NetworkType::Devnet => "DKAS",
-                                            _ => "KAS",
-                                        };
-
-                                        let balance = utils::sompi_to_kaspa_string_with_suffix(balance,suffix);
-                                        log_info!("Balance {account_id}: {balance}");
-                                    } else {
-                                        log_info!("Balance {account_id}: - n/a -");
+                                        } else {
+                                            log_error!("Error: Kaspa node is not synced...");
+                                        }
                                     }
                                 },
-                                _ => { }
+                                Events::DAAScoreChange(daa) => {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Daa)) {
+                                        log_info!("DAAScoreChange: {daa}");
+                                    }
+                                },
+                                Events::Credit {
+                                    record
+                                } => {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                        let tx = record.format(&this.wallet);
+                                        log_info!("{tx}");
+                                    }
+                                },
+                                Events::Debit {
+                                    record
+                                } => {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                        let tx = record.format(&this.wallet);
+                                        log_info!("{tx}");
+                                    }
+                                },
+                                Events::Balance {
+                                    balance,
+                                    account_id,
+                                    utxo_size,
+                                } => {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
+                                        let network_type = this.wallet.network().expect("missing network type");
+                                        let balance = BalanceStrings::from((&balance,&network_type));
+                                        let account_id = account_id.short();
+                                        let utxo_info = style(format!("(UTXOs: {})", utxo_size.separated_string())).dim();
+                                        log_info!("Balance {account_id}: {balance} {utxo_info}");
+                                    }
+                                },
                             }
                         }
-                        // log_info!("### received multiplexer notification: {msg:#?}");
-
 
                     }
                 }
             }
 
-            log_info!("### exiting notification processor");
-
-            self_
-                .notifications_task_ctl
+            this.notifications_task_ctl
                 .response
                 .sender
                 .send(())
@@ -582,7 +631,19 @@ impl WalletCli {
             return Err(Error::WalletSecretMatch.into());
         }
 
-        let payment_secret = term.ask(true, "Enter payment (private key encryption) password (optional): ").await?;
+        log_info!("");
+        wrap(
+            "PLEASE NOTE: The optional payment password, if provided, will be required to \
+            issue transactions. This password will also be required when recovering your wallet \
+            in addition to your private key or mnemonic. If you loose this password, you will not \
+            be able to use mnemonic to recover your wallet!",
+            70,
+        )
+        .into_iter()
+        .for_each(|line| term.writeln(line));
+        log_info!("");
+
+        let payment_secret = term.ask(true, "Enter payment password (optional): ").await?;
         // let payment_secret = payment_secret.trim();
         let payment_secret =
             if payment_secret.trim().is_empty() { None } else { Some(Secret::new(payment_secret.trim().as_bytes().to_vec())) };
@@ -599,13 +660,19 @@ impl WalletCli {
             }
         }
 
+        // suspend commits for multiple operations
+        self.wallet.store().suspend().await?;
+
         let account_kind = AccountKind::Bip32;
         let wallet_args = WalletCreateArgs::new(None, hint, wallet_secret.clone(), true);
         let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone());
-        let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_secret, payment_secret);
+        let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_secret.clone(), payment_secret);
         let descriptor = self.wallet.create_wallet(wallet_args).await?;
         let (prv_key_data_id, mnemonic) = self.wallet.create_prv_key_data(prv_key_data_args).await?;
         let account = self.wallet.create_bip32_account(prv_key_data_id, account_args).await?;
+
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        self.wallet.store().flush(&ctx).await?;
 
         ["", "---", "", "IMPORTANT:", ""].into_iter().for_each(|line| term.writeln(line));
 
@@ -706,7 +773,7 @@ impl Cli for WalletCli {
 
 impl WalletCli {}
 
-use kaspa_wallet_core::runtime::{self, PrvKeyDataCreateArgs};
+use kaspa_wallet_core::runtime::{self, BalanceStrings, PrvKeyDataCreateArgs};
 async fn select_account(term: &Arc<Terminal>, wallet: &Arc<Wallet>) -> Result<Arc<runtime::Account>> {
     let mut selection = None;
 
@@ -731,7 +798,7 @@ async fn select_account(term: &Arc<Terminal>, wallet: &Arc<Wallet>) -> Result<Ar
             term.writeln(format!("{prv_key_data_info}"));
 
             accounts.iter().for_each(|(seq, account)| {
-                term.writeln(format!("    {seq}: {}", account.get_ls_string()));
+                term.writeln(format!("    {seq}: {}", account.get_ls_string().unwrap_or_else(|err| panic!("{err}"))));
             })
         });
 
