@@ -28,6 +28,7 @@ struct Inner {
     notification_channel: Channel<Notification>,
     encoding: Encoding,
     ctl_channel: Channel<Ctl>,
+    background_services_running: Arc<AtomicBool>,
 }
 
 impl Inner {
@@ -66,7 +67,7 @@ impl Inner {
                         // log_info!("notification receivers: {}", notification_sender.receiver_count());
                         // log_trace!("notification {:?}", notification);
                         if notification_sender.receiver_count() > 1 {
-                            // log_info!("notification: posting to channel");
+                            // log_info!("notification: posting to channel: {notification:?}");
                             notification_sender.send(notification).await?;
                         } else {
                             log_warning!("WARNING: Kaspa RPC notification is not consumed by user: {:?}", notification);
@@ -78,7 +79,8 @@ impl Inner {
         });
 
         let rpc = Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options)?);
-        let client = Self { rpc, notification_channel, encoding, ctl_channel };
+        let client =
+            Self { rpc, notification_channel, encoding, ctl_channel, background_services_running: Arc::new(AtomicBool::new(false)) };
         Ok(client)
     }
 
@@ -189,24 +191,28 @@ impl KaspaRpcClient {
 
     /// Starts RPC services.
     pub async fn start(&self) -> Result<()> {
-        match &self.notification_mode {
-            NotificationMode::MultiListeners => {
-                self.notifier.clone().unwrap().start();
+        if !self.inner.background_services_running.load(Ordering::SeqCst) {
+            match &self.notification_mode {
+                NotificationMode::MultiListeners => {
+                    self.notifier.clone().unwrap().start();
+                }
+                NotificationMode::Direct => {}
             }
-            NotificationMode::Direct => {}
         }
         Ok(())
     }
 
     /// Stops background services.
     pub async fn stop(&self) -> Result<()> {
-        match &self.notification_mode {
-            NotificationMode::MultiListeners => {
-                self.inner.shutdown_notification_channel();
-                self.notifier.as_ref().unwrap().join().await?;
-            }
-            NotificationMode::Direct => {
-                // self.notification_ctl.signal(()).await?;
+        if self.inner.background_services_running.load(Ordering::SeqCst) {
+            match &self.notification_mode {
+                NotificationMode::MultiListeners => {
+                    self.inner.shutdown_notification_channel();
+                    self.notifier.as_ref().unwrap().join().await?;
+                }
+                NotificationMode::Direct => {
+                    // self.notification_ctl.signal(()).await?;
+                }
             }
         }
         Ok(())
@@ -218,11 +224,14 @@ impl KaspaRpcClient {
     /// connection.
     // pub async fn connect(&self, options: ConnectOptions) -> ConnectResult {
     pub async fn connect(&self, options: ConnectOptions) -> ConnectResult<Error> {
+        self.start().await?;
         Ok(self.inner.rpc.connect(options).await?)
     }
 
     pub async fn disconnect(&self) -> Result<()> {
-        Ok(self.inner.rpc.shutdown().await?)
+        self.inner.rpc.shutdown().await?;
+        self.stop().await?;
+        Ok(())
     }
 
     /// Stop and shutdown RPC disconnecting existing connections
