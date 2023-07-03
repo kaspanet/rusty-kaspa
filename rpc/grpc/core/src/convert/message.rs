@@ -474,7 +474,10 @@ try_from!(&protowire::NotifyNewBlockTemplateResponseMessage, RpcResult<kaspa_rpc
 
 try_from!(&protowire::GetCurrentNetworkRequestMessage, kaspa_rpc_core::GetCurrentNetworkRequest);
 try_from!(item: &protowire::GetCurrentNetworkResponseMessage, RpcResult<kaspa_rpc_core::GetCurrentNetworkResponse>, {
-    Self { network: RpcNetworkType::from_str(&item.current_network)? }
+    // Note that current_network is first converted to lowercase because the golang implementation
+    // returns a "human readable" version with a capital first letter while the rusty version
+    // is fully lowercase.
+    Self { network: RpcNetworkType::from_str(&item.current_network.to_lowercase())? }
 });
 
 try_from!(&protowire::GetPeerAddressesRequestMessage, kaspa_rpc_core::GetPeerAddressesRequest);
