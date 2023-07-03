@@ -208,3 +208,4 @@ workflow-terminal = { path = "../workflow-rs/terminal" }
 [profile.release]
 lto = "thin"
 strip = true
+overflow-checks = true

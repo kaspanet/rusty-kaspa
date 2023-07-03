@@ -32,7 +32,7 @@ indexmap.workspace = true
 async-trait.workspace = true
 
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
-tokio = { version = "1.21.2", features = [
+tokio = { workspace = true, features = [
     "rt-multi-thread",
     "macros",
     "signal",

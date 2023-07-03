@@ -128,8 +128,8 @@ async fn main() {
     );
 
     let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending, coinbase_maturity).await;
-    let mut ticker = interval(Duration::from_secs_f64(1.0 / (args.tps as f64)));
-    ticker.set_missed_tick_behavior(MissedTickBehavior::Burst);
+    let mut ticker = interval(Duration::from_secs_f64(1.0 / (args.tps.min(100) as f64)));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     let mut maximize_inputs = false;
     let mut last_refresh = unix_now();
@@ -173,7 +173,7 @@ fn should_maximize_inputs(
 async fn pause_if_mempool_is_full(rpc_client: &GrpcClient) {
     loop {
         let mempool_size = rpc_client.get_info().await.unwrap().mempool_size;
-        if mempool_size < 100_000 {
+        if mempool_size < 10_000 {
             break;
         }
 
