@@ -1,5 +1,6 @@
 pub use crate::convert::ScriptPublicKeyTrait;
 pub use crate::error::Error;
+pub use crate::utils;
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSerialize};
 pub use dashmap::DashMap;
@@ -13,6 +14,7 @@ pub use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionId, TransactionIn
 pub use kaspa_utils::hex::{FromHex, ToHex};
 pub use serde::{Deserialize, Deserializer, Serialize};
 pub use std::pin::Pin;
+pub use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 pub use std::sync::{Arc, Mutex, MutexGuard};
 pub use std::task::{Context, Poll};
 pub use wasm_bindgen::prelude::*;

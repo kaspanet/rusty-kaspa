@@ -95,27 +95,25 @@ impl TryFrom<JsValue> for TransactionInput {
     }
 }
 
-impl TryFrom<cctx::TransactionInput> for TransactionInput {
-    type Error = Error;
-    fn try_from(tx_input: cctx::TransactionInput) -> Result<Self, Self::Error> {
-        Ok(TransactionInput::new_with_inner(TransactionInputInner {
-            previous_outpoint: tx_input.previous_outpoint.try_into()?,
+impl From<cctx::TransactionInput> for TransactionInput {
+    fn from(tx_input: cctx::TransactionInput) -> Self {
+        TransactionInput::new_with_inner(TransactionInputInner {
+            previous_outpoint: tx_input.previous_outpoint.into(),
             signature_script: tx_input.signature_script,
             sequence: tx_input.sequence,
             sig_op_count: tx_input.sig_op_count,
-        }))
+        })
     }
 }
 
-impl TryFrom<TransactionInput> for cctx::TransactionInput {
-    type Error = Error;
-    fn try_from(tx_input: TransactionInput) -> Result<Self, Self::Error> {
+impl From<TransactionInput> for cctx::TransactionInput {
+    fn from(tx_input: TransactionInput) -> Self {
         let inner = tx_input.inner();
-        Ok(cctx::TransactionInput::new(
-            inner.previous_outpoint.clone().try_into()?,
+        cctx::TransactionInput::new(
+            inner.previous_outpoint.clone().into(),
             inner.signature_script.clone(),
             inner.sequence,
             inner.sig_op_count,
-        ))
+        )
     }
 }

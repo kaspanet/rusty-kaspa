@@ -3,21 +3,18 @@ use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDeri
 use crate::address::{build_derivate_paths, AddressManager};
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::wallet::{Events, Wallet};
+use crate::runtime::scan::Scan;
+use crate::runtime::{AtomicBalance, Balance, BalanceStrings, Events, Wallet};
 use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
 use crate::storage::interface::AccessContext;
-use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
+use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData, TransactionType};
 use crate::tx::{LimitCalcStrategy, PaymentOutputs, VirtualTransaction};
-use crate::utxo::{UtxoDb, UtxoEntryId, UtxoEntryReference};
+use crate::utxo::{self, PendingUtxoEntryReference, UtxoDb, UtxoEntryId, UtxoEntryReference};
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
 use futures::future::join_all;
-// use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{ChildNumber, PrivateKey};
-// use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
-use crate::utils;
-use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_notify::listener::ListenerId;
 use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use kaspa_rpc_core::api::notifications::Notification;
@@ -26,10 +23,11 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use workflow_core::abortable::Abortable;
 use workflow_core::channel::{Channel, DuplexChannel};
 use workflow_core::enums::u8_try_from;
+
+use super::scan::{ScanExtent, DEFAULT_WINDOW_SIZE};
 
 #[derive(Default, Clone)]
 pub struct Estimate {
@@ -37,38 +35,6 @@ pub struct Estimate {
     pub fees_sompi: u64,
     pub utxos: usize,
     pub transactions: usize,
-}
-
-const DEFAULT_WINDOW_SIZE: u32 = 128;
-
-#[derive(Default, Clone, Copy)]
-pub enum ScanExtent {
-    /// Scan until an empty range is found
-    #[default]
-    EmptyWindow,
-    /// Scan until a specific depth (a particular derivation index)
-    Depth(u32),
-}
-
-pub struct Scan {
-    pub address_manager: Arc<AddressManager>,
-    pub window_size: u32,
-    pub extent: ScanExtent,
-    pub balance: Arc<AtomicU64>,
-}
-
-impl Scan {
-    pub fn new(address_manager: Arc<AddressManager>, balance: &Arc<AtomicU64>) -> Scan {
-        Scan { address_manager, window_size: DEFAULT_WINDOW_SIZE, extent: ScanExtent::EmptyWindow, balance: balance.clone() }
-    }
-    pub fn new_with_args(
-        address_manager: Arc<AddressManager>,
-        window_size: u32,
-        extent: ScanExtent,
-        balance: &Arc<AtomicU64>,
-    ) -> Scan {
-        Scan { address_manager, window_size, extent, balance: balance.clone() }
-    }
 }
 
 u8_try_from! {
@@ -132,6 +98,11 @@ impl AccountId {
         AccountIdHashData { prv_key_data_id: *prv_key_data_id, ecdsa, account_kind: *account_kind, account_index }.hash(&mut hasher);
         AccountId(hasher.finish())
     }
+
+    pub fn short(&self) -> String {
+        let hex = self.to_hex();
+        format!("{}..{}", &hex[0..4], &hex[hex.len() - 4..])
+    }
 }
 
 impl ToHex for AccountId {
@@ -185,7 +156,7 @@ pub struct Account {
     wallet: Arc<Wallet>,
     utxos: UtxoDb,
     // balance: Arc<AtomicU64>,
-    balance: Mutex<Option<u64>>,
+    balance: Mutex<Option<Balance>>,
     is_connected: AtomicBool,
     // #[wasm_bindgen(js_name = "accountKind")]
     pub account_kind: AccountKind,
@@ -285,20 +256,22 @@ impl Account {
         }))
     }
 
-    pub async fn update_balance(self: &Arc<Account>) -> Result<u64> {
-        let balance = self.utxos.calculate_balance().await?;
-        self.balance.lock().unwrap().replace(balance);
-        self.wallet.notify(Events::BalanceUpdate { balance: Some(balance), account_id: self.id }).await?;
-        // self.wallet
-        //     .multiplexer
-        //     .broadcast(Events::BalanceUpdate { balance: Some(balance), account_id: self.id })
-        //     .await
-        //     .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
+    pub async fn update_balance(self: &Arc<Account>) -> Result<Balance> {
+        let previous_balance = self.balance.lock().unwrap().clone();
+        let mut balance = self.utxos.calculate_balance().await;
+        balance.delta(&previous_balance);
+        self.balance.lock().unwrap().replace(balance.clone());
+        let utxo_size = self.utxos.len();
+        self.wallet.notify(Events::Balance { balance: Some(balance.clone()), account_id: self.id, utxo_size }).await?;
         Ok(balance)
     }
 
     pub fn id(&self) -> &AccountId {
         &self.id
+    }
+
+    pub fn utxos(&self) -> &UtxoDb {
+        &self.utxos
     }
 
     pub fn is_connected(&self) -> bool {
@@ -309,28 +282,27 @@ impl Account {
         self.inner.lock().unwrap().stored.name.clone()
     }
 
-    pub fn balance(&self) -> Option<u64> {
-        *self.balance.lock().unwrap()
+    pub fn name_or_id(&self) -> String {
+        let name = self.inner.lock().unwrap().stored.name.clone();
+        if name.is_empty() {
+            self.id.short()
+        } else {
+            name
+        }
     }
 
-    pub fn balance_as_string(&self) -> Option<String> {
-        let suffix = match self.wallet.network().expect("missing network type") {
-            NetworkType::Testnet => "TKAS",
-            _ => "KAS",
-        };
-
-        self.balance().map(|b| {
-            utils::sompi_to_kaspa_string_with_suffix(b, suffix)
-            // let f = (b / SOMPI_PER_KASPA).to_formatted_string(&Locale::en);
-            // format!("{} {}", f, suffix)
-        })
+    pub fn balance(&self) -> Option<Balance> {
+        self.balance.lock().unwrap().clone()
     }
 
-    pub fn get_ls_string(&self) -> String {
+    pub fn balance_as_strings(&self) -> Result<BalanceStrings> {
+        Ok(BalanceStrings::from((&self.balance(), &self.wallet.network()?)))
+    }
+
+    pub fn get_ls_string(&self) -> Result<String> {
         let name = self.name();
-        // let balance = self.balance_as_string().map(|s| format!("{s} KAS")).unwrap_or_else(|| "n/a".to_string());
-        let balance = self.balance_as_string().unwrap_or_else(|| "n/a".to_string());
-        format!("{name} - {balance}")
+        let balance = self.balance_as_strings()?;
+        Ok(format!("{name} - {balance}"))
     }
 
     pub fn inner(&self) -> MutexGuard<Inner> {
@@ -345,15 +317,13 @@ impl Account {
 
         'scan: loop {
             let first = cursor;
-            let last = if cursor == 0 { last_address_index } else { cursor + scan.window_size };
-            // window_size = scan.window_size;
+            let last = if cursor == 0 { last_address_index + 1 } else { cursor + scan.window_size };
             cursor = last;
 
             // log_info!("first: {}, last: {}\r\n", first, last);
 
             let addresses = scan.address_manager.get_range(first..last).await?;
 
-            self.subscribe_utxos_changed(&addresses).await?;
             let resp = self.wallet.rpc().get_utxos_by_addresses(addresses).await?;
             let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
             //println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
@@ -371,15 +341,22 @@ impl Account {
                 }
             }
 
-            self.utxos.extend(&refs);
-            let balance = refs.iter().map(|r| r.as_ref().amount()).sum::<u64>();
+            let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
+                let entry_balance = r.as_ref().balance(scan.current_daa_score);
+                balance.mature += entry_balance.mature;
+                balance.pending += entry_balance.pending;
+                balance
+            });
 
-            if balance != 0 {
-                // println!("scan_address_managet() balance increment: {balance}");
-                scan.balance.fetch_add(balance, Ordering::SeqCst);
-                // balance += utxo_balance;
+            let pending = self.utxos.extend(refs, scan.current_daa_score).await?;
+            let pending = pending.into_iter().map(|entry| (entry.id(), PendingUtxoEntryReference::new(entry, self.clone())));
+            let map = self.wallet.pending();
+            for pending in pending.into_iter() {
+                map.insert(pending.0, pending.1);
+            }
 
-                // - TODO - post balance update to the multiplexer?
+            if !balance.is_empty() {
+                scan.balance.add(balance);
             } else {
                 match &scan.extent {
                     ScanExtent::EmptyWindow => {
@@ -394,6 +371,17 @@ impl Account {
                     }
                 }
             }
+
+            // yield_executor().await;
+        }
+
+        let mut cursor = 0;
+        while cursor <= last_address_index {
+            let first = cursor;
+            let last = std::cmp::min(cursor + scan.window_size, last_address_index + 1);
+            cursor = last;
+            let addresses = scan.address_manager.get_range(first..last).await?;
+            self.subscribe_utxos_changed(&addresses).await?;
         }
 
         scan.address_manager.set_index(last_address_index)?;
@@ -403,9 +391,9 @@ impl Account {
 
     pub async fn scan_utxos(self: &Arc<Self>, window_size: Option<u32>, extent: Option<u32>) -> Result<()> {
         self.utxos.clear();
-        // self.balance.store(0, Ordering::SeqCst);
-        log_info!("***** Running UTXO Scan...");
-        let balance = Arc::new(AtomicU64::new(0));
+
+        let current_daa_score = self.wallet.current_daa_score();
+        let balance = Arc::new(AtomicBalance::default());
 
         let window_size = window_size.unwrap_or(DEFAULT_WINDOW_SIZE);
         let extent = match extent {
@@ -414,18 +402,28 @@ impl Account {
         };
 
         let scans = vec![
-            self.scan_address_manager(Scan::new_with_args(self.derivation.receive_address_manager(), window_size, extent, &balance)),
-            self.scan_address_manager(Scan::new_with_args(self.derivation.change_address_manager(), window_size, extent, &balance)),
+            self.scan_address_manager(Scan::new_with_args(
+                self.derivation.receive_address_manager(),
+                window_size,
+                extent,
+                &balance,
+                current_daa_score,
+            )),
+            self.scan_address_manager(Scan::new_with_args(
+                self.derivation.change_address_manager(),
+                window_size,
+                extent,
+                &balance,
+                current_daa_score,
+            )),
         ];
 
         join_all(scans).await.into_iter().collect::<Result<Vec<_>>>()?;
 
-        // let balance = balance.load(std::sync::atomic::Ordering::SeqCst);
-        let balance = balance.load(std::sync::atomic::Ordering::SeqCst);
-        self.balance.lock().unwrap().replace(balance);
-        // - TODO - post balance updates to the wallet
-
-        self.wallet.notify(Events::BalanceUpdate { balance: Some(balance), account_id: self.id }).await?;
+        let balance: Balance = Arc::into_inner(balance).unwrap().into();
+        self.balance.lock().unwrap().replace(balance.clone());
+        let utxo_size = self.utxos.len();
+        self.wallet.notify(Events::Balance { balance: Some(balance), account_id: self.id, utxo_size }).await?;
 
         Ok(())
     }
@@ -582,9 +580,9 @@ impl Account {
     }
 
     /// Stop Account service task
-    pub async fn stop(&self) -> Result<()> {
+    pub async fn stop(self: &Arc<Self>) -> Result<()> {
         // self.stop_task().await
-
+        self.unsubscribe_utxos_changed(&[]).await?;
         self.disconnect().await?;
         Ok(())
     }
@@ -592,10 +590,9 @@ impl Account {
     /// handle connection event
     pub async fn connect(self: &Arc<Self>) -> Result<()> {
         self.wallet.active_accounts().insert(self.clone());
-
         // self.is_connected.store(true, Ordering::SeqCst);
         // self.register_notification_listener().await?;
-        self.scan_utxos(Some(128), None).await?;
+        self.scan_utxos(None, None).await?;
         Ok(())
     }
 
@@ -614,13 +611,15 @@ impl Account {
     async fn subscribe_utxos_changed(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
         self.wallet.address_to_account_map().lock().unwrap().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
         let listener_id = self.wallet.listener_id();
+        // for address in addresses.iter() {
+        //     log_info!("{}: subscribing to {}", self.id, address);
+        // }
         let utxos_changed_scope = UtxosChangedScope { addresses: addresses.to_vec() };
         self.wallet.rpc.start_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
 
         Ok(())
     }
 
-    #[allow(dead_code)]
     async fn unsubscribe_utxos_changed(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
         self.wallet.address_to_account_map().lock().unwrap().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
 
@@ -633,30 +632,55 @@ impl Account {
         Ok(())
     }
 
-    pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>) -> Result<()> {
-        self.utxos.insert(utxos);
+    pub(crate) async fn handle_utxo_added(self: &Arc<Self>, utxos: Vec<UtxoEntryReference>) -> Result<()> {
+        // add UTXOs to account set
+        let current_daa_score = self.wallet.current_daa_score();
+
+        for utxo in utxos.iter() {
+            match self.utxos.insert(utxo.clone(), current_daa_score).await {
+                Ok(disposition) => {
+                    if matches!(disposition, utxo::Disposition::Pending) {
+                        self.wallet.pending().insert(utxo.id(), (self, utxo.clone()).into());
+                    }
+                }
+                Err(err) => {
+                    log_error!("{}", err);
+                }
+            }
+        }
+
+        for utxo in utxos.into_iter() {
+            // post update notifications
+            let record = (TransactionType::Credit, self, utxo).into();
+            self.wallet.notify(Events::Credit { record }).await?;
+        }
+        // post balance update
+        self.update_balance().await?;
         Ok(())
     }
 
-    pub(crate) async fn handle_utxo_removed(&self, utxo_ids: Vec<UtxoEntryId>) -> Result<()> {
-        self.utxos.remove(utxo_ids);
+    pub(crate) async fn handle_utxo_removed(self: &Arc<Self>, utxos: Vec<UtxoEntryReference>) -> Result<()> {
+        // remove UTXOs from account set
+        let utxo_ids: Vec<UtxoEntryId> = utxos.iter().map(|utxo| utxo.id()).collect();
+        self.utxos.remove(utxo_ids).await;
+
+        // post update notifications
+        for utxo in utxos.into_iter() {
+            let record = (TransactionType::Debit, self, utxo).into();
+            self.wallet.notify(Events::Debit { record }).await?;
+        }
+
+        // post balance update
+        self.update_balance().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn handle_utxo_matured(self: &Arc<Self>, utxo: UtxoEntryReference) -> Result<()> {
+        self.utxos.promote(utxo);
+
         Ok(())
     }
 }
-
-// #[wasm_bindgen]
-// impl Account {
-//     #[wasm_bindgen(getter)]
-//     pub fn get_balance(&self) -> JsValue {
-//         // self.balance.load(std::sync::atomic::Ordering::SeqCst)
-//     }
-// }
-
-// impl Display for Account {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "{} ({})", self.name.as_ref().unwrap_or(&"-".to_string()), self.id.to_hex())
-//     }
-// }
 
 #[derive(Default, Clone)]
 pub struct AccountMap(Arc<Mutex<HashMap<AccountId, Arc<Account>>>>);

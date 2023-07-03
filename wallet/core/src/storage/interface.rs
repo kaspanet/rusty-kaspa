@@ -3,6 +3,7 @@ use crate::result::Result;
 use crate::secret::Secret;
 use async_trait::async_trait;
 use downcast::{downcast_sync, AnySync};
+use zeroize::Zeroize;
 
 use crate::storage::*;
 
@@ -31,6 +32,18 @@ impl AccessContext {
 impl AccessContextT for AccessContext {
     async fn wallet_secret(&self) -> Secret {
         self.wallet_secret.clone()
+    }
+}
+
+impl Zeroize for AccessContext {
+    fn zeroize(&mut self) {
+        self.wallet_secret.zeroize()
+    }
+}
+
+impl Drop for AccessContext {
+    fn drop(&mut self) {
+        self.zeroize()
     }
 }
 
@@ -94,22 +107,28 @@ impl OpenArgs {
 pub trait Interface: Send + Sync + AnySync {
     fn is_open(&self) -> Result<bool>;
 
-    // return storage information string (file location)
+    /// return storage information string (file location)
     fn descriptor(&self) -> Result<Option<String>>;
 
-    // checks if the wallet storage is present
+    /// checks if the wallet storage is present
     async fn exists(&self, name: Option<&str>) -> Result<bool>;
 
-    // initialize wallet storage
+    /// initialize wallet storage
     async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()>;
 
-    // establish an open state (load wallet data cache, connect to the database etc.)
+    /// establish an open state (load wallet data cache, connect to the database etc.)
     async fn open(&self, ctx: &Arc<dyn AccessContextT>, args: OpenArgs) -> Result<()>;
 
-    // flush writable operations (invoked after multiple store and remove operations)
+    /// suspend commit operations until flush() is called
+    async fn batch(&self) -> Result<()>;
+
+    /// flush resumes commit operations previously suspended by `suspend()`
+    async fn flush(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()>;
+
+    /// commit any changes changes to storage
     async fn commit(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()>;
 
-    // stop the storage subsystem
+    /// stop the storage subsystem
     async fn close(&self) -> Result<()>;
 
     // ~~~

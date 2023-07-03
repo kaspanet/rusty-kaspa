@@ -62,18 +62,16 @@ impl TransactionOutput {
     }
 }
 
-impl TryFrom<cctx::TransactionOutput> for TransactionOutput {
-    type Error = Error;
-    fn try_from(output: cctx::TransactionOutput) -> Result<Self, Self::Error> {
-        Ok(TransactionOutput::new(output.value, &output.script_public_key))
+impl From<cctx::TransactionOutput> for TransactionOutput {
+    fn from(output: cctx::TransactionOutput) -> Self {
+        TransactionOutput::new(output.value, &output.script_public_key)
     }
 }
 
-impl TryFrom<TransactionOutput> for cctx::TransactionOutput {
-    type Error = Error;
-    fn try_from(output: TransactionOutput) -> Result<Self, Self::Error> {
+impl From<TransactionOutput> for cctx::TransactionOutput {
+    fn from(output: TransactionOutput) -> Self {
         let inner = output.inner();
-        Ok(cctx::TransactionOutput::new(inner.value, inner.script_public_key.clone()))
+        cctx::TransactionOutput::new(inner.value, inner.script_public_key.clone())
     }
 }
 

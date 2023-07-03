@@ -3,7 +3,7 @@ use crate::result::Result;
 use crate::runtime;
 use crate::secret::Secret;
 use crate::tx::PaymentOutputs;
-use js_sys::BigInt;
+use crate::wasm;
 use workflow_core::abortable::Abortable;
 use workflow_wasm::abi::ref_from_abi;
 
@@ -43,24 +43,12 @@ impl Cache {
     }
 }
 
-// impl AddressCache {
-//     pub fn new() -> Self {
-// }
-
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct Account {
     inner: Arc<runtime::Account>,
     cache: Cache,
-    // abortable: Arc<AtomicBool>,
-    // cache : Arc<Mutex<Option<AddressCache>>>,
 }
-
-// #[wasm_bindgen(constructor)]
-// pub fn constructor(_js_value: JsValue) -> std::result::Result<Account, JsError> {
-//     todo!();
-//     // Ok(js_value.try_into()?)
-// }
 
 impl Account {
     pub async fn try_new(inner: Arc<runtime::Account>) -> Result<Self> {
@@ -75,7 +63,7 @@ impl Account {
     #[wasm_bindgen(getter)]
     pub fn balance(&self) -> JsValue {
         match self.inner.balance() {
-            Some(balance) => BigInt::from(balance).into(),
+            Some(balance) => wasm::Balance::from(balance).into(),
             None => JsValue::UNDEFINED,
         }
     }

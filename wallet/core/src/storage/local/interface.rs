@@ -142,6 +142,7 @@ pub(crate) struct LocalStore {
     location: Arc<Mutex<Option<Arc<Location>>>>,
     inner: Arc<Mutex<Option<Arc<LocalStoreInner>>>>,
     is_resident: bool,
+    batch: Arc<AtomicBool>,
 }
 
 impl LocalStore {
@@ -150,6 +151,7 @@ impl LocalStore {
             location: Arc::new(Mutex::new(Some(Arc::new(Location::default())))),
             inner: Arc::new(Mutex::new(None)),
             is_resident,
+            batch: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -214,9 +216,22 @@ impl Interface for LocalStore {
         }
     }
 
+    async fn batch(&self) -> Result<()> {
+        self.batch.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    async fn flush(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
+        self.batch.store(false, Ordering::SeqCst);
+        self.commit(ctx).await?;
+        Ok(())
+    }
+
     async fn commit(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
-        log_info!("*** COMMITING ***");
-        self.inner()?.store(ctx).await?;
+        if !self.batch.load(Ordering::SeqCst) {
+            // log_info!("*** COMMITING ***");
+            self.inner()?.store(ctx).await?;
+        }
         Ok(())
     }
 

@@ -82,7 +82,7 @@ pub fn create_transaction(
         .iter()
         .enumerate()
         .map(|(sequence, utxo)| {
-            total_input_amount += utxo.utxo_entry.amount;
+            total_input_amount += utxo.entry.amount;
             entries.push(utxo.as_ref().clone());
             TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, sig_op_count)
         })

@@ -161,6 +161,9 @@ pub enum Error {
 
     #[error("{0}")]
     ParseIntError(#[from] std::num::ParseIntError),
+
+    #[error("Receiving duplicate UTXO entry")]
+    DuplicateUtxoEntry,
 }
 
 impl From<Aborted> for Error {

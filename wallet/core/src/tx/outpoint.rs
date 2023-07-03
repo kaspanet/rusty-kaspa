@@ -14,6 +14,12 @@ impl TransactionOutpointInner {
     pub fn new(transaction_id: TransactionId, index: TransactionIndexType) -> Self {
         Self { transaction_id, index }
     }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut data = self.transaction_id.as_bytes().to_vec();
+        data.extend(self.index.to_be_bytes());
+        data
+    }
 }
 
 impl From<cctx::TransactionOutpoint> for TransactionOutpointInner {
@@ -21,13 +27,6 @@ impl From<cctx::TransactionOutpoint> for TransactionOutpointInner {
         TransactionOutpointInner { transaction_id: outpoint.transaction_id, index: outpoint.index }
     }
 }
-
-// impl TryFrom<JsValue> for TransactionOutpointInner {
-//     type Error = Error;
-//     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-//         Self::try_from(&js_value)
-//     }
-// }
 
 impl TryFrom<&JsValue> for TransactionOutpointInner {
     type Error = Error;
@@ -68,11 +67,8 @@ impl TransactionOutpoint {
 #[wasm_bindgen]
 impl TransactionOutpoint {
     #[wasm_bindgen(constructor)]
-    // pub fn new(transaction_id: &str, index: u32) -> crate::Result<TransactionOutpoint> {
-    //     Ok(Self { inner: Arc::new(Mutex::new(TransactionOutpointInner { transaction_id: Hash::from_str(transaction_id)?, index })) })
-    // }
-    pub fn try_new(transaction_id: TransactionId, index: u32) -> Result<TransactionOutpoint> {
-        Ok(Self { inner: Arc::new(Mutex::new(TransactionOutpointInner { transaction_id, index })) })
+    pub fn new(transaction_id: TransactionId, index: u32) -> TransactionOutpoint {
+        Self { inner: Arc::new(Mutex::new(TransactionOutpointInner { transaction_id, index })) }
     }
 
     #[wasm_bindgen(js_name = "getId")]
@@ -116,21 +112,19 @@ impl TryFrom<JsValue> for TransactionOutpoint {
     }
 }
 
-impl TryFrom<cctx::TransactionOutpoint> for TransactionOutpoint {
-    type Error = Error;
-    fn try_from(outpoint: cctx::TransactionOutpoint) -> Result<Self, Self::Error> {
+impl From<cctx::TransactionOutpoint> for TransactionOutpoint {
+    fn from(outpoint: cctx::TransactionOutpoint) -> Self {
         let transaction_id = outpoint.transaction_id; //.to_string();
         let index = outpoint.index;
-        TransactionOutpoint::try_new(transaction_id, index)
+        TransactionOutpoint::new(transaction_id, index)
     }
 }
 
-impl TryFrom<TransactionOutpoint> for cctx::TransactionOutpoint {
-    type Error = Error;
-    fn try_from(outpoint: TransactionOutpoint) -> Result<Self, Self::Error> {
+impl From<TransactionOutpoint> for cctx::TransactionOutpoint {
+    fn from(outpoint: TransactionOutpoint) -> Self {
         let inner = outpoint.inner();
         let transaction_id = inner.transaction_id;
         let index = inner.index;
-        Ok(cctx::TransactionOutpoint::new(transaction_id, index))
+        cctx::TransactionOutpoint::new(transaction_id, index)
     }
 }

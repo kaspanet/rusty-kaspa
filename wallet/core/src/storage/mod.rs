@@ -18,7 +18,7 @@ pub use interface::{AccessContextT, AccountStore, Interface, MetadataStore, PrvK
 pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload, PubKeyData, PubKeyDataId};
 pub use metadata::Metadata;
 pub use payload::Payload;
-pub use transaction::{TransactionRecord, TransactionRecordId};
+pub use transaction::{TransactionRecord, TransactionRecordId, TransactionType};
 
 pub use crate::runtime::{AccountId, AccountKind};
 

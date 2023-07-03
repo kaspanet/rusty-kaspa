@@ -2568,6 +2568,7 @@ dependencies = [
  "kaspa-wallet-core",
  "kaspa-wrpc-client",
  "pad",
+ "separator",
  "serde",
  "serde_json",
  "textwrap",

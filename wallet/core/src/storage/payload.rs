@@ -18,7 +18,7 @@ impl Zeroize for Payload {
     fn zeroize(&mut self) {
         self.prv_key_data.zeroize();
         self.accounts.zeroize();
-        self.transaction_records.zeroize();
+        // self.transaction_records.zeroize();
     }
 }
 

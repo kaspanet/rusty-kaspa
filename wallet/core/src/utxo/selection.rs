@@ -63,7 +63,7 @@ impl UtxoSelectionContext {
 
     pub fn commit(self) -> Result<()> {
         let mut inner = self.inner.utxos.inner();
-        inner.entries.retain(|entry| self.inner.selected_entries.contains(entry));
+        inner.mature.retain(|entry| self.inner.selected_entries.contains(entry));
         let now = Instant::now();
         self.inner.selected_entries.into_iter().for_each(|entry| {
             inner.consumed.insert(entry.id(), (entry, &now).into());
@@ -72,13 +72,6 @@ impl UtxoSelectionContext {
         Ok(())
     }
 }
-
-// // mod wasm {
-
-// #[wasm_bindgen(js_name = UtxoSelectionContext)]
-// pub struct UtxoSelectionContext {
-//     pub(crate) inner: UtxoSelectionContext,
-// }
 
 #[wasm_bindgen]
 impl UtxoSelectionContext {
@@ -95,19 +88,15 @@ impl UtxoSelectionContext {
         self.inner.selected_entries.clone().into_iter().map(JsValue::from).collect::<Array>()
     }
 
+    #[wasm_bindgen(js_name = "select")]
     pub async fn js_select(&mut self, amount: JsValue) -> Result<Array> {
         let amount = amount.try_as_u64()?;
         let entries = self.select(amount).await?;
         Ok(entries.into_iter().map(JsValue::from).collect::<Array>())
     }
 
-    // pub fn js_commit(self) -> Result<()> {
-    //     self.inner.commit()
-    // }
+    #[wasm_bindgen(js_name = "commit")]
+    pub fn js_commit(self) -> Result<()> {
+        self.commit()
+    }
 }
-
-// impl From<UtxoSelectionContext> for UtxoSelectionContext {
-//     fn from(inner: UtxoSelectionContext) -> Self {
-//         Self { inner }
-//     }
-// }

@@ -1,10 +1,14 @@
 use crate::imports::*;
 use crate::result::Result;
+use crate::runtime::{Account, Balance};
 use crate::tx::{TransactionOutpoint, TransactionOutpointInner};
 use itertools::Itertools;
 use kaspa_rpc_core::RpcUtxosByAddressesEntry;
 use std::cmp::Ordering;
 use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
+
+const MATURITY_PERIOD_COINBASE_TRANSACTION: u64 = 100;
+const MATURITY_PERIOD_USER_TRANSACTION: u64 = 100;
 
 pub type UtxoEntryId = TransactionOutpointInner;
 
@@ -17,23 +21,45 @@ pub struct UtxoEntry {
     #[wasm_bindgen(getter_with_clone)]
     pub outpoint: TransactionOutpoint,
     #[wasm_bindgen(js_name=entry, getter_with_clone)]
-    pub utxo_entry: cctx::UtxoEntry,
+    pub entry: cctx::UtxoEntry,
 }
 
 impl UtxoEntry {
     #[inline(always)]
     pub fn amount(&self) -> u64 {
-        self.utxo_entry.amount
+        self.entry.amount
     }
     #[inline(always)]
     pub fn block_daa_score(&self) -> u64 {
-        self.utxo_entry.block_daa_score
+        self.entry.block_daa_score
+    }
+
+    #[inline(always)]
+    pub fn is_coinbase(&self) -> bool {
+        self.entry.is_coinbase
+    }
+
+    #[inline(always)]
+    pub fn is_mature(&self, current_daa_score: u64) -> bool {
+        if self.is_coinbase() {
+            self.block_daa_score() + MATURITY_PERIOD_COINBASE_TRANSACTION < current_daa_score
+        } else {
+            self.block_daa_score() + MATURITY_PERIOD_USER_TRANSACTION < current_daa_score
+        }
+    }
+
+    pub fn balance(&self, current_daa_score: u64) -> Balance {
+        if self.is_mature(current_daa_score) {
+            Balance::new(self.amount(), 0)
+        } else {
+            Balance::new(0, self.amount())
+        }
     }
 }
 
 impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
     fn from(entry: RpcUtxosByAddressesEntry) -> UtxoEntry {
-        UtxoEntry { address: entry.address, outpoint: entry.outpoint.try_into().unwrap(), utxo_entry: entry.utxo_entry }
+        UtxoEntry { address: entry.address, outpoint: entry.outpoint.try_into().unwrap(), entry: entry.utxo_entry }
     }
 }
 
@@ -42,6 +68,12 @@ impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
 pub struct UtxoEntryReference {
     #[wasm_bindgen(skip)]
     pub utxo: Arc<UtxoEntry>,
+}
+
+impl UtxoEntryReference {
+    pub fn is_mature(&self, current_daa_score: u64) -> bool {
+        self.utxo.is_mature(current_daa_score)
+    }
 }
 
 #[wasm_bindgen]
@@ -56,8 +88,21 @@ impl UtxoEntryReference {
         self.utxo.outpoint.id_string()
     }
 
+    #[inline(always)]
     pub fn amount(&self) -> u64 {
         self.utxo.amount()
+    }
+
+    #[inline(always)]
+    #[wasm_bindgen(js_name = "isCoinbase")]
+    pub fn is_coinbase(&self) -> bool {
+        self.utxo.entry.is_coinbase
+    }
+
+    #[inline(always)]
+    #[wasm_bindgen(js_name = "blockDaaScore")]
+    pub fn block_daa_score(&self) -> u64 {
+        self.utxo.entry.block_daa_score
     }
 }
 
@@ -111,11 +156,38 @@ impl Ord for UtxoEntryReference {
     }
 }
 
-// ---------------------------------------------------------------
-// ---------------------------------------------------------------
-// ---------------------------------------------------------------
-// ---------------------------------------------------------------
-// ---------------------------------------------------------------
+#[derive(Clone)]
+pub struct PendingUtxoEntryReference {
+    pub entry: UtxoEntryReference,
+    pub account: Arc<Account>,
+}
+
+impl PendingUtxoEntryReference {
+    pub fn new(entry: UtxoEntryReference, account: Arc<Account>) -> Self {
+        Self { entry, account }
+    }
+
+    pub fn id(&self) -> UtxoEntryId {
+        self.entry.id()
+    }
+
+    #[inline(always)]
+    pub fn is_mature(&self, current_daa_score: u64) -> bool {
+        self.entry.is_mature(current_daa_score)
+    }
+}
+
+impl From<(&Arc<Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
+    fn from((account, entry): (&Arc<Account>, UtxoEntryReference)) -> Self {
+        Self { entry, account: account.clone() }
+    }
+}
+
+impl From<PendingUtxoEntryReference> for UtxoEntryReference {
+    fn from(entry: PendingUtxoEntryReference) -> Self {
+        entry.entry
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen]
@@ -164,7 +236,7 @@ impl From<Vec<UtxoEntry>> for UtxoEntries {
 
 impl From<UtxoEntries> for Vec<Option<cctx::UtxoEntry>> {
     fn from(value: UtxoEntries) -> Self {
-        value.0.as_ref().iter().map(|entry| Some(entry.utxo.utxo_entry.clone())).collect_vec()
+        value.0.as_ref().iter().map(|entry| Some(entry.utxo.entry.clone())).collect_vec()
     }
 }
 
@@ -215,7 +287,7 @@ impl TryFrom<JsValue> for UtxoEntries {
                     UtxoEntry {
                         address: address.into(),
                         outpoint,
-                        utxo_entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
+                        entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
                     }
                     .into()
                 }

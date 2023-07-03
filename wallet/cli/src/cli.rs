@@ -661,7 +661,7 @@ impl WalletCli {
         }
 
         // suspend commits for multiple operations
-        self.wallet.store().suspend().await?;
+        self.wallet.store().batch().await?;
 
         let account_kind = AccountKind::Bip32;
         let wallet_args = WalletCreateArgs::new(None, hint, wallet_secret.clone(), true);

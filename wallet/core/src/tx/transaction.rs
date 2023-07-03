@@ -230,10 +230,8 @@ impl TryFrom<cctx::Transaction> for Transaction {
     type Error = Error;
     fn try_from(tx: cctx::Transaction) -> std::result::Result<Self, Self::Error> {
         let id = tx.id();
-        let inputs: Vec<TransactionInput> =
-            tx.inputs.into_iter().map(|input| input.try_into()).collect::<std::result::Result<Vec<TransactionInput>, Error>>()?;
-        let outputs: Vec<TransactionOutput> =
-            tx.outputs.into_iter().map(|output| output.try_into()).collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
+        let inputs: Vec<TransactionInput> = tx.inputs.into_iter().map(|input| input.into()).collect::<Vec<TransactionInput>>();
+        let outputs: Vec<TransactionOutput> = tx.outputs.into_iter().map(|output| output.into()).collect::<Vec<TransactionOutput>>();
         Ok(Self::new_with_inner(TransactionInner {
             version: tx.version,
             inputs,
@@ -251,18 +249,10 @@ impl TryFrom<&Transaction> for cctx::Transaction {
     type Error = Error;
     fn try_from(tx: &Transaction) -> std::result::Result<Self, Self::Error> {
         let inner = tx.inner();
-        let inputs: Vec<cctx::TransactionInput> = inner
-            .inputs
-            .clone()
-            .into_iter()
-            .map(|input| input.try_into())
-            .collect::<std::result::Result<Vec<cctx::TransactionInput>, Error>>()?;
-        let outputs: Vec<cctx::TransactionOutput> = inner
-            .outputs
-            .clone()
-            .into_iter()
-            .map(|output| output.try_into())
-            .collect::<std::result::Result<Vec<cctx::TransactionOutput>, Error>>()?;
+        let inputs: Vec<cctx::TransactionInput> =
+            inner.inputs.clone().into_iter().map(|input| input.into()).collect::<Vec<cctx::TransactionInput>>();
+        let outputs: Vec<cctx::TransactionOutput> =
+            inner.outputs.clone().into_iter().map(|output| output.into()).collect::<Vec<cctx::TransactionOutput>>();
         Ok(cctx::Transaction::new(
             inner.version,
             inputs,

@@ -20,7 +20,7 @@ use workflow_wasm::sendable::Sendable;
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct Wallet {
-    wallet: Arc<runtime::Wallet>,
+    pub(crate) wallet: Arc<runtime::Wallet>,
     #[wasm_bindgen(getter_with_clone)]
     pub events: MultiplexerClient,
     #[wasm_bindgen(getter_with_clone)]

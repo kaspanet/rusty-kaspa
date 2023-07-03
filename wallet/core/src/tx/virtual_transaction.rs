@@ -402,7 +402,7 @@ impl VirtualTransaction {
                 .enumerate()
                 .map(|(sequence, utxo)| {
                     //println!("input txid: {}\r\n", utxo.outpoint.get_transaction_id());
-                    amount += utxo.utxo_entry.amount;
+                    amount += utxo.entry.amount;
                     entries.push(utxo.as_ref().clone());
                     TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, sig_op_count)
                 })
@@ -439,20 +439,10 @@ impl VirtualTransaction {
             log_debug!("final_amount: {final_amount}, transaction_id: {}\r\n", transaction_id);
             final_utxos.push(UtxoEntry {
                 address: Some(change_address.clone()),
-                outpoint: TransactionOutpoint::try_new(transaction_id, 0).unwrap(),
-                utxo_entry: tx::UtxoEntry {
-                    amount: amount_after_fee,
-                    script_public_key,
-                    block_daa_score: u64::MAX,
-                    is_coinbase: false,
-                },
+                outpoint: TransactionOutpoint::new(transaction_id, 0),
+                entry: tx::UtxoEntry { amount: amount_after_fee, script_public_key, block_daa_score: u64::MAX, is_coinbase: false },
             });
-            final_inputs.push(TransactionInput::new(
-                TransactionOutpoint::try_new(transaction_id, 0).unwrap(),
-                vec![],
-                0,
-                sig_op_count,
-            ));
+            final_inputs.push(TransactionInput::new(TransactionOutpoint::new(transaction_id, 0), vec![], 0, sig_op_count));
 
             transactions.push(MutableTransaction::new(&tx, &entries.into()));
         }
