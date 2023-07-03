@@ -295,6 +295,8 @@ where
                     None
                 }
             }));
+        } else {
+            trace!("[Notifier {}] unregistering listener {id} error: unknown listener id", self.name);
         }
         subscriptions.drain(..).for_each(|scope| {
             let _ = self.clone().stop_notify(id, scope);
@@ -315,7 +317,8 @@ where
             if let Some(listener) = listeners.get_mut(&id) {
                 let mut subscriptions = self.subscriptions.lock();
                 trace!("[Notifier {}] {command} notifying to {id} about {scope:?}", self.name);
-                if let Some(mutations) = listener.mutate(Mutation::new(command, scope)) {
+                if let Some(mutations) = listener.mutate(Mutation::new(command, scope.clone())) {
+                    trace!("[Notifier {}] {command} notifying to {id} about {scope:?} involves mutations {mutations:?}", self.name);
                     // Update broadcasters
                     let subscription = listener.subscriptions[event].clone_arc();
                     self.broadcasters
@@ -331,6 +334,7 @@ where
                         self.subscribers.iter().try_for_each(|x| x.mutate(mutation.clone()))?;
                     }
                 } else {
+                    trace!("[Notifier {}] {command} notifying to {id} about {scope:?} is ignored (no mutation)", self.name);
                     // In case we have a sync channel, report that the command was processed.
                     // This is for test only.
                     #[cfg(test)]
@@ -338,8 +342,11 @@ where
                         let _ = sync.try_send(());
                     }
                 }
+            } else {
+                trace!("[Notifier {}] {command} notifying to {id} about {scope:?} error: listener id not found", self.name);
             }
         } else {
+            trace!("[Notifier {}] {command} notifying to {id} about {scope:?} error: event type {event:?} is disabled", self.name);
             return Err(Error::EventTypeDisabled);
         }
         Ok(())
