@@ -5,11 +5,11 @@ use crate::{
     service::Options,
 };
 use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{events::EVENT_TYPE_ARRAY, notifier::Notifier, subscriber::Subscriber};
+use kaspa_notify::{events::EVENT_TYPE_ARRAY, notifier::Notifier, scope::Scope, subscriber::Subscriber};
 use kaspa_rpc_core::{
-    api::rpc::DynRpcService,
+    api::rpc::{DynRpcService, RpcApi},
     notify::{channel::NotificationChannel, connection::ChannelConnection, mode::NotificationMode},
-    Notification,
+    Notification, RpcResult,
 };
 use kaspa_rpc_service::service::RpcCoreService;
 use std::{
@@ -145,6 +145,42 @@ impl Server {
         } else {
             connection.grpc_client()
         }
+    }
+
+    pub async fn start_notify(&self, connection: &Connection, scope: Scope) -> RpcResult<()> {
+        let listener_id = if let Some(listener_id) = connection.listener_id() {
+            listener_id
+        } else {
+            // The only possible case here is a server connected to rpc core.
+            // If the proxy is used, the connection has a gRPC client and the listener id
+            // is always set to Some(ListenerId::default()) by the connection ctor.
+            let notifier =
+                self.notifier().unwrap_or_else(|| panic!("Incorrect use: `server::Server` does not carry an internal notifier"));
+            let listener_id = notifier.register_new_listener(connection.clone());
+            connection.register_notification_listener(listener_id);
+            listener_id
+        };
+        workflow_log::log_trace!("notification subscribe[0x{listener_id:x}] {scope:?}");
+        if let Some(rpc_core) = &self.inner.rpc_core {
+            rpc_core.wrpc_notifier.clone().try_start_notify(listener_id, scope)?;
+        } else {
+            connection.grpc_client().start_notify(listener_id, scope).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn stop_notify(&self, connection: &Connection, scope: Scope) -> RpcResult<()> {
+        if let Some(listener_id) = connection.listener_id() {
+            workflow_log::log_trace!("notification unsubscribe[0x{listener_id:x}] {scope:?}");
+            if let Some(rpc_core) = &self.inner.rpc_core {
+                rpc_core.wrpc_notifier.clone().try_stop_notify(listener_id, scope)?;
+            } else {
+                connection.grpc_client().stop_notify(listener_id, scope).await?;
+            }
+        } else {
+            workflow_log::log_trace!("notification unsubscribe[N/A] {scope:?}");
+        }
+        Ok(())
     }
 
     pub fn verbose(&self) -> bool {
