@@ -39,8 +39,14 @@ impl From<String> for Secret {
     }
 }
 
+impl Zeroize for Secret {
+    fn zeroize(&mut self) {
+        self.0.zeroize()
+    }
+}
+
 impl Drop for Secret {
     fn drop(&mut self) {
-        self.0.zeroize()
+        self.zeroize()
     }
 }
