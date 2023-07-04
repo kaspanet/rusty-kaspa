@@ -3,6 +3,7 @@ use crate::error::Error;
 use crate::helpers;
 use crate::result::Result;
 use crate::utils::*;
+use cfg_if::cfg_if;
 use kaspa_wallet_core::storage::interface::AccessContext;
 use pad::PadStr;
 // use crate::settings::Settings;
@@ -582,7 +583,7 @@ impl WalletCli {
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
                                         let network_type = this.wallet.network().expect("missing network type");
-                                        let balance = BalanceStrings::from((&balance,&network_type));
+                                        let balance = BalanceStrings::from((&balance,&network_type, Some(19)));
                                         let account_id = account_id.short();
 
                                         let pending_utxo_info = if pending_utxo_size > 0 {
@@ -935,8 +936,13 @@ where
 // }
 
 pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
-    #[cfg(not(target_arch = "wasm32"))]
-    kaspa_core::log::init_logger(None, "info");
+    cfg_if! {
+        if #[cfg(not(target_arch = "wasm32"))] {
+            kaspa_core::panic::configure_panic();
+            kaspa_core::log::init_logger(None, "info");
+        }
+    }
+    
 
     let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None)?);
     let cli = Arc::new(WalletCli::new(wallet.clone()));

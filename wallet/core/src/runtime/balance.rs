@@ -86,13 +86,19 @@ pub struct BalanceStrings {
     pub pending: Option<String>,
 }
 
-impl From<(&Option<Balance>, &NetworkType)> for BalanceStrings {
-    fn from((balance, network_type): (&Option<Balance>, &NetworkType)) -> Self {
+impl From<(&Option<Balance>, &NetworkType, Option<usize>)> for BalanceStrings {
+    fn from((balance, network_type, padding): (&Option<Balance>, &NetworkType, Option<usize>)) -> Self {
         let suffix = utils::kaspa_suffix(network_type);
         if let Some(balance) = balance {
+            let mut mature = utils::sompi_to_kaspa_string(balance.mature);
+            let mut pending = utils::sompi_to_kaspa_string(balance.pending);
+            if let Some(padding) = padding {
+                mature = mature.pad_to_width(padding);
+                pending = pending.pad_to_width(padding);
+            }
             Self {
-                mature: format!("{} {}", balance.mature_delta.style(&utils::sompi_to_kaspa_string(balance.mature)), suffix),
-                pending: Some(format!("{} {}", balance.pending_delta.style(&utils::sompi_to_kaspa_string(balance.pending)), suffix)),
+                mature: format!("{} {}", balance.mature_delta.style(&mature), suffix),
+                pending: Some(format!("{} {}", balance.pending_delta.style(&pending), suffix)),
             }
         } else {
             Self { mature: format!("N/A {suffix}"), pending: None }

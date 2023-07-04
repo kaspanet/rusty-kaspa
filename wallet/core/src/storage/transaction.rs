@@ -135,7 +135,7 @@ impl TransactionRecord {
         };
 
         let suffix = utils::kaspa_suffix(&wallet.network().unwrap());
-        let amount = transaction_type.style_with_sign(utils::sompi_to_kaspa_string(*amount).as_str());
+        let amount = transaction_type.style_with_sign(utils::sompi_to_kaspa_string(*amount).pad_to_width(19).as_str());
 
         let kind = transaction_type.style(&transaction_type.to_string().pad_to_width(8));
 

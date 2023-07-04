@@ -28,6 +28,7 @@ use workflow_core::channel::{Channel, DuplexChannel};
 use workflow_core::enums::u8_try_from;
 
 use super::scan::{ScanExtent, DEFAULT_WINDOW_SIZE};
+pub const DEFAULT_AMOUNT_PADDING: usize = 19;
 
 #[derive(Default, Clone)]
 pub struct Estimate {
@@ -299,7 +300,7 @@ impl Account {
     }
 
     pub fn balance_as_strings(&self) -> Result<BalanceStrings> {
-        Ok(BalanceStrings::from((&self.balance(), &self.wallet.network()?)))
+        Ok(BalanceStrings::from((&self.balance(), &self.wallet.network()?, Some(DEFAULT_AMOUNT_PADDING))))
     }
 
     pub fn get_ls_string(&self) -> Result<String> {
