@@ -168,6 +168,13 @@ impl WalletCli {
                 if let Some(attr) = argv.first() {
                     let track: Track = attr.parse()?;
                     self.flags.toggle(track);
+                } else {
+                    for flag in self.flags.map().iter() {
+                        let k = flag.key().to_string();
+                        let v = flag.value().load(Ordering::SeqCst);
+                        let s = if v { "on" } else { "off" };
+                        term.writeln(format!("{k} is {s}"));
+                    }
                 }
             }
             Action::Connect => {
@@ -515,8 +522,8 @@ impl WalletCli {
                     msg = multiplexer.receiver.recv().fuse() => {
                         if let Ok(msg) = msg {
                             match msg {
-                                Events::Connect(url) => {
-                                    log_info!("Connected to {url}");
+                                Events::Connect(_url) => {
+                                    // log_info!("Connected to {url}");
                                 },
                                 Events::Disconnect(url) => {
                                     log_info!("Disconnected from {url}");
@@ -526,10 +533,15 @@ impl WalletCli {
                                 },
                                 Events::ServerStatus {
                                     is_synced,
-                                    // server_version,
+                                    server_version,
+                                    url,
                                     // has_utxo_index,
                                     ..
                                 } => {
+
+                                    log_info!("Connected to Kaspa node version {server_version} at {url}");
+
+
                                     // log_info!("Server version server {server_version}");
                                     if !is_synced {
                                         let is_open = this.wallet.is_open().unwrap_or_else(|err| { log_error!("Unable to check if wallet is open: {err}"); false });
@@ -542,7 +554,7 @@ impl WalletCli {
                                     }
                                 },
                                 Events::DAAScoreChange(daa) => {
-                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Daa)) {
+                                    if this.is_mutted() && this.flags.get(Track::Daa) {
                                         log_info!("DAAScoreChange: {daa}");
                                     }
                                 },
@@ -565,14 +577,20 @@ impl WalletCli {
                                 Events::Balance {
                                     balance,
                                     account_id,
-                                    utxo_size,
+                                    mature_utxo_size,
+                                    pending_utxo_size,
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
                                         let network_type = this.wallet.network().expect("missing network type");
                                         let balance = BalanceStrings::from((&balance,&network_type));
                                         let account_id = account_id.short();
-                                        let utxo_info = style(format!("(UTXOs: {})", utxo_size.separated_string())).dim();
-                                        log_info!("Balance {account_id}: {balance} {utxo_info}");
+
+                                        let pending_utxo_info = if pending_utxo_size > 0 {
+                                            format!("({pending_utxo_size} pending)")
+                                        } else { "".to_string() };
+                                        let utxo_info = style(format!("{} UTXOs {pending_utxo_info}", mature_utxo_size.separated_string())).dim();
+
+                                        log_info!("{} {account_id}: {balance} {utxo_info}",style("balance".pad_to_width(8)).blue());
                                     }
                                 },
                             }

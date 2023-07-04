@@ -137,9 +137,11 @@ impl TransactionRecord {
         let suffix = utils::kaspa_suffix(&wallet.network().unwrap());
         let amount = transaction_type.style_with_sign(utils::sompi_to_kaspa_string(*amount).as_str());
 
-        let kind = transaction_type.style(&transaction_type.to_string());
+        let kind = transaction_type.style(&transaction_type.to_string().pad_to_width(8));
 
-        format!("{kind:<6} {id} {name}  {address}  {amount} {suffix} {is_coinbase}")
+        // v.pad_to_width(c2),
+
+        format!("{kind} {id} {name}  {address}  {amount} {suffix} {is_coinbase}")
     }
 }
 

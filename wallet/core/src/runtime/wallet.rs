@@ -1,5 +1,4 @@
 use crate::result::Result;
-use crate::runtime::balance::BalanceStrings;
 use crate::runtime::Events;
 use crate::runtime::{Account, AccountId, AccountMap};
 use crate::secret::Secret;
@@ -7,7 +6,7 @@ use crate::settings::{Settings, SettingsStore};
 use crate::storage::interface::{AccessContext, CreateArgs};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::{self, AccessContextT, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
-use crate::utxo::{PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference};
+use crate::utxo::{UtxoEntryReference, UtxoProcessorCore};
 #[allow(unused_imports)]
 use crate::{accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
 use crate::{imports::*, DynRpcApi};
@@ -127,12 +126,13 @@ pub struct Inner {
     pub is_connected: AtomicBool,
     pub is_synced: AtomicBool,
     pub notification_channel: Channel<Notification>,
-    pub address_to_account_map: Arc<Mutex<HashMap<Address, Arc<Account>>>>,
+    // pub address_to_account_map: Arc<Mutex<HashMap<Address, Arc<Account>>>>,
     pub store: Arc<dyn Interface>,
     pub virtual_daa_score: Arc<AtomicU64>,
     pub network: Arc<Mutex<Option<NetworkInfo>>>,
     pub settings: SettingsStore,
-    pub pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
+    // pub pending:
+    pub utxo_processor_core: UtxoProcessorCore,
 }
 
 /// `Wallet` data structure
@@ -190,11 +190,12 @@ impl Wallet {
                 is_connected: AtomicBool::new(false),
                 is_synced: AtomicBool::new(false),
                 notification_channel: Channel::<Notification>::unbounded(),
-                address_to_account_map: Arc::new(Mutex::new(HashMap::new())),
+                // address_to_account_map: Arc::new(Mutex::new(HashMap::new())),
                 virtual_daa_score: Arc::new(AtomicU64::new(0)),
                 network: Arc::new(Mutex::new(network_type.map(|t| t.into()).or_else(|| Some(NetworkType::Mainnet.into())))),
                 settings: SettingsStore::default(),
-                pending: DashMap::default(), //Mutex::new(Vec::new()),
+                // pending: DashMap::default(), //Mutex::new(Vec::new()),
+                utxo_processor_core: UtxoProcessorCore::default(),
             }),
         };
 
@@ -205,6 +206,10 @@ impl Wallet {
         &self.inner
     }
 
+    pub fn utxo_processor_core(&self) -> &UtxoProcessorCore {
+        &self.inner.utxo_processor_core
+    }
+
     pub fn store(&self) -> &Arc<dyn Interface> {
         &self.inner.store
     }
@@ -213,16 +218,16 @@ impl Wallet {
         &self.inner.active_accounts
     }
 
-    pub fn address_to_account_map(&self) -> &Arc<Mutex<HashMap<Address, Arc<Account>>>> {
-        &self.inner.address_to_account_map
-    }
+    // pub fn address_to_account_map(&self) -> &Arc<Mutex<HashMap<Address, Arc<Account>>>> {
+    //     &self.inner.address_to_account_map
+    // }
 
     pub async fn reset(&self) -> Result<()> {
         log_info!("**** WALLET RESET ****");
         let accounts = self.inner.active_accounts.cloned_flat_list();
         let futures = accounts.iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
-        self.inner.address_to_account_map.lock().unwrap().clear();
+        self.utxo_processor_core().address_to_account_map().clear();
 
         Ok(())
     }
@@ -231,7 +236,7 @@ impl Wallet {
         let accounts = self.inner.active_accounts.cloned_flat_list();
         let futures = accounts.iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
-        self.inner.address_to_account_map.lock().unwrap().clear();
+        self.utxo_processor_core().address_to_account_map().clear();
 
         // TODO - parallelize?
         if self.is_open()? {
@@ -273,12 +278,17 @@ impl Wallet {
             let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
             account.start().await?;
 
-            let receive_address = account.receive_address().await?;
-            let balance = account.balance();
-            let balance_strings = BalanceStrings::from((&balance, &self.network()?));
-            let utxo_size = account.utxos().len();
-            log_info!("{}: {} - {}", account.id(), receive_address, balance_strings);
-            self.notify(Events::Balance { balance, account_id: *account.id(), utxo_size }).await?;
+            account.update_balance().await?;
+
+            // let receive_address = account.receive_address().await?;
+            // let balance = account.balance();
+            // let balance_strings = BalanceStrings::from((&balance, &self.network()?));
+            // // let utxo_size = account.utxo_db().len();
+            // let mature_utxo_size = account.utxo_db().mature_utxo_size();
+            // let pending_utxo_size = account.utxo_db().pending_utxo_size();
+
+            // log_info!("{}: {} - {}", account.id(), receive_address, balance_strings);
+            // self.notify(Events::Balance { balance, account_id: *account.id(), utxo_size }).await?;
         }
 
         Ok(())
@@ -637,34 +647,37 @@ impl Wallet {
     //     self.inner.pending.lock().unwrap()
     // }
 
-    pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
-        &self.inner.pending
-    }
+    // pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
+    //     &self.inner.pending
+    // }
 
     pub async fn handle_pending(&self, current_daa_score: u64) -> Result<()> {
-        let mature_entries = {
-            let mut mature_entries = vec![];
-            let pending_entries = self.pending();
-            pending_entries.retain(|_, pending| {
-                if pending.is_mature(current_daa_score) {
-                    mature_entries.push(pending.clone());
-                    false
-                } else {
-                    true
-                }
-            });
-            mature_entries
-        };
+        // let mature_entries = {
+        //     let mut mature_entries = vec![];
+        //     let pending_entries = &self.inner.utxo_db_core.pending;
+        //     pending_entries.retain(|_, pending| {
+        //         if pending.is_mature(current_daa_score) {
+        //             mature_entries.push(pending.clone());
+        //             false
+        //         } else {
+        //             true
+        //         }
+        //     });
+        //     mature_entries
+        // };
 
-        let mut accounts = HashMap::<AccountId, Arc<Account>>::default();
-        for mature in mature_entries.into_iter() {
-            let account = mature.account;
-            let entry = mature.entry;
-            account.handle_utxo_matured(entry).await?;
-            accounts.insert(*account.id(), account.clone());
-        }
+        // let mut accounts = HashMap::<AccountId, Arc<Account>>::default();
+        // for mature in mature_entries.into_iter() {
+        //     let account = mature.account;
+        //     let entry = mature.entry;
+        //     account.handle_utxo_matured(entry).await?;
+        //     accounts.insert(*account.id(), account.clone());
+        // }
 
-        for (_, account) in accounts.into_iter() {
+        let accounts = self.inner.utxo_processor_core.handle_pending(current_daa_score).await?;
+
+        // for (_, account) in accounts.into_iter() {
+        for account in accounts.into_iter() {
             account.update_balance().await?;
         }
 
@@ -687,7 +700,8 @@ impl Wallet {
         self.inner.virtual_daa_score.store(virtual_daa_score, Ordering::SeqCst);
 
         self.inner.is_synced.store(is_synced, Ordering::SeqCst);
-        self.notify(Events::ServerStatus { server_version, is_synced, has_utxo_index }).await?;
+        self.notify(Events::ServerStatus { server_version, is_synced, has_utxo_index, url: self.rpc_client().url().to_string() })
+            .await?;
 
         Ok(())
     }
@@ -753,7 +767,8 @@ impl Wallet {
     }
 
     fn address_to_account(&self, address: &Address) -> Option<Arc<Account>> {
-        self.inner.address_to_account_map.lock().unwrap().get(address).cloned()
+        self.utxo_processor_core().address_to_account(address)
+        // address_to_account_map().get(address).map(|v|v.clone())
     }
 
     async fn handle_notification(&self, notification: Notification) -> Result<()> {
@@ -767,8 +782,9 @@ impl Wallet {
             Notification::UtxosChanged(utxos) => {
                 // log_info!("utxo changed notification..");
 
-                let added = Arc::into_inner(utxos.added)
-                    .expect("Arc::into_inner() failure in UtxosChanged notification (added)")
+                // let added = Arc::into_inner(utxos.added)
+                let added = (*utxos.added).clone()
+                    // .expect("Arc::into_inner() failure in UtxosChanged notification (added)")
                     .into_iter()
                     .filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
                 let added = HashMap::group_from(added);
@@ -781,8 +797,9 @@ impl Wallet {
                     }
                 }
 
-                let removed = Arc::into_inner(utxos.removed)
-                    .expect("Arc::into_inner() failure in UtxosChanged notification (added)")
+                // let removed = Arc::into_inner(utxos.removed)
+                let removed = (*utxos.removed).clone()
+                    // .expect("Arc::into_inner() failure in UtxosChanged notification (added)")
                     .into_iter()
                     .filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
                 let removed = HashMap::group_from(removed);
@@ -919,7 +936,7 @@ mod test {
     use std::{str::FromStr, thread::sleep, time};
 
     use super::*;
-    use crate::{signer::sign_mutable_transaction, tx::MutableTransaction, utxo::UtxoDb};
+    use crate::{signer::sign_mutable_transaction, tx::MutableTransaction, utxo::UtxoProcessor};
 
     // TODO - re-export subnets
     use crate::tx::Transaction;
@@ -935,12 +952,16 @@ mod test {
     use workflow_rpc::client::ConnectOptions;
 
     // async fn get_utxos_set_by_addresses(rpc: Arc<KaspaRpcClient>, addresses: Vec<Address>) -> Result<UtxoSet> {
-    async fn get_utxos_set_by_addresses(rpc: Arc<DynRpcApi>, addresses: Vec<Address>, current_daa_score: u64) -> Result<UtxoDb> {
+    async fn get_utxos_set_by_addresses(
+        rpc: Arc<DynRpcApi>,
+        addresses: Vec<Address>,
+        current_daa_score: u64,
+    ) -> Result<UtxoProcessor> {
         let utxos = rpc.get_utxos_by_addresses(addresses).await?;
-        let utxo_set = UtxoDb::new();
+        let utxo_set = UtxoProcessor::new();
         let entries = utxos.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
         for entry in entries.into_iter() {
-            utxo_set.insert(entry, current_daa_score).await?;
+            utxo_set.insert(entry, current_daa_score, None).await?;
         }
         Ok(utxo_set)
     }
@@ -957,7 +978,7 @@ mod test {
         //     name: "Default Account".to_string(),
         //     title: "Default Account".to_string(),
         // }];
-
+        // let utxo_db_ctx = wallet.utxo_db_core().ctx(self)
         // wallet.load_accounts(stored_accounts);
 
         let rpc = wallet.rpc();

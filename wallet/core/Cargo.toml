@@ -62,6 +62,7 @@ downcast.workspace = true
 sorted-insert.workspace = true
 dashmap.workspace = true
 separator.workspace = true
+pad.workspace = true
 
 [dependencies.web-sys]
 workspace = true

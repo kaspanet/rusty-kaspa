@@ -1,13 +1,13 @@
-use super::{UtxoDb, UtxoEntryReference};
+use super::{UtxoEntryReference, UtxoProcessor};
 use crate::imports::*;
 
 pub struct UtxoSetIterator {
-    utxos: UtxoDb,
+    utxos: UtxoProcessor,
     cursor: usize,
 }
 
 impl UtxoSetIterator {
-    pub fn new(utxos: UtxoDb) -> Self {
+    pub fn new(utxos: UtxoProcessor) -> Self {
         Self { utxos, cursor: 0 }
     }
 }

@@ -17,6 +17,7 @@ pub enum Events {
         is_synced: bool,
         #[serde(rename = "hasUtxoIndex")]
         has_utxo_index: bool,
+        url: String,
     },
     DAAScoreChange(u64),
     Credit {
@@ -26,7 +27,8 @@ pub enum Events {
         record: TransactionRecord,
     },
     Balance {
-        utxo_size: usize,
+        mature_utxo_size: usize,
+        pending_utxo_size: usize,
         balance: Option<Balance>,
         #[serde(rename = "accountId")]
         account_id: AccountId,

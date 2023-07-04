@@ -12,6 +12,7 @@ pub use kaspa_consensus_core::subnets::SubnetworkId;
 pub use kaspa_consensus_core::tx as cctx;
 pub use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionId, TransactionIndexType};
 pub use kaspa_utils::hex::{FromHex, ToHex};
+pub use pad::PadStr;
 pub use serde::{Deserialize, Deserializer, Serialize};
 pub use std::pin::Pin;
 pub use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

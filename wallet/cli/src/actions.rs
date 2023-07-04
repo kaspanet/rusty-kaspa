@@ -42,7 +42,7 @@ pub enum Action {
     Metrics,
     #[describe("Mute (toggle notification output mute)")]
     Mute,
-    #[describe("Track notifications when mutted (balance|pending|utxo|daa")]
+    #[describe("Track notifications when mutted (balance|pending|utxo|daa)")]
     Track,
     // #[describe("?Shows the balance of a public address")]
     // Balance,

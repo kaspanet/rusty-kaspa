@@ -52,11 +52,15 @@ pub struct Flags(DashMap<Track, Arc<AtomicBool>>);
 impl Flags {
     pub fn new() -> Flags {
         let mut map = DashMap::new();
-        let iter = [(Track::Daa, false), (Track::Balance, true), (Track::Pending, false), (Track::Utxo, true)]
+        let iter = [(Track::Daa, false), (Track::Balance, true), (Track::Pending, false), (Track::Utxo, false)]
             .into_iter()
             .map(|(flag, default)| (flag, Arc::new(AtomicBool::new(default))));
         map.extend(iter);
         Flags(map)
+    }
+
+    pub fn map(&self) -> &DashMap<Track, Arc<AtomicBool>> {
+        &self.0
     }
 
     pub fn toggle(&self, track: Track) {

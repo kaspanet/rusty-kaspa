@@ -1,20 +1,14 @@
-use super::{UtxoEntryId, UtxoEntryReference, UtxoSelectionContext};
+use super::{PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference, UtxoSelectionContext};
 use crate::imports::*;
 use crate::result::Result;
-// use js_sys::BigInt;
 use crate::runtime::Balance;
+use crate::utxo::UtxoProcessorContext;
 use crate::wasm;
 use kaspa_rpc_core::GetUtxosByAddressesResponse;
 use serde_wasm_bindgen::from_value;
 use sorted_insert::SortedInsertBinary;
 use std::collections::HashMap;
 use workflow_core::time::{Duration, Instant};
-
-#[derive(Debug, Clone)]
-pub enum Disposition {
-    Mature,
-    Pending,
-}
 
 pub struct Consumed {
     entry: UtxoEntryReference,
@@ -48,12 +42,12 @@ impl Inner {
 /// a collection of UTXO entries
 #[derive(Clone, Default)]
 #[wasm_bindgen]
-pub struct UtxoDb {
+pub struct UtxoProcessor {
     pub(crate) inner: Arc<Mutex<Inner>>,
 }
 
 #[wasm_bindgen]
-impl UtxoDb {
+impl UtxoProcessor {
     pub fn clear(&self) {
         let mut inner = self.inner();
         inner.map.clear();
@@ -63,7 +57,7 @@ impl UtxoDb {
     }
 }
 
-impl UtxoDb {
+impl UtxoProcessor {
     pub fn new() -> Self {
         Self { inner: Arc::new(Mutex::new(Inner::new())) }
     }
@@ -72,13 +66,17 @@ impl UtxoDb {
         self.inner.lock().unwrap()
     }
 
-    pub fn len(&self) -> usize {
+    pub fn mature_utxo_size(&self) -> usize {
         self.inner().mature.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
+    pub fn pending_utxo_size(&self) -> usize {
+        self.inner().pending.len()
     }
+
+    // pub fn is_empty(&self) -> bool {
+    //     self.len() == 0
+    // }
 
     pub fn create_selection_context(&self) -> UtxoSelectionContext {
         UtxoSelectionContext::new(self.clone())
@@ -87,7 +85,12 @@ impl UtxoDb {
     /// Insert `utxo_entry` into the `UtxoSet`.
     /// NOTE: The insert will be ignored if already present in the inner map.
     // pub fn insert(&self, utxo_entries: Vec<UtxoEntryReference>, current_daa_score : u64) {
-    pub async fn insert(&self, utxo_entry: UtxoEntryReference, current_daa_score: u64) -> Result<Disposition> {
+    pub async fn insert(
+        &self,
+        utxo_entry: UtxoEntryReference,
+        current_daa_score: u64,
+        ctx: Option<&UtxoProcessorContext>,
+    ) -> Result<()> {
         let mut inner = self.inner();
 
         // for utxo_entry in utxo_entries.into_iter() {
@@ -95,26 +98,47 @@ impl UtxoDb {
             e.insert(utxo_entry.clone());
             if utxo_entry.is_mature(current_daa_score) {
                 inner.mature.sorted_insert_asc_binary(utxo_entry);
-                Ok(Disposition::Mature)
+                Ok(())
             } else {
-                inner.pending.insert(utxo_entry.id(), utxo_entry);
-                Ok(Disposition::Pending)
+                inner.pending.insert(utxo_entry.id(), utxo_entry.clone());
+                if let Some(ctx) = ctx {
+                    ctx.core.pending.insert(utxo_entry.id(), PendingUtxoEntryReference::new(utxo_entry, ctx.account.clone()));
+                }
+                Ok(())
             }
         } else {
             Err(Error::DuplicateUtxoEntry)
             // log_error!("ignoring duplicate utxo entry insert");
         }
+
         // }
     }
 
-    pub async fn remove(&self, ids: Vec<UtxoEntryId>) {
+    pub async fn remove(&self, ids: Vec<UtxoEntryId>, ctx: Option<&UtxoProcessorContext>) {
         let mut inner = self.inner();
 
-        // let mut removed_pending = vec![];
         let mut removed_mature_ids = vec![];
         for id in ids.into_iter() {
-            if inner.map.remove(&id).is_some() && inner.pending.remove(&id).is_none() {
+            if let Some(ctx) = ctx {
+                // remove from local map
+                if inner.map.remove(&id).is_some() {
+                    // remove from local pending
+                    if inner.pending.remove(&id).is_none() {
+                        // if item was not in local pending, it is in the mature list
+                        removed_mature_ids.push(id);
+                    } else {
+                        // if item was in local pending, it is also in global pending
+                        if ctx.core.pending.remove(&id).is_none() {
+                            log_error!("Error: unable to remove utxo entry from global pending (with context)");
+                        }
+                    }
+                } else {
+                    log_error!("Error: unable to remove utxo entry from local map (with context)");
+                }
+            } else if inner.map.remove(&id).is_some() && inner.pending.remove(&id).is_none() {
                 removed_mature_ids.push(id);
+            } else {
+                log_error!("Error: unable to remove utxo entry (no context)");
             }
         }
 
@@ -123,26 +147,32 @@ impl UtxoDb {
     }
 
     pub fn promote(&self, utxo_entry: UtxoEntryReference) {
-        log_info!("promote...");
         let id = utxo_entry.id();
         let mut inner = self.inner();
         if inner.pending.remove(&id).is_some() {
-            log_info!("prnding remove ok...");
             inner.mature.sorted_insert_asc_binary(utxo_entry);
         } else {
             log_error!("Error: non-pending utxo promotion!");
         }
     }
 
-    pub async fn extend(&self, utxo_entries: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<Vec<UtxoEntryReference>> {
-        let mut pending = vec![];
+    pub async fn extend(
+        &self,
+        utxo_entries: Vec<UtxoEntryReference>,
+        current_daa_score: u64,
+        ctx: Option<&UtxoProcessorContext>,
+    ) -> Result<()> {
+        //Result<Vec<UtxoEntryReference>> {
+        // let mut pending = vec![];
         for entry in utxo_entries.into_iter() {
-            let disposition = self.insert(entry.clone(), current_daa_score).await?;
-            if matches!(disposition, Disposition::Pending) {
-                pending.push(entry);
-            };
+            // let disposition =
+            self.insert(entry.clone(), current_daa_score, ctx).await?;
+            // if matches!(disposition, Disposition::Pending) {
+            //     pending.push(entry);
+            // };
         }
-        Ok(pending)
+        Ok(())
+        // Ok(pending)
     }
 
     pub async fn chunks(&self, chunk_size: usize) -> Result<Vec<Vec<UtxoEntryReference>>> {
@@ -234,7 +264,7 @@ impl UtxoDb {
 }
 
 #[wasm_bindgen]
-impl UtxoDb {
+impl UtxoProcessor {
     pub fn js_remove(&self, ids: Array) -> Result<Array> {
         let vec = ids.to_vec().iter().map(UtxoEntryId::try_from).collect::<Result<Vec<UtxoEntryId>>>()?;
 
@@ -271,7 +301,7 @@ impl UtxoDb {
     //     Ok(data)
     // }
 
-    pub fn from(js_value: JsValue) -> Result<UtxoDb> {
+    pub fn from(js_value: JsValue) -> Result<UtxoProcessor> {
         //log_info!("js_value: {:?}", js_value);
         let r: GetUtxosByAddressesResponse = from_value(js_value)?;
         //log_info!("r: {:?}", r);
@@ -279,7 +309,7 @@ impl UtxoDb {
         //log_info!("entries ...");
         entries.sort();
 
-        let utxos = UtxoDb { inner: Arc::new(Mutex::new(Inner::new_with_args(entries))) };
+        let utxos = UtxoProcessor { inner: Arc::new(Mutex::new(Inner::new_with_args(entries))) };
         //log_info!("utxo_set ...");
         Ok(utxos)
     }

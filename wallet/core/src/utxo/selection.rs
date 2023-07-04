@@ -1,11 +1,11 @@
-use super::{UtxoDb, UtxoEntryReference, UtxoSetIterator};
+use super::{UtxoEntryReference, UtxoProcessor, UtxoSetIterator};
 use crate::imports::*;
 use crate::result::Result;
 use js_sys::BigInt;
 use workflow_core::time::Instant;
 
 pub struct Inner {
-    utxos: UtxoDb,
+    utxos: UtxoProcessor,
     stream: Pin<Box<dyn Stream<Item = UtxoEntryReference> + Send>>,
     selected_entries: Vec<UtxoEntryReference>,
     selected_amount: u64,
@@ -17,7 +17,7 @@ pub struct UtxoSelectionContext {
 }
 
 impl UtxoSelectionContext {
-    pub fn new(utxos: UtxoDb) -> Self {
+    pub fn new(utxos: UtxoProcessor) -> Self {
         Self {
             inner: Inner {
                 utxos: utxos.clone(),

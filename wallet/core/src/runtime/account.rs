@@ -10,7 +10,7 @@ use crate::signer::sign_mutable_transaction;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData, TransactionType};
 use crate::tx::{LimitCalcStrategy, PaymentOutputs, VirtualTransaction};
-use crate::utxo::{self, PendingUtxoEntryReference, UtxoDb, UtxoEntryId, UtxoEntryReference};
+use crate::utxo::{UtxoEntryId, UtxoEntryReference, UtxoProcessor};
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
 use futures::future::join_all;
@@ -154,7 +154,7 @@ pub struct Account {
     pub id: AccountId,
     inner: Arc<Mutex<Inner>>,
     wallet: Arc<Wallet>,
-    utxos: UtxoDb,
+    utxo_processor: UtxoProcessor,
     // balance: Arc<AtomicU64>,
     balance: Mutex<Option<Balance>>,
     is_connected: AtomicBool,
@@ -206,7 +206,7 @@ impl Account {
         Ok(Arc::new(Account {
             id: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
             wallet: wallet.clone(),
-            utxos: UtxoDb::default(),
+            utxo_processor: UtxoProcessor::default(),
             balance: Mutex::new(None), // Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
@@ -242,7 +242,7 @@ impl Account {
         Ok(Arc::new(Account {
             id: AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index),
             wallet: wallet.clone(),
-            utxos: UtxoDb::default(),
+            utxo_processor: UtxoProcessor::default(),
             balance: Mutex::new(None), //Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
@@ -258,11 +258,14 @@ impl Account {
 
     pub async fn update_balance(self: &Arc<Account>) -> Result<Balance> {
         let previous_balance = self.balance.lock().unwrap().clone();
-        let mut balance = self.utxos.calculate_balance().await;
+        let mut balance = self.utxo_processor().calculate_balance().await;
         balance.delta(&previous_balance);
         self.balance.lock().unwrap().replace(balance.clone());
-        let utxo_size = self.utxos.len();
-        self.wallet.notify(Events::Balance { balance: Some(balance.clone()), account_id: self.id, utxo_size }).await?;
+        let mature_utxo_size = self.utxo_processor().mature_utxo_size();
+        let pending_utxo_size = self.utxo_processor().pending_utxo_size();
+        self.wallet
+            .notify(Events::Balance { balance: Some(balance.clone()), account_id: self.id, mature_utxo_size, pending_utxo_size })
+            .await?;
         Ok(balance)
     }
 
@@ -270,8 +273,8 @@ impl Account {
         &self.id
     }
 
-    pub fn utxos(&self) -> &UtxoDb {
-        &self.utxos
+    pub fn utxo_processor(&self) -> &UtxoProcessor {
+        &self.utxo_processor
     }
 
     pub fn is_connected(&self) -> bool {
@@ -348,12 +351,9 @@ impl Account {
                 balance
             });
 
-            let pending = self.utxos.extend(refs, scan.current_daa_score).await?;
-            let pending = pending.into_iter().map(|entry| (entry.id(), PendingUtxoEntryReference::new(entry, self.clone())));
-            let map = self.wallet.pending();
-            for pending in pending.into_iter() {
-                map.insert(pending.0, pending.1);
-            }
+            self.utxo_processor()
+                .extend(refs, scan.current_daa_score, Some(&self.wallet.utxo_processor_core().create_context(self)))
+                .await?;
 
             if !balance.is_empty() {
                 scan.balance.add(balance);
@@ -381,7 +381,7 @@ impl Account {
             let last = std::cmp::min(cursor + scan.window_size, last_address_index + 1);
             cursor = last;
             let addresses = scan.address_manager.get_range(first..last).await?;
-            self.subscribe_utxos_changed(&addresses).await?;
+            self.subscribe_utxos_changed(addresses).await?;
         }
 
         scan.address_manager.set_index(last_address_index)?;
@@ -390,7 +390,7 @@ impl Account {
     }
 
     pub async fn scan_utxos(self: &Arc<Self>, window_size: Option<u32>, extent: Option<u32>) -> Result<()> {
-        self.utxos.clear();
+        self.utxo_processor().clear();
 
         let current_daa_score = self.wallet.current_daa_score();
         let balance = Arc::new(AtomicBalance::default());
@@ -422,15 +422,18 @@ impl Account {
 
         let balance: Balance = Arc::into_inner(balance).unwrap().into();
         self.balance.lock().unwrap().replace(balance.clone());
-        let utxo_size = self.utxos.len();
-        self.wallet.notify(Events::Balance { balance: Some(balance), account_id: self.id, utxo_size }).await?;
+        let mature_utxo_size = self.utxo_processor().mature_utxo_size();
+        let pending_utxo_size = self.utxo_processor().pending_utxo_size();
+        self.wallet
+            .notify(Events::Balance { balance: Some(balance), account_id: self.id, mature_utxo_size, pending_utxo_size })
+            .await?;
 
         Ok(())
     }
 
     // - TODO
     pub async fn scan_block(self: &Arc<Self>, addresses: Vec<Address>) -> Result<Vec<UtxoEntryReference>> {
-        self.subscribe_utxos_changed(&addresses).await?;
+        self.subscribe_utxos_changed(addresses.clone()).await?;
         let resp = self.wallet.rpc().get_utxos_by_addresses(addresses).await?;
         let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
         Ok(refs)
@@ -450,7 +453,7 @@ impl Account {
         payment_secret: Option<Secret>,
         abortable: &Abortable,
     ) -> Result<Vec<kaspa_hashes::Hash>> {
-        let mut ctx = self.utxos.create_selection_context();
+        let mut ctx = self.utxo_processor().create_selection_context();
         // let transaction_amount = outputs.amount() + priority_fee_sompi.as_ref().cloned().unwrap_or_default();
         // ctx.select(transaction_amount);
         // let utxo_selection = self.utxos.select_utxos(transaction_amount, UtxoOrdering::AscendingAmount, true).await?;
@@ -545,13 +548,13 @@ impl Account {
 
     pub async fn new_receive_address(self: &Arc<Self>) -> Result<String> {
         let address = self.receive_address_manager()?.new_address().await?;
-        self.subscribe_utxos_changed(&[address.clone()]).await?;
+        self.subscribe_utxos_changed(vec![address.clone()]).await?;
         Ok(address.into())
     }
 
     pub async fn new_change_address(self: &Arc<Self>) -> Result<String> {
         let address = self.change_address_manager()?.new_address().await?;
-        self.subscribe_utxos_changed(&[address.clone()]).await?;
+        self.subscribe_utxos_changed(vec![address.clone()]).await?;
         Ok(address.into())
     }
 
@@ -582,7 +585,7 @@ impl Account {
     /// Stop Account service task
     pub async fn stop(self: &Arc<Self>) -> Result<()> {
         // self.stop_task().await
-        self.unsubscribe_utxos_changed(&[]).await?;
+        self.unsubscribe_utxos_changed(vec![]).await?;
         self.disconnect().await?;
         Ok(())
     }
@@ -608,20 +611,23 @@ impl Account {
         self.inner.lock().unwrap().listener_id
     }
 
-    async fn subscribe_utxos_changed(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
-        self.wallet.address_to_account_map().lock().unwrap().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
+    // async fn subscribe_utxos_changed(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
+    async fn subscribe_utxos_changed(self: &Arc<Self>, addresses: Vec<Address>) -> Result<()> {
+        self.wallet.utxo_processor_core().register_addresses(addresses.clone(), self);
+        // self.wallet.utxo_processor_core().address_to_account_map().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
         let listener_id = self.wallet.listener_id();
         // for address in addresses.iter() {
         //     log_info!("{}: subscribing to {}", self.id, address);
         // }
-        let utxos_changed_scope = UtxosChangedScope { addresses: addresses.to_vec() };
+        let utxos_changed_scope = UtxosChangedScope { addresses };
         self.wallet.rpc.start_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
 
         Ok(())
     }
 
-    async fn unsubscribe_utxos_changed(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
-        self.wallet.address_to_account_map().lock().unwrap().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
+    async fn unsubscribe_utxos_changed(self: &Arc<Self>, addresses: Vec<Address>) -> Result<()> {
+        self.wallet.utxo_processor_core().unregister_addresses(addresses.clone());
+        // self.wallet.address_to_account_map().lock().unwrap().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
 
         let listener_id = self
             .listener_id()
@@ -637,16 +643,25 @@ impl Account {
         let current_daa_score = self.wallet.current_daa_score();
 
         for utxo in utxos.iter() {
-            match self.utxos.insert(utxo.clone(), current_daa_score).await {
-                Ok(disposition) => {
-                    if matches!(disposition, utxo::Disposition::Pending) {
-                        self.wallet.pending().insert(utxo.id(), (self, utxo.clone()).into());
-                    }
-                }
-                Err(err) => {
-                    log_error!("{}", err);
-                }
+            // match
+            if let Err(err) = self
+                .utxo_processor()
+                .insert(utxo.clone(), current_daa_score, Some(&self.wallet.utxo_processor_core().create_context(self)))
+                .await
+            {
+                log_error!("{}", err);
             }
+
+            //  {
+            //     Ok(disposition) => {
+            //         if matches!(disposition, utxo::Disposition::Pending) {
+            //             self.wallet.pending().insert(utxo.id(), (self, utxo.clone()).into());
+            //         }
+            //     }
+            //     Err(err) => {
+            //         log_error!("{}", err);
+            //     }
+            // }
         }
 
         for utxo in utxos.into_iter() {
@@ -662,7 +677,7 @@ impl Account {
     pub(crate) async fn handle_utxo_removed(self: &Arc<Self>, utxos: Vec<UtxoEntryReference>) -> Result<()> {
         // remove UTXOs from account set
         let utxo_ids: Vec<UtxoEntryId> = utxos.iter().map(|utxo| utxo.id()).collect();
-        self.utxos.remove(utxo_ids).await;
+        self.utxo_processor().remove(utxo_ids, Some(&self.wallet.utxo_processor_core().create_context(self))).await;
 
         // post update notifications
         for utxo in utxos.into_iter() {
@@ -675,11 +690,11 @@ impl Account {
         Ok(())
     }
 
-    pub(crate) async fn handle_utxo_matured(self: &Arc<Self>, utxo: UtxoEntryReference) -> Result<()> {
-        self.utxos.promote(utxo);
+    // pub(crate) async fn handle_utxo_matured(self: &Arc<Self>, utxo: UtxoEntryReference) -> Result<()> {
+    //     self.utxos.promote(utxo);
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }
 
 #[derive(Default, Clone)]
