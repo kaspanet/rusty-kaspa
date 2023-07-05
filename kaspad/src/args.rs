@@ -3,7 +3,7 @@ use clap::ArgAction;
 use clap::{arg, command, Arg, Command};
 use kaspa_consensus::config::Config;
 use kaspa_core::kaspad_env::version;
-use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 
 pub struct Defaults {
     pub appdir: &'static str,
@@ -86,6 +86,7 @@ pub struct Args {
     pub archival: bool,
     pub sanity: bool,
     pub yes: bool,
+    pub externalip: Option<IpAddress>,
 }
 
 pub fn cli(defaults: &Defaults) -> Command {
@@ -224,6 +225,15 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .require_equals(true)
                 .help("Comment to add to the user agent -- See BIP 14 for more information."),
         )
+        .arg(
+            Arg::new("externalip")
+                .long("externalip")
+                .value_name("externalip")
+                .require_equals(true)
+                .default_missing_value(None)
+                .value_parser(clap::value_parser!(IpAddress))
+                .help("Add an ip to the list of local addresses we claim to listen on to peers"),
+        )
 }
 
 impl Args {
@@ -258,6 +268,7 @@ impl Args {
             sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
             yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
             user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
+            externalip: m.get_one::<IpAddress>("externalip").cloned(),
         }
     }
 
@@ -270,6 +281,7 @@ impl Args {
         // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
         config.enable_sanity_checks = true;
         config.user_agent_comments = self.user_agent_comments.clone();
+        config.externalip = self.externalip;
     }
 }
 

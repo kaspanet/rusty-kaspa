@@ -30,7 +30,7 @@ use kaspa_p2p_lib::{
     ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
 use kaspa_utils::iter::IterExtensions;
-use kaspa_utils::networking::PeerId;
+use kaspa_utils::networking::{PeerId, NetAddress};
 use parking_lot::{Mutex, RwLock};
 use std::{
     collections::HashSet,
@@ -450,9 +450,21 @@ impl ConnectionInitializer for FlowContext {
 
         let network_name = self.config.network_name();
 
+        let mut local_address = None;
+    
+        match self.config.externalip {
+            None => {},
+            Some(externalip) => {
+                // TODO: Check if the port logic I'm using is correct
+                let local_net_address = NetAddress::new(externalip, self.config.default_p2p_port());
+                info!("Local node is using {} for P2P", local_net_address);
+                local_address = Some(local_net_address);
+            },
+        }
+
         // Build the local version message
         // Subnets are not currently supported
-        let mut self_version_message = Version::new(None, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
+        let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
         // TODO: get number of live services
         // TODO: disable_relay_tx from config/cmd

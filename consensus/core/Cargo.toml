@@ -12,6 +12,7 @@ kaspa-muhash.workspace = true
 kaspa-merkle.workspace = true
 kaspa-math.workspace = true
 kaspa-addresses.workspace = true
+kaspa-utils.workspace = true
 kaspa-txscript-errors.workspace = true
 
 thiserror.workspace = true
