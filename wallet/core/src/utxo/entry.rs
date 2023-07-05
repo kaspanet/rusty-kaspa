@@ -7,10 +7,11 @@ use kaspa_rpc_core::RpcUtxosByAddressesEntry;
 use std::cmp::Ordering;
 use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
 
-use super::UtxoProcessor;
+use super::UtxoContext;
 
-const MATURITY_PERIOD_COINBASE_TRANSACTION: u64 = 100;
-const MATURITY_PERIOD_USER_TRANSACTION: u64 = 100;
+// thresholds for 1 BPS network
+const MATURITY_PERIOD_COINBASE_TRANSACTION: u64 = 128;
+const MATURITY_PERIOD_USER_TRANSACTION: u64 = 16;
 
 pub type UtxoEntryId = TransactionOutpointInner;
 
@@ -161,14 +162,12 @@ impl Ord for UtxoEntryReference {
 #[derive(Clone)]
 pub struct PendingUtxoEntryReference {
     pub entry: UtxoEntryReference,
-    // pub account: Arc<Account>,
-    pub utxo_processor: UtxoProcessor,
+    pub utxo_context: UtxoContext,
 }
 
 impl PendingUtxoEntryReference {
-    // pub fn new(entry: UtxoEntryReference, account: Arc<Account>) -> Self {
-    pub fn new(entry: UtxoEntryReference, utxo_processor: UtxoProcessor) -> Self {
-        Self { entry, utxo_processor }
+    pub fn new(entry: UtxoEntryReference, utxo_context: UtxoContext) -> Self {
+        Self { entry, utxo_context }
     }
 
     pub fn id(&self) -> UtxoEntryId {
@@ -183,7 +182,7 @@ impl PendingUtxoEntryReference {
 
 impl From<(&Arc<Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
     fn from((account, entry): (&Arc<Account>, UtxoEntryReference)) -> Self {
-        Self { entry, utxo_processor: (**account.utxo_processor()).clone() }
+        Self { entry, utxo_context: (**account.utxo_context()).clone() }
     }
 }
 

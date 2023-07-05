@@ -10,7 +10,7 @@ use crate::signer::sign_mutable_transaction;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
 use crate::tx::{LimitCalcStrategy, PaymentOutputs, VirtualTransaction};
-use crate::utxo::{UtxoEntryReference, UtxoProcessor};
+use crate::utxo::{UtxoContext, UtxoEntryReference};
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
 use futures::future::join_all;
@@ -140,7 +140,7 @@ pub struct Account {
     pub id: AccountId,
     inner: Arc<Mutex<Inner>>,
     wallet: Arc<Wallet>,
-    utxo_processor: Arc<UtxoProcessor>,
+    utxo_context: Arc<UtxoContext>,
     balance: Mutex<Option<Balance>>,
     is_connected: AtomicBool,
     pub account_kind: AccountKind,
@@ -179,11 +179,11 @@ impl Account {
         );
 
         let inner = Inner { listener_id: None, stored };
-        let utxo_processor = Arc::new(UtxoProcessor::new(wallet.utxo_processor_core()));
+        let utxo_context = Arc::new(UtxoContext::new(wallet.utxo_processor()));
         let account = Arc::new(Account {
             id: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
             wallet: wallet.clone(),
-            utxo_processor: utxo_processor.clone(),
+            utxo_context: utxo_context.clone(),
             balance: Mutex::new(None), // Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
@@ -194,7 +194,7 @@ impl Account {
             derivation,
         });
 
-        utxo_processor.bind_to_account(&account);
+        utxo_context.bind_to_account(&account);
 
         Ok(account)
     }
@@ -213,11 +213,11 @@ impl Account {
         .await?;
 
         let inner = Inner { listener_id: None, stored: stored.clone() };
-        let utxo_processor = Arc::new(UtxoProcessor::new(wallet.utxo_processor_core()));
+        let utxo_context = Arc::new(UtxoContext::new(wallet.utxo_processor()));
         let account = Arc::new(Account {
             id: AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index),
             wallet: wallet.clone(),
-            utxo_processor: utxo_processor.clone(),
+            utxo_context: utxo_context.clone(),
             balance: Mutex::new(None), //Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
@@ -228,7 +228,7 @@ impl Account {
             derivation,
         });
 
-        utxo_processor.bind_to_account(&account);
+        utxo_context.bind_to_account(&account);
 
         Ok(account)
     }
@@ -237,8 +237,8 @@ impl Account {
         &self.id
     }
 
-    pub fn utxo_processor(&self) -> &Arc<UtxoProcessor> {
-        &self.utxo_processor
+    pub fn utxo_context(&self) -> &Arc<UtxoContext> {
+        &self.utxo_context
     }
 
     pub fn is_connected(&self) -> bool {
@@ -319,7 +319,7 @@ impl Account {
                 balance
             });
 
-            self.utxo_processor().extend(refs, scan.current_daa_score).await?;
+            self.utxo_context().extend(refs, scan.current_daa_score).await?;
 
             if !balance.is_empty() {
                 scan.balance.add(balance);
@@ -350,7 +350,7 @@ impl Account {
             cursor = last;
             let addresses = scan.address_manager.get_range(first..last).await?;
             // log_info!("starting scan address registration...");
-            self.utxo_processor().register_addresses(addresses).await?;
+            self.utxo_context().register_addresses(addresses).await?;
         }
 
         scan.address_manager.set_index(last_address_index)?;
@@ -359,7 +359,7 @@ impl Account {
     }
 
     pub async fn scan_utxos(self: &Arc<Self>, window_size: Option<u32>, extent: Option<u32>) -> Result<()> {
-        self.utxo_processor().clear().await?;
+        self.utxo_context().clear().await?;
 
         let current_daa_score = self.wallet.current_daa_score();
         let balance = Arc::new(AtomicBalance::default());
@@ -389,7 +389,7 @@ impl Account {
 
         join_all(scans).await.into_iter().collect::<Result<Vec<_>>>()?;
 
-        self.utxo_processor().update_balance().await?;
+        self.utxo_context().update_balance().await?;
 
         Ok(())
     }
@@ -408,7 +408,7 @@ impl Account {
         payment_secret: Option<Secret>,
         abortable: &Abortable,
     ) -> Result<Vec<kaspa_hashes::Hash>> {
-        let mut ctx = self.utxo_processor().create_selection_context();
+        let mut ctx = self.utxo_context().create_selection_context();
 
         let change_address = self.change_address().await?;
         let payload = vec![];
@@ -500,13 +500,13 @@ impl Account {
 
     pub async fn new_receive_address(self: &Arc<Self>) -> Result<String> {
         let address = self.receive_address_manager()?.new_address().await?;
-        self.utxo_processor().register_addresses(vec![address.clone()]).await?;
+        self.utxo_context().register_addresses(vec![address.clone()]).await?;
         Ok(address.into())
     }
 
     pub async fn new_change_address(self: &Arc<Self>) -> Result<String> {
         let address = self.change_address_manager()?.new_address().await?;
-        self.utxo_processor().register_addresses(vec![address.clone()]).await?;
+        self.utxo_context().register_addresses(vec![address.clone()]).await?;
         Ok(address.into())
     }
 
@@ -538,7 +538,7 @@ impl Account {
     pub async fn stop(self: &Arc<Self>) -> Result<()> {
         // self.stop_task().await
         // self.unsubscribe_utxos_changed(vec![]).await?;
-        self.utxo_processor().clear().await?;
+        self.utxo_context().clear().await?;
         self.disconnect().await?;
         Ok(())
     }

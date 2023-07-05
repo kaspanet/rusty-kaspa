@@ -1,9 +1,8 @@
 use crate::imports::*;
 use crate::result::Result;
-// use crate::runtime::AccountId;
 use crate::runtime::Balance;
 use crate::storage::TransactionRecord;
-use crate::utxo::processor::UtxoProcessorId;
+use crate::utxo::context::UtxoContextId;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -33,7 +32,7 @@ pub enum Events {
         pending_utxo_size: usize,
         balance: Option<Balance>,
         // #[serde(rename = "accountId")]
-        id: UtxoProcessorId,
+        id: UtxoContextId,
     },
 }
 

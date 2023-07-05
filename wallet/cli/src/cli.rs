@@ -641,7 +641,7 @@ impl WalletCli {
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
                                                 let tx = record.format(&this.wallet);
-                                                log_info!("reorg {tx}");
+                                                log_info!("pending {tx}");
                                             }
                                         },
                                         utxo::Events::External {

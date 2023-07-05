@@ -1,11 +1,11 @@
-use super::{UtxoEntryReference, UtxoProcessor, UtxoSetIterator};
+use super::{UtxoContext, UtxoEntryReference, UtxoSetIterator};
 use crate::imports::*;
 use crate::result::Result;
 use js_sys::BigInt;
 use workflow_core::time::Instant;
 
 pub struct Inner {
-    utxo_processor: UtxoProcessor,
+    utxo_context: UtxoContext,
     stream: Pin<Box<dyn Stream<Item = UtxoEntryReference> + Send>>,
     selected_entries: Vec<UtxoEntryReference>,
     selected_amount: u64,
@@ -17,11 +17,11 @@ pub struct UtxoSelectionContext {
 }
 
 impl UtxoSelectionContext {
-    pub fn new(utxo_processor: &UtxoProcessor) -> Self {
+    pub fn new(utxo_context: &UtxoContext) -> Self {
         Self {
             inner: Inner {
-                utxo_processor: utxo_processor.clone(),
-                stream: Box::pin(UtxoSetIterator::new(utxo_processor)),
+                utxo_context: utxo_context.clone(),
+                stream: Box::pin(UtxoSetIterator::new(utxo_context)),
                 selected_entries: Vec::default(),
                 selected_amount: 0,
             },
@@ -62,7 +62,7 @@ impl UtxoSelectionContext {
     }
 
     pub fn commit(self) -> Result<()> {
-        let mut inner = self.inner.utxo_processor.inner();
+        let mut inner = self.inner.utxo_context.inner();
         inner.mature.retain(|entry| self.inner.selected_entries.contains(entry));
         let now = Instant::now();
         self.inner.selected_entries.into_iter().for_each(|entry| {

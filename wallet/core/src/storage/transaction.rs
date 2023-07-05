@@ -1,7 +1,7 @@
 use crate::encryption::sha256_hash;
 use crate::imports::*;
 use crate::runtime::{AccountId, Wallet};
-use crate::utxo::{Binding as UtxoProcessorBinding, UtxoEntryReference, UtxoProcessor, UtxoProcessorId};
+use crate::utxo::{Binding as UtxoProcessorBinding, UtxoContext, UtxoContextId, UtxoEntryReference};
 use faster_hex::{hex_decode, hex_string};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::ScriptPublicKey;
@@ -13,7 +13,7 @@ use workflow_log::style;
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "binding", content = "id")]
 pub enum Binding {
-    UtxoProcessor(UtxoProcessorId),
+    UtxoProcessor(UtxoContextId),
     Account(AccountId),
 }
 
@@ -178,8 +178,8 @@ impl TransactionRecord {
 //     }
 // }
 
-impl From<(TransactionType, &UtxoProcessor, UtxoEntryReference)> for TransactionRecord {
-    fn from((transaction_type, utxo_processor, utxo): (TransactionType, &UtxoProcessor, UtxoEntryReference)) -> Self {
+impl From<(TransactionType, &UtxoContext, UtxoEntryReference)> for TransactionRecord {
+    fn from((transaction_type, utxo_processor, utxo): (TransactionType, &UtxoContext, UtxoEntryReference)) -> Self {
         let id = TransactionRecordId::new(&utxo);
         let binding = Binding::from(utxo_processor.binding());
         let UtxoEntryReference { utxo } = utxo;

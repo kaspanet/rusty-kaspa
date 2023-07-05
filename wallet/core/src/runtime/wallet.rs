@@ -7,7 +7,7 @@ use crate::settings::{Settings, SettingsStore};
 use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::{self, AccessContextT, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
-use crate::utxo::UtxoProcessorCore;
+use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
 use crate::{accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
 use futures::future::join_all;
@@ -126,7 +126,7 @@ pub struct Inner {
     virtual_daa_score: Arc<AtomicU64>,
     network: Arc<Mutex<Option<NetworkInfo>>>,
     settings: SettingsStore,
-    utxo_processor_core: Arc<UtxoProcessorCore>,
+    utxo_processor: Arc<UtxoProcessor>,
     rpc: Arc<DynRpcApi>,
     multiplexer: Multiplexer<Events>,
 }
@@ -162,7 +162,7 @@ impl Wallet {
         };
 
         let multiplexer = Multiplexer::new();
-        let utxo_processor_core = Arc::new(UtxoProcessorCore::new(&rpc));
+        let utxo_processor = Arc::new(UtxoProcessor::new(&rpc));
 
         let wallet = Wallet {
             inner: Arc::new(Inner {
@@ -179,7 +179,7 @@ impl Wallet {
                 virtual_daa_score: Arc::new(AtomicU64::new(0)),
                 network: Arc::new(Mutex::new(network_type.map(|t| t.into()).or_else(|| Some(NetworkType::Mainnet.into())))),
                 settings: SettingsStore::default(),
-                utxo_processor_core,
+                utxo_processor,
             }),
         };
 
@@ -190,8 +190,8 @@ impl Wallet {
         &self.inner
     }
 
-    pub fn utxo_processor_core(&self) -> &Arc<UtxoProcessorCore> {
-        &self.inner.utxo_processor_core
+    pub fn utxo_processor(&self) -> &Arc<UtxoProcessor> {
+        &self.inner.utxo_processor
     }
 
     pub fn store(&self) -> &Arc<dyn Interface> {
@@ -207,7 +207,7 @@ impl Wallet {
         let accounts = self.inner.active_accounts.cloned_flat_list();
         let futures = accounts.iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
-        self.utxo_processor_core().clear().await?;
+        self.utxo_processor().clear().await?;
 
         Ok(())
     }
@@ -216,7 +216,7 @@ impl Wallet {
         let accounts = self.inner.active_accounts.cloned_flat_list();
         let futures = accounts.iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
-        self.utxo_processor_core().clear().await?;
+        self.utxo_processor().clear().await?;
 
         // TODO - parallelize?
         if self.is_open()? {
@@ -303,7 +303,7 @@ impl Wallet {
         self.load_settings().await.unwrap_or_else(|_| log_error!("Unable to load settings, discarding..."));
         // internal event loop
         self.start_task().await?;
-        self.utxo_processor_core().start(Some(self.clone())).await?;
+        self.utxo_processor().start(Some(self.clone())).await?;
         // rpc services (notifier)
 
         self.rpc_client().start().await?;
@@ -319,7 +319,7 @@ impl Wallet {
     // intended for stopping async management task
     pub async fn stop(&self) -> Result<()> {
         // self.unsubscribe_daa_score().await?;
-        self.utxo_processor_core().stop().await?;
+        self.utxo_processor().stop().await?;
         self.stop_task().await?;
         self.rpc_client().stop().await?;
         self.rpc_client().disconnect().await?;
@@ -649,7 +649,7 @@ impl Wallet {
 
     /// handle disconnection event
     pub async fn handle_disconnect(self: &Arc<Self>) -> Result<()> {
-        self.utxo_processor_core().handle_disconnect().await?;
+        self.utxo_processor().handle_disconnect().await?;
         self.inner.is_connected.store(false, Ordering::SeqCst);
         self.unsubscribe_daa_score().await?;
         self.unregister_notification_listener().await?;
@@ -796,7 +796,7 @@ mod test {
     use std::{str::FromStr, thread::sleep, time};
 
     use super::*;
-    use crate::{signer::sign_mutable_transaction, tx::MutableTransaction, utxo::UtxoProcessor};
+    use crate::{signer::sign_mutable_transaction, tx::MutableTransaction, utxo::UtxoContext};
 
     // TODO - re-export subnets
     use crate::tx::Transaction;
@@ -816,10 +816,10 @@ mod test {
         rpc: Arc<DynRpcApi>,
         addresses: Vec<Address>,
         current_daa_score: u64,
-        core: &UtxoProcessorCore,
-    ) -> Result<UtxoProcessor> {
+        core: &UtxoProcessor,
+    ) -> Result<UtxoContext> {
         let utxos = rpc.get_utxos_by_addresses(addresses).await?;
-        let utxo_set = UtxoProcessor::new(core);
+        let utxo_set = UtxoContext::new(core);
         let entries = utxos.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
         for entry in entries.into_iter() {
             utxo_set.insert(entry, current_daa_score).await?;
@@ -843,7 +843,7 @@ mod test {
         // wallet.load_accounts(stored_accounts);
 
         let rpc = wallet.rpc();
-        let utxo_processor_core = UtxoProcessorCore::new(rpc);
+        let utxo_processor = UtxoProcessor::new(rpc);
 
         let rpc_client = wallet.rpc_client();
 
@@ -861,7 +861,7 @@ mod test {
         let address = Address::try_from("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")?;
 
         let utxo_set =
-            self::get_utxos_set_by_addresses(rpc.clone(), vec![address.clone()], current_daa_score, &utxo_processor_core).await?;
+            self::get_utxos_set_by_addresses(rpc.clone(), vec![address.clone()], current_daa_score, &utxo_processor).await?;
 
         let utxo_set_balance = utxo_set.calculate_balance().await;
         println!("get_utxos_by_addresses: {utxo_set_balance:?}");
@@ -934,7 +934,7 @@ mod test {
         //println!("mtx: {mtx:?}");
 
         let utxo_set =
-            self::get_utxos_set_by_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, &utxo_processor_core).await?;
+            self::get_utxos_set_by_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, &utxo_processor).await?;
         let to_balance = utxo_set.calculate_balance().await;
         println!("to address balance before tx submit: {to_balance:?}");
 
@@ -944,7 +944,7 @@ mod test {
         println!("sleep for 5s...");
         sleep(time::Duration::from_millis(5000));
         let utxo_set =
-            self::get_utxos_set_by_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, &utxo_processor_core).await?;
+            self::get_utxos_set_by_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, &utxo_processor).await?;
         let to_balance = utxo_set.calculate_balance().await;
         println!("to address balance after tx submit: {to_balance:?}");
 
