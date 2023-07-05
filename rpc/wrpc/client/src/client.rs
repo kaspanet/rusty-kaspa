@@ -4,10 +4,10 @@ use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_rpc_core::notify::collector::{RpcCoreCollector, RpcCoreConverter};
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
 use std::fmt::Debug;
-use workflow_core::runtime as application_runtime;
+use workflow_core::{channel::Multiplexer, runtime as application_runtime};
 use workflow_dom::utils::window;
 use workflow_rpc::client::Ctl;
-pub use workflow_rpc::client::{ConnectOptions, ConnectResult, ConnectStrategy};
+pub use workflow_rpc::client::{ConnectOptions, ConnectResult, ConnectStrategy, WebSocketConfig};
 
 // /// [`NotificationMode`] controls notification delivery process
 // #[wasm_bindgen]
@@ -27,16 +27,16 @@ struct Inner {
     rpc: Arc<RpcClient<RpcApiOps>>,
     notification_channel: Channel<Notification>,
     encoding: Encoding,
-    ctl_channel: Channel<Ctl>,
+    ctl_multiplexer: Multiplexer<Ctl>,
     background_services_running: Arc<AtomicBool>,
 }
 
 impl Inner {
     pub fn new(encoding: Encoding, url: &str) -> Result<Inner> {
         // log_trace!("Kaspa wRPC::{encoding} connecting to: {url}");
-        let ctl_channel = Channel::<Ctl>::unbounded();
+        let ctl_multiplexer = Multiplexer::<Ctl>::new();
 
-        let options = RpcClientOptions { url, ctl_channel: Some(ctl_channel.clone()), ..RpcClientOptions::default() };
+        let options = RpcClientOptions { url, ctl_multiplexer: Some(ctl_multiplexer.clone()), ..RpcClientOptions::default() };
 
         let notification_channel = Channel::unbounded();
 
@@ -78,9 +78,21 @@ impl Inner {
             );
         });
 
-        let rpc = Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options)?);
-        let client =
-            Self { rpc, notification_channel, encoding, ctl_channel, background_services_running: Arc::new(AtomicBool::new(false)) };
+        let ws_config = WebSocketConfig {
+            max_send_queue: None,
+            max_message_size: Some(1024 * 1024 * 1024), // 1Gb message size limit on native platforms
+            max_frame_size: None,
+            accept_unmasked_frames: false,
+        };
+
+        let rpc = Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options, Some(ws_config))?);
+        let client = Self {
+            rpc,
+            notification_channel,
+            encoding,
+            ctl_multiplexer,
+            background_services_running: Arc::new(AtomicBool::new(false)),
+        };
         Ok(client)
     }
 
@@ -262,8 +274,8 @@ impl KaspaRpcClient {
         self.notification_mode
     }
 
-    pub fn ctl_channel_receiver(&self) -> Receiver<Ctl> {
-        self.inner.ctl_channel.receiver.clone()
+    pub fn ctl_multiplexer(&self) -> &Multiplexer<Ctl> {
+        &self.inner.ctl_multiplexer
     }
 
     pub fn parse_url(&self, url: Option<String>, network_type: NetworkType) -> Result<Option<String>> {

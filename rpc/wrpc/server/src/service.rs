@@ -13,7 +13,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use workflow_rpc::server::prelude::*;
-pub use workflow_rpc::server::Encoding as WrpcEncoding;
+pub use workflow_rpc::server::{Encoding as WrpcEncoding, WebSocketConfig};
+
+static MAX_WRPC_MESSAGE_SIZE: usize = 1024 * 1024 * 128; // 128MB
 
 /// Options for configuring the wRPC server
 pub struct Options {
@@ -154,8 +156,8 @@ impl WrpcService {
         // Spawn a task running the server
         info!("WRPC Server starting on: {}", listen_address);
         tokio::spawn(async move {
-            let serve_result = self.server.listen(&listen_address).await;
-
+            let config = WebSocketConfig { max_message_size: Some(MAX_WRPC_MESSAGE_SIZE), ..Default::default() };
+            let serve_result = self.server.listen(&listen_address, Some(config)).await;
             match serve_result {
                 Ok(_) => info!("WRPC Server stopped on: {}", listen_address),
                 Err(err) => panic!("WRPC Server {listen_address} stopped with error: {err:?}"),
