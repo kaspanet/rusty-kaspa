@@ -1,7 +1,7 @@
 use crate::encryption::sha256_hash;
 use crate::imports::*;
-use crate::runtime::{Account, AccountId, Wallet};
-use crate::utxo::UtxoEntryReference;
+use crate::runtime::{AccountId, Wallet};
+use crate::utxo::{Binding as UtxoProcessorBinding, UtxoEntryReference, UtxoProcessor, UtxoProcessorId};
 use faster_hex::{hex_decode, hex_string};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::ScriptPublicKey;
@@ -9,10 +9,29 @@ use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use workflow_log::style;
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[serde(tag = "binding", content = "id")]
+pub enum Binding {
+    UtxoProcessor(UtxoProcessorId),
+    Account(AccountId),
+}
+
+impl From<UtxoProcessorBinding> for Binding {
+    fn from(b: UtxoProcessorBinding) -> Self {
+        match b {
+            UtxoProcessorBinding::Internal(id) => Binding::UtxoProcessor(id),
+            UtxoProcessorBinding::Id(id) => Binding::UtxoProcessor(id),
+            UtxoProcessorBinding::Account(account) => Binding::Account(*account.id()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransactionType {
     Credit,
     Debit,
+    Reorg,
 }
 
 impl TransactionType {
@@ -20,12 +39,14 @@ impl TransactionType {
         match self {
             TransactionType::Credit => style(s).green().to_string(),
             TransactionType::Debit => style(s).red().to_string(),
+            TransactionType::Reorg => style(s).blue().to_string(),
         }
     }
     pub fn style_with_sign(&self, s: &str) -> String {
         match self {
             TransactionType::Credit => style("+".to_string() + s).green().to_string(),
             TransactionType::Debit => style("-".to_string() + s).red().to_string(),
+            TransactionType::Reorg => style("-".to_string() + s).red().to_string(),
         }
     }
 }
@@ -35,6 +56,7 @@ impl TransactionType {
         match self {
             TransactionType::Credit => "+",
             TransactionType::Debit => "-",
+            TransactionType::Reorg => "-",
         }
         .to_string()
     }
@@ -45,6 +67,7 @@ impl ToString for TransactionType {
         match self {
             TransactionType::Credit => "credit",
             TransactionType::Debit => "debit",
+            TransactionType::Reorg => "reorg",
         }
         .to_string()
     }
@@ -102,8 +125,9 @@ impl std::fmt::Display for TransactionRecordId {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRecord {
     pub id: TransactionRecordId,
-    #[serde(rename = "accountId")]
-    pub account_id: AccountId,
+    // #[serde(rename = "assocId")]
+    // pub assoc_id: UtxoProcessorId,
+    pub binding: Binding,
     pub address: Option<Address>,
     pub outpoint: cctx::TransactionOutpoint,
     pub amount: u64,
@@ -122,24 +146,27 @@ pub struct TransactionRecord {
 
 impl TransactionRecord {
     pub fn format(&self, wallet: &Wallet) -> String {
-        let TransactionRecord { id, account_id, address, amount, is_coinbase, transaction_type, .. } = self;
+        let TransactionRecord { id, binding, address, amount, is_coinbase, transaction_type, .. } = self;
 
         let address = style(address.as_ref().map(|addr| addr.short(16)).unwrap_or_else(|| "n/a".to_string())).yellow();
         let is_coinbase = if *is_coinbase { style("(coinbase tx)").dim() } else { style("(standard tx)").dim() };
         let id = style(id.short()).cyan();
 
-        let name = if let Some(account) = wallet.account_with_id(account_id).ok().flatten() {
-            style(account.name_or_id()).cyan()
-        } else {
-            style(account_id.short() + " ??").magenta()
+        let name = match binding {
+            Binding::UtxoProcessor(id) => style(id.short()).cyan(),
+            Binding::Account(account_id) => {
+                if let Some(account) = wallet.account_with_id(account_id).ok().flatten() {
+                    style(account.name_or_id()).cyan()
+                } else {
+                    style(account_id.short() + " ??").magenta()
+                }
+            }
         };
 
         let suffix = utils::kaspa_suffix(&wallet.network().unwrap());
         let amount = transaction_type.style_with_sign(utils::sompi_to_kaspa_string(*amount).pad_to_width(19).as_str());
 
         let kind = transaction_type.style(&transaction_type.to_string().pad_to_width(8));
-
-        // v.pad_to_width(c2),
 
         format!("{kind} {id} {name}  {address}  {amount} {suffix} {is_coinbase}")
     }
@@ -151,14 +178,15 @@ impl TransactionRecord {
 //     }
 // }
 
-impl From<(TransactionType, &Arc<Account>, UtxoEntryReference)> for TransactionRecord {
-    fn from((transaction_type, account, utxo): (TransactionType, &Arc<Account>, UtxoEntryReference)) -> Self {
+impl From<(TransactionType, &UtxoProcessor, UtxoEntryReference)> for TransactionRecord {
+    fn from((transaction_type, utxo_processor, utxo): (TransactionType, &UtxoProcessor, UtxoEntryReference)) -> Self {
         let id = TransactionRecordId::new(&utxo);
+        let binding = Binding::from(utxo_processor.binding());
         let UtxoEntryReference { utxo } = utxo;
 
         TransactionRecord {
             id,
-            account_id: *account.id(),
+            binding,
             address: utxo.address.clone(),
             outpoint: utxo.outpoint.clone().into(),
             amount: utxo.entry.amount,

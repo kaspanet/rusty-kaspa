@@ -1,14 +1,86 @@
-use super::{PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference, UtxoSelectionContext};
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::Balance;
-use crate::utxo::UtxoProcessorContext;
+use crate::runtime::{Account, AccountId, Balance};
+use crate::storage::TransactionType;
+use crate::utxo::{Events, PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference, UtxoProcessorCore, UtxoSelectionContext};
+// use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use crate::wasm;
 use kaspa_rpc_core::GetUtxosByAddressesResponse;
 use serde_wasm_bindgen::from_value;
 use sorted_insert::SortedInsertBinary;
 use std::collections::HashMap;
 use workflow_core::time::{Duration, Instant};
+use workflow_wasm::abi::ref_from_abi;
+
+static PROCESSOR_ID_SEQUENCER: AtomicU64 = AtomicU64::new(0);
+fn next_processor_id() -> u64 {
+    PROCESSOR_ID_SEQUENCER.fetch_add(1, Ordering::SeqCst)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct UtxoProcessorId(pub(crate) u64);
+
+impl Default for UtxoProcessorId {
+    fn default() -> Self {
+        UtxoProcessorId(next_processor_id())
+    }
+}
+
+impl From<AccountId> for UtxoProcessorId {
+    fn from(id: AccountId) -> Self {
+        UtxoProcessorId(id.0)
+    }
+}
+
+impl From<&AccountId> for UtxoProcessorId {
+    fn from(id: &AccountId) -> Self {
+        UtxoProcessorId(id.0)
+    }
+}
+
+impl UtxoProcessorId {
+    pub fn new(id: u64) -> Self {
+        UtxoProcessorId(id)
+    }
+
+    pub fn short(&self) -> String {
+        let hex = self.to_hex();
+        format!("{}..{}", &hex[0..4], &hex[hex.len() - 4..])
+    }
+}
+
+impl ToHex for UtxoProcessorId {
+    fn to_hex(&self) -> String {
+        format!("{:x}", self.0)
+    }
+}
+
+#[derive(Clone)]
+pub enum Binding {
+    Internal(UtxoProcessorId),
+    Account(Arc<Account>),
+    Id(UtxoProcessorId),
+}
+
+impl Default for Binding {
+    fn default() -> Self {
+        Binding::Internal(UtxoProcessorId::default())
+    }
+}
+
+impl Binding {
+    pub fn id(&self) -> UtxoProcessorId {
+        match self {
+            Binding::Internal(id) => *id,
+            Binding::Account(account) => account.id().into(),
+            Binding::Id(id) => *id,
+        }
+    }
+}
+
+// impl Binding {
+//     pub fn id
+// }
 
 pub struct Consumed {
     entry: UtxoEntryReference,
@@ -21,49 +93,107 @@ impl From<(UtxoEntryReference, &Instant)> for Consumed {
     }
 }
 
-#[derive(Default)]
+pub enum UtxoEntryVariant {
+    Mature(UtxoEntryReference),
+    Pending(UtxoEntryReference),
+    Consumed(UtxoEntryReference),
+}
+
+// #[derive(Default)]
 pub struct Inner {
     pub(crate) mature: Vec<UtxoEntryReference>,
     pub(crate) pending: HashMap<UtxoEntryId, UtxoEntryReference>,
     pub(crate) consumed: HashMap<UtxoEntryId, Consumed>,
     pub(crate) map: HashMap<UtxoEntryId, UtxoEntryReference>,
+    balance: Option<Balance>,
+    binding: Binding,
+    addresses: Arc<DashSet<Arc<Address>>>,
 }
 
 impl Inner {
     fn new() -> Self {
-        Self { mature: vec![], pending: HashMap::default(), map: HashMap::default(), consumed: HashMap::default() }
+        Self {
+            mature: vec![],
+            pending: HashMap::default(),
+            map: HashMap::default(),
+            consumed: HashMap::default(),
+            balance: None,
+            binding: Binding::default(),
+            addresses: Arc::new(DashSet::default()),
+        }
     }
 
-    fn new_with_args(entries: Vec<UtxoEntryReference>) -> Self {
-        Self { mature: entries, pending: HashMap::default(), map: HashMap::default(), consumed: HashMap::default() }
+    fn new_with_mature(entries: Vec<UtxoEntryReference>) -> Self {
+        Self {
+            mature: entries,
+            pending: HashMap::default(),
+            map: HashMap::default(),
+            consumed: HashMap::default(),
+            balance: None,
+            binding: Binding::default(),
+            addresses: Arc::new(DashSet::default()),
+        }
     }
 }
 
 /// a collection of UTXO entries
-#[derive(Clone, Default)]
+#[derive(Clone)]
 #[wasm_bindgen]
 pub struct UtxoProcessor {
     pub(crate) inner: Arc<Mutex<Inner>>,
+    pub(crate) core: UtxoProcessorCore,
+    // pub(crate) id : Id,
 }
 
 #[wasm_bindgen]
 impl UtxoProcessor {
-    pub fn clear(&self) {
+    pub async fn clear(&self) -> Result<()> {
+        let local = self.addresses();
+        let addresses = local.iter().map(|v| v.clone()).collect::<Vec<_>>();
+        if !addresses.is_empty() {
+            self.core.unregister_addresses(addresses).await?;
+            local.clear();
+        }
+
         let mut inner = self.inner();
         inner.map.clear();
         inner.mature.clear();
         inner.consumed.clear();
         inner.pending.clear();
+        inner.addresses.clear();
+        inner.balance = None;
+
+        Ok(())
     }
 }
 
 impl UtxoProcessor {
-    pub fn new() -> Self {
-        Self { inner: Arc::new(Mutex::new(Inner::new())) }
+    pub fn new(core: &UtxoProcessorCore) -> Self {
+        Self { inner: Arc::new(Mutex::new(Inner::new())), core: core.clone() }
     }
 
     pub fn inner(&self) -> MutexGuard<Inner> {
         self.inner.lock().unwrap()
+    }
+
+    pub fn bind_to_account(&self, account: &Arc<Account>) {
+        self.inner().binding = Binding::Account(account.clone());
+    }
+
+    pub fn bind_to_id(&self, id: UtxoProcessorId) {
+        self.inner().binding = Binding::Id(id);
+    }
+
+    // pub fn account(&self) -> Option<Arc<Account>> {
+    //     self.inner().account.clone()
+    // }
+
+    pub fn binding(&self) -> Binding {
+        self.inner().binding.clone()
+    }
+
+    pub fn id(&self) -> UtxoProcessorId {
+        self.binding().id()
     }
 
     pub fn mature_utxo_size(&self) -> usize {
@@ -74,12 +204,37 @@ impl UtxoProcessor {
         self.inner().pending.len()
     }
 
-    // pub fn is_empty(&self) -> bool {
-    //     self.len() == 0
-    // }
+    pub fn balance(&self) -> Option<Balance> {
+        self.inner().balance.clone()
+    }
+
+    pub fn addresses(&self) -> Arc<DashSet<Arc<Address>>> {
+        self.inner().addresses.clone()
+    }
+
+    pub async fn update_balance(&self) -> Result<Balance> {
+        let (balance, mature_utxo_size, pending_utxo_size) = {
+            let previous_balance = self.balance();
+            let mut balance = self.calculate_balance().await;
+            balance.delta(&previous_balance);
+
+            let mut inner = self.inner();
+            inner.balance.replace(balance.clone());
+            let mature_utxo_size = inner.mature.len();
+            let pending_utxo_size = inner.pending.len();
+
+            (balance, mature_utxo_size, pending_utxo_size)
+        };
+
+        self.core
+            .notify(Events::Balance { balance: Some(balance.clone()), id: self.id(), mature_utxo_size, pending_utxo_size })
+            .await?;
+
+        Ok(balance)
+    }
 
     pub fn create_selection_context(&self) -> UtxoSelectionContext {
-        UtxoSelectionContext::new(self.clone())
+        UtxoSelectionContext::new(self)
     }
 
     /// Insert `utxo_entry` into the `UtxoSet`.
@@ -89,7 +244,7 @@ impl UtxoProcessor {
         &self,
         utxo_entry: UtxoEntryReference,
         current_daa_score: u64,
-        ctx: Option<&UtxoProcessorContext>,
+        // ctx: Option<&UtxoProcessorContext>,
     ) -> Result<()> {
         let mut inner = self.inner();
 
@@ -101,9 +256,7 @@ impl UtxoProcessor {
                 Ok(())
             } else {
                 inner.pending.insert(utxo_entry.id(), utxo_entry.clone());
-                if let Some(ctx) = ctx {
-                    ctx.core.pending.insert(utxo_entry.id(), PendingUtxoEntryReference::new(utxo_entry, ctx.account.clone()));
-                }
+                self.core.pending().insert(utxo_entry.id(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
                 Ok(())
             }
         } else {
@@ -114,36 +267,61 @@ impl UtxoProcessor {
         // }
     }
 
-    pub async fn remove(&self, ids: Vec<UtxoEntryId>, ctx: Option<&UtxoProcessorContext>) {
+    pub async fn remove(&self, ids: Vec<UtxoEntryId>) -> Result<Vec<UtxoEntryVariant>> {
         let mut inner = self.inner();
 
-        let mut removed_mature_ids = vec![];
+        let mut removed = vec![];
+
+        let mut remove_mature_ids = vec![];
         for id in ids.into_iter() {
-            if let Some(ctx) = ctx {
-                // remove from local map
-                if inner.map.remove(&id).is_some() {
-                    // remove from local pending
-                    if inner.pending.remove(&id).is_none() {
-                        // if item was not in local pending, it is in the mature list
-                        removed_mature_ids.push(id);
-                    } else {
-                        // if item was in local pending, it is also in global pending
-                        if ctx.core.pending.remove(&id).is_none() {
-                            log_error!("Error: unable to remove utxo entry from global pending (with context)");
-                        }
+            // remove from local map
+            if inner.map.remove(&id).is_some() {
+                if let Some(pending) = inner.pending.remove(&id) {
+                    removed.push(UtxoEntryVariant::Pending(pending));
+                    if self.core.pending().remove(&id).is_none() {
+                        log_error!("Error: unable to remove utxo entry from global pending (with context)");
                     }
                 } else {
-                    log_error!("Error: unable to remove utxo entry from local map (with context)");
+                    remove_mature_ids.push(id);
                 }
-            } else if inner.map.remove(&id).is_some() && inner.pending.remove(&id).is_none() {
-                removed_mature_ids.push(id);
+
+                // remove from local pending
+                // if inner.pending.remove(&id).is_none() {
+                //     // if item was not in local pending, it is in the mature list
+                //     removed_mature_ids.push(id);
+                // } else {
+                //     // if item was in local pending, it is also in global pending
+                //     if self.core.pending().remove(&id).is_none() {
+                //         log_error!("Error: unable to remove utxo entry from global pending (with context)");
+                //     }
+                // }
             } else {
-                log_error!("Error: unable to remove utxo entry (no context)");
+                log_error!("Error: unable to remove utxo entry from local map (with context)");
             }
         }
 
-        let remove_mature_ids = removed_mature_ids.into_iter().filter(|id| inner.consumed.remove(id).is_none()).collect::<Vec<_>>();
-        inner.mature.retain(|entry| !remove_mature_ids.contains(&entry.id()));
+        let remove_mature_ids = remove_mature_ids
+            .into_iter()
+            .filter(|id| {
+                // inner.consumed.remove(id).is_none()
+                if let Some(consumed) = inner.consumed.remove(id) {
+                    removed.push(UtxoEntryVariant::Consumed(consumed.entry));
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect::<Vec<_>>();
+        inner.mature.retain(|entry| {
+            if remove_mature_ids.contains(&entry.id()) {
+                removed.push(UtxoEntryVariant::Mature(entry.clone()));
+                false
+            } else {
+                true
+            }
+        });
+
+        Ok(removed)
     }
 
     pub fn promote(&self, utxo_entry: UtxoEntryReference) {
@@ -160,13 +338,13 @@ impl UtxoProcessor {
         &self,
         utxo_entries: Vec<UtxoEntryReference>,
         current_daa_score: u64,
-        ctx: Option<&UtxoProcessorContext>,
+        // ctx: Option<&UtxoProcessorContext>,
     ) -> Result<()> {
         //Result<Vec<UtxoEntryReference>> {
         // let mut pending = vec![];
         for entry in utxo_entries.into_iter() {
             // let disposition =
-            self.insert(entry.clone(), current_daa_score, ctx).await?;
+            self.insert(entry.clone(), current_daa_score).await?;
             // if matches!(disposition, Disposition::Pending) {
             //     pending.push(entry);
             // };
@@ -261,6 +439,128 @@ impl UtxoProcessor {
         let pending = self.inner().pending.values().map(|e| e.as_ref().entry.amount).sum();
         Balance::new(mature, pending)
     }
+
+    pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>) -> Result<()> {
+        // add UTXOs to account set
+        let current_daa_score = self.core.current_daa_score();
+
+        for utxo in utxos.iter() {
+            // match
+            if let Err(err) = self.insert(utxo.clone(), current_daa_score).await {
+                log_error!("{}", err);
+            }
+        }
+
+        for utxo in utxos.into_iter() {
+            // post update notifications
+            let record = (TransactionType::Credit, self, utxo).into();
+            self.core.notify(Events::Pending { record }).await?;
+        }
+        // post balance update
+        self.update_balance().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn handle_utxo_removed(&self, utxos: Vec<UtxoEntryReference>) -> Result<()> {
+        // let current_daa_score = self.core.current_daa_score();
+
+        // remove UTXOs from account set
+        let utxo_ids: Vec<UtxoEntryId> = utxos.iter().map(|utxo| utxo.id()).collect();
+        let removed = self.remove(utxo_ids).await?;
+
+        for removed in removed.into_iter() {
+            match removed {
+                UtxoEntryVariant::Mature(utxo) => {
+                    let record = (TransactionType::Debit, self, utxo).into();
+                    self.core.notify(Events::External { record }).await?;
+                }
+                UtxoEntryVariant::Consumed(_utxo) => {
+                    // let record = (TransactionType::Debit, self, utxo).into();
+                    // self.core.notify(Events::Debit { record }).await?;
+                }
+                UtxoEntryVariant::Pending(utxo) => {
+                    let record = (TransactionType::Reorg, self, utxo).into();
+                    self.core.notify(Events::Reorg { record }).await?;
+                }
+            }
+        }
+
+        // post update notifications
+        // for utxo in utxos.into_iter() {
+        //     let record = (TransactionType::Debit, self, utxo).into();
+        //     self.core.notify(Events::DebitPending { record }).await?;
+        // }
+
+        // post balance update
+        self.update_balance().await?;
+        Ok(())
+    }
+
+    // async fn subscribe_utxos_changed(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
+    pub async fn register_addresses(self: &Arc<Self>, addresses: Vec<Address>) -> Result<()> {
+        // log_info!("registering addresses (1) {:#?}", addresses);
+
+        let local = self.addresses();
+
+        let addresses = addresses
+            .clone()
+            .into_iter()
+            .filter_map(|address| {
+                let address = Arc::new(address);
+                if local.insert(address.clone()) {
+                    Some(address)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // log_info!("registering addresses (2) {:#?}", addresses);
+
+        // self.inner().addresses.extend(addresses.clone());
+        self.core.register_addresses(addresses, self).await?;
+        // self.wallet.utxo_processor_core().address_to_account_map().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
+        // let listener_id = self.core.listener_id();
+        // // for address in addresses.iter() {
+        // //     log_info!("{}: subscribing to {}", self.id, address);
+        // // }
+        // let utxos_changed_scope = UtxosChangedScope { addresses };
+        // self.wallet.rpc().start_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
+
+        Ok(())
+    }
+
+    pub async fn unregister_addresses(self: &Arc<Self>, addresses: Vec<Address>) -> Result<()> {
+        if !addresses.is_empty() {
+            // log_info!("unregistering addresses (1) {:#?}", addresses);
+            let local = self.addresses();
+
+            let addresses = addresses.clone().into_iter().map(Arc::new).collect::<Vec<_>>();
+            // log_info!("unregistering addresses (2) {:#?}", addresses);
+
+            self.core.unregister_addresses(addresses.clone()).await?;
+            addresses.iter().for_each(|address| {
+                local.remove(address);
+            });
+        } else {
+            log_warning!("utxo processor: unregistering empty address set")
+        }
+        // let addresses = addresses.clone().into_iter().filter_map(|address|{
+        //     let address = Arc::new(address);
+        //     local.remove(&address)
+        // }).collect::<Vec<_>>();
+
+        // self.wallet.utxo_processor_core().unregister_addresses(addresses.clone().into_iter().map(Arc::new).collect());
+        // // self.wallet.address_to_account_map().lock().unwrap().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
+
+        // let listener_id = self
+        //     .listener_id()
+        //     .expect("subscribe_utxos_changed() requires `listener_id` (must call `register_notification_listener()` before use)");
+        // let utxos_changed_scope = UtxosChangedScope { addresses: addresses.to_vec() };
+        // self.wallet.rpc().stop_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
+
+        Ok(())
+    }
 }
 
 #[wasm_bindgen]
@@ -301,15 +601,26 @@ impl UtxoProcessor {
     //     Ok(data)
     // }
 
-    pub fn from(js_value: JsValue) -> Result<UtxoProcessor> {
+    // #[wasm_bindgen(constructor)]
+    // pub fn constructor(core: &JsValue, id_or_account : &JsValue, utxo_by_address_response: JsValue) -> Result<UtxoProcessor> {
+    pub fn from(core: &JsValue, utxo_by_address_response: JsValue) -> Result<UtxoProcessor> {
+        // pub fn from(utxo_by_address_response: JsValue) -> Result<UtxoProcessor> {
         //log_info!("js_value: {:?}", js_value);
-        let r: GetUtxosByAddressesResponse = from_value(js_value)?;
+        let core = ref_from_abi!(UtxoProcessorCore, core)?;
+        // let id_or_account =
+
+        // Id::new(id_or_account.try_as_u64()?);
+        let r: GetUtxosByAddressesResponse = from_value(utxo_by_address_response)?;
         //log_info!("r: {:?}", r);
         let mut entries = r.entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
         //log_info!("entries ...");
         entries.sort();
 
-        let utxos = UtxoProcessor { inner: Arc::new(Mutex::new(Inner::new_with_args(entries))) };
+        let utxos = UtxoProcessor {
+            inner: Arc::new(Mutex::new(Inner::new_with_mature(entries))),
+            // id,
+            core, // : None,
+        };
         //log_info!("utxo_set ...");
         Ok(utxos)
     }
@@ -321,6 +632,6 @@ impl UtxoProcessor {
 
     #[wasm_bindgen(js_name=createSelectionContext)]
     pub fn js_create_selection_context(&self) -> UtxoSelectionContext {
-        UtxoSelectionContext::new(self.clone())
+        UtxoSelectionContext::new(self)
     }
 }

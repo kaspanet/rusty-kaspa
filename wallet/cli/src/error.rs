@@ -38,6 +38,9 @@ pub enum Error {
     #[error("account '{0}' not found")]
     AccountNotFound(String),
 
+    #[error("ambigious selection, pattern '{0}' matches too many accounts, please be more specific")]
+    AmbigiousAccount(String),
+
     #[error("please create a wallet")]
     WalletDoesNotExist,
 
@@ -52,6 +55,21 @@ pub enum Error {
 
     #[error("account type must be <bip32|multisig|legacy>")]
     InvalidAccountKind,
+
+    #[error("wallet secret is required")]
+    WalletSecretRequired,
+
+    #[error("wallet secrets do not match")]
+    WalletSecretMatch,
+
+    #[error("payment secret is required")]
+    PaymentSecretRequired,
+
+    #[error("payment secrets do not match")]
+    PaymentSecretMatch,
+
+    #[error("key data not found")]
+    KeyDataNotFound,
 }
 
 impl Error {

@@ -1,6 +1,7 @@
 pub mod context;
 pub mod core;
 pub mod entry;
+pub mod events;
 pub mod iterator;
 pub mod processor;
 pub mod selection;
@@ -8,6 +9,7 @@ pub mod selection;
 pub use self::core::UtxoProcessorCore;
 pub use context::UtxoProcessorContext;
 pub use entry::{PendingUtxoEntryReference, UtxoEntries, UtxoEntry, UtxoEntryId, UtxoEntryReference};
+pub use events::{EventConsumer, Events};
 pub use iterator::UtxoSetIterator;
-pub use processor::UtxoProcessor;
+pub use processor::{Binding, UtxoProcessor, UtxoProcessorId};
 pub use selection::UtxoSelectionContext;

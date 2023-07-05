@@ -24,6 +24,8 @@ pub enum Action {
     Disconnect,
     #[describe("Import a wallet or a private key")]
     Import,
+    #[describe("Export a wallet or a private key")]
+    Export,
     #[describe("Create a new account or a wallet")]
     Create,
     #[describe("Open a wallet")]

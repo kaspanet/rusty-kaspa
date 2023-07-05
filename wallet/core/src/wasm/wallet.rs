@@ -177,7 +177,7 @@ impl Wallet {
     }
 
     pub async fn start(&self) -> Result<()> {
-        self.events.start_notification_task(&self.wallet.multiplexer).await?;
+        self.events.start_notification_task(self.wallet.multiplexer()).await?;
         self.wallet.start().await?;
         Ok(())
     }

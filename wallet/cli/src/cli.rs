@@ -3,32 +3,26 @@ use crate::error::Error;
 use crate::helpers;
 use crate::result::Result;
 use crate::utils::*;
-use cfg_if::cfg_if;
-use kaspa_wallet_core::storage::interface::AccessContext;
-use pad::PadStr;
-// use crate::settings::Settings;
 use async_trait::async_trait;
+use cfg_if::cfg_if;
 use futures::stream::{Stream, StreamExt, TryStreamExt};
 use futures::*;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_wallet_core::accounts::gen0::import::*;
 use kaspa_wallet_core::imports::{AtomicBool, Ordering, ToHex};
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
+use kaspa_wallet_core::storage::interface::AccessContext;
 use kaspa_wallet_core::storage::{AccessContextT, AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
 use kaspa_wallet_core::tx::PaymentOutputs;
+use kaspa_wallet_core::utxo;
 use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
 use kaspa_wallet_core::{Address, ConnectOptions, ConnectStrategy, Events, Settings};
-// use kaspa_wrpc_client::WrpcEncoding;
-// use serde::de::DeserializeOwned;
-// use serde::Serialize;
+use pad::PadStr;
+use separator::Separatable;
 use std::sync::{Arc, Mutex};
-use textwrap::wrap;
 use workflow_core::abortable::Abortable;
 use workflow_core::channel::*;
-// use workflow_core::enums::EnumTrait;
 use workflow_core::runtime as application_runtime;
-// use workflow_dom::utils::window;
-use separator::Separatable;
 use workflow_log::*;
 use workflow_terminal::*;
 pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget}; //{CrLf, Terminal};
@@ -37,13 +31,8 @@ struct WalletCli {
     term: Arc<Mutex<Option<Arc<Terminal>>>>,
     wallet: Arc<Wallet>,
     notifications_task_ctl: DuplexChannel,
-    // ---
     mute: Arc<AtomicBool>,
     flags: Flags,
-    // track_balance : Arc<AtomicBool>,
-    // track_pending : Arc<AtomicBool>,
-    // track_utxo : Arc<AtomicBool>,
-    // track_daa : Arc<AtomicBool>,
 }
 
 impl workflow_log::Sink for WalletCli {
@@ -85,7 +74,7 @@ impl WalletCli {
                 display_help(&term);
             }
             Action::Halt => {
-                panic!("halting...");
+                panic!("halting on user request...");
             }
             Action::Exit => {
                 term.writeln("bye!");
@@ -97,13 +86,7 @@ impl WalletCli {
             Action::Set => {
                 if argv.is_empty() {
                     term.writeln("\n\rSettings:\n\r");
-
                     let list = Settings::list();
-
-                    // let settings = self.wallet.settings().iter();
-
-                    // let len = commands.iter().map(|(c, _)| c.len()).fold(0, |a, b| a.max(b));
-
                     let list = list
                         .iter()
                         .map(|setting| {
@@ -123,17 +106,6 @@ impl WalletCli {
                             d
                         ));
                     });
-
-                    // for setting in list {
-                    //     let value : String = self.wallet.settings().get(setting.clone()).unwrap_or_default();
-                    //     let descr = setting.descr();
-                    //     term.writeln(format!("\t{}:\t{}\t{}", setting.to_lowercase_string(), value, descr));
-                    //     //.map(|v|v.to_string()).unwrap_or_else(|| "-".to_string())));
-                    // }
-                    // term.writeln(format!("network : {}", settings.network.map(|v|v.to_string()).unwrap_or_else(|| "-".to_string())));
-                    // term.writeln(format!("server : {}", settings.server.unwrap_or_else(|| "-".to_string())));
-                    // term.writeln(format!("wallet : {}", settings.wallet.unwrap_or_else(|| "-".to_string())));
-                    // - TODO use Store to load settings
                 } else if argv.len() != 2 {
                     term.writeln("\n\rError:\n\r");
                     term.writeln("Usage:\n\rset <key> <value>");
@@ -380,6 +352,79 @@ impl WalletCli {
             }
 
             // ~~~
+            Action::Export => {
+                if argv.is_empty() || argv.get(0) == Some(&"help".to_string()) {
+                    log_info!("Usage: export [mnemonic]");
+                    return Ok(());
+                }
+
+                let what = argv.get(0).unwrap();
+                match what.as_str() {
+                    "mnemonic" => {
+                        let account = self.account().await?;
+                        let prv_key_data_id = account.prv_key_data_id;
+
+                        let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
+                        if wallet_secret.as_ref().is_empty() {
+                            return Err(Error::WalletSecretRequired);
+                        }
+
+                        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+                        let prv_key_data = self.wallet.store().as_prv_key_data_store()?.load_key_data(&ctx, &prv_key_data_id).await?;
+                        if let Some(keydata) = prv_key_data {
+                            let payment_secret = if keydata.payload.is_encrypted() {
+                                let payment_secret =
+                                    Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec());
+                                if payment_secret.as_ref().is_empty() {
+                                    return Err(Error::PaymentSecretRequired);
+                                } else {
+                                    Some(payment_secret)
+                                }
+                            } else {
+                                None
+                            };
+
+                            let prv_key_data = keydata.payload.decrypt(payment_secret.as_ref())?;
+                            let mnemonic = prv_key_data.as_ref().as_mnemonic()?;
+                            if let Some(mnemonic) = mnemonic {
+                                if payment_secret.is_none() {
+                                    // term.para(
+                                    //     70,
+                                    //     "\nIMPORTANT: to recover your private key using this mnemonic in the future \
+                                    // you will need your payment password. Your payment password is permanently associated with \
+                                    // this mnemonic.\n",
+                                    // );
+                                    log_info!("mnemonic:");
+                                    log_info!("");
+                                    log_info!("{}", mnemonic.phrase());
+                                    log_info!("");
+                                } else {
+                                    term.para(
+                                        70,
+                                        "\nIMPORTANT: to recover your private key using this mnemonic in the future \
+                                    you will need your payment password. Your payment password is permanently associated with \
+                                    this mnemonic.\n",
+                                    );
+                                    log_info!("mnemonic:");
+                                    log_info!("");
+                                    log_info!("{}", mnemonic.phrase());
+                                    log_info!("");
+                                }
+                            } else {
+                                log_info!("mnemonic is not available for this private key");
+                            }
+                        } else {
+                            return Err(Error::KeyDataNotFound);
+                        }
+
+                        // account
+                        // log_info!("selected account: {}", account.name_or_id());
+                    }
+                    _ => {
+                        return Err(format!("Invalid argument: {}", what).into());
+                    }
+                }
+            }
             Action::Import => {
                 if argv.is_empty() || argv.get(0) == Some(&"help".to_string()) {
                     log_info!("Usage: import [mnemonic]");
@@ -431,22 +476,41 @@ impl WalletCli {
             }
             Action::Select => {
                 if argv.is_empty() {
-                    self.wallet.select(None).await?;
-                } else {
-                    // let name = argv.remove(0);
-                    // let account = {
-                    //     // let accounts = ;
-                    //     self.wallet
-                    //         .active_accounts()
-                    //         .inner()
-                    //         .values()
-                    //         .find(|account| account.name() == name)
-                    //         .ok_or(Error::AccountNotFound(name))?
-                    //         .clone()
-                    // };
-
                     let account = select_account(&term, &self.wallet).await?;
                     self.wallet.select(Some(account)).await?;
+
+                    // log_info!("selecting empty acct");
+                    // self.wallet.select(None).await?;
+                } else {
+                    let pat = argv.remove(0);
+                    let pat = pat.as_str();
+                    // let account = {
+                    // let accounts = ;
+                    let accounts = self.wallet.active_accounts().inner().values().cloned().collect::<Vec<_>>();
+                    // let accounts = {
+                    //     let inner = accounts.inner();
+                    //     inner.values().cloned().collect::<Vec<_>>()
+                    // };
+                    let matches = accounts
+                        .into_iter()
+                        .filter(|account| account.name().starts_with(pat) || account.id().to_hex().starts_with(pat))
+                        .collect::<Vec<_>>();
+                    // .ok_or(Error::AccountNotFound(pat))?
+                    // .clone()
+                    if matches.is_empty() {
+                        return Err(Error::AccountNotFound(pat.to_string()));
+                    } else if matches.len() > 1 {
+                        return Err(Error::AmbigiousAccount(pat.to_string()));
+                    } else {
+                        let account = matches[0].clone();
+                        self.wallet.select(Some(account)).await?;
+                    };
+                    // }
+
+                    // let iface = self.wallet.store().as_account_store()?;
+                    // log_info!("iface is ok...");
+
+                    // let account = select_account(&term, &self.wallet).await?;
                 }
             }
             Action::Open => {
@@ -521,6 +585,7 @@ impl WalletCli {
                     // },
 
                     msg = multiplexer.receiver.recv().fuse() => {
+
                         if let Ok(msg) = msg {
                             match msg {
                                 Events::Connect(_url) => {
@@ -554,46 +619,77 @@ impl WalletCli {
                                         }
                                     }
                                 },
-                                Events::DAAScoreChange(daa) => {
-                                    if this.is_mutted() && this.flags.get(Track::Daa) {
-                                        log_info!("DAAScoreChange: {daa}");
-                                    }
-                                },
-                                Events::Credit {
-                                    record
-                                } => {
-                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                        let tx = record.format(&this.wallet);
-                                        log_info!("{tx}");
-                                    }
-                                },
-                                Events::Debit {
-                                    record
-                                } => {
-                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                        let tx = record.format(&this.wallet);
-                                        log_info!("{tx}");
-                                    }
-                                },
-                                Events::Balance {
-                                    balance,
-                                    account_id,
-                                    mature_utxo_size,
-                                    pending_utxo_size,
-                                } => {
-                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
-                                        let network_type = this.wallet.network().expect("missing network type");
-                                        let balance = BalanceStrings::from((&balance,&network_type, Some(19)));
-                                        let account_id = account_id.short();
+                                Events::UtxoProcessor(event) => {
 
-                                        let pending_utxo_info = if pending_utxo_size > 0 {
-                                            format!("({pending_utxo_size} pending)")
-                                        } else { "".to_string() };
-                                        let utxo_info = style(format!("{} UTXOs {pending_utxo_info}", mature_utxo_size.separated_string())).dim();
+                                    match event {
 
-                                        log_info!("{} {account_id}: {balance} {utxo_info}",style("balance".pad_to_width(8)).blue());
+                                        utxo::Events::DAAScoreChange(daa) => {
+                                            if this.is_mutted() && this.flags.get(Track::Daa) {
+                                                log_info!("DAAScoreChange: {daa}");
+                                            }
+                                        },
+                                        utxo::Events::Pending {
+                                            record
+                                        } => {
+                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                                let tx = record.format(&this.wallet);
+                                                log_info!("pending {tx}");
+                                            }
+                                        },
+                                        utxo::Events::Reorg {
+                                            record
+                                        } => {
+                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                                let tx = record.format(&this.wallet);
+                                                log_info!("reorg {tx}");
+                                            }
+                                        },
+                                        utxo::Events::External {
+                                            record
+                                        } => {
+                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                                let tx = record.format(&this.wallet);
+                                                log_info!("external {tx}");
+                                            }
+                                        },
+                                        utxo::Events::Maturity {
+                                            record
+                                        } => {
+                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                                let tx = record.format(&this.wallet);
+                                                log_info!("maturity {tx}");
+                                            }
+                                        },
+                                        utxo::Events::Debit {
+                                            record
+                                        } => {
+                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                                let tx = record.format(&this.wallet);
+                                                log_info!("{tx}");
+                                            }
+                                        },
+                                        utxo::Events::Balance {
+                                            balance,
+                                            id,
+                                            mature_utxo_size,
+                                            pending_utxo_size,
+                                        } => {
+
+                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
+                                                let network_type = this.wallet.network().expect("missing network type");
+                                                let balance = BalanceStrings::from((&balance,&network_type, Some(19)));
+                                                let id = id.short();
+
+                                                let pending_utxo_info = if pending_utxo_size > 0 {
+                                                    format!("({pending_utxo_size} pending)")
+                                                } else { "".to_string() };
+                                                let utxo_info = style(format!("{} UTXOs {pending_utxo_info}", mature_utxo_size.separated_string())).dim();
+
+                                                log_info!("{} {id}: {balance} {utxo_info}",style("balance".pad_to_width(8)).blue());
+                                            }
+                                        },
                                     }
-                                },
+                                }
                             }
                         }
 
@@ -613,7 +709,7 @@ impl WalletCli {
     // ---
 
     async fn create_wallet(&self, name: Option<&str>, term: Arc<Terminal>) -> Result<()> {
-        use kaspa_wallet_core::error::Error;
+        // use kaspa_wallet_core::error::Error;
 
         if self.wallet.exists(name).await? {
             term.writeln("WARNING - A previously created wallet already exists!");
@@ -632,35 +728,46 @@ impl WalletCli {
         let account_title = term.ask(false, "Default account title: ").await?.trim().to_string();
         let account_name = account_title.replace(' ', "-").to_lowercase();
 
-        log_info!("");
-        log_info!("\"Phishing hint\" is a secret word or a phrase that is displayed when you open your wallet.");
-        log_info!("If you do not see the hint when opening your wallet, you may be accessing a fake wallet designed to steal your private key.");
-        log_info!("If this occurs, stop using the wallet immediately, check the domain name and seek help on social networks (Kaspa Discord or Telegram).");
-        log_info!("");
+        term.para(
+            70,
+            "\
+        \"Phishing hint\" is a secret word or a phrase that is displayed \
+        when you open your wallet. If you do not see the hint when opening \
+        your wallet, you may be accessing a fake wallet designed to steal \
+        your private key. If this occurs, stop using the wallet immediately, \
+        check the domain name and seek help on social networks (Kaspa Discord \
+        or Telegram). \
+        \
+        ",
+        );
+        // log_info!("");
+        // log_info!("\"Phishing hint\" is a secret word or a phrase that is displayed when you open your wallet.");
+        // log_info!("If you do not see the hint when opening your wallet, you may be accessing a fake wallet designed to steal your private key.");
+        // log_info!("If this occurs, stop using the wallet immediately, check the domain name and seek help on social networks (Kaspa Discord or Telegram).");
+        // log_info!("");
         let hint = term.ask(false, "Create phishing hint (optional, press <enter> to skip): ").await?.trim().to_string();
         let hint = if hint.is_empty() { None } else { Some(hint) };
 
         let wallet_secret = Secret::new(term.ask(true, "Enter wallet encryption password: ").await?.trim().as_bytes().to_vec());
         if wallet_secret.as_ref().is_empty() {
-            return Err(Error::WalletSecretRequired.into());
+            return Err(Error::WalletSecretRequired);
         }
         let wallet_secret_validate =
             Secret::new(term.ask(true, "Re-enter wallet encryption password: ").await?.trim().as_bytes().to_vec());
         if wallet_secret_validate.as_ref() != wallet_secret.as_ref() {
-            return Err(Error::WalletSecretMatch.into());
+            return Err(Error::WalletSecretMatch);
         }
 
         log_info!("");
-        wrap(
-            "PLEASE NOTE: The optional payment password, if provided, will be required to \
+        term.para(
+            70,
+            "\
+            PLEASE NOTE: The optional payment password, if provided, will be required to \
             issue transactions. This password will also be required when recovering your wallet \
             in addition to your private key or mnemonic. If you loose this password, you will not \
-            be able to use mnemonic to recover your wallet!",
-            70,
-        )
-        .into_iter()
-        .for_each(|line| term.writeln(line));
-        log_info!("");
+            be able to use mnemonic to recover your wallet! \
+            ",
+        );
 
         let payment_secret = term.ask(true, "Enter payment password (optional): ").await?;
         // let payment_secret = payment_secret.trim();
@@ -675,7 +782,7 @@ impl WalletCli {
                 term.ask(true, "Enter payment (private key encryption) password (optional): ").await?.trim().as_bytes().to_vec(),
             );
             if payment_secret_validate.as_ref() != payment_secret.as_ref() {
-                return Err(Error::PaymentSecretMatch.into());
+                return Err(Error::PaymentSecretMatch);
             }
         }
 
@@ -695,18 +802,17 @@ impl WalletCli {
 
         ["", "---", "", "IMPORTANT:", ""].into_iter().for_each(|line| term.writeln(line));
 
-        wrap(
+        term.para(
+            70,
             "Your mnemonic phrase allows your to re-create your private key. \
             The person who has access to this mnemonic will have full control of \
             the Kaspa stored in it. Keep your mnemonic safe. Write it down and \
             store it in a safe, preferably in a fire-resistant location. Do not \
             store your mnemonic on this computer or a mobile device. This wallet \
             will never ask you for this mnemonic phrase unless you manually \
-            initial a private key recovery.",
-            70,
-        )
-        .into_iter()
-        .for_each(|line| term.writeln(line));
+            initial a private key recovery. \
+            ",
+        );
 
         // descriptor
 
@@ -754,6 +860,14 @@ impl WalletCli {
 
         Ok(())
     }
+
+    async fn account(&self) -> Result<Arc<runtime::Account>> {
+        if let Ok(account) = self.wallet.account() {
+            Ok(account)
+        } else {
+            Ok(select_account(&self.term().unwrap(), &self.wallet).await?)
+        }
+    }
 }
 
 #[async_trait]
@@ -787,6 +901,10 @@ impl Cli for WalletCli {
         // } else {
         //     Ok(vec![])
         // }
+    }
+
+    fn prompt(&self) -> Option<String> {
+        self.wallet.account().ok().map(|account| format!("{} $ ", account.name_or_id()))
     }
 }
 
@@ -830,14 +948,10 @@ async fn select_account(term: &Arc<Terminal>, wallet: &Arc<Wallet>) -> Result<Ar
             term.writeln("aborting...");
             return Err(Error::UserAbort);
         } else {
-            // if let Ok(v) = serde_json::from_str::<T>(text.as_str()) {
-            //     selection = Some(v);
-            // } else {
             match text.parse::<usize>() {
-                Ok(seq) if seq > 0 && seq < flat_list.len() => selection = flat_list.get(seq).cloned(),
+                Ok(seq) if seq < flat_list.len() => selection = flat_list.get(seq).cloned(),
                 _ => {}
             };
-            // }
         }
     }
 
@@ -935,14 +1049,33 @@ where
 //     Ok(selection.unwrap())
 // }
 
+// cfg_if! {
+//     if #[cfg(not(target_arch = "wasm32"))] {
+//         use std::{panic, process};
+
+//         // configure custom panic hook that disables terminal raw mode
+//         fn init_panic_hook() {
+//             let default_hook = panic::take_hook();
+//             panic::set_hook(Box::new(move |panic_info| {
+//                 workflow_terminal::disable_raw_mode().ok();
+//                 default_hook(panic_info);
+//                 println!("halt...");
+//                 process::exit(1);
+//             }));
+//         }
+//     }
+// }
+
 pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     cfg_if! {
         if #[cfg(not(target_arch = "wasm32"))] {
-            kaspa_core::panic::configure_panic();
+            init_panic_hook(||{
+                println!("halt");
+                1
+            });
             kaspa_core::log::init_logger(None, "info");
         }
     }
-    
 
     let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None)?);
     let cli = Arc::new(WalletCli::new(wallet.clone()));

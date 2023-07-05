@@ -1,7 +1,5 @@
 use crate::imports::*;
-use crate::runtime::AccountId;
-use crate::runtime::Balance;
-use crate::storage::TransactionRecord;
+use crate::utxo;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -19,18 +17,5 @@ pub enum Events {
         has_utxo_index: bool,
         url: String,
     },
-    DAAScoreChange(u64),
-    Credit {
-        record: TransactionRecord,
-    },
-    Debit {
-        record: TransactionRecord,
-    },
-    Balance {
-        mature_utxo_size: usize,
-        pending_utxo_size: usize,
-        balance: Option<Balance>,
-        #[serde(rename = "accountId")]
-        account_id: AccountId,
-    },
+    UtxoProcessor(utxo::Events),
 }

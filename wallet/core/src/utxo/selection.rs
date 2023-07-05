@@ -5,7 +5,7 @@ use js_sys::BigInt;
 use workflow_core::time::Instant;
 
 pub struct Inner {
-    utxos: UtxoProcessor,
+    utxo_processor: UtxoProcessor,
     stream: Pin<Box<dyn Stream<Item = UtxoEntryReference> + Send>>,
     selected_entries: Vec<UtxoEntryReference>,
     selected_amount: u64,
@@ -17,11 +17,11 @@ pub struct UtxoSelectionContext {
 }
 
 impl UtxoSelectionContext {
-    pub fn new(utxos: UtxoProcessor) -> Self {
+    pub fn new(utxo_processor: &UtxoProcessor) -> Self {
         Self {
             inner: Inner {
-                utxos: utxos.clone(),
-                stream: Box::pin(UtxoSetIterator::new(utxos)),
+                utxo_processor: utxo_processor.clone(),
+                stream: Box::pin(UtxoSetIterator::new(utxo_processor)),
                 selected_entries: Vec::default(),
                 selected_amount: 0,
             },
@@ -62,7 +62,7 @@ impl UtxoSelectionContext {
     }
 
     pub fn commit(self) -> Result<()> {
-        let mut inner = self.inner.utxos.inner();
+        let mut inner = self.inner.utxo_processor.inner();
         inner.mature.retain(|entry| self.inner.selected_entries.contains(entry));
         let now = Instant::now();
         self.inner.selected_entries.into_iter().for_each(|entry| {
