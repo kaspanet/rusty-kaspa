@@ -16,6 +16,7 @@ use faster_hex::hex_string;
 use futures::future::join_all;
 use kaspa_bip32::{ChildNumber, PrivateKey};
 use kaspa_notify::listener::ListenerId;
+use separator::Separatable;
 use serde::Serializer;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -141,7 +142,7 @@ pub struct Account {
     inner: Arc<Mutex<Inner>>,
     wallet: Arc<Wallet>,
     utxo_context: Arc<UtxoContext>,
-    balance: Mutex<Option<Balance>>,
+    // balance: Mutex<Option<Balance>>,
     is_connected: AtomicBool,
     pub account_kind: AccountKind,
     pub account_index: u64,
@@ -184,7 +185,7 @@ impl Account {
             id: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
             wallet: wallet.clone(),
             utxo_context: utxo_context.clone(),
-            balance: Mutex::new(None), // Arc::new(AtomicU64::new(0)),
+            // balance: Mutex::new(None), // Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind,
@@ -218,7 +219,7 @@ impl Account {
             id: AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index),
             wallet: wallet.clone(),
             utxo_context: utxo_context.clone(),
-            balance: Mutex::new(None), //Arc::new(AtomicU64::new(0)),
+            // balance: Mutex::new(None), //Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
@@ -259,17 +260,31 @@ impl Account {
     }
 
     pub fn balance(&self) -> Option<Balance> {
-        self.balance.lock().unwrap().clone()
+        self.utxo_context().balance()
     }
 
     pub fn balance_as_strings(&self) -> Result<BalanceStrings> {
         Ok(BalanceStrings::from((&self.balance(), &self.wallet.network()?, Some(DEFAULT_AMOUNT_PADDING))))
     }
 
-    pub fn get_ls_string(&self) -> Result<String> {
-        let name = self.name();
+    pub fn get_list_string(&self) -> Result<String> {
+        let name = style(self.name_or_id().pad_to_width(16)).cyan();
         let balance = self.balance_as_strings()?;
-        Ok(format!("{name} - {balance}"))
+        let mature_utxo_size = self.utxo_context.mature_utxo_size();
+        let pending_utxo_size = self.utxo_context.pending_utxo_size();
+        let info = match (mature_utxo_size, pending_utxo_size) {
+            (0, 0) => "".to_string(),
+            (_, 0) => {
+                format!("{} UTXOs", mature_utxo_size.separated_string())
+            }
+            (0, _) => {
+                format!("{} UTXOs pending", pending_utxo_size.separated_string())
+            }
+            _ => {
+                format!("{} UTXOs, {} UTXOs pending", mature_utxo_size.separated_string(), pending_utxo_size.separated_string())
+            }
+        };
+        Ok(format!("{name}: {balance}   {}", style(info).dim()))
     }
 
     pub fn inner(&self) -> MutexGuard<Inner> {

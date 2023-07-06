@@ -9,7 +9,7 @@ pub enum Error {
     #[error("{0}")]
     Custom(String),
 
-    #[error("Action aborted by the user")]
+    #[error("aborting.")]
     UserAbort,
 
     #[error("Wallet error: {0}")]
@@ -70,6 +70,9 @@ pub enum Error {
 
     #[error("key data not found")]
     KeyDataNotFound,
+
+    #[error("no accounts found, please create an account to continue")]
+    NoAccounts,
 }
 
 impl Error {

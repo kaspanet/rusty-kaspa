@@ -23,6 +23,7 @@ use std::sync::{Arc, Mutex};
 use workflow_core::abortable::Abortable;
 use workflow_core::channel::*;
 use workflow_core::runtime as application_runtime;
+use workflow_core::time::Instant;
 use workflow_log::*;
 use workflow_terminal::*;
 pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget}; //{CrLf, Terminal};
@@ -33,6 +34,7 @@ struct WalletCli {
     notifications_task_ctl: DuplexChannel,
     mute: Arc<AtomicBool>,
     flags: Flags,
+    last_interaction: Arc<Mutex<Instant>>,
 }
 
 impl workflow_log::Sink for WalletCli {
@@ -46,6 +48,29 @@ impl workflow_log::Sink for WalletCli {
     }
 }
 
+macro_rules! println {
+    () => (
+        unsafe { TERMINAL.as_ref().unwrap() }.writeln("")
+    );
+
+    ($($t:tt)*) => (
+        unsafe { TERMINAL.as_ref().unwrap() }.writeln(format_args!($($t)*).to_string().crlf())
+    );
+
+}
+
+macro_rules! error {
+    ($($t:tt)*) => (
+        unsafe { TERMINAL.as_ref().unwrap() }.writeln(style(format_args!($($t)*).to_string()).red().to_string().crlf())
+    )
+}
+
+macro_rules! para {
+    ($($t:tt)*) => (
+        unsafe { TERMINAL.as_ref().unwrap() }.para(format_args!($($t)*).to_string().crlf())
+    )
+}
+
 impl WalletCli {
     fn new(wallet: Arc<Wallet>) -> Self {
         WalletCli {
@@ -54,6 +79,7 @@ impl WalletCli {
             notifications_task_ctl: DuplexChannel::oneshot(),
             mute: Arc::new(AtomicBool::new(false)),
             flags: Flags::new(),
+            last_interaction: Arc::new(Mutex::new(Instant::now())),
         }
     }
 
@@ -85,7 +111,7 @@ impl WalletCli {
             }
             Action::Set => {
                 if argv.is_empty() {
-                    term.writeln("\n\rSettings:\n\r");
+                    println!("\nSettings:\n");
                     let list = Settings::list();
                     let list = list
                         .iter()
@@ -99,16 +125,11 @@ impl WalletCli {
                     let c2 = list.iter().map(|(_, c, _)| c.len()).fold(0, |a, b| a.max(b)) + 4;
 
                     list.iter().for_each(|(k, v, d)| {
-                        term.writeln(format!(
-                            "{}: {} \t {}",
-                            k.pad_to_width_with_alignment(c1, pad::Alignment::Right),
-                            v.pad_to_width(c2),
-                            d
-                        ));
+                        println!("{}: {} \t {}", k.pad_to_width_with_alignment(c1, pad::Alignment::Right), v.pad_to_width(c2), d);
                     });
                 } else if argv.len() != 2 {
-                    term.writeln("\n\rError:\n\r");
-                    term.writeln("Usage:\n\rset <key> <value>");
+                    println!("\n\rError:\n\r");
+                    println!("Usage:\n\rset <key> <value>");
                     return Ok(());
                 } else {
                     let key = argv[0].as_str();
@@ -135,7 +156,7 @@ impl WalletCli {
                 }
             }
             Action::Mute => {
-                log_info!("mute is {}", toggle(&self.mute));
+                println!("mute is {}", toggle(&self.mute));
             }
             Action::Track => {
                 if let Some(attr) = argv.first() {
@@ -146,7 +167,7 @@ impl WalletCli {
                         let k = flag.key().to_string();
                         let v = flag.value().load(Ordering::SeqCst);
                         let s = if v { "on" } else { "off" };
-                        term.writeln(format!("{k} is {s}"));
+                        println!("{k} is {s}");
                     }
                 }
             }
@@ -155,7 +176,7 @@ impl WalletCli {
 
                 let network_type = self.wallet.network()?;
                 let url = self.wallet.rpc_client().parse_url(url, network_type)?;
-                term.writeln(format!("Connecting to {}...", url.clone().unwrap_or_else(|| "default".to_string())));
+                println!("Connecting to {}...", url.clone().unwrap_or_else(|| "default".to_string()));
 
                 let options = ConnectOptions { block_async_connect: true, strategy: ConnectStrategy::Fallback, url };
                 self.wallet.rpc_client().connect(options).await?;
@@ -165,17 +186,17 @@ impl WalletCli {
             }
             Action::GetInfo => {
                 let response = self.wallet.get_info().await?;
-                term.writeln(response);
+                println!("{response}");
             }
             Action::Metrics => {
                 let response = self.wallet.rpc().get_metrics(true, true).await.map_err(|e| e.to_string())?;
-                term.writeln(format!("{:#?}", response));
+                println!("{:#?}", response);
             }
             Action::Ping => {
                 if self.wallet.ping().await {
-                    term.writeln("ping ok");
+                    println!("ping ok");
                 } else {
-                    term.writeln("ping error");
+                    error!("ping error");
                 }
             }
             // Action::Balance => {}
@@ -203,26 +224,39 @@ impl WalletCli {
                         };
 
                         let wallet_name = wallet_name.as_deref();
-                        self.create_wallet(wallet_name, term).await?;
+                        self.create_wallet(wallet_name).await?;
                     }
                     "account" => {
                         if !is_open {
                             return Err(Error::WalletIsNotOpen);
                         }
-                        //- TODO
-                        //- TODO
-                        //- TODO
-                        //- TODO
-                        // let account_kind: AccountKind = select_variant(&term, "Please select account type", &mut argv).await?;
 
-                        // let prv_key_data_info =
-                        //     select_item(&term, "Please select private key", &mut argv, self.wallet.keys().await?.err_into()).await?;
+                        let account_kind = if argv.is_empty() {
+                            AccountKind::Bip32
+                        } else {
+                            let kind = argv.remove(0);
+                            kind.parse::<AccountKind>()?
+                        };
 
-                        // self.create_account(prv_key_data_info.id, account_kind, term).await?;
+                        let account_name = if argv.is_empty() {
+                            None
+                        } else {
+                            let name = argv.remove(0);
+                            let name = name.trim().to_string();
+
+                            Some(name)
+                        };
+
+                        // TODO - switch to selection; temporarily use existing account
+                        let account = self.wallet.account()?;
+                        let prv_key_data_id = account.prv_key_data_id;
+
+                        let account_name = account_name.as_deref();
+                        self.create_account(prv_key_data_id, account_kind, account_name).await?;
                     }
                     _ => {
-                        term.writeln("\n\rError:\n\r");
-                        term.writeln("Usage:\n\rcreate <account|wallet>");
+                        println!("\nError:\n");
+                        println!("Usage:\ncreate <account|wallet>");
                         return Ok(());
                     }
                 }
@@ -232,22 +266,22 @@ impl WalletCli {
                     let network_type: NetworkType =
                         network_type.trim().parse::<NetworkType>().map_err(|_| "Unknown network type: `{network_type}`")?;
                     // .map_err(|err|err.to_string())?;
-                    term.writeln(format!("Setting network type to: {network_type}"));
+                    println!("Setting network type to: {network_type}");
                     self.wallet.select_network(network_type)?;
                     self.wallet.settings().set(Settings::Network, network_type).await?;
                     // self.wallet.settings().try_store().await?;
                 } else {
                     let network_type = self.wallet.network()?;
-                    term.writeln(format!("Current network type is: {network_type}"));
+                    println!("Current network type is: {network_type}");
                 }
             }
             Action::Server => {
                 if let Some(url) = argv.first() {
                     self.wallet.settings().set(Settings::Server, url).await?;
-                    term.writeln(format!("Setting RPC server to: {url}"));
+                    println!("Setting RPC server to: {url}");
                 } else {
                     let server = self.wallet.settings().get(Settings::Server).unwrap_or_else(|| "n/a".to_string());
-                    term.writeln(format!("Current RPC server is: {server}"));
+                    println!("Current RPC server is: {server}");
                 }
             }
             Action::Broadcast => {
@@ -279,7 +313,7 @@ impl WalletCli {
             Action::NewAddress => {
                 let account = self.wallet.account()?;
                 let response = account.new_receive_address().await?;
-                term.writeln(response);
+                println!("{response}");
             }
             // Action::Parse => {
             //     self.wallet.parse().await?;
@@ -318,25 +352,25 @@ impl WalletCli {
                     // account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret, &abortable).await?;
                     account.send(&outputs, priority_fee_sompi, false, wallet_secret, payment_secret, &abortable).await?;
 
-                term.writeln(format!("\r\nSending {amount} KAS to {address}, tx ids:"));
-                term.writeln(format!("{}\r\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\r\n")));
+                println!("\nSending {amount} KAS to {address}, tx ids:");
+                println!("{}\r\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\r\n"));
             }
             Action::Address => {
-                let address = self.wallet.account()?.receive_address().await?.to_string();
-                term.writeln(address);
+                let address = self.account().await?.receive_address().await?.to_string();
+                println!("\n{address}\n");
             }
             Action::ShowAddresses => {
                 let manager = self.wallet.account()?.receive_address_manager()?;
                 let index = manager.index()?;
                 let addresses = manager.get_range_with_args(0..index, false).await?;
-                term.writeln(format!("Receive addresses: 0..{index}"));
-                term.writeln(format!("{}\r\n", addresses.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\r\n")));
+                println!("Receive addresses: 0..{index}");
+                println!("{}\n", addresses.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\n"));
 
                 let manager = self.wallet.account()?.change_address_manager()?;
                 let index = manager.index()?;
                 let addresses = manager.get_range_with_args(0..index, false).await?;
-                term.writeln(format!("Change addresses: 0..{index}"));
-                term.writeln(format!("{}\r\n", addresses.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\r\n")));
+                println!("Change addresses: 0..{index}");
+                println!("{}\n", addresses.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\n"));
             }
             Action::Sign => {
                 self.wallet.account()?.sign().await?;
@@ -354,7 +388,7 @@ impl WalletCli {
             // ~~~
             Action::Export => {
                 if argv.is_empty() || argv.get(0) == Some(&"help".to_string()) {
-                    log_info!("Usage: export [mnemonic]");
+                    println!("Usage: export [mnemonic]");
                     return Ok(());
                 }
 
@@ -388,30 +422,25 @@ impl WalletCli {
                             let mnemonic = prv_key_data.as_ref().as_mnemonic()?;
                             if let Some(mnemonic) = mnemonic {
                                 if payment_secret.is_none() {
-                                    // term.para(
-                                    //     70,
-                                    //     "\nIMPORTANT: to recover your private key using this mnemonic in the future \
-                                    // you will need your payment password. Your payment password is permanently associated with \
-                                    // this mnemonic.\n",
-                                    // );
-                                    log_info!("mnemonic:");
-                                    log_info!("");
-                                    log_info!("{}", mnemonic.phrase());
-                                    log_info!("");
+                                    println!("mnemonic:");
+                                    println!("");
+                                    println!("{}", mnemonic.phrase());
+                                    println!("");
                                 } else {
-                                    term.para(
-                                        70,
-                                        "\nIMPORTANT: to recover your private key using this mnemonic in the future \
-                                    you will need your payment password. Your payment password is permanently associated with \
-                                    this mnemonic.\n",
+                                    para!(
+                                        "\
+                                        IMPORTANT: to recover your private key using this mnemonic in the future \
+                                        you will need your payment password. Your payment password is permanently associated with \
+                                        this mnemonic.",
                                     );
-                                    log_info!("mnemonic:");
-                                    log_info!("");
-                                    log_info!("{}", mnemonic.phrase());
-                                    log_info!("");
+                                    println!("");
+                                    println!("mnemonic:");
+                                    println!("");
+                                    println!("{}", mnemonic.phrase());
+                                    println!("");
                                 }
                             } else {
-                                log_info!("mnemonic is not available for this private key");
+                                println!("mnemonic is not available for this private key");
                             }
                         } else {
                             return Err(Error::KeyDataNotFound);
@@ -427,7 +456,7 @@ impl WalletCli {
             }
             Action::Import => {
                 if argv.is_empty() || argv.get(0) == Some(&"help".to_string()) {
-                    log_info!("Usage: import [mnemonic]");
+                    println!("Usage: import [mnemonic]");
                     return Ok(());
                 }
 
@@ -435,7 +464,7 @@ impl WalletCli {
                 match what.as_str() {
                     "mnemonic" => {
                         let mnemonic = helpers::ask_mnemonic(&term).await?;
-                        log_info!("Mnemonic: {:?}", mnemonic);
+                        println!("Mnemonic: {:?}", mnemonic);
                     }
                     "legacy" => {
                         if exists_v0_keydata().await? {
@@ -464,75 +493,61 @@ impl WalletCli {
 
             // ~~~
             Action::List => {
+                println!();
                 let mut keys = self.wallet.keys().await?;
                 while let Some(key) = keys.try_next().await? {
-                    term.writeln(format!("{key}"));
+                    println!("• pk{key}");
                     let mut accounts = self.wallet.accounts(Some(key.id)).await?;
                     while let Some(account) = accounts.try_next().await? {
-                        term.writeln(format!("    {}", account.get_ls_string()?));
+                        println!("    {}", account.get_list_string()?);
                         // term.writeln(format!("    {}", account.get_ls_string()?));
                     }
+                    println!();
+                }
+            }
+            Action::Name => {
+                if argv.is_empty() {
+                    let account = self.account().await?;
+                    let id = account.id().to_hex();
+                    let name = account.name();
+                    let name = if name.is_empty() { "no name".to_string() } else { name };
+
+                    println!("\nname: {name}  account id: {id}\n");
+                } else {
+                    // let account = self.account().await?;
                 }
             }
             Action::Select => {
                 if argv.is_empty() {
-                    let account = select_account(&term, &self.wallet).await?;
-                    self.wallet.select(Some(account)).await?;
-
-                    // log_info!("selecting empty acct");
-                    // self.wallet.select(None).await?;
+                    let account = self.prompt_account().await?;
+                    self.wallet.select(Some(&account)).await?;
                 } else {
                     let pat = argv.remove(0);
                     let pat = pat.as_str();
-                    // let account = {
-                    // let accounts = ;
                     let accounts = self.wallet.active_accounts().inner().values().cloned().collect::<Vec<_>>();
-                    // let accounts = {
-                    //     let inner = accounts.inner();
-                    //     inner.values().cloned().collect::<Vec<_>>()
-                    // };
                     let matches = accounts
                         .into_iter()
                         .filter(|account| account.name().starts_with(pat) || account.id().to_hex().starts_with(pat))
                         .collect::<Vec<_>>();
-                    // .ok_or(Error::AccountNotFound(pat))?
-                    // .clone()
                     if matches.is_empty() {
                         return Err(Error::AccountNotFound(pat.to_string()));
                     } else if matches.len() > 1 {
                         return Err(Error::AmbigiousAccount(pat.to_string()));
                     } else {
                         let account = matches[0].clone();
-                        self.wallet.select(Some(account)).await?;
+                        self.wallet.select(Some(&account)).await?;
                     };
-                    // }
-
-                    // let iface = self.wallet.store().as_account_store()?;
-                    // log_info!("iface is ok...");
-
-                    // let account = select_account(&term, &self.wallet).await?;
                 }
             }
             Action::Open => {
-                // let mut prefix = AddressPrefix::Mainnet;
-                // if argv.contains(&"testnet".to_string()) {
-                //     prefix = AddressPrefix::Testnet;
-                // } else if argv.contains(&"simnet".to_string()) {
-                //     prefix = AddressPrefix::Simnet;
-                // } else if argv.contains(&"devnet".to_string()) {
-                //     prefix = AddressPrefix::Devnet;
-                // }
-
-                // let name = if let Some(name) = argv.first().cloned() {
-                //     Some(name)
-                // } else if let Some(name) = self.wallet.settings().inner().wallet.clone() {
-                //     Some(name)
-                // } else {
-                //     None
-                // };
+                let name = if let Some(name) = argv.first().cloned() {
+                    Some(name)
+                } else {
+                    self.wallet.settings().get(Settings::Wallet).clone()
+                };
 
                 let secret = Secret::new(term.ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());
-                self.wallet.load(secret, None).await?;
+                self.wallet.load(secret, name).await?;
             }
             Action::Close => {
                 self.wallet.reset().await?;
@@ -560,6 +575,7 @@ impl WalletCli {
     pub fn notification_pipe_task(self: &Arc<Self>) {
         let this = self.clone();
         let _term = self.term().unwrap_or_else(|| panic!("WalletCli::notification_pipe_task(): `term` is not initialized"));
+
         // let notification_channel_receiver = self.wallet.rpc_client().notification_channel_receiver();
         let multiplexer = MultiplexerChannel::from(self.wallet.multiplexer());
         workflow_core::task::spawn(async move {
@@ -592,10 +608,10 @@ impl WalletCli {
                                     // log_info!("Connected to {url}");
                                 },
                                 Events::Disconnect(url) => {
-                                    log_info!("Disconnected from {url}");
+                                    println!("Disconnected from {url}");
                                 },
                                 Events::UtxoIndexNotEnabled => {
-                                    log_error!("Error: Kaspa node UTXO index is not enabled...")
+                                    println!("Error: Kaspa node UTXO index is not enabled...")
                                 },
                                 Events::ServerStatus {
                                     is_synced,
@@ -605,19 +621,30 @@ impl WalletCli {
                                     ..
                                 } => {
 
-                                    log_info!("Connected to Kaspa node version {server_version} at {url}");
+                                    println!("Connected to Kaspa node version {server_version} at {url}\n");
 
 
                                     // log_info!("Server version server {server_version}");
+                                    let is_open = this.wallet.is_open().unwrap_or_else(|err| { log_error!("Unable to check if wallet is open: {err}"); false });
+
                                     if !is_synced {
-                                        let is_open = this.wallet.is_open().unwrap_or_else(|err| { log_error!("Unable to check if wallet is open: {err}"); false });
                                         if is_open {
-                                            log_error!("Error: Unable to sync wallet - Kaspa node is not synced...");
+                                            error!("Error: Unable to sync wallet - Kaspa node is not synced...");
 
                                         } else {
-                                            log_error!("Error: Kaspa node is not synced...");
+                                            error!("Error: Kaspa node is not synced...");
                                         }
                                     }
+                                },
+                                Events::WalletHasLoaded {
+                                    hint
+                                } => {
+
+                                    if let Some(hint) = hint {
+                                        println!("\nYour wallet hint is: {hint}\n");
+                                    }
+
+                                    this.list().await.unwrap_or_else(|err|error!("{err}"));
                                 },
                                 Events::UtxoProcessor(event) => {
 
@@ -625,7 +652,7 @@ impl WalletCli {
 
                                         utxo::Events::DAAScoreChange(daa) => {
                                             if this.is_mutted() && this.flags.get(Track::Daa) {
-                                                log_info!("DAAScoreChange: {daa}");
+                                                println!("DAAScoreChange: {daa}");
                                             }
                                         },
                                         utxo::Events::Pending {
@@ -633,7 +660,7 @@ impl WalletCli {
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
                                                 let tx = record.format(&this.wallet);
-                                                log_info!("pending {tx}");
+                                                println!("pending {tx}");
                                             }
                                         },
                                         utxo::Events::Reorg {
@@ -641,7 +668,7 @@ impl WalletCli {
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
                                                 let tx = record.format(&this.wallet);
-                                                log_info!("pending {tx}");
+                                                println!("pending {tx}");
                                             }
                                         },
                                         utxo::Events::External {
@@ -649,7 +676,7 @@ impl WalletCli {
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
                                                 let tx = record.format(&this.wallet);
-                                                log_info!("external {tx}");
+                                                println!("external {tx}");
                                             }
                                         },
                                         utxo::Events::Maturity {
@@ -657,7 +684,7 @@ impl WalletCli {
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
                                                 let tx = record.format(&this.wallet);
-                                                log_info!("maturity {tx}");
+                                                println!("maturity {tx}");
                                             }
                                         },
                                         utxo::Events::Debit {
@@ -665,7 +692,7 @@ impl WalletCli {
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
                                                 let tx = record.format(&this.wallet);
-                                                log_info!("{tx}");
+                                                println!("{tx}");
                                             }
                                         },
                                         utxo::Events::Balance {
@@ -685,7 +712,7 @@ impl WalletCli {
                                                 } else { "".to_string() };
                                                 let utxo_info = style(format!("{} UTXOs {pending_utxo_info}", mature_utxo_size.separated_string())).dim();
 
-                                                log_info!("{} {id}: {balance} {utxo_info}",style("balance".pad_to_width(8)).blue());
+                                                println!("{} {id}: {balance}   {utxo_info}",style("balance".pad_to_width(8)).blue());
                                             }
                                         },
                                     }
@@ -708,11 +735,13 @@ impl WalletCli {
 
     // ---
 
-    async fn create_wallet(&self, name: Option<&str>, term: Arc<Terminal>) -> Result<()> {
+    async fn create_wallet(&self, name: Option<&str>) -> Result<()> {
         // use kaspa_wallet_core::error::Error;
 
+        let term = self.term().unwrap();
+
         if self.wallet.exists(name).await? {
-            term.writeln("WARNING - A previously created wallet already exists!");
+            println!("WARNING - A previously created wallet already exists!");
 
             let overwrite = term
                 .ask(false, "Are you sure you want to overwrite it (type 'y' to approve)?: ")
@@ -728,16 +757,15 @@ impl WalletCli {
         let account_title = term.ask(false, "Default account title: ").await?.trim().to_string();
         let account_name = account_title.replace(' ', "-").to_lowercase();
 
-        term.para(
-            70,
-            "\
+        para!(
+            "\n\
         \"Phishing hint\" is a secret word or a phrase that is displayed \
         when you open your wallet. If you do not see the hint when opening \
         your wallet, you may be accessing a fake wallet designed to steal \
         your private key. If this occurs, stop using the wallet immediately, \
-        check the domain name and seek help on social networks (Kaspa Discord \
-        or Telegram). \
-        \
+        check the browser URL domain name and seek help on social networks \
+        (Kaspa Discord or Telegram). \
+        \n\
         ",
         );
         // log_info!("");
@@ -758,9 +786,8 @@ impl WalletCli {
             return Err(Error::WalletSecretMatch);
         }
 
-        log_info!("");
-        term.para(
-            70,
+        println!("");
+        para!(
             "\
             PLEASE NOTE: The optional payment password, if provided, will be required to \
             issue transactions. This password will also be required when recovering your wallet \
@@ -802,8 +829,7 @@ impl WalletCli {
 
         ["", "---", "", "IMPORTANT:", ""].into_iter().for_each(|line| term.writeln(line));
 
-        term.para(
-            70,
+        para!(
             "Your mnemonic phrase allows your to re-create your private key. \
             The person who has access to this mnemonic will have full control of \
             the Kaspa stored in it. Keep your mnemonic safe. Write it down and \
@@ -833,30 +859,49 @@ impl WalletCli {
         Ok(())
     }
 
-    async fn _create_account(&self, _prv_key_data_id: PrvKeyDataId, account_kind: AccountKind, term: Arc<Terminal>) -> Result<()> {
-        use kaspa_wallet_core::error::Error;
+    async fn create_account(&self, prv_key_data_id: PrvKeyDataId, account_kind: AccountKind, name: Option<&str>) -> Result<()> {
+        let term = self.term().unwrap();
 
         if matches!(account_kind, AccountKind::MultiSig) {
             return Err(Error::Custom(
                 "MultiSig accounts are not currently supported (will be available in the future version)".to_string(),
-            )
-            .into());
+            ));
         }
 
-        let title = term.ask(false, "Account title: ").await?.trim().to_string();
-        let name = title.replace(' ', "-").to_lowercase();
+        let (title, name) = if let Some(name) = name {
+            (name.to_string(), name.to_string())
+        } else {
+            let title = term.ask(false, "Please enter account title (optional, press <enter> to skip): ").await?.trim().to_string();
+            let name = title.replace(' ', "-").to_lowercase();
+            (title, name)
+        };
 
         let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
         if wallet_secret.as_ref().is_empty() {
-            return Err(Error::WalletSecretRequired.into());
+            return Err(Error::WalletSecretRequired);
         }
 
-        let payment_password = Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec());
+        let prv_key_info = self.wallet.store().as_prv_key_data_store()?.load_key_info(&prv_key_data_id).await?;
+        if let Some(keyinfo) = prv_key_info {
+            let payment_secret = if keyinfo.is_encrypted() {
+                let payment_secret = Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec());
+                if payment_secret.as_ref().is_empty() {
+                    return Err(Error::PaymentSecretRequired);
+                } else {
+                    Some(payment_secret)
+                }
+            } else {
+                None
+            };
 
-        // let account_kind = AccountKind::Bip32;
-        let _account_args = AccountCreateArgs::new(name, title, account_kind, wallet_secret, Some(payment_password));
+            let account_args = AccountCreateArgs::new(name, title, account_kind, wallet_secret, payment_secret);
+            let account = self.wallet.create_bip32_account(prv_key_data_id, account_args).await?;
 
-        // self.wallet.create_bip32_account(wallet_secret, payment_secret, prv_key_data_id, &account_args).await?;
+            println!("\naccount created: {}\n", account.get_list_string()?);
+            self.wallet.select(Some(&account)).await?;
+        } else {
+            return Err(Error::KeyDataNotFound);
+        }
 
         Ok(())
     }
@@ -865,8 +910,99 @@ impl WalletCli {
         if let Ok(account) = self.wallet.account() {
             Ok(account)
         } else {
-            Ok(select_account(&self.term().unwrap(), &self.wallet).await?)
+            let account = self.select_account().await?;
+            self.wallet.select(Some(&account)).await?;
+            Ok(account)
         }
+    }
+
+    async fn prompt_account(&self) -> Result<Arc<runtime::Account>> {
+        self.select_account_with_args(false).await
+    }
+
+    async fn select_account(&self) -> Result<Arc<runtime::Account>> {
+        self.select_account_with_args(true).await
+    }
+
+    async fn select_account_with_args(&self, autoselect: bool) -> Result<Arc<runtime::Account>> {
+        let mut selection = None;
+
+        let mut list_by_key = Vec::<(Arc<PrvKeyDataInfo>, Vec<(usize, Arc<runtime::Account>)>)>::new();
+        let mut flat_list = Vec::<Arc<runtime::Account>>::new();
+
+        let mut keys = self.wallet.keys().await?;
+        while let Some(key) = keys.try_next().await? {
+            let mut prv_key_accounts = Vec::new();
+            let mut accounts = self.wallet.accounts(Some(key.id)).await?;
+            while let Some(account) = accounts.next().await {
+                let account = account?;
+                prv_key_accounts.push((flat_list.len(), account.clone()));
+                flat_list.push(account.clone());
+            }
+
+            list_by_key.push((key.clone(), prv_key_accounts));
+        }
+
+        if flat_list.is_empty() {
+            return Err(Error::NoAccounts);
+        } else if autoselect && flat_list.len() == 1 {
+            return Ok(flat_list.pop().unwrap());
+        }
+
+        while selection.is_none() {
+            println!();
+
+            list_by_key.iter().for_each(|(prv_key_data_info, accounts)| {
+                println!("• {prv_key_data_info}");
+
+                accounts.iter().for_each(|(seq, account)| {
+                    let seq = style(seq.to_string()).cyan();
+                    println!("    {seq}: {}", account.get_list_string().unwrap_or_else(|err| panic!("{err}")));
+                })
+            });
+
+            println!();
+
+            let range = if flat_list.len() > 1 { format!("[{}..{}] ", 0, flat_list.len() - 1) } else { "".to_string() };
+
+            let text = self
+                .term()
+                .unwrap()
+                .ask(false, &format!("Please select account {}or <enter> to abort: ", range))
+                .await?
+                .trim()
+                .to_string();
+            if text.is_empty() {
+                return Err(Error::UserAbort);
+            } else {
+                match text.parse::<usize>() {
+                    Ok(seq) if seq < flat_list.len() => selection = flat_list.get(seq).cloned(),
+                    _ => {}
+                };
+            }
+        }
+
+        let account = selection.unwrap();
+        let ident = account.name_or_id();
+        println!("\nselecting account: {ident}\n");
+
+        Ok(account)
+    }
+
+    async fn list(&self) -> Result<()> {
+        println!();
+        let mut keys = self.wallet.keys().await?;
+        while let Some(key) = keys.try_next().await? {
+            println!("• {key}");
+            let mut accounts = self.wallet.accounts(Some(key.id)).await?;
+            while let Some(account) = accounts.try_next().await? {
+                let receive_address = account.receive_address().await?;
+                println!("    • {}", account.get_list_string()?);
+                println!("      {}", style(receive_address.to_string()).yellow());
+            }
+        }
+        println!();
+        Ok(())
     }
 }
 
@@ -878,6 +1014,7 @@ impl Cli for WalletCli {
     }
 
     async fn digest(&self, term: Arc<Terminal>, cmd: String) -> TerminalResult<()> {
+        *self.last_interaction.lock().unwrap() = Instant::now();
         let argv = parse(&cmd);
         let action: Action = argv[0].as_str().try_into()?;
         self.action(action, argv, term).await?;
@@ -904,59 +1041,23 @@ impl Cli for WalletCli {
     }
 
     fn prompt(&self) -> Option<String> {
-        self.wallet.account().ok().map(|account| format!("{} $ ", account.name_or_id()))
+        if let Some(name) = self.wallet.name() {
+            if let Ok(account) = self.wallet.account() {
+                let ident = account.name_or_id();
+                Some(format!("{name} • {ident} $ "))
+            } else {
+                Some(format!("{name} $ "))
+            }
+        } else {
+            None
+        }
+        // self.wallet.account().ok().map(|account| format!("{name}{} $ ", account.name_or_id()))
     }
 }
 
 impl WalletCli {}
 
 use kaspa_wallet_core::runtime::{self, BalanceStrings, PrvKeyDataCreateArgs};
-async fn select_account(term: &Arc<Terminal>, wallet: &Arc<Wallet>) -> Result<Arc<runtime::Account>> {
-    let mut selection = None;
-
-    let mut list_by_key = Vec::<(Arc<PrvKeyDataInfo>, Vec<(usize, Arc<runtime::Account>)>)>::new();
-    let mut flat_list = Vec::<Arc<runtime::Account>>::new();
-
-    let mut keys = wallet.keys().await?;
-    while let Some(key) = keys.try_next().await? {
-        let mut prv_key_accounts = Vec::new();
-        let mut accounts = wallet.accounts(Some(key.id)).await?;
-        while let Some(account) = accounts.next().await {
-            let account = account?;
-            prv_key_accounts.push((flat_list.len(), account.clone()));
-            flat_list.push(account.clone());
-        }
-
-        list_by_key.push((key.clone(), prv_key_accounts));
-    }
-
-    while selection.is_none() {
-        list_by_key.iter().for_each(|(prv_key_data_info, accounts)| {
-            term.writeln(format!("{prv_key_data_info}"));
-
-            accounts.iter().for_each(|(seq, account)| {
-                term.writeln(format!("    {seq}: {}", account.get_ls_string().unwrap_or_else(|err| panic!("{err}"))));
-            })
-        });
-
-        let text = term
-            .ask(false, &format!("Please select account ({}..{}) or <enter> to abort: ", 0, flat_list.len() - 1))
-            .await?
-            .trim()
-            .to_string();
-        if text.is_empty() {
-            term.writeln("aborting...");
-            return Err(Error::UserAbort);
-        } else {
-            match text.parse::<usize>() {
-                Ok(seq) if seq < flat_list.len() => selection = flat_list.get(seq).cloned(),
-                _ => {}
-            };
-        }
-    }
-
-    Ok(selection.unwrap())
-}
 
 #[allow(dead_code)]
 async fn select_item<T>(
@@ -988,7 +1089,7 @@ where
 
     while selection.is_none() {
         list.iter().enumerate().for_each(|(seq, item)| {
-            term.writeln(format!("{}: {} ({})", seq + 1, item, item.id().to_hex()));
+            term.writeln(format!("{}: {} ({})", seq, item, item.id().to_hex()));
         });
 
         let text = term.ask(false, &format!("{prompt} ({}..{}) or <enter> to abort: ", 0, list.len() - 1)).await?.trim().to_string();
@@ -996,14 +1097,10 @@ where
             term.writeln("aborting...");
             return Err(Error::UserAbort);
         } else {
-            // if let Ok(v) = serde_json::from_str::<T>(text.as_str()) {
-            //     selection = Some(v);
-            // } else {
             match text.parse::<usize>() {
-                Ok(seq) if seq > 0 && seq < list.len() => selection = list.get(seq).cloned(),
+                Ok(seq) if seq < list.len() => selection = list.get(seq).cloned(),
                 _ => {}
             };
-            // }
         }
     }
 
@@ -1049,38 +1146,29 @@ where
 //     Ok(selection.unwrap())
 // }
 
-// cfg_if! {
-//     if #[cfg(not(target_arch = "wasm32"))] {
-//         use std::{panic, process};
-
-//         // configure custom panic hook that disables terminal raw mode
-//         fn init_panic_hook() {
-//             let default_hook = panic::take_hook();
-//             panic::set_hook(Box::new(move |panic_info| {
-//                 workflow_terminal::disable_raw_mode().ok();
-//                 default_hook(panic_info);
-//                 println!("halt...");
-//                 process::exit(1);
-//             }));
-//         }
-//     }
-// }
+static mut TERMINAL: Option<Arc<Terminal>> = None;
 
 pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     cfg_if! {
         if #[cfg(not(target_arch = "wasm32"))] {
             init_panic_hook(||{
-                println!("halt");
+                std::println!("halt");
                 1
             });
             kaspa_core::log::init_logger(None, "info");
         }
     }
 
+    workflow_log::set_colors_enabled(true);
+
     let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None)?);
     let cli = Arc::new(WalletCli::new(wallet.clone()));
     let term = Arc::new(Terminal::try_new_with_options(cli.clone(), options)?);
     term.init().await?;
+
+    unsafe {
+        TERMINAL = Some(term.clone());
+    }
 
     // redirect the global log output to terminal
     #[cfg(not(target_arch = "wasm32"))]
@@ -1098,5 +1186,10 @@ pub async fn kaspa_wallet_cli(options: TerminalOptions) -> Result<()> {
     wallet.stop().await?;
     // cli stops notification->term trace pipe task
     cli.stop().await?;
+
+    unsafe {
+        TERMINAL = None;
+    }
+
     Ok(())
 }

@@ -1,4 +1,5 @@
 use crate::imports::*;
+use crate::storage::Hint;
 use crate::utxo;
 
 #[derive(Clone, Debug, Serialize)]
@@ -8,6 +9,9 @@ pub enum Events {
     Connect(String),
     Disconnect(String),
     UtxoIndexNotEnabled,
+    WalletHasLoaded {
+        hint: Option<Hint>,
+    },
     ServerStatus {
         #[serde(rename = "serverVersion")]
         server_version: String,

@@ -194,6 +194,10 @@ impl Wallet {
         &self.inner.utxo_processor
     }
 
+    pub fn name(&self) -> Option<String> {
+        self.store().name()
+    }
+
     pub fn store(&self) -> &Arc<dyn Interface> {
         &self.inner.store
     }
@@ -203,7 +207,7 @@ impl Wallet {
     }
 
     pub async fn reset(&self) -> Result<()> {
-        log_info!("**** WALLET RESET ****");
+        // log_info!("**** WALLET RESET ****");
         let accounts = self.inner.active_accounts.cloned_flat_list();
         let futures = accounts.iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
@@ -220,14 +224,23 @@ impl Wallet {
 
         // TODO - parallelize?
         if self.is_open()? {
-            log_info!("reloading accounts...");
+            // log_info!("reloading accounts...");
             let mut accounts = self.accounts(None).await?;
             while let Some(account) = accounts.try_next().await? {
                 account.start().await?;
                 // TODO - parallelize?
             }
+
+            let hint = self.store().get_user_hint().await?;
+            self.notify(Events::WalletHasLoaded { hint }).await?;
         }
 
+        Ok(())
+    }
+
+    pub async fn close(self: &Arc<Wallet>) -> Result<()> {
+        self.reset().await?;
+        self.store().close().await?;
         Ok(())
     }
 
@@ -237,7 +250,7 @@ impl Wallet {
 
         let name = name.or_else(|| self.settings().get(Settings::Wallet));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
-        self.store().open(&ctx, OpenArgs::new(name)).await?;
+        self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
         let store_accounts = self.store().as_account_store()?;
         let mut iter = store_accounts.iter(None).await?;
 
@@ -245,6 +258,9 @@ impl Wallet {
             let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
             account.start().await?;
         }
+
+        let hint = self.store().get_user_hint().await?;
+        self.notify(Events::WalletHasLoaded { hint }).await?;
 
         Ok(())
     }
@@ -444,9 +460,7 @@ impl Wallet {
         account_storage.store(&[&stored_account]).await?;
         self.inner.store.clone().commit(&ctx).await?;
         let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
-
-        // - TODO autoload ???
-        // account.start().await?;
+        account.start().await?;
 
         Ok(account)
     }
@@ -517,7 +531,7 @@ impl Wallet {
         self.inner.store.commit(&ctx).await?;
 
         let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
-        self.select(Some(account.clone())).await?;
+        self.select(Some(&account)).await?;
 
         Ok((mnemonic, descriptor, account))
     }
@@ -526,10 +540,10 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn select(self: &Arc<Self>, account: Option<Arc<Account>>) -> Result<()> {
-        *self.inner.selected_account.lock().unwrap() = account.clone();
+    pub async fn select(self: &Arc<Self>, account: Option<&Arc<Account>>) -> Result<()> {
+        *self.inner.selected_account.lock().unwrap() = account.cloned();
         if let Some(account) = account {
-            log_info!("selecting account: {}", account.name_or_id());
+            // log_info!("selecting account: {}", account.name_or_id());
             account.start().await?;
         }
         Ok(())
@@ -759,7 +773,7 @@ impl Wallet {
     }
 
     pub async fn keys(&self) -> Result<impl Stream<Item = Result<Arc<PrvKeyDataInfo>>>> {
-        self.inner.store.as_prv_key_data_store().unwrap().iter().await
+        self.inner.store.as_prv_key_data_store()?.iter().await
     }
 
     pub async fn accounts(self: &Arc<Self>, filter: Option<PrvKeyDataId>) -> Result<impl Stream<Item = Result<Arc<Account>>>> {

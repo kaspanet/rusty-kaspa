@@ -332,7 +332,12 @@ impl PrvKeyDataInfo {
 
 impl Display for PrvKeyDataInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} ({})", self.name.as_ref().unwrap_or(&"-".to_string()), self.id.to_hex())
+        if let Some(name) = &self.name {
+            write!(f, "{} ({})", name, self.id.to_hex())?;
+        } else {
+            write!(f, "{}", self.id.to_hex())?;
+        }
+        Ok(())
     }
 }
 

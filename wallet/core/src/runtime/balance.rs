@@ -91,14 +91,14 @@ impl From<(&Option<Balance>, &NetworkType, Option<usize>)> for BalanceStrings {
         let suffix = utils::kaspa_suffix(network_type);
         if let Some(balance) = balance {
             let mut mature = utils::sompi_to_kaspa_string(balance.mature);
-            let mut pending = utils::sompi_to_kaspa_string(balance.pending);
+            let mut pending = if balance.pending > 0 { Some(utils::sompi_to_kaspa_string(balance.pending)) } else { None };
             if let Some(padding) = padding {
                 mature = mature.pad_to_width(padding);
-                pending = pending.pad_to_width(padding);
+                pending = pending.map(|pending| pending.pad_to_width(padding));
             }
             Self {
                 mature: format!("{} {}", balance.mature_delta.style(&mature), suffix),
-                pending: Some(format!("{} {}", balance.pending_delta.style(&pending), suffix)),
+                pending: pending.map(|pending| format!("{} {}", balance.pending_delta.style(&pending), suffix)),
             }
         } else {
             Self { mature: format!("N/A {suffix}"), pending: None }

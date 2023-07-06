@@ -34,6 +34,8 @@ pub enum Action {
     Close,
     #[describe("List wallet accounts")]
     List,
+    #[describe("Name (wallet|account) [<name>]")]
+    Name,
     #[describe("Select an account")]
     Select,
     #[describe("?Ping server (testing)")]

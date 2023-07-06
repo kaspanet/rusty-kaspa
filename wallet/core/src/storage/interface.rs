@@ -110,6 +110,9 @@ pub trait Interface: Send + Sync + AnySync {
     /// return storage information string (file location)
     fn descriptor(&self) -> Result<Option<String>>;
 
+    /// returns the name of the currently open wallet or none
+    fn name(&self) -> Option<String>;
+
     /// checks if the wallet storage is present
     async fn exists(&self, name: Option<&str>) -> Result<bool>;
 
