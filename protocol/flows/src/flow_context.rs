@@ -30,7 +30,7 @@ use kaspa_p2p_lib::{
     ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
 };
 use kaspa_utils::iter::IterExtensions;
-use kaspa_utils::networking::{PeerId, NetAddress};
+use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
 use std::{
     collections::HashSet,
@@ -452,11 +452,9 @@ impl ConnectionInitializer for FlowContext {
 
         let mut local_address = None;
     
-        match self.config.externalip {
+        match self.address_manager.lock().best_local_address() {
             None => {},
-            Some(externalip) => {
-                // TODO: Check if the port logic I'm using is correct
-                let local_net_address = NetAddress::new(externalip, self.config.default_p2p_port());
+            Some(local_net_address) => {
                 info!("Local node is using {} for P2P", local_net_address);
                 local_address = Some(local_net_address);
             },

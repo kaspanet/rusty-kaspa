@@ -6,6 +6,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use itertools::Itertools;
 use kaspa_core::{debug, time::unix_now};
+use kaspa_consensus_core::config::Config;
 use kaspa_database::prelude::{StoreResultExtensions, DB};
 use kaspa_utils::networking::IpAddress;
 use parking_lot::Mutex;
@@ -20,14 +21,55 @@ const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
 pub struct AddressManager {
     banned_address_store: DbBannedAddressesStore,
     address_store: address_store_with_cache::Store,
+    config: Arc<Config>,
+    local_net_addresses: Vec<NetAddress>,
 }
 
 impl AddressManager {
-    pub fn new(db: Arc<DB>) -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Self {
+    pub fn new(config: Arc<Config>, db: Arc<DB>) -> Arc<Mutex<Self>> {
+        // TODO: do the things that local_address_manager would do here
+        let mut instance = Self {
             banned_address_store: DbBannedAddressesStore::new(db.clone(), MAX_ADDRESSES as u64),
             address_store: address_store_with_cache::new(db),
-        }))
+            local_net_addresses: Vec::new(),
+            config,
+        };
+
+        instance.init_local_addresses();
+
+        Arc::new(Mutex::new(instance))
+    }
+
+    fn init_local_addresses(&mut self) {
+        match self.config.externalip {
+            Some(local_net_address) => {
+                // An external IP was passed, we will try to bind that if it's valid
+                // TODO: Validate that we can actually use this:
+                self.local_net_addresses.push(NetAddress { ip: local_net_address, port: self.config.default_p2p_port() });
+            }
+            None => {
+                // TODO: If localNetAddress === 0.0.0.0, bind all interfaces
+                // else, bind whatever was passed
+                let listen_address = self.config.listen.normalize(self.config.default_p2p_port());
+
+                if listen_address.ip.is_unspecified() {
+                    // TODO: getaddrs here, add routable ones to local
+                } else {
+                    // TODO: We were passed an actual address. If it's routable, try to add it in
+                }
+            }
+        }
+    }
+
+    pub fn best_local_address(&mut self) -> Option<NetAddress> {
+        if self.local_net_addresses.len() == 0 {
+            None
+        } else {
+            // TODO: Add logic for finding the best.
+            // for now, putting in stub that allows it to work if externalip
+            // is passed
+            Some(self.local_net_addresses[0])
+        }
     }
 
     pub fn add_address(&mut self, address: NetAddress) {
