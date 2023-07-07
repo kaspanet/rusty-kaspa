@@ -204,7 +204,7 @@ mod address_store_with_cache {
 
             // Divide weights by size of bucket of the prefix bytes, to normalize distribution over global network.
             for (i, address) in filtered_addresses.iter().enumerate() {
-                weights[i] = weights[i] / (*prefix_counter.get_mut(&address.prefix_bytes()).unwrap() as f64);
+                *weights.get_mut(i).unwrap() /= *prefix_counter.get_mut(&address.prefix_bytes()).unwrap() as f64;
             }
 
             RandomWeightedIterator::new(weights, filtered_addresses)
@@ -229,13 +229,16 @@ mod address_store_with_cache {
 
     impl RandomWeightedIterator {
         pub fn new(weights: Vec<f64>, addresses: Vec<NetAddress>) -> Self {
+            println!("{0:?}", weights.len());
             assert_eq!(weights.len(), addresses.len());
+            println!("{0:?}", weights);
             let remaining = weights.iter().filter(|&&w| w > 0.0).count();
             let weighted_index = match WeightedIndex::new(weights) {
                 Ok(index) => Some(index),
                 Err(WeightedError::NoItem) => None,
                 Err(e) => panic!("{e}"),
             };
+            println!("{0:?}", remaining);
             Self { weighted_index, remaining, addresses }
         }
     }
@@ -253,6 +256,7 @@ mod address_store_with_cache {
                     Err(e) => panic!("{e}"),
                 }
                 self.remaining -= 1;
+                println!("{0:?}", self.remaining);
                 Some(self.addresses[i])
             } else {
                 None
@@ -273,8 +277,11 @@ mod address_store_with_cache {
         use ipgen::{ip, IpNetwork};
         use kaspa_database::utils::create_temp_db;
         use kaspa_utils::networking::IpAddress;
-        use statest::ttest::{ttest1, Side, UPLO};
-        use std::net::{IpAddr, Ipv6Addr};
+        use statest::ttest::{ttest1, Side, TTest, UPLO};
+        use std::{
+            net::{IpAddr, Ipv6Addr},
+            str::FromStr,
+        };
 
         #[test]
         fn test_weighted_iterator() {
@@ -290,68 +297,71 @@ mod address_store_with_cache {
 
         #[test]
         fn test_network_distribution_weighting() {
-            let addresses = vec![
-                // 12 addresses with 0x01, 0x01 as prefix bytes
-                ip("a", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("b", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("c", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("d", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("e", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("f", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("g", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("h", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("i", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("j", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("k", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("l", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("m", "1.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                // 6 addresses with 0x01, 0x02 as prefix bytes
-                ip("n", "1.2.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("o", "1.2.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("p", "1.2.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("q", "1.2.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("r", "1.2.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("s", "1.2.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                // 3 addresses with 0x02, 0x01 as prefix bytes
-                ip("w", "2.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("x", "2.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                ip("y", "2.1.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
-                // 1 address with 0x02, 0x02 as prefix bytes
-                ip("z", "2.2.0.0/16".parse::<IpNetwork>().unwrap()).unwrap(),
+            // We need a large sample size for reliability of this test.
+            // Corresponds to: (num_of_addresses, t-test value, ip prefix)
+            let address_distribution = vec![
+                (128, "0.0"),
+                (64, "0.1"),
+                (32, "1.0"),
+                (16, "1.1"),
+                (8, "1.2"),
+                (4, "2.0"),
+                (2, "2.1"),
             ];
+
             let db = create_temp_db();
             let am = AddressManager::new(db.1);
-            addresses.iter().for_each(|address| am.lock().add_address(NetAddress { ip: IpAddress::new(*address), port: 16111}));
+            let mut a = 0;
+            let mut b = 0;
+            let mut am_guard = am.lock();
+            for (i, (num_in_bucket, prefix_bytes)) in address_distribution.iter().enumerate() {
+                a += num_in_bucket;
+                for j in 0..(*num_in_bucket as usize) {
+                    b += 1;
+                    am_guard.add_address(NetAddress::new(IpAddress::from_str(format!("{}.{}.{}", *prefix_bytes, i, j).as_str()).unwrap(), 16111));
+                };
+            }
+            println!("{0:?}, {1:?}", a, b);
+            drop(am_guard);
 
             let execptions = HashSet::new();
             let selected_addresses = am.lock().iterate_prioritized_random_addresses(execptions).collect_vec();
-            assert_eq!(selected_addresses.len(), addresses.len());
+
+            let dist_selected = selected_addresses
+                .into_iter()
+                .map(|address| {
+                    let prefix_bytes = address.prefix_bytes();
+                    let ord = match prefix_bytes[0] {
+                        0 => match prefix_bytes[1] {
+                            0 => 1.0,
+                            1 => 2.0,
+                            _ => panic!("unexpected byte"),
+                        },
+                        1 => match prefix_bytes[1] {
+                            0 => 3.0,
+                            1 => 4.0,
+                            2 => 5.0,
+                            _ => panic!("unexpected byte"),
+                        },
+                        2 => match prefix_bytes[1] {
+                            0 => 6.0,
+                            1 => 7.0,
+                            _ => panic!("unexpected byte"),
+                        },
+                        _ => panic!("unexpected byte"),
+                    };
+                    ord
+                })
+                .collect_vec();
             
-            // Set-up for T-test
-            let mut mean: f64 = 0.0;
-
-            let dist_selected = selected_addresses.into_iter().map(|address| {
-                let prefix_bytes = address.prefix_bytes();
-                let ord = match prefix_bytes[0] {
-                    1 => match prefix_bytes[1] {
-                        1 => 0.0,
-                        2 => 1.0,
-                        _ => panic!("unexpected byte"),
-                    },
-                    2 => match prefix_bytes[1] {
-                        1 => 2.0,
-                        2 => 3.0,
-                        _ => panic!("unexpected byte"),
-                    },
-                    _ => panic!("unexpected byte"),
-                };
-                mean += ord;
-                ord
-            }).collect_vec();
-
-            // assert overall mean deviates significantly from first half of weighted addresses.
-            assert!(ttest1(&dist_selected.as_slice()[0..addresses.len()], mean, 0.05, Side::One(UPLO::Upper)));
-      
+            let higher_half = &dist_selected.as_slice()[0..(dist_selected.len() / 2)];
+            println!("{0:?}", higher_half);
+            let mean = (dist_selected.iter().sum::<f64>()) / (dist_selected.len() as f64);
+            
+            assert!(ttest1(higher_half, mean, 0.05, Side::One(UPLO::Lower)));
+            
+            drop(am);
+            drop(db.0);
         }
     }
 }
