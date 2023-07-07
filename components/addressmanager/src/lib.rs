@@ -190,14 +190,24 @@ mod address_store_with_cache {
             exceptions: HashSet<NetAddress>,
         ) -> impl ExactSizeIterator<Item = NetAddress> {
             let exceptions: HashSet<AddressKey> = exceptions.into_iter().map(|addr| addr.into()).collect();
-            let (weights, addresses) = self
+            let mut prefix_counter: HashMap<Vec<u8>, usize> = HashMap::new();
+            let (mut weights, filtered_addresses): (Vec<f64>, Vec<NetAddress>) = self
                 .addresses
                 .iter()
                 .filter(|(addr_key, _)| !exceptions.contains(addr_key))
-                .map(|(_, e)| (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), e.address))
+                .map(|(_, e)| {
+                    let count = prefix_counter.entry(e.address.clone().prefix_bytes()).or_insert(0);
+                    *count += 1;
+                    (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), e.address)
+                })
                 .unzip();
 
-            RandomWeightedIterator::new(weights, addresses)
+            // divide weights by number routing prefix, and subnetwork bytes to normalize distribution over network
+            for (i, address) in filtered_addresses.iter().enumerate() {
+                weights[i] = weights[i] / (*prefix_counter.get_mut(&address.prefix_bytes()).unwrap() as f64);
+            }
+
+            RandomWeightedIterator::new(weights, filtered_addresses)
         }
 
         pub fn remove_by_ip(&mut self, ip: IpAddr) {
@@ -227,6 +237,10 @@ mod address_store_with_cache {
                 Err(e) => panic!("{e}"),
             };
             Self { weighted_index, remaining, addresses }
+        }
+
+        pub fn update_weights(&mut self, new_weights: &[(usize, &X)]) {
+            self.weighted_index.unwrap().update_weights(new_weights)
         }
     }
 
@@ -259,6 +273,7 @@ mod address_store_with_cache {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use ipgen::{ip, IpNetwork, subnet};
         use std::net::{IpAddr, Ipv6Addr};
 
         #[test]
@@ -271,6 +286,23 @@ mod address_store_with_cache {
             let iter = RandomWeightedIterator::new(vec![], vec![]);
             assert_eq!(iter.len(), 0);
             assert_eq!(iter.count(), 0);
+        }
+
+        #[test]
+        fn test_network_distribution_weighting() {
+            let addresses = vec![
+                ip("a", subnet("a").unwrap()).unwrap(),
+                ip("a", subnet("b").unwrap()).unwrap(),
+                ip("a", subnet("c").unwrap()).unwrap(),
+                ip("a", subnet("d").unwrap()).unwrap(),
+                ip("a", subnet("e").unwrap()).unwrap(),
+                ip("a", subnet("f").unwrap()).unwrap(),
+                ip("b", subnet("a").unwrap()).unwrap(),
+                ip("b", subnet("b").unwrap()).unwrap(),
+                ip("b", subnet("c").unwrap()).unwrap(),
+                ip("c", subnet("a").unwrap()).unwrap(),
+            ];
+            println!("{0:?}", addresses);
         }
     }
 }

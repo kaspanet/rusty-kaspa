@@ -17,6 +17,21 @@ impl IpAddress {
     pub fn new(ip: IpAddr) -> Self {
         Self(ip)
     }
+
+    pub fn prefix_bytes(&self) -> Vec<u8> {
+        match self.0 {
+            IpAddr::V4(ipv4) => ipv4.octets().as_slice()[0..2].to_owned(),
+            IpAddr::V6(ipv6) => {
+                if let Some(ipv4) = ipv6.to_ipv4() {
+                    // Try and normalize prefix bytes to ipv4
+                    ipv4.octets().as_slice()[0..2].to_owned()
+                } else {
+                    // Else use first 8 bytes (routing prefix + subnetwork id) of ipv6
+                    ipv6.octets().as_slice()[0..8].to_owned()
+                }
+            }
+        }
+    }
 }
 impl From<IpAddr> for IpAddress {
     fn from(ip: IpAddr) -> Self {
@@ -133,6 +148,10 @@ pub struct NetAddress {
 impl NetAddress {
     pub fn new(ip: IpAddress, port: u16) -> Self {
         Self { ip, port }
+    }
+
+    pub fn prefix_bytes(&self) -> Vec<u8> {
+        self.ip.prefix_bytes()
     }
 }
 
