@@ -202,7 +202,7 @@ mod address_store_with_cache {
                 })
                 .unzip();
 
-            // divide weights by number routing prefix, and subnetwork bytes to normalize distribution over network
+            // Divide weights by size of bucket of the prefix bytes, to normalize distribution over global network.
             for (i, address) in filtered_addresses.iter().enumerate() {
                 weights[i] = weights[i] / (*prefix_counter.get_mut(&address.prefix_bytes()).unwrap() as f64);
             }
