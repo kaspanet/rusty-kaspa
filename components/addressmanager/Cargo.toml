@@ -20,3 +20,4 @@ log.workspace = true
 
 [dev-dependencies]
 ipgen = "1.0.2"
+statest = "0.2.2"
