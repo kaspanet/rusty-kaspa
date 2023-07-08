@@ -18,3 +18,4 @@ rand.workspace = true
 parking_lot.workspace = true
 borsh.workspace = true
 log.workspace = true
+getaddrs.workspace = true

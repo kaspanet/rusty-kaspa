@@ -17,6 +17,11 @@ impl IpAddress {
     pub fn new(ip: IpAddr) -> Self {
         Self(ip)
     }
+
+    pub fn is_publicly_routable(&self) -> bool {
+        // TODO: return true if this is routable over the internet
+        false
+    }
 }
 impl From<IpAddr> for IpAddress {
     fn from(ip: IpAddr) -> Self {
