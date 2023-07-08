@@ -1,6 +1,5 @@
 use crate::error::Error;
 use crate::result::Result;
-// use kaspa_wallet_core::{account::Account, Wallet};
 use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
 use std::sync::Arc;
 use workflow_terminal::Terminal;

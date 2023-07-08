@@ -1,8 +1,6 @@
 extern crate self as kaspa_cli;
 
-mod actions;
 mod cli;
-mod context;
 pub mod error;
 mod helpers;
 mod imports;
