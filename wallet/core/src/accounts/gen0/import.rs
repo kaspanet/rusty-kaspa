@@ -134,7 +134,7 @@ struct Envelope {
     pub wallet: Wallet,
 }
 
-fn v0_keydata_location() -> Result<(PathBuf, Options)> {
+fn legacy_v0_keydata_location() -> Result<(PathBuf, Options)> {
     let filename = if runtime::is_windows() {
         let appdata = env::var("APPDATA")?;
         fs::resolve_path(&format!("{appdata}/Kaspa/kaspa.kpk"))
@@ -149,13 +149,13 @@ fn v0_keydata_location() -> Result<(PathBuf, Options)> {
     Ok((filename, options))
 }
 
-pub async fn exists_v0_keydata() -> Result<bool> {
-    let (filename, options) = v0_keydata_location()?;
+pub async fn exists_legacy_v0_keydata() -> Result<bool> {
+    let (filename, options) = legacy_v0_keydata_location()?;
     Ok(exists_with_options(&filename, options).await?)
 }
 
 pub async fn load_v0_keydata(phrase: &Secret) -> Result<PrivateKeyDataV0> {
-    let (filename, options) = v0_keydata_location()?;
+    let (filename, options) = legacy_v0_keydata_location()?;
 
     let wallet = if runtime::is_web() {
         read_json_with_options::<Wallet>(&filename, options).await?

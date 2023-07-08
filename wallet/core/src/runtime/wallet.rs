@@ -275,7 +275,7 @@ impl Wallet {
     }
 
     pub async fn is_account_key_encrypted(&self, account: &Account) -> Result<Option<bool>> {
-        Ok(self.get_prv_key_info(account).await?.map(|info| info.is_encrypted))
+        Ok(self.get_prv_key_info(account).await?.map(|info| info.is_encrypted()))
     }
 
     pub fn rpc_client(&self) -> Arc<KaspaRpcClient> {

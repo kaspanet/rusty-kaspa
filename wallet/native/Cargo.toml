@@ -8,7 +8,7 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-wallet-cli.workspace = true
+kaspa-cli.workspace = true
 workflow-terminal.workspace = true
 workflow-log.workspace = true
 async-std.workspace = true

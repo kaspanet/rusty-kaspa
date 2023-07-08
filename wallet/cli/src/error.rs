@@ -1,3 +1,4 @@
+use downcast::DowncastError;
 use kaspa_wallet_core::error::Error as WalletError;
 use workflow_core::channel::ChannelError;
 use workflow_terminal::error::Error as TerminalError;
@@ -17,12 +18,10 @@ pub enum Error {
 
     #[error("Cli error {0}")]
     TerminalError(#[from] TerminalError),
-    // #[error("RPC error: {0}")]
-    // RpcError(#[from] RpcError),
+
     #[error("Channel error")]
     ChannelError(String),
-    // #[error("Channel error")]
-    // ChannelError(String),
+
     #[error(transparent)]
     WrpcError(#[from] kaspa_wrpc_client::error::Error),
 
@@ -73,6 +72,12 @@ pub enum Error {
 
     #[error("no accounts found, please create an account to continue")]
     NoAccounts,
+
+    #[error(transparent)]
+    AddressError(#[from] kaspa_addresses::AddressError),
+
+    #[error("{0}")]
+    DowncastError(String),
 }
 
 impl Error {
@@ -83,7 +88,7 @@ impl Error {
 
 impl From<Error> for TerminalError {
     fn from(e: Error) -> TerminalError {
-        TerminalError::String(e.to_string())
+        TerminalError::Custom(e.to_string())
     }
 }
 
@@ -102,5 +107,11 @@ impl From<String> for Error {
 impl From<&str> for Error {
     fn from(err: &str) -> Self {
         Self::Custom(err.to_string())
+    }
+}
+
+impl<T> From<DowncastError<T>> for Error {
+    fn from(e: DowncastError<T>) -> Self {
+        Error::DowncastError(e.to_string())
     }
 }

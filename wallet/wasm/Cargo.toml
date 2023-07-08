@@ -11,8 +11,7 @@ license.workspace = true
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-kaspa-wallet-cli.workspace = true
-
+kaspa-cli.workspace = true
 workflow-terminal.workspace = true
 workflow-log.workspace = true
 async-trait.workspace = true

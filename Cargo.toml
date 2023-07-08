@@ -10,6 +10,7 @@ members = [
     "consensus/core",
     "consensus/notify",
     "consensus/pow",
+    "kassiopeya",
     "kaspad",
     "simpa",
     "wasm",
@@ -67,6 +68,7 @@ include = [
 
 [workspace.dependencies]
 # kaspa-testing-integration = { version = "0.1.2", path = "testing/integration" }
+kassiopeya = { version = "0.1.6", path = "kassiopeya" }
 kaspa-addresses = { version = "0.1.6", path = "crypto/addresses" }
 kaspa-addressmanager = { version = "0.1.6", path = "components/addressmanager" }
 kaspa-bip32 = { version = "0.1.6", path = "wallet/bip32" }
@@ -100,7 +102,7 @@ kaspa-txscript-errors = { version = "0.1.6", path = "crypto/txscript/errors" }
 kaspa-utils = { version = "0.1.6", path = "utils" }
 kaspa-utxoindex = { version = "0.1.6", path = "indexes/utxoindex" }
 kaspa-wallet = { version = "0.1.6", path = "wallet/native" }
-kaspa-wallet-cli = { version = "0.1.6", path = "wallet/cli" }
+kaspa-cli = { version = "0.1.6", path = "wallet/cli" }
 kaspa-wallet-cli-wasm = { version = "0.1.6", path = "wallet/wasm" }
 kaspa-wallet-core = { version = "0.1.6", path = "wallet/core" }
 kaspa-wasm = { version = "0.1.6", path = "wasm" }
@@ -172,6 +174,7 @@ textwrap = "0.16"
 sorted-insert = "0.2.3"
 dashmap = "5.4.0"
 separator = "0.4.1"
+nw-sys = "0.1.2"
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }
@@ -187,6 +190,7 @@ pbkdf2 = { version = "0.12.1" }
 # pbkdf2 = { version = "0.11", default-features = false}
 
 # workflow dependencies
+# workflow-nw = { version = "0.3.17" }
 # workflow-log = { version = "0.3.17" }
 # workflow-core = { version = "0.3.17" }
 # workflow-wasm = { version = "0.3.17" }
@@ -196,6 +200,7 @@ pbkdf2 = { version = "0.12.1" }
 # workflow-store = { version = "0.3.17" }
 # workflow-terminal = { version = "0.3.17" }
 
+workflow-nw = { path = "../workflow-rs/nw" }
 workflow-log = { path = "../workflow-rs/log" }
 workflow-core = { path = "../workflow-rs/core" }
 workflow-wasm = { path = "../workflow-rs/wasm" }

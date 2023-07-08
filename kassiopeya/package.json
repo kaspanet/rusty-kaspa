@@ -1,0 +1,6 @@
+{
+  "name": "kassiopeya",
+  "main": "index.js",
+  "description": "Kaspa Desktop Node",
+  "version": "0.1.0"
+}

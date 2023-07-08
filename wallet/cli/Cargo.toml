@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-wallet-cli"
-description = "Kaspa CLI wallet library"
+name = "kaspa-cli"
+description = "Kaspa CLI library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -29,3 +29,5 @@ kaspa-consensus-core.workspace = true
 textwrap.workspace = true
 kaspa-core.workspace = true
 separator.workspace = true
+kaspa-addresses.workspace = true
+downcast.workspace = true

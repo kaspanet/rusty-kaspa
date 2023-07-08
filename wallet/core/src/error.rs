@@ -105,7 +105,7 @@ pub enum Error {
     #[error("FasterHex -> {0:?}")]
     FasterHexError(#[from] FasterHexError),
 
-    #[error("{0}")]
+    #[error("data decryption error (chacha20poly1305 -> {0})")]
     Chacha20poly1305(chacha20poly1305::Error),
 
     #[error(transparent)]

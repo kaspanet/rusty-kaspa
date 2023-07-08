@@ -1,5 +1,7 @@
+use crate::error::Error;
 use crate::result::Result;
 // use kaspa_wallet_core::{account::Account, Wallet};
+use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
 use std::sync::Arc;
 use workflow_terminal::Terminal;
 
@@ -19,7 +21,7 @@ pub async fn ask_mnemonic(term: &Arc<Terminal>) -> Result<Vec<String>> {
         let text = term.ask(false, "Words:").await?;
         let list = text.split_whitespace().map(|s| s.to_string()).collect::<Vec<String>>();
         if list.is_empty() {
-            return Err("User abort".into());
+            return Err(Error::UserAbort);
         }
         words.extend(list);
 
@@ -41,8 +43,7 @@ pub fn kas_str_to_sompi(amount: &str) -> Result<u64> {
         return Ok(0);
     }
 
-    let mut amount = amount.parse::<f64>()?;
-    amount *= kaspa_consensus_core::constants::SOMPI_PER_KASPA as f64;
+    let amount = amount.parse::<f64>()? * SOMPI_PER_KASPA as f64;
     Ok(amount as u64)
 }
 

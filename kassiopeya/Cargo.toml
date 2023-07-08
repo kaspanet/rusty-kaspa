@@ -1,0 +1,38 @@
+
+[package]
+name = "kassiopeya"
+description = "Kaspa Desktop Node Manager & Wallet"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+js-sys.workspace = true
+kaspa-cli.workspace = true
+nw-sys.workspace = true
+wasm-bindgen.workspace = true
+workflow-dom.workspace = true
+workflow-log.workspace = true
+workflow-nw.workspace = true
+workflow-wasm.workspace = true
+workflow-terminal.workspace = true
+wasm-bindgen-futures.workspace = true
+thiserror.workspace = true
+cfg-if.workspace = true
+
+[dependencies.web-sys]
+workspace = true
+features = [
+    'console',
+    'Document',
+    'Window',
+    'HtmlElement',
+    'CustomEvent',
+    'MouseEvent'
+]
+
