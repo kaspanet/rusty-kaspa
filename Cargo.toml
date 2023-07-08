@@ -1,8 +1,8 @@
 [workspace]
 members = [
+    "cli",
     "core",
     "wallet/core",
-    "wallet/cli",
     "wallet/native",
     "wallet/wasm",
     "wallet/bip32",
@@ -102,7 +102,7 @@ kaspa-txscript-errors = { version = "0.1.6", path = "crypto/txscript/errors" }
 kaspa-utils = { version = "0.1.6", path = "utils" }
 kaspa-utxoindex = { version = "0.1.6", path = "indexes/utxoindex" }
 kaspa-wallet = { version = "0.1.6", path = "wallet/native" }
-kaspa-cli = { version = "0.1.6", path = "wallet/cli" }
+kaspa-cli = { version = "0.1.6", path = "cli" }
 kaspa-wallet-cli-wasm = { version = "0.1.6", path = "wallet/wasm" }
 kaspa-wallet-core = { version = "0.1.6", path = "wallet/core" }
 kaspa-wasm = { version = "0.1.6", path = "wasm" }
