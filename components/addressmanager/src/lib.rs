@@ -321,7 +321,7 @@ mod address_store_with_cache {
                 .into_iter()
                 .map(|address| {
                     let prefix_bytes = address.prefix_bytes();
-                    let ord = match prefix_bytes[0] {
+                    match prefix_bytes[0] {
                         0 => match prefix_bytes[1] {
                             0 => 1.0,
                             1 => 2.0,
@@ -340,8 +340,7 @@ mod address_store_with_cache {
                             _ => panic!("unexpected byte"),
                         },
                         _ => panic!("unexpected byte"),
-                    };
-                    ord
+                    }
                 })
                 .collect_vec();
 
