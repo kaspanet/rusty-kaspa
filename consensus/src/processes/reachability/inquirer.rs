@@ -70,8 +70,8 @@ pub fn delete_block(store: &mut (impl ReachabilityStore + ?Sized), block: Hash, 
         1. Find child index of block at parent
         2. Replace child with its children
         3. Update parent as new parent of children
-        4. Extend interval of first and last children as much as possible
-        5. For each block in the mergeset, find index of `block` in the future-covering-set and replace it with its children
+        4. For each block in the mergeset, find index of `block` in the future-covering-set and replace it with its children
+        5. Extend interval of first and last children as much as possible
         6. Delete block
     */
 
@@ -87,6 +87,16 @@ pub fn delete_block(store: &mut (impl ReachabilityStore + ?Sized), block: Hash, 
 
     for child in children.iter().copied() {
         store.set_parent(child, parent)?;
+    }
+
+    for merged_block in mergeset_iterator {
+        match binary_search_descendant(store, store.get_future_covering_set(merged_block)?.as_slice(), block)? {
+            SearchOutput::NotFound(_) => return Err(ReachabilityError::DataInconsistency),
+            SearchOutput::Found(hash, i) => {
+                debug_assert_eq!(hash, block);
+                store.replace_future_covering_item(merged_block, i, &children)?;
+            }
+        }
     }
 
     match children.len() {
@@ -111,16 +121,6 @@ pub fn delete_block(store: &mut (impl ReachabilityStore + ?Sized), block: Hash, 
             let last_child = children.last().copied().expect("len > 1");
             let last_interval = store.get_interval(last_child)?;
             store.set_interval(last_child, Interval::new(last_interval.start, interval.end))?;
-        }
-    }
-
-    for merged_block in mergeset_iterator {
-        match binary_search_descendant(store, store.get_future_covering_set(merged_block)?.as_slice(), block)? {
-            SearchOutput::NotFound(_) => return Err(ReachabilityError::DataInconsistency),
-            SearchOutput::Found(hash, i) => {
-                debug_assert_eq!(hash, block);
-                store.replace_future_covering_item(merged_block, i, &children)?;
-            }
         }
     }
 
