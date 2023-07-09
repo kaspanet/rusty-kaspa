@@ -235,7 +235,7 @@ impl<
                 current_gd.blue_score - step
             };
 
-            // Walk down currentHash's selected parent chain to the appropriate ancestor
+            // Walk down current's selected parent chain to the appropriate ancestor
             current = self.traversal_manager.lowest_chain_block_above_or_equal_to_blue_score(current, next_bs);
 
             // Double the distance between included hashes
