@@ -21,10 +21,10 @@ long = """
 exclude = [{ glob = ["{src/*,target/*,test/*,resources/setup/*,*.lock,*.toml,.git*}"] }]
 
 [node-webkit]
-version = "0.71.0"
+version = "0.77.0"
 ffmpeg = false
 
-[dmg]
+[macos-disk-image]
 # window = ["0,0,300,300"]
 # icon = ["0,0"]
 # applications = ["0,0"]
