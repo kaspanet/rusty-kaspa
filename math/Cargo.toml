@@ -18,8 +18,8 @@ serde-wasm-bindgen.workspace = true
 js-sys.workspace = true
 kaspa-utils.workspace = true
 thiserror.workspace = true
+workflow-core.workspace = true
 workflow-wasm.workspace = true
-
 workflow-log.workspace = true
 
 [dev-dependencies]

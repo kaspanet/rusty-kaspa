@@ -1,6 +1,6 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use wasm_bindgen::JsValue;
-use workflow_wasm::sendable::Sendable;
+use workflow_core::sendable::Sendable;
 
 pub mod int;
 pub mod uint;
