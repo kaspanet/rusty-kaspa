@@ -125,11 +125,10 @@ impl IbdFlow {
             }
         }
 
-        // Sync missing bodies in the past of syncer selected tip
-        self.sync_missing_block_bodies(&session, negotiation_output.syncer_header_selected_tip).await?;
-
-        // Relay block might be in the anticone of syncer selected tip, thus
-        // check its chain for missing bodies as well.
+        // We sync missing bodies only in the past of the relay block, since only for that we
+        // have a guarantee that syncer has full blocks (otherwise it wouldn't relay it). On
+        // the hand for `past(syncer_header_selected_tip)` we don't have this guarantee yet, so
+        // requesting such bodies might trigger a peer disconnect.
         self.sync_missing_block_bodies(&session, relay_block.hash()).await
     }
 
