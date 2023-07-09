@@ -116,7 +116,6 @@ impl WalletCli {
         let multiplexer = MultiplexerChannel::from(self.wallet.multiplexer());
 
         workflow_core::task::spawn(async move {
-
             loop {
                 select! {
 
@@ -271,7 +270,6 @@ impl WalletCli {
     // ---
 
     pub(crate) async fn create_wallet(&self, name: Option<&str>) -> Result<()> {
-
         let term = self.term();
 
         if self.wallet.exists(name).await? {
@@ -487,11 +485,11 @@ impl WalletCli {
             tprintln!(self);
 
             list_by_key.iter().for_each(|(prv_key_data_info, accounts)| {
-                tprintln!(self,"• {prv_key_data_info}");
+                tprintln!(self, "• {prv_key_data_info}");
 
                 accounts.iter().for_each(|(seq, account)| {
                     let seq = style(seq.to_string()).cyan();
-                    tprintln!(self,"    {seq}: {}", account.get_list_string().unwrap_or_else(|err| panic!("{err}")));
+                    tprintln!(self, "    {seq}: {}", account.get_list_string().unwrap_or_else(|err| panic!("{err}")));
                 })
             });
 
@@ -535,7 +533,6 @@ impl WalletCli {
 
         Ok(())
     }
-
 }
 
 #[async_trait]
@@ -675,6 +672,8 @@ pub async fn kaspa_cli(options: TerminalOptions, banner: Option<String>) -> Resu
                 1
             });
             kaspa_core::log::init_logger(None, "info");
+        } else {
+            kaspa_core::log::set_log_level(LevelFilter::Info);
         }
     }
 
@@ -732,6 +731,18 @@ pub async fn kaspa_cli(options: TerminalOptions, banner: Option<String>) -> Resu
             track,
         ]
     );
+
+    cfg_if! {
+        if #[cfg(target_arch = "wasm32")] {
+            register_handlers!(
+                cli,
+                cli.handlers,
+                [
+                    reload,
+                ]
+            );
+        }
+    }
 
     cli.handlers.start(&cli).await?;
 
