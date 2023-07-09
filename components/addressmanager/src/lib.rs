@@ -296,7 +296,7 @@ mod address_store_with_cache {
         #[test]
         fn test_network_distribution_weighting() {
             // We need a large sample size for reliability of this test.
-            // Tuple corresponds to: `(num_of_addresses, ip_prefix)` to be generated for the test. 
+            // Tuple corresponds to: `(num_of_addresses, ip_prefix)` to be generated for the test.
             let address_distribution =
                 vec![(256, "0.0"), (128, "0.1"), (64, "1.0"), (32, "1.1"), (16, "1.2"), (8, "2.0"), (4, "2.1"), (2, "2.2")];
 
