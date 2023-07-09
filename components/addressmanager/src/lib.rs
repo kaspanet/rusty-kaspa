@@ -229,16 +229,13 @@ mod address_store_with_cache {
 
     impl RandomWeightedIterator {
         pub fn new(weights: Vec<f64>, addresses: Vec<NetAddress>) -> Self {
-            println!("{0:?}", weights.len());
             assert_eq!(weights.len(), addresses.len());
-            println!("{0:?}", weights);
             let remaining = weights.iter().filter(|&&w| w > 0.0).count();
             let weighted_index = match WeightedIndex::new(weights) {
                 Ok(index) => Some(index),
                 Err(WeightedError::NoItem) => None,
                 Err(e) => panic!("{e}"),
             };
-            println!("{0:?}", remaining);
             Self { weighted_index, remaining, addresses }
         }
     }
@@ -256,7 +253,9 @@ mod address_store_with_cache {
                     Err(e) => panic!("{e}"),
                 }
                 self.remaining -= 1;
-                println!("{0:?}", self.remaining);
+                if self.remaining == 0 {
+                    self.weighted_index = None;
+                }
                 Some(self.addresses[i])
             } else {
                 None
@@ -274,10 +273,9 @@ mod address_store_with_cache {
     mod tests {
         use super::*;
         use address_manager::AddressManager;
-        use ipgen::{ip, IpNetwork};
         use kaspa_database::utils::create_temp_db;
         use kaspa_utils::networking::IpAddress;
-        use statest::ttest::{ttest1, Side, TTest, UPLO};
+        use statest::ttest::{ttest1, Side, UPLO};
         use std::{
             net::{IpAddr, Ipv6Addr},
             str::FromStr,
@@ -298,34 +296,26 @@ mod address_store_with_cache {
         #[test]
         fn test_network_distribution_weighting() {
             // We need a large sample size for reliability of this test.
-            // Corresponds to: (num_of_addresses, t-test value, ip prefix)
-            let address_distribution = vec![
-                (128, "0.0"),
-                (64, "0.1"),
-                (32, "1.0"),
-                (16, "1.1"),
-                (8, "1.2"),
-                (4, "2.0"),
-                (2, "2.1"),
-            ];
+            // Tuple corresponds to: `(num_of_addresses, ip_prefix)` to be generated for the test. 
+            let address_distribution =
+                vec![(256, "0.0"), (128, "0.1"), (64, "1.0"), (32, "1.1"), (16, "1.2"), (8, "2.0"), (4, "2.1"), (2, "2.2")];
 
             let db = create_temp_db();
             let am = AddressManager::new(db.1);
-            let mut a = 0;
-            let mut b = 0;
+
             let mut am_guard = am.lock();
             for (i, (num_in_bucket, prefix_bytes)) in address_distribution.iter().enumerate() {
-                a += num_in_bucket;
                 for j in 0..(*num_in_bucket as usize) {
-                    b += 1;
-                    am_guard.add_address(NetAddress::new(IpAddress::from_str(format!("{}.{}.{}", *prefix_bytes, i, j).as_str()).unwrap(), 16111));
-                };
+                    am_guard.add_address(NetAddress::new(
+                        IpAddress::from_str(format!("{}.{}.{}", *prefix_bytes, i, j).as_str()).unwrap(),
+                        16111,
+                    ));
+                }
             }
-            println!("{0:?}, {1:?}", a, b);
             drop(am_guard);
 
-            let execptions = HashSet::new();
-            let selected_addresses = am.lock().iterate_prioritized_random_addresses(execptions).collect_vec();
+            let exceptions = HashSet::new();
+            let selected_addresses = am.lock().iterate_prioritized_random_addresses(exceptions).collect_vec();
 
             let dist_selected = selected_addresses
                 .into_iter()
@@ -346,6 +336,7 @@ mod address_store_with_cache {
                         2 => match prefix_bytes[1] {
                             0 => 6.0,
                             1 => 7.0,
+                            2 => 8.0,
                             _ => panic!("unexpected byte"),
                         },
                         _ => panic!("unexpected byte"),
@@ -353,15 +344,11 @@ mod address_store_with_cache {
                     ord
                 })
                 .collect_vec();
-            
-            let higher_half = &dist_selected.as_slice()[0..(dist_selected.len() / 2)];
-            println!("{0:?}", higher_half);
-            let mean = (dist_selected.iter().sum::<f64>()) / (dist_selected.len() as f64);
-            
-            assert!(ttest1(higher_half, mean, 0.05, Side::One(UPLO::Lower)));
-            
-            drop(am);
-            drop(db.0);
+
+            let expected_higher_half = &dist_selected.as_slice()[0..(dist_selected.len() / 2)];
+            let dist_mean = (dist_selected.iter().sum::<f64>()) / (dist_selected.len() as f64);
+            let p = 0.00001; // ...1 in 100,000 chance of mean deviation randomly occurring.
+            assert!(ttest1(expected_higher_half, dist_mean, p, Side::One(UPLO::Lower)));
         }
     }
 }
