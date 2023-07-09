@@ -1,4 +1,4 @@
-true && chrome.developerPrivate.openDevTools({
+true && process.versions["nw-flavor"] === "sdk" && chrome.developerPrivate.openDevTools({
 	renderViewId: -1,
 	renderProcessId: -1,
 	extensionId: chrome.runtime.id,
