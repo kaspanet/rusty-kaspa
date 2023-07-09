@@ -2209,6 +2209,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "thiserror",
  "wasm-bindgen",
+ "workflow-core",
  "workflow-log",
  "workflow-wasm",
 ]

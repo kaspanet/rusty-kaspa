@@ -24,6 +24,7 @@ use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 use workflow_core::abortable::Abortable;
 use workflow_core::enums::u8_try_from;
+use workflow_core::task::yield_executor;
 
 use super::scan::{ScanExtent, DEFAULT_WINDOW_SIZE};
 pub const DEFAULT_AMOUNT_PADDING: usize = 19;
@@ -353,7 +354,7 @@ impl Account {
                 }
             }
 
-            // yield_executor().await;
+            yield_executor().await;
         }
 
         // log_info!("scan - secondary pass");

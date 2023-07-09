@@ -8,9 +8,9 @@ use secp256k1::Error as Secp256k1Error;
 use std::sync::PoisonError;
 use wasm_bindgen::JsValue;
 use workflow_core::abortable::Aborted;
+use workflow_core::sendable::*;
 use workflow_rpc::client::error::Error as RpcError;
 use workflow_wasm::printable::*;
-use workflow_wasm::sendable::*;
 
 use thiserror::Error;
 

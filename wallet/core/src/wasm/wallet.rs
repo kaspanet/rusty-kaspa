@@ -13,9 +13,9 @@ use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_wrpc_client::wasm::RpcClient;
 use kaspa_wrpc_client::WrpcEncoding;
 use runtime::AccountKind;
+use workflow_core::sendable::Sendable;
 use workflow_wasm::channel::MultiplexerClient;
 use workflow_wasm::object::ObjectTrait;
-use workflow_wasm::sendable::Sendable;
 
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]

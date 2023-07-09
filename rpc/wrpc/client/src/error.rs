@@ -2,10 +2,10 @@ use thiserror::Error;
 use wasm_bindgen::JsError;
 use wasm_bindgen::JsValue;
 use workflow_core::channel::ChannelError;
+use workflow_core::sendable::*;
 use workflow_rpc::client::error::Error as RpcError;
 use workflow_rpc::client::error::WebSocketError;
 use workflow_wasm::printable::*;
-use workflow_wasm::sendable::*;
 
 #[derive(Debug, Error)]
 pub enum Error {
