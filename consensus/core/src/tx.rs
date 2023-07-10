@@ -142,6 +142,7 @@ impl Display for TransactionOutpoint {
 #[serde(rename_all = "camelCase")]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
+    #[serde(with = "serde_bytes")]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
     pub sig_op_count: u8,
@@ -177,6 +178,7 @@ pub struct Transaction {
     pub lock_time: u64,
     pub subnetwork_id: SubnetworkId,
     pub gas: u64,
+    #[serde(with = "serde_bytes")]
     pub payload: Vec<u8>,
 
     // A field that is used to cache the transaction ID.

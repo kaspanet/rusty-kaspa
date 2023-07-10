@@ -146,7 +146,7 @@ wasm-bindgen-futures = "0.4.33"
 js-sys = "0.3.56"
 getrandom = { version = "0.2.8", features = ["js"] }
 uuid = { version = "1.2.2", features = ["v4", "fast-rng", "serde"] }
-
+serde_bytes = "0.11.11"
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }
 bs58 = { version = "0.4", features = ["check"], default-features = false }
