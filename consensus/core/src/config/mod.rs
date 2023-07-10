@@ -5,7 +5,7 @@ pub mod params;
 
 use std::ops::Deref;
 
-use kaspa_utils::networking::{IpAddress, ContextualNetAddress};
+use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 
 use {
     constants::perf::{PerfParams, PERF_PARAMS},

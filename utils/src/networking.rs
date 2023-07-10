@@ -1,4 +1,5 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
@@ -7,7 +8,6 @@ use std::{
     str::FromStr,
 };
 use uuid::Uuid;
-use ipnet::IpNet;
 
 /// An IP address, newtype of [IpAddr].
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug)]
@@ -53,7 +53,7 @@ impl IpAddress {
             }
         }
 
-        return true;
+        true
     }
 }
 impl From<IpAddr> for IpAddress {

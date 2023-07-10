@@ -4,13 +4,13 @@ extern crate self as address_manager;
 
 use std::{collections::HashSet, sync::Arc};
 
+use getaddrs::{if_flags, InterfaceAddrs};
 use itertools::Itertools;
-use kaspa_core::{debug, time::unix_now, info};
 use kaspa_consensus_core::config::Config;
+use kaspa_core::{debug, info, time::unix_now};
 use kaspa_database::prelude::{StoreResultExtensions, DB};
 use kaspa_utils::networking::IpAddress;
 use parking_lot::Mutex;
-use getaddrs::{InterfaceAddrs, if_flags};
 
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
 
@@ -67,37 +67,36 @@ impl AddressManager {
                                 // Interface is up
                                 if addr.flags.contains(if_flags::IFF_UP) {
                                     match addr.address {
-                                        None => {},
+                                        None => {}
                                         Some(ip) => {
                                             let curr_ip = IpAddress::new(ip);
 
                                             // TODO: Add Check IPv4 or IPv6 match from Go code
                                             if curr_ip.is_publicly_routable() {
                                                 info!("Publicly routable local address {} added to store", curr_ip);
-                                                self.local_net_addresses.push(NetAddress { ip: curr_ip, port: self.config.default_p2p_port() });
+                                                self.local_net_addresses
+                                                    .push(NetAddress { ip: curr_ip, port: self.config.default_p2p_port() });
                                             } else {
                                                 info!("Non-publicly routable interface address {} not added to store", curr_ip);
                                             }
                                         }
-                                    }   
+                                    }
                                 }
                             }
                         }
                     }
+                } else if listen_address.ip.is_publicly_routable() {
+                    info!("Publicly routable local address {} added to store", listen_address.ip);
+                    self.local_net_addresses.push(listen_address);
                 } else {
-                    if listen_address.ip.is_publicly_routable() {
-                        info!("Publicly routable local address {} added to store", listen_address.ip);
-                        self.local_net_addresses.push(listen_address);
-                    } else {
-                        info!("Non-publicly routable listen address {} not added to store.", listen_address.ip);
-                    }
+                    info!("Non-publicly routable listen address {} not added to store.", listen_address.ip);
                 }
             }
         }
     }
 
     pub fn best_local_address(&mut self) -> Option<NetAddress> {
-        if self.local_net_addresses.len() == 0 {
+        if self.local_net_addresses.is_empty() {
             None
         } else {
             // TODO: Add logic for finding the best.

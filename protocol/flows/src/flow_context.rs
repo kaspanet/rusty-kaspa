@@ -451,13 +451,13 @@ impl ConnectionInitializer for FlowContext {
         let network_name = self.config.network_name();
 
         let mut local_address = None;
-    
+
         match self.address_manager.lock().best_local_address() {
-            None => {},
+            None => {}
             Some(local_net_address) => {
                 info!("Local node is using {} for P2P", local_net_address);
                 local_address = Some(local_net_address);
-            },
+            }
         }
 
         // Build the local version message
