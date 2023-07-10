@@ -7,6 +7,7 @@ use std::{
     str::FromStr,
 };
 use uuid::Uuid;
+use ipnet::IpNet;
 
 /// An IP address, newtype of [IpAddr].
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug)]
@@ -19,8 +20,40 @@ impl IpAddress {
     }
 
     pub fn is_publicly_routable(&self) -> bool {
-        // TODO: return true if this is routable over the internet
-        false
+        if self.is_loopback() || self.is_unspecified() {
+            return false;
+        }
+
+        // Based on values from network.go
+        let unroutable_nets = [
+            "198.18.0.0/15",   // RFC 2544
+            "2001:DB8::/32",   // RFC 3849
+            "10.0.0.0/8",      // RFC 1918
+            "172.16.0.0/12",   // RFC 1918
+            "192.168.0.0/16",  // RFC 1918
+            "169.254.0.0/16",  // RFC 3927
+            "2002::/16",       // RFC 3964
+            "FC00::/7",        // RFC 4193
+            "2001::/32",       // RFC 4380
+            "2001:10::/28",    // RFC 4843
+            "FE80::/64",       // RFC 4862
+            "192.0.2.0/24",    // RFC 5737
+            "198.51.100.0/24", // RFC 5737
+            "203.0.113.0/24",  // RFC 5737
+            "64:FF9B::/96",    // RFC 6052
+            "::FFFF:0:0:0/96", // RFC 6145
+            "100.64.0.0/10",   // RFC 6598
+            "0.0.0.0/8",       // Zero Net
+            "2001:470::/32",   // Hurricane Electric IPv6 address block.
+        ];
+
+        for curr_net in unroutable_nets {
+            if IpNet::from_str(curr_net).unwrap().contains(&self.0) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
 impl From<IpAddr> for IpAddress {
@@ -337,5 +370,28 @@ mod tests {
         assert!(addr_v4.is_ok());
         let addr_v6 = NetAddress::from_str("[2a01:4f8:191:1143::2]:5678");
         assert!(addr_v6.is_ok());
+    }
+
+    #[test]
+    fn test_is_publicly_routable() {
+        // RFC 2544 tests
+        assert_eq!(false, IpAddress::from_str("198.18.0.0").unwrap().is_publicly_routable());
+        assert_eq!(false, IpAddress::from_str("198.19.255.255").unwrap().is_publicly_routable());
+        assert_eq!(true, IpAddress::from_str("198.17.255.255").unwrap().is_publicly_routable());
+        assert_eq!(true, IpAddress::from_str("198.20.0.0").unwrap().is_publicly_routable());
+
+        // Zero net tests
+        assert_eq!(false, IpAddress::from_str("0.0.0.0").unwrap().is_publicly_routable());
+        assert_eq!(false, IpAddress::from_str("0.0.0.1").unwrap().is_publicly_routable());
+        assert_eq!(false, IpAddress::from_str("0.0.1.0").unwrap().is_publicly_routable());
+        assert_eq!(false, IpAddress::from_str("0.1.0.0").unwrap().is_publicly_routable());
+
+        // Localhost
+        assert_eq!(false, IpAddress::from_str("127.0.0.1").unwrap().is_publicly_routable());
+
+        // Some random routable IP
+        assert_eq!(true, IpAddress::from_str("123.45.67.89").unwrap().is_publicly_routable());
+
+        // TODO: Write more unit tests for the rest of the ranges
     }
 }
