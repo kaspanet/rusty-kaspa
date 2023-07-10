@@ -1,6 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_COINBASE;
 use kaspa_consensus_core::tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint};
+use std::time::{Duration, Instant};
 
 fn serialize_benchmark(c: &mut Criterion) {
     let transaction = Transaction::new(
@@ -14,7 +15,7 @@ fn serialize_benchmark(c: &mut Criterion) {
                     ]),
                     index: 0xffffffff,
                 },
-                signature_script: vec![],
+                signature_script: vec![1; 32],
                 sequence: u64::MAX,
                 sig_op_count: 0,
             },
@@ -26,7 +27,7 @@ fn serialize_benchmark(c: &mut Criterion) {
                     ]),
                     index: 0xffffffff,
                 },
-                signature_script: vec![],
+                signature_script: vec![1; 32],
                 sequence: u64::MAX,
                 sig_op_count: 0,
             },
@@ -37,8 +38,20 @@ fn serialize_benchmark(c: &mut Criterion) {
         0,
         vec![9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     );
-
-    c.bench_function("Serialize Transaction", |b| b.iter(|| bincode::serialize(black_box(&transaction))));
+    let size = bincode::serialized_size(&transaction).unwrap();
+    let mut buf = Vec::with_capacity(size as usize);
+    c.bench_function("Serialize Transaction", move |b| {
+        b.iter_custom(|iters| {
+            let start = Duration::default();
+            (0..iters).fold(start, |acc, _| {
+                let start = Instant::now();
+                black_box(bincode::serialize_into(&mut buf, &transaction).unwrap());
+                let elapsed = start.elapsed();
+                buf.clear();
+                acc + elapsed
+            })
+        })
+    });
 }
 
 fn deserialize_benchmark(c: &mut Criterion) {
@@ -53,7 +66,7 @@ fn deserialize_benchmark(c: &mut Criterion) {
                     ]),
                     index: 0xffffffff,
                 },
-                signature_script: vec![],
+                signature_script: vec![1; 32],
                 sequence: u64::MAX,
                 sig_op_count: 0,
             },
@@ -65,7 +78,7 @@ fn deserialize_benchmark(c: &mut Criterion) {
                     ]),
                     index: 0xffffffff,
                 },
-                signature_script: vec![],
+                signature_script: vec![1; 32],
                 sequence: u64::MAX,
                 sig_op_count: 0,
             },
@@ -77,8 +90,7 @@ fn deserialize_benchmark(c: &mut Criterion) {
         vec![9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     );
     let serialized = bincode::serialize(&transaction).unwrap();
-
-    c.bench_function("Deserialize Transaction", |b| b.iter(|| bincode::deserialize::<Transaction>(black_box(&serialized))));
+    c.bench_function("Deserialize Transaction", |b| b.iter(|| black_box(bincode::deserialize::<Transaction>(&serialized))));
 }
 
 criterion_group!(benches, serialize_benchmark, deserialize_benchmark);
