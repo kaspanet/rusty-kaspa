@@ -6,7 +6,7 @@ pub struct Server;
 
 impl Server {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<WalletCli>()?;
+        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         if let Some(url) = argv.first() {
             ctx.wallet().settings().set(Settings::Server, url).await?;

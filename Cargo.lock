@@ -2788,14 +2788,17 @@ dependencies = [
 name = "kassiopeya"
 version = "0.1.6"
 dependencies = [
+ "borsh",
  "cfg-if 1.0.0",
  "js-sys",
  "kaspa-cli",
  "nw-sys",
+ "serde",
  "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "workflow-core",
  "workflow-dom",
  "workflow-log",
  "workflow-nw",
@@ -3234,8 +3237,6 @@ checksum = "6aa2c4e539b869820a2b82e1aef6ff40aa85e65decdd5185e83fb4b1249cd00f"
 [[package]]
 name = "nw-sys"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ed68eecd416c3dca706cfc205945b6c3dc9b979715355ff9e560e113b0801e5"
 dependencies = [
  "js-sys",
  "thiserror",
@@ -5228,9 +5229,12 @@ name = "workflow-nw"
 version = "0.3.17"
 dependencies = [
  "ahash 0.8.3",
+ "async-trait",
  "borsh",
+ "futures",
  "js-sys",
  "nw-sys",
+ "rand 0.8.5",
  "serde",
  "serde-wasm-bindgen",
  "thiserror",

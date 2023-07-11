@@ -6,7 +6,7 @@ pub struct Ping;
 
 impl Ping {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, _argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<WalletCli>()?;
+        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
         if ctx.wallet().ping().await {
             tprintln!(ctx, "ping ok");
         } else {

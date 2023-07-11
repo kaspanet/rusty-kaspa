@@ -6,7 +6,7 @@ pub struct Connect;
 
 impl Connect {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<WalletCli>()?;
+        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
         let url = argv.first().cloned().or_else(|| ctx.wallet().settings().get(Settings::Server));
 
         let network_type = ctx.wallet().network()?;

@@ -6,7 +6,7 @@ pub struct Network;
 
 impl Network {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<WalletCli>()?;
+        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         if let Some(network_type) = argv.first() {
             let network_type: NetworkType =

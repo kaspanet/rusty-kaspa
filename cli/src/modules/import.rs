@@ -6,7 +6,7 @@ pub struct Import;
 
 impl Import {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<WalletCli>()?;
+        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
         let wallet = ctx.wallet();
 
         if argv.is_empty() || argv.get(0) == Some(&"help".to_string()) {

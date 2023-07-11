@@ -23,7 +23,7 @@ use workflow_log::*;
 use workflow_terminal::*;
 pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget}; //{CrLf, Terminal};
 
-pub struct WalletCli {
+pub struct KaspaCli {
     term: Arc<Mutex<Option<Arc<Terminal>>>>,
     wallet: Arc<Wallet>,
     notifications_task_ctl: DuplexChannel,
@@ -33,19 +33,19 @@ pub struct WalletCli {
     handlers: Arc<HandlerCli>,
 }
 
-impl From<&WalletCli> for Arc<Terminal> {
-    fn from(ctx: &WalletCli) -> Arc<Terminal> {
+impl From<&KaspaCli> for Arc<Terminal> {
+    fn from(ctx: &KaspaCli) -> Arc<Terminal> {
         ctx.term()
     }
 }
 
-impl AsRef<WalletCli> for WalletCli {
+impl AsRef<KaspaCli> for KaspaCli {
     fn as_ref(&self) -> &Self {
         self
     }
 }
 
-impl workflow_log::Sink for WalletCli {
+impl workflow_log::Sink for KaspaCli {
     fn write(&self, _target: Option<&str>, _level: Level, args: &std::fmt::Arguments<'_>) -> bool {
         if let Some(term) = self.try_term() {
             term.writeln(args.to_string());
@@ -56,9 +56,28 @@ impl workflow_log::Sink for WalletCli {
     }
 }
 
-impl WalletCli {
-    fn new(wallet: Arc<Wallet>) -> Self {
-        WalletCli {
+impl KaspaCli {
+
+    pub fn init() {
+        cfg_if! {
+            if #[cfg(not(target_arch = "wasm32"))] {
+                init_panic_hook(||{
+                    std::println!("halt");
+                    1
+                });
+                kaspa_core::log::init_logger(None, "info");
+            } else {
+                kaspa_core::log::set_log_level(LevelFilter::Info);
+            }
+        }
+
+        workflow_log::set_colors_enabled(true);
+    }
+
+    pub async fn try_new_arc(options: TerminalOptions) -> Result<Arc<Self>> {
+        let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None)?);
+
+        let kaspa_cli = Arc::new(KaspaCli {
             term: Arc::new(Mutex::new(None)),
             wallet,
             notifications_task_ctl: DuplexChannel::oneshot(),
@@ -66,7 +85,12 @@ impl WalletCli {
             flags: Flags::default(),
             last_interaction: Arc::new(Mutex::new(Instant::now())),
             handlers: Arc::new(HandlerCli::default()),
-        }
+        });
+
+        let term = Arc::new(Terminal::try_new_with_options(kaspa_cli.clone(), options)?);
+        term.init().await?;
+
+        Ok(kaspa_cli)
     }
 
     pub fn term(&self) -> Arc<Terminal> {
@@ -101,17 +125,89 @@ impl WalletCli {
         self.mute.load(Ordering::SeqCst)
     }
 
-    async fn start(self: &Arc<Self>) -> Result<()> {
-        self.notification_pipe_task();
+    pub fn register_handlers(self: &Arc<Self>) -> Result<()> {
+        register_handlers!(
+            self,
+            self.handlers,
+            [
+                address,
+                // broadcast,
+                close,
+                connect,
+                // create_unsigned_tx,
+                create,
+                details,
+                disconnect,
+                estimate,
+                exit,
+                export,
+                halt,
+                help,
+                hint,
+                import,
+                info,
+                list,
+                metrics,
+                mute,
+                name,
+                network,
+                new_address,
+                open,
+                ping,
+                reload,
+                select,
+                send,
+                server,
+                set,
+                // sign,
+                // sweep,
+                track,
+            ]
+        );
+
+        cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+                register_handlers!(
+                    self,
+                    self.handlers,
+                    [
+                        reload,
+                    ]
+                );
+            }
+        }
+
         Ok(())
     }
 
-    async fn stop(self: &Arc<Self>) -> Result<()> {
+    pub async fn start(self: &Arc<Self>) -> Result<()> {
+        self.start_notification_pipe_task();
+        self.handlers.start(self).await?;
+        // wallet starts rpc and notifier
+        self.wallet.start().await?;
+        Ok(())
+    }
+
+    pub async fn run(self: &Arc<Self>) -> Result<()> {
+        self.term().run().await?;
+        Ok(())
+    }
+
+    pub async fn stop(self: &Arc<Self>) -> Result<()> {
+        self.handlers.stop(&self).await?;
+        // wallet stops the notifier
+        self.wallet.stop().await?;
+        // stop notification pipe task
+        self.stop_notification_pipe_task().await?;
+        Ok(())
+    }
+    
+    async fn stop_notification_pipe_task(self: &Arc<Self>) -> Result<()> {
         self.notifications_task_ctl.signal(()).await?;
         Ok(())
     }
 
-    pub fn notification_pipe_task(self: &Arc<Self>) {
+    fn start_notification_pipe_task(self: &Arc<Self>) {
         let this = self.clone();
         let multiplexer = MultiplexerChannel::from(self.wallet.multiplexer());
 
@@ -536,7 +632,7 @@ impl WalletCli {
 }
 
 #[async_trait]
-impl Cli for WalletCli {
+impl Cli for KaspaCli {
     fn init(&self, term: &Arc<Terminal>) -> TerminalResult<()> {
         *self.term.lock().unwrap() = Some(term.clone());
         Ok(())
@@ -567,13 +663,13 @@ impl Cli for WalletCli {
     }
 }
 
-impl cli::Context for WalletCli {
+impl cli::Context for KaspaCli {
     fn term(&self) -> Arc<Terminal> {
         self.term.lock().unwrap().as_ref().unwrap().clone()
     }
 }
 
-impl WalletCli {}
+impl KaspaCli {}
 
 use kaspa_wallet_core::runtime::{self, BalanceStrings, PrvKeyDataCreateArgs};
 
@@ -665,102 +761,27 @@ where
 // }
 
 pub async fn kaspa_cli(options: TerminalOptions, banner: Option<String>) -> Result<()> {
-    cfg_if! {
-        if #[cfg(not(target_arch = "wasm32"))] {
-            init_panic_hook(||{
-                std::println!("halt");
-                1
-            });
-            kaspa_core::log::init_logger(None, "info");
-        } else {
-            kaspa_core::log::set_log_level(LevelFilter::Info);
-        }
-    }
 
-    workflow_log::set_colors_enabled(true);
+    KaspaCli::init();
 
-    let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None)?);
-    let cli = Arc::new(WalletCli::new(wallet.clone()));
-    let term = Arc::new(Terminal::try_new_with_options(cli.clone(), options)?);
-    term.init().await?;
+    let cli = KaspaCli::try_new_arc(options).await?;
+
+    let banner =
+        banner.unwrap_or_else(|| format!("Kaspa Cli Wallet v{} (type 'help' for list of commands)", env!("CARGO_PKG_VERSION")));
+    cli.term().writeln(banner);
 
     // redirect the global log output to terminal
     #[cfg(not(target_arch = "wasm32"))]
     workflow_log::pipe(Some(cli.clone()));
 
+    cli.register_handlers()?;
+
     // cli starts notification->term trace pipe task
     cli.start().await?;
 
-    // ----------------------------------------------------------------------
-
-    register_handlers!(
-        cli,
-        cli.handlers,
-        [
-            address,
-            // broadcast,
-            close,
-            connect,
-            // create_unsigned_tx,
-            create,
-            details,
-            disconnect,
-            estimate,
-            exit,
-            export,
-            halt,
-            help,
-            hint,
-            import,
-            info,
-            list,
-            metrics,
-            mute,
-            name,
-            network,
-            new_address,
-            open,
-            ping,
-            reload,
-            select,
-            send,
-            server,
-            set,
-            // sign,
-            // sweep,
-            track,
-        ]
-    );
-
-    cfg_if! {
-        if #[cfg(target_arch = "wasm32")] {
-            register_handlers!(
-                cli,
-                cli.handlers,
-                [
-                    reload,
-                ]
-            );
-        }
-    }
-
-    cli.handlers.start(&cli).await?;
-
-    // ----------------------------------------------------------------------
-
-    let banner =
-        banner.unwrap_or_else(|| format!("Kaspa Cli Wallet v{} (type 'help' for list of commands)", env!("CARGO_PKG_VERSION")));
-    term.writeln(banner);
-
-    // wallet starts rpc and notifier
-    wallet.start().await?;
     // terminal blocks async execution, delivering commands to the terminals
-    term.run().await?;
+    cli.run().await?;
 
-    cli.handlers.stop(&cli).await?;
-
-    // wallet stops the notifier
-    wallet.stop().await?;
     // cli stops notification->term trace pipe task
     cli.stop().await?;
 

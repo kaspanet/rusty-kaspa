@@ -7,7 +7,7 @@ pub struct Send;
 impl Send {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
         // address, amount, priority fee
-        let ctx = ctx.clone().downcast_arc::<WalletCli>()?;
+        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         let account = ctx.wallet().account()?;
 

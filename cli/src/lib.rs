@@ -8,5 +8,5 @@ mod modules;
 pub mod result;
 pub mod utils;
 
-pub use cli::{kaspa_cli, TerminalOptions, TerminalTarget};
+pub use cli::{kaspa_cli, KaspaCli, TerminalOptions, TerminalTarget};
 pub use workflow_terminal::Terminal;

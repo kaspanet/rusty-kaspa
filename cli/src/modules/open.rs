@@ -6,7 +6,7 @@ pub struct Open;
 
 impl Open {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<WalletCli>()?;
+        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         let name =
             if let Some(name) = argv.first().cloned() { Some(name) } else { ctx.wallet().settings().get(Settings::Wallet).clone() };

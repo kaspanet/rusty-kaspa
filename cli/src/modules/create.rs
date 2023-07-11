@@ -6,7 +6,7 @@ pub struct Create;
 
 impl Create {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, mut argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<WalletCli>()?;
+        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
         let wallet = ctx.wallet();
 
         let is_open = wallet.is_open()?;

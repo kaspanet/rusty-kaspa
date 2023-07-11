@@ -10,7 +10,7 @@ impl Help {
         let term = dyn_ctx.term();
         term.writeln("\nCommands:\n".crlf());
 
-        let ctx = dyn_ctx.clone().downcast_arc::<WalletCli>()?;
+        let ctx = dyn_ctx.clone().downcast_arc::<KaspaCli>()?;
         let handlers = ctx.handler().collect();
         let mut handlers =
             handlers.into_iter().filter_map(|h| h.verb(dyn_ctx).map(|verb| (verb, get_handler_help(h, dyn_ctx)))).collect::<Vec<_>>();
