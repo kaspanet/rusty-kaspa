@@ -1,9 +1,19 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_COINBASE;
-use kaspa_consensus_core::tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint};
+use kaspa_consensus_core::tx::{
+    ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+};
+use smallvec::smallvec;
 use std::time::{Duration, Instant};
 
 fn serialize_benchmark(c: &mut Criterion) {
+    let script_public_key = ScriptPublicKey::new(
+        0,
+        smallvec![
+            0x76, 0xa9, 0x21, 0x03, 0x2f, 0x7e, 0x43, 0x0a, 0xa4, 0xc9, 0xd1, 0x59, 0x43, 0x7e, 0x84, 0xb9, 0x75, 0xdc, 0x76, 0xd9,
+            0x00, 0x3b, 0xf0, 0x92, 0x2c, 0xf3, 0xaa, 0x45, 0x28, 0x46, 0x4b, 0xab, 0x78, 0x0d, 0xba, 0x5e
+        ],
+    );
     let transaction = Transaction::new(
         0,
         vec![
@@ -32,7 +42,10 @@ fn serialize_benchmark(c: &mut Criterion) {
                 sig_op_count: 0,
             },
         ],
-        vec![],
+        vec![
+            TransactionOutput { value: 300, script_public_key: script_public_key.clone() },
+            TransactionOutput { value: 300, script_public_key },
+        ],
         0,
         SUBNETWORK_ID_COINBASE,
         0,
@@ -55,6 +68,13 @@ fn serialize_benchmark(c: &mut Criterion) {
 }
 
 fn deserialize_benchmark(c: &mut Criterion) {
+    let script_public_key = ScriptPublicKey::new(
+        0,
+        smallvec![
+            0x76, 0xa9, 0x21, 0x03, 0x2f, 0x7e, 0x43, 0x0a, 0xa4, 0xc9, 0xd1, 0x59, 0x43, 0x7e, 0x84, 0xb9, 0x75, 0xdc, 0x76, 0xd9,
+            0x00, 0x3b, 0xf0, 0x92, 0x2c, 0xf3, 0xaa, 0x45, 0x28, 0x46, 0x4b, 0xab, 0x78, 0x0d, 0xba, 0x5e
+        ],
+    );
     let transaction = Transaction::new(
         0,
         vec![
@@ -83,7 +103,10 @@ fn deserialize_benchmark(c: &mut Criterion) {
                 sig_op_count: 0,
             },
         ],
-        vec![],
+        vec![
+            TransactionOutput { value: 300, script_public_key: script_public_key.clone() },
+            TransactionOutput { value: 300, script_public_key },
+        ],
         0,
         SUBNETWORK_ID_COINBASE,
         0,
@@ -93,5 +116,47 @@ fn deserialize_benchmark(c: &mut Criterion) {
     c.bench_function("Deserialize Transaction", |b| b.iter(|| black_box(bincode::deserialize::<Transaction>(&serialized))));
 }
 
-criterion_group!(benches, serialize_benchmark, deserialize_benchmark);
+fn deserialize_script_public_key_benchmark(c: &mut Criterion) {
+    let script_public_key = ScriptPublicKey::new(
+        0,
+        smallvec![
+            0x76, 0xa9, 0x21, 0x03, 0x2f, 0x7e, 0x43, 0x0a, 0xa4, 0xc9, 0xd1, 0x59, 0x43, 0x7e, 0x84, 0xb9, 0x75, 0xdc, 0x76, 0xd9,
+            0x00, 0x3b, 0xf0, 0x92, 0x2c, 0xf3, 0xaa, 0x45, 0x28, 0x46, 0x4b, 0xab, 0x78, 0x0d, 0xba, 0x5e
+        ],
+    );
+    let serialized = bincode::serialize(&script_public_key).unwrap();
+    c.bench_function("Deserialize ScriptPublicKey", |b| b.iter(|| black_box(bincode::deserialize::<ScriptPublicKey>(&serialized))));
+}
+
+fn serialize_script_public_key_benchmark(c: &mut Criterion) {
+    let script_public_key = ScriptPublicKey::new(
+        0,
+        smallvec![
+            0x76, 0xa9, 0x21, 0x03, 0x2f, 0x7e, 0x43, 0x0a, 0xa4, 0xc9, 0xd1, 0x59, 0x43, 0x7e, 0x84, 0xb9, 0x75, 0xdc, 0x76, 0xd9,
+            0x00, 0x3b, 0xf0, 0x92, 0x2c, 0xf3, 0xaa, 0x45, 0x28, 0x46, 0x4b, 0xab, 0x78, 0x0d, 0xba, 0x5e
+        ],
+    );
+    let size = bincode::serialized_size(&script_public_key).unwrap();
+    let mut buf = Vec::with_capacity(size as usize);
+    c.bench_function("Serialize ScriptPublicKey", move |b| {
+        b.iter_custom(|iters| {
+            let start = Duration::default();
+            (0..iters).fold(start, |acc, _| {
+                let start = Instant::now();
+                black_box(bincode::serialize_into(&mut buf, &script_public_key).unwrap());
+                let elapsed = start.elapsed();
+                buf.clear();
+                acc + elapsed
+            })
+        })
+    });
+}
+
+criterion_group!(
+    benches,
+    serialize_benchmark,
+    deserialize_benchmark,
+    serialize_script_public_key_benchmark,
+    deserialize_script_public_key_benchmark
+);
 criterion_main!(benches);
