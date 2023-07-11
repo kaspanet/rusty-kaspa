@@ -174,7 +174,6 @@ textwrap = "0.16"
 sorted-insert = "0.2.3"
 dashmap = "5.4.0"
 separator = "0.4.1"
-nw-sys = "0.1.2"
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }
@@ -199,6 +198,7 @@ pbkdf2 = { version = "0.12.1" }
 # workflow-node = { version = "0.3.17" }
 # workflow-store = { version = "0.3.17" }
 # workflow-terminal = { version = "0.3.17" }
+# nw-sys = "0.1.2"
 
 workflow-nw = { path = "../workflow-rs/nw" }
 workflow-log = { path = "../workflow-rs/log" }
@@ -209,6 +209,7 @@ workflow-rpc = { path = "../workflow-rs/rpc" }
 workflow-node = { path = "../workflow-rs/node" }
 workflow-store = { path = "../workflow-rs/store" }
 workflow-terminal = { path = "../workflow-rs/terminal" }
+nw-sys = { path = "../nw-sys" }
 
 [profile.release]
 lto = "thin"

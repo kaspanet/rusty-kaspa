@@ -4,28 +4,6 @@
     <head>
         <title>Kassiopeya</title>
         <style>
-            /* html{ */
-                /* background-color:#FFF; */
-                /* height:100%;
-                width:100%;
-                margin:0px;
-                padding:0px; */
-            /* } */
-            /*
-            body{
-                min-height:100px;
-                height:100%;
-                background-color:#cbcbcb;
-                position: absolute;
-                left:0px;
-                right:0px;
-                top:0px;
-                bottom:0px;
-                padding:15px;
-                margin:0px;
-            }
-            */
-
             body {
                 background-color:#FFF;
                 margin: 0;
@@ -40,9 +18,9 @@
         </style>
         <script>
             (async()=>{
-                window.$kassiopeya = await import('/app/wasm/kassiopeya.js');
-                const wasm = await window.$kassiopeya.default('/app/wasm/kassiopeya_bg.wasm');
-                window.$kassiopeya.initialize_kassiopeya_application();
+                window.kaspa = await import('/app/wasm/kaspa.js');
+                const wasm = await window.kaspa.default('/app/wasm/kaspa_bg.wasm');
+                await window.kaspa.init_application();
             })();
         </script>
     </head>

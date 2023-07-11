@@ -16,6 +16,7 @@ js-sys.workspace = true
 kaspa-cli.workspace = true
 nw-sys.workspace = true
 wasm-bindgen.workspace = true
+workflow-core.workspace = true
 workflow-dom.workspace = true
 workflow-log.workspace = true
 workflow-nw.workspace = true
@@ -24,6 +25,8 @@ workflow-terminal.workspace = true
 wasm-bindgen-futures.workspace = true
 thiserror.workspace = true
 cfg-if.workspace = true
+borsh.workspace = true
+serde.workspace = true
 
 [dependencies.web-sys]
 workspace = true
