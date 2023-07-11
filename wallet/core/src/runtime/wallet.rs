@@ -696,7 +696,7 @@ impl Wallet {
     }
 
     pub async fn start_task(self: &Arc<Self>) -> Result<()> {
-        let self_ = self.clone();
+        let this = self.clone();
         let rpc_ctl_channel = self.rpc_client().ctl_multiplexer().create_channel();
 
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
@@ -712,7 +712,7 @@ impl Wallet {
                     },
                     notification = notification_receiver.recv().fuse() => {
                         if let Ok(notification) = notification {
-                            self_.handle_notification(notification).await.unwrap_or_else(|err| {
+                            this.handle_notification(notification).await.unwrap_or_else(|err| {
                                 log_error!("error while handling notification: {err}");
                             });
                         }
@@ -721,12 +721,12 @@ impl Wallet {
                         if let Ok(msg) = msg {
                             match msg {
                                 Ctl::Open => {
-                                    multiplexer.broadcast(Events::Connect(self_.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
-                                    self_.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
+                                    multiplexer.broadcast(Events::Connect(this.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
+                                    this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
                                 },
                                 Ctl::Close => {
-                                    multiplexer.broadcast(Events::Disconnect(self_.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
-                                    self_.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
+                                    multiplexer.broadcast(Events::Disconnect(this.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
+                                    this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
                                 }
                             }
                         }
