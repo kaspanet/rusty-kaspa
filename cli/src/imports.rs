@@ -23,10 +23,4 @@ pub use workflow_core::channel::*;
 pub use workflow_core::runtime as application_runtime;
 pub use workflow_core::time::Instant;
 pub use workflow_log::*;
-pub use workflow_terminal::{
-    cli,
-    cli::get_handler_help,
-    cli::{declare_handler, register_handlers},
-    parse, terrorln, tpara, tprintln, twarnln, Cli, Context, CrLf, Handler, Options as TerminalOptions, Result as TerminalResult,
-    TargetElement as TerminalTarget,
-};
+pub use workflow_terminal::prelude::*;

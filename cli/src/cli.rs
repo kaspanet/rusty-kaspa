@@ -57,7 +57,6 @@ impl workflow_log::Sink for KaspaCli {
 }
 
 impl KaspaCli {
-
     pub fn init() {
         cfg_if! {
             if #[cfg(not(target_arch = "wasm32"))] {
@@ -109,7 +108,7 @@ impl KaspaCli {
         self.wallet.store().clone()
     }
 
-    pub fn handler(&self) -> Arc<HandlerCli> {
+    pub fn handlers(&self) -> Arc<HandlerCli> {
         self.handlers.clone()
     }
 
@@ -201,7 +200,7 @@ impl KaspaCli {
         self.stop_notification_pipe_task().await?;
         Ok(())
     }
-    
+
     async fn stop_notification_pipe_task(self: &Arc<Self>) -> Result<()> {
         self.notifications_task_ctl.signal(()).await?;
         Ok(())
@@ -761,7 +760,6 @@ where
 // }
 
 pub async fn kaspa_cli(options: TerminalOptions, banner: Option<String>) -> Result<()> {
-
     KaspaCli::init();
 
     let cli = KaspaCli::try_new_arc(options).await?;

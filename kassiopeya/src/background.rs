@@ -52,6 +52,14 @@ impl Background {
         Ok(app)
     }
 
+    pub fn terminal_window(&self) -> Arc<nw_sys::Window> {
+        self.terminal.lock().unwrap().as_ref().unwrap().clone()
+    }
+
+    pub fn terminal_ipc(&self) -> TerminalIpc {
+        TerminalIpc::new(self.terminal_window().into())
+    }
+
     /// Create a test page window
     fn create_window(&self) -> Result<()> {
         let options = nw_sys::window::Options::new().title("Test page").width(200).height(200).left(0);
@@ -79,7 +87,7 @@ impl Background {
     }
 
     /// Create application menu
-    fn create_menu(&self) -> Result<()> {
+    fn create_menu(self: &Arc<Self>) -> Result<()> {
         let this = self.clone();
         let submenu_1 = MenuItemBuilder::new()
             .label("Create window")
@@ -102,23 +110,34 @@ impl Background {
             })
             .build()?;
 
-        let decrease_font = MenuItemBuilder::new()
-            .label("Decrease font")
-            .key("-")
-            .modifiers("command")
+        let modifier = if is_macos() { "command" } else { "ctrl" };
+
+        let this = self.clone();
+        let increase_font = MenuItemBuilder::new()
+            .label("Increase Font")
+            .key("+")
+            .modifiers(modifier)
             .callback(move |_| -> std::result::Result<(), JsValue> {
                 // window().alert_with_message("Hello")?;
-                println!("decrease font");
+                let this = this.clone();
+                spawn(async move {
+                    this.terminal_ipc().increase_font_size().await.unwrap_or_else(|e| log_error!("{}", e));
+                });
                 Ok(())
             })
             .build()?;
-        let increase_font = MenuItemBuilder::new()
-            .label("Increase font")
-            .key("+")
-            .modifiers("command")
+
+        let this = self.clone();
+        let decrease_font = MenuItemBuilder::new()
+            .label("Decrease Font")
+            .key("-")
+            .modifiers(modifier)
             .callback(move |_| -> std::result::Result<(), JsValue> {
                 // window().alert_with_message("Hello")?;
-                println!("increase font");
+                let this = this.clone();
+                spawn(async move {
+                    this.terminal_ipc().decrease_font_size().await.unwrap_or_else(|e| log_error!("{}", e));
+                });
                 Ok(())
             })
             .build()?;

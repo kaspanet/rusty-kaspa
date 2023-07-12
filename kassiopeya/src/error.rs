@@ -1,15 +1,19 @@
 use thiserror::Error;
 use wasm_bindgen::JsValue;
+use workflow_nw::ipc::ResponseError;
 use workflow_wasm::printable::Printable;
 
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
+
     #[error(transparent)]
     Utf8(#[from] std::string::FromUtf8Error),
+
     #[error(transparent)]
     WorkflowNw(#[from] workflow_nw::error::Error),
+
     #[error(transparent)]
     KaspaWalletCli(#[from] kaspa_cli::error::Error),
 
@@ -18,6 +22,9 @@ pub enum Error {
 
     #[error("{0}")]
     JsValue(Printable),
+
+    #[error("{0}")]
+    Terminal(#[from] workflow_terminal::error::Error),
 }
 
 impl From<Error> for JsValue {
@@ -30,5 +37,11 @@ impl From<Error> for JsValue {
 impl From<JsValue> for Error {
     fn from(js_value: JsValue) -> Error {
         Error::JsValue(Printable::new(js_value))
+    }
+}
+
+impl From<Error> for ResponseError {
+    fn from(err: Error) -> ResponseError {
+        ResponseError::Custom(err.to_string())
     }
 }

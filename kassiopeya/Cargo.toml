@@ -27,6 +27,7 @@ thiserror.workspace = true
 cfg-if.workspace = true
 borsh.workspace = true
 serde.workspace = true
+async-trait.workspace = true
 
 [dependencies.web-sys]
 workspace = true

@@ -4,7 +4,7 @@ use crate::imports::*;
 pub enum Modules {
     Background,
     Terminal,
-    Node,
+    // Node,
 }
 
 impl ToString for Modules {
@@ -12,11 +12,14 @@ impl ToString for Modules {
         match self {
             Modules::Background => "background",
             Modules::Terminal => "terminal",
-            Modules::Node => "node",
+            // Modules::Node => "node",
         }
         .to_string()
     }
 }
+
+// #[derive(Debug, Clone, PartialEq, Eq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+// pub struct NoResp;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum BgOps {
@@ -26,6 +29,7 @@ pub enum BgOps {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum TermOps {
     TestTerminal,
+    FontCtl,
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -38,18 +42,36 @@ pub struct TestResp {
     pub resp: String,
 }
 
-pub struct TerminalApi {
-    target: Arc<nw_sys::Window>,
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+pub enum FontCtl {
+    IncreaseSize,
+    DecreaseSize,
+    // SetSize(u32),
 }
 
-impl TerminalApi {
-    pub fn new(target: Arc<nw_sys::Window>) -> TerminalApi {
-        TerminalApi { target }
+#[derive(Debug, Clone)]
+pub struct TerminalIpc {
+    target: IpcTarget,
+}
+
+impl TerminalIpc {
+    pub fn new(target: IpcTarget) -> TerminalIpc {
+        TerminalIpc { target }
+    }
+
+    pub async fn increase_font_size(&self) -> Result<()> {
+        self.target.call::<_, _, ()>(TermOps::FontCtl, FontCtl::IncreaseSize).await?;
+        Ok(())
+    }
+
+    pub async fn decrease_font_size(&self) -> Result<()> {
+        self.target.call::<_, _, ()>(TermOps::FontCtl, FontCtl::DecreaseSize).await?;
+        Ok(())
     }
 }
 
-pub struct BackgroundApi {
-    target: Arc<nw_sys::Window>,
-}
+// pub struct BackgroundApi {
+//     target: Arc<nw_sys::Window>,
+// }
 
-impl BackgroundApi {}
+// impl BackgroundApi {}
