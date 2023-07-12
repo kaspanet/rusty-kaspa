@@ -29,6 +29,7 @@ borsh.workspace = true
 serde.workspace = true
 async-trait.workspace = true
 kaspa-core.workspace = true
+kaspa-daemon.workspace = true
 
 [dependencies.web-sys]
 workspace = true

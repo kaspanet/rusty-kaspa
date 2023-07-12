@@ -10,8 +10,11 @@ pub enum Error {
     #[error("{0}")]
     Custom(String),
 
-    #[error("aborting.")]
+    #[error("aborting")]
     UserAbort,
+
+    #[error("platform is not supported")]
+    Platform,
 
     #[error("Wallet error: {0}")]
     WalletError(#[from] WalletError),
@@ -78,6 +81,12 @@ pub enum Error {
 
     #[error("{0}")]
     DowncastError(String),
+
+    #[error(transparent)]
+    Store(#[from] workflow_store::error::Error),
+
+    #[error(transparent)]
+    NodeJs(#[from] workflow_node::error::Error),
 }
 
 impl Error {

@@ -33,4 +33,5 @@ pub mod server;
 pub mod set;
 pub mod sign;
 pub mod sweep;
+pub mod test;
 pub mod track;

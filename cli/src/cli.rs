@@ -161,19 +161,12 @@ impl KaspaCli {
                 // sign,
                 // sweep,
                 track,
+                test,
             ]
         );
 
-        cfg_if! {
-            if #[cfg(target_arch = "wasm32")] {
-                register_handlers!(
-                    self,
-                    self.handlers,
-                    [
-                        reload,
-                    ]
-                );
-            }
+        if application_runtime::is_web() {
+            register_handlers!(self, self.handlers, [reload,]);
         }
 
         Ok(())

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "daemon",
     "cli",
     "core",
     "wallet/core",
@@ -69,6 +70,7 @@ include = [
 [workspace.dependencies]
 # kaspa-testing-integration = { version = "0.1.2", path = "testing/integration" }
 kassiopeya = { version = "0.1.6", path = "kassiopeya" }
+kaspa-daemon = { version = "0.1.6", path = "daemon" }
 kaspa-addresses = { version = "0.1.6", path = "crypto/addresses" }
 kaspa-addressmanager = { version = "0.1.6", path = "components/addressmanager" }
 kaspa-bip32 = { version = "0.1.6", path = "wallet/bip32" }

@@ -1857,8 +1857,10 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-core",
+ "kaspa-daemon",
  "kaspa-wallet-core",
  "kaspa-wrpc-client",
+ "nw-sys",
  "pad",
  "separator",
  "serde",
@@ -1868,6 +1870,8 @@ dependencies = [
  "workflow-core",
  "workflow-dom",
  "workflow-log",
+ "workflow-node",
+ "workflow-store",
  "workflow-terminal",
 ]
 
@@ -2016,6 +2020,22 @@ dependencies = [
  "triggered",
  "wasm-bindgen",
  "workflow-log",
+]
+
+[[package]]
+name = "kaspa-daemon"
+version = "0.1.6"
+dependencies = [
+ "async-trait",
+ "cfg-if 1.0.0",
+ "futures",
+ "kaspa-consensus-core",
+ "nw-sys",
+ "thiserror",
+ "workflow-core",
+ "workflow-log",
+ "workflow-node",
+ "workflow-store",
 ]
 
 [[package]]
@@ -2794,6 +2814,7 @@ dependencies = [
  "js-sys",
  "kaspa-cli",
  "kaspa-core",
+ "kaspa-daemon",
  "nw-sys",
  "serde",
  "thiserror",

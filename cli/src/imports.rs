@@ -17,10 +17,11 @@ pub use kaspa_wallet_core::{Address, ConnectOptions, ConnectStrategy, Events, Se
 pub use pad::PadStr;
 pub use separator::Separatable;
 pub use std::ops::Deref;
-pub use std::sync::{Arc, Mutex};
+pub use std::path::{Path, PathBuf};
+pub use std::sync::{Arc, Mutex, MutexGuard};
 pub use workflow_core::abortable::Abortable;
 pub use workflow_core::channel::*;
 pub use workflow_core::runtime as application_runtime;
-pub use workflow_core::time::Instant;
+pub use workflow_core::time::{Duration, Instant};
 pub use workflow_log::*;
 pub use workflow_terminal::prelude::*;

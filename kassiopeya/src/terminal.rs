@@ -101,7 +101,6 @@ pub async fn init_application() -> Result<()> {
 
     crate::modules::register_handlers(&cli)?;
 
-
     // cli.handlers().register(&cli, crate::modules::test::Test::default());
 
     // cli starts notification->term trace pipe task
