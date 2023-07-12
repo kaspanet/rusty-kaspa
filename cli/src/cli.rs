@@ -193,7 +193,7 @@ impl KaspaCli {
     }
 
     pub async fn stop(self: &Arc<Self>) -> Result<()> {
-        self.handlers.stop(&self).await?;
+        self.handlers.stop(self).await?;
         // wallet stops the notifier
         self.wallet.stop().await?;
         // stop notification pipe task

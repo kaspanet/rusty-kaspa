@@ -167,7 +167,7 @@ impl Background {
 
     /// Create application tray icon and tray menu
     pub fn create_tray_icon_with_menu(self: Arc<Self>) -> Result<()> {
-        let this = self.clone();
+        let this = self;
         let submenu_1 = MenuItemBuilder::new()
             .label("TEST IPC")
             .key("6")
@@ -300,6 +300,7 @@ impl Background {
 #[wasm_bindgen]
 pub async fn init_background() -> Result<()> {
     workflow_wasm::panic::init_console_panic_hook();
+    kaspa_core::log::set_log_level(LevelFilter::Info);
 
     // let options = nw_sys::window::Options::new().title("Background page").width(200).height(200).left(0);
 

@@ -28,6 +28,7 @@ pub enum BgOps {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum TermOps {
+    // TestBg,
     TestTerminal,
     FontCtl,
 }

@@ -99,8 +99,8 @@ pub async fn init_application() -> Result<()> {
 
     cli.register_handlers()?;
 
-    use crate::modules::*;
-    register_handlers!(cli, cli.handlers(), [test]);
+    crate::modules::register_handlers(&cli)?;
+
 
     // cli.handlers().register(&cli, crate::modules::test::Test::default());
 
