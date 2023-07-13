@@ -40,7 +40,7 @@ use kaspa_consensus::config::ConfigBuilder;
 use kaspa_utxoindex::UtxoIndex;
 
 use async_channel::unbounded;
-use kaspa_core::{info, trace};
+use kaspa_core::info;
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_p2p_flows::service::P2pService;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, ServerCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
@@ -330,5 +330,5 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     core.run();
 
-    trace!("Kaspad is finished...");
+    info!("Kaspad has stopped");
 }
