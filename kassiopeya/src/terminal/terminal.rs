@@ -53,20 +53,32 @@ impl App {
             }),
         );
 
-        let cli_ = self.cli.clone();
+        let this = self.clone();
         self.ipc.method(
             TermOps::FontCtl,
             Method::new(move |args: FontCtl| {
-                let cli_ = cli_.clone();
+                let this = this.clone();
                 Box::pin(async move {
                     match args {
                         FontCtl::IncreaseSize => {
-                            cli_.term().increase_font_size().map_err(|e| e.to_string())?;
+                            this.cli.term().increase_font_size().map_err(|e| e.to_string())?;
                         }
                         FontCtl::DecreaseSize => {
-                            cli_.term().decrease_font_size().map_err(|e| e.to_string())?;
+                            this.cli.term().decrease_font_size().map_err(|e| e.to_string())?;
                         }
                     }
+                    Ok(())
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.notification(
+            TermOps::Stdio,
+            Notification::new(move |stdio: Stdio| {
+                let this = this.clone();
+                Box::pin(async move {
+                    this.cli.term().writeln(stdio);
                     Ok(())
                 })
             }),

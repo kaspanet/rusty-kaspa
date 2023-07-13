@@ -36,7 +36,7 @@ impl TerminalIpc {
     }
 
     pub async fn pipe_stdout(&self, stdio: Stdio) -> Result<()> {
-        self.target.call::<_, _, ()>(TermOps::Stdio, stdio).await?;
+        self.target.notify(TermOps::Stdio, stdio).await?;
         Ok(())
     }
 }

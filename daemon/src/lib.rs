@@ -65,6 +65,15 @@ pub enum Stdio {
     Stderr(String),
 }
 
+impl From<Stdio> for String {
+    fn from(s: Stdio) -> Self {
+        match s {
+            Stdio::Stdout(s) => s,
+            Stdio::Stderr(s) => s,
+        }
+    }
+}
+
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct DaemonStatus {
     pub uptime: Option<u64>,
