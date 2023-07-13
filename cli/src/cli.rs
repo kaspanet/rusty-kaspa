@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use cfg_if::cfg_if;
 use futures::stream::{Stream, StreamExt, TryStreamExt};
 use futures::*;
+use kaspa_daemon::Daemons;
 use kaspa_wallet_core::imports::{AtomicBool, Ordering, ToHex};
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
 use kaspa_wallet_core::storage::interface::AccessContext;
@@ -23,6 +24,17 @@ use workflow_log::*;
 use workflow_terminal::*;
 pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget}; //{CrLf, Terminal};
 
+pub struct Options {
+    pub daemons: Option<Arc<Daemons>>,
+    pub terminal: TerminalOptions,
+}
+
+impl Options {
+    pub fn new(terminal_options: TerminalOptions, daemons: Option<Arc<Daemons>>) -> Self {
+        Self { daemons, terminal: terminal_options }
+    }
+}
+
 pub struct KaspaCli {
     term: Arc<Mutex<Option<Arc<Terminal>>>>,
     wallet: Arc<Wallet>,
@@ -31,6 +43,7 @@ pub struct KaspaCli {
     flags: Flags,
     last_interaction: Arc<Mutex<Instant>>,
     handlers: Arc<HandlerCli>,
+    daemons: Arc<Daemons>,
 }
 
 impl From<&KaspaCli> for Arc<Terminal> {
@@ -73,7 +86,7 @@ impl KaspaCli {
         workflow_log::set_colors_enabled(true);
     }
 
-    pub async fn try_new_arc(options: TerminalOptions) -> Result<Arc<Self>> {
+    pub async fn try_new_arc(options: Options) -> Result<Arc<Self>> {
         let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None)?);
 
         let kaspa_cli = Arc::new(KaspaCli {
@@ -84,9 +97,10 @@ impl KaspaCli {
             flags: Flags::default(),
             last_interaction: Arc::new(Mutex::new(Instant::now())),
             handlers: Arc::new(HandlerCli::default()),
+            daemons: options.daemons.unwrap_or_default(),
         });
 
-        let term = Arc::new(Terminal::try_new_with_options(kaspa_cli.clone(), options)?);
+        let term = Arc::new(Terminal::try_new_with_options(kaspa_cli.clone(), options.terminal)?);
         term.init().await?;
 
         Ok(kaspa_cli)
@@ -106,6 +120,10 @@ impl KaspaCli {
 
     pub fn store(&self) -> Arc<dyn Interface> {
         self.wallet.store().clone()
+    }
+
+    pub fn daemons(&self) -> &Arc<Daemons> {
+        &self.daemons
     }
 
     pub fn handlers(&self) -> Arc<HandlerCli> {
@@ -752,9 +770,10 @@ where
 //     Ok(selection.unwrap())
 // }
 
-pub async fn kaspa_cli(options: TerminalOptions, banner: Option<String>) -> Result<()> {
+pub async fn kaspa_cli(terminal_options: TerminalOptions, banner: Option<String>) -> Result<()> {
     KaspaCli::init();
 
+    let options = Options::new(terminal_options, None);
     let cli = KaspaCli::try_new_arc(options).await?;
 
     let banner =

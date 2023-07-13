@@ -15,11 +15,13 @@ workflow-log.workspace = true
 workflow-core.workspace = true
 workflow-store.workspace = true
 workflow-node.workspace = true
-# workflow-nw.workspace = true
+workflow-nw.workspace = true
 nw-sys.workspace = true
 thiserror.workspace = true
 kaspa-consensus-core.workspace = true
-
+borsh.workspace = true
+serde.workspace = true
+downcast.workspace = true
 
 
 

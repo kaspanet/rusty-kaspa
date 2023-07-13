@@ -1,63 +1,71 @@
-// use nw_sys::window::Options;
-// use workflow_nw::ipc::*;
-//{imports::{ResponseError, Generator}, IpcDispatch};
-// use workflow_wasm::prelude::Callback;
-
 use crate::imports::*;
-// use crate::result::Result;
-// use kaspa_cli::kaspa_cli;
-// use nw_sys::prelude::*;
-// use wasm_bindgen::prelude::*;
-// use workflow_log::{log_info, log_trace};
-// use workflow_nw::prelude::*;
-// use workflow_terminal::Options as TerminalOptions;
+
+#[derive(Debug, Clone)]
+pub struct Terminal {
+    #[allow(dead_code)]
+    window: Arc<nw_sys::Window>,
+    ipc: TerminalIpc,
+}
+
+impl Terminal {
+    fn new(window: Arc<nw_sys::Window>) -> Self {
+        Terminal { ipc: TerminalIpc::new(window.clone().into()), window }
+    }
+
+    #[allow(dead_code)]
+    pub fn window(&self) -> &Arc<nw_sys::Window> {
+        &self.window
+    }
+
+    pub fn ipc(&self) -> &TerminalIpc {
+        &self.ipc
+    }
+}
 
 /// Global application object created on application initialization.
-static mut BACKGROUND: Option<Arc<Background>> = None;
+static mut CORE: Option<Arc<Core>> = None;
 
 /// Application struct wrapping `workflow_nw::Application` as an inner.
 #[derive(Clone)]
-pub struct Background {
+pub struct Core {
     pub inner: Arc<Application>,
-    pub ipc: Arc<Ipc<BgOps>>,
-    pub terminal: Arc<Mutex<Option<Arc<nw_sys::Window>>>>,
+    pub ipc: Arc<Ipc<CoreOps>>,
+    terminal: Arc<Mutex<Option<Arc<Terminal>>>>,
+    pub kaspad: Arc<Kaspad>,
+    pub task_ctl: DuplexChannel,
+    pub shutdown_ctl: Channel<()>,
 }
 
-unsafe impl Send for Background {}
-unsafe impl Sync for Background {}
+unsafe impl Send for Core {}
+unsafe impl Sync for Core {}
 
-impl Background {
+impl Core {
     /// Get access to the global application object
     #[allow(dead_code)]
-    pub fn global() -> Option<Arc<Background>> {
-        unsafe { BACKGROUND.clone() }
+    pub fn global() -> Option<Arc<Core>> {
+        unsafe { CORE.clone() }
     }
 
     /// Create a new application instance
     pub async fn try_new() -> Result<Arc<Self>> {
-        // let options = nw_sys::window::Options::new().show(false);
-
-        // let window = Arc::new(Application::create_window_async("blank.html", &options).await?);
-
         let app = Arc::new(Self {
             inner: Application::new()?,
-            ipc: Ipc::try_new_global_binding(Modules::Background)?,
+            ipc: Ipc::try_new_global_binding(Modules::Core)?,
             terminal: Arc::new(Mutex::new(Option::None)),
+            kaspad: Arc::new(Kaspad::default()),
+            task_ctl: DuplexChannel::oneshot(),
+            shutdown_ctl: Channel::oneshot(),
         });
 
         unsafe {
-            BACKGROUND = Some(app.clone());
+            CORE = Some(app.clone());
         };
 
         Ok(app)
     }
 
-    pub fn terminal_window(&self) -> Arc<nw_sys::Window> {
+    pub fn terminal(&self) -> Arc<Terminal> {
         self.terminal.lock().unwrap().as_ref().unwrap().clone()
-    }
-
-    pub fn terminal_ipc(&self) -> TerminalIpc {
-        TerminalIpc::new(self.terminal_window().into())
     }
 
     /// Create a test page window
@@ -121,7 +129,7 @@ impl Background {
                 // window().alert_with_message("Hello")?;
                 let this = this.clone();
                 spawn(async move {
-                    this.terminal_ipc().increase_font_size().await.unwrap_or_else(|e| log_error!("{}", e));
+                    this.terminal().ipc().increase_font_size().await.unwrap_or_else(|e| log_error!("{}", e));
                 });
                 Ok(())
             })
@@ -136,7 +144,7 @@ impl Background {
                 // window().alert_with_message("Hello")?;
                 let this = this.clone();
                 spawn(async move {
-                    this.terminal_ipc().decrease_font_size().await.unwrap_or_else(|e| log_error!("{}", e));
+                    this.terminal().ipc().decrease_font_size().await.unwrap_or_else(|e| log_error!("{}", e));
                 });
                 Ok(())
             })
@@ -153,7 +161,7 @@ impl Background {
     }
 
     /// Create application tray icon
-    pub fn create_tray_icon(&self) -> Result<()> {
+    pub fn _create_tray_icon(&self) -> Result<()> {
         let _tray = TrayMenuBuilder::new()
             .icon("resources/icons/tray-icon@2x.png")
             .icons_are_templates(false)
@@ -166,7 +174,7 @@ impl Background {
     }
 
     /// Create application tray icon and tray menu
-    pub fn create_tray_icon_with_menu(self: Arc<Self>) -> Result<()> {
+    pub fn _create_tray_icon_with_menu(self: Arc<Self>) -> Result<()> {
         let this = self;
         let submenu_1 = MenuItemBuilder::new()
             .label("TEST IPC")
@@ -182,7 +190,8 @@ impl Background {
                 spawn(async move {
                     // let source = this.ipc.window();
                     log_info!("CALLING IPC");
-                    let target = IpcTarget::new(this.terminal.lock().unwrap().as_ref().cloned().unwrap().as_ref());
+                    // let target = IpcTarget::new(this.terminal.lock().unwrap().as_ref().cloned().unwrap().as_ref());
+                    let target = IpcTarget::new(this.terminal.lock().unwrap().as_ref().unwrap().window.as_ref());
                     log_info!("TARGET");
 
                     let req = TestReq { req: "Hello World...".to_string() };
@@ -196,31 +205,6 @@ impl Background {
                         .await;
                     log_info!("AWAIT IS FINISHED: {:?}", resp);
                 });
-
-                // use workflow_terminal::bindings::*;
-                // use workflow_terminal::xterm::*;
-
-                // log_info!("A");
-                // let xterm = kaspa_cli::term();
-                // log_info!("B");
-                // let xterm = xterm.as_ref();
-                // log_info!("C");
-                // let xtermx = xterm.unwrap().term();
-                // {
-                //     log_info!("D");
-                //     let xterm = xtermx.xterm();
-                //     log_info!("E");
-                //     let xterm_impl = xterm.as_ref();
-                //     log_info!("F");
-                //     let xterm_impl = xterm_impl.expect("Could not get xterm");
-                //     log_info!("G");
-                //     log_info!("setting fontSize");
-                //     xterm_impl.set_option("fontSize", JsValue::from(8));
-                //     log_info!("updating rows...");
-                // }
-                // xtermx.resize();
-                // }
-                // }
 
                 Ok(())
             })
@@ -266,120 +250,152 @@ impl Background {
 
         Ok(())
     }
+
+    fn register_ipc_handlers(self: &Arc<Self>) -> Result<()> {
+        let this = self.clone();
+        self.ipc.method(
+            CoreOps::KaspadCtl,
+            Method::new(move |op: KaspadOps| {
+                let this = this.clone();
+                Box::pin(async move {
+                    match op {
+                        KaspadOps::Configure(config) => {
+                            this.kaspad.configure(config)?;
+                        }
+                        KaspadOps::DaemonCtl(ctl) => match ctl {
+                            DaemonCtl::Start => {
+                                this.kaspad.start()?;
+                            }
+                            DaemonCtl::Stop => {
+                                this.kaspad.stop()?;
+                            }
+                            DaemonCtl::Restart => {
+                                this.kaspad.restart()?;
+                            }
+                            DaemonCtl::Kill => {
+                                this.kaspad.kill()?;
+                            }
+                        },
+                    }
+
+                    Ok(())
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.method(
+            CoreOps::KaspadStatus,
+            Method::new(move |_op: ()| {
+                let this = this.clone();
+                Box::pin(async move {
+                    let uptime = this.kaspad.uptime().map(|u| u.as_secs());
+                    Ok(DaemonStatus { uptime })
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.method(
+            CoreOps::Shutdown,
+            Method::new(move |_op: ()| {
+                let this = this.clone();
+                Box::pin(async move {
+                    this.shutdown_ctl.send(()).await.unwrap_or_else(|err| log_error!("{}", err));
+                    Ok(())
+                })
+            }),
+        );
+
+        Ok(())
+    }
+
+    pub async fn handle_stdio(self: &Arc<Self>, _kind: DaemonKind, stdio: Stdio) -> Result<()> {
+        // - TODO - pipe according to kind...
+        self.terminal().ipc().pipe_stdout(stdio).await?;
+
+        Ok(())
+    }
+
+    pub async fn start_task(self: &Arc<Self>) -> Result<()> {
+        let this = self.clone();
+        let task_ctl_receiver = self.task_ctl.request.receiver.clone();
+        let task_ctl_sender = self.task_ctl.response.sender.clone();
+        let kaspad_stdout_receiver = self.kaspad.stdout().receiver.clone();
+        let kaspad_stderr_receiver = self.kaspad.stderr().receiver.clone();
+
+        spawn(async move {
+            loop {
+                select! {
+                    _ = task_ctl_receiver.recv().fuse() => {
+                        break;
+                    },
+                    stdout = kaspad_stdout_receiver.recv().fuse() => {
+                        if let Ok(stdout) = stdout {
+                            this.handle_stdio(DaemonKind::Kaspad, Stdio::Stdout(stdout)).await.unwrap_or_else(|err| {
+                                log_error!("error while handling stdout: {err}");
+                            });
+                        }
+                    },
+                    stderr = kaspad_stderr_receiver.recv().fuse() => {
+                        if let Ok(stderr) = stderr {
+                            this.handle_stdio(DaemonKind::Kaspad, Stdio::Stderr(stderr)).await.unwrap_or_else(|err| {
+                                log_error!("error while handling stderr: {err}");
+                            });
+                        }
+                    },
+
+                }
+            }
+
+            task_ctl_sender.send(()).await.unwrap();
+        });
+        Ok(())
+    }
+
+    pub async fn stop_task(&self) -> Result<()> {
+        self.task_ctl.signal(()).await.expect("Wallet::stop_task() `signal` error");
+        Ok(())
+    }
+
+    pub async fn init_terminal_window(self: &Arc<Self>) -> Result<()> {
+        let window = Arc::new(
+            Application::create_window_async(
+                "/app/index.html",
+                &nw_sys::window::Options::new().new_instance(false).height(768).width(1280),
+            )
+            .await?,
+        );
+
+        self.terminal.lock().unwrap().replace(Arc::new(Terminal::new(window)));
+
+        Ok(())
+    }
+
+    pub async fn main(self: &Arc<Self>) -> Result<()> {
+        self.register_ipc_handlers()?;
+
+        self.init_terminal_window().await?;
+
+        self.create_menu()?;
+
+        self.start_task().await?;
+
+        self.shutdown_ctl.recv().await?;
+
+        self.stop_task().await?;
+
+        Ok(())
+    }
 }
 
-/// Creates the application context menu
-// #[wasm_bindgen]
-// pub fn create_context_menu() -> Result<()> {
-//     if let Some(app) = App::global() {
-//         app.create_context_menu()?;
-//     } else {
-//         let is_nw = initialize_app()?;
-//         if !is_nw {
-//             log_info!("TODO: initialize web-app");
-//             return Ok(());
-//         }
-//         let app = App::global().expect("Unable to create app");
-//         app.create_context_menu()?;
-//     }
-//     Ok(())
-// }
-
-// /// Crteates the application instance
-// #[wasm_bindgen]
-// pub fn initialize_app() -> Result<bool> {
-//     let is_nw = is_nw();
-
-//     let _app = App::new()?;
-//     Ok(is_nw)
-// }
-
-/// This function is called from the main `/index.js` file
-/// and creates the main application window containing
-/// `index.html`
 #[wasm_bindgen]
-pub async fn init_background() -> Result<()> {
+pub async fn init_core() -> Result<()> {
     workflow_wasm::panic::init_console_panic_hook();
     kaspa_core::log::set_log_level(LevelFilter::Info);
 
-    // let options = nw_sys::window::Options::new().title("Background page").width(200).height(200).left(0);
-
-    // let background_window = Application::create_window_async("blank.html", &options).await?;
-
-    // log_info!("getting background window");
-    // let window = nw_sys::window::get();
-    // log_info!("window: {:?}", window);
-
-    let app = Background::try_new().await?; //background_window)?;
-
-    // app.ipc.lock().unwrap().method(Ops::TestBg, Method::new(move |args : TestReq| {
-    //     Box::pin(async move {
-
-    //         let resp : TestResp = TestResp { resp : args.req+" - response!" };
-
-    //         Ok(resp)
-    //         // manager.start_notify(&connection, scope).await.map_err(|err| err.to_string())?;
-    //         // Ok(SubscribeResponse::new(connection.id()))
-    //     })
-    // }));
-
-    // app.ipc.method(BackgroundOps::TestBg, Method::new(
-    //     Box::pin(async move {
-    //         manager.start_notify(&connection, scope).await.map_err(|err| err.to_string())?;
-    //         Ok(SubscribeResponse::new(connection.id()))
-    //     })
-    // }));
-    //     Box::new(move |args: Vec<Value>| -> Result<Value> {
-
-    // }));
-
-    // let app = App::global().expect("Unable to create background application instance");
-
-    let window = Application::create_window_async(
-        "/app/index.html",
-        &nw_sys::window::Options::new().new_instance(false).height(768).width(1280),
-        // |_win: Window| -> std::result::Result<(), JsValue> {
-        //     //app.create_context_menu()?;
-        //     Ok(())
-        // },
-    )
-    .await?;
-
-    app.terminal.lock().unwrap().replace(Arc::new(window));
-
-    // app.inner.create_window_with_callback(
-    //     "/app/index.html",
-    //     &window::Options::new().new_instance(false).height(768).width(1280),
-    //     |_win: Window| -> std::result::Result<(), JsValue> {
-    //         //app.create_context_menu()?;
-    //         Ok(())
-    //     },
-    // )?;
-
-    // let window = window::get();
-    // log_trace!("nw.Window.get(): {:?}", window);
-
-    app.create_menu()?;
-    app.create_tray_icon()?;
-    app.create_tray_icon_with_menu()?;
+    let core = Core::try_new().await?;
+    core.main().await?;
 
     Ok(())
 }
-
-// #[wasm_bindgen]
-// pub async fn initialize_kassiopeya_application() -> Result<()> {
-//     workflow_wasm::panic::init_console_panic_hook();
-
-//     App::new()?;
-
-//     let app = App::global().expect("Unable to create app");
-
-//     app.create_menu()?;
-//     app.create_tray_icon()?;
-//     app.create_tray_icon_with_menu()?;
-
-//     let options = TerminalOptions { ..TerminalOptions::default() };
-//     let banner = format!("Kaspa OS v{} (type 'help' for list of commands)", env!("CARGO_PKG_VERSION"));
-//     kaspa_cli(options, Some(banner)).await?;
-//     Ok(())
-// }

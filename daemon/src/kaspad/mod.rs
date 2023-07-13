@@ -4,12 +4,13 @@ pub mod wasm;
 use crate::imports::*;
 
 use wasm::{Process, ProcessOptions};
+// use workflow_log::color_log::downcast_sync;
 
-#[derive(Clone, Debug)]
-pub struct Args {
-    pub path: PathBuf,
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+pub struct KaspadConfig {
+    pub path: Option<String>,
+    pub network: Option<NetworkType>,
     pub utxo_index: bool,
-    pub network: NetworkType,
     // --- TODO: these are not used yet ---
     pub peers: Vec<String>,
     pub enablge_grpc: bool,
@@ -22,11 +23,17 @@ pub struct Args {
     // ---
 }
 
-impl Args {
-    pub fn new(path: &Path, network: NetworkType) -> Result<Self> {
-        Ok(Self {
-            path: PathBuf::from(path),
-            network,
+impl KaspadConfig {
+    pub fn new(path: &str, network: NetworkType) -> Result<Self> {
+        Ok(Self { path: Some(path.to_string()), network: Some(network), ..Default::default() })
+    }
+}
+
+impl Default for KaspadConfig {
+    fn default() -> Self {
+        Self {
+            path: None,
+            network: None,
             utxo_index: true,
             // --- TODO: these are not used yet ---
             peers: vec![],
@@ -38,17 +45,31 @@ impl Args {
             async_threads: None,
             no_logfiles: false,
             // ---
-        })
+        }
     }
 }
 
-impl From<Args> for Vec<String> {
-    fn from(ko: Args) -> Vec<String> {
+impl TryFrom<KaspadConfig> for Vec<String> {
+    type Error = Error;
+    fn try_from(args: KaspadConfig) -> Result<Vec<String>> {
         let mut argv = Vec::new();
-        let binary_path = ko.path.to_string_lossy().to_string();
+
+        if args.path.is_none() {
+            return Err(Error::Custom("no kaspad path is specified".to_string()));
+        }
+
+        if args.network.is_none() {
+            return Err(Error::Custom("no network type is specified".to_string()));
+        }
+
+        // ---
+
+        let binary_path = args.path.unwrap();
         argv.push(binary_path.as_str());
 
-        match ko.network {
+        let network = args.network.unwrap();
+
+        match network {
             NetworkType::Mainnet => {}
             NetworkType::Testnet => {
                 argv.push("--testnet");
@@ -61,52 +82,79 @@ impl From<Args> for Vec<String> {
             }
         }
 
-        if ko.utxo_index {
+        if args.utxo_index {
             argv.push("--utxoindex");
         }
 
         argv.push("--rpclisten-borsh=default");
 
-        argv.into_iter().map(String::from).collect()
+        Ok(argv.into_iter().map(String::from).collect())
     }
 }
 
-pub struct Inner {
+struct Inner {
     process: Option<Arc<Process>>,
-    stdout: Channel<String>,
-    stderr: Channel<String>,
-    options: Args,
+    config: Mutex<KaspadConfig>,
+}
+
+impl Default for Inner {
+    fn default() -> Self {
+        Self { process: None, config: Mutex::new(Default::default()) }
+    }
 }
 
 pub struct Kaspad {
     inner: Arc<Mutex<Inner>>,
+    stdout: Channel<String>,
+    stderr: Channel<String>,
+}
+
+impl Default for Kaspad {
+    fn default() -> Self {
+        Self { inner: Arc::new(Mutex::new(Inner::default())), stdout: Channel::unbounded(), stderr: Channel::unbounded() }
+    }
 }
 
 impl Kaspad {
-    pub fn new(options: Args) -> Self {
+    pub fn new(args: KaspadConfig) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(Inner { process: None, stdout: Channel::unbounded(), stderr: Channel::unbounded(), options })),
+            inner: Arc::new(Mutex::new(Inner { config: Mutex::new(args), ..Default::default() })),
+            stdout: Channel::unbounded(),
+            stderr: Channel::unbounded(),
         }
     }
 
-    pub fn inner(&self) -> MutexGuard<Inner> {
+    pub fn configure(&self, config: KaspadConfig) -> Result<()> {
+        *self.inner().config.lock().unwrap() = config;
+        Ok(())
+    }
+
+    fn inner(&self) -> MutexGuard<Inner> {
         self.inner.lock().unwrap()
+    }
+
+    pub fn uptime(&self) -> Option<Duration> {
+        if let Some(process) = self.inner().process.as_ref() {
+            process.uptime()
+        } else {
+            None
+        }
     }
 
     pub fn process(&self) -> Option<Arc<Process>> {
         self.inner().process.clone()
     }
 
-    pub fn stdout(&self) -> Channel<String> {
-        self.inner().stdout.clone()
+    pub fn stdout(&self) -> &Channel<String> {
+        &self.stdout
     }
 
-    pub fn stderr(&self) -> Channel<String> {
-        self.inner().stderr.clone()
+    pub fn stderr(&self) -> &Channel<String> {
+        &self.stderr
     }
 
-    pub fn argv(&self) -> Vec<String> {
-        self.inner().options.clone().into()
+    pub fn try_argv(&self) -> Result<Vec<String>> {
+        self.inner().config.lock().unwrap().clone().try_into()
     }
 
     pub fn start(&self) -> Result<()> {
@@ -117,7 +165,7 @@ impl Kaspad {
             }
         }
 
-        let argv = self.argv();
+        let argv = self.try_argv()?;
         let argv = argv.iter().map(String::as_str).collect::<Vec<_>>();
         let cwd = PathBuf::from(nw_sys::app::start_path());
 
@@ -128,8 +176,8 @@ impl Kaspad {
             Some(Duration::from_millis(1000)),
             false,
             None,
-            Some(self.stdout()),
-            Some(self.stderr()),
+            Some(self.stdout().clone()),
+            Some(self.stderr().clone()),
         );
 
         // let options = KaspadOptions::new(path,network)?;
@@ -150,7 +198,8 @@ impl Kaspad {
     pub fn restart(&self) -> Result<()> {
         let process = self.process();
         if let Some(process) = process {
-            process.replace_argv(self.argv());
+            let argv = self.try_argv()?;
+            process.replace_argv(argv);
             process.restart()?;
         }
         Ok(())
@@ -173,11 +222,21 @@ impl Kaspad {
         Ok(())
     }
 
-    pub async fn shutdown(&self) -> Result<()> {
+    pub async fn stop_and_join(&self) -> Result<()> {
         let process = self.process();
         if let Some(process) = process {
             process.stop_and_join().await?;
         }
         Ok(())
     }
+}
+
+#[async_trait]
+pub trait KaspadCtl {
+    async fn configure(&self, config: KaspadConfig) -> Result<()>;
+    async fn start(&self) -> Result<()>;
+    async fn stop(&self) -> Result<()>;
+    async fn restart(&self) -> Result<()>;
+    async fn kill(&self) -> Result<()>;
+    async fn status(&self) -> Result<DaemonStatus>;
 }

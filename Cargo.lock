@@ -2027,14 +2027,18 @@ name = "kaspa-daemon"
 version = "0.1.6"
 dependencies = [
  "async-trait",
+ "borsh",
  "cfg-if 1.0.0",
+ "downcast",
  "futures",
  "kaspa-consensus-core",
  "nw-sys",
+ "serde",
  "thiserror",
  "workflow-core",
  "workflow-log",
  "workflow-node",
+ "workflow-nw",
  "workflow-store",
 ]
 
@@ -2811,8 +2815,10 @@ dependencies = [
  "async-trait",
  "borsh",
  "cfg-if 1.0.0",
+ "futures",
  "js-sys",
  "kaspa-cli",
+ "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-daemon",
  "nw-sys",

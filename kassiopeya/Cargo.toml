@@ -30,6 +30,8 @@ serde.workspace = true
 async-trait.workspace = true
 kaspa-core.workspace = true
 kaspa-daemon.workspace = true
+kaspa-consensus-core.workspace = true
+futures.workspace = true
 
 [dependencies.web-sys]
 workspace = true

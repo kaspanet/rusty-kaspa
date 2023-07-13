@@ -24,6 +24,7 @@ pub mod name;
 pub mod network;
 #[path = "new-address.rs"]
 pub mod new_address;
+pub mod node;
 pub mod open;
 pub mod ping;
 pub mod reload;

@@ -1,7 +1,12 @@
-mod background;
-mod error;
 mod imports;
+
+mod error;
+mod result;
+
 mod ipc;
 mod modules;
-mod result;
+
+mod core;
+mod kaspad;
+mod miner;
 mod terminal;

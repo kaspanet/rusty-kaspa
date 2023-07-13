@@ -4,6 +4,8 @@ pub mod kaspad;
 pub mod result;
 
 use crate::imports::*;
+pub use crate::result::Result;
+pub use kaspad::{Kaspad, KaspadConfig, KaspadCtl};
 use workflow_core::runtime;
 use workflow_store::fs::*;
 
@@ -34,4 +36,36 @@ pub async fn locate_binaries(root: &str, name: &str) -> Result<Vec<PathBuf>> {
     }
 
     Ok(list)
+}
+
+pub enum DaemonKind {
+    Kaspad,
+    // MinerCpu,
+}
+
+#[derive(Default)]
+pub struct Daemons {
+    pub kaspad: Option<Arc<dyn KaspadCtl + Send + Sync + 'static>>,
+}
+
+impl Daemons {
+    pub fn new() -> Self {
+        Self { kaspad: None }
+    }
+
+    pub fn with_kaspad(mut self, kaspad: Arc<dyn KaspadCtl + Send + Sync + 'static>) -> Self {
+        self.kaspad = Some(kaspad);
+        self
+    }
+}
+
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+pub enum Stdio {
+    Stdout(String),
+    Stderr(String),
+}
+
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+pub struct DaemonStatus {
+    pub uptime: Option<u64>,
 }

@@ -7,5 +7,5 @@ true && process.versions["nw-flavor"] === "sdk" && chrome.developerPrivate.openD
 (async()=>{
     window.kaspa = await import('/app/wasm/kaspa.js');
     const wasm = await window.kaspa.default('/app/wasm/kaspa_bg.wasm');
-    await window.kaspa.init_background();
+    await window.kaspa.init_core();
 })();

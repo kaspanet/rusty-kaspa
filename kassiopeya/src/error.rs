@@ -1,3 +1,4 @@
+use kaspa_daemon::error::Error as DaemonError;
 use thiserror::Error;
 use wasm_bindgen::JsValue;
 use workflow_nw::ipc::ResponseError;
@@ -25,6 +26,9 @@ pub enum Error {
 
     #[error("{0}")]
     Terminal(#[from] workflow_terminal::error::Error),
+
+    #[error("channel error")]
+    RecvError(#[from] workflow_core::channel::RecvError),
 }
 
 impl From<Error> for JsValue {
@@ -43,5 +47,11 @@ impl From<JsValue> for Error {
 impl From<Error> for ResponseError {
     fn from(err: Error) -> ResponseError {
         ResponseError::Custom(err.to_string())
+    }
+}
+
+impl From<Error> for DaemonError {
+    fn from(err: Error) -> DaemonError {
+        DaemonError::Custom(err.to_string())
     }
 }
