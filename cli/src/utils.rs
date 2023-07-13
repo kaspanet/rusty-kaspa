@@ -20,6 +20,7 @@ pub enum Track {
     Daa = 0,
     Balance,
     Pending,
+    Tx,
     Utxo,
 }
 
@@ -30,6 +31,7 @@ impl FromStr for Track {
             "daa" => Ok(Track::Daa),
             "balance" => Ok(Track::Balance),
             "pending" => Ok(Track::Pending),
+            "tx" => Ok(Track::Tx),
             "utxo" => Ok(Track::Utxo),
             _ => Err(format!("unknown attribute '{}'", s)),
         }
@@ -42,6 +44,7 @@ impl ToString for Track {
             Track::Daa => "daa".to_string(),
             Track::Balance => "balance".to_string(),
             Track::Pending => "pending".to_string(),
+            Track::Tx => "tx".to_string(),
             Track::Utxo => "utxo".to_string(),
         }
     }
@@ -52,7 +55,7 @@ pub struct Flags(DashMap<Track, Arc<AtomicBool>>);
 impl Default for Flags {
     fn default() -> Self {
         let mut map = DashMap::new();
-        let iter = [(Track::Daa, false), (Track::Balance, false), (Track::Pending, false), (Track::Utxo, false)]
+        let iter = [(Track::Daa, false), (Track::Balance, false), (Track::Pending, false), (Track::Tx, false), (Track::Utxo, false)]
             .into_iter()
             .map(|(flag, default)| (flag, Arc::new(AtomicBool::new(default))));
         map.extend(iter);

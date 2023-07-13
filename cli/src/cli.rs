@@ -42,8 +42,8 @@ pub struct KaspaCli {
     mute: Arc<AtomicBool>,
     flags: Flags,
     last_interaction: Arc<Mutex<Instant>>,
-    handlers: Arc<HandlerCli>,
     daemons: Arc<Daemons>,
+    handlers: Arc<HandlerCli>,
 }
 
 impl From<&KaspaCli> for Arc<Terminal> {
@@ -143,50 +143,7 @@ impl KaspaCli {
     }
 
     pub fn register_handlers(self: &Arc<Self>) -> Result<()> {
-        register_handlers!(
-            self,
-            self.handlers,
-            [
-                address,
-                // broadcast,
-                close,
-                connect,
-                // create_unsigned_tx,
-                create,
-                details,
-                disconnect,
-                estimate,
-                exit,
-                export,
-                halt,
-                help,
-                hint,
-                import,
-                info,
-                list,
-                metrics,
-                mute,
-                name,
-                network,
-                new_address,
-                open,
-                ping,
-                reload,
-                select,
-                send,
-                server,
-                set,
-                // sign,
-                // sweep,
-                track,
-                test,
-            ]
-        );
-
-        if application_runtime::is_web() {
-            register_handlers!(self, self.handlers, [reload,]);
-        }
-
+        crate::modules::register_handlers(self)?;
         Ok(())
     }
 

@@ -3137,17 +3137,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "node-child-process"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c47c373ebda801db5ad46fe508594ac011200f4b3e1ae6076201e292a4b68a21"
-dependencies = [
- "js-sys",
- "node-sys",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "node-sys"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3267,6 +3256,7 @@ checksum = "6aa2c4e539b869820a2b82e1aef6ff40aa85e65decdd5185e83fb4b1249cd00f"
 name = "nw-sys"
 version = "0.1.2"
 dependencies = [
+ "cfg-if 1.0.0",
  "js-sys",
  "thiserror",
  "wasm-bindgen",
@@ -5242,7 +5232,6 @@ version = "0.3.17"
 dependencies = [
  "futures",
  "js-sys",
- "node-child-process",
  "node-sys",
  "thiserror",
  "wasm-bindgen",

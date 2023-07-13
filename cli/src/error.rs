@@ -87,6 +87,9 @@ pub enum Error {
 
     #[error(transparent)]
     NodeJs(#[from] workflow_node::error::Error),
+
+    #[error(transparent)]
+    Daemon(#[from] kaspa_daemon::error::Error),
 }
 
 impl Error {

@@ -21,4 +21,4 @@ pub use workflow_log::*;
 pub use workflow_nw::ipc::*;
 pub use workflow_nw::prelude::*;
 pub use workflow_terminal::prelude::*;
-pub use workflow_terminal::Options as TerminalOptions;
+pub use workflow_terminal::{CrLf, Options as TerminalOptions};

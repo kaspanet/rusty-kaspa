@@ -151,11 +151,11 @@ impl Core {
             .build()?;
 
         let item = MenuItemBuilder::new()
-            .label("Top Menu")
+            .label("Kaspa OS")
             .submenus(vec![submenu_1, menu_separator(), submenu_2, menu_separator(), increase_font, decrease_font])
             .build()?;
 
-        MenubarBuilder::new("Kassiopeya").mac_hide_edit(true).mac_hide_window(true).append(item).build(true)?;
+        MenubarBuilder::new("Kaspa OS").mac_hide_edit(true).mac_hide_window(true).append(item).build(true)?;
 
         Ok(())
     }

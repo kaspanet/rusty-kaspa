@@ -3,6 +3,8 @@ pub mod imports;
 pub mod kaspad;
 pub mod result;
 
+use std::fmt::Display;
+
 use crate::imports::*;
 pub use crate::result::Result;
 pub use kaspad::{Kaspad, KaspadConfig, KaspadCtl};
@@ -18,7 +20,6 @@ pub async fn locate_binaries(root: &str, name: &str) -> Result<Vec<PathBuf>> {
 
     let name = if runtime::is_windows() { name.to_string() + ".exe" } else { name.to_string() };
 
-    // let locations = LOCATIONS.iter().map(|path| absolute(&PathBuf::from(&root).join(path).join(&name)).map_err(|e|e.into())).collect::<Result<Vec<_>>>()?;
     let locations = LOCATIONS
         .iter()
         .map(|path| PathBuf::from(&root).join(path).join(&name).absolute().map_err(|e| e.into()))
@@ -57,6 +58,10 @@ impl Daemons {
         self.kaspad = Some(kaspad);
         self
     }
+
+    pub fn kaspad(&self) -> Arc<dyn KaspadCtl + Send + Sync + 'static> {
+        self.kaspad.as_ref().expect("accessing Daemons::kaspad while kaspad option is None").clone()
+    }
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -74,7 +79,44 @@ impl From<Stdio> for String {
     }
 }
 
+impl Stdio {
+    pub fn trim(self) -> String {
+        let mut s = String::from(self);
+        if s.ends_with('\n') {
+            s.pop();
+            if s.ends_with('\r') {
+                s.pop();
+            }
+        }
+        s
+    }
+}
+
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct DaemonStatus {
     pub uptime: Option<u64>,
+}
+
+impl Display for DaemonStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(uptime) = self.uptime {
+            write!(f, "running - uptime: {}", format_duration(uptime))?;
+        } else {
+            write!(f, "not running")?;
+        }
+        Ok(())
+    }
+}
+
+fn format_duration(seconds: u64) -> String {
+    let days = seconds / (24 * 60 * 60);
+    let hours = (seconds / (60 * 60)) % 24;
+    let minutes = (seconds / 60) % 60;
+    let seconds = seconds % 60;
+
+    if days > 0 {
+        format!("{0} days {1:02} hours, {2:02} minutes, {3:02} seconds", days, hours, minutes, seconds)
+    } else {
+        format!("{0:02} hours, {1:02} minutes, {2:02} seconds", hours, minutes, seconds)
+    }
 }

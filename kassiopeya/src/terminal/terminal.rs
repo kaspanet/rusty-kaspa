@@ -78,7 +78,7 @@ impl App {
             Notification::new(move |stdio: Stdio| {
                 let this = this.clone();
                 Box::pin(async move {
-                    this.cli.term().writeln(stdio);
+                    this.cli.term().writeln(stdio.trim().crlf());
                     Ok(())
                 })
             }),

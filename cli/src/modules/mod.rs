@@ -1,4 +1,4 @@
-// use crate::imports::*;
+use crate::imports::*;
 
 pub mod address;
 pub mod broadcast;
@@ -36,3 +36,52 @@ pub mod sign;
 pub mod sweep;
 pub mod test;
 pub mod track;
+
+pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
+    register_handlers!(
+        cli,
+        cli.handlers(),
+        [
+            address,
+            // broadcast,
+            close,
+            connect,
+            // create_unsigned_tx,
+            create,
+            details,
+            disconnect,
+            estimate,
+            exit,
+            export,
+            halt,
+            help,
+            hint,
+            import,
+            info,
+            list,
+            metrics,
+            mute,
+            name,
+            network,
+            new_address,
+            node,
+            open,
+            ping,
+            reload,
+            select,
+            send,
+            server,
+            set,
+            // sign,
+            // sweep,
+            track,
+            test,
+        ]
+    );
+
+    if application_runtime::is_web() {
+        register_handlers!(cli, cli.handlers(), [reload,]);
+    }
+
+    Ok(())
+}
