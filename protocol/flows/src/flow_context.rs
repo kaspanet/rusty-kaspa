@@ -509,8 +509,16 @@ impl ConnectionInitializer for FlowContext {
             flow.launch();
         }
 
-        if router.is_outbound() {
-            self.address_manager.lock().add_address(router.net_address().into());
+        if router.is_outbound() || peer_version.address.is_some() {
+            let mut address_manager = self.address_manager.lock();
+
+            if router.is_outbound() {
+                address_manager.add_address(router.net_address().into());
+            }
+
+            if let Some(peer_ip_address) = peer_version.address {
+                address_manager.add_address(peer_ip_address);
+            }
         }
 
         // Note: we deliberately do not hold the handshake in memory so at this point receivers for handshake subscriptions
