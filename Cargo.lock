@@ -5365,6 +5365,7 @@ dependencies = [
  "futures",
  "js-sys",
  "numtoa",
+ "nw-sys",
  "regex",
  "textwrap",
  "thiserror",
