@@ -4,12 +4,12 @@ extern crate self as address_manager;
 
 use std::{collections::HashSet, sync::Arc};
 
-use getaddrs::{if_flags, InterfaceAddrs};
 use itertools::Itertools;
 use kaspa_consensus_core::config::Config;
 use kaspa_core::{debug, info, time::unix_now};
 use kaspa_database::prelude::{StoreResultExtensions, DB};
 use kaspa_utils::networking::IpAddress;
+use local_ip_address::list_afinet_netifas;
 use parking_lot::Mutex;
 
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
@@ -58,32 +58,22 @@ impl AddressManager {
                 let listen_address = self.config.listen.normalize(self.config.default_p2p_port());
 
                 if listen_address.ip.is_unspecified() {
-                    match InterfaceAddrs::query_system() {
-                        None => {
-                            // No interfaces found
-                        }
-                        Some(addrs) => {
-                            for addr in addrs {
-                                // Interface is up
-                                if addr.flags.contains(if_flags::IFF_UP) {
-                                    match addr.address {
-                                        None => {}
-                                        Some(ip) => {
-                                            let curr_ip = IpAddress::new(ip);
+                    let network_interfaces = list_afinet_netifas();
 
-                                            // TODO: Add Check IPv4 or IPv6 match from Go code
-                                            if curr_ip.is_publicly_routable() {
-                                                info!("Publicly routable local address {} added to store", curr_ip);
-                                                self.local_net_addresses
-                                                    .push(NetAddress { ip: curr_ip, port: self.config.default_p2p_port() });
-                                            } else {
-                                                info!("Non-publicly routable interface address {} not added to store", curr_ip);
-                                            }
-                                        }
-                                    }
-                                }
+                    if let Ok(network_interfaces) = network_interfaces {
+                        for (_, ip) in network_interfaces.iter() {
+                            let curr_ip = IpAddress::new(*ip);
+
+                            // TODO: Add Check IPv4 or IPv6 match from Go code
+                            if curr_ip.is_publicly_routable() {
+                                info!("Publicly routable local address {} added to store", curr_ip);
+                                self.local_net_addresses.push(NetAddress { ip: curr_ip, port: self.config.default_p2p_port() });
+                            } else {
+                                info!("Non-publicly routable interface address {} not added to store", curr_ip);
                             }
                         }
+                    } else {
+                        println!("Error getting network interfaces: {:?}", network_interfaces);
                     }
                 } else if listen_address.ip.is_publicly_routable() {
                     info!("Publicly routable local address {} added to store", listen_address.ip);
