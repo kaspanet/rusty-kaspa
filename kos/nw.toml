@@ -1,7 +1,3 @@
-
-
-# nw.toml - for additional properties please see https://github.com/aspectron/cargo-nw
-
 [application]
 name = "kaspa-os"
 version = "0.1.0"
@@ -47,29 +43,6 @@ rules = [
 [[action]]
 stage = "build"
 items = [
-    # { run = { cmd="echo \"source: $SOURCE target: $TARGET\""} }
-    # { run = { cmd="echo \"source: $SOURCE target: $TARGET\""} }
-    # { run = { cmd = "cargo build --release --bin kaspad", cwd = "$SOURCE" } },
     { run = { cmd = "/Users/aspect/.cargo/bin/cargo build --release --bin kaspad", cwd = ".." } },
     { copy = { file = "../target/release/kaspad$EXE", to = "$TARGET/bin/" } },
 ]
-
-
-
-# [[dependency]]
-# name = "kaspad"
-# # git = { url = "https://github.com/kaspanet/kaspad", branch = "release" }
-# run = [
-#     # { cmd = "pwd", cwd = "$SOURCE" },
-#     { cmd = "cargo build --release --bin kaspad", cwd = "$SOURCE" },
-# ]
-# copy = [
-#     { file = "../target/release/kaspad$EXE", to = "bin/$PLATFORM-$ARCH", flatten = true },
-# ]
-
-# regex = [
-#     "kaspad(.exe)?$",
-#     "genkeypair(.exe)?$",
-#     "kaspactl(.exe)?$",
-#     "kaspawallet(.exe)?$",
-# ], 
