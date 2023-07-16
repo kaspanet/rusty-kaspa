@@ -11,4 +11,4 @@
 
 - regular: `cargo nw run`
 - with nwjs sdk: `cargo nw run --sdk`
-- using local cargo-nw: `cargo run -- nw ../rusty-kaspa/kassiopeia run --sdk`
+- using local cargo-nw: `cargo run -- nw ../rusty-kaspa/kos run --sdk`
