@@ -2319,6 +2319,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-os"
+version = "0.1.6"
+dependencies = [
+ "async-trait",
+ "borsh",
+ "cfg-if 1.0.0",
+ "futures",
+ "js-sys",
+ "kaspa-cli",
+ "kaspa-consensus-core",
+ "kaspa-core",
+ "kaspa-daemon",
+ "nw-sys",
+ "serde",
+ "thiserror",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "workflow-core",
+ "workflow-dom",
+ "workflow-log",
+ "workflow-nw",
+ "workflow-terminal",
+ "workflow-wasm",
+]
+
+[[package]]
 name = "kaspa-p2p-flows"
 version = "0.1.6"
 dependencies = [
@@ -2806,33 +2833,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "workflow-log",
-]
-
-[[package]]
-name = "kassiopeya"
-version = "0.1.6"
-dependencies = [
- "async-trait",
- "borsh",
- "cfg-if 1.0.0",
- "futures",
- "js-sys",
- "kaspa-cli",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-daemon",
- "nw-sys",
- "serde",
- "thiserror",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "workflow-core",
- "workflow-dom",
- "workflow-log",
- "workflow-nw",
- "workflow-terminal",
- "workflow-wasm",
 ]
 
 [[package]]

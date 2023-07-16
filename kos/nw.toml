@@ -1,0 +1,75 @@
+
+
+# nw.toml - for additional properties please see https://github.com/aspectron/cargo-nw
+
+[application]
+name = "kaspa-os"
+version = "0.1.0"
+title = "Kaspa OS"
+organization = "Kaspa Contributors"
+
+[description]
+short = "Kaspa Desktop OS"
+long = """
+Kaspa Desktop OS
+""""
+
+[package]
+# root = ""
+# resources = "resources/setup"
+# exclude = ["resources/setup"]
+exclude = [{ glob = ["{src/*,target/*,test/*,resources/setup/*,*.lock,*.toml,.git*}"] }]
+
+[node-webkit]
+version = "0.77.0"
+ffmpeg = false
+
+[macos-disk-image]
+# window = ["0,0,300,300"]
+# icon = ["0,0"]
+# applications = ["0,0"]
+
+[windows]
+uuid = "9464f462-db23-4f78-a027-c864db698121"
+group = "Kaspa"
+# run_on_startup = "everyone"
+run_after_setup = true
+
+# [languages]
+# languages = ["english"]
+
+[firewall]
+application = { direction = "in+out" }
+rules = [
+    { name = "Kaspad", program = "bin\\kaspad.exe", direction="in+out" }
+]
+
+[[action]]
+stage = "build"
+items = [
+    # { run = { cmd="echo \"source: $SOURCE target: $TARGET\""} }
+    # { run = { cmd="echo \"source: $SOURCE target: $TARGET\""} }
+    # { run = { cmd = "cargo build --release --bin kaspad", cwd = "$SOURCE" } },
+    { run = { cmd = "/Users/aspect/.cargo/bin/cargo build --release --bin kaspad", cwd = ".." } },
+    { copy = { file = "../target/release/kaspad$EXE", to = "$TARGET/bin/" } },
+]
+
+
+
+# [[dependency]]
+# name = "kaspad"
+# # git = { url = "https://github.com/kaspanet/kaspad", branch = "release" }
+# run = [
+#     # { cmd = "pwd", cwd = "$SOURCE" },
+#     { cmd = "cargo build --release --bin kaspad", cwd = "$SOURCE" },
+# ]
+# copy = [
+#     { file = "../target/release/kaspad$EXE", to = "bin/$PLATFORM-$ARCH", flatten = true },
+# ]
+
+# regex = [
+#     "kaspad(.exe)?$",
+#     "genkeypair(.exe)?$",
+#     "kaspactl(.exe)?$",
+#     "kaspawallet(.exe)?$",
+# ], 

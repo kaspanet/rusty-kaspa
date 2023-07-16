@@ -1,6 +1,6 @@
 
 [package]
-name = "kassiopeya"
+name = "kaspa-os"
 description = "Kaspa Desktop Node Manager & Wallet"
 version.workspace = true
 edition.workspace = true

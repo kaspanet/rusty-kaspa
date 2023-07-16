@@ -11,7 +11,7 @@ members = [
     "consensus/core",
     "consensus/notify",
     "consensus/pow",
-    "kassiopeya",
+    "kos",
     "kaspad",
     "simpa",
     "wasm",
@@ -69,7 +69,7 @@ include = [
 
 [workspace.dependencies]
 # kaspa-testing-integration = { version = "0.1.2", path = "testing/integration" }
-kassiopeya = { version = "0.1.6", path = "kassiopeya" }
+kaspa-os = { version = "0.1.6", path = "kaspa-os" }
 kaspa-daemon = { version = "0.1.6", path = "daemon" }
 kaspa-addresses = { version = "0.1.6", path = "crypto/addresses" }
 kaspa-addressmanager = { version = "0.1.6", path = "components/addressmanager" }
