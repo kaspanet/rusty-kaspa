@@ -54,7 +54,7 @@ impl AddressManager {
             None => {
                 // If listen_address === 0.0.0.0, bind all interfaces
                 // else, bind whatever was passed as listen address (if routable)
-                let listen_address = self.config.listen.normalize(self.config.default_p2p_port());
+                let listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
 
                 if listen_address.ip.is_unspecified() {
                     let network_interfaces = list_afinet_netifas();

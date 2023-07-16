@@ -281,7 +281,7 @@ impl Args {
         // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
         config.enable_sanity_checks = true;
         config.user_agent_comments = self.user_agent_comments.clone();
-        config.listen = self.listen.unwrap_or(ContextualNetAddress::unspecified());
+        config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
         config.externalip = self.externalip;
     }
 }

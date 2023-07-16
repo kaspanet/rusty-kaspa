@@ -50,7 +50,7 @@ pub struct Config {
     pub user_agent_comments: Vec<String>,
 
     // If undefined, sets it to 0.0.0.0
-    pub listen: ContextualNetAddress,
+    pub p2p_listen_address: ContextualNetAddress,
 
     pub externalip: Option<IpAddress>,
 }
@@ -73,7 +73,7 @@ impl Config {
             enable_mainnet_mining: false,
             user_agent_comments: Default::default(),
             externalip: None,
-            listen: ContextualNetAddress::unspecified(),
+            p2p_listen_address: ContextualNetAddress::unspecified(),
         }
     }
 
