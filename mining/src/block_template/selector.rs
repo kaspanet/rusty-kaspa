@@ -134,7 +134,7 @@ impl TransactionsSelector {
                         if subnetwork_id < self.transactions[transaction_index].tx.subnetwork_id {
                             break;
                         }
-                        let mut current = candidate_list.candidates.get_mut(i).unwrap();
+                        let current = candidate_list.candidates.get_mut(i).unwrap();
 
                         // Mark for deletion
                         current.is_marked_for_deletion = true;

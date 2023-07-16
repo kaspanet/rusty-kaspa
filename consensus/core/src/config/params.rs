@@ -286,6 +286,8 @@ pub const MAINNET_PARAMS: Params = Params {
         "seeder4.kaspad.net",
         // This DNS seeder is run by Tim
         "kaspadns.kaspacalc.net",
+        // This DNS seeder is run by supertypo
+        "n-mainnet.kaspa.ws",
     ],
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
