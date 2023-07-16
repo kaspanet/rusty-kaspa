@@ -14,11 +14,11 @@ impl Mempool {
         // missingOutpoints is reduced to a simple ConsensusError::TxMissingOutpoints.
 
         self.populate_mempool_entries(transaction);
-        consensus.validate_mempool_transaction_and_populate(transaction)?;
+        validate_mempool_transaction_and_populate(consensus, transaction)?;
         Ok(())
     }
 
-    fn populate_mempool_entries(&self, transaction: &mut MutableTransaction) {
+    pub(super) fn populate_mempool_entries(&self, transaction: &mut MutableTransaction) {
         for (i, input) in transaction.tx.inputs.iter().enumerate() {
             if let Some(parent) = self.transaction_pool.get(&input.previous_outpoint.transaction_id) {
                 let output = &parent.mtx.tx.outputs[input.previous_outpoint.index as usize];
@@ -27,4 +27,11 @@ impl Mempool {
             }
         }
     }
+}
+
+pub(crate) fn validate_mempool_transaction_and_populate(
+    consensus: &dyn ConsensusApi,
+    transaction: &mut MutableTransaction,
+) -> RuleResult<()> {
+    Ok(consensus.validate_mempool_transaction_and_populate(transaction)?)
 }

@@ -16,29 +16,31 @@ use kaspa_utils::vec::VecExtensions;
 use super::tx::{Orphan, Priority};
 
 impl Mempool {
-    pub(crate) fn validate_and_insert_transaction(
-        &mut self,
-        consensus: &dyn ConsensusApi,
-        transaction: Transaction,
-        priority: Priority,
-        orphan: Orphan,
-    ) -> RuleResult<Vec<Arc<Transaction>>> {
-        self.validate_and_insert_mutable_transaction(consensus, MutableTransaction::from_tx(transaction), priority, orphan)
-    }
-
-    pub(crate) fn validate_and_insert_mutable_transaction(
-        &mut self,
+    pub(crate) fn pre_validate_and_populate_transaction(
+        &self,
         consensus: &dyn ConsensusApi,
         mut transaction: MutableTransaction,
+    ) -> RuleResult<MutableTransaction> {
+        // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
+        transaction.calculated_mass = Some(consensus.calculate_transaction_mass(&transaction.tx));
+        self.validate_transaction_in_isolation(&transaction)?;
+        self.transaction_pool.check_double_spends(&transaction)?;
+        self.populate_mempool_entries(&mut transaction);
+        Ok(transaction)
+    }
+
+    pub(crate) fn post_validate_and_insert_transaction(
+        &mut self,
+        consensus: &dyn ConsensusApi,
+        validation_result: RuleResult<()>,
+        transaction: MutableTransaction,
         priority: Priority,
         orphan: Orphan,
     ) -> RuleResult<Vec<Arc<Transaction>>> {
-        // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
-        transaction.calculated_mass = Some(consensus.calculate_transaction_mass(&transaction.tx));
+        // Re-check double spends since validate_and_insert_transaction is no longer atomic
+        self.transaction_pool.check_double_spends(&transaction)?;
 
-        self.validate_transaction_pre_utxo_entry(&transaction)?;
-
-        match self.populate_entries_and_try_validate(consensus, &mut transaction) {
+        match validation_result {
             Ok(_) => {}
             Err(RuleError::RejectMissingOutpoint) => {
                 if orphan == Orphan::Forbidden {
@@ -65,11 +67,6 @@ impl Mempool {
         // We include the original accepted transaction as well
         accepted_transactions.swap_insert(0, accepted_transaction);
         Ok(accepted_transactions)
-    }
-
-    fn validate_transaction_pre_utxo_entry(&self, transaction: &MutableTransaction) -> RuleResult<()> {
-        self.validate_transaction_in_isolation(transaction)?;
-        self.transaction_pool.check_double_spends(transaction)
     }
 
     fn validate_transaction_in_isolation(&self, transaction: &MutableTransaction) -> RuleResult<()> {
@@ -175,6 +172,7 @@ impl Mempool {
         assert_eq!(transactions.len(), 1, "the list returned by remove_orphan is expected to contain exactly one transaction");
         let mut transaction = transactions.pop().unwrap();
 
+        self.transaction_pool.check_double_spends(&transaction.mtx)?;
         consensus.validate_mempool_transaction_and_populate(&mut transaction.mtx)?;
         self.validate_transaction_in_context(&transaction.mtx)?;
         transaction.added_at_daa_score = consensus.get_virtual_daa_score();

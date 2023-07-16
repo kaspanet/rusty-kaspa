@@ -8,6 +8,7 @@ use crate::{
     errors::MiningManagerResult,
     mempool::{
         config::Config,
+        populate_entries_and_try_validate::validate_mempool_transaction_and_populate,
         tx::{Orphan, Priority},
         Mempool,
     },
@@ -20,11 +21,12 @@ use kaspa_consensus_core::{
     api::ConsensusApi,
     block::BlockTemplate,
     coinbase::MinerData,
-    errors::block::RuleError,
+    errors::block::RuleError as BlockRuleError,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy};
 use kaspa_core::error;
+use kaspa_mining_errors::mempool::RuleResult;
 use parking_lot::{Mutex, RwLock};
 
 pub struct MiningManager {
@@ -81,7 +83,7 @@ impl MiningManager {
                     let block_template = cache_lock.set_immutable_cached_template(block_template);
                     return Ok(block_template.as_ref().clone());
                 }
-                Err(BuilderError::ConsensusError(RuleError::InvalidTransactionsInNewBlock(invalid_transactions))) => {
+                Err(BuilderError::ConsensusError(BlockRuleError::InvalidTransactionsInNewBlock(invalid_transactions))) => {
                     let mut mempool_write = self.mempool.write();
                     invalid_transactions.iter().for_each(|(x, _)| {
                         let removal_result = mempool_write.remove_transaction(x, true);
@@ -121,6 +123,7 @@ impl MiningManager {
     /// added to any block.
     ///
     /// The returned transactions are clones of objects owned by the mempool.
+    #[cfg(test)]
     pub fn validate_and_insert_transaction(
         &self,
         consensus: &dyn ConsensusApi,
@@ -128,7 +131,7 @@ impl MiningManager {
         priority: Priority,
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        Ok(self.mempool.write().validate_and_insert_transaction(consensus, transaction, priority, orphan)?)
+        self.validate_and_insert_mutable_transaction(consensus, MutableTransaction::from_tx(transaction), priority, orphan)
     }
 
     /// Exposed only for tests. Ordinary users should let the mempool create the mutable tx internally
@@ -140,7 +143,12 @@ impl MiningManager {
         priority: Priority,
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        Ok(self.mempool.write().validate_and_insert_mutable_transaction(consensus, transaction, priority, orphan)?)
+        // read lock on mempool
+        let mut transaction = self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction)?;
+        // no lock on mempool
+        let validation_result = validate_mempool_transaction_and_populate(consensus, &mut transaction);
+        // write lock on mempool
+        Ok(self.mempool.write().post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan)?)
     }
 
     /// Try to return a mempool transaction by its id.
@@ -208,6 +216,25 @@ impl MiningManager {
     pub fn is_transaction_output_dust(&self, transaction_output: &TransactionOutput) -> bool {
         self.mempool.read().is_transaction_output_dust(transaction_output)
     }
+
+    fn pre_validate_and_populate_transaction(
+        &self,
+        consensus: &dyn ConsensusApi,
+        transaction: MutableTransaction,
+    ) -> MiningManagerResult<MutableTransaction> {
+        Ok(self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction)?)
+    }
+
+    fn post_validate_and_insert_transaction(
+        &self,
+        consensus: &dyn ConsensusApi,
+        transaction: MutableTransaction,
+        validation_result: RuleResult<()>,
+        priority: Priority,
+        orphan: Orphan,
+    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        Ok(self.mempool.write().post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan)?)
+    }
 }
 
 /// Async proxy for the mining manager
@@ -242,7 +269,20 @@ impl MiningManagerProxy {
         priority: Priority,
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        consensus.clone().spawn_blocking(move |c| self.inner.validate_and_insert_transaction(c, transaction, priority, orphan)).await
+        let mut transaction = MutableTransaction::from_tx(transaction);
+        let inner = self.inner.clone();
+        // read lock on mempool
+        transaction = consensus.clone().spawn_blocking(move |c| inner.pre_validate_and_populate_transaction(c, transaction)).await?;
+        // no lock on mempool
+        let (result, transaction) = consensus
+            .clone()
+            .spawn_blocking(move |c| (validate_mempool_transaction_and_populate(c, &mut transaction), transaction))
+            .await;
+        // write lock on mempool
+        consensus
+            .clone()
+            .spawn_blocking(move |c| self.inner.post_validate_and_insert_transaction(c, transaction, result, priority, orphan))
+            .await
     }
 
     pub async fn handle_new_block_transactions(
