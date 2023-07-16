@@ -81,8 +81,7 @@ where
             }
             stack.push(key.clone());
 
-            while !stack.is_empty() {
-                let current = stack.pop().unwrap();
+            while let Some(current) = stack.pop() {
                 let current_color = color.get_mut(&current).unwrap();
                 match *current_color {
                     Color::White => {

@@ -185,7 +185,7 @@ mod tests {
 
         let mut batch = WriteBatch::default();
         let mut staging_relations = StagingRelationsStore::new(&mut relations);
-        delete_level_relations(MemoryWriter::default(), &mut staging_relations, 1.into()).unwrap();
+        delete_level_relations(MemoryWriter, &mut staging_relations, 1.into()).unwrap();
         staging_relations.commit(&mut batch).unwrap();
         db.write(batch).unwrap();
 
@@ -199,7 +199,7 @@ mod tests {
 
         let mut batch = WriteBatch::default();
         let mut staging_relations = StagingRelationsStore::new(&mut relations);
-        delete_level_relations(MemoryWriter::default(), &mut staging_relations, 2.into()).unwrap();
+        delete_level_relations(MemoryWriter, &mut staging_relations, 2.into()).unwrap();
         staging_relations.commit(&mut batch).unwrap();
         db.write(batch).unwrap();
 

@@ -149,7 +149,7 @@ impl RelationsStore for StagingRelationsStore<'_> {
     type DefaultWriter = MemoryWriter;
 
     fn default_writer(&self) -> Self::DefaultWriter {
-        MemoryWriter::default()
+        MemoryWriter
     }
 
     fn set_parents(&mut self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
@@ -267,7 +267,7 @@ impl RelationsStore for MemoryRelationsStore {
     type DefaultWriter = MemoryWriter;
 
     fn default_writer(&self) -> Self::DefaultWriter {
-        MemoryWriter::default()
+        MemoryWriter
     }
 
     fn set_parents(&mut self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
