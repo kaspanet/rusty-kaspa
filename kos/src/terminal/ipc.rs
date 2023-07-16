@@ -5,6 +5,7 @@ pub enum TermOps {
     // TestBg,
     TestTerminal,
     FontCtl,
+    EditCtl,
     Stdio,
 }
 
@@ -15,6 +16,12 @@ pub enum FontCtl {
     // SetSize(u32),
 }
 
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+pub enum EditCtl {
+    Copy,
+    Paste,
+}
+
 #[derive(Debug, Clone)]
 pub struct TerminalIpc {
     target: IpcTarget,
@@ -23,6 +30,16 @@ pub struct TerminalIpc {
 impl TerminalIpc {
     pub fn new(target: IpcTarget) -> TerminalIpc {
         TerminalIpc { target }
+    }
+
+    pub async fn clipboard_copy(&self) -> Result<()> {
+        self.target.call::<_, _, ()>(TermOps::EditCtl, EditCtl::Copy).await?;
+        Ok(())
+    }
+
+    pub async fn clipboard_paste(&self) -> Result<()> {
+        self.target.call::<_, _, ()>(TermOps::EditCtl, EditCtl::Paste).await?;
+        Ok(())
     }
 
     pub async fn increase_font_size(&self) -> Result<()> {

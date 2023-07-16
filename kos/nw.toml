@@ -14,7 +14,8 @@ Kaspa Desktop OS
 # root = ""
 # resources = "resources/setup"
 # exclude = ["resources/setup"]
-exclude = [{ glob = ["{src/*,target/*,test/*,resources/setup/*,*.lock,*.toml,.git*}"] }]
+exclude = [{ glob = ["{src/*,target/*,test/*,resources/setup/*,*.lock,*.toml,.git*,build*}"] }]
+output = "../setup"
 
 [node-webkit]
 version = "0.77.0"

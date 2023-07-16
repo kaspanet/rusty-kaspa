@@ -69,7 +69,7 @@ impl Core {
     }
 
     /// Create a test page window
-    fn create_window(&self) -> Result<()> {
+    fn _create_window(&self) -> Result<()> {
         let options = nw_sys::window::Options::new().title("Test page").width(200).height(200).left(0);
 
         self.inner.create_window_with_callback(
@@ -96,29 +96,36 @@ impl Core {
 
     /// Create application menu
     fn create_menu(self: &Arc<Self>) -> Result<()> {
-        let this = self.clone();
-        let submenu_1 = MenuItemBuilder::new()
-            .label("Create window")
-            .key("8")
-            .modifiers("ctrl")
-            .callback(move |_| -> std::result::Result<(), JsValue> {
-                log_trace!("Create window : menu clicked");
-                this.create_window()?;
-                Ok(())
-            })
-            .build()?;
-
-        let submenu_2 = MenuItemBuilder::new()
-            .label("Say hello")
-            .key("9")
-            .modifiers("ctrl")
-            .callback(move |_| -> std::result::Result<(), JsValue> {
-                window().alert_with_message("Hello")?;
-                Ok(())
-            })
-            .build()?;
 
         let modifier = if is_macos() { "command" } else { "ctrl" };
+
+        let this = self.clone();
+        let clipboard_copy = MenuItemBuilder::new()
+            .label("Copy")
+            .key("c")
+            .modifiers(modifier)
+            .callback(move |_| -> std::result::Result<(), JsValue> {
+                let this = this.clone();
+                spawn(async move {
+                    this.terminal().ipc().clipboard_copy().await.unwrap_or_else(|e| log_error!("{}", e));
+                });
+                Ok(())
+            })
+            .build()?;
+
+        let this = self.clone();
+        let clipboard_paste = MenuItemBuilder::new()
+            .label("Paste")
+            .key("v")
+            .modifiers(modifier)
+            .callback(move |_| -> std::result::Result<(), JsValue> {
+                let this = this.clone();
+                spawn(async move {
+                    this.terminal().ipc().clipboard_paste().await.unwrap_or_else(|e| log_error!("{}", e));
+                });
+                Ok(())
+            })
+            .build()?;
 
         let this = self.clone();
         let increase_font = MenuItemBuilder::new()
@@ -151,8 +158,8 @@ impl Core {
             .build()?;
 
         let item = MenuItemBuilder::new()
-            .label("Kaspa OS")
-            .submenus(vec![submenu_1, menu_separator(), submenu_2, menu_separator(), increase_font, decrease_font])
+            .label("Terminal")
+            .submenus(vec![clipboard_copy, clipboard_paste, menu_separator(), increase_font, decrease_font])
             .build()?;
 
         MenubarBuilder::new("Kaspa OS").mac_hide_edit(true).mac_hide_window(true).append(item).build(true)?;
