@@ -22,9 +22,12 @@ version = "0.77.0"
 ffmpeg = false
 
 [macos-disk-image]
-# window = ["0,0,300,300"]
-# icon = ["0,0"]
-# applications = ["0,0"]
+# window_caption_height = 60
+# icon_size = 72
+# window_position = [200,200]
+# window_size = [485,330]
+application_icon_position = [100,178]
+system_applications_folder_position = [385,178]
 
 [windows]
 uuid = "9464f462-db23-4f78-a027-c864db698121"
@@ -44,6 +47,7 @@ rules = [
 [[action]]
 stage = "build"
 items = [
-    { run = { cmd = "/Users/aspect/.cargo/bin/cargo build --release --bin kaspad", cwd = ".." } },
+    # { run = { cmd = "/Users/aspect/.cargo/bin/cargo build --release --bin kaspad", cwd = ".." } },
+    { run = { cmd = "cargo build --release --bin kaspad", cwd = ".." } },
     { copy = { file = "../target/release/kaspad$EXE", to = "$TARGET/bin/" } },
 ]
