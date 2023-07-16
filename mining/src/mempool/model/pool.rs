@@ -66,8 +66,7 @@ pub(crate) trait Pool {
         let mut redeemers = TransactionIdSet::new();
         if let Some(transaction) = self.get(transaction_id) {
             let mut stack = vec![transaction];
-            while !stack.is_empty() {
-                let transaction = stack.pop().unwrap();
+            while let Some(transaction) = stack.pop() {
                 if let Some(chains) = self.chained().get(&transaction.id()) {
                     for redeemer_id in chains {
                         if let Some(redeemer) = self.get(redeemer_id) {

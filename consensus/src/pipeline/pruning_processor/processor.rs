@@ -362,7 +362,7 @@ impl PruningProcessor {
                     counter += 1;
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
-                        MemoryWriter::default(), // Both stores are staging so we just pass a dummy writer
+                        MemoryWriter, // Both stores are staging so we just pass a dummy writer
                         &mut staging_relations,
                         &staging_reachability,
                         current,
@@ -372,8 +372,7 @@ impl PruningProcessor {
                     let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
                     (0..=block_level as usize).for_each(|level| {
                         let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
-                        relations::delete_level_relations(MemoryWriter::default(), &mut staging_level_relations, current)
-                            .unwrap_option();
+                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
                         staging_level_relations.commit(&mut batch).unwrap();
                         self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap_option();
                     });
