@@ -158,6 +158,9 @@ pub enum Error {
 
     #[error("Receiving duplicate UTXO entry")]
     DuplicateUtxoEntry,
+
+    #[error("{0}")]
+    ToValue(String),
 }
 
 impl From<Aborted> for Error {
@@ -232,5 +235,11 @@ impl From<argon2::Error> for Error {
 impl From<argon2::password_hash::Error> for Error {
     fn from(err: argon2::password_hash::Error) -> Self {
         Self::Argon2ph(err)
+    }
+}
+
+impl From<workflow_wasm::tovalue::Error> for Error {
+    fn from(err: workflow_wasm::tovalue::Error) -> Self {
+        Self::ToValue(err.to_string())
     }
 }

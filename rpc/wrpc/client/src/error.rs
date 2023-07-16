@@ -32,6 +32,9 @@ pub enum Error {
 
     #[error("{0}")]
     JsValue(Sendable<Printable>),
+
+    #[error("{0}")]
+    ToValue(String),
 }
 
 impl<T> From<ChannelError<T>> for Error {
@@ -64,5 +67,11 @@ impl From<Error> for JsValue {
             Error::JsValue(err) => err.as_ref().into(),
             _ => JsValue::from(value.to_string()),
         }
+    }
+}
+
+impl From<workflow_wasm::tovalue::Error> for Error {
+    fn from(err: workflow_wasm::tovalue::Error) -> Self {
+        Self::ToValue(err.to_string())
     }
 }
