@@ -35,3 +35,6 @@ kaspa-addresses.workspace = true
 downcast.workspace = true
 nw-sys.workspace = true
 kaspa-daemon.workspace = true
+wasm-bindgen.workspace = true
+regex.workspace = true
+

@@ -78,7 +78,8 @@ impl Node {
     }
 
     async fn select(self: Arc<Self>, ctx: Arc<KaspaCli>) -> Result<()> {
-        let root = nw_sys::app::start_path();
+        let root = nw_sys::app::folder();
+
         let binaries = kaspa_daemon::locate_binaries(root.as_str(), "kaspad").await?;
 
         if binaries.is_empty() {
@@ -87,7 +88,6 @@ impl Node {
             let binaries = binaries.iter().map(|p| p.display().to_string()).collect::<Vec<_>>();
             if let Some(selection) = ctx.term().select("Please select a kaspad binary", &binaries).await? {
                 tprintln!(ctx, "selecting: {}", selection);
-
                 let config = KaspadConfig::new(selection.as_str(), NetworkType::Testnet)?;
                 ctx.daemons().kaspad().configure(config).await?;
             } else {

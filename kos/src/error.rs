@@ -6,6 +6,9 @@ use workflow_wasm::printable::Printable;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("{0}")]
+    Custom(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
@@ -53,5 +56,17 @@ impl From<Error> for ResponseError {
 impl From<Error> for DaemonError {
     fn from(err: Error) -> DaemonError {
         DaemonError::Custom(err.to_string())
+    }
+}
+
+impl From<String> for Error {
+    fn from(err: String) -> Self {
+        Self::Custom(err)
+    }
+}
+
+impl From<&str> for Error {
+    fn from(err: &str) -> Self {
+        Self::Custom(err.to_string())
     }
 }

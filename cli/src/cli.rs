@@ -21,7 +21,7 @@ use workflow_core::channel::*;
 use workflow_core::time::Instant;
 use workflow_log::*;
 use workflow_terminal::*;
-pub use workflow_terminal::{parse, Cli, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget}; //{CrLf, Terminal};
+pub use workflow_terminal::{parse, Cli, CrLf, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget}; //{CrLf, Terminal};
 
 pub struct Options {
     pub daemons: Option<Arc<Daemons>>,
@@ -60,8 +60,25 @@ impl AsRef<KaspaCli> for KaspaCli {
 impl workflow_log::Sink for KaspaCli {
     fn write(&self, _target: Option<&str>, _level: Level, args: &std::fmt::Arguments<'_>) -> bool {
         if let Some(term) = self.try_term() {
-            term.writeln(args.to_string());
-            true
+            cfg_if! {
+                if #[cfg(target_arch = "wasm32")] {
+                    if _level == Level::Error {
+                        term.writeln(style(args.to_string().crlf()).red().to_string());
+                    }
+                    false
+                } else {
+                    match _level {
+                        Level::Error => {
+                            term.writeln(style(args.to_string().crlf()).red().to_string());
+                        },
+                        _ => {
+                            term.writeln(args.to_string());
+                        }
+                    }
+                    true
+                }
+            }
+            // true
         } else {
             false
         }
@@ -101,6 +118,12 @@ impl KaspaCli {
 
         let term = Arc::new(Terminal::try_new_with_options(kaspa_cli.clone(), options.terminal)?);
         term.init().await?;
+
+        cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+                kaspa_cli.init_panic_hook();
+            }
+        }
 
         Ok(kaspa_cli)
     }
@@ -752,4 +775,72 @@ pub async fn kaspa_cli(terminal_options: TerminalOptions, banner: Option<String>
     cli.stop().await?;
 
     Ok(())
+}
+
+mod panic_handler {
+    use regex::Regex;
+    use wasm_bindgen::prelude::*;
+
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = console, js_name="error")]
+        pub fn console_error(msg: String);
+
+        type Error;
+
+        #[wasm_bindgen(constructor)]
+        fn new() -> Error;
+
+        #[wasm_bindgen(structural, method, getter)]
+        fn stack(error: &Error) -> String;
+    }
+
+    pub fn process(info: &std::panic::PanicInfo) -> String {
+        let mut msg = info.to_string();
+
+        // Add the error stack to our message.
+        //
+        // This ensures that even if the `console` implementation doesn't
+        // include stacks for `console.error`, the stack is still available
+        // for the user. Additionally, Firefox's console tries to clean up
+        // stack traces, and ruins Rust symbols in the process
+        // (https://bugzilla.mozilla.org/show_bug.cgi?id=1519569) but since
+        // it only touches the logged message's associated stack, and not
+        // the message's contents, by including the stack in the message
+        // contents we make sure it is available to the user.
+
+        msg.push_str("\n\nStack:\n\n");
+        let e = Error::new();
+        let stack = e.stack();
+
+        let regex = Regex::new(r"chrome-extension://[^/]+").unwrap();
+        let stack = regex.replace_all(&stack, "");
+
+        msg.push_str(&stack);
+
+        // Safari's devtools, on the other hand, _do_ mess with logged
+        // messages' contents, so we attempt to break their heuristics for
+        // doing that by appending some whitespace.
+        // https://github.com/rustwasm/console_error_panic_hook/issues/7
+
+        msg.push_str("\n\n");
+
+        msg
+    }
+}
+
+impl KaspaCli {
+    pub fn init_panic_hook(self: &Arc<Self>) {
+        let this = self.clone();
+        let handler = move |info: &std::panic::PanicInfo| {
+            let msg = panic_handler::process(info);
+            this.term().writeln(msg.crlf());
+            panic_handler::console_error(msg);
+        };
+
+        std::panic::set_hook(Box::new(handler));
+
+        // #[cfg(target_arch = "wasm32")]
+        workflow_log::pipe(Some(self.clone()));
+    }
 }

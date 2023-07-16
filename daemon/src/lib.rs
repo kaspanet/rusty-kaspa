@@ -14,6 +14,8 @@ use workflow_store::fs::*;
 pub static LOCATIONS: &[&str] = &["bin", "../target/release", "../target/debug"];
 
 pub async fn locate_binaries(root: &str, name: &str) -> Result<Vec<PathBuf>> {
+    // log_info!("locating binaries in root: {root} name: {name}");
+
     if !runtime::is_nw() && !runtime::is_node() && !runtime::is_native() {
         return Err(Error::Platform);
     }

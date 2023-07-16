@@ -22,8 +22,8 @@ impl App {
 
         let daemons = Arc::new(Daemons::new().with_kaspad(core.clone()));
 
-        let terminal_options = TerminalOptions { 
-            disable_clipboard_handling : true,
+        let terminal_options = TerminalOptions {
+            // disable_clipboard_handling : true,
             ..TerminalOptions::default()
         };
         let options = KaspaCliOptions::new(terminal_options, Some(daemons));
@@ -142,7 +142,6 @@ impl App {
 
 #[wasm_bindgen]
 pub async fn init_application() -> Result<()> {
-    workflow_wasm::panic::init_console_panic_hook();
     kaspa_core::log::set_log_level(LevelFilter::Info);
     workflow_log::set_colors_enabled(true);
 

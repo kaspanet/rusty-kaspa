@@ -36,6 +36,7 @@ pub mod sign;
 pub mod sweep;
 pub mod test;
 pub mod track;
+// pub mod error;
 
 pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
     register_handlers!(
@@ -76,6 +77,7 @@ pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
             // sweep,
             track,
             test,
+            // error,
         ]
     );
 

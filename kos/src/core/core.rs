@@ -96,14 +96,13 @@ impl Core {
 
     /// Create application menu
     fn create_menu(self: &Arc<Self>) -> Result<()> {
-
         let modifier = if is_macos() { "command" } else { "ctrl" };
 
         let this = self.clone();
         let clipboard_copy = MenuItemBuilder::new()
             .label("Copy")
-            .key("c")
-            .modifiers(modifier)
+            // .key("c")
+            // .modifiers(modifier)
             .callback(move |_| -> std::result::Result<(), JsValue> {
                 let this = this.clone();
                 spawn(async move {
@@ -116,8 +115,8 @@ impl Core {
         let this = self.clone();
         let clipboard_paste = MenuItemBuilder::new()
             .label("Paste")
-            .key("v")
-            .modifiers(modifier)
+            // .key("v")
+            // .modifiers(modifier)
             .callback(move |_| -> std::result::Result<(), JsValue> {
                 let this = this.clone();
                 spawn(async move {
@@ -400,6 +399,13 @@ impl Core {
 pub async fn init_core() -> Result<()> {
     workflow_wasm::panic::init_console_panic_hook();
     kaspa_core::log::set_log_level(LevelFilter::Info);
+
+    // let root = nw_sys::app::start_path();
+    // log_info!("root: {}", root);
+    // let full_argv = nw_sys::app::full_argv().map_err(|e|e.to_string())?;
+    // log_info!("full_argv: {:#?}", full_argv);
+    // let argv = nw_sys::app::argv().map_err(|e|e.to_string())?;
+    // log_info!("argv: {:#?}", argv);
 
     let core = Core::try_new().await?;
     core.main().await?;

@@ -1893,11 +1893,13 @@ dependencies = [
  "kaspa-wrpc-client",
  "nw-sys",
  "pad",
+ "regex",
  "separator",
  "serde",
  "serde_json",
  "textwrap",
  "thiserror",
+ "wasm-bindgen",
  "workflow-core",
  "workflow-dom",
  "workflow-log",
@@ -3285,9 +3287,9 @@ checksum = "6aa2c4e539b869820a2b82e1aef6ff40aa85e65decdd5185e83fb4b1249cd00f"
 
 [[package]]
 name = "nw-sys"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f925c4bf37899b704c1190c70ec498e29ff23ffa5209188377c97c30c8f74663"
+checksum = "796f2a9574c6b232300c52f5a49fd2038e86319794c982d78379abf0617ff3b6"
 dependencies = [
  "cfg-if 1.0.0",
  "js-sys",
