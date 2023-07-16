@@ -6,7 +6,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use itertools::Itertools;
 use kaspa_consensus_core::config::Config;
-use kaspa_core::{debug, info, time::unix_now};
+use kaspa_core::{debug, info, time::unix_now, warn};
 use kaspa_database::prelude::{StoreResultExtensions, DB};
 use kaspa_utils::networking::IpAddress;
 use local_ip_address::list_afinet_netifas;
@@ -28,7 +28,6 @@ pub struct AddressManager {
 
 impl AddressManager {
     pub fn new(config: Arc<Config>, db: Arc<DB>) -> Arc<Mutex<Self>> {
-        // TODO: do the things that local_address_manager would do here
         let mut instance = Self {
             banned_address_store: DbBannedAddressesStore::new(db.clone(), MAX_ADDRESSES as u64),
             address_store: address_store_with_cache::new(db),
@@ -53,7 +52,7 @@ impl AddressManager {
                 }
             }
             None => {
-                // If localNetAddress === 0.0.0.0, bind all interfaces
+                // If listen_address === 0.0.0.0, bind all interfaces
                 // else, bind whatever was passed as listen address (if routable)
                 let listen_address = self.config.listen.normalize(self.config.default_p2p_port());
 
@@ -73,10 +72,10 @@ impl AddressManager {
                             }
                         }
                     } else {
-                        println!("Error getting network interfaces: {:?}", network_interfaces);
+                        warn!("Error getting network interfaces: {:?}", network_interfaces);
                     }
                 } else if listen_address.ip.is_publicly_routable() {
-                    info!("Publicly routable local address {} added to store", listen_address.ip);
+                    info!("Publicly routable P2P listen address {} added to store", listen_address.ip);
                     self.local_net_addresses.push(listen_address);
                 } else {
                     info!("Non-publicly routable listen address {} not added to store.", listen_address.ip);
@@ -89,9 +88,8 @@ impl AddressManager {
         if self.local_net_addresses.is_empty() {
             None
         } else {
-            // TODO: Add logic for finding the best.
-            // for now, putting in stub that allows it to work if externalip
-            // is passed
+            // TODO: Add logic for finding the best as a function of a peer remote address.
+            // for now, returning the first one
             Some(self.local_net_addresses[0])
         }
     }
