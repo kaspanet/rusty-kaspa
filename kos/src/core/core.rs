@@ -161,7 +161,7 @@ impl Core {
             .submenus(vec![clipboard_copy, clipboard_paste, menu_separator(), increase_font, decrease_font])
             .build()?;
 
-        MenubarBuilder::new("Kaspa OS").mac_hide_edit(true).mac_hide_window(true).append(item).build(true)?;
+        MenubarBuilder::new("Kaspa OS", is_macos()).mac_hide_edit(true).mac_hide_window(true).append(item).build(true)?;
 
         Ok(())
     }
