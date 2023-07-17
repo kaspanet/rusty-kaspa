@@ -18,8 +18,9 @@ exclude = [{ glob = ["{src/*,target/*,test/*,resources/setup/*,*.lock,*.toml,.gi
 output = "../setup"
 use-app-nw = true
 
-[node-webkit]
-version = "0.72.0"
+[nwjs]
+version = "0.77.0"
+windows = "0.72.0"
 ffmpeg = false
 
 [macos-disk-image]
