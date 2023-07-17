@@ -5375,6 +5375,7 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
  "workflow-core",
+ "workflow-log",
  "workflow-wasm",
 ]
 

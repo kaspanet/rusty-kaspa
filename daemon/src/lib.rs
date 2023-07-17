@@ -24,7 +24,7 @@ pub async fn locate_binaries(root: &str, name: &str) -> Result<Vec<PathBuf>> {
 
     let locations = LOCATIONS
         .iter()
-        .map(|path| PathBuf::from(&root).join(path).join(&name).absolute().map_err(|e| e.into()))
+        .map(|path| PathBuf::from(&root).join(path).join(&name).normalize().map_err(|e| e.into()))
         .collect::<Result<Vec<_>>>()?;
 
     let mut list = Vec::new();
