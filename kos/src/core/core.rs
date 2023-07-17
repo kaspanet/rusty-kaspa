@@ -129,7 +129,7 @@ impl Core {
         let this = self.clone();
         let increase_font = MenuItemBuilder::new()
             .label("Increase Font")
-            .key("+")
+            .key(if is_windows() { "=" } else { "+" })
             .modifiers(modifier)
             .callback(move |_| -> std::result::Result<(), JsValue> {
                 // window().alert_with_message("Hello")?;
