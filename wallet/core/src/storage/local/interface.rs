@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
+use crate::storage::interface::AddressBookStore;
 use crate::storage::interface::CreateArgs;
 use crate::storage::interface::OpenArgs;
 use crate::storage::interface::StorageStream;
@@ -170,6 +171,10 @@ impl Interface for LocalStore {
     }
 
     fn as_account_store(&self) -> Result<Arc<dyn AccountStore>> {
+        Ok(self.inner()?)
+    }
+
+    fn as_address_book_store(&self) -> Result<Arc<dyn AddressBookStore>> {
         Ok(self.inner()?)
     }
 
@@ -353,6 +358,17 @@ impl AccountStore for LocalStoreInner {
 }
 
 #[async_trait]
+impl AddressBookStore for LocalStoreInner {
+    async fn iter(&self) -> Result<StorageStream<AddressBookEntry>> {
+        todo!()
+    }
+
+    async fn search(&self, _search: &str) -> Result<Vec<Arc<AddressBookEntry>>> {
+        todo!()
+    }
+}
+
+#[async_trait]
 impl MetadataStore for LocalStoreInner {
     async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>> {
         Ok(Box::pin(MetadataStream::new(self.cache.clone(), prv_key_data_id_filter)))
@@ -382,6 +398,10 @@ impl TransactionRecordStore for LocalStoreInner {
     async fn remove(&self, ids: &[&TransactionRecordId]) -> Result<()> {
         self.cache().transaction_records.remove(ids)?;
         self.set_modified(true);
+        Ok(())
+    }
+
+    async fn store_transaction_metadata(&self, _id: TransactionRecordId, _metadata: TransactionMetadata) -> Result<()> {
         Ok(())
     }
 }

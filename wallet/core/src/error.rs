@@ -161,6 +161,9 @@ pub enum Error {
 
     #[error("{0}")]
     ToValue(String),
+
+    #[error("The feature is not supported")]
+    NotImplemented,
 }
 
 impl From<Aborted> for Error {

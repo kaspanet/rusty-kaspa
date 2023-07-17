@@ -68,6 +68,16 @@ pub trait AccountStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait AddressBookStore: Send + Sync {
+    async fn iter(&self) -> Result<StorageStream<AddressBookEntry>> {
+        Err(Error::NotImplemented)
+    }
+    async fn search(&self, _search: &str) -> Result<Vec<Arc<AddressBookEntry>>> {
+        Err(Error::NotImplemented)
+    }
+}
+
+#[async_trait]
 pub trait MetadataStore: Send + Sync {
     async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>>;
     async fn load(&self, id: &[AccountId]) -> Result<Vec<Arc<Metadata>>>;
@@ -79,6 +89,7 @@ pub trait TransactionRecordStore: Send + Sync {
     async fn load(&self, id: &[TransactionRecordId]) -> Result<Vec<Arc<TransactionRecord>>>;
     async fn store(&self, data: &[&TransactionRecord]) -> Result<()>;
     async fn remove(&self, id: &[&TransactionRecordId]) -> Result<()>;
+    async fn store_transaction_metadata(&self, id: TransactionRecordId, metadata: TransactionMetadata) -> Result<()>;
 }
 
 pub struct CreateArgs {
@@ -144,6 +155,7 @@ pub trait Interface: Send + Sync + AnySync {
 
     fn as_prv_key_data_store(&self) -> Result<Arc<dyn PrvKeyDataStore>>;
     fn as_account_store(&self) -> Result<Arc<dyn AccountStore>>;
+    fn as_address_book_store(&self) -> Result<Arc<dyn AddressBookStore>>;
     fn as_metadata_store(&self) -> Result<Arc<dyn MetadataStore>>;
     fn as_transaction_record_store(&self) -> Result<Arc<dyn TransactionRecordStore>>;
 }

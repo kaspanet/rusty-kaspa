@@ -1,7 +1,12 @@
+use std::collections::HashMap;
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::storage::{Account, Encryptable, KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataPayload, TransactionRecord};
+use crate::storage::{
+    Account, Encryptable, KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataPayload, TransactionMetadata, TransactionRecord,
+    TransactionRecordId,
+};
 use kaspa_bip32::Mnemonic;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -10,6 +15,7 @@ pub struct Payload {
     pub prv_key_data: Vec<PrvKeyData>,
     pub accounts: Vec<Account>,
     pub transaction_records: Vec<TransactionRecord>,
+    pub transaction_metadata: HashMap<TransactionRecordId, TransactionMetadata>,
 }
 
 impl ZeroizeOnDrop for Payload {}

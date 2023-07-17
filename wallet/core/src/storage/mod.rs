@@ -1,6 +1,7 @@
 pub use crate::encryption::{Decrypted, Encryptable, Encrypted};
 
 pub mod account;
+pub mod address;
 pub mod hint;
 pub mod id;
 pub mod interface;
@@ -12,13 +13,14 @@ pub mod transaction;
 pub mod wasm;
 
 pub use account::Account;
+pub use address::AddressBookEntry;
 pub use hint::Hint;
 pub use id::IdT;
 pub use interface::{AccessContextT, AccountStore, Interface, MetadataStore, PrvKeyDataStore, TransactionRecordStore};
 pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload, PubKeyData, PubKeyDataId};
 pub use metadata::Metadata;
 pub use payload::Payload;
-pub use transaction::{TransactionRecord, TransactionRecordId, TransactionType};
+pub use transaction::{TransactionMetadata, TransactionRecord, TransactionRecordId, TransactionType};
 
 pub use crate::runtime::{AccountId, AccountKind};
 

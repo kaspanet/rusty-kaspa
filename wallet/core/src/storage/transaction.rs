@@ -123,6 +123,12 @@ impl std::fmt::Display for TransactionRecordId {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionMetadata {
+    pub id: TransactionRecordId,
+    pub metadata: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRecord {
     pub id: TransactionRecordId,
     // #[serde(rename = "assocId")]
