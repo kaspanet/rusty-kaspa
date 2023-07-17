@@ -8,13 +8,14 @@ use crate::{
     errors::MiningManagerResult,
     mempool::{
         config::Config,
-        populate_entries_and_try_validate::validate_mempool_transaction_and_populate,
+        populate_entries_and_try_validate::{validate_mempool_transaction_and_populate, validate_mempool_transactions_in_parallel},
         tx::{Orphan, Priority},
         Mempool,
     },
     model::{
         candidate_tx::CandidateTransaction,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
+        txs_stager::TransactionsStagger,
     },
 };
 use kaspa_consensus_core::{
@@ -257,8 +258,7 @@ impl MiningManagerProxy {
         self.inner.clear_block_template()
     }
 
-    /// validate_and_insert_transaction validates the given transaction, and
-    /// adds it to the set of known transactions that have not yet been
+    /// Validates a transaction and adds it to the set of known transactions that have not yet been
     /// added to any block.
     ///
     /// The returned transactions are clones of objects owned by the mempool.
@@ -283,6 +283,76 @@ impl MiningManagerProxy {
             .clone()
             .spawn_blocking(move |c| self.inner.post_validate_and_insert_transaction(c, transaction, result, priority, orphan))
             .await
+    }
+
+    /// Validates a batch of transactions, handling iteratively only the independent ones, and
+    /// adds those to the set of known transactions that have not yet been added to any block.
+    ///
+    /// Returns transactions that where unorphaned following the insertion of the provided
+    /// transactions. The returned transactions are clones of objects owned by the mempool.
+    pub async fn validate_and_insert_transaction_batch(
+        self,
+        consensus: &ConsensusProxy,
+        transactions: Vec<Transaction>,
+        priority: Priority,
+        orphan: Orphan,
+    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        let mut batch = TransactionsStagger::new(transactions);
+        let mut unorphaned_txs: Vec<Arc<Transaction>> = vec![];
+        while let Some(transactions) = batch.stagger() {
+            let mut transactions = transactions.into_iter().map(MutableTransaction::from_tx).collect::<Vec<_>>();
+
+            // read lock on mempool
+            let inner = self.inner.clone();
+            transactions = consensus
+                .clone()
+                .spawn_blocking(move |c| {
+                    // Here, we simply drop all erroneous transactions since the caller doesn't care about those anyway
+                    transactions.into_iter().filter_map(|tx| inner.clone().pre_validate_and_populate_transaction(c, tx).ok()).collect()
+                })
+                .await;
+
+            // no lock on mempool
+            let (results, transactions) = consensus
+                .clone()
+                .spawn_blocking(move |c| (validate_mempool_transactions_in_parallel(c, &mut transactions), transactions))
+                .await;
+
+            // write lock on mempool
+            // FIXME: should we block on each single transaction or on the the full transaction vector?
+            let mut txs = vec![];
+            for (transaction, result) in transactions.into_iter().zip(results) {
+                let inner = self.inner.clone();
+                txs.extend(
+                    consensus
+                        .clone()
+                        .spawn_blocking(move |c| {
+                            inner.post_validate_and_insert_transaction(c, transaction, result, priority, orphan).unwrap_or_default()
+                        })
+                        .await,
+                );
+            }
+            // let mut txs = consensus
+            //     .clone()
+            //     .spawn_blocking(move |c| {
+            //         transactions
+            //             .into_iter()
+            //             .zip(results)
+            //             .flat_map(|(transaction, result)| {
+            //                 inner
+            //                     .clone()
+            //                     .post_validate_and_insert_transaction(c, transaction, result, priority, orphan)
+            //                     .unwrap_or_default()
+            //             })
+            //             .collect()
+            //     })
+            //     .await;
+
+            // TODO: handle RuleError::RejectInvalid errors when a banning process gets implemented
+            unorphaned_txs.extend(txs);
+        }
+
+        Ok(unorphaned_txs)
     }
 
     pub async fn handle_new_block_transactions(

@@ -165,7 +165,7 @@ impl RelayTransactionsFlow {
         consensus: ConsensusProxy,
         requests: Vec<RequestScope<TransactionId>>,
     ) -> Result<(), ProtocolError> {
-        // trace!("Receive {} transaction ids from {}", requests.len(), self.router.identity());
+        let mut transactions: Vec<Transaction> = Vec::with_capacity(requests.len());
         for request in requests {
             let response = self.read_response().await?;
             let transaction_id = response.transaction_id();
@@ -175,29 +175,26 @@ impl RelayTransactionsFlow {
                     request.req, transaction_id
                 )));
             }
-            let Response::Transaction(transaction) = response else { continue; };
-            match self
-                .ctx
-                .mining_manager()
-                .clone()
-                .validate_and_insert_transaction(&consensus, transaction, Priority::Low, Orphan::Allowed)
-                .await
-            {
-                Ok(accepted_transactions) => {
-                    // trace!("Broadcast {} accepted transaction ids", accepted_transactions.len());
-                    self.ctx.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await?;
-                }
-                Err(MiningManagerError::MempoolError(err)) => {
-                    if let RuleError::RejectInvalid(_) = err {
-                        // TODO: discuss a banning process
-                        return Err(ProtocolError::MisbehavingPeer(format!("rejected invalid transaction {}", transaction_id)));
-                    }
-                    continue;
-                }
-                Err(_) => {}
+            if let Response::Transaction(transaction) = response {
+                transactions.push(transaction);
             }
         }
-        // trace!("Processed {} transactions from {}", requests.len(), self.router.identity());
+        match self
+            .ctx
+            .mining_manager()
+            .clone()
+            .validate_and_insert_transaction_batch(&consensus, transactions, Priority::Low, Orphan::Allowed)
+            .await
+        {
+            Ok(accepted_transactions) => {
+                self.ctx.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await?;
+            }
+            Err(MiningManagerError::MempoolError(RuleError::RejectInvalid(transaction_id))) => {
+                // TODO: discuss a banning process
+                return Err(ProtocolError::MisbehavingPeer(format!("rejected invalid transaction {}", transaction_id)));
+            }
+            Err(_) => {}
+        }
         Ok(())
     }
 }

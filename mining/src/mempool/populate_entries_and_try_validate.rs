@@ -1,5 +1,6 @@
 use crate::mempool::{errors::RuleResult, model::pool::Pool, Mempool};
 use kaspa_consensus_core::{api::ConsensusApi, constants::UNACCEPTED_DAA_SCORE, tx::MutableTransaction, tx::UtxoEntry};
+use kaspa_mining_errors::mempool::RuleError;
 
 impl Mempool {
     pub(crate) fn populate_entries_and_try_validate(
@@ -34,4 +35,11 @@ pub(crate) fn validate_mempool_transaction_and_populate(
     transaction: &mut MutableTransaction,
 ) -> RuleResult<()> {
     Ok(consensus.validate_mempool_transaction_and_populate(transaction)?)
+}
+
+pub(crate) fn validate_mempool_transactions_in_parallel(
+    consensus: &dyn ConsensusApi,
+    transactions: &mut Vec<MutableTransaction>,
+) -> Vec<RuleResult<()>> {
+    consensus.validate_mempool_transactions_in_parallel(transactions).into_iter().map(|x| x.map_err(RuleError::from)).collect()
 }

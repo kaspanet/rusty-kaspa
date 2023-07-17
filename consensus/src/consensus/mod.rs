@@ -363,6 +363,10 @@ impl ConsensusApi for Consensus {
         Ok(())
     }
 
+    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut Vec<MutableTransaction>) -> Vec<TxResult<()>> {
+        self.virtual_processor.validate_mempool_transactions_in_parallel(transactions)
+    }
+
     fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
         self.services.mass_calculator.calc_tx_mass(transaction)
     }
