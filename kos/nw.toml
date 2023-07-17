@@ -11,12 +11,14 @@ Kaspa Desktop OS
 """"
 
 [package]
-# root = ""
+root = ".."
 # resources = "resources/setup"
 # exclude = ["resources/setup"]
 exclude = [{ glob = ["{src/*,target/*,test/*,resources/setup/*,*.lock,*.toml,.git*,build*}"] }]
 output = "../setup"
 use-app-nw = true
+update-package-json = true
+build = [{ WASM = { name = "kaspa", outdir = "app/wasm" }}]
 
 [nwjs]
 version = "0.77.0"
