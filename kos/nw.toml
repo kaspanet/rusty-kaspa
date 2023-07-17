@@ -16,9 +16,10 @@ Kaspa Desktop OS
 # exclude = ["resources/setup"]
 exclude = [{ glob = ["{src/*,target/*,test/*,resources/setup/*,*.lock,*.toml,.git*,build*}"] }]
 output = "../setup"
+use-app-nw = true
 
 [node-webkit]
-version = "0.77.0"
+version = "0.72.0"
 ffmpeg = false
 
 [macos-disk-image]
@@ -48,6 +49,8 @@ rules = [
 stage = "build"
 items = [
     # { run = { cmd = "/Users/aspect/.cargo/bin/cargo build --release --bin kaspad", cwd = ".." } },
+    # { run = { cmd = "cargo build --release --bin kaspad", cwd = ".." } },
+    # { run = { cmd = "cmd /C cd \\Users\\aspect\\staging\\rusty-kaspa && cargo build --release --bin kaspad", cwd = ".." } },
     { run = { cmd = "cargo build --release --bin kaspad", cwd = ".." } },
     { copy = { file = "../target/release/kaspad$EXE", to = "$TARGET/bin/" } },
 ]
