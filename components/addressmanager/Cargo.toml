@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 rocksdb.workspace = true
 kaspa-utils.workspace = true
+kaspa-consensus-core.workspace = true
 kaspa-core.workspace = true
 kaspa-database.workspace = true
 serde.workspace = true
@@ -17,3 +18,4 @@ rand.workspace = true
 parking_lot.workspace = true
 borsh.workspace = true
 log.workspace = true
+local-ip-address = "0.5.3"
