@@ -62,23 +62,24 @@ impl Node {
     }
 
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
-        tprintln!(
-            ctx,
-            "\n\
+        let help = "\n\
             \tstart   - Start local Kaspa node instance\n\
             \tstop    - Stop local Kaspa node instance\n\
             \trestart - Restart local Kaspa node instance\n\
             \tkill    - Kill local Kaspa node instance\n\
             \tstatus  - Get the status of local Kaspa node instance\n\
         \n\
-        "
-        );
+        ";
+
+        tprintln!(ctx, "{}", help.crlf());
 
         Ok(())
     }
 
     async fn select(self: Arc<Self>, ctx: Arc<KaspaCli>) -> Result<()> {
         let root = nw_sys::app::folder();
+
+        log_info!("root: `{root}`");
 
         let binaries = kaspa_daemon::locate_binaries(root.as_str(), "kaspad").await?;
 
