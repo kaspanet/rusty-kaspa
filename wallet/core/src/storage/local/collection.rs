@@ -104,8 +104,8 @@ where
     pub fn load(&self, ids: &[Id]) -> Result<Vec<Arc<Data>>> {
         Ok(ids
             .iter()
-            .filter_map(|id| match self.map.get(id).cloned() {
-                Some(data) => Some(data),
+            .map(|id| match self.map.get(id).cloned() {
+                Some(data) => data,
                 None => panic!("requested id `{}` was not found in collection", id),
             })
             .collect())
