@@ -58,6 +58,7 @@ fn serialize_benchmark(c: &mut Criterion) {
             let start = Duration::default();
             (0..iters).fold(start, |acc, _| {
                 let start = Instant::now();
+                #[allow(clippy::unit_arg)]
                 black_box(bincode::serialize_into(&mut buf, &transaction).unwrap());
                 let elapsed = start.elapsed();
                 buf.clear();
@@ -143,6 +144,7 @@ fn serialize_script_public_key_benchmark(c: &mut Criterion) {
             let start = Duration::default();
             (0..iters).fold(start, |acc, _| {
                 let start = Instant::now();
+                #[allow(clippy::unit_arg)]
                 black_box(bincode::serialize_into(&mut buf, &script_public_key).unwrap());
                 let elapsed = start.elapsed();
                 buf.clear();
