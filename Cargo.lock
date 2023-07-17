@@ -1709,8 +1709,10 @@ dependencies = [
 name = "kaspa-consensus-core"
 version = "0.1.2"
 dependencies = [
+ "bincode",
  "borsh",
  "cfg-if",
+ "criterion",
  "faster-hex",
  "futures-util",
  "getrandom 0.2.10",
@@ -1724,6 +1726,7 @@ dependencies = [
  "kaspa-utils",
  "secp256k1",
  "serde",
+ "serde_bytes",
  "smallvec",
  "thiserror",
 ]
@@ -3631,6 +3634,15 @@ dependencies = [
  "js-sys",
  "serde",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "serde_bytes"
+version = "0.11.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a16be4fe5320ade08736447e3198294a5ea9a6d44dde6f35f0a5e06859c427a"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
