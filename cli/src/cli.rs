@@ -242,17 +242,17 @@ impl KaspaCli {
                                     ..
                                 } => {
 
-                                    tprintln!(this, "Connected to Kaspa node version {server_version} at {url}\n");
+                                    tprintln!(this, "Connected to Kaspa node version {server_version} at {url}");
 
 
                                     let is_open = this.wallet.is_open().unwrap_or_else(|err| { terrorln!(this, "Unable to check if wallet is open: {err}"); false });
 
                                     if !is_synced {
                                         if is_open {
-                                            terrorln!(this, "Error: Unable to sync wallet - Kaspa node is not synced...");
+                                            terrorln!(this, "Error: Unable to update the wallet state - Kaspa node is currently syncing with the network...");
 
                                         } else {
-                                            terrorln!(this, "Error: Kaspa node is not synced...");
+                                            terrorln!(this, "Error: Kaspa node is currently syncing with the network, please wait for the sync to complete...");
                                         }
                                     }
                                 },
