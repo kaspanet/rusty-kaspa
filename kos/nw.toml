@@ -47,7 +47,6 @@ rules = [
 [[action]]
 stage = "build"
 items = [
-    # { run = { cmd = "/Users/aspect/.cargo/bin/cargo build --release --bin kaspad", cwd = ".." } },
     { run = { cmd = "cargo build --release --bin kaspad", cwd = ".." } },
     { copy = { file = "../target/release/kaspad$EXE", to = "$TARGET/bin/" } },
 ]
