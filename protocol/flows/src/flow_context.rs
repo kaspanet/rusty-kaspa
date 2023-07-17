@@ -450,9 +450,11 @@ impl ConnectionInitializer for FlowContext {
 
         let network_name = self.config.network_name();
 
+        let local_address = self.address_manager.lock().best_local_address();
+
         // Build the local version message
         // Subnets are not currently supported
-        let mut self_version_message = Version::new(None, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
+        let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
         // TODO: get number of live services
         // TODO: disable_relay_tx from config/cmd
@@ -507,8 +509,16 @@ impl ConnectionInitializer for FlowContext {
             flow.launch();
         }
 
-        if router.is_outbound() {
-            self.address_manager.lock().add_address(router.net_address().into());
+        if router.is_outbound() || peer_version.address.is_some() {
+            let mut address_manager = self.address_manager.lock();
+
+            if router.is_outbound() {
+                address_manager.add_address(router.net_address().into());
+            }
+
+            if let Some(peer_ip_address) = peer_version.address {
+                address_manager.add_address(peer_ip_address);
+            }
         }
 
         // Note: we deliberately do not hold the handshake in memory so at this point receivers for handshake subscriptions

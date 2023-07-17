@@ -245,7 +245,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         None
     };
 
-    let address_manager = AddressManager::new(meta_db);
+    let address_manager = AddressManager::new(config.clone(), meta_db);
     let mining_manager =
         MiningManagerProxy::new(Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None)));
 
