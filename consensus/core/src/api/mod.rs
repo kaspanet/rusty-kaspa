@@ -47,7 +47,7 @@ pub trait ConsensusApi: Send + Sync {
 
     /// Populates the mempool transactions with maximally found UTXO entry data and proceeds to full transactions
     /// validation if all are found. If validation is successful, also [`transaction.calculated_fee`] is expected to be populated.
-    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut Vec<MutableTransaction>) -> Vec<TxResult<()>> {
+    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
         unimplemented!()
     }
 

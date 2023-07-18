@@ -39,7 +39,7 @@ pub(crate) fn validate_mempool_transaction_and_populate(
 
 pub(crate) fn validate_mempool_transactions_in_parallel(
     consensus: &dyn ConsensusApi,
-    transactions: &mut Vec<MutableTransaction>,
+    transactions: &mut [MutableTransaction],
 ) -> Vec<RuleResult<()>> {
     consensus.validate_mempool_transactions_in_parallel(transactions).into_iter().map(|x| x.map_err(RuleError::from)).collect()
 }

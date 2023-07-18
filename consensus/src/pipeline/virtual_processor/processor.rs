@@ -683,7 +683,7 @@ impl VirtualStateProcessor {
         self.validate_mempool_transaction_and_populate_impl(mutable_tx, virtual_utxo_view, virtual_daa_score, virtual_past_median_time)
     }
 
-    pub fn validate_mempool_transactions_in_parallel(&self, mutable_txs: &mut Vec<MutableTransaction>) -> Vec<TxResult<()>> {
+    pub fn validate_mempool_transactions_in_parallel(&self, mutable_txs: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
         let virtual_read = self.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;

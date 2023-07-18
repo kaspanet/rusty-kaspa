@@ -173,13 +173,20 @@ impl MiningManager {
                 transactions.into_iter().filter_map(|tx| mempool.pre_validate_and_populate_transaction(consensus, tx).ok()).collect();
 
             // no lock on mempool
-            let validation_result = validate_mempool_transactions_in_parallel(consensus, &mut transactions);
+            // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
+            let mut lower_bound: usize = 0;
+            let mut validation_results = Vec::with_capacity(transactions.len());
+            while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
+                validation_results
+                    .extend(validate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
+                lower_bound = upper_bound;
+            }
 
             // write lock on mempool
             let mut mempool = self.mempool.write();
             let txs = transactions
                 .into_iter()
-                .zip(validation_result)
+                .zip(validation_results)
                 .flat_map(|(transaction, result)| {
                     mempool.post_validate_and_insert_transaction(consensus, result, transaction, priority, orphan).unwrap_or_default()
                 })
@@ -190,6 +197,20 @@ impl MiningManager {
         }
 
         Ok(unorphaned_txs)
+    }
+
+    fn next_transaction_chunk_upper_bound(&self, transactions: &[MutableTransaction], lower_bound: usize) -> Option<usize> {
+        if lower_bound >= transactions.len() {
+            return None;
+        }
+        let mut mass = 0;
+        transactions[lower_bound..]
+            .iter()
+            .position(|tx| {
+                mass += tx.calculated_mass.unwrap();
+                mass >= self.block_template_builder.max_block_mass()
+            })
+            .or(Some(transactions.len()))
     }
 
     /// Try to return a mempool transaction by its id.

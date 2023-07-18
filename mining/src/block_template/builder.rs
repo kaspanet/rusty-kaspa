@@ -119,4 +119,8 @@ impl BlockTemplateBuilder {
         block_template.miner_data = new_miner_data.clone();
         Ok(block_template)
     }
+
+    pub fn max_block_mass(&self) -> u64 {
+        self.policy.max_block_mass
+    }
 }
