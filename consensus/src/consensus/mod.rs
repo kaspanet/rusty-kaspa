@@ -557,7 +557,7 @@ impl ConsensusApi for Consensus {
         self.services.pruning_proof_manager.get_pruning_point_proof()
     }
 
-    fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>> {
+    fn create_virtual_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>> {
         if let Some(low) = low {
             self.validate_block_exists(low)?;
         }
@@ -569,7 +569,7 @@ impl ConsensusApi for Consensus {
         let low = low.unwrap_or_else(|| self.pruning_point());
         let high = high.unwrap_or_else(|| self.get_sink());
 
-        Ok(self.services.sync_manager.create_headers_selected_chain_block_locator(low, high)?)
+        Ok(self.services.sync_manager.create_virtual_selected_chain_block_locator(low, high)?)
     }
 
     fn pruning_point_headers(&self) -> Vec<Arc<Header>> {

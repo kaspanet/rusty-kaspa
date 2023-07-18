@@ -118,7 +118,9 @@ impl<
             .expect("because of the pruning rules such block has to exist")
     }
 
-    pub fn create_headers_selected_chain_block_locator(&self, low: Hash, high: Hash) -> SyncManagerResult<Vec<Hash>> {
+    /// Returns a logarithmic amount of blocks sampled from the virtual selected chain between `low` and `high`.
+    /// Expects both blocks to be on the virtual selected chain, otherwise an error is returned
+    pub fn create_virtual_selected_chain_block_locator(&self, low: Hash, high: Hash) -> SyncManagerResult<Vec<Hash>> {
         let sc_read = self.selected_chain_store.read();
 
         if low == high {
