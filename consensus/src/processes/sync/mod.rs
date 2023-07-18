@@ -214,10 +214,8 @@ impl<
         let mut locator = Vec::new();
         loop {
             locator.push(current);
-            if let Some(limit) = limit {
-                if locator.len() == limit {
-                    break;
-                }
+            if limit == Some(locator.len()) {
+                break;
             }
 
             let current_gd = self.ghostdag_store.get_compact_data(current).unwrap();
