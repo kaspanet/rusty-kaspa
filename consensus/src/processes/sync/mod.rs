@@ -118,10 +118,7 @@ impl<
             .expect("because of the pruning rules such block has to exist")
     }
 
-    pub fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> SyncManagerResult<Vec<Hash>> {
-        let low = low.unwrap_or_else(|| self.pruning_point_store.read().get().unwrap().pruning_point);
-        let high = high.unwrap_or_else(|| self.header_selected_tip_store.read().get().unwrap().hash);
-
+    pub fn create_headers_selected_chain_block_locator(&self, low: Hash, high: Hash) -> SyncManagerResult<Vec<Hash>> {
         let sc_read = self.selected_chain_store.read();
 
         if low == high {

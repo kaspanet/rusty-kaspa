@@ -25,6 +25,7 @@ use crate::{
             pruning_utxoset::PruningUtxosetStores,
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
+            selected_chain::{DbSelectedChainStore, SelectedChainStore},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
@@ -58,7 +59,7 @@ use kaspa_consensus_core::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
     },
-    BlockHashSet,
+    BlockHashSet, ChainPath,
 };
 use kaspa_consensus_notify::{
     notification::{
@@ -118,6 +119,7 @@ pub struct VirtualStateProcessor {
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
     pub(super) depth_store: Arc<DbDepthStore>,
+    pub(super) selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
     // Utxo-related stores
     pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -184,6 +186,7 @@ impl VirtualStateProcessor {
             past_pruning_points_store: storage.past_pruning_points_store.clone(),
             body_tips_store: storage.body_tips_store.clone(),
             depth_store: storage.depth_store.clone(),
+            selected_chain_store: storage.selected_chain_store.clone(),
             utxo_diffs_store: storage.utxo_diffs_store.clone(),
             utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: storage.acceptance_data_store.clone(),
@@ -254,6 +257,7 @@ impl VirtualStateProcessor {
         assert_eq!(virtual_ghostdag_data.selected_parent, new_sink);
 
         let sink_multiset = self.utxo_multisets_store.get(new_sink).unwrap();
+        let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink);
         let new_virtual_state = self
             .calculate_and_commit_virtual_state(
                 virtual_read,
@@ -261,6 +265,7 @@ impl VirtualStateProcessor {
                 virtual_ghostdag_data,
                 sink_multiset,
                 &mut accumulated_diff,
+                &chain_path,
             )
             .expect("all possible rule errors are unexpected here");
 
@@ -283,7 +288,6 @@ impl VirtualStateProcessor {
         self.notification_root
             .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
             .expect("expecting an open unbounded channel");
-        let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink);
         // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
         let added_chain_blocks_acceptance_data =
             chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
@@ -414,6 +418,7 @@ impl VirtualStateProcessor {
         virtual_ghostdag_data: GhostdagData,
         selected_parent_multiset: MuHash,
         accumulated_diff: &mut UtxoDiff,
+        chain_path: &ChainPath,
     ) -> Result<Arc<VirtualState>, RuleError> {
         let selected_parent_utxo_view = (&virtual_read.utxo_set).compose(&*accumulated_diff);
         let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset);
@@ -445,6 +450,7 @@ impl VirtualStateProcessor {
 
         let mut batch = WriteBatch::default();
         let mut virtual_write = RwLockUpgradableReadGuard::upgrade(virtual_read);
+        let mut selected_chain_write = self.selected_chain_store.write();
 
         // Apply the accumulated diff to the virtual UTXO set
         virtual_write.utxo_set.write_diff_batch(&mut batch, accumulated_diff).unwrap();
@@ -452,11 +458,15 @@ impl VirtualStateProcessor {
         // Update virtual state
         virtual_write.state.set_batch(&mut batch, new_virtual_state.clone()).unwrap();
 
+        // Update the virtual selected chain
+        selected_chain_write.apply_changes(&mut batch, chain_path).unwrap();
+
         // Flush the batch changes
         self.db.write(batch).unwrap();
 
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
         drop(virtual_write);
+        drop(selected_chain_write);
 
         Ok(new_virtual_state)
     }
@@ -775,6 +785,12 @@ impl VirtualStateProcessor {
             .state
             .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
             .unwrap();
+        // Init the virtual selected chain store
+        let mut batch = WriteBatch::default();
+        let mut selected_chain_write = self.selected_chain_store.write();
+        selected_chain_write.init_with_pruning_point(&mut batch, self.genesis.hash).unwrap();
+        self.db.write(batch).unwrap();
+        drop(selected_chain_write);
     }
 
     // TODO: rename to reflect finalizing pruning point utxoset state and importing *to* virtual utxoset
@@ -847,6 +863,7 @@ impl VirtualStateProcessor {
             virtual_ghostdag_data,
             imported_utxo_multiset.clone(),
             &mut UtxoDiff::default(),
+            &ChainPath::default(),
         )?;
 
         Ok(())

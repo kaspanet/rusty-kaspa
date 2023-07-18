@@ -22,7 +22,7 @@ pub trait SelectedChainStoreReader {
 /// Write API for `SelectedChainStore`. The set function is deliberately `mut`
 /// since chain index is not append-only and thus needs to be guarded.
 pub trait SelectedChainStore: SelectedChainStoreReader {
-    fn apply_changes(&mut self, batch: &mut WriteBatch, changes: ChainPath) -> StoreResult<()>;
+    fn apply_changes(&mut self, batch: &mut WriteBatch, changes: &ChainPath) -> StoreResult<()>;
     fn prune_below_pruning_point(&mut self, writer: impl DbWriter, pruning_point: Hash) -> StoreResult<()>;
     fn init_with_pruning_point(&mut self, batch: &mut WriteBatch, block: Hash) -> StoreResult<()>;
 }
@@ -71,19 +71,19 @@ impl SelectedChainStoreReader for DbSelectedChainStore {
 }
 
 impl SelectedChainStore for DbSelectedChainStore {
-    fn apply_changes(&mut self, batch: &mut WriteBatch, changes: ChainPath) -> StoreResult<()> {
+    fn apply_changes(&mut self, batch: &mut WriteBatch, changes: &ChainPath) -> StoreResult<()> {
         let added_len = changes.added.len() as u64;
         let current_highest_index = self.access_highest_index.read().unwrap();
         let split_index = current_highest_index - changes.removed.len() as u64;
         let new_highest_index = added_len + split_index;
 
-        for to_remove in changes.removed {
+        for to_remove in changes.removed.iter().copied() {
             let index = self.access_index_by_hash.read(to_remove).unwrap();
             self.access_index_by_hash.delete(BatchDbWriter::new(batch), to_remove).unwrap();
             self.access_hash_by_index.delete(BatchDbWriter::new(batch), index.into()).unwrap();
         }
 
-        for (i, to_add) in changes.added.into_iter().enumerate() {
+        for (i, to_add) in changes.added.iter().copied().enumerate() {
             self.access_index_by_hash.write(BatchDbWriter::new(batch), to_add, i as u64 + split_index + 1).unwrap();
             self.access_hash_by_index.write(BatchDbWriter::new(batch), (i as u64 + split_index + 1).into(), to_add).unwrap();
         }
