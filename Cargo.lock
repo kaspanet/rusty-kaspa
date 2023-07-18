@@ -2064,6 +2064,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "downcast",
  "futures",
+ "kaspa-addresses",
  "kaspa-consensus-core",
  "nw-sys",
  "serde",

@@ -19,6 +19,7 @@ pub mod import;
 pub mod info;
 pub mod list;
 pub mod metrics;
+pub mod miner;
 pub mod mute;
 pub mod name;
 pub mod network;
@@ -61,6 +62,7 @@ pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
             info,
             list,
             metrics,
+            miner,
             mute,
             name,
             network,

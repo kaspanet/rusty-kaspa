@@ -32,6 +32,7 @@ pub struct Core {
     pub ipc: Arc<Ipc<CoreOps>>,
     terminal: Arc<Mutex<Option<Arc<Terminal>>>>,
     pub kaspad: Arc<Kaspad>,
+    pub cpu_miner: Arc<CpuMiner>,
     pub task_ctl: DuplexChannel,
     pub shutdown_ctl: Channel<()>,
 }
@@ -53,6 +54,7 @@ impl Core {
             ipc: Ipc::try_new_global_binding(Modules::Core)?,
             terminal: Arc::new(Mutex::new(Option::None)),
             kaspad: Arc::new(Kaspad::default()),
+            cpu_miner: Arc::new(CpuMiner::default()),
             task_ctl: DuplexChannel::oneshot(),
             shutdown_ctl: Channel::oneshot(),
         });
@@ -303,6 +305,49 @@ impl Core {
 
         let this = self.clone();
         self.ipc.method(
+            CoreOps::CpuMinerCtl,
+            Method::new(move |op: CpuMinerOps| {
+                let this = this.clone();
+                Box::pin(async move {
+                    match op {
+                        CpuMinerOps::Configure(config) => {
+                            this.cpu_miner.configure(config)?;
+                        }
+                        CpuMinerOps::DaemonCtl(ctl) => match ctl {
+                            DaemonCtl::Start => {
+                                this.cpu_miner.start()?;
+                            }
+                            DaemonCtl::Stop => {
+                                this.cpu_miner.stop()?;
+                            }
+                            DaemonCtl::Restart => {
+                                this.cpu_miner.restart()?;
+                            }
+                            DaemonCtl::Kill => {
+                                this.cpu_miner.kill()?;
+                            }
+                        },
+                    }
+
+                    Ok(())
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.method(
+            CoreOps::CpuMinerStatus,
+            Method::new(move |_op: ()| {
+                let this = this.clone();
+                Box::pin(async move {
+                    let uptime = this.kaspad.uptime().map(|u| u.as_secs());
+                    Ok(DaemonStatus { uptime })
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.method(
             CoreOps::Shutdown,
             Method::new(move |_op: ()| {
                 let this = this.clone();
@@ -316,8 +361,7 @@ impl Core {
         Ok(())
     }
 
-    pub async fn handle_stdio(self: &Arc<Self>, _kind: DaemonKind, stdio: Stdio) -> Result<()> {
-        // - TODO - pipe according to kind...
+    pub async fn handle_stdio(self: &Arc<Self>, stdio: Stdio) -> Result<()> {
         self.terminal().ipc().pipe_stdout(stdio).await?;
 
         Ok(())
@@ -329,6 +373,8 @@ impl Core {
         let task_ctl_sender = self.task_ctl.response.sender.clone();
         let kaspad_stdout_receiver = self.kaspad.stdout().receiver.clone();
         let kaspad_stderr_receiver = self.kaspad.stderr().receiver.clone();
+        let cpu_miner_stdout_receiver = self.cpu_miner.stdout().receiver.clone();
+        let cpu_miner_stderr_receiver = self.cpu_miner.stderr().receiver.clone();
 
         spawn(async move {
             loop {
@@ -338,15 +384,29 @@ impl Core {
                     },
                     stdout = kaspad_stdout_receiver.recv().fuse() => {
                         if let Ok(stdout) = stdout {
-                            this.handle_stdio(DaemonKind::Kaspad, Stdio::Stdout(stdout)).await.unwrap_or_else(|err| {
-                                log_error!("error while handling stdout: {err}");
+                            this.handle_stdio(Stdio::Stdout(DaemonKind::Kaspad, stdout)).await.unwrap_or_else(|err| {
+                                log_error!("error while handling kaspad stdout: {err}");
                             });
                         }
                     },
                     stderr = kaspad_stderr_receiver.recv().fuse() => {
                         if let Ok(stderr) = stderr {
-                            this.handle_stdio(DaemonKind::Kaspad, Stdio::Stderr(stderr)).await.unwrap_or_else(|err| {
-                                log_error!("error while handling stderr: {err}");
+                            this.handle_stdio(Stdio::Stderr(DaemonKind::Kaspad, stderr)).await.unwrap_or_else(|err| {
+                                log_error!("error while handling kaspad stderr: {err}");
+                            });
+                        }
+                    },
+                    stdout = cpu_miner_stdout_receiver.recv().fuse() => {
+                        if let Ok(stdout) = stdout {
+                            this.handle_stdio(Stdio::Stdout(DaemonKind::CpuMiner, stdout)).await.unwrap_or_else(|err| {
+                                log_error!("error while handling cpu miner stdout: {err}");
+                            });
+                        }
+                    },
+                    stderr = cpu_miner_stderr_receiver.recv().fuse() => {
+                        if let Ok(stderr) = stderr {
+                            this.handle_stdio(Stdio::Stderr(DaemonKind::CpuMiner, stderr)).await.unwrap_or_else(|err| {
+                                log_error!("error while handling cpu miner stderr: {err}");
                             });
                         }
                     },

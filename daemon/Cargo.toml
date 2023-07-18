@@ -22,6 +22,7 @@ kaspa-consensus-core.workspace = true
 borsh.workspace = true
 serde.workspace = true
 downcast.workspace = true
+kaspa-addresses.workspace = true
 
 
 

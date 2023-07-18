@@ -6,6 +6,8 @@ pub enum CoreOps {
     Shutdown,
     KaspadCtl,
     KaspadStatus,
+    CpuMinerCtl,
+    CpuMinerStatus,
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -29,6 +31,12 @@ pub enum DaemonCtl {
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum KaspadOps {
     Configure(KaspadConfig),
+    DaemonCtl(DaemonCtl),
+}
+
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+pub enum CpuMinerOps {
+    Configure(CpuMinerConfig),
     DaemonCtl(DaemonCtl),
 }
 
@@ -79,6 +87,43 @@ impl KaspadCtl for CoreIpc {
 
     async fn status(&self) -> DaemonResult<DaemonStatus> {
         Ok(self.target.call(CoreOps::KaspadStatus, ()).await?)
+    }
+
+    // fn kill_and_join(&self) -> Result<()>;
+    // fn stop_and_join(&self) -> Result<()>;
+}
+
+#[async_trait]
+impl CpuMinerCtl for CoreIpc {
+    async fn configure(&self, config: CpuMinerConfig) -> DaemonResult<()> {
+        // self.target.call::<_, _, ()>(CoreOps::KaspadCtl, KaspadOps::Configure(config)).await?;
+        self.target.call(CoreOps::CpuMinerCtl, CpuMinerOps::Configure(config)).await?;
+
+        Ok(())
+    }
+
+    async fn start(&self) -> DaemonResult<()> {
+        self.target.call(CoreOps::CpuMinerCtl, KaspadOps::DaemonCtl(DaemonCtl::Start)).await?;
+        Ok(())
+    }
+
+    async fn stop(&self) -> DaemonResult<()> {
+        self.target.call(CoreOps::CpuMinerCtl, KaspadOps::DaemonCtl(DaemonCtl::Stop)).await?;
+        Ok(())
+    }
+
+    async fn restart(&self) -> DaemonResult<()> {
+        self.target.call(CoreOps::CpuMinerCtl, KaspadOps::DaemonCtl(DaemonCtl::Restart)).await?;
+        Ok(())
+    }
+
+    async fn kill(&self) -> DaemonResult<()> {
+        self.target.call(CoreOps::CpuMinerCtl, KaspadOps::DaemonCtl(DaemonCtl::Kill)).await?;
+        Ok(())
+    }
+
+    async fn status(&self) -> DaemonResult<DaemonStatus> {
+        Ok(self.target.call(CoreOps::CpuMinerStatus, ()).await?)
     }
 
     // fn kill_and_join(&self) -> Result<()>;

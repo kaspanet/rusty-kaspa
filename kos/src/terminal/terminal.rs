@@ -20,7 +20,7 @@ impl App {
         let core = Arc::new(CoreIpc::new(core_ipc_target));
         // log_info!("+++ FOUND Background window: {:?}", background);
 
-        let daemons = Arc::new(Daemons::new().with_kaspad(core.clone()));
+        let daemons = Arc::new(Daemons::new().with_kaspad(core.clone()).with_cpu_miner(core.clone()));
 
         let terminal_options = TerminalOptions {
             // disable_clipboard_handling : true,

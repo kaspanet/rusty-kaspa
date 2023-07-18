@@ -58,8 +58,8 @@ items = [
 
 [[action]]
 stage = "build"
-name = "building kaspa CPU miner (bin/kaspa-miner-cpu)"
+name = "building kaspa CPU miner (bin/kaspa-cpu-miner)"
 items = [
-    { run = { cmd = "cargo build --release", cwd = "../../kaspa-miner-cpu" } },
-    { copy = { file = "../../kaspa-miner-cpu/target/release/kaspa-miner-cpu$EXE", to = "$TARGET/bin/" } },
+    { run = { cmd = "cargo build --release", cwd = "../../kaspa-cpu-miner" } },
+    { copy = { file = "../../kaspa-cpu-miner/target/release/kaspa-cpu-miner$EXE", to = "$TARGET/bin/" } },
 ]

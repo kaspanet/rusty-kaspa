@@ -3,10 +3,10 @@ use kaspa_daemon::KaspadConfig;
 use crate::imports::*;
 
 #[derive(Default)]
-pub struct Node;
+pub struct Miner;
 
 #[async_trait]
-impl Handler for Node {
+impl Handler for Miner {
     fn verb(&self, ctx: &Arc<dyn Context>) -> Option<&'static str> {
         if let Ok(ctx) = ctx.clone().downcast_arc::<KaspaCli>() {
             ctx.daemons().clone().kaspad.as_ref().map(|_| "node")
@@ -16,7 +16,7 @@ impl Handler for Node {
     }
 
     fn help(&self, _ctx: &Arc<dyn Context>) -> &'static str {
-        "Manage the local Kaspa node instance"
+        "Manage the local CPU miner instance"
     }
 
     async fn handle(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, cmd: &str) -> cli::Result<()> {
@@ -25,32 +25,30 @@ impl Handler for Node {
     }
 }
 
-impl Node {
+impl Miner {
     async fn main(self: Arc<Self>, ctx: Arc<KaspaCli>, mut argv: Vec<String>, _cmd: &str) -> Result<()> {
         if argv.is_empty() {
             return self.display_help(ctx, argv).await;
         }
-        let kaspad = ctx.daemons().kaspad();
+        let cpu_miner = ctx.daemons().cpu_miner();
         match argv.remove(0).as_str() {
             "start" => {
-                kaspad.start().await?;
+                cpu_miner.start().await?;
             }
             "stop" => {
-                kaspad.stop().await?;
+                cpu_miner.stop().await?;
             }
             "restart" => {
-                kaspad.restart().await?;
+                cpu_miner.restart().await?;
             }
             "kill" => {
-                kaspad.kill().await?;
+                cpu_miner.kill().await?;
             }
             "status" => {
-                let status = kaspad.status().await?;
+                let status = cpu_miner.status().await?;
                 tprintln!(ctx, "{}", status);
             }
             "select" => {
-                // let status = kaspad.status().await?;
-                // tprintln!(ctx, "{}", status);
                 self.select(ctx).await?;
             }
             _ => {
@@ -63,11 +61,11 @@ impl Node {
 
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
         let help = "\n\
-            \tstart   - Start the local Kaspa node instance\n\
-            \tstop    - Stop the local Kaspa node instance\n\
-            \trestart - Restart the local Kaspa node instance\n\
-            \tkill    - Kill the local Kaspa node instance\n\
-            \tstatus  - Get the status of the local Kaspa node instance\n\
+            \tstart   - Start the local CPU miner instance\n\
+            \tstop    - Stop the local CPU miner instance\n\
+            \trestart - Restart the local CPU miner instance\n\
+            \tkill    - Kill the local CPU miner instance\n\
+            \tstatus  - Get the status of the local CPU miner instance\n\
         \n\
         ";
 
@@ -79,13 +77,13 @@ impl Node {
     async fn select(self: Arc<Self>, ctx: Arc<KaspaCli>) -> Result<()> {
         let root = nw_sys::app::folder();
 
-        let binaries = kaspa_daemon::locate_binaries(root.as_str(), "kaspad").await?;
+        let binaries = kaspa_daemon::locate_binaries(root.as_str(), "kaspa-cpu-miner").await?;
 
         if binaries.is_empty() {
-            tprintln!(ctx, "No kaspad binaries found");
+            tprintln!(ctx, "No kaspa-cpu-miner binaries found");
         } else {
             let binaries = binaries.iter().map(|p| p.display().to_string()).collect::<Vec<_>>();
-            if let Some(selection) = ctx.term().select("Please select a kaspad binary", &binaries).await? {
+            if let Some(selection) = ctx.term().select("Please select kaspa-cpu-miner binary", &binaries).await? {
                 tprintln!(ctx, "selecting: {}", selection);
                 let config = KaspadConfig::new(selection.as_str(), NetworkType::Testnet)?;
                 ctx.daemons().kaspad().configure(config).await?;

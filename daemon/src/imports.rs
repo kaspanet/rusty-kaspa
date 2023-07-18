@@ -4,6 +4,7 @@ pub use crate::DaemonStatus;
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSerialize};
 pub use downcast::{downcast_sync, AnySync};
+pub use kaspa_addresses::Address;
 pub use kaspa_consensus_core::networktype::NetworkType;
 pub use serde::{Deserialize, Serialize};
 pub use std::path::{Path, PathBuf};
