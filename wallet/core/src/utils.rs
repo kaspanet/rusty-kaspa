@@ -8,6 +8,7 @@ use kaspa_consensus_core::{
 };
 use separator::Separatable;
 use wasm_bindgen::prelude::*;
+use workflow_log::style;
 
 // pub const ECDSA_SIGNATURE_SIZE: u64 = 64;
 // pub const SCHNORR_SIGNATURE_SIZE: u64 = 64;
@@ -188,6 +189,23 @@ pub fn sompi_to_kaspa_string_with_suffix(sompi: u64, network_type: &NetworkType)
     let kas = sompi_to_kaspa(sompi).separated_string();
     let suffix = kaspa_suffix(network_type);
     format!("{kas} {suffix}")
+}
+
+pub fn format_address_colors(address: &Address, range: Option<usize>) -> String {
+    let address = address.to_string();
+
+    let parts = address.split(':').collect::<Vec<&str>>();
+    let prefix = style(parts[0]).dim();
+    let payload = parts[1];
+    let range = range.unwrap_or(6);
+    let start = range;
+    let finish = payload.len() - range;
+
+    let left = &payload[0..start];
+    let center = style(&payload[start..finish]).dim();
+    let right = &payload[finish..];
+
+    format!("{prefix}:{left}:{center}:{right}")
 }
 
 mod wasm {
