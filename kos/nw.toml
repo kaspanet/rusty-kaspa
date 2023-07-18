@@ -50,7 +50,16 @@ rules = [
 
 [[action]]
 stage = "build"
+name = "building rusty kaspa daemon (bin/kaspad)"
 items = [
     { run = { cmd = "cargo build --release --bin kaspad", cwd = ".." } },
     { copy = { file = "../target/release/kaspad$EXE", to = "$TARGET/bin/" } },
+]
+
+[[action]]
+stage = "build"
+name = "building kaspa CPU miner (bin/kaspa-miner-cpu)"
+items = [
+    { run = { cmd = "cargo build --release", cwd = "../../kaspa-miner-cpu" } },
+    { copy = { file = "../../kaspa-miner-cpu/target/release/kaspa-miner-cpu$EXE", to = "$TARGET/bin/" } },
 ]
