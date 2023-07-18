@@ -566,7 +566,7 @@ impl ConsensusApi for Consensus {
             self.validate_block_exists(high)?;
         }
 
-        let low = low.unwrap_or_else(|| self.pruning_point().unwrap());
+        let low = low.unwrap_or_else(|| self.pruning_point());
         let high = high.unwrap_or_else(|| self.get_sink());
 
         Ok(self.services.sync_manager.create_headers_selected_chain_block_locator(low, high)?)
@@ -655,8 +655,8 @@ impl ConsensusApi for Consensus {
         Ok(self.services.sync_manager.get_missing_block_body_hashes(high)?)
     }
 
-    fn pruning_point(&self) -> Option<Hash> {
-        self.pruning_point_store.read().pruning_point().unwrap_option()
+    fn pruning_point(&self) -> Hash {
+        self.pruning_point_store.read().pruning_point().unwrap()
     }
 
     fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
@@ -676,7 +676,7 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(hash)?;
 
         // In order to guarantee the chain height is at least k, we check that the pruning point is not genesis.
-        if self.pruning_point().unwrap() == self.config.genesis.hash {
+        if self.pruning_point() == self.config.genesis.hash {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
 
@@ -693,7 +693,7 @@ impl ConsensusApi for Consensus {
 
     fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(high)?;
-        Ok(self.services.sync_manager.create_block_locator_from_pruning_point(high, self.pruning_point().unwrap(), Some(limit))?)
+        Ok(self.services.sync_manager.create_block_locator_from_pruning_point(high, self.pruning_point(), Some(limit))?)
     }
 
     fn estimate_network_hashes_per_second(&self, start_hash: Option<Hash>, window_size: usize) -> ConsensusResult<u64> {

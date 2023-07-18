@@ -9,7 +9,6 @@ use futures::future::try_join_all;
 use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
-    blockhash::BlockHashExtensions,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
     BlockHashSet,
@@ -139,12 +138,8 @@ impl IbdFlow {
         relay_header: &Header,
         highest_known_syncer_chain_hash: Option<Hash>,
     ) -> Result<IbdType, ProtocolError> {
-        let Some(pruning_point) = consensus.async_pruning_point().await else {
-            // TODO: fix when applying staging consensus
-            return Ok(IbdType::DownloadHeadersProof);
-        };
-
         if let Some(highest_known_syncer_chain_hash) = highest_known_syncer_chain_hash {
+            let pruning_point = consensus.async_pruning_point().await;
             if consensus.async_is_chain_ancestor_of(pruning_point, highest_known_syncer_chain_hash).await? {
                 // The node is only missing a segment in the future of its current pruning point, and the chains
                 // agree as well, so we perform a simple sync IBD and only download the missing data
@@ -156,10 +151,6 @@ impl IbdFlow {
         }
 
         let hst_hash = consensus.async_get_headers_selected_tip().await;
-        // TODO: remove when applying staging consensus
-        if hst_hash.is_origin() {
-            return Ok(IbdType::DownloadHeadersProof);
-        }
         let hst_header = consensus.async_get_header(hst_hash).await.unwrap();
         if relay_header.blue_score >= hst_header.blue_score + self.ctx.config.pruning_depth
             && relay_header.blue_work > hst_header.blue_work

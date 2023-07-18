@@ -331,7 +331,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_missing_block_body_hashes(high)).await
     }
 
-    pub async fn async_pruning_point(&self) -> Option<Hash> {
+    pub async fn async_pruning_point(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.pruning_point()).await
     }
 

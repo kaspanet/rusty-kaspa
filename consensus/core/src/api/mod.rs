@@ -238,7 +238,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn pruning_point(&self) -> Option<Hash> {
+    fn pruning_point(&self) -> Hash {
         unimplemented!()
     }
 
