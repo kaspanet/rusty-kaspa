@@ -14,6 +14,7 @@ pub struct Cache {
     pub metadata: Collection<AccountId, Metadata>,
     pub transaction_records: Collection<TransactionRecordId, TransactionRecord>,
     pub transaction_metadata: HashMap<TransactionRecordId, TransactionMetadata>,
+    pub address_book: Vec<AddressBookEntry>,
 }
 
 impl TryFrom<(Wallet, &Secret)> for Cache {
@@ -33,8 +34,18 @@ impl TryFrom<(Wallet, &Secret)> for Cache {
         let transaction_records: Collection<TransactionRecordId, TransactionRecord> = payload.0.transaction_records.try_into()?;
         let transaction_metadata: HashMap<TransactionRecordId, TransactionMetadata> =
             payload.0.transaction_metadata.into_iter().collect();
+        let address_book = payload.0.address_book.into_iter().collect();
 
-        Ok(Cache { user_hint, prv_key_data, prv_key_data_info, accounts, metadata, transaction_records, transaction_metadata })
+        Ok(Cache {
+            user_hint,
+            prv_key_data,
+            prv_key_data_info,
+            accounts,
+            metadata,
+            address_book,
+            transaction_records,
+            transaction_metadata,
+        })
     }
 }
 
@@ -48,7 +59,8 @@ impl TryFrom<(&Cache, &Secret)> for Wallet {
         let metadata: Vec<Metadata> = (&cache.metadata).try_into()?;
         let transaction_records: Vec<TransactionRecord> = (&cache.transaction_records).try_into()?;
         let transaction_metadata = cache.transaction_metadata.clone();
-        let payload = Payload { prv_key_data, accounts, transaction_records, transaction_metadata };
+        let address_book = cache.address_book.clone();
+        let payload = Payload { prv_key_data, accounts, address_book, transaction_records, transaction_metadata };
         let payload = Decrypted::new(payload).encrypt(secret)?;
 
         Ok(Wallet { payload, metadata, user_hint: cache.user_hint.clone() })

@@ -360,11 +360,18 @@ impl AccountStore for LocalStoreInner {
 #[async_trait]
 impl AddressBookStore for LocalStoreInner {
     async fn iter(&self) -> Result<StorageStream<AddressBookEntry>> {
-        todo!()
+        Ok(Box::pin(AddressBookEntryStream::new(self.cache.clone())))
     }
 
-    async fn search(&self, _search: &str) -> Result<Vec<Arc<AddressBookEntry>>> {
-        todo!()
+    async fn search(&self, search: &str) -> Result<Vec<Arc<AddressBookEntry>>> {
+        let matches = self
+            .cache()
+            .address_book
+            .iter()
+            .filter_map(|entry| if entry.alias.contains(search) { Some(Arc::new(entry.clone())) } else { None })
+            .collect();
+
+        Ok(matches)
     }
 }
 
