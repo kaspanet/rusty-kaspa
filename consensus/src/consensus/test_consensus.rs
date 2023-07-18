@@ -1,4 +1,6 @@
 use async_channel::Sender;
+use kaspa_consensus_core::coinbase::MinerData;
+use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_consensus_core::{
     api::ConsensusApi, block::MutableBlock, blockstatus::BlockStatus, header::Header, merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE, tx::Transaction,
@@ -105,6 +107,28 @@ impl TestConsensus {
 
     pub fn add_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         self.validate_and_insert_block(self.build_block_with_parents(hash, parents).to_immutable())
+    }
+
+    pub fn add_utxo_valid_block_with_parents(
+        &self,
+        hash: Hash,
+        parents: Vec<Hash>,
+        txs: Vec<Transaction>,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
+        self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable())
+    }
+
+    pub fn build_utxo_valid_block_with_parents(
+        &self,
+        hash: Hash,
+        parents: Vec<Hash>,
+        miner_data: MinerData,
+        txs: Vec<Transaction>,
+    ) -> MutableBlock {
+        let mut template = self.virtual_processor.build_block_template_with_parents(parents, miner_data, txs).unwrap();
+        template.block.header.hash = hash;
+        template.block
     }
 
     pub fn build_block_with_parents_and_transactions(
