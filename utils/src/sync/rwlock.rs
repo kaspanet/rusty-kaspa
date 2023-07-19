@@ -119,10 +119,10 @@ mod tests {
     use tokio::{sync::oneshot, time::sleep, time::timeout};
 
     const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
-    
-    // TODO: make test more forgiving 
+
+    // TODO: make test more forgiving
     // this test fails with code cov, possibly due to decreased performance.
-    // for now, ignore from coverage. 
+    // for now, ignore from coverage.
     #[cfg_attr(coverage_nightly, feature(no_coverage))]
     #[tokio::test]
     async fn test_writer_reentrance() {
