@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use cfg_if::cfg_if;
 use futures::stream::{Stream, StreamExt, TryStreamExt};
 use futures::*;
-use kaspa_daemon::Daemons;
+use kaspa_daemon::{DaemonKind, Daemons, Stdio};
 use kaspa_wallet_core::imports::{AtomicBool, Ordering, ToHex};
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
 use kaspa_wallet_core::storage::interface::AccessContext;
@@ -21,7 +21,9 @@ use workflow_core::channel::*;
 use workflow_core::time::Instant;
 use workflow_log::*;
 use workflow_terminal::*;
-pub use workflow_terminal::{parse, Cli, CrLf, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget}; //{CrLf, Terminal};
+pub use workflow_terminal::{
+    cli::*, parse, Cli, CrLf, Handler, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget,
+};
 
 pub struct Options {
     pub daemons: Option<Arc<Daemons>>,
@@ -43,6 +45,7 @@ pub struct KaspaCli {
     last_interaction: Arc<Mutex<Instant>>,
     daemons: Arc<Daemons>,
     handlers: Arc<HandlerCli>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl From<&KaspaCli> for Arc<Terminal> {
@@ -114,6 +117,7 @@ impl KaspaCli {
             last_interaction: Arc::new(Mutex::new(Instant::now())),
             handlers: Arc::new(HandlerCli::default()),
             daemons: options.daemons.unwrap_or_default(),
+            shutdown: Arc::new(AtomicBool::new(false)),
         });
 
         let term = Arc::new(Terminal::try_new_with_options(kaspa_cli.clone(), options.terminal)?);
@@ -166,6 +170,25 @@ impl KaspaCli {
 
     pub fn register_handlers(self: &Arc<Self>) -> Result<()> {
         crate::modules::register_handlers(self)?;
+        Ok(())
+    }
+
+    pub async fn handle_stdio(self: &Arc<Self>, stdio: Stdio) -> Result<()> {
+        match stdio.kind() {
+            DaemonKind::Kaspad => {
+                // let node = self.handlers().get("node").unwrap();
+                // let node = node.downcast_arc::<crate::modules::node::Node>().unwrap();
+                // node.handle_stdio(self, stdio).await?;
+                self.term().writeln(stdio.trim().crlf());
+            }
+            DaemonKind::CpuMiner => {
+                // let miner = self.handlers().get("miner").unwrap();
+                // let miner = miner.downcast_arc::<crate::modules::miner::Miner>().unwrap();
+                // miner.handle_stdio(self, stdio).await?;
+                self.term().writeln(stdio.trim().crlf());
+            }
+        }
+
         Ok(())
     }
 
@@ -615,6 +638,42 @@ impl KaspaCli {
             }
         }
         tprintln!(self);
+
+        Ok(())
+    }
+
+    pub async fn shutdown(&self) -> Result<()> {
+        if !self.shutdown.load(Ordering::SeqCst) {
+            self.shutdown.store(true, Ordering::SeqCst);
+
+            // if self.wallet().is_connected() {
+            //     self.wallet().rpc_client().disconnect().await?;
+            //     // self.wallet().stop().await?;
+            // }
+
+            let miner = self.daemons().try_cpu_miner();
+            let kaspad = self.daemons().try_kaspad();
+
+            if let Some(miner) = miner.as_ref() {
+                miner.mute(false).await?;
+                miner.stop().await?;
+            }
+
+            if let Some(kaspad) = kaspad.as_ref() {
+                kaspad.mute(false).await?;
+                kaspad.stop().await?;
+            }
+
+            if let Some(miner) = miner.as_ref() {
+                miner.join().await?;
+            }
+
+            if let Some(kaspad) = kaspad.as_ref() {
+                kaspad.join().await?;
+            }
+
+            self.term().exit().await;
+        }
 
         Ok(())
     }
