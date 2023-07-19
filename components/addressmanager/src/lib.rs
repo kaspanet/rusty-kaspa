@@ -5,9 +5,11 @@ extern crate self as address_manager;
 use std::{collections::HashSet, sync::Arc};
 
 use itertools::Itertools;
-use kaspa_core::{debug, time::unix_now};
+use kaspa_consensus_core::config::Config;
+use kaspa_core::{debug, info, time::unix_now, warn};
 use kaspa_database::prelude::{StoreResultExtensions, DB};
 use kaspa_utils::networking::IpAddress;
+use local_ip_address::list_afinet_netifas;
 use parking_lot::Mutex;
 
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
@@ -20,14 +22,76 @@ const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
 pub struct AddressManager {
     banned_address_store: DbBannedAddressesStore,
     address_store: address_store_with_cache::Store,
+    config: Arc<Config>,
+    local_net_addresses: Vec<NetAddress>,
 }
 
 impl AddressManager {
-    pub fn new(db: Arc<DB>) -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Self {
+    pub fn new(config: Arc<Config>, db: Arc<DB>) -> Arc<Mutex<Self>> {
+        let mut instance = Self {
             banned_address_store: DbBannedAddressesStore::new(db.clone(), MAX_ADDRESSES as u64),
             address_store: address_store_with_cache::new(db),
-        }))
+            local_net_addresses: Vec::new(),
+            config,
+        };
+
+        instance.init_local_addresses();
+
+        Arc::new(Mutex::new(instance))
+    }
+
+    fn init_local_addresses(&mut self) {
+        match self.config.externalip {
+            Some(local_net_address) => {
+                // An external IP was passed, we will try to bind that if it's valid
+                if local_net_address.is_publicly_routable() {
+                    info!("External ip {} added to store", local_net_address);
+                    self.local_net_addresses.push(NetAddress { ip: local_net_address, port: self.config.default_p2p_port() });
+                } else {
+                    info!("Non-publicly routable external ip {} not added to store", local_net_address);
+                }
+            }
+            None => {
+                // If listen_address === 0.0.0.0, bind all interfaces
+                // else, bind whatever was passed as listen address (if routable)
+                let listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
+
+                if listen_address.ip.is_unspecified() {
+                    let network_interfaces = list_afinet_netifas();
+
+                    if let Ok(network_interfaces) = network_interfaces {
+                        for (_, ip) in network_interfaces.iter() {
+                            let curr_ip = IpAddress::new(*ip);
+
+                            // TODO: Add Check IPv4 or IPv6 match from Go code
+                            if curr_ip.is_publicly_routable() {
+                                info!("Publicly routable local address {} added to store", curr_ip);
+                                self.local_net_addresses.push(NetAddress { ip: curr_ip, port: self.config.default_p2p_port() });
+                            } else {
+                                info!("Non-publicly routable interface address {} not added to store", curr_ip);
+                            }
+                        }
+                    } else {
+                        warn!("Error getting network interfaces: {:?}", network_interfaces);
+                    }
+                } else if listen_address.ip.is_publicly_routable() {
+                    info!("Publicly routable P2P listen address {} added to store", listen_address.ip);
+                    self.local_net_addresses.push(listen_address);
+                } else {
+                    info!("Non-publicly routable listen address {} not added to store.", listen_address.ip);
+                }
+            }
+        }
+    }
+
+    pub fn best_local_address(&mut self) -> Option<NetAddress> {
+        if self.local_net_addresses.is_empty() {
+            None
+        } else {
+            // TODO: Add logic for finding the best as a function of a peer remote address.
+            // for now, returning the first one
+            Some(self.local_net_addresses[0])
+        }
     }
 
     pub fn add_address(&mut self, address: NetAddress) {
