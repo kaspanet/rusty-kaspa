@@ -259,14 +259,14 @@ mod address_store_with_cache {
         /// weight reductions due to ip connection failures.
         ///
         /// The exact weight formula for any given ip, is as follows:
-        ///
+        ///```ignore
         ///         ip_weight = (64 ^ (x - y)) / n
         ///
         ///             whereby:
         ///                 x: max allowed connection failures.
         ///                 y: connection failures of the ip.
         ///                 n: number of ips with the same prefix bytes.
-        ///
+        ///```
         pub fn iterate_prioritized_random_addresses(
             &self,
             exceptions: HashSet<NetAddress>,
