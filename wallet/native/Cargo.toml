@@ -1,7 +1,10 @@
 [package]
 name = "kaspa-wallet-cli-native"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [dependencies]
 kaspa-wallet-cli.workspace = true

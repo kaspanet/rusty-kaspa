@@ -344,7 +344,8 @@ impl PruningProcessor {
             if !keep_blocks.contains(&current) {
                 let mut batch = WriteBatch::default();
                 let mut level_relations_write = self.relations_stores.write();
-                let mut staging_relations = StagingRelationsStore::new(self.reachability_relations_store.upgradable_read());
+                let mut reachability_relations_write = self.reachability_relations_store.write();
+                let mut staging_relations = StagingRelationsStore::new(&mut reachability_relations_write);
                 let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
 
@@ -361,7 +362,7 @@ impl PruningProcessor {
                     counter += 1;
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
-                        MemoryWriter::default(), // Both stores are staging so we just pass a dummy writer
+                        MemoryWriter, // Both stores are staging so we just pass a dummy writer
                         &mut staging_relations,
                         &staging_reachability,
                         current,
@@ -370,8 +371,9 @@ impl PruningProcessor {
                     // TODO: consider adding block level to compact header data
                     let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
                     (0..=block_level as usize).for_each(|level| {
-                        relations::delete_level_relations(BatchDbWriter::new(&mut batch), &mut level_relations_write[level], current)
-                            .unwrap_option();
+                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
+                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
+                        staging_level_relations.commit(&mut batch).unwrap();
                         self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap_option();
                     });
 
@@ -388,7 +390,7 @@ impl PruningProcessor {
                 }
 
                 let reachability_write = staging_reachability.commit(&mut batch).unwrap();
-                let reachability_relations_write = staging_relations.commit(&mut batch).unwrap();
+                staging_relations.commit(&mut batch).unwrap();
 
                 // Flush the batch to the DB
                 self.db.write(batch).unwrap();

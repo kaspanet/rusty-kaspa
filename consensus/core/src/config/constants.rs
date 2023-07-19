@@ -27,8 +27,8 @@ pub mod consensus {
     pub const LEGACY_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
 
     /// **New** timestamp deviation tolerance (seconds).
-    /// KIP-0004: 605 (~10 minutes)
-    pub const NEW_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 605;
+    /// TODO: KIP-0004: 605 (~10 minutes)
+    pub const NEW_TIMESTAMP_DEVIATION_TOLERANCE: u64 = 132;
 
     /// The desired interval between samples of the median time window (seconds).
     /// KIP-0004: 10 seconds
@@ -57,21 +57,22 @@ pub mod consensus {
     //
 
     /// Minimal size of the difficulty window. Affects the DA algorithm only at the starting period of a new net
-    pub const MIN_DIFFICULTY_WINDOW_LEN: usize = 2;
+    pub const MIN_DIFFICULTY_WINDOW_LEN: usize = 10;
 
     /// **Legacy** difficulty adjustment window size corresponding to ~46 minutes with 1 BPS
     pub const LEGACY_DIFFICULTY_WINDOW_SIZE: usize = 2641;
 
     /// **New** difficulty window duration expressed in time units (seconds).
     /// TODO: KIP-0004: 30,000 (500 minutes)
-    pub const NEW_DIFFICULTY_WINDOW_DURATION: u64 = 2000;
+    pub const NEW_DIFFICULTY_WINDOW_DURATION: u64 = 2641;
 
     /// The desired interval between samples of the difficulty window (seconds).
     /// TODO: KIP-0004: 30 seconds
-    pub const DIFFICULTY_WINDOW_SAMPLE_INTERVAL: u64 = 2;
+    pub const DIFFICULTY_WINDOW_SAMPLE_INTERVAL: u64 = 4;
 
     /// Size of the **sampled** difficulty window (independent of BPS)
-    pub const DIFFICULTY_SAMPLED_WINDOW_SIZE: u64 = NEW_DIFFICULTY_WINDOW_DURATION / DIFFICULTY_WINDOW_SAMPLE_INTERVAL;
+    pub const DIFFICULTY_SAMPLED_WINDOW_SIZE: u64 =
+        (NEW_DIFFICULTY_WINDOW_DURATION + DIFFICULTY_WINDOW_SAMPLE_INTERVAL - 1) / DIFFICULTY_WINDOW_SAMPLE_INTERVAL;
 
     //
     // ~~~~~~~~~~~~~~~~~~~ Finality & Pruning ~~~~~~~~~~~~~~~~~~~
@@ -83,6 +84,14 @@ pub mod consensus {
     /// **New** finality duration expressed in time units (seconds).
     /// TODO: finalize this value (consider 6-24 hours)
     pub const NEW_FINALITY_DURATION: u64 = 43_200; // 12 hours
+
+    /// Merge depth bound duration (in seconds). For 1 BPS networks this equals the legacy depth
+    /// bound in block units. For higher BPS networks this should be scaled up.
+    ///
+    /// This number should be roughly equal to DAA window duration in order to prevent merging
+    /// low-difficulty side-chains (up to ~2x over DAA duration is still reasonable since creating
+    /// a mergeable low-difficulty side-chain within this bound requires a significant hashrate fraction)
+    pub const MERGE_DEPTH_DURATION: u64 = 3600;
 
     /// The value of the pruning proof `M` parameter
     pub const PRUNING_PROOF_M: u64 = 1000;
@@ -104,6 +113,8 @@ pub mod perf {
     use crate::{config::params::Params, header::Header, BlueWorkType};
     use kaspa_hashes::Hash;
     use std::mem::size_of;
+
+    use super::consensus::NETWORK_DELAY_BOUND;
 
     /// The default target depth for reachability reindexes.
     pub const DEFAULT_REINDEX_DEPTH: u64 = 100;
@@ -188,17 +199,15 @@ pub mod perf {
     }
 
     pub fn approx_direct_header_parents(consensus_params: &Params) -> usize {
-        let avg_delay = 2;
-        consensus_params.bps() as usize * avg_delay
+        consensus_params.bps() as usize * NETWORK_DELAY_BOUND as usize
     }
 
     pub fn approx_header_parents(consensus_params: &Params) -> usize {
-        approx_direct_header_parents(consensus_params) * 2 // 2x for multi-levels
+        approx_direct_header_parents(consensus_params) * 4 // 4x for multi-levels
     }
 
     pub fn approx_mergeset_size(consensus_params: &Params) -> usize {
-        let avg_delay = 2;
-        consensus_params.bps() as usize * avg_delay
+        consensus_params.bps() as usize * NETWORK_DELAY_BOUND as usize
     }
 }
 

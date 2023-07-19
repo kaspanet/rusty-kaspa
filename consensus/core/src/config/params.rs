@@ -75,7 +75,10 @@ pub struct Params {
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
     pub max_block_mass: u64,
+
+    /// DAA score after which the pre-deflationary period switches to the deflationary period
     pub deflationary_phase_daa_score: u64,
+
     pub pre_deflationary_phase_base_subsidy: u64,
     pub coinbase_maturity: u64,
     pub skip_proof_of_work: bool,
@@ -283,6 +286,8 @@ pub const MAINNET_PARAMS: Params = Params {
         "seeder4.kaspad.net",
         // This DNS seeder is run by Tim
         "kaspadns.kaspacalc.net",
+        // This DNS seeder is run by supertypo
+        "n-mainnet.kaspa.ws",
     ],
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
@@ -394,7 +399,8 @@ pub const TESTNET_PARAMS: Params = Params {
 
 pub const TESTNET11_PARAMS: Params = Params {
     dns_seeders: &[
-        // No seeders yet
+        // This DNS seeder is run by Tiram
+        "seeder1-testnet-11.kaspad.net",
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 11),
     genesis: TESTNET11_GENESIS,
@@ -421,6 +427,8 @@ pub const TESTNET11_PARAMS: Params = Params {
     finality_depth: Testnet11Bps::finality_depth(),
     pruning_depth: Testnet11Bps::pruning_depth(),
     pruning_proof_m: Testnet11Bps::pruning_proof_m(),
+    deflationary_phase_daa_score: Testnet11Bps::deflationary_phase_daa_score(),
+    pre_deflationary_phase_base_subsidy: Testnet11Bps::pre_deflationary_phase_base_subsidy(),
     coinbase_maturity: Testnet11Bps::coinbase_maturity(),
 
     coinbase_payload_script_public_key_max_len: 150,
@@ -440,14 +448,6 @@ pub const TESTNET11_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
 
-    // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
-    // switches to the deflationary period. This number is calculated as follows:
-    // We define a year as 365.25 days
-    // Half a year in seconds = 365.25 / 2 * 24 * 60 * 60 = 15778800
-    // The network was down for three days shortly after launch
-    // Three days in seconds = 3 * 24 * 60 * 60 = 259200
-    deflationary_phase_daa_score: 15778800 - 259200,
-    pre_deflationary_phase_base_subsidy: 50000000000,
     skip_proof_of_work: false,
     max_block_level: 250,
 };

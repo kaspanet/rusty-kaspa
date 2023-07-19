@@ -1,7 +1,10 @@
 [package]
 name = "kaspa-p2p-flows"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -28,7 +31,7 @@ indexmap.workspace = true
 async-trait.workspace = true
 
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
-tokio = { version = "1.21.2", features = [
+tokio = { workspace = true, features = [
     "rt-multi-thread",
     "macros",
     "signal",

@@ -15,6 +15,7 @@ kaspa-txscript.workspace = true
 kaspa-core.workspace = true
 kaspa-mining-errors.workspace = true
 kaspa-consensusmanager.workspace = true
+kaspa-utils.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 log.workspace = true

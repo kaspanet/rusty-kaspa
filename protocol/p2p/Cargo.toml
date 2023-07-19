@@ -20,7 +20,7 @@ path = "./src/bin/server.rs"
 [dependencies]
 kaspa-core.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-mining.workspace = true
+kaspa-mining-errors.workspace = true
 kaspa-hashes.workspace = true
 kaspa-math.workspace = true
 kaspa-utils.workspace = true
@@ -36,7 +36,7 @@ borsh.workspace = true
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 prost = "0.11"
 ctrlc = "3.2"
-tokio = { version = "1.21.2", features = [
+tokio = { workspace = true, features = [
     "rt-multi-thread",
     "macros",
     "signal",

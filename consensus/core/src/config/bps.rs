@@ -68,9 +68,7 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     pub const fn merge_depth_bound() -> u64 {
-        // Merge depth bound needs to be upper-bounded by DAA window *block duration* in order to prevent merging
-        // low-difficulty side-chains. TODO: finalize and decide if to make it lower
-        BPS * NEW_DIFFICULTY_WINDOW_DURATION
+        BPS * MERGE_DEPTH_DURATION
     }
 
     pub const fn finality_depth() -> u64 {
@@ -79,15 +77,17 @@ impl<const BPS: u64> Bps<BPS> {
 
     pub const fn pruning_depth() -> u64 {
         // Based on the analysis at https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf
-        // TODO: note that `Self::merge_depth_bound()` can replace one `Self::finality_depth()` unit, but for now we keep
-        // this calculation identical to the legacy calculation
-        Self::finality_depth() * 2 + 4 * Self::mergeset_size_limit() * Self::ghostdag_k() as u64 + 2 * Self::ghostdag_k() as u64 + 2
+        // and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
+        // We add an additional merge depth unit as a safety margin for anticone finalization
+        Self::finality_depth()
+            + Self::merge_depth_bound() * 2
+            + 4 * Self::mergeset_size_limit() * Self::ghostdag_k() as u64
+            + 2 * Self::ghostdag_k() as u64
+            + 2
     }
 
     pub const fn pruning_proof_m() -> u64 {
-        // Since the important levels remain logarithmically long, it seems that this
-        // constant does not need to scale with BPS.
-        // TODO: finalize this
+        // No need to scale this constant with BPS since the important block levels (higher) remain logarithmically long
         PRUNING_PROOF_M
     }
 
@@ -105,9 +105,21 @@ impl<const BPS: u64> Bps<BPS> {
         BPS * LEGACY_COINBASE_MATURITY
     }
 
-    // TODO: we might need to increase max_block_level (at least for mainnet) as a function of BPS
-    // since higher BPS means easier difficulty puzzles -> less zeros in pow hash
-    // pub const fn max_block_level() -> u64 {  }
+    /// DAA score after which the pre-deflationary period switches to the deflationary period.
+    ///
+    /// This number is calculated as follows:
+    ///
+    /// - We define a year as 365.25 days
+    /// - Half a year in seconds = 365.25 / 2 * 24 * 60 * 60 = 15778800
+    /// - The network was down for three days shortly after launch
+    /// - Three days in seconds = 3 * 24 * 60 * 60 = 259200
+    pub const fn deflationary_phase_daa_score() -> u64 {
+        BPS * (15778800 - 259200)
+    }
+
+    pub const fn pre_deflationary_phase_base_subsidy() -> u64 {
+        50000000000 / BPS
+    }
 }
 
 #[cfg(test)]

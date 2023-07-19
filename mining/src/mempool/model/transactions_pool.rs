@@ -167,10 +167,10 @@ impl TransactionsPool {
                     && virtual_daa_score > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
                 {
                     debug!(
-                        "Removing transaction {}, because it expired, DAAScore moved by {}, expire interval: {}",
+                        "Removing transaction {}, because it expired, virtual DAA score is {} and expire limit is {}",
                         x.id(),
-                        virtual_daa_score - x.added_at_daa_score,
-                        self.config.transaction_expire_interval_daa_score
+                        virtual_daa_score,
+                        x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
                     );
                     Some(x.id())
                 } else {

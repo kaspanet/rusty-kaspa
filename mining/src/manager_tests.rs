@@ -476,9 +476,9 @@ mod tests {
         let unorphaned_txs = result.unwrap();
         let (populated_txs, orphans) = mining_manager.get_all_transactions(true, true);
         assert_eq!(
-            unorphaned_txs.len(), SKIPPED_TXS,
+            unorphaned_txs.len(), SKIPPED_TXS + 1,
             "the mempool is expected to have unorphaned the remaining child transaction after the matching parent transaction was inserted into the mempool: expected: {}, got: {}",
-            unorphaned_txs.len(), SKIPPED_TXS
+            SKIPPED_TXS + 1, unorphaned_txs.len()
         );
         assert_eq!(
             SKIPPED_TXS + SKIPPED_TXS,
@@ -632,13 +632,13 @@ mod tests {
             let unorphaned_txs = result.as_ref().unwrap();
             assert_eq!(
                 test.should_unorphan,
-                !unorphaned_txs.is_empty(),
+                unorphaned_txs.len() > 1,
                 "{}: child transaction should have been {} the orphan pool",
                 test.name,
                 test.parent_insert_result()
             );
-            if !unorphaned_txs.is_empty() {
-                assert_eq!(unorphaned_txs[0].id(), child_txs[i].id(), "the unorphaned transaction should match the inserted parent");
+            if unorphaned_txs.len() > 1 {
+                assert_eq!(unorphaned_txs[1].id(), child_txs[i].id(), "the unorphaned transaction should match the inserted parent");
             }
         }
     }
@@ -865,15 +865,11 @@ mod tests {
         count: usize,
     ) -> (Vec<Transaction>, Vec<Transaction>) {
         // Make the funding amounts always different so that funding txs have different ids
-        let parent_child_pairs = (0..count)
+        (0..count)
             .map(|i| {
                 create_parent_and_children_transactions(consensus, vec![500 * SOMPI_PER_KASPA, 3_000 * SOMPI_PER_KASPA + i as u64])
             })
-            .collect::<Vec<(_, _)>>();
-        let parent_txs = parent_child_pairs.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>();
-        let child_txs = parent_child_pairs.iter().map(|(_, c)| c.clone()).collect::<Vec<_>>();
-
-        (parent_txs, child_txs)
+            .unzip()
     }
 
     fn create_parent_and_children_transactions(
