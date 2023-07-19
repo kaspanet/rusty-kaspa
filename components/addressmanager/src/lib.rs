@@ -357,6 +357,7 @@ mod address_store_with_cache {
 
         use super::*;
         use address_manager::AddressManager;
+        use kaspa_consensus_core::config::{params::SIMNET_PARAMS, Config};
         use kaspa_database::utils::create_temp_db;
         use kaspa_utils::networking::IpAddress;
         use statest::ks::KSTest;
@@ -387,7 +388,8 @@ mod address_store_with_cache {
             assert!(bucket_reduction_ratio >= 1.25);
 
             let db = create_temp_db();
-            let am = AddressManager::new(db.1);
+            let config = Config::new(SIMNET_PARAMS);
+            let am = AddressManager::new(Arc::new(config), db.1);
 
             let mut am_guard = am.lock();
 
