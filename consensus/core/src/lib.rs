@@ -74,7 +74,7 @@ impl HashMapCustomHasher for BlockHashSet {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ChainPath {
     pub added: Vec<Hash>,
     pub removed: Vec<Hash>,

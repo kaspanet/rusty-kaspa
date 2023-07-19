@@ -17,6 +17,7 @@ use super::U64Key;
 pub trait SelectedChainStoreReader {
     fn get_by_hash(&self, hash: Hash) -> StoreResult<u64>;
     fn get_by_index(&self, index: u64) -> StoreResult<Hash>;
+    fn get_tip(&self) -> StoreResult<(u64, Hash)>;
 }
 
 /// Write API for `SelectedChainStore`. The set function is deliberately `mut`
@@ -67,6 +68,12 @@ impl SelectedChainStoreReader for DbSelectedChainStore {
 
     fn get_by_index(&self, index: u64) -> StoreResult<Hash> {
         self.access_hash_by_index.read(index.into())
+    }
+
+    fn get_tip(&self) -> StoreResult<(u64, Hash)> {
+        let idx = self.access_highest_index.read()?;
+        let hash = self.access_hash_by_index.read(idx.into())?;
+        Ok((idx, hash))
     }
 }
 
