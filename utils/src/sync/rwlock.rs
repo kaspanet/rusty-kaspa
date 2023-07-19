@@ -121,9 +121,9 @@ mod tests {
     const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
 
     // TODO: make test more forgiving
-    // this test fails with code cov, possibly due to decreased performance.
-    // for now, ignore from coverage.
-    #[cfg_attr(coverage_nightly, feature(no_coverage))]
+    // this test fails with code coverage, possibly due to decreased performance.
+    // for now, this test is skipped from coverage via regrex pattern via the `--skip` flag.
+    // as such please do not rename this test without also changing the `--skip` argument in the codecov github workflow.
     #[tokio::test]
     async fn test_writer_reentrance() {
         let l = Arc::new(RfRwLock::new());

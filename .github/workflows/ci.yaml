@@ -302,7 +302,8 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Generate codecov.json
-        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+        # Find better way to skip `test_writer_reentrance`, perhaps use https://github.com/rust-lang/rust/issues/84605, when stable.
+        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json --skip test_writer_reentrance
       
       - name: Upload to Codecov
         uses: codecov/codecov-action@v3
