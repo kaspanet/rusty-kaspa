@@ -1647,6 +1647,7 @@ dependencies = [
  "rocksdb",
  "serde",
  "statest",
+ "statrs",
 ]
 
 [[package]]

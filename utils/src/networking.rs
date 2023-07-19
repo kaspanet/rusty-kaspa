@@ -8,6 +8,45 @@ use std::{
 };
 use uuid::Uuid;
 
+/// A bucket based on an ip's prefix bytes.
+/// for ipv4 it consists of 6 leading zero bytes, and the first two octets,
+/// for ipv6 it consists of the first 8 octets,
+/// encoded into a big endian u64.  
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
+pub struct PrefixBucket(u64);
+
+impl PrefixBucket {
+    pub fn as_u64(&self) -> u64 {
+        self.0
+    }
+}
+
+impl From<&IpAddress> for PrefixBucket {
+    fn from(ip_address: &IpAddress) -> Self {
+        match ip_address.0 {
+            IpAddr::V4(ipv4) => {
+                let prefix_bytes = ipv4.octets();
+                Self(u64::from_be_bytes([0u8, 0u8, 0u8, 0u8, 0u8, 0u8, prefix_bytes[0], prefix_bytes[1]]))
+            }
+            IpAddr::V6(ipv6) => {
+                if let Some(ipv4) = ipv6.to_ipv4() {
+                    let prefix_bytes = ipv4.octets();
+                    Self(u64::from_be_bytes([0u8, 0u8, 0u8, 0u8, 0u8, 0u8, prefix_bytes[0], prefix_bytes[1]]))
+                } else {
+                    // Else use first 8 bytes (routing prefix + subnetwork id) of ipv6
+                    Self(u64::from_be_bytes(ipv6.octets().as_slice()[..8].try_into().expect("Slice with incorrect length")))
+                }
+            }
+        }
+    }
+}
+
+impl From<&NetAddress> for PrefixBucket {
+    fn from(net_address: &NetAddress) -> Self {
+        Self::from(&net_address.ip)
+    }
+}
+
 /// An IP address, newtype of [IpAddr].
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug)]
 #[repr(transparent)]
@@ -18,21 +57,11 @@ impl IpAddress {
         Self(ip)
     }
 
-    pub fn prefix_bytes(&self) -> Vec<u8> {
-        match self.0 {
-            IpAddr::V4(ipv4) => ipv4.octets().as_slice()[0..2].to_owned(),
-            IpAddr::V6(ipv6) => {
-                if let Some(ipv4) = ipv6.to_ipv4() {
-                    // Try and normalize prefix bytes to ipv4
-                    ipv4.octets().as_slice()[0..2].to_owned()
-                } else {
-                    // Else use first 8 bytes (routing prefix + subnetwork id) of ipv6
-                    ipv6.octets().as_slice()[0..8].to_owned()
-                }
-            }
-        }
+    pub fn prefix_bucket(&self) -> PrefixBucket {
+        PrefixBucket::from(self)
     }
 }
+
 impl From<IpAddr> for IpAddress {
     fn from(ip: IpAddr) -> Self {
         Self(ip)
@@ -150,8 +179,8 @@ impl NetAddress {
         Self { ip, port }
     }
 
-    pub fn prefix_bytes(&self) -> Vec<u8> {
-        self.ip.prefix_bytes()
+    pub fn prefix_bucket(&self) -> PrefixBucket {
+        PrefixBucket::from(self)
     }
 }
 
@@ -351,5 +380,12 @@ mod tests {
         assert!(addr_v4.is_ok());
         let addr_v6 = NetAddress::from_str("[2a01:4f8:191:1143::2]:5678");
         assert!(addr_v6.is_ok());
+    }
+
+    #[test]
+    fn test_prefix_bucket() {
+        let prefix_bytes: [u8; 2] = [42u8, 43u8];
+        let addr = NetAddress::from_str(format!("{0}.{1}.3.4:5678", prefix_bytes[0], prefix_bytes[1]).as_str()).unwrap();
+        assert!(addr.prefix_bucket() == PrefixBucket(u16::from_be_bytes(prefix_bytes) as u64));
     }
 }

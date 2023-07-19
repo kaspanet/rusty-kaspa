@@ -19,4 +19,5 @@ borsh.workspace = true
 log.workspace = true
 
 [dev-dependencies]
+statrs = "0.13.0"
 statest = "0.2.2"
