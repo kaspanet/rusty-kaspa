@@ -682,7 +682,9 @@ impl ConsensusApi for Consensus {
         for _ in 0..=self.config.params.ghostdag_k {
             hashes.push(current);
             // TODO: ideally the syncee should validate it got all of the associated data up
-            // to k blocks back and then we would be able to safely unwrap here.
+            // to k blocks back and then we would be able to safely unwrap here. For now we
+            // just break the loop, since if the data was truly missing we wouldn't accept
+            // the staging consensus in the first place
             let Some(parent) = self.ghostdag_primary_store.get_selected_parent(current).unwrap_option() else { break; };
             current = parent;
         }
