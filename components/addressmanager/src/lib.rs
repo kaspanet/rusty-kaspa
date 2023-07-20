@@ -181,6 +181,7 @@ mod address_store_with_cache {
 
     use itertools::Itertools;
     use kaspa_database::prelude::DB;
+    use kaspa_utils::networking::PrefixBucket;
     use rand::{
         distributions::{WeightedError, WeightedIndex},
         prelude::Distribution,
@@ -249,19 +250,46 @@ mod address_store_with_cache {
             self.addresses.values().map(|entry| entry.address)
         }
 
+        /// This iterator functions as the node's ip routing selection algo.
+        /// It first adjusts in respect to the number of connection failures of each ip address,
+        /// whereby each connection failure (up to [`MAX_CONNECTION_FAILED_COUNT`]) reduces an ip's selection weight by a factor of 64,
+        /// Afterwards the weights are normalized uniformly over the ip's [`PrefixBucket`] size.
+        ///
+        /// This ensures a distributed selection across the global network, while respecting
+        /// weight reductions due to ip connection failures.
+        ///
+        /// The exact weight formula for any given ip, is as follows:
+        ///```ignore
+        ///         ip_weight = (64 ^ (x - y)) / n
+        ///
+        ///             whereby:
+        ///                 x: max allowed connection failures.
+        ///                 y: connection failures of the ip.
+        ///                 n: number of ips with the same prefix bytes.
+        ///```
         pub fn iterate_prioritized_random_addresses(
             &self,
             exceptions: HashSet<NetAddress>,
         ) -> impl ExactSizeIterator<Item = NetAddress> {
             let exceptions: HashSet<AddressKey> = exceptions.into_iter().map(|addr| addr.into()).collect();
-            let (weights, addresses) = self
+            let mut prefix_counter: HashMap<PrefixBucket, usize> = HashMap::new();
+            let (mut weights, filtered_addresses): (Vec<f64>, Vec<NetAddress>) = self
                 .addresses
                 .iter()
                 .filter(|(addr_key, _)| !exceptions.contains(addr_key))
-                .map(|(_, e)| (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), e.address))
+                .map(|(_, e)| {
+                    let count = prefix_counter.entry(e.address.prefix_bucket()).or_insert(0);
+                    *count += 1;
+                    (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), e.address)
+                })
                 .unzip();
 
-            RandomWeightedIterator::new(weights, addresses)
+            // Divide weights by size of bucket of the prefix bytes, to partially uniform the distribution over prefix buckets.
+            for (i, address) in filtered_addresses.iter().enumerate() {
+                *weights.get_mut(i).unwrap() /= *prefix_counter.get(&address.prefix_bucket()).unwrap() as f64;
+            }
+
+            RandomWeightedIterator::new(weights, filtered_addresses)
         }
 
         pub fn remove_by_ip(&mut self, ip: IpAddr) {
@@ -307,6 +335,9 @@ mod address_store_with_cache {
                     Err(e) => panic!("{e}"),
                 }
                 self.remaining -= 1;
+                if self.remaining == 0 {
+                    self.weighted_index = None;
+                }
                 Some(self.addresses[i])
             } else {
                 None
@@ -322,7 +353,15 @@ mod address_store_with_cache {
 
     #[cfg(test)]
     mod tests {
+        use std::str::FromStr;
+
         use super::*;
+        use address_manager::AddressManager;
+        use kaspa_consensus_core::config::{params::SIMNET_PARAMS, Config};
+        use kaspa_database::utils::create_temp_db;
+        use kaspa_utils::networking::IpAddress;
+        use statest::ks::KSTest;
+        use statrs::distribution::Uniform;
         use std::net::{IpAddr, Ipv6Addr};
 
         #[test]
@@ -335,6 +374,92 @@ mod address_store_with_cache {
             let iter = RandomWeightedIterator::new(vec![], vec![]);
             assert_eq!(iter.len(), 0);
             assert_eq!(iter.count(), 0);
+        }
+
+        #[test]
+        fn test_network_distribution_weighting() {
+            kaspa_core::log::try_init_logger("info");
+
+            // Variables to initialize ip generation with.
+            let largest_bucket: u16 = 2048;
+            let bucket_reduction_ratio: f64 = 2.;
+
+            // Assert that initial distribution is skewed, and hence not uniform from the outset.
+            assert!(bucket_reduction_ratio >= 1.25);
+
+            let db = create_temp_db();
+            let config = Config::new(SIMNET_PARAMS);
+            let am = AddressManager::new(Arc::new(config), db.1);
+
+            let mut am_guard = am.lock();
+
+            let mut num_of_buckets = 0;
+            let mut num_of_addresses = 0;
+            let mut current_bucket_size = largest_bucket;
+
+            for current_prefix_bytes in 0..u16::MAX {
+                num_of_buckets += 1;
+                for current_suffix_bytes in 0..current_bucket_size {
+                    let current_ip_bytes =
+                        [current_prefix_bytes.to_be_bytes(), current_suffix_bytes.to_be_bytes()].concat().to_owned();
+                    am_guard.add_address(NetAddress::new(
+                        IpAddress::from_str(&format!(
+                            "{0}.{1}.{2}.{3}",
+                            current_ip_bytes[0], current_ip_bytes[1], current_ip_bytes[2], current_ip_bytes[3]
+                        ))
+                        .unwrap(),
+                        16111,
+                    ));
+                    num_of_addresses += 1;
+                }
+
+                let last_bucket_size = current_bucket_size;
+                current_bucket_size = ((current_bucket_size as f64) * (1.0 / bucket_reduction_ratio)).round() as u16;
+
+                if current_bucket_size == last_bucket_size || current_bucket_size == 0 || current_prefix_bytes == u16::MAX {
+                    // Address generation exhausted - exit loop
+                    break;
+                }
+            }
+            drop(am_guard);
+
+            // Assert sample size is large enough.
+            assert!(1024 <= num_of_addresses);
+            // Assert we don't over-generate the address manager's limit.
+            assert!(num_of_addresses <= MAX_ADDRESSES);
+            // Assert that the test has enough buckets to sample from
+            assert!(num_of_buckets >= 12);
+
+            // Run multiple Kolmogorov–Smirnov tests to offset random noise of the random weighted iterator
+            let num_of_trials = 512;
+            let mut cul_p = 0.;
+            // The target uniform distribution
+            let target_u_dist = Uniform::new(0.0, (num_of_buckets) as f64).unwrap();
+            for _ in 0..num_of_trials {
+                // The weight sampled expected uniform distibution
+                let prioritized_address_distribution = am
+                    .lock()
+                    .iterate_prioritized_random_addresses(HashSet::new())
+                    .take(num_of_buckets)
+                    .map(|addr| addr.prefix_bucket().as_u64() as f64)
+                    .collect_vec();
+
+                let ks_test = KSTest::new(prioritized_address_distribution.as_slice());
+                cul_p += ks_test.ks1(&target_u_dist).0;
+            }
+
+            // Normalize and adjust p to test for uniformity, over average of all trials.
+            let adjusted_p = (0.5 - cul_p / num_of_trials as f64).abs();
+            // Define the significance threshold.
+            let significance = 0.05;
+
+            // Display and assert the result
+            kaspa_core::info!(
+                "Kolmogorov–Smirnov test result for weighted network distribution uniformity: p = {0:.4} (p < {1})",
+                adjusted_p,
+                significance
+            );
+            assert!(adjusted_p < significance)
         }
     }
 }
