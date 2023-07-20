@@ -1661,18 +1661,17 @@ async fn selected_chain_test() {
 
 fn assert_selected_chain_store_matches_virtual_chain(consensus: &TestConsensus) {
     let pruning_point = consensus.pruning_point();
+    let iter1 = selected_chain_store_iterator(consensus, pruning_point);
+    let iter2 = consensus.reachability_service().backward_chain_iterator(consensus.get_sink(), pruning_point, false);
+    itertools::assert_equal(iter1, iter2);
+}
+
+fn selected_chain_store_iterator(consensus: &TestConsensus, pruning_point: Hash) -> impl Iterator<Item = Hash> + '_ {
     let selected_chain_read = consensus.selected_chain_store.read();
-    let (mut idx1, mut current1) = selected_chain_read.get_tip().unwrap();
-    let mut iter2 = consensus.reachability_service().backward_chain_iterator(consensus.get_sink(), pruning_point, true);
-    loop {
-        let current2 = iter2.next().expect("expected to reach pruning point");
-        assert_eq!(current1, current2, "selected chain store does not match virtual chain at index {}", idx1);
-        if current1 == pruning_point {
-            break;
-        }
-        idx1 -= 1;
-        current1 = selected_chain_read.get_by_index(idx1).unwrap();
-    }
+    let (idx, current) = selected_chain_read.get_tip().unwrap();
+    std::iter::once(current)
+        .chain((0..idx).rev().map(move |i| selected_chain_read.get_by_index(i).unwrap()))
+        .take_while(move |&h| h != pruning_point)
 }
 
 #[tokio::test]
