@@ -215,5 +215,4 @@ impl Miner {
 
         Ok(())
     }
-
 }

@@ -5,6 +5,8 @@ pub mod params;
 
 use std::ops::Deref;
 
+use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
+
 use {
     constants::perf::{PerfParams, PERF_PARAMS},
     params::Params,
@@ -46,6 +48,11 @@ pub struct Config {
     pub enable_mainnet_mining: bool,
 
     pub user_agent_comments: Vec<String>,
+
+    // If undefined, sets it to 0.0.0.0
+    pub p2p_listen_address: ContextualNetAddress,
+
+    pub externalip: Option<IpAddress>,
 }
 
 impl Config {
@@ -65,6 +72,8 @@ impl Config {
             enable_unsynced_mining: false,
             enable_mainnet_mining: false,
             user_agent_comments: Default::default(),
+            externalip: None,
+            p2p_listen_address: ContextualNetAddress::unspecified(),
         }
     }
 
