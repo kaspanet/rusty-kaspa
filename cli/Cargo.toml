@@ -37,4 +37,4 @@ nw-sys.workspace = true
 kaspa-daemon.workspace = true
 wasm-bindgen.workspace = true
 regex.workspace = true
-
+js-sys.workspace = true

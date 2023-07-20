@@ -179,8 +179,41 @@ impl Miner {
         Ok(())
     }
 
-    // pub async fn handle_stdio(&self, ctx: &Arc<KaspaCli>, stdio: Stdio) -> Result<()> {
-    //     ctx.term().writeln(stdio.trim().crlf());
-    //     Ok(())
-    // }
+    pub async fn handle_stdio(&self, ctx: &Arc<KaspaCli>, stdio: Stdio) -> Result<()> {
+        let term = ctx.term();
+
+        let sanitize = true;
+        if sanitize {
+            let text: String = stdio.into();
+            let lines = text.split('\n').collect::<Vec<_>>();
+            lines.into_iter().for_each(|line| {
+                let line = line.trim();
+                if !line.is_empty() {
+                    if line.len() < 38 || &line[30..31] != "[" {
+                        term.writeln(format!("{line}"));
+                    } else {
+                        let time = &line[11..23];
+                        let kind = &line[31..36];
+                        let text = &line[38..];
+                        match kind {
+                            "WARN" => {
+                                term.writeln(format!("{time} :: {}", style(text).yellow()));
+                            }
+                            "ERROR" => {
+                                term.writeln(format!("{time} :: {}", style(text).red()));
+                            }
+                            _ => {
+                                term.writeln(format!("{time} :: {text}"));
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            term.writeln(format!("miner: {}", stdio.trim().crlf()));
+        }
+
+        Ok(())
+    }
+
 }

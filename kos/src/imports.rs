@@ -15,6 +15,7 @@ pub use kaspa_daemon::{
 };
 pub use kaspa_wallet_core::{DefaultSettings, SettingsStore};
 pub use nw_sys::prelude::*;
+pub use regex::Regex;
 pub use serde::{Deserialize, Serialize};
 pub use std::path::{Path, PathBuf};
 pub use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -28,5 +29,5 @@ pub use workflow_log::*;
 pub use workflow_nw::ipc::*;
 pub use workflow_nw::prelude::*;
 pub use workflow_terminal::prelude::*;
-pub use workflow_terminal::{CrLf, Options as TerminalOptions};
+pub use workflow_terminal::{CrLf, Modifiers, Options as TerminalOptions};
 pub use workflow_wasm::callback::{callback, Callback, CallbackMap};

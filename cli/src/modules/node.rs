@@ -184,40 +184,41 @@ impl Node {
 
         Ok(())
     }
+
+    pub async fn handle_stdio(&self, ctx: &Arc<KaspaCli>, stdio: Stdio) -> Result<()> {
+        let term = ctx.term();
+
+        let sanitize = true;
+        if sanitize {
+            let text: String = stdio.into();
+            let lines = text.split('\n').collect::<Vec<_>>();
+            lines.into_iter().for_each(|line| {
+                let line = line.trim();
+                if !line.is_empty() {
+                    if line.len() < 38 || &line[30..31] != "[" {
+                        term.writeln(format!("{line}"));
+                    } else {
+                        let time = &line[11..23];
+                        let kind = &line[31..36];
+                        let text = &line[38..];
+                        // 𐤊
+                        match kind {
+                            "WARN" => {
+                                term.writeln(format!("{time} {}", style(text).yellow()));
+                            }
+                            "ERROR" => {
+                                term.writeln(format!("{time} {}", style(text).red()));
+                            }
+                            _ => {
+                                term.writeln(format!("{time} {text}"));
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            term.writeln(stdio.trim().crlf());
+        }
+        Ok(())
+    }
 }
-
-//     pub async fn handle_stdio(&self, ctx: &Arc<KaspaCli>, stdio: Stdio) -> Result<()> {
-//         let text = stdio.trim();
-
-//         if self.mute_on_start.load(Ordering::SeqCst) {
-//             if self.mute_on_start_triggered.load(Ordering::SeqCst) {
-//                 ctx.term().writeln(trim(text.crlf()));
-//             } else {
-//                 let lines = text.split("\n").collect::<Vec<_>>();
-//                 if self.lines.fetch_add(lines.len(), Ordering::SeqCst) > 10 {
-//                     tprintln!(ctx, "... suspending log output (use 'node mute' to resume) ...");
-//                     self.mute_on_start_triggered.store(true, Ordering::SeqCst);
-//                     ctx.daemons().kaspad().mute(true).await?;
-//                 } else {
-//                     lines.into_iter().for_each(|line| {
-//                         ctx.term().writeln(line);
-//                     });
-//                 }
-//             }
-//         } else {
-//             ctx.term().writeln(text.crlf());
-//         }
-//         Ok(())
-//     }
-// }
-
-// pub fn trim(mut s: String) -> String {
-//     // let mut s = String::from(self);
-//     if s.ends_with('\n') {
-//         s.pop();
-//         if s.ends_with('\r') {
-//             s.pop();
-//         }
-//     }
-//     s
-// }

@@ -1,3 +1,4 @@
+cargo fmt --all
 
 if ($args.Contains("--dev")) {
     & "wasm-pack build --dev --target web --out-name kaspa --out-dir app/wasm"

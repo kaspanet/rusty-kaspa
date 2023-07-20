@@ -1,5 +1,7 @@
 use crate::error::Error;
 use crate::imports::*;
+use crate::modules::miner::Miner;
+use crate::modules::node::Node;
 use crate::result::Result;
 use crate::utils::*;
 use async_trait::async_trait;
@@ -46,6 +48,8 @@ pub struct KaspaCli {
     daemons: Arc<Daemons>,
     handlers: Arc<HandlerCli>,
     shutdown: Arc<AtomicBool>,
+    node: Mutex<Option<Arc<Node>>>,
+    miner: Mutex<Option<Arc<Miner>>>,
 }
 
 impl From<&KaspaCli> for Arc<Terminal> {
@@ -118,6 +122,8 @@ impl KaspaCli {
             handlers: Arc::new(HandlerCli::default()),
             daemons: options.daemons.unwrap_or_default(),
             shutdown: Arc::new(AtomicBool::new(false)),
+            node: Mutex::new(None),
+            miner: Mutex::new(None),
         });
 
         let term = Arc::new(Terminal::try_new_with_options(kaspa_cli.clone(), options.terminal)?);
@@ -170,22 +176,35 @@ impl KaspaCli {
 
     pub fn register_handlers(self: &Arc<Self>) -> Result<()> {
         crate::modules::register_handlers(self)?;
+
+        let node = self.handlers().get("node").unwrap();
+        let node = node.downcast_arc::<crate::modules::node::Node>().ok();
+        *self.node.lock().unwrap() = node;
+
+        let miner = self.handlers().get("miner").unwrap();
+        let miner = miner.downcast_arc::<crate::modules::miner::Miner>().ok();
+        *self.miner.lock().unwrap() = miner;
+
         Ok(())
     }
 
     pub async fn handle_stdio(self: &Arc<Self>, stdio: Stdio) -> Result<()> {
         match stdio.kind() {
             DaemonKind::Kaspad => {
-                // let node = self.handlers().get("node").unwrap();
-                // let node = node.downcast_arc::<crate::modules::node::Node>().unwrap();
-                // node.handle_stdio(self, stdio).await?;
-                self.term().writeln(stdio.trim().crlf());
+                let node = self.node.lock().unwrap().clone();
+                if let Some(node) = node {
+                    node.handle_stdio(self, stdio).await?;
+                } else {
+                    panic!("Stdio handler: node module is not initialized");
+                }
             }
             DaemonKind::CpuMiner => {
-                // let miner = self.handlers().get("miner").unwrap();
-                // let miner = miner.downcast_arc::<crate::modules::miner::Miner>().unwrap();
-                // miner.handle_stdio(self, stdio).await?;
-                self.term().writeln(stdio.trim().crlf());
+                let miner = self.miner.lock().unwrap().clone();
+                if let Some(miner) = miner {
+                    miner.handle_stdio(self, stdio).await?;
+                } else {
+                    panic!("Stdio handler: miner module is not initialized");
+                }
             }
         }
 
