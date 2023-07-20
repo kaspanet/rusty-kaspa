@@ -1,4 +1,4 @@
-// Below is required to ignore "writer_test_reentrance" test from code coverage.
+// Below is required to ignore "test_writer_reentrance" test from code coverage.
 // (Refer to the test's comment for reasons why).
 // Although currently unstable it is only used under testing / coverage conditions,
 // and is currently the advertised method to skip on a per code-block / function basis.
