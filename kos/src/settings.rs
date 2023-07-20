@@ -5,6 +5,8 @@ use crate::imports::*;
 pub enum AppSettings {
     #[describe("Welcome message")]
     Greeting,
+    #[describe("Terminal font size")]
+    FontSize,
 }
 
 #[async_trait]

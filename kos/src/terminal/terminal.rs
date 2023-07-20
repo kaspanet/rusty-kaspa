@@ -26,17 +26,20 @@ impl App {
 
         let daemons = Arc::new(Daemons::new().with_kaspad(core.clone()).with_cpu_miner(core.clone()));
 
+        let settings = SettingsStore::<AppSettings>::try_new("kaspa-os-3.settings")?;
+        settings.try_load().await?;
+
+        let font_size = settings.get::<f64>(AppSettings::FontSize);
+
         let terminal_options = TerminalOptions {
             // disable_clipboard_handling : true,
+            font_size,
             ..TerminalOptions::default()
         };
         let options = KaspaCliOptions::new(terminal_options, Some(daemons));
         let cli = KaspaCli::try_new_arc(options).await?;
 
         let window = Arc::new(nw_sys::window::get());
-
-        let settings = SettingsStore::<AppSettings>::try_new("kaspa-os-2.settings")?;
-        settings.try_load().await?;
 
         let app = Arc::new(Self {
             inner: Application::new()?,
@@ -77,9 +80,21 @@ impl App {
                     match args {
                         FontCtl::IncreaseSize => {
                             this.cli.term().increase_font_size().map_err(|e| e.to_string())?;
+                            if let Some(font_size) = this.cli.term().get_font_size().unwrap() {
+                                this.settings
+                                    .set(AppSettings::FontSize, font_size)
+                                    .await
+                                    .expect("Unable to store application settings");
+                            }
                         }
                         FontCtl::DecreaseSize => {
                             this.cli.term().decrease_font_size().map_err(|e| e.to_string())?;
+                            if let Some(font_size) = this.cli.term().get_font_size().unwrap() {
+                                this.settings
+                                    .set(AppSettings::FontSize, font_size)
+                                    .await
+                                    .expect("Unable to store application settings");
+                            }
                         }
                     }
                     Ok(())
@@ -182,9 +197,9 @@ impl App {
         // https://explorer.kaspa.org/blocks/
         // let this = self.clone();
         self.cli.term().register_link_matcher(
-            &js_sys::RegExp::new(r"block\s+[0-9a-fA-F]{64}", "i"),
+            &js_sys::RegExp::new(r"(block|pool:)\s+[0-9a-fA-F]{64}", "i"),
             Arc::new(Box::new(move |modifiers, text| {
-                let re = Regex::new(r"(?i)^block\s+").unwrap();
+                let re = Regex::new(r"(?i)^(block|pool:)\s+").unwrap();
                 let uri = re.replace(text, "");
 
                 if modifiers.ctrl || modifiers.meta {
@@ -216,27 +231,33 @@ impl App {
         // cli starts notification->term trace pipe task
         self.cli.start().await?;
 
-        if !self.settings.get::<bool>(AppSettings::Greeting).unwrap_or_default() {
+        let kos_current_version = env!("CARGO_PKG_VERSION").to_string();
+        let kos_last_version = self.settings.get::<String>(AppSettings::Greeting).unwrap_or_default();
+
+        if kos_last_version != kos_current_version {
             let greeting = r"
-Hello Kaspian!  
+Hello Kaspian!
 
 If you have any questions, please join us on discord at https://discord.gg/kaspa
     
             ";
 
             self.cli.term().writeln(greeting.crlf());
-
-            self.settings.set(AppSettings::Greeting, true).await?;
+            self.settings.set(AppSettings::Greeting, &kos_current_version).await?;
         }
-
-        let banner = format!("Kaspa OS v{} (type 'help' for list of commands)", env!("CARGO_PKG_VERSION"));
+        let framework_version = self.cli.version();
+        let version = if framework_version == kos_current_version {
+            kos_current_version
+        } else {
+            format!("{} Rust Core v{}", kos_current_version, framework_version)
+        };
+        let banner = format!("Kaspa OS v{} (type 'help' for list of commands)", version);
         self.cli.term().writeln(banner);
 
-        // terminal blocks async execution, delivering commands to the terminals
+        // terminal blocks async execution, delivering commands to the cli
         self.cli.run().await?;
 
-        // cli stops notification->term trace pipe task
-
+        // stop notification->term trace pipe task
         self.cli.stop().await?;
 
         self.core.shutdown().await?;
