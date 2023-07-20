@@ -15,6 +15,7 @@ use parking_lot::RwLock;
 use std::future::Future;
 use std::{sync::Arc, thread::JoinHandle};
 
+use crate::pipeline::virtual_processor::test_block_builder::TestBlockBuilder;
 use crate::processes::window::WindowManager;
 use crate::{
     config::Config,
@@ -36,8 +37,9 @@ use super::services::{DbDagTraversalManager, DbGhostdagManager, DbWindowManager}
 use super::Consensus;
 
 pub struct TestConsensus {
-    consensus: Arc<Consensus>,
     params: Params,
+    consensus: Arc<Consensus>,
+    block_builder: TestBlockBuilder,
     db_lifetime: DbLifetime,
 }
 
@@ -46,11 +48,10 @@ impl TestConsensus {
     pub fn with_db(db: Arc<DB>, config: &Config, notification_sender: Sender<Notification>) -> Self {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
-        Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
-            params: config.params.clone(),
-            db_lifetime: Default::default(),
-        }
+        let consensus = Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters));
+        let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
+
+        Self { params: config.params.clone(), consensus, block_builder, db_lifetime: Default::default() }
     }
 
     /// Creates a test consensus instance based on `config` with a temp DB and the provided `notification_sender`
@@ -58,11 +59,10 @@ impl TestConsensus {
         let (db_lifetime, db) = create_temp_db();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
-        Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
-            params: config.params.clone(),
-            db_lifetime,
-        }
+        let consensus = Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters));
+        let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
+
+        Self { consensus, block_builder, params: config.params.clone(), db_lifetime }
     }
 
     /// Creates a test consensus instance based on `config` with a temp DB and no notifier
@@ -71,11 +71,10 @@ impl TestConsensus {
         let (dummy_notification_sender, _) = async_channel::unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
-        Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
-            params: config.params.clone(),
-            db_lifetime,
-        }
+        let consensus = Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters));
+        let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
+
+        Self { consensus, block_builder, params: config.params.clone(), db_lifetime }
     }
 
     /// Clone the inner consensus Arc. For general usage of the underlying consensus simply deref
@@ -126,7 +125,7 @@ impl TestConsensus {
         miner_data: MinerData,
         txs: Vec<Transaction>,
     ) -> MutableBlock {
-        let mut template = self.virtual_processor.build_block_template_with_parents(parents, miner_data, txs).unwrap();
+        let mut template = self.block_builder.build_block_template_with_parents(parents, miner_data, txs).unwrap();
         template.block.header.hash = hash;
         template.block
     }
