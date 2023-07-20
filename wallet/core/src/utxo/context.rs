@@ -253,15 +253,18 @@ impl UtxoContext {
             e.insert(utxo_entry.clone());
             if utxo_entry.is_mature(current_daa_score) {
                 inner.mature.sorted_insert_asc_binary(utxo_entry);
+                // yield_executor().await;
                 Ok(())
             } else {
                 inner.pending.insert(utxo_entry.id(), utxo_entry.clone());
                 self.processor.pending().insert(utxo_entry.id(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
+                // yield_executor().await;
                 Ok(())
             }
         } else {
-            Err(Error::DuplicateUtxoEntry)
-            // log_error!("ignoring duplicate utxo entry insert");
+            // Err(Error::DuplicateUtxoEntry)
+            log_error!("ignoring duplicate utxo entry");
+            Ok(())
         }
 
         // }
@@ -334,23 +337,26 @@ impl UtxoContext {
         }
     }
 
-    pub async fn extend(
-        &self,
-        utxo_entries: Vec<UtxoEntryReference>,
-        current_daa_score: u64,
-        // ctx: Option<&UtxoProcessorContext>,
-    ) -> Result<()> {
-        //Result<Vec<UtxoEntryReference>> {
-        // let mut pending = vec![];
-        for entry in utxo_entries.into_iter() {
-            // let disposition =
-            self.insert(entry.clone(), current_daa_score).await?;
-            // if matches!(disposition, Disposition::Pending) {
-            //     pending.push(entry);
-            // };
+    pub async fn extend(&self, utxo_entries: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
+        let mut inner = self.inner();
+        for utxo_entry in utxo_entries.into_iter() {
+            if let std::collections::hash_map::Entry::Vacant(e) = inner.map.entry(utxo_entry.id()) {
+                e.insert(utxo_entry.clone());
+                if utxo_entry.is_mature(current_daa_score) {
+                    inner.mature.push(utxo_entry);
+                } else {
+                    inner.pending.insert(utxo_entry.id(), utxo_entry.clone());
+                    self.processor.pending().insert(utxo_entry.id(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
+                }
+            } else {
+                // Err(Error::DuplicateUtxoEntry)
+                log_warning!("ignoring duplicate utxo entry");
+            }
         }
+
+        inner.mature.sort();
+
         Ok(())
-        // Ok(pending)
     }
 
     pub async fn chunks(&self, chunk_size: usize) -> Result<Vec<Vec<UtxoEntryReference>>> {
@@ -435,8 +441,11 @@ impl UtxoContext {
     */
 
     pub async fn calculate_balance(&self) -> Balance {
+        let ts = Instant::now();
+
         let mature = self.inner().mature.iter().map(|e| e.as_ref().entry.amount).sum();
         let pending = self.inner().pending.values().map(|e| e.as_ref().entry.amount).sum();
+        log_info!("balance calc duration: {}", ts.elapsed().as_secs_f64());
         Balance::new(mature, pending)
     }
 
