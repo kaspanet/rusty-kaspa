@@ -1,7 +1,7 @@
 use crate::imports::*;
 
 #[derive(Default, Handler)]
-#[help("Generates new public address of the current account and shows it")]
+#[help("Generate a new address for the current account")]
 pub struct NewAddress;
 
 impl NewAddress {

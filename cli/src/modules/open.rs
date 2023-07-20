@@ -8,8 +8,11 @@ impl Open {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
-        let name =
-            if let Some(name) = argv.first().cloned() { Some(name) } else { ctx.wallet().settings().get(Settings::Wallet).clone() };
+        let name = if let Some(name) = argv.first().cloned() {
+            Some(name)
+        } else {
+            ctx.wallet().settings().get(WalletSettings::Wallet).clone()
+        };
 
         let secret = Secret::new(ctx.term().ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());
         ctx.wallet().load(secret, name).await?;

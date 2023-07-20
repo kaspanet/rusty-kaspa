@@ -14,7 +14,7 @@ impl Network {
             // .map_err(|err|err.to_string())?;
             tprintln!(ctx, "Setting network type to: {network_type}");
             ctx.wallet().select_network(network_type)?;
-            ctx.wallet().settings().set(Settings::Network, network_type).await?;
+            ctx.wallet().settings().set(WalletSettings::Network, network_type).await?;
             // self.wallet.settings().try_store().await?;
         } else {
             let network_type = ctx.wallet().network()?;

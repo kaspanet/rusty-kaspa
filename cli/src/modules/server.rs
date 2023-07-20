@@ -9,10 +9,10 @@ impl Server {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         if let Some(url) = argv.first() {
-            ctx.wallet().settings().set(Settings::Server, url).await?;
+            ctx.wallet().settings().set(WalletSettings::Server, url).await?;
             tprintln!(ctx, "Setting RPC server to: {url}");
         } else {
-            let server = ctx.wallet().settings().get(Settings::Server).unwrap_or_else(|| "n/a".to_string());
+            let server = ctx.wallet().settings().get(WalletSettings::Server).unwrap_or_else(|| "n/a".to_string());
             tprintln!(ctx, "Current RPC server is: {server}");
         }
 

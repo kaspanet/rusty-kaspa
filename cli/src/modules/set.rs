@@ -1,7 +1,7 @@
 use crate::imports::*;
 
 #[derive(Default, Handler)]
-#[help("Halt execution (used for testing)")]
+#[help("Manage application settings")]
 pub struct Set;
 
 impl Set {
@@ -10,7 +10,7 @@ impl Set {
 
         if argv.is_empty() {
             tprintln!(ctx, "\nSettings:\n");
-            let list = Settings::list();
+            let list = WalletSettings::list();
             let list = list
                 .iter()
                 .map(|setting| {
@@ -25,6 +25,8 @@ impl Set {
             list.iter().for_each(|(k, v, d)| {
                 tprintln!(ctx, "{}: {} \t {}", k.pad_to_width_with_alignment(c1, pad::Alignment::Right), v.pad_to_width(c2), d);
             });
+
+            tprintln!(ctx);
         } else if argv.len() != 2 {
             tprintln!(ctx, "\n\rError:\n\r");
             tprintln!(ctx, "Usage:\n\rset <key> <value>");
@@ -40,13 +42,13 @@ impl Set {
             match key {
                 "network" => {
                     let network: NetworkType = value.parse().map_err(|_| "Unknown network type".to_string())?;
-                    ctx.wallet().settings().set(Settings::Network, network).await?;
+                    ctx.wallet().settings().set(WalletSettings::Network, network).await?;
                 }
                 "server" => {
-                    ctx.wallet().settings().set(Settings::Server, value).await?;
+                    ctx.wallet().settings().set(WalletSettings::Server, value).await?;
                 }
                 "wallet" => {
-                    ctx.wallet().settings().set(Settings::Wallet, value).await?;
+                    ctx.wallet().settings().set(WalletSettings::Wallet, value).await?;
                 }
                 _ => return Err(Error::Custom(format!("Unknown setting '{}'", key))),
             }
