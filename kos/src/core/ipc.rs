@@ -6,8 +6,10 @@ pub enum CoreOps {
     Shutdown,
     KaspadCtl,
     KaspadStatus,
+    KaspadVersion,
     CpuMinerCtl,
     CpuMinerStatus,
+    CpuMinerVersion,
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -24,8 +26,11 @@ pub struct TestResp {
 pub enum DaemonCtl {
     Start,
     Stop,
+    Join,
     Restart,
     Kill,
+    Mute(bool),
+    ToggleMute,
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -75,6 +80,11 @@ impl KaspadCtl for CoreIpc {
         Ok(())
     }
 
+    async fn join(&self) -> DaemonResult<()> {
+        self.target.call(CoreOps::KaspadCtl, KaspadOps::DaemonCtl(DaemonCtl::Join)).await?;
+        Ok(())
+    }
+
     async fn restart(&self) -> DaemonResult<()> {
         self.target.call(CoreOps::KaspadCtl, KaspadOps::DaemonCtl(DaemonCtl::Restart)).await?;
         Ok(())
@@ -89,8 +99,20 @@ impl KaspadCtl for CoreIpc {
         Ok(self.target.call(CoreOps::KaspadStatus, ()).await?)
     }
 
-    // fn kill_and_join(&self) -> Result<()>;
-    // fn stop_and_join(&self) -> Result<()>;
+    async fn version(&self) -> DaemonResult<String> {
+        Ok(self.target.call(CoreOps::KaspadVersion, ()).await?)
+    }
+
+    async fn mute(&self, mute: bool) -> DaemonResult<()> {
+        self.target.call(CoreOps::KaspadCtl, KaspadOps::DaemonCtl(DaemonCtl::Mute(mute))).await?;
+        Ok(())
+    }
+
+    async fn toggle_mute(&self) -> DaemonResult<()> {
+        self.target.call(CoreOps::KaspadCtl, KaspadOps::DaemonCtl(DaemonCtl::ToggleMute)).await?;
+        Ok(())
+    }
+
 }
 
 #[async_trait]
@@ -112,6 +134,11 @@ impl CpuMinerCtl for CoreIpc {
         Ok(())
     }
 
+    async fn join(&self) -> DaemonResult<()> {
+        self.target.call(CoreOps::CpuMinerCtl, KaspadOps::DaemonCtl(DaemonCtl::Join)).await?;
+        Ok(())
+    }
+
     async fn restart(&self) -> DaemonResult<()> {
         self.target.call(CoreOps::CpuMinerCtl, KaspadOps::DaemonCtl(DaemonCtl::Restart)).await?;
         Ok(())
@@ -126,6 +153,18 @@ impl CpuMinerCtl for CoreIpc {
         Ok(self.target.call(CoreOps::CpuMinerStatus, ()).await?)
     }
 
-    // fn kill_and_join(&self) -> Result<()>;
-    // fn stop_and_join(&self) -> Result<()>;
+    async fn version(&self) -> DaemonResult<String> {
+        Ok(self.target.call(CoreOps::CpuMinerVersion, ()).await?)
+    }
+
+    async fn mute(&self, mute: bool) -> DaemonResult<()> {
+        self.target.call(CoreOps::CpuMinerCtl, KaspadOps::DaemonCtl(DaemonCtl::Mute(mute))).await?;
+        Ok(())
+    }
+
+    async fn toggle_mute(&self) -> DaemonResult<()> {
+        self.target.call(CoreOps::CpuMinerCtl, KaspadOps::DaemonCtl(DaemonCtl::ToggleMute)).await?;
+        Ok(())
+    }
+
 }
