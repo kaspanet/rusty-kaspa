@@ -15,20 +15,13 @@ pub struct App {
 }
 
 impl App {
-    // pub fn global() -> Option<Arc<App>> {
-    //     unsafe { APP.clone() }
-    // }
-
     pub async fn try_new() -> Result<Arc<Self>> {
         let core_ipc_target = get_ipc_target(Modules::Core).await?.expect("Unable to aquire background window");
         let core = Arc::new(CoreIpc::new(core_ipc_target));
-        // log_info!("+++ FOUND Background window: {:?}", background);
-
         let daemons = Arc::new(Daemons::new().with_kaspad(core.clone()).with_cpu_miner(core.clone()));
 
         let settings = SettingsStore::<AppSettings>::try_new("kaspa-os-3.settings")?;
         settings.try_load().await?;
-
         let font_size = settings.get::<f64>(AppSettings::FontSize);
 
         let terminal_options = TerminalOptions {
@@ -123,12 +116,12 @@ impl App {
 
         let this = self.clone();
         self.ipc.notification(
-            TermOps::Stdio,
-            Notification::new(move |stdio: Stdio| {
+            TermOps::DaemonEvent,
+            Notification::new(move |event: DaemonEvent| {
                 let this = this.clone();
                 Box::pin(async move {
                     this.cli
-                        .handle_stdio(stdio)
+                        .handle_daemon_event(event)
                         .await
                         .unwrap_or_else(|err| log_error!("error handling child process stdio (cli term relay): `{err}`"));
                     Ok(())
@@ -188,7 +181,7 @@ impl App {
                     }
                 } else {
                     let clipboard = nw_sys::clipboard::get();
-                    clipboard.set(&uri);
+                    clipboard.set(uri);
                 }
                 // - TODO - notify the user
             })),

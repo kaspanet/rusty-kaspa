@@ -190,28 +190,13 @@ impl Core {
             .modifiers("ctrl")
             .callback(move |_| -> std::result::Result<(), JsValue> {
                 // window().alert_with_message("hi")?;
-                // cfg_if::cfg_if! {
-                // if #[cfg(target_arch = "wasm32")] {
 
                 let this = this.clone();
 
                 spawn(async move {
-                    // let source = this.ipc.window();
-                    log_info!("CALLING IPC");
-                    // let target = IpcTarget::new(this.terminal.lock().unwrap().as_ref().cloned().unwrap().as_ref());
                     let target = IpcTarget::new(this.terminal.lock().unwrap().as_ref().unwrap().window.as_ref());
-                    log_info!("TARGET");
-
                     let req = TestReq { req: "Hello World...".to_string() };
-                    log_info!("CALLING");
-                    let resp = target
-                        .call::<TermOps, TestReq, TestResp>(
-                            TermOps::TestTerminal,
-                            req,
-                            // source
-                        )
-                        .await;
-                    log_info!("AWAIT IS FINISHED: {:?}", resp);
+                    let _resp = target.call::<TermOps, TestReq, TestResp>(TermOps::TestTerminal, req).await;
                 });
 
                 Ok(())
@@ -394,8 +379,8 @@ impl Core {
         Ok(())
     }
 
-    pub async fn handle_stdio(self: &Arc<Self>, stdio: Stdio) -> Result<()> {
-        self.terminal().ipc().pipe_stdio(stdio).await?;
+    pub async fn handle_event(self: &Arc<Self>, event: DaemonEvent) -> Result<()> {
+        self.terminal().ipc().relay_event(event).await?;
 
         Ok(())
     }
@@ -404,10 +389,8 @@ impl Core {
         let this = self.clone();
         let task_ctl_receiver = self.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.task_ctl.response.sender.clone();
-        let kaspad_stdout_receiver = self.kaspad.stdout().receiver.clone();
-        let kaspad_stderr_receiver = self.kaspad.stderr().receiver.clone();
-        let cpu_miner_stdout_receiver = self.cpu_miner.stdout().receiver.clone();
-        let cpu_miner_stderr_receiver = self.cpu_miner.stderr().receiver.clone();
+        let kaspad_events_receiver = self.kaspad.events().receiver.clone();
+        let cpu_miner_events_receiver = self.cpu_miner.events().receiver.clone();
 
         spawn(async move {
             loop {
@@ -415,35 +398,20 @@ impl Core {
                     _ = task_ctl_receiver.recv().fuse() => {
                         break;
                     },
-                    stdout = kaspad_stdout_receiver.recv().fuse() => {
-                        if let Ok(stdout) = stdout {
-                            this.handle_stdio(Stdio::Stdout(DaemonKind::Kaspad, stdout)).await.unwrap_or_else(|err| {
+                    event = kaspad_events_receiver.recv().fuse() => {
+                        if let Ok(event) = event {
+                            this.handle_event(DaemonEvent::new(DaemonKind::Kaspad, event)).await.unwrap_or_else(|err| {
                                 log_error!("error while handling kaspad stdout: {err}");
                             });
                         }
                     },
-                    stderr = kaspad_stderr_receiver.recv().fuse() => {
-                        if let Ok(stderr) = stderr {
-                            this.handle_stdio(Stdio::Stderr(DaemonKind::Kaspad, stderr)).await.unwrap_or_else(|err| {
-                                log_error!("error while handling kaspad stderr: {err}");
-                            });
-                        }
-                    },
-                    stdout = cpu_miner_stdout_receiver.recv().fuse() => {
-                        if let Ok(stdout) = stdout {
-                            this.handle_stdio(Stdio::Stdout(DaemonKind::CpuMiner, stdout)).await.unwrap_or_else(|err| {
+                    event = cpu_miner_events_receiver.recv().fuse() => {
+                        if let Ok(event) = event {
+                            this.handle_event(DaemonEvent::new(DaemonKind::CpuMiner, event)).await.unwrap_or_else(|err| {
                                 log_error!("error while handling cpu miner stdout: {err}");
                             });
                         }
                     },
-                    stderr = cpu_miner_stderr_receiver.recv().fuse() => {
-                        if let Ok(stderr) = stderr {
-                            this.handle_stdio(Stdio::Stderr(DaemonKind::CpuMiner, stderr)).await.unwrap_or_else(|err| {
-                                log_error!("error while handling cpu miner stderr: {err}");
-                            });
-                        }
-                    },
-
                 }
             }
 

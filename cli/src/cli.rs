@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use cfg_if::cfg_if;
 use futures::stream::{Stream, StreamExt, TryStreamExt};
 use futures::*;
-use kaspa_daemon::{DaemonKind, Daemons, Stdio};
+use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
 use kaspa_wallet_core::imports::{AtomicBool, Ordering, ToHex};
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
 use kaspa_wallet_core::storage::interface::AccessContext;
@@ -192,12 +192,12 @@ impl KaspaCli {
         Ok(())
     }
 
-    pub async fn handle_stdio(self: &Arc<Self>, stdio: Stdio) -> Result<()> {
-        match stdio.kind() {
+    pub async fn handle_daemon_event(self: &Arc<Self>, event: DaemonEvent) -> Result<()> {
+        match event.kind() {
             DaemonKind::Kaspad => {
                 let node = self.node.lock().unwrap().clone();
                 if let Some(node) = node {
-                    node.handle_stdio(self, stdio).await?;
+                    node.handle_event(self, event.into()).await?;
                 } else {
                     panic!("Stdio handler: node module is not initialized");
                 }
@@ -205,7 +205,7 @@ impl KaspaCli {
             DaemonKind::CpuMiner => {
                 let miner = self.miner.lock().unwrap().clone();
                 if let Some(miner) = miner {
-                    miner.handle_stdio(self, stdio).await?;
+                    miner.handle_event(self, event.into()).await?;
                 } else {
                     panic!("Stdio handler: miner module is not initialized");
                 }
@@ -251,21 +251,8 @@ impl KaspaCli {
                 select! {
 
                     _ = this.notifications_task_ctl.request.receiver.recv().fuse() => {
-                        // if let Ok(msg) = msg {
-                        //     let text = format!("{msg:#?}").replace('\n',"\r\n");
-                        //     println!("#### text: {text:?}");
-                        //     term.pipe_crlf.send(text).await.unwrap_or_else(|err|log_error!("WalletCli::notification_pipe_task() unable to route to term: `{err}`"));
-                        // }
                         break;
                     },
-                    // msg = notification_channel_receiver.recv().fuse() => {
-                    //     if let Ok(msg) = msg {
-
-                    //         log_info!("Received RPC notification: {msg:#?}");
-                    //         let text = format!("{msg:#?}").crlf();//replace('\n',"\r\n"); //.payload);
-                    //         term.pipe_crlf.send(text).await.unwrap_or_else(|err|log_error!("WalletCli::notification_pipe_task() unable to route to term: `{err}`"));
-                    //     }
-                    // },
 
                     msg = multiplexer.receiver.recv().fuse() => {
 

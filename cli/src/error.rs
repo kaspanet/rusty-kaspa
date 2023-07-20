@@ -16,7 +16,7 @@ pub enum Error {
     #[error("platform is not supported")]
     Platform,
 
-    #[error("Wallet error: {0}")]
+    #[error("Wallet -> {0}")]
     WalletError(#[from] WalletError),
 
     #[error("Cli error {0}")]

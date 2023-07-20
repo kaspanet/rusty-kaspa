@@ -2,18 +2,16 @@ use crate::imports::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum TermOps {
-    // TestBg,
     TestTerminal,
     FontCtl,
     EditCtl,
-    Stdio,
+    DaemonEvent,
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum FontCtl {
     IncreaseSize,
     DecreaseSize,
-    // SetSize(u32),
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -52,8 +50,8 @@ impl TerminalIpc {
         Ok(())
     }
 
-    pub async fn pipe_stdio(&self, stdio: Stdio) -> Result<()> {
-        self.target.notify(TermOps::Stdio, stdio).await?;
+    pub async fn relay_event(&self, event: DaemonEvent) -> Result<()> {
+        self.target.notify(TermOps::DaemonEvent, event).await?;
         Ok(())
     }
 }

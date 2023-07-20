@@ -11,6 +11,7 @@ pub use crate::result::Result;
 pub use cpu_miner::{CpuMiner, CpuMinerConfig, CpuMinerCtl};
 pub use kaspad::{Kaspad, KaspadConfig, KaspadCtl};
 use workflow_core::runtime;
+use workflow_node::process::Event as ProcessEvent;
 use workflow_store::fs::*;
 
 pub static LOCATIONS: &[&str] = &[
@@ -97,37 +98,24 @@ impl Daemons {
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
-pub enum Stdio {
-    Stdout(DaemonKind, String),
-    Stderr(DaemonKind, String),
+pub struct DaemonEvent {
+    pub kind: DaemonKind,
+    pub inner: ProcessEvent,
 }
 
-impl From<Stdio> for String {
-    fn from(s: Stdio) -> Self {
-        match s {
-            Stdio::Stdout(_, s) => s,
-            Stdio::Stderr(_, s) => s,
-        }
+impl DaemonEvent {
+    pub fn new(kind: DaemonKind, inner: ProcessEvent) -> Self {
+        Self { kind, inner }
+    }
+
+    pub fn kind(&self) -> &DaemonKind {
+        &self.kind
     }
 }
 
-impl Stdio {
-    pub fn kind(&self) -> DaemonKind {
-        match self {
-            Stdio::Stdout(kind, _) => kind.clone(),
-            Stdio::Stderr(kind, _) => kind.clone(),
-        }
-    }
-
-    pub fn trim(self) -> String {
-        let mut s = String::from(self);
-        if s.ends_with('\n') {
-            s.pop();
-            if s.ends_with('\r') {
-                s.pop();
-            }
-        }
-        s
+impl From<DaemonEvent> for ProcessEvent {
+    fn from(event: DaemonEvent) -> Self {
+        event.inner
     }
 }
 

@@ -7,7 +7,7 @@ pub use async_trait::async_trait;
 pub use cfg_if::cfg_if;
 pub use futures::stream::{Stream, StreamExt, TryStreamExt};
 pub use kaspa_consensus_core::networktype::NetworkType;
-pub use kaspa_daemon::Stdio;
+pub use kaspa_daemon::DaemonEvent;
 pub use kaspa_wallet_core::accounts::gen0::import::*;
 pub use kaspa_wallet_core::imports::ToHex;
 pub use kaspa_wallet_core::storage::interface::{AccessContext, Interface};

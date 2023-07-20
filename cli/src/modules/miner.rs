@@ -1,5 +1,6 @@
 use crate::imports::*;
 use kaspa_daemon::{locate_binaries, CpuMinerConfig};
+pub use workflow_node::process::Event;
 
 #[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(rename_all = "lowercase")]
@@ -179,38 +180,47 @@ impl Miner {
         Ok(())
     }
 
-    pub async fn handle_stdio(&self, ctx: &Arc<KaspaCli>, stdio: Stdio) -> Result<()> {
+    pub async fn handle_event(&self, ctx: &Arc<KaspaCli>, event: Event) -> Result<()> {
         let term = ctx.term();
 
-        let sanitize = true;
-        if sanitize {
-            let text: String = stdio.into();
-            let lines = text.split('\n').collect::<Vec<_>>();
-            lines.into_iter().for_each(|line| {
-                let line = line.trim();
-                if !line.is_empty() {
-                    if line.len() < 38 || &line[30..31] != "[" {
-                        term.writeln(format!("{line}"));
-                    } else {
-                        let time = &line[11..23];
-                        let kind = &line[31..36];
-                        let text = &line[38..];
-                        match kind {
-                            "WARN" => {
-                                term.writeln(format!("{time} | {}", style(text).yellow()));
-                            }
-                            "ERROR" => {
-                                term.writeln(format!("{time} | {}", style(text).red()));
-                            }
-                            _ => {
-                                term.writeln(format!("{time} | {text}"));
+        match event {
+            Event::Exit(code) => {
+                tprintln!(ctx, "Miner exited with code: {code}");
+            }
+            Event::Error(error) => {
+                tprintln!(ctx, "Miner error: {error}");
+            }
+            Event::Stdout(text) | Event::Stderr(text) => {
+                let sanitize = true;
+                if sanitize {
+                    let lines = text.split('\n').collect::<Vec<_>>();
+                    lines.into_iter().for_each(|line| {
+                        let line = line.trim();
+                        if !line.is_empty() {
+                            if line.len() < 38 || &line[30..31] != "[" {
+                                term.writeln(line);
+                            } else {
+                                let time = &line[11..23];
+                                let kind = &line[31..36];
+                                let text = &line[38..];
+                                match kind {
+                                    "WARN" => {
+                                        term.writeln(format!("{time} | {}", style(text).yellow()));
+                                    }
+                                    "ERROR" => {
+                                        term.writeln(format!("{time} | {}", style(text).red()));
+                                    }
+                                    _ => {
+                                        term.writeln(format!("{time} | {text}"));
+                                    }
+                                }
                             }
                         }
-                    }
+                    });
+                } else {
+                    term.writeln(format!("Miner: {}", text.trim().crlf()));
                 }
-            });
-        } else {
-            term.writeln(format!("Miner: {}", stdio.trim().crlf()));
+            }
         }
 
         Ok(())

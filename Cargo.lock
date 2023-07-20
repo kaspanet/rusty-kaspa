@@ -5493,9 +5493,11 @@ dependencies = [
 name = "workflow-node"
 version = "0.3.17"
 dependencies = [
+ "borsh",
  "futures",
  "js-sys",
  "node-sys",
+ "serde",
  "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-futures",

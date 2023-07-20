@@ -25,7 +25,6 @@ pub(crate) struct LocalStoreInner {
 }
 
 impl LocalStoreInner {
-
     pub async fn try_create(ctx: &Arc<dyn AccessContextT>, folder: &str, args: CreateArgs, is_resident: bool) -> Result<Self> {
         let (store, name) = if is_resident {
             (Store::Resident, "resident".to_string())

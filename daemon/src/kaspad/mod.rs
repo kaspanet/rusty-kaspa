@@ -3,7 +3,7 @@ pub mod wasm;
 
 use crate::imports::*;
 
-use wasm::{Process, ProcessOptions};
+use wasm::{Process, ProcessEvent, ProcessOptions};
 // use workflow_log::color_log::downcast_sync;
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -146,18 +146,12 @@ impl Default for Inner {
 pub struct Kaspad {
     inner: Arc<Mutex<Inner>>,
     mute: Arc<AtomicBool>,
-    stdout: Channel<String>,
-    stderr: Channel<String>,
+    events: Channel<ProcessEvent>,
 }
 
 impl Default for Kaspad {
     fn default() -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(Inner::default())),
-            mute: Arc::new(AtomicBool::new(false)),
-            stdout: Channel::unbounded(),
-            stderr: Channel::unbounded(),
-        }
+        Self { inner: Arc::new(Mutex::new(Inner::default())), mute: Arc::new(AtomicBool::new(false)), events: Channel::unbounded() }
     }
 }
 
@@ -166,8 +160,7 @@ impl Kaspad {
         Self {
             mute: Arc::new(AtomicBool::new(args.mute)),
             inner: Arc::new(Mutex::new(Inner { config: Mutex::new(args), ..Default::default() })),
-            stdout: Channel::unbounded(),
-            stderr: Channel::unbounded(),
+            events: Channel::unbounded(),
         }
     }
 
@@ -193,12 +186,8 @@ impl Kaspad {
         self.inner().process.clone()
     }
 
-    pub fn stdout(&self) -> &Channel<String> {
-        &self.stdout
-    }
-
-    pub fn stderr(&self) -> &Channel<String> {
-        &self.stderr
+    pub fn events(&self) -> &Channel<ProcessEvent> {
+        &self.events
     }
 
     pub fn try_argv(&self) -> Result<Vec<String>> {
@@ -225,9 +214,7 @@ impl Kaspad {
             true,
             // Some(Duration::from_millis(45_000)),
             Some(Duration::from_millis(5_000)),
-            Some(self.stdout().clone()),
-            Some(self.stderr().clone()),
-            None,
+            self.events().clone(),
             Some(64),
             self.mute.load(Ordering::SeqCst),
         );

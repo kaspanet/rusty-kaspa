@@ -3,7 +3,7 @@ pub mod wasm;
 
 use crate::imports::*;
 
-use wasm::{Process, ProcessOptions};
+use wasm::{Process, ProcessEvent, ProcessOptions};
 
 #[derive(Default, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct CpuMinerConfig {
@@ -99,18 +99,12 @@ impl Default for Inner {
 pub struct CpuMiner {
     inner: Arc<Mutex<Inner>>,
     mute: Arc<AtomicBool>,
-    stdout: Channel<String>,
-    stderr: Channel<String>,
+    events: Channel<ProcessEvent>,
 }
 
 impl Default for CpuMiner {
     fn default() -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(Inner::default())),
-            stdout: Channel::unbounded(),
-            stderr: Channel::unbounded(),
-            mute: Arc::new(AtomicBool::new(false)),
-        }
+        Self { inner: Arc::new(Mutex::new(Inner::default())), events: Channel::unbounded(), mute: Arc::new(AtomicBool::new(false)) }
     }
 }
 
@@ -119,9 +113,7 @@ impl CpuMiner {
         Self {
             mute: Arc::new(AtomicBool::new(args.mute)),
             inner: Arc::new(Mutex::new(Inner { config: Mutex::new(args), ..Default::default() })),
-
-            stdout: Channel::unbounded(),
-            stderr: Channel::unbounded(),
+            events: Channel::unbounded(),
         }
     }
 
@@ -147,12 +139,8 @@ impl CpuMiner {
         self.inner().process.clone()
     }
 
-    pub fn stdout(&self) -> &Channel<String> {
-        &self.stdout
-    }
-
-    pub fn stderr(&self) -> &Channel<String> {
-        &self.stderr
+    pub fn events(&self) -> &Channel<ProcessEvent> {
+        &self.events
     }
 
     pub fn try_argv(&self) -> Result<Vec<String>> {
@@ -178,9 +166,7 @@ impl CpuMiner {
             Some(Duration::from_millis(1000)),
             false,
             None,
-            Some(self.stdout().clone()),
-            Some(self.stderr().clone()),
-            None,
+            self.events().clone(),
             Some(64),
             self.mute.load(Ordering::SeqCst),
         );
