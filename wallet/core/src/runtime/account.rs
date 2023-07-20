@@ -25,6 +25,7 @@ use std::str::FromStr;
 use workflow_core::abortable::Abortable;
 use workflow_core::enums::u8_try_from;
 use workflow_core::task::yield_executor;
+use workflow_core::time::Instant;
 
 use super::scan::{ScanExtent, DEFAULT_WINDOW_SIZE};
 pub const DEFAULT_AMOUNT_PADDING: usize = 19;
@@ -309,12 +310,19 @@ impl Account {
             // log_info!("{}", format!("scanning addresses:\n{:#?}", addresses).replace('\n', "\r\n"));
 
             // log_info!("get_utxos_by_address start");
+            let ts = Instant::now();
             let resp = self.wallet.rpc().get_utxos_by_addresses(addresses).await?;
+            log_info!("get_utxos_by_address duration: {}", ts.elapsed().as_secs_f64());
+
             // log_info!("get_utxos_by_address done");
+            yield_executor().await;
+            let ts = Instant::now();
             let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
+            log_info!("remapping duration: {}", ts.elapsed().as_secs_f64());
+            yield_executor().await;
             // println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
             //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
-
+            let ts = Instant::now();
             for utxo_ref in refs.iter() {
                 if let Some(address) = utxo_ref.utxo.address.as_ref() {
                     if let Some(utxo_address_index) = scan.address_manager.inner().address_to_index_map.get(address) {
@@ -326,16 +334,24 @@ impl Account {
                     }
                 }
             }
-            // log_info!("scan updating balance");
+            log_info!("index duration: {}", ts.elapsed().as_secs_f64());
 
+            // log_info!("scan updating balance");
+            yield_executor().await;
+
+            let ts = Instant::now();
             let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
                 let entry_balance = r.as_ref().balance(scan.current_daa_score);
                 balance.mature += entry_balance.mature;
                 balance.pending += entry_balance.pending;
                 balance
             });
+            log_info!("balance calc duration: {}", ts.elapsed().as_secs_f64());
+            yield_executor().await;
 
+            let ts = Instant::now();
             self.utxo_context().extend(refs, scan.current_daa_score).await?;
+            log_info!("extend duration: {}", ts.elapsed().as_secs_f64());
 
             if !balance.is_empty() {
                 scan.balance.add(balance);
