@@ -63,22 +63,30 @@ impl IpAddress {
             return false;
         }
 
+        match self.0 {
+            IpAddr::V4(ip) => {
+                // RFC 1918 is covered by is_private
+                // RFC 5737 is covered by is_documentation
+                // RFC 3927 is covered by is_link_local
+                // RFC  919 is covered by is_broadcast (wasn't originally covered in go code)
+                if ip.is_broadcast() || ip.is_private() || ip.is_documentation() || ip.is_link_local() {
+                    return false;
+                }
+            }
+            IpAddr::V6(_ip) => {
+                // All of the is_ helper functions for ipv6 are currently marked unstable
+            }
+        }
+
         // Based on values from network.go
         let unroutable_nets = [
             "198.18.0.0/15",   // RFC 2544
             "2001:DB8::/32",   // RFC 3849
-            "10.0.0.0/8",      // RFC 1918
-            "172.16.0.0/12",   // RFC 1918
-            "192.168.0.0/16",  // RFC 1918
-            "169.254.0.0/16",  // RFC 3927
             "2002::/16",       // RFC 3964
             "FC00::/7",        // RFC 4193
             "2001::/32",       // RFC 4380
             "2001:10::/28",    // RFC 4843
             "FE80::/64",       // RFC 4862
-            "192.0.2.0/24",    // RFC 5737
-            "198.51.100.0/24", // RFC 5737
-            "203.0.113.0/24",  // RFC 5737
             "64:FF9B::/96",    // RFC 6052
             "::FFFF:0:0:0/96", // RFC 6145
             "100.64.0.0/10",   // RFC 6598
@@ -544,5 +552,8 @@ mod tests {
         assert!(!IpAddress::from_str("2001:470:ffff:ffff:ffff:ffff:ffff:ffff").unwrap().is_publicly_routable());
         assert!(IpAddress::from_str("2001:46f:ffff:ffff:ffff:ffff:ffff:ffff").unwrap().is_publicly_routable());
         assert!(IpAddress::from_str("2001:471::").unwrap().is_publicly_routable());
+
+        // Broadcast ip
+        assert!(!IpAddress::from_str("255.255.255.255").unwrap().is_publicly_routable());
     }
 }
