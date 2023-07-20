@@ -1,6 +1,6 @@
 [application]
 name = "kaspa-os"
-version = "0.1.0"
+version = "Cargo.toml::package.version"
 title = "Kaspa OS"
 organization = "Kaspa Contributors"
 

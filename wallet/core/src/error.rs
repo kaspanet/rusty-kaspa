@@ -66,7 +66,7 @@ pub enum Error {
     #[error("Wallet is not connected")]
     WalletNotConnected,
 
-    #[error("Unable to determine network type (wallet is not connected)")]
+    #[error("Unable to determine network type, please use `set network (mainnet|testnet)` to select a network")]
     MissingNetworkType,
 
     #[error("Unable to set network type while the wallet is connected")]

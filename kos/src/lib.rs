@@ -9,4 +9,5 @@ mod modules;
 mod core;
 mod kaspad;
 mod miner;
+mod settings;
 mod terminal;

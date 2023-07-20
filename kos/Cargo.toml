@@ -2,7 +2,8 @@
 [package]
 name = "kaspa-os"
 description = "Kaspa Desktop Node Manager & Wallet"
-version.workspace = true
+# please keep this version detached from the workspace
+version = "0.0.1"
 edition.workspace = true
 authors.workspace = true
 include.workspace = true
@@ -33,6 +34,8 @@ kaspa-core.workspace = true
 kaspa-daemon.workspace = true
 kaspa-consensus-core.workspace = true
 futures.workspace = true
+downcast.workspace = true
+kaspa-wallet-core.workspace = true
 
 [dependencies.web-sys]
 workspace = true

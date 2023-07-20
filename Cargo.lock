@@ -2354,17 +2354,19 @@ dependencies = [
 
 [[package]]
 name = "kaspa-os"
-version = "0.1.6"
+version = "0.0.1"
 dependencies = [
  "async-trait",
  "borsh",
  "cfg-if 1.0.0",
+ "downcast",
  "futures",
  "js-sys",
  "kaspa-cli",
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-daemon",
+ "kaspa-wallet-core",
  "nw-sys",
  "serde",
  "thiserror",

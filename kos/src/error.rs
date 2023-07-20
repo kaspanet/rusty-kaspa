@@ -1,6 +1,8 @@
+use downcast::DowncastError;
 use kaspa_daemon::error::Error as DaemonError;
 use thiserror::Error;
 use wasm_bindgen::JsValue;
+use workflow_core::channel::ChannelError;
 use workflow_nw::ipc::ResponseError;
 use workflow_wasm::printable::Printable;
 
@@ -32,6 +34,21 @@ pub enum Error {
 
     #[error("channel error")]
     RecvError(#[from] workflow_core::channel::RecvError),
+
+    #[error(transparent)]
+    CallbackError(#[from] workflow_wasm::callback::CallbackError),
+
+    #[error("{0}")]
+    DowncastError(String),
+
+    #[error("Channel error")]
+    ChannelError(String),
+
+    #[error(transparent)]
+    Daemon(#[from] kaspa_daemon::error::Error),
+
+    #[error(transparent)]
+    WalletError(#[from] kaspa_wallet_core::error::Error),
 }
 
 impl From<Error> for JsValue {
@@ -68,5 +85,17 @@ impl From<String> for Error {
 impl From<&str> for Error {
     fn from(err: &str) -> Self {
         Self::Custom(err.to_string())
+    }
+}
+
+impl<T> From<DowncastError<T>> for Error {
+    fn from(e: DowncastError<T>) -> Self {
+        Error::DowncastError(e.to_string())
+    }
+}
+
+impl<T> From<ChannelError<T>> for Error {
+    fn from(e: ChannelError<T>) -> Error {
+        Error::ChannelError(e.to_string())
     }
 }

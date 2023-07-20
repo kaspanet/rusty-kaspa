@@ -27,7 +27,7 @@ pub use kaspa_addresses::{Address, Prefix as AddressPrefix};
 pub use kaspa_wrpc_client::client::{ConnectOptions, ConnectStrategy};
 pub use result::Result;
 pub use runtime::Events;
-pub use settings::Settings;
+pub use settings::{DefaultSettings, SettingsStore, WalletSettings};
 pub use signer::Signer;
 pub use xprivatekey::XPrivateKey;
 pub use xpublickey::XPublicKey;
