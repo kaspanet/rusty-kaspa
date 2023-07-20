@@ -12,7 +12,10 @@ use workflow_rpc::client::Ctl;
 use crate::imports::*;
 use crate::result::Result;
 use crate::utxo::{EventConsumer, Events, PendingUtxoEntryReference, UtxoContext, UtxoContextId, UtxoEntryId, UtxoEntryReference};
-use kaspa_rpc_core::{notify::connection::ChannelConnection, Notification};
+use kaspa_rpc_core::{
+    notify::connection::{ChannelConnection, ChannelType},
+    Notification,
+};
 use std::collections::HashMap;
 
 pub struct Inner {
@@ -224,7 +227,9 @@ impl UtxoProcessor {
     }
 
     async fn register_notification_listener(&self) -> Result<()> {
-        let listener_id = self.rpc().register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone()));
+        let listener_id = self
+            .rpc()
+            .register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone(), ChannelType::Persistent));
         *self.inner.listener_id.lock().unwrap() = Some(listener_id);
 
         self.rpc().start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;

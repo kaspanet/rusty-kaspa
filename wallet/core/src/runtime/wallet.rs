@@ -22,7 +22,10 @@ use kaspa_notify::{
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
 use kaspa_rpc_core::{
-    notify::{connection::ChannelConnection, mode::NotificationMode},
+    notify::{
+        connection::{ChannelConnection, ChannelType},
+        mode::NotificationMode,
+    },
     Notification,
 };
 use kaspa_rpc_core::{GetBlockDagInfoResponse, GetInfoResponse};
@@ -676,7 +679,9 @@ impl Wallet {
     }
 
     async fn register_notification_listener(&self) -> Result<()> {
-        let listener_id = self.rpc().register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone()));
+        let listener_id = self
+            .rpc()
+            .register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone(), ChannelType::Persistent));
         *self.inner.listener_id.lock().unwrap() = Some(listener_id);
 
         Ok(())
