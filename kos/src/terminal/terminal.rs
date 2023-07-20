@@ -8,6 +8,10 @@ pub struct App {
     pub ipc: Arc<Ipc<TermOps>>,
     pub core: Arc<CoreIpc>,
     pub cli: Arc<KaspaCli>,
+    pub window: Arc<Window>,
+    pub callbacks: CallbackMap,
+    pub shutdown: Arc<AtomicBool>,
+    pub settings: SettingsStore<AppSettings>,
 }
 
 impl App {
@@ -30,12 +34,20 @@ impl App {
         let cli = KaspaCli::try_new_arc(options).await?;
 
         let window = Arc::new(nw_sys::window::get());
+
+        let settings = SettingsStore::<AppSettings>::try_new("kaspa-os-2.settings")?;
+        settings.try_load().await?;
+
         let app = Arc::new(Self {
             inner: Application::new()?,
             ipc: Ipc::try_new_window_binding(&window, Modules::Terminal)?,
             // background
             core,
             cli,
+            window,
+            callbacks: CallbackMap::default(),
+            shutdown: Arc::new(AtomicBool::new(false)),
+            settings,
         });
 
         unsafe {
@@ -100,7 +112,10 @@ impl App {
             Notification::new(move |stdio: Stdio| {
                 let this = this.clone();
                 Box::pin(async move {
-                    this.cli.term().writeln(stdio.trim().crlf());
+                    this.cli
+                        .handle_stdio(stdio)
+                        .await
+                        .unwrap_or_else(|err| log_error!("error handling child process stdio (cli term relay): `{err}`"));
                     Ok(())
                 })
             }),
@@ -115,15 +130,51 @@ impl App {
         Ok(())
     }
 
+    fn register_window_handlers(self: &Arc<Self>) -> Result<()> {
+        let this = self.clone();
+        let close = callback!(move || {
+            let this = this.clone();
+            spawn(async move {
+                this.cli.shutdown().await.unwrap_or_else(|err| log_error!("Error during shutdown: `{err}`"));
+            });
+        });
+
+        self.window.on("close", close.as_ref());
+        self.callbacks.retain(close)?;
+
+        Ok(())
+    }
+
     async fn main(self: &Arc<Self>) -> Result<()> {
+        self.register_window_handlers()?;
         self.register_ipc_handlers()?;
         self.register_cli_handlers()?;
         crate::modules::register_cli_handlers(&self.cli)?;
 
         // cli.handlers().register(&cli, crate::modules::test::Test::default());
 
+        self.cli.term().register_link_matcher(
+            &js_sys::RegExp::new(r"http[s]?:\/\/\S+", "i"),
+            Arc::new(Box::new(move |url| {
+                nw_sys::shell::open_external(url);
+            })),
+        )?;
+
         // cli starts notification->term trace pipe task
         self.cli.start().await?;
+
+        if !self.settings.get::<bool>(AppSettings::Greeting).unwrap_or_default() {
+            let greeting = r"
+Hello Kaspian!  
+
+If you have any questions, please join us on discord at https://discord.gg/kaspa
+    
+            ";
+
+            self.cli.term().writeln(greeting.crlf());
+
+            self.settings.set(AppSettings::Greeting, true).await?;
+        }
 
         let banner = format!("Kaspa OS v{} (type 'help' for list of commands)", env!("CARGO_PKG_VERSION"));
         self.cli.term().writeln(banner);
@@ -132,9 +183,12 @@ impl App {
         self.cli.run().await?;
 
         // cli stops notification->term trace pipe task
+
         self.cli.stop().await?;
 
         self.core.shutdown().await?;
+
+        self.window.close_impl(true);
 
         Ok(())
     }

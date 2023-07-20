@@ -277,11 +277,20 @@ impl Core {
                             DaemonCtl::Stop => {
                                 this.kaspad.stop()?;
                             }
+                            DaemonCtl::Join => {
+                                this.kaspad.join().await?;
+                            }
                             DaemonCtl::Restart => {
                                 this.kaspad.restart()?;
                             }
                             DaemonCtl::Kill => {
                                 this.kaspad.kill()?;
+                            }
+                            DaemonCtl::Mute(mute) => {
+                                this.kaspad.mute(mute).await?;
+                            }
+                            DaemonCtl::ToggleMute => {
+                                this.kaspad.toggle_mute().await?;
                             }
                         },
                     }
@@ -305,6 +314,18 @@ impl Core {
 
         let this = self.clone();
         self.ipc.method(
+            CoreOps::KaspadVersion,
+            Method::new(move |_op: ()| {
+                let this = this.clone();
+                Box::pin(async move {
+                    let version = this.kaspad.version().await?;
+                    Ok(version)
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.method(
             CoreOps::CpuMinerCtl,
             Method::new(move |op: CpuMinerOps| {
                 let this = this.clone();
@@ -314,17 +335,29 @@ impl Core {
                             this.cpu_miner.configure(config)?;
                         }
                         CpuMinerOps::DaemonCtl(ctl) => match ctl {
+                            // DaemonCtl::Version => {
+                            //     this.cpu_miner.version().await?;
+                            // }
                             DaemonCtl::Start => {
                                 this.cpu_miner.start()?;
                             }
                             DaemonCtl::Stop => {
                                 this.cpu_miner.stop()?;
                             }
+                            DaemonCtl::Join => {
+                                this.cpu_miner.join().await?;
+                            }
                             DaemonCtl::Restart => {
                                 this.cpu_miner.restart()?;
                             }
                             DaemonCtl::Kill => {
                                 this.cpu_miner.kill()?;
+                            }
+                            DaemonCtl::Mute(mute) => {
+                                this.cpu_miner.mute(mute).await?;
+                            }
+                            DaemonCtl::ToggleMute => {
+                                this.cpu_miner.toggle_mute().await?;
                             }
                         },
                     }
@@ -362,7 +395,7 @@ impl Core {
     }
 
     pub async fn handle_stdio(self: &Arc<Self>, stdio: Stdio) -> Result<()> {
-        self.terminal().ipc().pipe_stdout(stdio).await?;
+        self.terminal().ipc().pipe_stdio(stdio).await?;
 
         Ok(())
     }
@@ -416,11 +449,12 @@ impl Core {
 
             task_ctl_sender.send(()).await.unwrap();
         });
+
         Ok(())
     }
 
     pub async fn stop_task(&self) -> Result<()> {
-        self.task_ctl.signal(()).await.expect("Wallet::stop_task() `signal` error");
+        self.task_ctl.signal(()).await.expect("Core::stop_task() `signal` error");
         Ok(())
     }
 
@@ -460,15 +494,11 @@ pub async fn init_core() -> Result<()> {
     workflow_wasm::panic::init_console_panic_hook();
     kaspa_core::log::set_log_level(LevelFilter::Info);
 
-    // let root = nw_sys::app::start_path();
-    // log_info!("root: {}", root);
-    // let full_argv = nw_sys::app::full_argv().map_err(|e|e.to_string())?;
-    // log_info!("full_argv: {:#?}", full_argv);
-    // let argv = nw_sys::app::argv().map_err(|e|e.to_string())?;
-    // log_info!("argv: {:#?}", argv);
-
+    
     let core = Core::try_new().await?;
     core.main().await?;
+
+    nw_sys::app::quit();
 
     Ok(())
 }

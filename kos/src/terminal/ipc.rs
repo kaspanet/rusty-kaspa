@@ -52,7 +52,7 @@ impl TerminalIpc {
         Ok(())
     }
 
-    pub async fn pipe_stdout(&self, stdio: Stdio) -> Result<()> {
+    pub async fn pipe_stdio(&self, stdio: Stdio) -> Result<()> {
         self.target.notify(TermOps::Stdio, stdio).await?;
         Ok(())
     }
