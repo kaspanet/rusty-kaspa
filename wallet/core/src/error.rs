@@ -60,8 +60,8 @@ pub enum Error {
     #[error("This wallet name is not allowed")]
     WalletNameNotAllowed,
 
-    #[error("Wallet is not loaded")]
-    WalletNotLoaded,
+    #[error("Wallet is not open")]
+    WalletNotOpen,
 
     #[error("Wallet is not connected")]
     WalletNotConnected,

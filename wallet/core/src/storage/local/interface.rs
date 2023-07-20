@@ -25,10 +25,6 @@ pub(crate) struct LocalStoreInner {
 }
 
 impl LocalStoreInner {
-    // pub async fn exists(folder: &str, name : Option<&str>) -> Result<bool> {
-    //     let store = Store::new(folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
-    //     store.exists().await
-    // }
 
     pub async fn try_create(ctx: &Arc<dyn AccessContextT>, folder: &str, args: CreateArgs, is_resident: bool) -> Result<Self> {
         let (store, name) = if is_resident {
@@ -160,7 +156,7 @@ impl LocalStore {
     }
 
     pub fn inner(&self) -> Result<Arc<LocalStoreInner>> {
-        self.inner.lock().unwrap().as_ref().cloned().ok_or(Error::WalletNotLoaded)
+        self.inner.lock().unwrap().as_ref().cloned().ok_or(Error::WalletNotOpen)
     }
 }
 
@@ -191,14 +187,9 @@ impl Interface for LocalStore {
     }
 
     async fn exists(&self, name: Option<&str>) -> Result<bool> {
-        // match self.inner()?.store {
-        //     Store::Resident => Ok(false),
-        //     Store::Storage(ref storage) => {
         let location = self.location.lock().unwrap().clone().unwrap();
         let store = Storage::new_with_folder(&location.folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
         store.exists().await
-        // }
-        // }
     }
 
     async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()> {
