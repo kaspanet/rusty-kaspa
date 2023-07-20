@@ -284,35 +284,43 @@ impl UtxoProcessor {
         let notification_receiver = self.inner.notification_channel.receiver.clone();
 
         spawn(async move {
-            loop {
+            'outer: loop {
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
-                        break;
-                    },
-                    notification = notification_receiver.recv().fuse() => {
-                        if let Ok(notification) = notification {
-                            this.handle_notification(notification).await.unwrap_or_else(|err| {
-                                log_error!("error while handling notification: {err}");
-                            });
-                        }
+                        break 'outer;
                     },
                     msg = rpc_ctl_channel.receiver.recv().fuse() => {
-                        if let Ok(msg) = msg {
-                            match msg {
-                                Ctl::Open => {
-                                    this.inner.is_connected.store(true, Ordering::SeqCst);
-                                    // multiplexer.broadcast(Events::Connect(self_.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
-                                    this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
-                                },
-                                Ctl::Close => {
-                                    this.inner.is_connected.store(false, Ordering::SeqCst);
-
-                                    // multiplexer.broadcast(Events::Disconnect(self_.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
-                                    this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
+                        match msg {
+                            Ok(msg) => {
+                                match msg {
+                                    Ctl::Open => {
+                                        this.inner.is_connected.store(true, Ordering::SeqCst);
+                                        this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
+                                    },
+                                    Ctl::Close => {
+                                        this.inner.is_connected.store(false, Ordering::SeqCst);
+                                        this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
+                                    }
                                 }
+                            }
+                            Err(err) => {
+                                log_error!("UtxoProcessor: error while receiving rpc_ctl_channel message: {err}");
                             }
                         }
                     }
+                    notification = notification_receiver.recv().fuse() => {
+                        match notification {
+                            Ok(notification) => {
+                                this.handle_notification(notification).await.unwrap_or_else(|err| {
+                                    log_error!("error while handling notification: {err}");
+                                });
+                            }
+                            Err(err) => {
+                                log_error!("UtxoProcessor: error while receiving notification: {err}");
+                            }
+                        }
+                    },
+
                 }
             }
             this.inner.event_consumer.lock().unwrap().take();
