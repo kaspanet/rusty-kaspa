@@ -256,12 +256,12 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_pruning_point_proof()).await
     }
 
-    pub async fn async_create_headers_selected_chain_block_locator(
+    pub async fn async_create_virtual_selected_chain_block_locator(
         &self,
         low: Option<Hash>,
         high: Option<Hash>,
     ) -> ConsensusResult<Vec<Hash>> {
-        self.clone().spawn_blocking(move |c| c.create_headers_selected_chain_block_locator(low, high)).await
+        self.clone().spawn_blocking(move |c| c.create_virtual_selected_chain_block_locator(low, high)).await
     }
 
     pub async fn async_create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
@@ -331,7 +331,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_missing_block_body_hashes(high)).await
     }
 
-    pub async fn async_pruning_point(&self) -> Option<Hash> {
+    pub async fn async_pruning_point(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.pruning_point()).await
     }
 

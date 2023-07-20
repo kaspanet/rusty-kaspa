@@ -27,14 +27,7 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::sync::Arc;
 
-// ~~~
-// TODO - discuss handling
 use args::{Args, Defaults};
-// use clap::Parser;
-// ~~~
-
-// TODO: testnet 11 tasks:
-// coinbase rewards
 
 use kaspa_consensus::config::ConfigBuilder;
 use kaspa_utxoindex::UtxoIndex;
