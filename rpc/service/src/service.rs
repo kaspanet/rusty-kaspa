@@ -500,7 +500,7 @@ impl RpcApi for RpcCoreService {
             self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
             session.async_get_virtual_past_median_time().await,
             session.async_get_virtual_parents().await.iter().copied().collect::<Vec<_>>(),
-            session.async_pruning_point().await.unwrap_or_default(),
+            session.async_pruning_point().await,
             session.async_get_virtual_daa_score().await,
         ))
     }
