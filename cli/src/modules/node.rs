@@ -190,8 +190,8 @@ impl Node {
         let term = ctx.term();
 
         match event {
-            Event::Exit(code) => {
-                tprintln!(ctx, "Kaspad exited with code: {code}");
+            Event::Exit(_code) => {
+                tprintln!(ctx, "Kaspad has exited");
             }
             Event::Error(error) => {
                 tprintln!(ctx, "Kaspad error: {error}");

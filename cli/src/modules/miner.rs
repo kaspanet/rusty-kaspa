@@ -184,8 +184,8 @@ impl Miner {
         let term = ctx.term();
 
         match event {
-            Event::Exit(code) => {
-                tprintln!(ctx, "Miner exited with code: {code}");
+            Event::Exit(_code) => {
+                tprintln!(ctx, "Miner her exited");
             }
             Event::Error(error) => {
                 tprintln!(ctx, "Miner error: {error}");
