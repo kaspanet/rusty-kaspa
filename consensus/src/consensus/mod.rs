@@ -566,9 +566,6 @@ impl ConsensusApi for Consensus {
             self.validate_block_exists(high)?;
         }
 
-        let low = low.unwrap_or_else(|| self.pruning_point());
-        let high = high.unwrap_or_else(|| self.get_sink());
-
         Ok(self.services.sync_manager.create_virtual_selected_chain_block_locator(low, high)?)
     }
 
