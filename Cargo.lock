@@ -2722,6 +2722,7 @@ version = "0.1.6"
 dependencies = [
  "aes",
  "argon2",
+ "async-std",
  "async-trait",
  "base64 0.21.2",
  "borsh",

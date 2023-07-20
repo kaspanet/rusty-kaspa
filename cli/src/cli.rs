@@ -146,6 +146,10 @@ impl KaspaCli {
         self.term.lock().unwrap().as_ref().cloned()
     }
 
+    pub fn version(&self) -> String {
+        env!("CARGO_PKG_VERSION").to_string()
+    }
+
     pub fn wallet(&self) -> Arc<Wallet> {
         self.wallet.clone()
     }
@@ -705,9 +709,11 @@ impl Cli for KaspaCli {
         Ok(())
     }
 
-    async fn digest(self: Arc<Self>, _term: Arc<Terminal>, cmd: String) -> TerminalResult<()> {
+    async fn digest(self: Arc<Self>, term: Arc<Terminal>, cmd: String) -> TerminalResult<()> {
         *self.last_interaction.lock().unwrap() = Instant::now();
-        self.handlers.execute(&self, &cmd).await?;
+        if let Err(err) = self.handlers.execute(&self, &cmd).await {
+            term.writeln(style(err.to_string()).red().to_string());
+        }
         Ok(())
     }
 
