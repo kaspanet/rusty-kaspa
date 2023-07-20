@@ -121,6 +121,11 @@ mod tests {
     const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
 
     #[tokio::test]
+    // TODO: make test more forgiving when executed under coverage.
+    // code coverage slows performance , as it performance analysis ontop of the execution,
+    // i.e. some defined durations are not sufficient in this case.
+    // as such we ignore the test via the `no_coverage` cfg
+    #[cfg_attr(coverage_nightly, feature(no_coverage))] //Tracking issue: https://github.com/rust-lang/rust/issues/84605
     async fn test_writer_reentrance() {
         let l = Arc::new(RfRwLock::new());
         let (tx, rx) = oneshot::channel();
