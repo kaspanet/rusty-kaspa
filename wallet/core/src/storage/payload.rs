@@ -14,11 +14,14 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 pub struct Payload {
     pub prv_key_data: Vec<PrvKeyData>,
     pub accounts: Vec<Account>,
+    // - TODO - remove
     #[serde(default)]
     pub address_book: Vec<AddressBookEntry>,
 
     // ------
     pub transaction_records: Vec<TransactionRecord>,
+    // - TODO - remove
+    #[serde(default)]
     pub transaction_metadata: HashMap<TransactionRecordId, TransactionMetadata>,
 }
 
