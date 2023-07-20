@@ -5,7 +5,7 @@ use crate::{
     service::Options,
 };
 use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{events::EVENT_TYPE_ARRAY, notifier::Notifier, scope::Scope, subscriber::Subscriber};
+use kaspa_notify::{connection::ChannelType, events::EVENT_TYPE_ARRAY, notifier::Notifier, scope::Scope, subscriber::Subscriber};
 use kaspa_rpc_core::{
     api::rpc::{DynRpcService, RpcApi},
     notify::{channel::NotificationChannel, connection::ChannelConnection, mode::NotificationMode},
@@ -56,7 +56,8 @@ impl Server {
         let rpc_core = if let Some(service) = core_service {
             // Prepare rpc service objects
             let notification_channel = NotificationChannel::default();
-            let listener_id = service.notifier().register_new_listener(ChannelConnection::new(notification_channel.sender()));
+            let listener_id =
+                service.notifier().register_new_listener(ChannelConnection::new(notification_channel.sender(), ChannelType::Closable));
 
             // Prepare notification internals
             let enabled_events = EVENT_TYPE_ARRAY[..].into();

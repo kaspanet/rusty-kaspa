@@ -231,7 +231,7 @@ where
 mod tests {
     use super::*;
     use crate::{
-        connection::ChannelConnection,
+        connection::{ChannelConnection, ChannelType},
         listener::Listener,
         notification::test_helpers::*,
         notifier::test_helpers::{
@@ -263,7 +263,7 @@ mod tests {
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for _ in 0..listener_count {
                 let (sender, receiver) = unbounded();
-                let connection = TestConnection::new(sender);
+                let connection = TestConnection::new(sender, ChannelType::Closable);
                 let listener = Listener::new(connection);
                 listeners.push(listener);
                 notification_receivers.push(receiver);
