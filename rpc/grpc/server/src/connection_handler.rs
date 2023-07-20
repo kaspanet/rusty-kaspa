@@ -12,7 +12,7 @@ use kaspa_grpc_core::{
     },
     RPC_MAX_MESSAGE_SIZE,
 };
-use kaspa_notify::{events::EVENT_TYPE_ARRAY, notifier::Notifier, subscriber::Subscriber};
+use kaspa_notify::{connection::ChannelType, events::EVENT_TYPE_ARRAY, notifier::Notifier, subscriber::Subscriber};
 use kaspa_rpc_core::{
     api::rpc::DynRpcService,
     notify::{channel::NotificationChannel, connection::ChannelConnection},
@@ -45,7 +45,8 @@ impl ConnectionHandler {
     pub fn new(core_service: DynRpcService, core_notifier: Arc<Notifier<Notification, ChannelConnection>>, manager: Manager) -> Self {
         // Prepare core objects
         let core_channel = NotificationChannel::default();
-        let core_listener_id = core_notifier.register_new_listener(ChannelConnection::new(core_channel.sender()));
+        let core_listener_id =
+            core_notifier.register_new_listener(ChannelConnection::new(core_channel.sender(), ChannelType::Closable));
 
         // Prepare internals
         let core_events = EVENT_TYPE_ARRAY[..].into();

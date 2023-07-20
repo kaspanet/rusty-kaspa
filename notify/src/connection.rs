@@ -18,19 +18,31 @@ pub trait Connection: Clone + Debug + Send + Sync + 'static {
 }
 
 #[derive(Clone, Debug)]
+pub enum ChannelType {
+    Closable,
+    Persistent,
+}
+
+#[derive(Clone, Debug)]
 pub struct ChannelConnection<N>
 where
     N: Notification,
 {
     sender: Sender<N>,
+    channel_type: ChannelType,
 }
 
 impl<N> ChannelConnection<N>
 where
     N: Notification,
 {
-    pub fn new(sender: Sender<N>) -> Self {
-        Self { sender }
+    pub fn new(sender: Sender<N>, channel_type: ChannelType) -> Self {
+        Self { sender, channel_type }
+    }
+
+    /// Close the connection, ignoring the channel type
+    pub fn force_close(&self) -> bool {
+        self.sender.close()
     }
 }
 
@@ -65,7 +77,10 @@ where
     }
 
     fn close(&self) -> bool {
-        self.sender.close()
+        match self.channel_type {
+            ChannelType::Closable => self.sender.close(),
+            ChannelType::Persistent => false,
+        }
     }
 
     fn is_closed(&self) -> bool {

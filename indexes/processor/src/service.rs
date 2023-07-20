@@ -8,6 +8,7 @@ use kaspa_core::{
 };
 use kaspa_index_core::notifier::IndexNotifier;
 use kaspa_notify::{
+    connection::ChannelType,
     events::{EventSwitches, EventType},
     scope::{PruningPointUtxoSetOverrideScope, Scope, UtxosChangedScope},
 };
@@ -27,8 +28,8 @@ impl IndexService {
     pub fn new(consensus_notifier: &Arc<ConsensusNotifier>, utxoindex: Option<UtxoIndexProxy>) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
-        let consensus_notify_listener_id =
-            consensus_notifier.register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender()));
+        let consensus_notify_listener_id = consensus_notifier
+            .register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender(), ChannelType::Closable));
 
         // Prepare the index-processor notifier
         // No subscriber is defined here because the subscription are manually created during the construction and never changed after that.

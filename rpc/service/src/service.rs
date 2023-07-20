@@ -31,6 +31,7 @@ use kaspa_index_core::{
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
 use kaspa_notify::{
     collector::DynCollector,
+    connection::ChannelType,
     events::{EventSwitches, EventType, EVENT_TYPE_ARRAY},
     listener::ListenerId,
     notifier::Notifier,
@@ -95,8 +96,8 @@ impl RpcCoreService {
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
-        let consensus_notify_listener_id =
-            consensus_notifier.register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender()));
+        let consensus_notify_listener_id = consensus_notifier
+            .register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender(), ChannelType::Closable));
 
         // Prepare the rpc-core notifier objects
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
@@ -118,8 +119,9 @@ impl RpcCoreService {
         let index_converter = Arc::new(IndexConverter::new(config.clone()));
         if let Some(ref index_notifier) = index_notifier {
             let index_notify_channel = Channel::<IndexNotification>::default();
-            let index_notify_listener_id =
-                index_notifier.clone().register_new_listener(IndexChannelConnection::new(index_notify_channel.sender()));
+            let index_notify_listener_id = index_notifier
+                .clone()
+                .register_new_listener(IndexChannelConnection::new(index_notify_channel.sender(), ChannelType::Closable));
 
             let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
             let index_collector =

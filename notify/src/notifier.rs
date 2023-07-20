@@ -703,6 +703,7 @@ mod tests {
     use super::{test_helpers::*, *};
     use crate::{
         collector::CollectorFrom,
+        connection::ChannelType,
         converter::ConverterFrom,
         events::EVENT_TYPE_ARRAY,
         notification::test_helpers::*,
@@ -748,7 +749,7 @@ mod tests {
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for _ in 0..listener_count {
                 let (sender, receiver) = unbounded();
-                let connection = TestConnection::new(sender);
+                let connection = TestConnection::new(sender, ChannelType::Closable);
                 listeners.push(notifier.register_new_listener(connection));
                 notification_receivers.push(receiver);
             }
