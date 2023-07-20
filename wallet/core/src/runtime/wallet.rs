@@ -706,10 +706,10 @@ impl Wallet {
         let notification_receiver = self.inner.notification_channel.receiver.clone();
 
         spawn(async move {
-            'outer: loop {
+            loop {
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
-                        break 'outer;
+                        break;
                     },
 
                     msg = rpc_ctl_channel.receiver.recv().fuse() => {
@@ -730,6 +730,7 @@ impl Wallet {
                             },
                             Err(err) => {
                                 log_error!("{err}");
+                                log_error!("Suspending Wallet processing...");
                             }
                         }
                     }
@@ -742,7 +743,9 @@ impl Wallet {
                                 });
                             },
                             Err(err) => {
-                                log_error!("error while receiving notification: {err}");
+                                log_error!("RPC notification channel error: {err}");
+                                log_error!("Suspending Wallet notification processing...");
+                                break;
                             }
                         }
 

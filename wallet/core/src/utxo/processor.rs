@@ -284,10 +284,10 @@ impl UtxoProcessor {
         let notification_receiver = self.inner.notification_channel.receiver.clone();
 
         spawn(async move {
-            'outer: loop {
+            loop {
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
-                        break 'outer;
+                        break;
                     },
                     msg = rpc_ctl_channel.receiver.recv().fuse() => {
                         match msg {
@@ -305,6 +305,8 @@ impl UtxoProcessor {
                             }
                             Err(err) => {
                                 log_error!("UtxoProcessor: error while receiving rpc_ctl_channel message: {err}");
+                                log_error!("Suspending UTXO processor...");
+                                break;
                             }
                         }
                     }
@@ -316,7 +318,9 @@ impl UtxoProcessor {
                                 });
                             }
                             Err(err) => {
-                                log_error!("UtxoProcessor: error while receiving notification: {err}");
+                                log_error!("RPC notification channel error: {err}");
+                                log_error!("Suspending UTXO processor...");
+                                break;
                             }
                         }
                     },
