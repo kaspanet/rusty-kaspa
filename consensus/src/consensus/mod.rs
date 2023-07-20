@@ -690,7 +690,10 @@ impl ConsensusApi for Consensus {
 
     fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(high)?;
-        Ok(self.services.sync_manager.create_block_locator_from_pruning_point(high, self.pruning_point(), Some(limit))?)
+        // Keep the pruning point read guard throughout building the locator
+        let pruning_point_read = self.pruning_point_store.read();
+        let pruning_point = pruning_point_read.pruning_point().unwrap();
+        Ok(self.services.sync_manager.create_block_locator_from_pruning_point(high, pruning_point, Some(limit))?)
     }
 
     fn estimate_network_hashes_per_second(&self, start_hash: Option<Hash>, window_size: usize) -> ConsensusResult<u64> {
