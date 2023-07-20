@@ -6,9 +6,11 @@ pub struct Exit;
 
 impl Exit {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, _argv: Vec<String>, _cmd: &str) -> Result<()> {
+        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        ctx.shutdown().await?;
         tprintln!(ctx, "bye!");
 
-        nw_sys::app::quit();
+        // workflow_core::task::sleep(Duration::from_secs(10)).await;
 
         Ok(())
     }
