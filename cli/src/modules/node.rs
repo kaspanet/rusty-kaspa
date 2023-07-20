@@ -203,7 +203,7 @@ impl Node {
                         let text = &line[38..];
                         // 𐤊
                         match kind {
-                            "WARN" => {
+                            "WARN " => {
                                 term.writeln(format!("{time} {}", style(text).yellow()));
                             }
                             "ERROR" => {

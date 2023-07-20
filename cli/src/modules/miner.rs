@@ -197,20 +197,20 @@ impl Miner {
                         let text = &line[38..];
                         match kind {
                             "WARN" => {
-                                term.writeln(format!("{time} :: {}", style(text).yellow()));
+                                term.writeln(format!("{time} | {}", style(text).yellow()));
                             }
                             "ERROR" => {
-                                term.writeln(format!("{time} :: {}", style(text).red()));
+                                term.writeln(format!("{time} | {}", style(text).red()));
                             }
                             _ => {
-                                term.writeln(format!("{time} :: {text}"));
+                                term.writeln(format!("{time} | {text}"));
                             }
                         }
                     }
                 }
             });
         } else {
-            term.writeln(format!("miner: {}", stdio.trim().crlf()));
+            term.writeln(format!("Miner: {}", stdio.trim().crlf()));
         }
 
         Ok(())
