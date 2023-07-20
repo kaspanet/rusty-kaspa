@@ -1,6 +1,7 @@
 use crate::result::Result;
 use crate::wallets::HDWalletGen1;
 use kaspa_notify::{
+    connection::ChannelType,
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
@@ -40,7 +41,7 @@ impl Wallet {
         let (listener_id, notification_receiver) = match rpc.notification_mode() {
             NotificationMode::MultiListeners => {
                 let notification_channel = Channel::unbounded();
-                let connection = ChannelConnection::new(notification_channel.sender);
+                let connection = ChannelConnection::new(notification_channel.sender, ChannelType::Closable);
                 (rpc.register_new_listener(connection), notification_channel.receiver)
             }
             NotificationMode::Direct => (ListenerId::default(), rpc.notification_channel_receiver()),
