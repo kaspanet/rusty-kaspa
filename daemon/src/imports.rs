@@ -8,6 +8,7 @@ pub use kaspa_addresses::Address;
 pub use kaspa_consensus_core::networktype::NetworkType;
 pub use serde::{Deserialize, Serialize};
 pub use std::path::{Path, PathBuf};
+pub use std::sync::atomic::{AtomicBool, Ordering};
 pub use std::sync::{Arc, Mutex, MutexGuard};
 pub use workflow_core::channel::Channel;
 pub use workflow_core::task::*;

@@ -7,16 +7,25 @@ use wasm::{Process, ProcessOptions};
 
 #[derive(Default, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct CpuMinerConfig {
+    pub mute: bool,
     pub path: Option<String>,
     pub network: Option<NetworkType>,
+    pub address: Option<Address>,
+    pub server: Option<String>,
     pub threads: Option<usize>,
     pub throttle: Option<usize>,
-    pub address: Option<Address>,
 }
 
 impl CpuMinerConfig {
-    pub fn new(path: &str, network: NetworkType, address: Address) -> Result<Self> {
-        Ok(Self { path: Some(path.to_string()), network: Some(network), address: Some(address), ..Default::default() })
+    pub fn new(path: &str, network: NetworkType, address: Address, server: String, mute: bool) -> Result<Self> {
+        Ok(Self {
+            mute,
+            path: Some(path.to_string()),
+            network: Some(network),
+            address: Some(address),
+            server: Some(server),
+            ..Default::default()
+        })
     }
 }
 
@@ -41,24 +50,34 @@ impl TryFrom<CpuMinerConfig> for Vec<String> {
         let network = args.network.unwrap();
 
         match network {
-            NetworkType::Mainnet => {}
+            NetworkType::Mainnet => {
+                argv.push("--port=16110");
+            }
             NetworkType::Testnet => {
                 argv.push("--testnet");
+                argv.push("--port=16210");
             }
             _ => {
                 return Err(Error::Custom("network type is not suported by the CPU miner".to_string()));
             }
         }
 
+        let server = args.server.unwrap_or("127.0.0.1".to_string());
+        let server = format!("--kaspad-address={server}");
+        argv.push(server.as_str());
+
         if args.address.is_none() {
             return Err(Error::Custom("no address is specified".to_string()));
         }
+        let address = args.address.unwrap();
+        let address = format!("--mining-address={address}");
+        argv.push(address.as_str());
 
         let threads = args.threads.unwrap_or(1);
         let threads = format!("--threads={threads}");
         argv.push(threads.as_str());
 
-        let throttle = args.throttle.unwrap_or(3);
+        let throttle = args.throttle.unwrap_or(5_000);
         let throttle = format!("--throttle={throttle}");
         argv.push(throttle.as_str());
 
@@ -79,26 +98,35 @@ impl Default for Inner {
 
 pub struct CpuMiner {
     inner: Arc<Mutex<Inner>>,
+    mute: Arc<AtomicBool>,
     stdout: Channel<String>,
     stderr: Channel<String>,
 }
 
 impl Default for CpuMiner {
     fn default() -> Self {
-        Self { inner: Arc::new(Mutex::new(Inner::default())), stdout: Channel::unbounded(), stderr: Channel::unbounded() }
+        Self {
+            inner: Arc::new(Mutex::new(Inner::default())),
+            stdout: Channel::unbounded(),
+            stderr: Channel::unbounded(),
+            mute: Arc::new(AtomicBool::new(false)),
+        }
     }
 }
 
 impl CpuMiner {
     pub fn new(args: CpuMinerConfig) -> Self {
         Self {
+            mute: Arc::new(AtomicBool::new(args.mute)),
             inner: Arc::new(Mutex::new(Inner { config: Mutex::new(args), ..Default::default() })),
+
             stdout: Channel::unbounded(),
             stderr: Channel::unbounded(),
         }
     }
 
     pub fn configure(&self, config: CpuMinerConfig) -> Result<()> {
+        self.mute.store(config.mute, Ordering::SeqCst);
         *self.inner().config.lock().unwrap() = config;
         Ok(())
     }
@@ -152,6 +180,9 @@ impl CpuMiner {
             None,
             Some(self.stdout().clone()),
             Some(self.stderr().clone()),
+            None,
+            Some(64),
+            self.mute.load(Ordering::SeqCst),
         );
 
         // let options = KaspadOptions::new(path,network)?;
@@ -162,16 +193,14 @@ impl CpuMiner {
     }
 
     pub fn stop(&self) -> Result<()> {
-        let process = self.process();
-        if let Some(process) = process {
+        if let Some(process) = self.process() {
             process.stop()?;
         }
         Ok(())
     }
 
     pub fn restart(&self) -> Result<()> {
-        let process = self.process();
-        if let Some(process) = process {
+        if let Some(process) = self.process() {
             let argv = self.try_argv()?;
             process.replace_argv(argv);
             process.restart()?;
@@ -180,16 +209,14 @@ impl CpuMiner {
     }
 
     pub fn kill(&self) -> Result<()> {
-        let process = self.process();
-        if let Some(process) = process {
+        if let Some(process) = self.process() {
             process.kill()?;
         }
         Ok(())
     }
 
     pub async fn kill_and_join(&self) -> Result<()> {
-        let process = self.process();
-        if let Some(process) = process {
+        if let Some(process) = self.process() {
             process.kill()?;
             process.join().await?;
         }
@@ -197,20 +224,59 @@ impl CpuMiner {
     }
 
     pub async fn stop_and_join(&self) -> Result<()> {
-        let process = self.process();
-        if let Some(process) = process {
+        if let Some(process) = self.process() {
             process.stop_and_join().await?;
         }
         Ok(())
+    }
+
+    pub async fn join(&self) -> Result<()> {
+        if let Some(process) = self.process() {
+            process.join().await?;
+        }
+        Ok(())
+    }
+
+    pub async fn mute(&self, mute: bool) -> Result<()> {
+        if let Some(process) = self.process() {
+            process.mute(mute)?;
+            self.mute.store(mute, Ordering::SeqCst);
+        }
+        Ok(())
+    }
+
+    pub async fn toggle_mute(&self) -> Result<()> {
+        if let Some(process) = self.process() {
+            process.toggle_mute()?;
+        }
+        Ok(())
+    }
+
+    pub async fn version(&self) -> Result<String> {
+        Ok("n/a".to_string())
+        // let path = self.inner().config.lock().unwrap().path.clone();
+        // if let Some(path) = path {
+        //     Ok(Process::version(path.as_str()).await?.to_string())
+        // } else {
+        //     Ok("miner binary is not configured (please use 'miner select' command.".to_string())
+        // }
     }
 }
 
 #[async_trait]
 pub trait CpuMinerCtl {
+    async fn version(&self) -> Result<String>;
     async fn configure(&self, config: CpuMinerConfig) -> Result<()>;
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
+    async fn join(&self) -> Result<()>;
     async fn restart(&self) -> Result<()>;
     async fn kill(&self) -> Result<()>;
     async fn status(&self) -> Result<DaemonStatus>;
+    async fn mute(&self, mute: bool) -> Result<()>;
+    async fn toggle_mute(&self) -> Result<()>;
+
+    async fn is_running(&self) -> Result<bool> {
+        Ok(self.status().await?.uptime.is_some())
+    }
 }

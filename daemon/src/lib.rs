@@ -13,8 +13,19 @@ pub use kaspad::{Kaspad, KaspadConfig, KaspadCtl};
 use workflow_core::runtime;
 use workflow_store::fs::*;
 
-pub static LOCATIONS: &[&str] =
-    &["bin", "../target/release", "../target/debug", "../../kaspa-miner-cpu/target/debug", "../../kaspa-miner-cpu/target/release"];
+pub static LOCATIONS: &[&str] = &[
+    "bin",
+    "../target/release",
+    "../target/debug",
+    "../../kaspa-cpu-miner/target/debug",
+    "../../kaspa-cpu-miner/target/release",
+    "bin/windows-x64",
+    "bin/linux-ia32",
+    "bin/linux-x64",
+    "bin/linux-arm64",
+    "bin/macos-x64",
+    "bin/macos-aarch64",
+];
 
 pub async fn locate_binaries(root: &str, name: &str) -> Result<Vec<PathBuf>> {
     // log_info!("locating binaries in root: {root} name: {name}");
@@ -32,12 +43,8 @@ pub async fn locate_binaries(root: &str, name: &str) -> Result<Vec<PathBuf>> {
 
     let mut list = Vec::new();
     for path in locations {
-        log_info!("locating binary: {}", path.display());
         if exists(&path).await? {
-            log_info!("found binary: {}", path.display());
             list.push(path);
-        } else {
-            log_info!("did not find binary: {}", path.display());
         }
     }
 
@@ -53,6 +60,7 @@ pub enum DaemonKind {
 #[derive(Default)]
 pub struct Daemons {
     pub kaspad: Option<Arc<dyn KaspadCtl + Send + Sync + 'static>>,
+    // pub kaspad_automute : Arc<
     pub cpu_miner: Option<Arc<dyn CpuMinerCtl + Send + Sync + 'static>>,
 }
 
@@ -75,8 +83,16 @@ impl Daemons {
         self.kaspad.as_ref().expect("accessing Daemons::kaspad while kaspad option is None").clone()
     }
 
+    pub fn try_kaspad(&self) -> Option<Arc<dyn KaspadCtl + Send + Sync + 'static>> {
+        self.kaspad.clone()
+    }
+
     pub fn cpu_miner(&self) -> Arc<dyn CpuMinerCtl + Send + Sync + 'static> {
         self.cpu_miner.as_ref().expect("accessing Daemons::cpu_miner while cpu_miner option is None").clone()
+    }
+
+    pub fn try_cpu_miner(&self) -> Option<Arc<dyn CpuMinerCtl + Send + Sync + 'static>> {
+        self.cpu_miner.clone()
     }
 }
 
