@@ -679,11 +679,12 @@ impl ConsensusApi for Consensus {
 
         let mut hashes = Vec::with_capacity(self.config.params.ghostdag_k as usize);
         let mut current = hash;
-        // TODO: This will crash if we don't have the data for k blocks in the past of
-        // current. The syncee should validate it got all of the associated data.
         for _ in 0..=self.config.params.ghostdag_k {
             hashes.push(current);
-            current = self.ghostdag_primary_store.get_selected_parent(current).unwrap();
+            // TODO: ideally the syncee should validate it got all of the associated data up
+            // to k blocks back and then we would be able to safely unwrap here.
+            let Some(parent) = self.ghostdag_primary_store.get_selected_parent(current).unwrap_option() else { break; };
+            current = parent;
         }
         Ok(hashes)
     }
