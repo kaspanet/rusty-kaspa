@@ -112,7 +112,6 @@ impl KaspadCtl for CoreIpc {
         self.target.call(CoreOps::KaspadCtl, KaspadOps::DaemonCtl(DaemonCtl::ToggleMute)).await?;
         Ok(())
     }
-
 }
 
 #[async_trait]
@@ -166,5 +165,4 @@ impl CpuMinerCtl for CoreIpc {
         self.target.call(CoreOps::CpuMinerCtl, KaspadOps::DaemonCtl(DaemonCtl::ToggleMute)).await?;
         Ok(())
     }
-
 }

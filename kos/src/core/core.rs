@@ -494,7 +494,6 @@ pub async fn init_core() -> Result<()> {
     workflow_wasm::panic::init_console_panic_hook();
     kaspa_core::log::set_log_level(LevelFilter::Info);
 
-    
     let core = Core::try_new().await?;
     core.main().await?;
 
