@@ -9,7 +9,6 @@ use futures::future::try_join_all;
 use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
-    blockhash::BlockHashExtensions,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
     BlockHashSet,
@@ -101,7 +100,7 @@ impl IbdFlow {
             IbdType::Sync(highest_known_syncer_chain_hash) => {
                 self.sync_headers(
                     &session,
-                    negotiation_output.syncer_header_selected_tip,
+                    negotiation_output.syncer_virtual_selected_parent,
                     highest_known_syncer_chain_hash,
                     &relay_block,
                 )
@@ -110,7 +109,7 @@ impl IbdFlow {
             IbdType::DownloadHeadersProof => {
                 drop(session); // Avoid holding the previous consensus throughout the staging IBD
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
-                match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_header_selected_tip, &relay_block).await {
+                match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {
                     Ok(()) => {
                         spawn_blocking(|| staging.commit()).await.unwrap();
                         self.ctx.on_pruning_point_utxoset_override();
@@ -125,11 +124,11 @@ impl IbdFlow {
             }
         }
 
-        // Sync missing bodies in the past of syncer selected tip
-        self.sync_missing_block_bodies(&session, negotiation_output.syncer_header_selected_tip).await?;
+        // Sync missing bodies in the past of syncer sink (virtual selected parent)
+        self.sync_missing_block_bodies(&session, negotiation_output.syncer_virtual_selected_parent).await?;
 
         // Relay block might be in the anticone of syncer selected tip, thus
-        // check its chain for missing bodies as well.
+        // check its past for missing bodies as well.
         self.sync_missing_block_bodies(&session, relay_block.hash()).await
     }
 
@@ -139,12 +138,8 @@ impl IbdFlow {
         relay_header: &Header,
         highest_known_syncer_chain_hash: Option<Hash>,
     ) -> Result<IbdType, ProtocolError> {
-        let Some(pruning_point) = consensus.async_pruning_point().await else {
-            // TODO: fix when applying staging consensus
-            return Ok(IbdType::DownloadHeadersProof);
-        };
-
         if let Some(highest_known_syncer_chain_hash) = highest_known_syncer_chain_hash {
+            let pruning_point = consensus.async_pruning_point().await;
             if consensus.async_is_chain_ancestor_of(pruning_point, highest_known_syncer_chain_hash).await? {
                 // The node is only missing a segment in the future of its current pruning point, and the chains
                 // agree as well, so we perform a simple sync IBD and only download the missing data
@@ -155,12 +150,7 @@ impl IbdFlow {
             // this info should possibly be used to reject the IBD despite having more blue work etc.
         }
 
-        let hst_hash = consensus.async_get_headers_selected_tip().await;
-        // TODO: remove when applying staging consensus
-        if hst_hash.is_origin() {
-            return Ok(IbdType::DownloadHeadersProof);
-        }
-        let hst_header = consensus.async_get_header(hst_hash).await.unwrap();
+        let hst_header = consensus.async_get_header(consensus.async_get_headers_selected_tip().await).await.unwrap();
         if relay_header.blue_score >= hst_header.blue_score + self.ctx.config.pruning_depth
             && relay_header.blue_work > hst_header.blue_work
         {
@@ -174,7 +164,7 @@ impl IbdFlow {
     async fn ibd_with_headers_proof(
         &mut self,
         staging: &StagingConsensus,
-        syncer_header_selected_tip: Hash,
+        syncer_virtual_selected_parent: Hash,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
         info!("Starting IBD with headers proof with peer {}", self.router);
@@ -182,7 +172,7 @@ impl IbdFlow {
         let session = staging.session().await;
 
         let pruning_point = self.sync_and_validate_pruning_proof(&session).await?;
-        self.sync_headers(&session, syncer_header_selected_tip, pruning_point, relay_block).await?;
+        self.sync_headers(&session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
         self.validate_staging_timestamps(&self.ctx.consensus().session().await, &session).await?;
         self.sync_pruning_point_utxoset(&session, pruning_point).await?;
         Ok(())
@@ -303,7 +293,7 @@ impl IbdFlow {
     async fn sync_headers(
         &mut self,
         consensus: &ConsensusProxy,
-        syncer_header_selected_tip: Hash,
+        syncer_virtual_selected_parent: Hash,
         highest_known_syncer_chain_hash: Hash,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
@@ -315,7 +305,7 @@ impl IbdFlow {
                 Payload::RequestHeaders,
                 RequestHeadersMessage {
                     low_hash: Some(highest_known_syncer_chain_hash.into()),
-                    high_hash: Some(syncer_header_selected_tip.into())
+                    high_hash: Some(syncer_virtual_selected_parent.into())
                 }
             ))
             .await?;
@@ -343,7 +333,7 @@ impl IbdFlow {
             progress_reporter.report_completion(prev_chunk_len);
         }
 
-        self.sync_missing_relay_past_headers(consensus, syncer_header_selected_tip, relay_block.hash()).await?;
+        self.sync_missing_relay_past_headers(consensus, syncer_virtual_selected_parent, relay_block.hash()).await?;
 
         Ok(())
     }
@@ -351,7 +341,7 @@ impl IbdFlow {
     async fn sync_missing_relay_past_headers(
         &mut self,
         consensus: &ConsensusProxy,
-        syncer_header_selected_tip: Hash,
+        syncer_virtual_selected_parent: Hash,
         relay_block_hash: Hash,
     ) -> Result<(), ProtocolError> {
         // Finished downloading syncer selected tip blocks,
@@ -366,7 +356,7 @@ impl IbdFlow {
             .enqueue(make_message!(
                 Payload::RequestAnticone,
                 RequestAnticoneMessage {
-                    block_hash: Some(syncer_header_selected_tip.into()),
+                    block_hash: Some(syncer_virtual_selected_parent.into()),
                     context_hash: Some(relay_block_hash.into())
                 }
             ))

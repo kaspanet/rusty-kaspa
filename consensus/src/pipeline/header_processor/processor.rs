@@ -19,7 +19,6 @@ use crate::{
             pruning::{DbPruningStore, PruningPointInfo, PruningStoreReader},
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreReader},
-            selected_chain::{DbSelectedChainStore, SelectedChainStore},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             DB,
         },
@@ -136,7 +135,6 @@ pub struct HeaderProcessor {
     pub(super) daa_excluded_store: Arc<DbDaaStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
-    pub(super) selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
     pub(super) depth_store: Arc<DbDepthStore>,
 
     // Managers and services
@@ -187,7 +185,6 @@ impl HeaderProcessor {
             headers_store: storage.headers_store.clone(),
             depth_store: storage.depth_store.clone(),
             headers_selected_tip_store: storage.headers_selected_tip_store.clone(),
-            selected_chain_store: storage.selected_chain_store.clone(),
             block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
 
@@ -392,18 +389,13 @@ impl HeaderProcessor {
         // Non-append only stores need to use write locks.
         // Note we need to keep the lock write guards until the batch is written.
         let mut hst_write = self.headers_selected_tip_store.write();
-        let mut sc_write = self.selected_chain_store.write();
         let prev_hst = hst_write.get().unwrap();
-        // We can't calculate chain path for blocks that do not have the pruning point in their chain, so we just skip them.
         if SortableBlock::new(ctx.hash, header.blue_work) > prev_hst
             && reachability::is_chain_ancestor_of(&staging, pp, ctx.hash).unwrap()
         {
             // Hint reachability about the new tip.
             reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
             hst_write.set_batch(&mut batch, SortableBlock::new(ctx.hash, header.blue_work)).unwrap();
-            let mut chain_path = self.dag_traversal_manager.calculate_chain_path(prev_hst.hash, ghostdag_data[0].selected_parent);
-            chain_path.added.push(ctx.hash);
-            sc_write.apply_changes(&mut batch, chain_path).unwrap();
         }
 
         //
@@ -437,7 +429,6 @@ impl HeaderProcessor {
         drop(reachability_relations_write);
         drop(relations_write);
         drop(hst_write);
-        drop(sc_write);
     }
 
     fn commit_trusted_header(&self, ctx: HeaderProcessingContext, _header: &Header) {
@@ -463,13 +454,10 @@ impl HeaderProcessor {
     pub fn process_genesis(&self) {
         // Init headers selected tip and selected chain stores
         let mut batch = WriteBatch::default();
-        let mut sc_write = self.selected_chain_store.write();
-        sc_write.init_with_pruning_point(&mut batch, self.genesis.hash).unwrap();
         let mut hst_write = self.headers_selected_tip_store.write();
         hst_write.set_batch(&mut batch, SortableBlock::new(self.genesis.hash, 0.into())).unwrap();
         self.db.write(batch).unwrap();
         drop(hst_write);
-        drop(sc_write);
 
         // Write the genesis header
         let mut genesis_header: Header = (&self.genesis).into();

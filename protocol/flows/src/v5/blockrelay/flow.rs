@@ -205,7 +205,7 @@ impl HandleRelayInvsFlow {
 
         // Add the block to the orphan pool if it's within orphan resolution range.
         // If the block is indirect it means one of its descendants was already is resolution range, so
-        // we can save the query.
+        // we can avoid the query.
         if is_indirect_inv || self.check_orphan_resolution_range(consensus, block.hash()).await? {
             let hash = block.hash();
             self.ctx.add_orphan(block).await;
@@ -224,8 +224,8 @@ impl HandleRelayInvsFlow {
 
     /// Finds out whether the given block hash should be retrieved via the unorphaning
     /// mechanism or via IBD. This method sends a BlockLocator request to the peer with
-    /// a limit of ORPHAN_RESOLUTION_RANGE. In the response, if we know none of the hashes,
-    /// we should retrieve the given blockHash via IBD. Otherwise, via unorphaning.
+    /// a limit of `ctx.orphan_resolution_range`. In the response, if we know none of the hashes,
+    /// we should retrieve the given block `hash` via IBD. Otherwise, via unorphaning.
     async fn check_orphan_resolution_range(&mut self, consensus: &ConsensusProxy, hash: Hash) -> Result<bool, ProtocolError> {
         self.router
             .enqueue(make_message!(

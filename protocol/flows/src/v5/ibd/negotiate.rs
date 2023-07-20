@@ -12,7 +12,10 @@ use kaspa_p2p_lib::{
 };
 
 pub struct ChainNegotiationOutput {
-    pub syncer_header_selected_tip: Hash,
+    // Note: previous version peers (especially golang nodes) might return the headers selected tip here. Nonetheless
+    // we name here following the currently implemented logic by which the syncer returns the virtual selected parent
+    // chain on block locator queries
+    pub syncer_virtual_selected_parent: Hash,
     pub highest_known_syncer_chain_hash: Option<Hash>,
 }
 
@@ -42,7 +45,7 @@ impl IbdFlow {
             locator_hashes.last().unwrap()
         );
 
-        let mut syncer_header_selected_tip = locator_hashes[0]; // Syncer header selected tip hash
+        let mut syncer_virtual_selected_parent = locator_hashes[0]; // Syncer sink (virtual selected parent)
         let highest_known_syncer_chain_hash: Option<Hash>;
         let mut negotiation_restart_counter = 0;
         let mut negotiation_zoom_counts = 0;
@@ -152,13 +155,13 @@ impl IbdFlow {
                 );
 
                 initial_locator_len = locator_hashes.len();
-                // Reset syncer's header selected tip
-                syncer_header_selected_tip = locator_hashes[0];
+                // Reset syncer's virtual selected parent
+                syncer_virtual_selected_parent = locator_hashes[0];
             }
         }
 
         debug!("Found highest known syncer chain block {:?} from peer {}", highest_known_syncer_chain_hash, self.router);
-        Ok(ChainNegotiationOutput { syncer_header_selected_tip, highest_known_syncer_chain_hash })
+        Ok(ChainNegotiationOutput { syncer_virtual_selected_parent, highest_known_syncer_chain_hash })
     }
 
     async fn get_syncer_chain_block_locator(
