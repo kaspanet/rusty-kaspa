@@ -40,7 +40,7 @@ impl LocalStoreInner {
             }
 
             let name = args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
-            let storage = Storage::new(folder, &name)?;
+            let storage = Storage::new_with_folder(folder, &name)?;
             if storage.exists().await? && !args.overwrite_wallet {
                 return Err(Error::WalletAlreadyExists);
             }
@@ -63,7 +63,7 @@ impl LocalStoreInner {
         }
 
         let name = args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
-        let storage = Storage::new(folder, &name)?;
+        let storage = Storage::new_with_folder(folder, &name)?;
 
         let secret = ctx.wallet_secret().await;
         let wallet = Wallet::try_load(&storage).await?;
@@ -195,7 +195,7 @@ impl Interface for LocalStore {
         //     Store::Resident => Ok(false),
         //     Store::Storage(ref storage) => {
         let location = self.location.lock().unwrap().clone().unwrap();
-        let store = Storage::new(&location.folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
+        let store = Storage::new_with_folder(&location.folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
         store.exists().await
         // }
         // }

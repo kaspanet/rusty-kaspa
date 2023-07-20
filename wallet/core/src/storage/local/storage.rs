@@ -27,14 +27,26 @@ impl Storage {
 
 impl Storage {
     pub fn default_wallet_store() -> Self {
-        Self::new(super::DEFAULT_STORAGE_FOLDER, super::DEFAULT_WALLET_FILE).unwrap()
+        Self::new(super::DEFAULT_WALLET_FILE).unwrap()
     }
 
     pub fn default_settings_store() -> Self {
-        Self::new(super::DEFAULT_STORAGE_FOLDER, super::DEFAULT_SETTINGS_FILE).unwrap()
+        Self::new(super::DEFAULT_SETTINGS_FILE).unwrap()
     }
 
-    pub fn new(folder: &str, name: &str) -> Result<Storage> {
+    pub fn new(name: &str) -> Result<Storage> {
+        let filename = if runtime::is_web() {
+            PathBuf::from(name)
+        } else {
+            let filename = Path::new(super::DEFAULT_STORAGE_FOLDER).join(name);
+            let filename = fs::resolve_path(filename.to_str().unwrap());
+            filename
+        };
+
+        Ok(Storage { filename })
+    }
+
+    pub fn new_with_folder(folder: &str, name: &str) -> Result<Storage> {
         let filename = if runtime::is_web() {
             PathBuf::from(name) //filename.file_name().ok_or(Error::InvalidFilename(format!("{}", filename.display())))?)
         } else {

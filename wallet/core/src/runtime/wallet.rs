@@ -3,9 +3,10 @@ use crate::result::Result;
 use crate::runtime::Events;
 use crate::runtime::{Account, AccountId, AccountMap};
 use crate::secret::Secret;
-use crate::settings::{Settings, SettingsStore};
+use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
 use crate::storage::local::interface::LocalStore;
+use crate::storage::local::Storage;
 use crate::storage::{self, AccessContextT, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
 use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
@@ -125,7 +126,7 @@ pub struct Inner {
     store: Arc<dyn Interface>,
     virtual_daa_score: Arc<AtomicU64>,
     network: Arc<Mutex<Option<NetworkInfo>>>,
-    settings: SettingsStore,
+    settings: SettingsStore<WalletSettings>,
     utxo_processor: Arc<UtxoProcessor>,
     rpc: Arc<DynRpcApi>,
     multiplexer: Multiplexer<Events>,
@@ -178,7 +179,7 @@ impl Wallet {
                 is_synced: AtomicBool::new(false),
                 virtual_daa_score: Arc::new(AtomicU64::new(0)),
                 network: Arc::new(Mutex::new(network_type.map(|t| t.into()).or_else(|| Some(NetworkType::Mainnet.into())))),
-                settings: SettingsStore::default(),
+                settings: SettingsStore::new_with_storage(Storage::default_settings_store()), //::default(),
                 utxo_processor,
             }),
         };
@@ -248,7 +249,7 @@ impl Wallet {
         // - TODO - RESET?
         self.reset().await?;
 
-        let name = name.or_else(|| self.settings().get(Settings::Wallet));
+        let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
         self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
         let store_accounts = self.store().as_account_store()?;
@@ -290,7 +291,7 @@ impl Wallet {
         &self.inner.multiplexer
     }
 
-    pub fn settings(&self) -> &SettingsStore {
+    pub fn settings(&self) -> &SettingsStore<WalletSettings> {
         &self.inner.settings
     }
 
@@ -303,11 +304,11 @@ impl Wallet {
 
         let settings = self.settings();
 
-        if let Some(network_type) = settings.get(Settings::Network) {
+        if let Some(network_type) = settings.get(WalletSettings::Network) {
             self.select_network(network_type).unwrap_or_else(|_| log_error!("Unable to select network type: `{}`", network_type));
         }
 
-        if let Some(url) = settings.get::<String>(Settings::Server) {
+        if let Some(url) = settings.get::<String>(WalletSettings::Server) {
             self.rpc_client().set_url(url.as_str()).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
         }
 
@@ -705,32 +706,47 @@ impl Wallet {
         let notification_receiver = self.inner.notification_channel.receiver.clone();
 
         spawn(async move {
-            loop {
+            'outer: loop {
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
-                        break;
+                        break 'outer;
                     },
-                    notification = notification_receiver.recv().fuse() => {
-                        if let Ok(notification) = notification {
-                            this.handle_notification(notification).await.unwrap_or_else(|err| {
-                                log_error!("error while handling notification: {err}");
-                            });
-                        }
-                    },
+
                     msg = rpc_ctl_channel.receiver.recv().fuse() => {
-                        if let Ok(msg) = msg {
-                            match msg {
-                                Ctl::Open => {
-                                    multiplexer.broadcast(Events::Connect(this.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
-                                    this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
-                                },
-                                Ctl::Close => {
-                                    multiplexer.broadcast(Events::Disconnect(this.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
-                                    this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
+                        match msg {
+                            Ok(msg) => {
+
+                                match msg {
+                                    Ctl::Open => {
+                                        multiplexer.broadcast(Events::Connect(this.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
+                                        this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
+                                    },
+                                    Ctl::Close => {
+                                        multiplexer.broadcast(Events::Disconnect(this.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
+                                        this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
+                                    }
                                 }
+
+                            },
+                            Err(err) => {
+                                log_error!("{err}");
                             }
                         }
                     }
+
+                    notification = notification_receiver.recv().fuse() => {
+                        match notification {
+                            Ok(notification) => {
+                                this.handle_notification(notification).await.unwrap_or_else(|err| {
+                                    log_error!("error while handling notification: {err}");
+                                });
+                            },
+                            Err(err) => {
+                                log_error!("error while receiving notification: {err}");
+                            }
+                        }
+
+                    },
                 }
             }
 

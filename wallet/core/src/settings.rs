@@ -2,13 +2,15 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::storage::local::Storage;
 use dashmap::iter::Iter;
+use serde::de::DeserializeOwned;
 use std::fmt::Display;
+use std::hash::Hash;
 use std::str::FromStr;
 use workflow_core::enums::Describe;
 
 #[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(rename_all = "lowercase")]
-pub enum Settings {
+pub enum WalletSettings {
     #[describe("Network type (mainnet|testnet|devnet|simnet)")]
     Network,
     #[describe("Server address (default: 127.0.0.1)")]
@@ -17,25 +19,48 @@ pub enum Settings {
     Wallet,
 }
 
-impl Settings {
+impl WalletSettings {
     pub fn to_lowercase_string(&self) -> String {
         self.to_string().to_lowercase()
     }
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct SettingsStore {
-    map: DashMap<Settings, String>,
+#[async_trait]
+impl DefaultSettings for WalletSettings {
+    async fn defaults() -> Vec<(Self, String)> {
+        vec![(Self::Server, "127.0.0.1"), (Self::Wallet, "kaspa")].into_iter().map(|(k, v)| (k, v.to_string())).collect()
+    }
 }
 
-impl SettingsStore {
-    pub fn new(map: DashMap<Settings, String>) -> Self {
-        Self { map }
+#[async_trait]
+pub trait DefaultSettings: Sized {
+    async fn defaults() -> Vec<(Self, String)>;
+}
+
+#[derive(Debug, Clone)]
+pub struct SettingsStore<K>
+where
+    K: DefaultSettings + Display + Eq + Hash + Clone + Serialize + DeserializeOwned + 'static,
+{
+    map: DashMap<K, String>,
+    storage: Storage,
+}
+
+impl<K> SettingsStore<K>
+where
+    K: DefaultSettings + Display + Eq + Hash + Clone + Serialize + DeserializeOwned + 'static,
+{
+    pub fn try_new(filename: &str) -> Result<Self> {
+        Ok(Self { map: DashMap::default(), storage: Storage::new(filename)? })
     }
 
-    pub fn get<T>(&self, key: Settings) -> Option<T>
+    pub fn new_with_storage(storage: Storage) -> Self {
+        Self { map: DashMap::default(), storage }
+    }
+
+    pub fn get<V>(&self, key: K) -> Option<V>
     where
-        T: FromStr,
+        V: FromStr,
     {
         let s = self.map.get(&key);
         if let Some(s) = s {
@@ -52,9 +77,9 @@ impl SettingsStore {
         }
     }
 
-    pub async fn set<T>(&self, key: Settings, value: T) -> Result<()>
+    pub async fn set<V>(&self, key: K, value: V) -> Result<()>
     where
-        T: Display,
+        V: Display,
     {
         let v = value.to_string();
 
@@ -64,9 +89,11 @@ impl SettingsStore {
     }
 
     pub async fn try_load(&self) -> Result<()> {
-        let storage = Storage::default_settings_store();
-        let list: Vec<(Settings, String)> =
-            if storage.exists().await? { workflow_store::fs::read_json(storage.filename()).await? } else { vec![] };
+        let list: Vec<(K, String)> = if self.storage.exists().await? {
+            workflow_store::fs::read_json(self.storage.filename()).await?
+        } else {
+            <K as DefaultSettings>::defaults().await
+        };
 
         self.map.clear();
         list.into_iter().for_each(|(k, v)| {
@@ -77,12 +104,11 @@ impl SettingsStore {
 
     pub async fn try_store(&self) -> Result<()> {
         let map = self.map.clone().into_iter().map(|(k, v)| (k, v)).collect::<Vec<_>>();
-        let storage = Storage::default_settings_store();
-        workflow_store::fs::write_json(storage.filename(), &map).await?;
+        workflow_store::fs::write_json(self.storage.filename(), &map).await?;
         Ok(())
     }
 
-    pub fn iter(&self) -> Iter<'_, Settings, String> {
+    pub fn iter(&self) -> Iter<'_, K, String> {
         self.map.iter()
     }
 }
