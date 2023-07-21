@@ -3,7 +3,7 @@ pub mod wasm;
 
 use crate::imports::*;
 
-use wasm::{Process, ProcessEvent, ProcessOptions};
+use wasm::{version, Process, ProcessEvent, ProcessOptions};
 
 #[derive(Default, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct CpuMinerConfig {
@@ -17,15 +17,19 @@ pub struct CpuMinerConfig {
 }
 
 impl CpuMinerConfig {
-    pub fn new(path: &str, network: NetworkType, address: Address, server: String, mute: bool) -> Result<Self> {
-        Ok(Self {
+    pub fn new(path: &str, network: NetworkType, address: Address, server: String, mute: bool) -> Self {
+        Self {
             mute,
             path: Some(path.to_string()),
             network: Some(network),
             address: Some(address),
             server: Some(server),
             ..Default::default()
-        })
+        }
+    }
+
+    pub fn new_for_version(path: &str) -> Self {
+        Self { path: Some(path.to_string()), ..Default::default() }
     }
 }
 
@@ -80,6 +84,8 @@ impl TryFrom<CpuMinerConfig> for Vec<String> {
         let throttle = args.throttle.unwrap_or(5_000);
         let throttle = format!("--throttle={throttle}");
         argv.push(throttle.as_str());
+
+        argv.push("--altlogs");
 
         Ok(argv.into_iter().map(String::from).collect())
     }
@@ -239,13 +245,12 @@ impl CpuMiner {
     }
 
     pub async fn version(&self) -> Result<String> {
-        Ok("n/a".to_string())
-        // let path = self.inner().config.lock().unwrap().path.clone();
-        // if let Some(path) = path {
-        //     Ok(Process::version(path.as_str()).await?.to_string())
-        // } else {
-        //     Ok("miner binary is not configured (please use 'miner select' command.".to_string())
-        // }
+        let path = self.inner().config.lock().unwrap().path.clone();
+        if let Some(path) = path {
+            Ok(version(path.as_str()).await?.to_string())
+        } else {
+            Err("miner binary is not configured (please use 'miner select' command.".into())
+        }
     }
 }
 

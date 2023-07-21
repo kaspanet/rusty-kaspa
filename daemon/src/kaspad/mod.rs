@@ -3,8 +3,7 @@ pub mod wasm;
 
 use crate::imports::*;
 
-use wasm::{Process, ProcessEvent, ProcessOptions};
-// use workflow_log::color_log::downcast_sync;
+use wasm::{version, Process, ProcessEvent, ProcessOptions};
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct KaspadConfig {
@@ -29,8 +28,8 @@ pub struct KaspadConfig {
 }
 
 impl KaspadConfig {
-    pub fn new(path: &str, network: NetworkType, mute: bool) -> Result<Self> {
-        Ok(Self { path: Some(path.to_string()), network: Some(network), mute, ..Default::default() })
+    pub fn new(path: &str, network: NetworkType, mute: bool) -> Self {
+        Self { path: Some(path.to_string()), network: Some(network), mute, ..Default::default() }
     }
 }
 
@@ -289,7 +288,7 @@ impl Kaspad {
     pub async fn version(&self) -> Result<String> {
         let path = self.inner().config.lock().unwrap().path.clone();
         if let Some(path) = path {
-            Ok(Process::version(path.as_str()).await?.to_string())
+            Ok(version(path.as_str()).await?.to_string())
         } else {
             Ok("Kaspad binary is not configured. Please use 'node select' command.".to_string())
         }

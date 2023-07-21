@@ -82,7 +82,7 @@ impl Miner {
         let address = ctx.account().await?.receive_address().await?;
         let server: String = self.settings.get(MinerSettings::Server).unwrap_or("127.0.0.1".to_string());
         let mute = self.mute.load(Ordering::SeqCst);
-        let config = CpuMinerConfig::new(location.as_str(), network_type, address, server, mute)?;
+        let config = CpuMinerConfig::new(location.as_str(), network_type, address, server, mute);
         Ok(config)
     }
 
@@ -117,9 +117,9 @@ impl Miner {
                 let mute = !self.mute.load(Ordering::SeqCst);
                 self.mute.store(mute, Ordering::SeqCst);
                 if mute {
-                    tprintln!(ctx, "{}", style("node is muted").dim());
+                    tprintln!(ctx, "{}", style("miner is muted").dim());
                 } else {
-                    tprintln!(ctx, "{}", style("node is unmuted").dim());
+                    tprintln!(ctx, "{}", style("miner is unmuted").dim());
                 }
                 cpu_miner.mute(mute).await?;
                 self.settings.set(MinerSettings::Mute, mute).await?;
@@ -132,7 +132,12 @@ impl Miner {
                 self.select(ctx).await?;
             }
             "version" => {
-                cpu_miner.configure(self.create_config(&ctx).await?).await?;
+                let location: String = self
+                    .settings
+                    .get(MinerSettings::Location)
+                    .ok_or_else(|| Error::Custom("No miner binary specified, please use `miner select` to select a binary.".into()))?;
+                let config = CpuMinerConfig::new_for_version(location.as_str());
+                cpu_miner.configure(config).await?;
                 let version = cpu_miner.version().await?;
                 tprintln!(ctx, "{}", version);
             }

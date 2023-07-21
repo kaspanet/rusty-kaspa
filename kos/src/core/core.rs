@@ -358,8 +358,20 @@ impl Core {
             Method::new(move |_op: ()| {
                 let this = this.clone();
                 Box::pin(async move {
-                    let uptime = this.kaspad.uptime().map(|u| u.as_secs());
+                    let uptime = this.cpu_miner.uptime().map(|u| u.as_secs());
                     Ok(DaemonStatus { uptime })
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.method(
+            CoreOps::CpuMinerVersion,
+            Method::new(move |_op: ()| {
+                let this = this.clone();
+                Box::pin(async move {
+                    let version = this.cpu_miner.version().await?;
+                    Ok(version)
                 })
             }),
         );
