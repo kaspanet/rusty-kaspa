@@ -1,6 +1,11 @@
 use crate::imports::*;
 use kaspa_consensus_core::networktype::NetworkType;
 
+pub enum DeltaStyle {
+    Mature,
+    Pending,
+}
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub enum Delta {
     #[default]
@@ -10,11 +15,17 @@ pub enum Delta {
 }
 
 impl Delta {
-    pub fn style(&self, s: &str) -> String {
+    pub fn style(&self, s: &str, delta_style: DeltaStyle) -> String {
         match self {
             Delta::NoChange => " ".to_string() + s,
             Delta::Increase => style("+".to_string() + s).green().to_string(),
-            Delta::Decrease => style("-".to_string() + s).red().to_string(),
+            Delta::Decrease => {
+                if matches!(delta_style, DeltaStyle::Mature) {
+                    style("-".to_string() + s).red().to_string()
+                } else {
+                    style("-".to_string() + s).dim().to_string()
+                }
+            }
         }
     }
 }
@@ -49,7 +60,7 @@ impl Balance {
     pub fn delta(&mut self, previous: &Option<Balance>) {
         if let Some(previous) = previous {
             self.mature_delta = self.mature.cmp(&previous.mature).into();
-            self.pending_delta = self.mature.cmp(&previous.pending).into();
+            self.pending_delta = self.pending.cmp(&previous.pending).into();
         } else {
             self.mature_delta = Delta::NoChange;
             self.pending_delta = Delta::NoChange;
@@ -97,8 +108,8 @@ impl From<(&Option<Balance>, &NetworkType, Option<usize>)> for BalanceStrings {
                 pending = pending.map(|pending| pending.pad_to_width(padding));
             }
             Self {
-                mature: format!("{} {}", balance.mature_delta.style(&mature), suffix),
-                pending: pending.map(|pending| format!("{} {}", balance.pending_delta.style(&pending), suffix)),
+                mature: format!("{} {}", balance.mature_delta.style(&mature, DeltaStyle::Mature), suffix),
+                pending: pending.map(|pending| format!("{} {}", balance.pending_delta.style(&pending, DeltaStyle::Pending), suffix)),
             }
         } else {
             Self { mature: format!("N/A {suffix}"), pending: None }
