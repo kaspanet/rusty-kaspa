@@ -190,9 +190,9 @@ impl App {
         // https://explorer.kaspa.org/blocks/
         // let this = self.clone();
         self.cli.term().register_link_matcher(
-            &js_sys::RegExp::new(r"(block|pool:)\s+[0-9a-fA-F]{64}", "i"),
+            &js_sys::RegExp::new(r"(block|pool):?\s+[0-9a-fA-F]{64}", "i"),
             Arc::new(Box::new(move |modifiers, text| {
-                let re = Regex::new(r"(?i)^(block|pool:)\s+").unwrap();
+                let re = Regex::new(r"(?i)^(block|pool):?\s+").unwrap();
                 let uri = re.replace(text, "");
 
                 if modifiers.ctrl || modifiers.meta {
