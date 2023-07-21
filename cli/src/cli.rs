@@ -713,7 +713,7 @@ impl Cli for KaspaCli {
 
     fn prompt(&self) -> Option<String> {
         if let Some(name) = self.wallet.name() {
-            let mut name_ = if name == "kaspa" { "".to_string() } else { format!("{name}") };
+            let mut name_ = if name == "kaspa" { "".to_string() } else { "{name}".to_string() };
 
             if let Ok(account) = self.wallet.account() {
                 name_ += " • ";

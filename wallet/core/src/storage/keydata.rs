@@ -1,7 +1,8 @@
 use crate::address::create_xpub_from_xprv;
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::{encryption::sha256_hash, imports::*};
+// use crate::{encryption::sha256_hash, imports::*};
+use crate::imports::*;
 use faster_hex::{hex_decode, hex_string};
 use kaspa_bip32::{ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic};
 use secp256k1::SecretKey;
@@ -10,14 +11,19 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 #[allow(unused_imports)]
 use workflow_core::runtime;
+use xxhash_rust::xxh3::xxh3_64;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::storage::{AccountKind, Encryptable};
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, BorshSerialize)]
 pub struct KeyDataId(pub(crate) [u8; 8]);
 
 impl KeyDataId {
+    pub fn new(id: u64) -> Self {
+        KeyDataId(id.to_le_bytes())
+    }
+
     pub fn new_from_slice(vec: &[u8]) -> Self {
         Self(<[u8; 8]>::try_from(<&[u8]>::clone(&vec)).expect("Error: invalid slice size for id"))
     }
@@ -125,7 +131,7 @@ impl PrvKeyVariant {
 
     pub fn id(&self) -> KeyDataId {
         let s = self.get_string();
-        PrvKeyDataId::new_from_slice(&sha256_hash(s.as_bytes()).unwrap().as_ref()[0..8])
+        PrvKeyDataId::new(xxh3_64(s.as_bytes()))
     }
 
     // pub fn get_caps(&self) -> KeyCaps {
@@ -372,7 +378,8 @@ impl PubKeyData {
         let mut temp = keys.clone();
         temp.sort();
         let str = String::from_iter(temp);
-        let id = PubKeyDataId::new_from_slice(&sha256_hash(str.as_bytes()).unwrap().as_ref()[0..8]);
+        let id = PubKeyDataId::new(xxh3_64(str.as_bytes()));
+        // let id = PubKeyDataId::new_from_slice(&sha256_hash(str.as_bytes()).unwrap().as_ref()[0..8]);
         Self { id, keys, cosigner_index, minimum_signatures }
     }
 }

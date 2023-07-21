@@ -229,10 +229,11 @@ impl Wallet {
         // TODO - parallelize?
         if self.is_open()? {
             // log_info!("reloading accounts...");
+            // let mut accounts = self.accounts(None).await?;
             let mut accounts = self.accounts(None).await?;
-            while let Some(account) = accounts.try_next().await? {
-                account.start().await?;
-                // TODO - parallelize?
+            while let Some(_account) = accounts.try_next().await? {
+                //     account.start().await?;
+                //     // TODO - parallelize?
             }
 
             let hint = self.store().get_user_hint().await?;
@@ -809,9 +810,13 @@ impl Wallet {
             async move {
                 let stored = stored.unwrap();
                 if let Some(account) = wallet.active_accounts().get(&stored.id) {
+                    log_info!("fetching active account: {}", account.id);
                     Ok(account)
                 } else {
-                    Account::try_new_arc_from_storage(&wallet, &stored).await
+                    let account = Account::try_new_arc_from_storage(&wallet, &stored).await?;
+                    log_info!("starting new active account instance {}", account.id);
+                    account.start().await?;
+                    Ok(account)
                 }
             }
         });

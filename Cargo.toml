@@ -177,6 +177,7 @@ sorted-insert = "0.2.3"
 dashmap = "5.4.0"
 separator = "0.4.1"
 serde_bytes = "0.11.11"
+xxhash-rust = { version = "0.8.6", features = ["xxh3"] }
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }

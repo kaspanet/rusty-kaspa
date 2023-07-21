@@ -18,14 +18,14 @@ use kaspa_bip32::{ChildNumber, PrivateKey};
 use kaspa_notify::listener::ListenerId;
 use separator::Separatable;
 use serde::Serializer;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::str::FromStr;
 use workflow_core::abortable::Abortable;
 use workflow_core::enums::u8_try_from;
 use workflow_core::task::yield_executor;
 use workflow_core::time::Instant;
+use xxhash_rust::xxh3::xxh3_64;
 
 use super::scan::{ScanExtent, DEFAULT_WINDOW_SIZE};
 pub const DEFAULT_AMOUNT_PADDING: usize = 19;
@@ -72,7 +72,8 @@ impl FromStr for AccountKind {
     }
 }
 
-#[derive(Hash)]
+// #[derive(Hash)]
+#[derive(BorshSerialize)]
 struct AccountIdHashData {
     prv_key_data_id: PrvKeyDataId,
     ecdsa: bool,
@@ -85,14 +86,14 @@ pub struct AccountId(pub(crate) u64);
 
 impl AccountId {
     pub(crate) fn new(prv_key_data_id: &PrvKeyDataId, ecdsa: bool, account_kind: &AccountKind, account_index: u64) -> AccountId {
-        let mut hasher = DefaultHasher::new();
-        AccountIdHashData { prv_key_data_id: *prv_key_data_id, ecdsa, account_kind: *account_kind, account_index }.hash(&mut hasher);
-        AccountId(hasher.finish())
+        let data = AccountIdHashData { prv_key_data_id: *prv_key_data_id, ecdsa, account_kind: *account_kind, account_index };
+        AccountId(xxh3_64(data.try_to_vec().unwrap().as_slice()))
     }
 
     pub fn short(&self) -> String {
         let hex = self.to_hex();
-        format!("{}..{}", &hex[0..4], &hex[hex.len() - 4..])
+        // format!("{}..{}", &hex[0..4], &hex[hex.len() - 4..])
+        format!("[{}]", &hex[0..4])
     }
 }
 
@@ -265,13 +266,15 @@ impl Account {
         self.utxo_context().balance()
     }
 
-    pub fn balance_as_strings(&self) -> Result<BalanceStrings> {
-        Ok(BalanceStrings::from((&self.balance(), &self.wallet.network()?, Some(DEFAULT_AMOUNT_PADDING))))
+    pub fn balance_as_strings(&self, padding: Option<usize>) -> Result<BalanceStrings> {
+        // Ok(BalanceStrings::from((&self.balance(), &self.wallet.network()?, Some(DEFAULT_AMOUNT_PADDING))))
+        Ok(BalanceStrings::from((&self.balance(), &self.wallet.network()?, padding)))
     }
 
     pub fn get_list_string(&self) -> Result<String> {
         let name = style(self.name_or_id().pad_to_width(16)).cyan();
-        let balance = self.balance_as_strings()?;
+        // let balance = self.balance_as_strings(Some(DEFAULT_AMOUNT_PADDING))?;
+        let balance = self.balance_as_strings(None)?;
         let mature_utxo_size = self.utxo_context.mature_utxo_size();
         let pending_utxo_size = self.utxo_context.pending_utxo_size();
         let info = match (mature_utxo_size, pending_utxo_size) {
@@ -616,6 +619,7 @@ impl AccountMap {
     }
 
     pub fn insert(&self, account: Arc<Account>) {
+        log_info!("XXX INSERTING ACCOUNT {}", account.id);
         self.inner().insert(account.id, account);
     }
 

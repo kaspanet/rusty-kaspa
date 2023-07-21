@@ -64,6 +64,7 @@ dashmap.workspace = true
 separator.workspace = true
 pad.workspace = true
 async-std.workspace = true
+xxhash-rust.workspace = true
 
 [dependencies.web-sys]
 workspace = true
