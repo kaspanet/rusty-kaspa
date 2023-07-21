@@ -463,7 +463,7 @@ impl KaspaCli {
         self.wallet.store().batch().await?;
 
         let account_kind = AccountKind::Bip32;
-        let wallet_args = WalletCreateArgs::new(None, hint, wallet_secret.clone(), true);
+        let wallet_args = WalletCreateArgs::new(name.map(String::from), hint, wallet_secret.clone(), true);
         let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone());
         let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_secret.clone(), payment_secret);
         let descriptor = self.wallet.create_wallet(wallet_args).await?;
@@ -713,11 +713,22 @@ impl Cli for KaspaCli {
 
     fn prompt(&self) -> Option<String> {
         if let Some(name) = self.wallet.name() {
+            let mut name_ = if name == "kaspa" { "".to_string() } else { format!("{name}") };
+
             if let Ok(account) = self.wallet.account() {
+                name_ += " • ";
                 let ident = account.name_or_id();
-                Some(format!("{name} • {ident} $ "))
+                if let Ok(balance) = account.balance_as_strings(None) {
+                    if let Some(pending) = balance.pending {
+                        Some(format!("{name_}{ident} {} ({}) $ ", balance.mature, pending))
+                    } else {
+                        Some(format!("{name_}{ident} {} $ ", balance.mature))
+                    }
+                } else {
+                    Some(format!("{name_}{ident} n/a $ "))
+                }
             } else {
-                Some(format!("{name} $ "))
+                Some(format!("{name_} $ "))
             }
         } else {
             None
