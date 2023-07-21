@@ -367,6 +367,8 @@ impl KaspaCli {
 
                                                 tprintln!(this, "{} {id}: {balance}   {utxo_info}",style("balance".pad_to_width(8)).blue());
                                             }
+
+                                            this.term().refresh_prompt();
                                         },
                                     }
                                 }
