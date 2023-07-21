@@ -407,7 +407,7 @@ impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
-    use super::{PubkeyDerivationManagerV0, WalletDerivationManagerV0, WalletDerivationManagerTrait};
+    use super::{PubkeyDerivationManagerV0, WalletDerivationManagerTrait, WalletDerivationManagerV0};
     use kaspa_addresses::Prefix;
 
     fn gen0_receive_addresses() -> Vec<&'static str> {
@@ -511,7 +511,7 @@ mod tests {
             "kaspa:qrw8r594tdzy026rqpe4pa830qxcsjqhzlv7p438x939292kvqaxvsgfe56m8",
             "kaspa:qppe5llh7m75z084xrjt0y5thfss5u6srl945ln2r4039ce937pwwz5lanqxy",
             "kaspa:qqw55sj3x3tvvpy0ufk0rarz0zxnmj2avhukvswgy4h0d6cxxmy0kqfr8lsnd",
-            "kaspa:qzrmdyudtf7uv7g5f5pnv0x93r3c85084rgd8mhxgync66rkpjml26a28tdjl"
+            "kaspa:qzrmdyudtf7uv7g5f5pnv0x93r3c85084rgd8mhxgync66rkpjml26a28tdjl",
         ]
     }
 
@@ -616,10 +616,9 @@ mod tests {
             "kaspa:qpuz7tpwy49dnjc8udfsm9m65pkv80ey8x722wyaq9ehjjmfywx3gm5sd380m",
             "kaspa:qpgtjsa4f3nnkt62ukyq2eu83w0u7fap906txwajqf5t5uxt9tqmjrk0n9hzy",
             "kaspa:qzlp093qcsspd0nzs8x9v6kxuy2x938hhpn3jw9l8s6lafykwe8nxpqe4e59w",
-            "kaspa:qzlv8cya2gej9y2szg2zj9krrgdwfxr8250apcz7r72rhmk0lv9nk7rn8akju"
+            "kaspa:qzlv8cya2gej9y2szg2zj9krrgdwfxr8250apcz7r72rhmk0lv9nk7rn8akju",
         ]
     }
-
 
     #[tokio::test]
     async fn hd_wallet_gen0() {
