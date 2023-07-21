@@ -194,7 +194,7 @@ impl Node {
                 tprintln!(ctx, "Kaspad has exited");
             }
             Event::Error(error) => {
-                tprintln!(ctx, "Kaspad error: {error}");
+                tprintln!(ctx, "{}", style(format!("Kaspad error: {error}")).red());
             }
             Event::Stdout(text) | Event::Stderr(text) => {
                 let sanitize = true;

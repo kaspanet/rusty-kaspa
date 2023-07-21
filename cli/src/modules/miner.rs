@@ -188,7 +188,7 @@ impl Miner {
                 tprintln!(ctx, "Miner her exited");
             }
             Event::Error(error) => {
-                tprintln!(ctx, "Miner error: {error}");
+                tprintln!(ctx, "{}", style(format!("Miner error: {error}")).red());
             }
             Event::Stdout(text) | Event::Stderr(text) => {
                 let sanitize = true;
