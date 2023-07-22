@@ -13,6 +13,9 @@ declare -a crates=(
     "kaspa-wrpc-wasm"
     "kaspa-wallet-cli-wasm"
     "kaspa-wasm"
+    "kaspa-cli"
+    "kaspa-os"
+    "kaspa-daemon"
 )
 
 for crate in "${crates[@]}"

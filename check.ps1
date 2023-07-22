@@ -4,7 +4,10 @@ cargo clippy
 $crates = @(
   "kaspa-wrpc-wasm",
   "kaspa-wallet-cli-wasm",
-  "kaspa-wasm"
+  "kaspa-wasm",
+  "kaspa-cli",
+  "kaspa-os",
+  "kaspa-daemon"
 )
 
 $env:AR="llvm-ar"
