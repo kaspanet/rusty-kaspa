@@ -158,6 +158,14 @@ impl NetworkId {
         self.to_string()
     }
 
+    pub fn as_type(&self) -> &NetworkType {
+        &self.network_type
+    }
+
+    pub fn suffix(&self) -> Option<u32> {
+        self.suffix
+    }
+
     pub fn default_p2p_port(&self) -> u16 {
         // We define the P2P port on the [`networkId`] type in order to adapt testnet ports according to testnet suffix,
         // hence avoiding repeatedly failing P2P handshakes between nodes on different networks. RPC does not have
@@ -204,6 +212,12 @@ impl From<NetworkType> for NetworkId {
 impl From<NetworkId> for Prefix {
     fn from(net: NetworkId) -> Self {
         (*net).into()
+    }
+}
+
+impl From<NetworkId> for NetworkType {
+    fn from(net: NetworkId) -> Self {
+        *net
     }
 }
 

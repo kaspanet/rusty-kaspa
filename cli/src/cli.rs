@@ -365,8 +365,10 @@ impl KaspaCli {
                                         } => {
 
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
-                                                let network_type = this.wallet.network().expect("missing network type");
-                                                let balance = BalanceStrings::from((&balance,&network_type, Some(19)));
+                                                let network_id = this.wallet.network().expect("missing network type");
+                                                let network_type = NetworkType::from(network_id);
+                                                // let balance = BalanceStrings::from((&balance,&network_type, Some(19)));
+                                                let balance = BalanceStrings::from((&balance,&network_type, None));
                                                 let id = id.short();
 
                                                 let pending_utxo_info = if pending_utxo_size > 0 {

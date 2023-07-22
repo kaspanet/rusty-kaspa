@@ -16,7 +16,7 @@ use futures::stream::StreamExt;
 use futures::{select, FutureExt, Stream};
 use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{Language, Mnemonic};
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::networktype::{NetworkId, NetworkType};
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
@@ -108,15 +108,20 @@ impl AccountCreateArgs {
 }
 
 pub struct NetworkInfo {
-    pub network_type: NetworkType,
+    pub network_id: NetworkId,
     pub prefix: AddressPrefix,
 }
 
-impl From<NetworkType> for NetworkInfo {
-    fn from(network_type: NetworkType) -> Self {
-        Self { network_type, prefix: network_type.into() }
+impl From<NetworkId> for NetworkInfo {
+    fn from(network_id: NetworkId) -> Self {
+        Self { network_id, prefix: network_id.into() }
     }
 }
+// impl From<NetworkType> for NetworkInfo {
+//     fn from(network_type: NetworkType) -> Self {
+//         Self { network_id: network_type, prefix: network_type.into() }
+//     }
+// }
 
 pub struct Inner {
     active_accounts: AccountMap,
@@ -150,15 +155,11 @@ impl Wallet {
         Ok(Arc::new(LocalStore::try_new(true)?))
     }
 
-    pub fn try_new(storage: Arc<dyn Interface>, network_type: Option<NetworkType>) -> Result<Wallet> {
-        Wallet::try_with_rpc(None, storage, network_type)
+    pub fn try_new(storage: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
+        Wallet::try_with_rpc(None, storage, network_id)
     }
 
-    pub fn try_with_rpc(
-        rpc: Option<Arc<KaspaRpcClient>>,
-        store: Arc<dyn Interface>,
-        network_type: Option<NetworkType>,
-    ) -> Result<Wallet> {
+    pub fn try_with_rpc(rpc: Option<Arc<KaspaRpcClient>>, store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
         let rpc: Arc<DynRpcApi> = if let Some(rpc) = rpc {
             rpc
         } else {
@@ -181,7 +182,9 @@ impl Wallet {
                 is_connected: AtomicBool::new(false),
                 is_synced: AtomicBool::new(false),
                 virtual_daa_score: Arc::new(AtomicU64::new(0)),
-                network: Arc::new(Mutex::new(network_type.map(|t| t.into()).or_else(|| Some(NetworkType::Mainnet.into())))),
+                network: Arc::new(Mutex::new(
+                    network_id.map(|t| t.into()).or_else(|| Some(NetworkId::from(NetworkType::Mainnet).into())),
+                )),
                 settings: SettingsStore::new_with_storage(Storage::default_settings_store()), //::default(),
                 utxo_processor,
             }),
@@ -374,19 +377,19 @@ impl Wallet {
         Ok(())
     }
 
-    pub fn select_network(&self, network_type: NetworkType) -> Result<()> {
+    pub fn select_network(&self, network_id: NetworkId) -> Result<()> {
         if self.is_connected() {
             return Err(Error::NetworkTypeConnected);
         }
-        let network_info = NetworkInfo::from(network_type);
+        let network_info = NetworkInfo::from(network_id);
         *self.inner.network.lock().unwrap() = Some(network_info);
         Ok(())
     }
 
-    pub fn network(&self) -> Result<NetworkType> {
+    pub fn network(&self) -> Result<NetworkId> {
         let network = self.inner.network.lock().unwrap();
-        let network = network.as_ref().ok_or(Error::MissingNetworkType)?;
-        Ok(network.network_type)
+        let network = network.as_ref().ok_or(Error::MissingNetworkId)?;
+        Ok(network.network_id)
     }
 
     pub fn address_prefix(&self) -> Result<AddressPrefix> {
@@ -624,7 +627,15 @@ impl Wallet {
             return Err(Error::MissingUtxoIndex);
         }
 
-        *self.inner.network.lock().unwrap() = Some(network.into());
+        if let Some(network_id) = self.inner.network.lock().unwrap().as_ref() {
+            let current_network_type = network_id.network_id.as_type();
+            if current_network_type != &network {
+                return Err(Error::InvalidNetworkType(current_network_type.to_string(), network.to_string()));
+            }
+        } else {
+            return Err(Error::MissingNetworkId);
+            // *self.inner.network.lock().unwrap() = Some(network.into());
+        }
 
         let GetBlockDagInfoResponse { virtual_daa_score, .. } = self.rpc().get_block_dag_info().await?;
 

@@ -66,14 +66,20 @@ pub enum Error {
     #[error("Wallet is not connected")]
     WalletNotConnected,
 
-    #[error("Unable to determine network type, please use `set network (mainnet|testnet)` to select a network")]
-    MissingNetworkType,
+    #[error("Unable to determine network type, please use `network (mainnet|testnet|testnet-11)` to select a network")]
+    MissingNetworkId,
+
+    #[error("Invalif network type - client {0} node {1}")]
+    InvalidNetworkType(String, String),
 
     #[error("Unable to set network type while the wallet is connected")]
     NetworkTypeConnected,
 
     #[error("{0}")]
     NetworkType(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
+
+    #[error("{0}")]
+    NetworkId(#[from] kaspa_consensus_core::networktype::NetworkIdError),
 
     #[error("The server UTXO index is not enabled")]
     MissingUtxoIndex,

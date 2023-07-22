@@ -3,13 +3,14 @@ pub mod wasm;
 
 use crate::imports::*;
 
+use kaspa_consensus_core::networktype::NetworkId;
 use wasm::{version, Process, ProcessEvent, ProcessOptions};
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct KaspadConfig {
     pub mute: bool,
     pub path: Option<String>,
-    pub network: Option<NetworkType>,
+    pub network: Option<NetworkId>,
     pub utxo_index: bool,
     // --- TODO: these are not used yet ---
     pub peers: Vec<String>,
@@ -28,8 +29,8 @@ pub struct KaspadConfig {
 }
 
 impl KaspadConfig {
-    pub fn new(path: &str, network: NetworkType, mute: bool) -> Self {
-        Self { path: Some(path.to_string()), network: Some(network), mute, ..Default::default() }
+    pub fn new(path: &str, network_id: NetworkId, mute: bool) -> Self {
+        Self { path: Some(path.to_string()), network: Some(network_id), mute, ..Default::default() }
     }
 }
 
@@ -78,7 +79,7 @@ impl TryFrom<KaspadConfig> for Vec<String> {
 
         let network = args.network.unwrap();
 
-        match network {
+        match network.as_type() {
             NetworkType::Mainnet => {}
             NetworkType::Testnet => {
                 argv.push("--testnet");
@@ -89,6 +90,11 @@ impl TryFrom<KaspadConfig> for Vec<String> {
             NetworkType::Simnet => {
                 argv.push("--simnet");
             }
+        }
+
+        let network_id_flag = network.suffix().map(|suffix| format!("{suffix}"));
+        if let Some(flag) = network_id_flag.as_ref() {
+            argv.push(flag);
         }
 
         if args.utxo_index {

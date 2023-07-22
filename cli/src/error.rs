@@ -93,6 +93,9 @@ pub enum Error {
 
     #[error(transparent)]
     Dom(#[from] workflow_dom::error::Error),
+
+    #[error(transparent)]
+    NetworkId(#[from] kaspa_consensus_core::networktype::NetworkIdError),
 }
 
 impl Error {
