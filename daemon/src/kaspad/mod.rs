@@ -92,8 +92,8 @@ impl TryFrom<KaspadConfig> for Vec<String> {
             }
         }
 
-        let network_id_flag = network.suffix().map(|suffix| format!("{suffix}"));
-        if let Some(flag) = network_id_flag.as_ref() {
+        let netsuffix = network.suffix().map(|suffix| format!("--netsuffix={suffix}"));
+        if let Some(flag) = netsuffix.as_ref() {
             argv.push(flag);
         }
 
