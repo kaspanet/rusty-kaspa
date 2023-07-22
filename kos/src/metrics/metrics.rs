@@ -87,7 +87,7 @@ impl App {
 }
 
 #[wasm_bindgen]
-pub async fn init_application() -> Result<()> {
+pub async fn init_metrics() -> Result<()> {
     kaspa_core::log::set_log_level(LevelFilter::Info);
     workflow_log::set_colors_enabled(true);
 

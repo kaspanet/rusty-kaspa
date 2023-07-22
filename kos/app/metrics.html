@@ -9,18 +9,13 @@
                 margin: 0;
                 padding: 0;
             }
-            .terminal {
-                margin: 8px;
-                width: calc(100vw - 16px);
-                height: calc(100vh - 16px);
-            }
 
         </style>
         <script>
             (async()=>{
                 window.kaspa = await import('/app/wasm/kaspa.js');
                 const wasm = await window.kaspa.default('/app/wasm/kaspa_bg.wasm');
-                await window.kaspa.init_application();
+                await window.kaspa.init_metrics();
             })();
         </script>
     </head>
