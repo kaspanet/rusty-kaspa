@@ -190,7 +190,7 @@ impl Miner {
 
         match event {
             Event::Exit(_code) => {
-                tprintln!(ctx, "Miner her exited");
+                tprintln!(ctx, "Miner has exited");
             }
             Event::Error(error) => {
                 tprintln!(ctx, "{}", style(format!("Miner error: {error}")).red());
