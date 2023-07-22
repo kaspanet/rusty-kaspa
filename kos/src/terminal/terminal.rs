@@ -161,65 +161,6 @@ impl App {
 
         // cli.handlers().register(&cli, crate::modules::test::Test::default());
 
-        self.cli.term().register_link_matcher(
-            &js_sys::RegExp::new(r"http[s]?:\/\/\S+", "i"),
-            Arc::new(Box::new(move |_modifiers, url| {
-                nw_sys::shell::open_external(url);
-            })),
-        )?;
-
-        // https://explorer.kaspa.org/addresses/
-        let this = self.clone();
-        self.cli.term().register_link_matcher(
-            &js_sys::RegExp::new(r"(kaspa|kaspatest):\S+", "i"),
-            Arc::new(Box::new(move |modifiers, uri| {
-                if modifiers.ctrl || modifiers.meta {
-                    if uri.starts_with("kaspatest") {
-                        this.cli.term().writeln("testnet addresses can not be currently looked up with the block explorer");
-                    } else {
-                        nw_sys::shell::open_external(&format!("https://explorer.kaspa.org/addresses/{uri}"));
-                    }
-                } else {
-                    let clipboard = nw_sys::clipboard::get();
-                    clipboard.set(uri);
-                }
-                // - TODO - notify the user
-            })),
-        )?;
-
-        // https://explorer.kaspa.org/blocks/
-        // let this = self.clone();
-        self.cli.term().register_link_matcher(
-            &js_sys::RegExp::new(r"(block|pool):?\s+[0-9a-fA-F]{64}", "i"),
-            Arc::new(Box::new(move |modifiers, text| {
-                let re = Regex::new(r"(?i)^(block|pool):?\s+").unwrap();
-                let uri = re.replace(text, "");
-
-                if modifiers.ctrl || modifiers.meta {
-                    nw_sys::shell::open_external(&format!("https://explorer.kaspa.org/blocks/{uri}"));
-                } else {
-                    let clipboard = nw_sys::clipboard::get();
-                    clipboard.set(&uri);
-                }
-                // - TODO - notify the user
-            })),
-        )?;
-
-        self.cli.term().register_link_matcher(
-            &js_sys::RegExp::new(r"(transaction|tx|txid)(\s+|\s*:\s*)[0-9a-fA-F]{64}", "i"),
-            Arc::new(Box::new(move |modifiers, text| {
-                let re = Regex::new(r"(?i)^(transaction|tx|txid)\s*:?\s*").unwrap();
-                let uri = re.replace(text, "");
-
-                if modifiers.ctrl || modifiers.meta {
-                    nw_sys::shell::open_external(&format!("https://explorer.kaspa.org/txs/{uri}"));
-                } else {
-                    let clipboard = nw_sys::clipboard::get();
-                    clipboard.set(&uri);
-                }
-                // - TODO - notify the user
-            })),
-        )?;
 
         // cli starts notification->term trace pipe task
         self.cli.start().await?;
