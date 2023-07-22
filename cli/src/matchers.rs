@@ -9,14 +9,19 @@ pub fn register_link_matchers(cli: &Arc<KaspaCli>) -> Result<()> {
         return Ok(());
     }
 
+    // http links (open)
     cli.term().register_link_matcher(
         &js_sys::RegExp::new(r"http[s]?:\/\/\S+", "i"),
         Arc::new(Box::new(move |_modifiers, url| {
-            nw_sys::shell::open_external(url);
+            if is_nw() {
+                nw_sys::shell::open_external(url);
+            } else {
+                link::open(url);
+            }
         })),
     )?;
 
-    // https://explorer.kaspa.org/addresses/
+    // addresses (open,copy) https://explorer.kaspa.org/addresses/
     let cli_ = cli.clone();
     cli.term().register_link_matcher(
         &js_sys::RegExp::new(r"(kaspa|kaspatest):\S+", "i"),
@@ -38,7 +43,7 @@ pub fn register_link_matchers(cli: &Arc<KaspaCli>) -> Result<()> {
         })),
     )?;
 
-    // https://explorer.kaspa.org/blocks/
+    // blocks (open,copy) https://explorer.kaspa.org/blocks/
     let cli_ = cli.clone();
     cli.term().register_link_matcher(
         &js_sys::RegExp::new(r"(block|pool):?\s+[0-9a-fA-F]{64}", "i"),
@@ -54,6 +59,7 @@ pub fn register_link_matchers(cli: &Arc<KaspaCli>) -> Result<()> {
         })),
     )?;
 
+    // transactions
     let cli_ = cli.clone();
     cli.term().register_link_matcher(
         &js_sys::RegExp::new(r"(transaction|tx|txid)(\s+|\s*:\s*)[0-9a-fA-F]{64}", "i"),
@@ -69,13 +75,14 @@ pub fn register_link_matchers(cli: &Arc<KaspaCli>) -> Result<()> {
         })),
     )?;
 
+    // 32 byte hex encoded sequences (copy)
     let cli_ = cli.clone();
     cli.term().register_link_matcher(
         &js_sys::RegExp::new(r"[0-9a-fA-F]{64}", "i"),
         Arc::new(Box::new(move |_modifiers, text| {
             let re = Regex::new(r"(?i)^(transaction|tx|txid)\s*:?\s*").unwrap();
-            let uri = re.replace(text, "");
-            write_to_clipboard(&cli_, uri.to_string().as_str());
+            let text = re.replace(text, "");
+            write_to_clipboard(&cli_, text.to_string().as_str());
         })),
     )?;
 
