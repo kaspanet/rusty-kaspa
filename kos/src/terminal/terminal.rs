@@ -10,7 +10,7 @@ pub struct App {
     pub cli: Arc<KaspaCli>,
     pub window: Arc<Window>,
     pub callbacks: CallbackMap,
-    pub shutdown: Arc<AtomicBool>,
+    // pub shutdown: Arc<AtomicBool>,
     pub settings: SettingsStore<AppSettings>,
 }
 
@@ -42,7 +42,7 @@ impl App {
             cli,
             window,
             callbacks: CallbackMap::default(),
-            shutdown: Arc::new(AtomicBool::new(false)),
+            // shutdown: Arc::new(AtomicBool::new(false)),
             settings,
         });
 

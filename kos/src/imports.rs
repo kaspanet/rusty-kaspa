@@ -1,8 +1,8 @@
 pub use crate::core::*;
 pub use crate::error::Error;
 pub use crate::ipc::*;
+pub use crate::metrics::*;
 pub use crate::result::Result;
-pub use crate::settings::AppSettings;
 pub use crate::terminal::*;
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSerialize};
@@ -25,6 +25,7 @@ pub use workflow_core::enums::Describe;
 pub use workflow_core::runtime::*;
 pub use workflow_core::task::*;
 pub use workflow_core::time::*;
+pub use workflow_d3::*;
 pub use workflow_log::*;
 pub use workflow_nw::ipc::*;
 pub use workflow_nw::prelude::*;

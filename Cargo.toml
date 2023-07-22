@@ -207,6 +207,7 @@ nw-sys = "0.1.4"
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs
 # into a sibling folder from https://github.com/workflow-rs/workflow-rs
+workflow-d3 = { path = "../workflow-rs/d3" }
 workflow-nw = { path = "../workflow-rs/nw" }
 workflow-log = { path = "../workflow-rs/log" }
 workflow-core = { path = "../workflow-rs/core" }

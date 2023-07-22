@@ -1,6 +1,6 @@
 #[allow(clippy::module_inception)]
-mod terminal;
-pub use terminal::*;
+mod metrics;
+pub use metrics::*;
 mod ipc;
 pub use ipc::*;
 mod settings;

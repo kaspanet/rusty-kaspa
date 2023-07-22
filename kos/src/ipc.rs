@@ -2,7 +2,7 @@
 pub enum Modules {
     Core,
     Terminal,
-    // Node,
+    Metrics,
 }
 
 impl ToString for Modules {
@@ -10,7 +10,7 @@ impl ToString for Modules {
         match self {
             Modules::Core => "core",
             Modules::Terminal => "terminal",
-            // Modules::Node => "node",
+            Modules::Metrics => "metrics",
         }
         .to_string()
     }

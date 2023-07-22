@@ -2412,6 +2412,7 @@ dependencies = [
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-daemon",
+ "kaspa-rpc-core",
  "kaspa-wallet-core",
  "nw-sys",
  "regex",
@@ -2421,6 +2422,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "workflow-core",
+ "workflow-d3",
  "workflow-dom",
  "workflow-log",
  "workflow-nw",
@@ -5450,6 +5452,13 @@ dependencies = [
  "sha2 0.10.7",
  "syn 1.0.109",
  "workflow-macro-tools",
+]
+
+[[package]]
+name = "workflow-d3"
+version = "0.3.17"
+dependencies = [
+ "workflow-dom",
 ]
 
 [[package]]
