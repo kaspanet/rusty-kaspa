@@ -630,32 +630,24 @@ impl RpcApi for RpcCoreService {
     // UNIMPLEMENTED METHODS
 
     async fn get_metrics_call(&self, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
-        let process_metrics = if req.process_metrics {
-            Some(ProcessMetrics {
-                borsh_live_connections: self.wrpc_borsh_counters.live_connections.load(Ordering::Relaxed),
-                borsh_connection_attempts: self.wrpc_borsh_counters.connection_attempts.load(Ordering::Relaxed),
-                borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed),
-                json_live_connections: self.wrpc_json_counters.live_connections.load(Ordering::Relaxed),
-                json_connection_attempts: self.wrpc_json_counters.connection_attempts.load(Ordering::Relaxed),
-                json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed),
-            })
-        } else {
-            None
-        };
+        let process_metrics = req.process_metrics.then_some(ProcessMetrics {
+            borsh_live_connections: self.wrpc_borsh_counters.live_connections.load(Ordering::Relaxed),
+            borsh_connection_attempts: self.wrpc_borsh_counters.connection_attempts.load(Ordering::Relaxed),
+            borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed),
+            json_live_connections: self.wrpc_json_counters.live_connections.load(Ordering::Relaxed),
+            json_connection_attempts: self.wrpc_json_counters.connection_attempts.load(Ordering::Relaxed),
+            json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed),
+        });
 
-        let consensus_metrics = if req.consensus_metrics {
-            Some(ConsensusMetrics {
-                blocks_submitted: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
-                header_counts: self.processing_counters.header_counts.load(Ordering::SeqCst),
-                dep_counts: self.processing_counters.dep_counts.load(Ordering::SeqCst),
-                body_counts: self.processing_counters.body_counts.load(Ordering::SeqCst),
-                txs_counts: self.processing_counters.txs_counts.load(Ordering::SeqCst),
-                chain_block_counts: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
-                mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
-            })
-        } else {
-            None
-        };
+        let consensus_metrics = req.consensus_metrics.then_some(ConsensusMetrics {
+            blocks_submitted: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
+            header_counts: self.processing_counters.header_counts.load(Ordering::SeqCst),
+            dep_counts: self.processing_counters.dep_counts.load(Ordering::SeqCst),
+            body_counts: self.processing_counters.body_counts.load(Ordering::SeqCst),
+            txs_counts: self.processing_counters.txs_counts.load(Ordering::SeqCst),
+            chain_block_counts: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
+            mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
+        });
 
         let start = SystemTime::now();
         let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
