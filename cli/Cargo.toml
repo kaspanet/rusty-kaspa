@@ -25,6 +25,8 @@ workflow-dom.workspace = true
 workflow-log.workspace = true
 workflow-terminal.workspace = true
 workflow-node.workspace = true
+workflow-wasm.workspace = true
+# workflow-wasm.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 kaspa-consensus-core.workspace = true
@@ -38,3 +40,20 @@ kaspa-daemon.workspace = true
 wasm-bindgen.workspace = true
 regex.workspace = true
 js-sys.workspace = true
+# web-sys.workspace = true
+
+[dependencies.web-sys]
+workspace = true
+features = [
+    'console',
+    'Document',
+    'Window',
+    'Node',
+    'Element',
+    'HtmlElement',
+    'DomTokenList',
+    # 'HtmlElement',
+    # 'CustomEvent',
+    # 'MouseEvent'
+]
+

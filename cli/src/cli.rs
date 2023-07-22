@@ -2,6 +2,7 @@ use crate::error::Error;
 use crate::imports::*;
 use crate::modules::miner::Miner;
 use crate::modules::node::Node;
+use crate::notifier::Notifier;
 use crate::result::Result;
 use crate::utils::*;
 use async_trait::async_trait;
@@ -50,6 +51,7 @@ pub struct KaspaCli {
     shutdown: Arc<AtomicBool>,
     node: Mutex<Option<Arc<Node>>>,
     miner: Mutex<Option<Arc<Miner>>>,
+    notifier: Notifier,
 }
 
 impl From<&KaspaCli> for Arc<Terminal> {
@@ -124,6 +126,7 @@ impl KaspaCli {
             shutdown: Arc::new(AtomicBool::new(false)),
             node: Mutex::new(None),
             miner: Mutex::new(None),
+            notifier: Notifier::try_new()?,
         });
 
         let term = Arc::new(Terminal::try_new_with_options(kaspa_cli.clone(), options.terminal)?);
@@ -144,6 +147,10 @@ impl KaspaCli {
 
     pub fn try_term(&self) -> Option<Arc<Terminal>> {
         self.term.lock().unwrap().as_ref().cloned()
+    }
+
+    pub fn notifier(&self) -> &Notifier {
+        &self.notifier
     }
 
     pub fn version(&self) -> String {
@@ -188,6 +195,8 @@ impl KaspaCli {
         let miner = self.handlers().get("miner").unwrap();
         let miner = miner.downcast_arc::<crate::modules::miner::Miner>().ok();
         *self.miner.lock().unwrap() = miner;
+
+        crate::matchers::register_link_matchers(self)?;
 
         Ok(())
     }
@@ -695,6 +704,9 @@ impl KaspaCli {
 impl Cli for KaspaCli {
     fn init(&self, term: &Arc<Terminal>) -> TerminalResult<()> {
         *self.term.lock().unwrap() = Some(term.clone());
+
+        self.notifier().try_init()?;
+
         Ok(())
     }
 

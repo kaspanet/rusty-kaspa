@@ -161,7 +161,6 @@ impl App {
 
         // cli.handlers().register(&cli, crate::modules::test::Test::default());
 
-
         // cli starts notification->term trace pipe task
         self.cli.start().await?;
 

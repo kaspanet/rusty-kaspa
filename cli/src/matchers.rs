@@ -86,7 +86,7 @@ fn write_to_clipboard(cli: &Arc<KaspaCli>, text: &str) {
     if is_nw() {
         let clipboard = nw_sys::clipboard::get();
         clipboard.set(text);
-        cli.notifier().notify_sync(Notification::Clipboard);
+        cli.notifier().notify(Notification::Clipboard);
     } else {
         let cli = cli.clone();
         let text = text.to_owned();
@@ -94,7 +94,7 @@ fn write_to_clipboard(cli: &Arc<KaspaCli>, text: &str) {
             if let Err(err) = clipboard::write_text(&text).await {
                 log_error!("{}", err.error_message());
             } else {
-                cli.notifier().notify_sync(Notification::Clipboard);
+                cli.notifier().notify(Notification::Clipboard);
             }
         });
     }

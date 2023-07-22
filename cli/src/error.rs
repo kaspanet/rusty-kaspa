@@ -90,6 +90,9 @@ pub enum Error {
 
     #[error(transparent)]
     Daemon(#[from] kaspa_daemon::error::Error),
+
+    #[error(transparent)]
+    Dom(#[from] workflow_dom::error::Error),
 }
 
 impl Error {

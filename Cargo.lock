@@ -1941,12 +1941,14 @@ dependencies = [
  "textwrap",
  "thiserror",
  "wasm-bindgen",
+ "web-sys",
  "workflow-core",
  "workflow-dom",
  "workflow-log",
  "workflow-node",
  "workflow-store",
  "workflow-terminal",
+ "workflow-wasm",
 ]
 
 [[package]]
@@ -5459,6 +5461,7 @@ dependencies = [
  "regex",
  "thiserror",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "workflow-core",
  "workflow-log",
