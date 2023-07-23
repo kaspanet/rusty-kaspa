@@ -1,13 +1,15 @@
 pub use crate::convert::ScriptPublicKeyTrait;
 pub use crate::error::Error;
+pub use crate::network::NetworkId;
 pub use crate::DynRpcApi;
 pub use crate::{runtime, storage, utils, utxo};
 pub use async_trait::async_trait;
-pub use borsh::{BorshDeserialize, BorshSerialize};
+pub use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 pub use dashmap::{DashMap, DashSet};
 pub use futures::stream::{self, Stream, StreamExt, Then, TryStreamExt};
 pub use js_sys::{Array, Object};
 pub use kaspa_addresses::Address;
+pub use kaspa_consensus_core::networktype::NetworkType;
 pub use kaspa_consensus_core::subnets;
 pub use kaspa_consensus_core::subnets::SubnetworkId;
 pub use kaspa_consensus_core::tx as cctx;

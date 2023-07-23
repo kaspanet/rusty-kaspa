@@ -3,7 +3,6 @@ pub mod wasm;
 
 use crate::imports::*;
 
-use kaspa_consensus_core::networktype::NetworkId;
 use wasm::{version, Process, ProcessEvent, ProcessOptions};
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -79,7 +78,7 @@ impl TryFrom<KaspadConfig> for Vec<String> {
 
         let network = args.network.unwrap();
 
-        match network.as_type() {
+        match network.network_type {
             NetworkType::Mainnet => {}
             NetworkType::Testnet => {
                 argv.push("--testnet");
@@ -92,7 +91,7 @@ impl TryFrom<KaspadConfig> for Vec<String> {
             }
         }
 
-        let netsuffix = network.suffix().map(|suffix| format!("--netsuffix={suffix}"));
+        let netsuffix = network.suffix.map(|suffix| format!("--netsuffix={suffix}"));
         if let Some(flag) = netsuffix.as_ref() {
             argv.push(flag);
         }

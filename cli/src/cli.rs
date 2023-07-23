@@ -2,7 +2,7 @@ use crate::error::Error;
 use crate::imports::*;
 use crate::modules::miner::Miner;
 use crate::modules::node::Node;
-use crate::notifier::Notifier;
+use crate::notifier::{Notification, Notifier};
 use crate::result::Result;
 use crate::utils::*;
 use async_trait::async_trait;
@@ -25,7 +25,8 @@ use workflow_core::time::Instant;
 use workflow_log::*;
 use workflow_terminal::*;
 pub use workflow_terminal::{
-    cli::*, parse, Cli, CrLf, Handler, Options as TerminalOptions, Result as TerminalResult, TargetElement as TerminalTarget,
+    cli::*, parse, Cli, CrLf, Event as TerminalEvent, Handler, Options as TerminalOptions, Result as TerminalResult,
+    TargetElement as TerminalTarget,
 };
 
 pub struct Options {
@@ -704,10 +705,17 @@ impl KaspaCli {
 
 #[async_trait]
 impl Cli for KaspaCli {
-    fn init(&self, term: &Arc<Terminal>) -> TerminalResult<()> {
+    fn init(self: Arc<Self>, term: &Arc<Terminal>) -> TerminalResult<()> {
         *self.term.lock().unwrap() = Some(term.clone());
 
         self.notifier().try_init()?;
+
+        // let this = self.clone();
+        term.register_event_handler(Arc::new(Box::new(move |event| match event {
+            TerminalEvent::Copy | TerminalEvent::Paste => {
+                self.notifier().notify(Notification::Clipboard);
+            }
+        })))?;
 
         Ok(())
     }

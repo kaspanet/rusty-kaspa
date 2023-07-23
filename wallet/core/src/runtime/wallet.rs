@@ -16,7 +16,6 @@ use futures::stream::StreamExt;
 use futures::{select, FutureExt, Stream};
 use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{Language, Mnemonic};
-use kaspa_consensus_core::networktype::{NetworkId, NetworkType};
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
@@ -628,9 +627,8 @@ impl Wallet {
         }
 
         if let Some(network_id) = self.inner.network.lock().unwrap().as_ref() {
-            let current_network_type = network_id.network_id.as_type();
-            if current_network_type != &network {
-                return Err(Error::InvalidNetworkType(current_network_type.to_string(), network.to_string()));
+            if network_id.network_id.network_type != network {
+                return Err(Error::InvalidNetworkType(network_id.network_id.network_type.to_string(), network.to_string()));
             }
         } else {
             return Err(Error::MissingNetworkId);

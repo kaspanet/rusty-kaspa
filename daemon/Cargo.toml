@@ -23,7 +23,7 @@ borsh.workspace = true
 serde.workspace = true
 downcast.workspace = true
 kaspa-addresses.workspace = true
-
+kaspa-wallet-core.workspace = true
 
 
 # async-channel.workspace = true

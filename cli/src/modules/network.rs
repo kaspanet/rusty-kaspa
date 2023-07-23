@@ -9,8 +9,7 @@ impl Network {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         if let Some(network_id) = argv.first() {
-            let network_id: NetworkId =
-                network_id.trim().parse::<NetworkId>().map_err(|_| "Unknown network type: `{network_type}`")?;
+            let network_id: NetworkId = network_id.trim().parse::<NetworkId>().map_err(|_| "Unknown network type: `{network_id}`")?;
             // .map_err(|err|err.to_string())?;
             tprintln!(ctx, "Setting network type to: {network_id}");
             ctx.wallet().select_network(network_id)?;

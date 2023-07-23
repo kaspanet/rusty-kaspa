@@ -1,15 +1,16 @@
 pub use crate::cli::KaspaCli;
 pub use crate::error::Error;
 pub(crate) use crate::helpers;
+pub use crate::notifier::Notification;
 pub use crate::result::Result;
 pub use crate::utils;
 pub use async_trait::async_trait;
 pub use cfg_if::cfg_if;
 pub use futures::stream::{Stream, StreamExt, TryStreamExt};
-pub use kaspa_consensus_core::networktype::{NetworkId, NetworkType};
 pub use kaspa_daemon::DaemonEvent;
 pub use kaspa_wallet_core::accounts::gen0::import::*;
 pub use kaspa_wallet_core::imports::ToHex;
+pub use kaspa_wallet_core::network::{NetworkId, NetworkType};
 pub use kaspa_wallet_core::storage::interface::{AccessContext, Interface};
 pub use kaspa_wallet_core::storage::{AccessContextT, AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
 pub use kaspa_wallet_core::tx::PaymentOutputs;

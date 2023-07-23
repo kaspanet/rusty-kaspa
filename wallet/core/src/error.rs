@@ -69,8 +69,14 @@ pub enum Error {
     #[error("Unable to determine network type, please use `network (mainnet|testnet|testnet-11)` to select a network")]
     MissingNetworkId,
 
-    #[error("Invalif network type - client {0} node {1}")]
+    #[error("Invalid network type - client {0} node {1}")]
     InvalidNetworkType(String, String),
+
+    #[error("Invalid network suffix '{0}'")]
+    InvalidNetworkSuffix(String),
+
+    #[error("Unexpected extra network suffix '{0}'")]
+    UnexpectedExtraSuffixToken(String),
 
     #[error("Unable to set network type while the wallet is connected")]
     NetworkTypeConnected,

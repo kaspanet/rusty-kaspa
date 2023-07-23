@@ -9,7 +9,6 @@ use crate::storage::local::interface::LocalStore;
 use crate::storage::PrvKeyDataId;
 use crate::wasm::account::Account;
 use crate::wasm::keydata::PrvKeyDataInfo;
-use kaspa_consensus_core::networktype::NetworkId;
 use kaspa_wrpc_client::wasm::RpcClient;
 use kaspa_wrpc_client::WrpcEncoding;
 use runtime::AccountKind;

@@ -2112,6 +2112,7 @@ dependencies = [
  "futures",
  "kaspa-addresses",
  "kaspa-consensus-core",
+ "kaspa-wallet-core",
  "nw-sys",
  "serde",
  "thiserror",

@@ -8,6 +8,7 @@ pub mod encryption;
 pub mod error;
 pub mod imports;
 pub mod keypair;
+pub mod network;
 pub mod result;
 pub mod runtime;
 pub mod secret;

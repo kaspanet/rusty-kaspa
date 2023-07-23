@@ -9,7 +9,7 @@ impl Select {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         if argv.is_empty() {
-            let account = ctx.prompt_account().await?;
+            let account = ctx.select_account().await?;
             ctx.wallet().select(Some(&account)).await?;
         } else {
             let pat = argv.remove(0);
