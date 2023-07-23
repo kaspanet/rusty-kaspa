@@ -15,8 +15,8 @@ impl Open {
         };
 
         let secret = Secret::new(ctx.term().ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());
+        let _ = ctx.notifier().show(Notification::Processing).await;
         ctx.wallet().load(secret, name).await?;
-
         Ok(())
     }
 }

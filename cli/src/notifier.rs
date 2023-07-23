@@ -12,10 +12,14 @@ pub enum Notification {
     Processing,
 }
 
+struct Inner {
+    elements: Mutex<Option<HashMap<Notification, Element>>>,
+    current: Mutex<Option<Element>>,
+}
+
 #[derive(Clone)]
 pub struct Notifier {
-    elements: Arc<Mutex<Option<HashMap<Notification, Element>>>>,
-    current: Arc<Mutex<Option<Element>>>,
+    inner: Arc<Inner>,
 }
 
 unsafe impl Send for Notifier {}
@@ -23,22 +27,22 @@ unsafe impl Sync for Notifier {}
 
 impl Notifier {
     pub fn try_new() -> Result<Notifier> {
-        Ok(Notifier { elements: Arc::new(Mutex::new(None)), current: Arc::new(Mutex::new(None)) })
+        Ok(Notifier { inner: Arc::new(Inner { elements: Mutex::new(None), current: Mutex::new(None) }) })
     }
 
     pub fn try_init(&self) -> Result<()> {
         let elements = if is_nw() || is_web() { Some(Self::create_elements()?) } else { None };
-        *self.elements.lock().unwrap() = elements;
+        *self.inner.elements.lock().unwrap() = elements;
         Ok(())
     }
 
     pub fn notify(&self, kind: Notification) {
-        let element = self.elements.lock().unwrap(); //.as_ref();
-        if let Some(elements) = element.as_ref() {
+        if let Some(elements) = self.inner.elements.lock().unwrap().as_ref() {
             if let Some(el) = elements.get(&kind) {
                 el.class_list().add_1("show").unwrap();
                 let el = Sendable(el.clone());
                 spawn(async move {
+                    yield_executor().await;
                     sleep(Duration::from_millis(10)).await;
                     el.class_list().remove_1("show").unwrap();
                 })
@@ -51,20 +55,28 @@ impl Notifier {
         yield_executor().await;
     }
 
-    pub async fn show(&self, kind: Notification) {
-        if let Some(elements) = self.elements.lock().unwrap().as_ref() {
+    pub async fn show(&self, kind: Notification) -> NotifierGuard {
+        // let mut inner = self.inner();
+        if let Some(elements) = self.inner.elements.lock().unwrap().as_ref() {
             if let Some(el) = elements.get(&kind) {
                 el.class_list().add_1("show").unwrap();
-                self.current.lock().unwrap().replace(el.clone());
+                self.inner.current.lock().unwrap().replace(el.clone());
             }
         }
 
-        sleep(Duration::from_millis(10)).await;
         yield_executor().await;
+        sleep(Duration::from_millis(10)).await;
+        NotifierGuard::new(self)
     }
 
-    pub async fn hide(&self) {
-        if let Some(el) = self.current.lock().unwrap().take() {
+    pub async fn hide_async(&self) {
+        if let Some(el) = self.inner.current.lock().unwrap().take() {
+            el.class_list().remove_1("show").unwrap();
+        }
+    }
+
+    pub fn hide(&self) {
+        if let Some(el) = self.inner.current.lock().unwrap().take() {
             el.class_list().remove_1("show").unwrap();
         }
     }
@@ -93,5 +105,27 @@ impl Notifier {
         elements.insert(Notification::Clipboard, el);
 
         Ok(elements)
+    }
+}
+
+#[must_use = "if unused the notification will immediately disappear"]
+#[clippy::has_significant_drop]
+pub struct NotifierGuard {
+    notifier: Notifier,
+}
+
+impl NotifierGuard {
+    pub fn new(notifier: &Notifier) -> NotifierGuard {
+        NotifierGuard { notifier: notifier.clone() }
+    }
+
+    pub fn hide(&self) {
+        self.notifier.hide();
+    }
+}
+
+impl Drop for NotifierGuard {
+    fn drop(&mut self) {
+        self.notifier.hide();
     }
 }
