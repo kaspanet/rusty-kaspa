@@ -31,7 +31,6 @@ impl WalletSettings {
 impl DefaultSettings for WalletSettings {
     async fn defaults() -> Vec<(Self, Value)> {
         vec![(Self::Server, to_value("127.0.0.1").unwrap()), (Self::Wallet, to_value("kaspa").unwrap())]
-        // .into_iter().map(|(k, v)| (k, v.to_string())).collect()
     }
 }
 
@@ -43,7 +42,7 @@ pub trait DefaultSettings: Sized {
 #[derive(Debug, Clone)]
 pub struct SettingsStore<K>
 where
-    K: DefaultSettings + Display + Clone + Serialize + DeserializeOwned + Send + Sync + 'static,
+    K: DefaultSettings + Clone + Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     map: DashMap<String, Value>,
     storage: Storage,
@@ -52,7 +51,7 @@ where
 
 impl<K> SettingsStore<K>
 where
-    K: DefaultSettings + Display + Clone + Serialize + DeserializeOwned + Send + Sync + 'static,
+    K: DefaultSettings + Clone + Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     pub fn try_new(filename: &str) -> Result<Self> {
         Ok(Self { map: DashMap::default(), storage: Storage::new(filename)?, phantom: PhantomData })
@@ -66,12 +65,14 @@ where
     where
         V: DeserializeOwned,
     {
-        let s = self.map.get(&key.to_string());
+        let ks = to_value(key).unwrap();
+        let ks = ks.as_str().expect("Unable to convert key to string");
+        let s = self.map.get(ks); //&key.to_string());
         if let Some(s) = s {
             match from_value::<V>(s.value().clone()) {
                 Ok(v) => Some(v),
                 Err(err) => {
-                    log_error!("Unable to parse setting key `{key}`: `{err}`");
+                    log_error!("Unable to parse setting key `{ks}`: `{err}`");
                     None
                 }
             }
@@ -84,8 +85,11 @@ where
     where
         V: Serialize,
     {
+        let ks = to_value(key).unwrap();
+        let ks = ks.as_str().expect("Unable to convert key to string");
+
         let v = to_value(value)?;
-        self.map.insert(key.to_string(), v);
+        self.map.insert(ks.to_string(), v);
         self.try_store().await?;
         Ok(())
     }
@@ -105,7 +109,12 @@ where
         };
 
         let list = if list.is_none() {
-            Value::Object(Map::from_iter(<K as DefaultSettings>::defaults().await.into_iter().map(|(k, v)| (k.to_string(), v))))
+            Value::Object(Map::from_iter(<K as DefaultSettings>::defaults().await.into_iter().map(|(k, v)| {
+                let ks = to_value(k).unwrap();
+                let ks = ks.as_str().expect("Unable to convert key to string");
+
+                (ks.to_string(), v)
+            })))
         } else {
             list.unwrap()
         };
@@ -140,7 +149,7 @@ pub trait SettingsStoreT: Send + Sync + 'static {
 #[async_trait]
 impl<K> SettingsStoreT for SettingsStore<K>
 where
-    K: DefaultSettings + Display + Clone + Serialize + DeserializeOwned + Send + Sync + 'static,
+    K: DefaultSettings + Clone + Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     async fn get<V>(&self, key: &str) -> Option<V>
     where
