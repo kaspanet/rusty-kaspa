@@ -1,3 +1,5 @@
+use kaspa_wallet_core::settings::{application_folder, ensure_application_folder};
+
 use crate::imports::*;
 
 #[derive(Debug, Clone)]
@@ -474,11 +476,8 @@ impl Core {
             Method::new(move |_op: ()| {
                 let this = this.clone();
                 Box::pin(async move {
-                    log_info!("*** METRICS ACTIVATE -> TERMINAL ***");
                     this.metrics_ready_ctl.send(()).await.unwrap_or_else(|e| log_error!("Error signaling terminal init: {e}"));
-
                     this.terminal().ipc().metrics_ctl(MetricsSinkCtl::Activate).await.unwrap_or_else(|e| log_error!("{}", e));
-                    log_info!("*** METRICS ACTIVATE -> TERMINAL DONE ***");
                     Ok(())
                 })
             }),
@@ -655,6 +654,12 @@ impl Core {
 pub async fn init_core() -> Result<()> {
     workflow_wasm::panic::init_console_panic_hook();
     kaspa_core::log::set_log_level(LevelFilter::Info);
+
+    if let Err(e) = ensure_application_folder().await {
+        let home_dir = application_folder().map(|f| f.display().to_string()).unwrap_or("???".to_string());
+        let err = format!("Unable to access user home folder `{home_dir}` (do you have access?): {e}");
+        window().alert_with_message(&err)?;
+    }
 
     let core = Core::try_new().await?;
     core.main().await?;
