@@ -230,11 +230,7 @@ impl UtxoContext {
 
     /// Insert `utxo_entry` into the `UtxoSet`.
     /// NOTE: The insert will be ignored if already present in the inner map.
-    pub async fn insert(
-        &self,
-        utxo_entry: UtxoEntryReference,
-        current_daa_score: u64,
-    ) -> Result<()> {
+    pub async fn insert(&self, utxo_entry: UtxoEntryReference, current_daa_score: u64) -> Result<()> {
         let mut inner = self.inner();
 
         if let std::collections::hash_map::Entry::Vacant(e) = inner.map.entry(utxo_entry.id()) {
@@ -383,7 +379,6 @@ impl UtxoContext {
     }
 
     pub(crate) async fn handle_utxo_removed(&self, utxos: Vec<UtxoEntryReference>) -> Result<()> {
-
         // remove UTXOs from account set
         let utxo_ids: Vec<UtxoEntryId> = utxos.iter().map(|utxo| utxo.id()).collect();
         let removed = self.remove(utxo_ids).await?;
@@ -411,7 +406,6 @@ impl UtxoContext {
     }
 
     pub async fn register_addresses(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
-
         let local = self.addresses();
 
         let addresses = addresses
@@ -445,7 +439,6 @@ impl UtxoContext {
 
         Ok(())
     }
-
 }
 
 #[wasm_bindgen]
@@ -470,7 +463,6 @@ impl UtxoContext {
 
         Ok(removed.into_iter().map(JsValue::from).collect::<Array>())
     }
-
 
     // #[wasm_bindgen(constructor)]
     // pub fn constructor(core: &JsValue, id_or_account : &JsValue, utxo_by_address_response: JsValue) -> Result<UtxoProcessor> {
