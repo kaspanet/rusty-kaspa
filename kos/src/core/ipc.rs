@@ -4,6 +4,7 @@ use crate::imports::*;
 pub enum CoreOps {
     TestBg,
     Shutdown,
+    TerminalReady,
     KaspadCtl,
     KaspadStatus,
     KaspadVersion,
@@ -12,7 +13,7 @@ pub enum CoreOps {
     CpuMinerVersion,
     MetricsOpen,
     MetricsClose,
-    MetricsActive,
+    MetricsReady,
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -73,8 +74,13 @@ impl CoreIpc {
         Ok(())
     }
 
-    pub async fn metrics_active(&self) -> Result<()> {
-        self.target.call(CoreOps::MetricsActive, ()).await?;
+    pub async fn metrics_ready(&self) -> Result<()> {
+        self.target.call(CoreOps::MetricsReady, ()).await?;
+        Ok(())
+    }
+
+    pub async fn terminal_ready(&self) -> Result<()> {
+        self.target.call(CoreOps::TerminalReady, ()).await?;
         Ok(())
     }
 }

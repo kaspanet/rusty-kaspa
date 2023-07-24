@@ -1,0 +1,32 @@
+To configure node connectivity you can use the following commands:
+
+`network <identifier>` where the identifier is the name of the network 
+                       the values can be: mainnet, testnet or testnet-11
+`server <address>`     where the address can be an IP address of the 
+                       node you intend to connect to.
+
+Both network and server are stored in the application settings and are 
+used when running a local node or connecting to a remove node.
+
+`node start`           starts the local Kaspa node instance (desktop only)
+`node mute`            toggle mute of the Kaspad logs
+`connect <address>`    will connect the application RPC to the node. If the
+                       address is omitted, the pre-configured address is used.
+
+`create wallet`
+`create account [<account-type>]`
+`delete account`
+`delete wallet`
+
+`list`
+`select`
+`send`
+`transactions`
+
+`import <import-type>`
+`export <export-type>`
+
+
+
+`miner start`           starts the local CPU miner instance (desktop only)
+`miner mute`            toggle mute of the CPU Miner logs

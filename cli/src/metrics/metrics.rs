@@ -1,9 +1,10 @@
 use std::pin::Pin;
 
+use futures::future::join_all;
 use workflow_core::task::sleep;
 
 use crate::imports::*;
-use kaspa_rpc_core::api::rpc::RpcApi;
+use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse};
 
 // use kaspa_rpc_core::{ConsensusMetrics, ProcessMetrics};
 // use workflow_nw::ipc::*;
@@ -37,6 +38,7 @@ pub struct Metrics {
     rpc: Arc<Mutex<Option<Arc<dyn RpcApi>>>>,
     // target : Arc<Mutex<Option<Arc<dyn MetricsCtl>>>>,
     sink: Arc<Mutex<Option<MetricsSinkFn>>>,
+    data: Arc<Mutex<MetricsData>>,
 }
 
 impl Default for Metrics {
@@ -47,6 +49,7 @@ impl Default for Metrics {
             task_ctl: DuplexChannel::oneshot(),
             rpc: Arc::new(Mutex::new(None)),
             sink: Arc::new(Mutex::new(None)),
+            data: Arc::new(Mutex::new(MetricsData::default())),
         }
     }
 }
@@ -130,29 +133,27 @@ impl Metrics {
                         break;
                     },
                     _ = poll.fuse() => {
-                        let data = {
-                            if let Some(rpc) = this.rpc() {
-                                // if let Ok(_metrics) = rpc.get_metrics(true, true).await.map_err(|e| e.to_string()) {
-                                if let Ok(_metrics) = rpc.get_metrics(true, true).await {
 
-                                } else {
+                        *this.data.lock().unwrap() = MetricsData::default();
 
-                                }
+                        if let Some(rpc) = this.rpc() {
+                            let samples = vec![
+                                this.sample_metrics(rpc.clone()).boxed(),
+                                this.sample_gbdi(rpc.clone()).boxed(),
+                                this.sample_cpi(rpc.clone()).boxed(),
+                            ];
 
-                            } else {
-                                // - TODO - post zero values...
-                            }
+                            join_all(samples).await;
+                        }
 
-                            let data = MetricsData::TestData(123.45);
-                            Some(data)
-                        };
+                        // else {
 
-                        if let Some(data) = data {
+                        // }
 
-                            // TODO - output to terminal...
-                            if let Some(sink) = this.sink() {
-                                sink(data).await.ok();
-                            }
+                        // TODO - output to terminal...
+                        if let Some(sink) = this.sink() {
+                            let data = this.data.lock().unwrap().clone();
+                            sink(data).await.ok();
                         }
                     }
                 }
@@ -179,34 +180,50 @@ impl Metrics {
 
         Ok(())
     }
+
+    // --- samplers
+
+    async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
+        if let Ok(metrics) = rpc.get_metrics(true, true).await {
+            #[allow(unused_variables)]
+            let GetMetricsResponse { server_time, consensus_metrics, process_metrics } = metrics;
+
+            let mut data = self.data.lock().unwrap();
+            if let Some(consensus_metrics) = consensus_metrics {
+                data.blocks_submitted = consensus_metrics.blocks_submitted;
+                data.header_counts = consensus_metrics.header_counts;
+                data.dep_counts = consensus_metrics.dep_counts;
+                data.body_counts = consensus_metrics.body_counts;
+                data.txs_counts = consensus_metrics.txs_counts;
+                data.chain_block_counts = consensus_metrics.chain_block_counts;
+                data.mass_counts = consensus_metrics.mass_counts;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn sample_gbdi(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
+        if let Ok(gdbi) = rpc.get_block_dag_info().await {
+            let mut data = self.data.lock().unwrap();
+            data.block_count = gdbi.block_count;
+            data.header_count = gdbi.header_count;
+            data.tip_hashes = gdbi.tip_hashes.len();
+            data.difficulty = gdbi.difficulty;
+            data.past_median_time = gdbi.past_median_time;
+            data.virtual_parent_hashes = gdbi.virtual_parent_hashes.len();
+            data.virtual_daa_score = gdbi.virtual_daa_score;
+        }
+
+        Ok(())
+    }
+
+    async fn sample_cpi(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
+        if let Ok(_cpi) = rpc.get_connected_peer_info().await {
+            // let mut data = self.data.lock().unwrap();
+            // - TODO - fold peers into inbound / outbound...
+        }
+
+        Ok(())
+    }
 }
-
-// #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
-// pub enum MetricsData {
-//     Tps(u64),
-//     ConsensusMetrics(ConsensusMetrics),
-//     ProcessMetrics(ProcessMetrics),
-// }
-
-// #[derive(Debug, Clone)]
-// pub struct MetricsIpc {
-//     target: IpcTarget,
-// }
-
-// #[async_trait]
-// impl MetricsCtl for MetricsIpc {
-//     async fn post_data(&self, data : MetricsData) -> MetricsResult<()> {
-//         self.post(data).await
-//     }
-// }
-
-// impl MetricsIpc {
-//     pub fn new(target: IpcTarget) -> MetricsIpc {
-//         MetricsIpc { target }
-//     }
-
-//     pub async fn post(&self, data: MetricsData) -> IpcResult<()> {
-//         self.target.notify(MetricsOps::MetricsData, data).await?;
-//         Ok(())
-//     }
-// }

@@ -59,6 +59,8 @@ pub struct Core {
     pub kaspad: Arc<Kaspad>,
     pub cpu_miner: Arc<CpuMiner>,
     pub task_ctl: DuplexChannel,
+    pub terminal_ready_ctl: Channel<()>,
+    pub metrics_ready_ctl: Channel<()>,
     pub shutdown_ctl: Channel<()>,
     pub settings: Arc<SettingsStore<CoreSettings>>,
 }
@@ -86,6 +88,8 @@ impl Core {
             kaspad: Arc::new(Kaspad::default()),
             cpu_miner: Arc::new(CpuMiner::default()),
             task_ctl: DuplexChannel::oneshot(),
+            terminal_ready_ctl: Channel::oneshot(),
+            metrics_ready_ctl: Channel::oneshot(),
             shutdown_ctl: Channel::oneshot(),
             settings,
         });
@@ -193,12 +197,35 @@ impl Core {
             })
             .build()?;
 
-        let item = MenuItemBuilder::new()
+        let this = self.clone();
+        let toggle_metrics = MenuItemBuilder::new()
+            .label("Toggle Metrics")
+            .key("M")
+            .modifiers(modifier)
+            .callback(move |_| -> std::result::Result<(), JsValue> {
+                // window().alert_with_message("Hello")?;
+                let this = this.clone();
+                spawn(async move {
+                    this.toggle_metrics().await.unwrap_or_else(|e| log_error!("{}", e));
+                    // this.terminal().ipc().decrease_font_size().await.unwrap_or_else(|e| log_error!("{}", e));
+                });
+                Ok(())
+            })
+            .build()?;
+
+        let terminal_item = MenuItemBuilder::new()
             .label("Terminal")
             .submenus(vec![clipboard_copy, clipboard_paste, menu_separator(), increase_font, decrease_font])
             .build()?;
 
-        MenubarBuilder::new("Kaspa OS", is_macos()).mac_hide_edit(true).mac_hide_window(true).append(item).build(true)?;
+        let metrics_item = MenuItemBuilder::new().label("Metrics").submenus(vec![toggle_metrics]).build()?;
+
+        MenubarBuilder::new("Kaspa OS", is_macos())
+            .mac_hide_edit(true)
+            .mac_hide_window(true)
+            .append(terminal_item)
+            .append(metrics_item)
+            .build(true)?;
 
         Ok(())
     }
@@ -426,11 +453,30 @@ impl Core {
 
         let this = self.clone();
         self.ipc.method(
-            CoreOps::MetricsActive,
+            CoreOps::TerminalReady,
             Method::new(move |_op: ()| {
                 let this = this.clone();
                 Box::pin(async move {
+                    // log_info!("*** METRICS ACTIVATE -> TERMINAL ***");
+                    this.terminal_ready_ctl.send(()).await.unwrap_or_else(|e| log_error!("Error signaling terminal init: {e}"));
+                    // this.terminal().ipc().metrics_ctl(MetricsSinkCtl::Activate).await.unwrap_or_else(|e| log_error!("{}", e));
+                    // log_info!("*** METRICS ACTIVATE -> TERMINAL DONE ***");
+                    Ok(())
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.method(
+            CoreOps::MetricsReady,
+            Method::new(move |_op: ()| {
+                let this = this.clone();
+                Box::pin(async move {
+                    log_info!("*** METRICS ACTIVATE -> TERMINAL ***");
+                    this.metrics_ready_ctl.send(()).await.unwrap_or_else(|e| log_error!("Error signaling terminal init: {e}"));
+
                     this.terminal().ipc().metrics_ctl(MetricsSinkCtl::Activate).await.unwrap_or_else(|e| log_error!("{}", e));
+                    log_info!("*** METRICS ACTIVATE -> TERMINAL DONE ***");
                     Ok(())
                 })
             }),
@@ -442,12 +488,7 @@ impl Core {
             Method::new(move |_op: ()| {
                 let this = this.clone();
                 Box::pin(async move {
-                    if let Some(metrics) = this.metrics() {
-                        this.settings.set(CoreSettings::Metrics, false).await.ok();
-                        this.terminal().ipc().metrics_ctl(MetricsSinkCtl::Deactivate).await.unwrap_or_else(|e| log_error!("{}", e));
-                        metrics.window().close_impl(true);
-                        this.metrics.lock().unwrap().take();
-                    }
+                    this.destroy_metrics_window().await.unwrap_or_else(|e| log_error!("{}", e));
                     Ok(())
                 })
             }),
@@ -465,23 +506,6 @@ impl Core {
             }),
         );
 
-        Ok(())
-    }
-
-    pub async fn create_metrics_window(self: &Arc<Self>) -> Result<()> {
-        if self.metrics().is_none() {
-            let window = Arc::new(
-                Application::create_window_async(
-                    "/app/metrics.html",
-                    &nw_sys::window::Options::new().new_instance(false).height(768).width(1280),
-                )
-                .await
-                .expect("Core: failed to create metrics window"),
-            );
-
-            let metrics = Arc::new(Metrics::new(window));
-            *self.metrics.lock().unwrap() = Some(metrics);
-        }
         Ok(())
     }
 
@@ -532,28 +556,77 @@ impl Core {
         Ok(())
     }
 
-    pub async fn init_terminal_window(self: &Arc<Self>) -> Result<()> {
+    pub async fn create_terminal_window(self: &Arc<Self>) -> Result<()> {
         let window = Arc::new(
             Application::create_window_async(
                 "/app/index.html",
-                &nw_sys::window::Options::new().new_instance(false).height(768).width(1280),
+                &nw_sys::window::Options::new().new_instance(false).height(768).width(1280).show(false),
             )
             .await?,
         );
 
         self.terminal.lock().unwrap().replace(Arc::new(Terminal::new(window)));
 
+        self.terminal_ready_ctl.recv().await.unwrap_or_else(|e| {
+            log_error!("Core::main() `terminal_ready_ctl` error: {e}");
+        });
+
+        Ok(())
+    }
+
+    pub async fn create_metrics_window(self: &Arc<Self>) -> Result<()> {
+        if self.metrics().is_none() {
+            log_info!("*** CREATING WINDOW ***");
+            let window = Arc::new(
+                Application::create_window_async(
+                    "/app/metrics.html",
+                    &nw_sys::window::Options::new().new_instance(false).height(768).width(1280).show(false),
+                )
+                .await
+                .expect("Core: failed to create metrics window"),
+            );
+            log_info!("*** WINDOW CREATED ***");
+            let metrics = Arc::new(Metrics::new(window));
+            *self.metrics.lock().unwrap() = Some(metrics);
+
+            self.metrics_ready_ctl.recv().await.unwrap_or_else(|e| {
+                log_error!("Core::main() `terminal_ready_ctl` error: {e}");
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn destroy_metrics_window(self: &Arc<Self>) -> Result<()> {
+        if let Some(metrics) = self.metrics() {
+            self.settings.set(CoreSettings::Metrics, false).await.ok();
+            self.terminal().ipc().metrics_ctl(MetricsSinkCtl::Deactivate).await.unwrap_or_else(|e| log_error!("{}", e));
+            metrics.window().close_impl(true);
+            self.metrics.lock().unwrap().take();
+        }
+        Ok(())
+    }
+
+    pub async fn toggle_metrics(self: &Arc<Self>) -> Result<()> {
+        if self.metrics().is_none() {
+            self.create_metrics_window().await.unwrap_or_else(|e| log_error!("Core::toggle_metrics() error: {e}"));
+        } else {
+            self.destroy_metrics_window().await.unwrap_or_else(|e| log_error!("Core::toggle_metrics() error: {e}"));
+        }
         Ok(())
     }
 
     pub async fn main(self: &Arc<Self>) -> Result<()> {
         self.register_ipc_handlers()?;
 
-        self.init_terminal_window().await?;
+        self.create_terminal_window().await?;
 
         self.create_menu()?;
 
         self.start_task().await?;
+
+        // self.terminal_ready_ctl.recv().await.unwrap_or_else(|e| {
+        //     log_error!("Core::main() `terminal_init_ctl` error: {e}");
+        // });
 
         if let Some(metrics) = self.settings.get(CoreSettings::Metrics) {
             if metrics {

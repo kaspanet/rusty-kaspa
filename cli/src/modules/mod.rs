@@ -12,6 +12,7 @@ pub mod disconnect;
 pub mod estimate;
 pub mod exit;
 pub mod export;
+pub mod guide;
 pub mod halt;
 pub mod help;
 pub mod hint;
@@ -54,6 +55,7 @@ pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
             estimate,
             exit,
             export,
+            guide,
             halt,
             help,
             hint,

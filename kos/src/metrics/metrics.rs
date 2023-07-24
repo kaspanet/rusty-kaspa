@@ -94,7 +94,7 @@ impl Metrics {
 
         // this call reflects from core to terminal
         // initiating metrica data relay
-        self.core.metrics_active().await?;
+        self.core.metrics_ready().await?;
 
         //        self.window.close_impl(true);
 

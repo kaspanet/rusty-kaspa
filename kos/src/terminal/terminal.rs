@@ -205,6 +205,8 @@ impl Terminal {
         // cli starts notification->term trace pipe task
         self.cli.start().await?;
 
+        self.core.terminal_ready().await?;
+
         let kos_current_version = env!("CARGO_PKG_VERSION").to_string();
         let kos_last_version = self.settings.get::<String>(TerminalSettings::Greeting).unwrap_or_default();
 
