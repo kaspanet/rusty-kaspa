@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::metrics::container::*;
+#[allow(unused_imports)]
 use kaspa_cli::metrics::{Metric, MetricsData};
 use web_sys::Element;
 use workflow_core::sendable::Sendable;
@@ -9,6 +10,7 @@ static mut DOM_INIT: bool = false;
 
 pub struct Graph {
     element: Element,
+    #[allow(dead_code)]
     metric: Metric,
 }
 

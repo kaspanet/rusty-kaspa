@@ -195,18 +195,23 @@ impl Terminal {
     }
 
     async fn main(self: &Arc<Self>) -> Result<()> {
+        log_info!("-> register window handlers");
         self.register_window_handlers()?;
+        log_info!("-> register ipc handlers");
         self.register_ipc_handlers()?;
+        log_info!("-> register cli handlers");
         self.register_cli_handlers()?;
+        log_info!("-> register local cli handlers");
         crate::modules::register_cli_handlers(&self.cli)?;
 
-        // cli.handlers().register(&cli, crate::modules::test::Test::default());
-
         // cli starts notification->term trace pipe task
+        log_info!("-> cli start");
         self.cli.start().await?;
 
+        log_info!("-> signal terminal ready");
         self.core.terminal_ready().await?;
 
+        log_info!("-> greeting");
         let kos_current_version = env!("CARGO_PKG_VERSION").to_string();
         let kos_last_version = self.settings.get::<String>(TerminalSettings::Greeting).unwrap_or_default();
 
@@ -230,14 +235,18 @@ If you have any questions, please join us on discord at https://discord.gg/kaspa
         let banner = format!("Kaspa OS v{} (type 'help' for list of commands)", version);
         self.cli.term().writeln(banner);
 
+        log_info!("-> cli run ...");
         // terminal blocks async execution, delivering commands to the cli
         self.cli.run().await?;
 
+        log_info!("-> cli stop");
         // stop notification->term trace pipe task
         self.cli.stop().await?;
 
+        log_info!("-> core shutdown");
         self.core.shutdown().await?;
 
+        log_info!("-> terminal close");
         self.window.close_impl(true);
 
         Ok(())

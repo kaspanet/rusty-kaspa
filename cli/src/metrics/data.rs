@@ -52,7 +52,7 @@ impl MetricsData {
             Metric::MassCounts => JsValue::from(self.mass_counts as f64),
             Metric::BlockCount => JsValue::from(self.block_count as f64),
             Metric::TipHashes => JsValue::from(self.tip_hashes as f64),
-            Metric::Difficulty => JsValue::from(self.difficulty as f64),
+            Metric::Difficulty => JsValue::from(self.difficulty),
             Metric::PastMedianTime => JsValue::from(self.past_median_time as f64),
             Metric::VirtualParentHashes => JsValue::from(self.virtual_parent_hashes as f64),
             Metric::VirtualDaaScore => JsValue::from(self.virtual_daa_score as f64),

@@ -616,26 +616,33 @@ impl Core {
     }
 
     pub async fn main(self: &Arc<Self>) -> Result<()> {
+        log_info!("-> register ipc handlers");
         self.register_ipc_handlers()?;
 
+        log_info!("-> create terminal window");
         self.create_terminal_window().await?;
 
+        log_info!("-> create application menu");
         self.create_menu()?;
 
+        log_info!("-> start daemon event relay task");
         self.start_task().await?;
 
         // self.terminal_ready_ctl.recv().await.unwrap_or_else(|e| {
         //     log_error!("Core::main() `terminal_init_ctl` error: {e}");
         // });
 
+        log_info!("-> create metrics window");
         if let Some(metrics) = self.settings.get(CoreSettings::Metrics) {
             if metrics {
                 self.create_metrics_window().await?;
             }
         }
 
+        log_info!("-> await shutdown signal ...");
         self.shutdown_ctl.recv().await?;
 
+        log_info!("-> shutdown daemon event relay task");
         self.stop_task().await?;
 
         Ok(())
