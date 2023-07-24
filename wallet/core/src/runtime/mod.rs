@@ -1,7 +1,6 @@
 pub mod account;
 pub mod balance;
 pub mod events;
-pub mod scan;
 pub mod wallet;
 
 pub use account::{Account, AccountId, AccountKind, AccountMap};

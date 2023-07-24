@@ -3,13 +3,10 @@ use crate::result::Result;
 use crate::runtime::{Account, AccountId, Balance};
 use crate::storage::TransactionType;
 use crate::utxo::{Events, PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext};
-// use kaspa_notify::scope::{Scope, UtxosChangedScope};
 use crate::wasm;
 use kaspa_rpc_core::GetUtxosByAddressesResponse;
 use serde_wasm_bindgen::from_value;
 use sorted_insert::SortedInsertBinary;
-use std::collections::HashMap;
-use workflow_core::time::{Duration, Instant};
 use workflow_wasm::abi::ref_from_abi;
 
 static PROCESSOR_ID_SEQUENCER: AtomicU64 = AtomicU64::new(0);
@@ -505,17 +502,18 @@ impl UtxoContext {
         Ok(())
     }
 
-    // async fn subscribe_utxos_changed(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
-    pub async fn register_addresses(self: &Arc<Self>, addresses: Vec<Address>) -> Result<()> {
+    pub async fn register_addresses(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
+        // pub async fn register_addresses(self: &Arc<Self>, addresses: Vec<Address>) -> Result<()> {
         // log_info!("registering addresses (1) {:#?}", addresses);
 
         let local = self.addresses();
 
         let addresses = addresses
-            .clone()
-            .into_iter()
+            // .clone()
+            // .into_iter()
+            .iter()
             .filter_map(|address| {
-                let address = Arc::new(address);
+                let address = Arc::new(address.clone());
                 if local.insert(address.clone()) {
                     Some(address)
                 } else {
@@ -570,6 +568,7 @@ impl UtxoContext {
 
         Ok(())
     }
+
 }
 
 #[wasm_bindgen]

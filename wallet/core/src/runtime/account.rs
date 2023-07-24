@@ -3,14 +3,14 @@ use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDeri
 use crate::address::{build_derivate_paths, AddressManager};
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::scan::Scan;
+// use crate::runtime::scan::Scan;
 use crate::runtime::{AtomicBalance, Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
 use crate::tx::{LimitCalcStrategy, PaymentOutputs, VirtualTransaction};
-use crate::utxo::{UtxoContext, UtxoEntryReference};
+use crate::utxo::UtxoContext;
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
 use futures::future::join_all;
@@ -23,11 +23,7 @@ use std::hash::Hash;
 use std::str::FromStr;
 use workflow_core::abortable::Abortable;
 use workflow_core::enums::u8_try_from;
-use workflow_core::task::yield_executor;
-use workflow_core::time::Instant;
-use xxhash_rust::xxh3::xxh3_64;
 
-use super::scan::{ScanExtent, DEFAULT_WINDOW_SIZE};
 pub const DEFAULT_AMOUNT_PADDING: usize = 19;
 
 #[derive(Default, Clone)]
@@ -296,133 +292,123 @@ impl Account {
         self.inner.lock().unwrap()
     }
 
-    pub async fn scan_address_manager(self: &Arc<Self>, scan: Scan) -> Result<()> {
-        let mut cursor = 0;
+    // pub async fn scan_address_manager(self: &Arc<Self>, scan: Scan) -> Result<()> {
+    //     let mut cursor = 0;
 
-        // let mut balance = 0;
-        let mut last_address_index = std::cmp::max(scan.address_manager.index()?, scan.window_size);
+    //     // let mut balance = 0;
+    //     let mut last_address_index = std::cmp::max(scan.address_manager.index()?, scan.window_size);
 
-        'scan: loop {
-            let first = cursor;
-            let last = if cursor == 0 { last_address_index + 1 } else { cursor + scan.window_size };
-            cursor = last;
+    //     'scan: loop {
+    //         let first = cursor;
+    //         let last = if cursor == 0 { last_address_index + 1 } else { cursor + scan.window_size };
+    //         cursor = last;
 
-            // log_info!("first: {}, last: {}", first, last);
+    //         // log_info!("first: {}, last: {}", first, last);
 
-            let addresses = scan.address_manager.get_range(first..last).await?;
-            // log_info!("{}", format!("scanning addresses:\n{:#?}", addresses).replace('\n', "\r\n"));
+    //         let addresses = scan.address_manager.get_range(first..last).await?;
+    //         // log_info!("{}", format!("scanning addresses:\n{:#?}", addresses).replace('\n', "\r\n"));
+    //         self.utxo_context().register_addresses(&addresses).await?;
 
-            // log_info!("get_utxos_by_address start");
-            let ts = Instant::now();
-            let resp = self.wallet.rpc().get_utxos_by_addresses(addresses).await?;
-            log_info!("get_utxos_by_address duration: {}", ts.elapsed().as_secs_f64());
+    //         // log_info!("get_utxos_by_address start");
+    //         let ts = Instant::now();
+    //         let resp = self.wallet.rpc().get_utxos_by_addresses(addresses).await?;
+    //         log_info!("get_utxos_by_address duration: {}", ts.elapsed().as_secs_f64());
 
-            // log_info!("get_utxos_by_address done");
-            yield_executor().await;
-            let ts = Instant::now();
-            let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
-            log_info!("remapping duration: {}", ts.elapsed().as_secs_f64());
-            yield_executor().await;
-            // println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
-            //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
-            let ts = Instant::now();
-            for utxo_ref in refs.iter() {
-                if let Some(address) = utxo_ref.utxo.address.as_ref() {
-                    if let Some(utxo_address_index) = scan.address_manager.inner().address_to_index_map.get(address) {
-                        if last_address_index < *utxo_address_index {
-                            last_address_index = *utxo_address_index;
-                        }
-                    } else {
-                        panic!("Account::scan_address_manager() has received an unknown address: `{address}`");
-                    }
-                }
-            }
-            log_info!("index duration: {}", ts.elapsed().as_secs_f64());
+    //         // log_info!("get_utxos_by_address done");
+    //         yield_executor().await;
+    //         let ts = Instant::now();
+    //         let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
+    //         log_info!("remapping duration: {}", ts.elapsed().as_secs_f64());
+    //         yield_executor().await;
+    //         // println!("{}", format!("addresses:{:#?}", address_str).replace('\n', "\r\n"));
+    //         //println!("{}", format!("resp:{:#?}", resp.get(0).and_then(|a|a.address.clone())).replace('\n', "\r\n"));
+    //         let ts = Instant::now();
+    //         for utxo_ref in refs.iter() {
+    //             if let Some(address) = utxo_ref.utxo.address.as_ref() {
+    //                 if let Some(utxo_address_index) = scan.address_manager.inner().address_to_index_map.get(address) {
+    //                     if last_address_index < *utxo_address_index {
+    //                         last_address_index = *utxo_address_index;
+    //                     }
+    //                 } else {
+    //                     panic!("Account::scan_address_manager() has received an unknown address: `{address}`");
+    //                 }
+    //             }
+    //         }
+    //         log_info!("index duration: {}", ts.elapsed().as_secs_f64());
 
-            // log_info!("scan updating balance");
-            yield_executor().await;
+    //         // log_info!("scan updating balance");
+    //         yield_executor().await;
 
-            let ts = Instant::now();
-            let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
-                let entry_balance = r.as_ref().balance(scan.current_daa_score);
-                balance.mature += entry_balance.mature;
-                balance.pending += entry_balance.pending;
-                balance
-            });
-            log_info!("balance calc duration: {}", ts.elapsed().as_secs_f64());
-            yield_executor().await;
+    //         let ts = Instant::now();
+    //         let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
+    //             let entry_balance = r.as_ref().balance(scan.current_daa_score);
+    //             balance.mature += entry_balance.mature;
+    //             balance.pending += entry_balance.pending;
+    //             balance
+    //         });
+    //         log_info!("balance calc duration: {}", ts.elapsed().as_secs_f64());
+    //         yield_executor().await;
 
-            let ts = Instant::now();
-            self.utxo_context().extend(refs, scan.current_daa_score).await?;
-            log_info!("extend duration: {}", ts.elapsed().as_secs_f64());
+    //         let ts = Instant::now();
+    //         self.utxo_context().extend(refs, scan.current_daa_score).await?;
+    //         log_info!("extend duration: {}", ts.elapsed().as_secs_f64());
 
-            if !balance.is_empty() {
-                scan.balance.add(balance);
-            } else {
-                match &scan.extent {
-                    ScanExtent::EmptyWindow => {
-                        if cursor > last_address_index + scan.window_size {
-                            break 'scan;
-                        }
-                    }
-                    ScanExtent::Depth(depth) => {
-                        if &cursor > depth {
-                            break 'scan;
-                        }
-                    }
-                }
-            }
+    //         if !balance.is_empty() {
+    //             scan.balance.add(balance);
+    //         } else {
+    //             match &scan.extent {
+    //                 ScanExtent::EmptyWindow => {
+    //                     if cursor > last_address_index + scan.window_size {
+    //                         break 'scan;
+    //                     }
+    //                 }
+    //                 ScanExtent::Depth(depth) => {
+    //                     if &cursor > depth {
+    //                         break 'scan;
+    //                     }
+    //                 }
+    //             }
+    //         }
 
-            yield_executor().await;
-        }
+    //         yield_executor().await;
+    //     }
 
-        // log_info!("scan - secondary pass");
+    //     // log_info!("scan - secondary pass");
 
-        let mut cursor = 0;
-        while cursor <= last_address_index {
-            let first = cursor;
-            let last = std::cmp::min(cursor + scan.window_size, last_address_index + 1);
-            cursor = last;
-            let addresses = scan.address_manager.get_range(first..last).await?;
-            // log_info!("starting scan address registration...");
-            self.utxo_context().register_addresses(addresses).await?;
-        }
+    //     // let mut cursor = 0;
+    //     // while cursor <= last_address_index {
+    //     //     let first = cursor;
+    //     //     let last = std::cmp::min(cursor + scan.window_size, last_address_index + 1);
+    //     //     cursor = last;
+    //     //     let addresses = scan.address_manager.get_range(first..last).await?;
+    //     //     // log_info!("starting scan address registration...");
+    //     //     self.utxo_context().register_addresses(addresses).await?;
+    //     // }
 
-        scan.address_manager.set_index(last_address_index)?;
+    //     scan.address_manager.set_index(last_address_index)?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    pub async fn scan_utxos(self: &Arc<Self>, window_size: Option<u32>, extent: Option<u32>) -> Result<()> {
+    pub async fn scan(self: &Arc<Self>, window_size: Option<usize>, extent: Option<u32>) -> Result<()> {
         self.utxo_context().clear().await?;
 
         let current_daa_score = self.wallet.current_daa_score();
         let balance = Arc::new(AtomicBalance::default());
 
-        let window_size = window_size.unwrap_or(DEFAULT_WINDOW_SIZE);
         let extent = match extent {
             Some(depth) => ScanExtent::Depth(depth),
             None => ScanExtent::EmptyWindow,
         };
 
         let scans = vec![
-            self.scan_address_manager(Scan::new_with_args(
-                self.derivation.receive_address_manager(),
-                window_size,
-                extent,
-                &balance,
-                current_daa_score,
-            )),
-            self.scan_address_manager(Scan::new_with_args(
-                self.derivation.change_address_manager(),
-                window_size,
-                extent,
-                &balance,
-                current_daa_score,
-            )),
+            Scan::new_with_args(self.derivation.receive_address_manager(), window_size, extent, &balance, current_daa_score),
+            Scan::new_with_args(self.derivation.change_address_manager(), window_size, extent, &balance, current_daa_score), //.scan(self.utxo_context()),
         ];
 
-        join_all(scans).await.into_iter().collect::<Result<Vec<_>>>()?;
+        let futures = scans.iter().map(|scan| scan.scan(self.utxo_context())).collect::<Vec<_>>();
+
+        join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
 
         self.utxo_context().update_balance().await?;
 
@@ -535,13 +521,13 @@ impl Account {
 
     pub async fn new_receive_address(self: &Arc<Self>) -> Result<String> {
         let address = self.receive_address_manager()?.new_address().await?;
-        self.utxo_context().register_addresses(vec![address.clone()]).await?;
+        self.utxo_context().register_addresses(&[address.clone()]).await?;
         Ok(address.into())
     }
 
     pub async fn new_change_address(self: &Arc<Self>) -> Result<String> {
         let address = self.change_address_manager()?.new_address().await?;
-        self.utxo_context().register_addresses(vec![address.clone()]).await?;
+        self.utxo_context().register_addresses(&[address.clone()]).await?;
         Ok(address.into())
     }
 
@@ -583,7 +569,7 @@ impl Account {
         self.wallet.active_accounts().insert(self.clone());
         // self.is_connected.store(true, Ordering::SeqCst);
         // self.register_notification_listener().await?;
-        self.scan_utxos(None, None).await?;
+        self.scan(None, None).await?;
         Ok(())
     }
 

@@ -123,7 +123,7 @@ impl Account {
     }
 
     pub async fn scan(&self) -> Result<()> {
-        self.inner.scan_utxos(None, None).await
+        self.inner.scan(None, None).await
     }
 
     pub async fn send(&self, js_value: JsValue) -> Result<JsValue> {
