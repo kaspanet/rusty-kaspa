@@ -77,9 +77,11 @@ impl Core {
 
     /// Create a new application instance
     pub async fn try_new() -> Result<Arc<Self>> {
+        log_info!("-> loading core settings");
         let settings = Arc::new(SettingsStore::<CoreSettings>::try_new("core.settings")?);
         settings.try_load().await?;
 
+        log_info!("-> creating core application instance");
         let app = Arc::new(Self {
             inner: Application::new()?,
             ipc: Ipc::try_new_global_binding(Modules::Core)?,
