@@ -49,6 +49,9 @@ pub enum Error {
 
     #[error(transparent)]
     WalletError(#[from] kaspa_wallet_core::error::Error),
+
+    #[error(transparent)]
+    Dom(#[from] workflow_dom::error::Error),
 }
 
 impl From<Error> for JsValue {

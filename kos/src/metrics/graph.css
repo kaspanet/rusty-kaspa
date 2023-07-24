@@ -1,0 +1,8 @@
+.graph {
+    display: block;
+    width : 50vw;
+    height: 128px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    flex: flex-grow;
+}

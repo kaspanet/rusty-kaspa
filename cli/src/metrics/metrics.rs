@@ -146,10 +146,6 @@ impl Metrics {
                             join_all(samples).await;
                         }
 
-                        // else {
-
-                        // }
-
                         // TODO - output to terminal...
                         if let Some(sink) = this.sink() {
                             let data = this.data.lock().unwrap().clone();
@@ -207,7 +203,7 @@ impl Metrics {
         if let Ok(gdbi) = rpc.get_block_dag_info().await {
             let mut data = self.data.lock().unwrap();
             data.block_count = gdbi.block_count;
-            data.header_count = gdbi.header_count;
+            // data.header_count = gdbi.header_count;
             data.tip_hashes = gdbi.tip_hashes.len();
             data.difficulty = gdbi.difficulty;
             data.past_median_time = gdbi.past_median_time;
