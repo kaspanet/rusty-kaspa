@@ -227,8 +227,12 @@ impl Terminal {
 Hello Kaspian!
 
 If you have any questions, please join us on discord at https://discord.gg/kaspa
-    
-            ";
+
+If you are a first-time user, you can type 'guide' or 'help' to get started.
+
+Please note, this is an alpha software release of the Kaspa-OS; expect some bugs!
+
+";
 
             self.cli.term().writeln(greeting.crlf());
             self.settings.set(TerminalSettings::Greeting, &kos_current_version).await?;

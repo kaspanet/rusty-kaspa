@@ -9,7 +9,7 @@ impl Guide {
         let term = ctx.term();
         let guide = include_str!("guide.txt");
 
-        term.writeln(guide);
+        term.writeln(guide.crlf());
 
         Ok(())
     }

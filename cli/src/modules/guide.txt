@@ -1,3 +1,5 @@
+(under development, this will be refactored shortly)
+
 To configure node connectivity you can use the following commands:
 
 `network <identifier>` where the identifier is the name of the network 
@@ -13,7 +15,9 @@ used when running a local node or connecting to a remove node.
 `connect <address>`    will connect the application RPC to the node. If the
                        address is omitted, the pre-configured address is used.
 
-`create wallet`
+--- under development
+
+`create wallet`         create a wallet and a default account
 `create account [<account-type>]`
 `delete account`
 `delete wallet`
@@ -25,8 +29,6 @@ used when running a local node or connecting to a remove node.
 
 `import <import-type>`
 `export <export-type>`
-
-
 
 `miner start`           starts the local CPU miner instance (desktop only)
 `miner mute`            toggle mute of the CPU Miner logs
