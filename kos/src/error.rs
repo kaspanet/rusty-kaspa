@@ -21,7 +21,7 @@ pub enum Error {
     WorkflowNw(#[from] workflow_nw::error::Error),
 
     #[error(transparent)]
-    KaspaWalletCli(#[from] kaspa_cli::error::Error),
+    Cli(#[from] kaspa_cli::error::Error),
 
     #[error(transparent)]
     Ipc(#[from] workflow_nw::ipc::error::Error),

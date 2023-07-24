@@ -1,4 +1,7 @@
 mod exit;
+pub mod metrics;
+
+// pub use metrics::Metrics as MetricsModule;
 
 use crate::imports::*;
 

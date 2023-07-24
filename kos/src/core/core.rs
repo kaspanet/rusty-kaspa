@@ -22,6 +22,30 @@ impl Terminal {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Metrics {
+    #[allow(dead_code)]
+    window: Arc<nw_sys::Window>,
+    #[allow(dead_code)]
+    ipc: MetricsIpc,
+}
+
+impl Metrics {
+    fn new(window: Arc<nw_sys::Window>) -> Self {
+        Metrics { ipc: MetricsIpc::new(window.clone().into()), window }
+    }
+
+    #[allow(dead_code)]
+    pub fn window(&self) -> &Arc<nw_sys::Window> {
+        &self.window
+    }
+
+    #[allow(dead_code)]
+    pub fn ipc(&self) -> &MetricsIpc {
+        &self.ipc
+    }
+}
+
 /// Global application object created on application initialization.
 static mut CORE: Option<Arc<Core>> = None;
 
@@ -31,10 +55,12 @@ pub struct Core {
     pub inner: Arc<Application>,
     pub ipc: Arc<Ipc<CoreOps>>,
     terminal: Arc<Mutex<Option<Arc<Terminal>>>>,
+    metrics: Arc<Mutex<Option<Arc<Metrics>>>>,
     pub kaspad: Arc<Kaspad>,
     pub cpu_miner: Arc<CpuMiner>,
     pub task_ctl: DuplexChannel,
     pub shutdown_ctl: Channel<()>,
+    pub settings: Arc<SettingsStore<CoreSettings>>,
 }
 
 unsafe impl Send for Core {}
@@ -49,14 +75,19 @@ impl Core {
 
     /// Create a new application instance
     pub async fn try_new() -> Result<Arc<Self>> {
+        let settings = Arc::new(SettingsStore::<CoreSettings>::try_new("kaspa-os.settings")?);
+        settings.try_load().await?;
+
         let app = Arc::new(Self {
             inner: Application::new()?,
             ipc: Ipc::try_new_global_binding(Modules::Core)?,
             terminal: Arc::new(Mutex::new(Option::None)),
+            metrics: Arc::new(Mutex::new(Option::None)),
             kaspad: Arc::new(Kaspad::default()),
             cpu_miner: Arc::new(CpuMiner::default()),
             task_ctl: DuplexChannel::oneshot(),
             shutdown_ctl: Channel::oneshot(),
+            settings,
         });
 
         unsafe {
@@ -68,6 +99,10 @@ impl Core {
 
     pub fn terminal(&self) -> Arc<Terminal> {
         self.terminal.lock().unwrap().as_ref().unwrap().clone()
+    }
+
+    pub fn metrics(&self) -> Option<Arc<Metrics>> {
+        self.metrics.lock().unwrap().clone()
     }
 
     /// Create a test page window
@@ -378,6 +413,64 @@ impl Core {
 
         let this = self.clone();
         self.ipc.method(
+            CoreOps::MetricsOpen,
+            Method::new(move |_op: ()| {
+                let this = this.clone();
+                Box::pin(async move {
+                    this.settings.set(CoreSettings::Metrics, true).await.ok();
+                    this.create_metrics_window().await?;
+                    Ok(())
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.method(
+            CoreOps::MetricsActive,
+            Method::new(move |_op: ()| {
+                let this = this.clone();
+                Box::pin(async move {
+                    if this.metrics().is_none() {
+                        // let window = Arc::new(
+                        //     Application::create_window_async(
+                        //         "/app/metrics.html",
+                        //         &nw_sys::window::Options::new().new_instance(false).height(768).width(1280),
+                        //     )
+                        //     .await
+                        //     .expect("Core: failed to create metrics window"),
+                        // );
+
+                        // let metrics = Arc::new(Metrics::new(window));
+                        // *this.metrics.lock().unwrap() = Some(metrics);
+                        this.terminal().ipc().metrics_ctl(MetricsSinkCtl::Activate).await.unwrap_or_else(|e| log_error!("{}", e));
+
+                        // this.terminal().
+                    }
+
+                    Ok(())
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.method(
+            CoreOps::MetricsClose,
+            Method::new(move |_op: ()| {
+                let this = this.clone();
+                Box::pin(async move {
+                    if let Some(metrics) = this.metrics() {
+                        this.settings.set(CoreSettings::Metrics, false).await.ok();
+                        this.terminal().ipc().metrics_ctl(MetricsSinkCtl::Deactivate).await.unwrap_or_else(|e| log_error!("{}", e));
+                        metrics.window().close_impl(true);
+                        this.metrics.lock().unwrap().take();
+                    }
+                    Ok(())
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.method(
             CoreOps::Shutdown,
             Method::new(move |_op: ()| {
                 let this = this.clone();
@@ -388,6 +481,23 @@ impl Core {
             }),
         );
 
+        Ok(())
+    }
+
+    pub async fn create_metrics_window(self: &Arc<Self>) -> Result<()> {
+        if self.metrics().is_none() {
+            let window = Arc::new(
+                Application::create_window_async(
+                    "/app/metrics.html",
+                    &nw_sys::window::Options::new().new_instance(false).height(768).width(1280),
+                )
+                .await
+                .expect("Core: failed to create metrics window"),
+            );
+
+            let metrics = Arc::new(Metrics::new(window));
+            *self.metrics.lock().unwrap() = Some(metrics);
+        }
         Ok(())
     }
 
@@ -460,6 +570,12 @@ impl Core {
         self.create_menu()?;
 
         self.start_task().await?;
+
+        if let Some(metrics) = self.settings.get(CoreSettings::Metrics) {
+            if metrics {
+                self.create_metrics_window().await?;
+            }
+        }
 
         self.shutdown_ctl.recv().await?;
 

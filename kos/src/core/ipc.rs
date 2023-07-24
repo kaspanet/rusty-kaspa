@@ -10,6 +10,9 @@ pub enum CoreOps {
     CpuMinerCtl,
     CpuMinerStatus,
     CpuMinerVersion,
+    MetricsOpen,
+    MetricsClose,
+    MetricsActive,
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -57,6 +60,21 @@ impl CoreIpc {
 
     pub async fn shutdown(&self) -> Result<()> {
         self.target.call(CoreOps::Shutdown, ()).await?;
+        Ok(())
+    }
+
+    pub async fn metrics_open(&self) -> Result<()> {
+        self.target.call(CoreOps::MetricsOpen, ()).await?;
+        Ok(())
+    }
+
+    pub async fn metrics_close(&self) -> Result<()> {
+        self.target.call(CoreOps::MetricsClose, ()).await?;
+        Ok(())
+    }
+
+    pub async fn metrics_active(&self) -> Result<()> {
+        self.target.call(CoreOps::MetricsActive, ()).await?;
         Ok(())
     }
 }

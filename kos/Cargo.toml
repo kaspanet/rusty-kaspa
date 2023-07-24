@@ -30,6 +30,7 @@ thiserror.workspace = true
 cfg-if.workspace = true
 borsh.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 async-trait.workspace = true
 kaspa-core.workspace = true
 kaspa-daemon.workspace = true

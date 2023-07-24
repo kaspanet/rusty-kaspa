@@ -1,53 +1,50 @@
 use crate::imports::*;
+use kaspa_cli::metrics::MetricsData;
 
-static mut APP: Option<Arc<App>> = None;
+static mut TERMINAL: Option<Arc<Terminal>> = None;
 
 #[derive(Clone)]
-pub struct App {
+pub struct Terminal {
     pub inner: Arc<Application>,
     pub ipc: Arc<Ipc<TermOps>>,
     pub core: Arc<CoreIpc>,
     pub cli: Arc<KaspaCli>,
     pub window: Arc<Window>,
     pub callbacks: CallbackMap,
-    // pub shutdown: Arc<AtomicBool>,
-    pub settings: SettingsStore<AppSettings>,
+    pub settings: Arc<SettingsStore<TerminalSettings>>,
+    pub layout: Arc<Layout<SettingsStore<TerminalSettings>>>,
 }
 
-impl App {
+impl Terminal {
     pub async fn try_new() -> Result<Arc<Self>> {
         let core_ipc_target = get_ipc_target(Modules::Core).await?.expect("Unable to aquire background window");
         let core = Arc::new(CoreIpc::new(core_ipc_target));
         let daemons = Arc::new(Daemons::new().with_kaspad(core.clone()).with_cpu_miner(core.clone()));
 
-        let settings = SettingsStore::<AppSettings>::try_new("kaspa-os-3.settings")?;
+        let settings = Arc::new(SettingsStore::<TerminalSettings>::try_new("terminal.settings")?);
         settings.try_load().await?;
-        let font_size = settings.get::<f64>(AppSettings::FontSize);
+        let font_size = settings.get::<f64>(TerminalSettings::FontSize);
 
-        let terminal_options = TerminalOptions {
-            // disable_clipboard_handling : true,
-            font_size,
-            ..TerminalOptions::default()
-        };
+        let terminal_options = TerminalOptions { font_size, ..TerminalOptions::default() };
         let options = KaspaCliOptions::new(terminal_options, Some(daemons));
         let cli = KaspaCli::try_new_arc(options).await?;
 
         let window = Arc::new(nw_sys::window::get());
+        let layout = Arc::new(Layout::try_new(&window, &settings).await?);
 
         let app = Arc::new(Self {
             inner: Application::new()?,
             ipc: Ipc::try_new_window_binding(&window, Modules::Terminal)?,
-            // background
             core,
             cli,
             window,
             callbacks: CallbackMap::default(),
-            // shutdown: Arc::new(AtomicBool::new(false)),
             settings,
+            layout,
         });
 
         unsafe {
-            APP = Some(app.clone());
+            TERMINAL = Some(app.clone());
         };
 
         Ok(app)
@@ -75,7 +72,7 @@ impl App {
                             this.cli.term().increase_font_size().map_err(|e| e.to_string())?;
                             if let Some(font_size) = this.cli.term().get_font_size().unwrap() {
                                 this.settings
-                                    .set(AppSettings::FontSize, font_size)
+                                    .set(TerminalSettings::FontSize, font_size)
                                     .await
                                     .expect("Unable to store application settings");
                             }
@@ -84,7 +81,7 @@ impl App {
                             this.cli.term().decrease_font_size().map_err(|e| e.to_string())?;
                             if let Some(font_size) = this.cli.term().get_font_size().unwrap() {
                                 this.settings
-                                    .set(AppSettings::FontSize, font_size)
+                                    .set(TerminalSettings::FontSize, font_size)
                                     .await
                                     .expect("Unable to store application settings");
                             }
@@ -116,6 +113,41 @@ impl App {
 
         let this = self.clone();
         self.ipc.notification(
+            TermOps::MetricsCtl,
+            Notification::new(move |args: MetricsSinkCtl| {
+                let this = this.clone();
+                Box::pin(async move {
+                    let metrics = this.cli.handlers().get("metrics").expect("MetricsCtlSink: missing metrics module");
+                    let metrics =
+                        metrics.downcast_arc::<crate::modules::metrics::Metrics>().expect("MetricsCtlSink: invalid metrics module");
+
+                    match args {
+                        MetricsSinkCtl::Activate => {
+                            let ipc = get_ipc_target(Modules::Metrics)
+                                .await
+                                .expect("Error actuiring ipc for the metrics window")
+                                .expect("Unable to locate ipc for the metrics window");
+
+                            metrics.register_sink(Arc::new(Box::new(move |data: MetricsData| {
+                                // let this = this.clone();
+                                let ipc = ipc.clone();
+                                Box::pin(async move {
+                                    ipc.notify(MetricsOps::MetricsData, data).await.map_err(|e| e.to_string())?;
+                                    Ok(())
+                                })
+                            })))
+                        }
+                        MetricsSinkCtl::Deactivate => {
+                            metrics.unregister_sink();
+                        }
+                    }
+                    Ok(())
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.notification(
             TermOps::DaemonEvent,
             Notification::new(move |event: DaemonEvent| {
                 let this = this.clone();
@@ -134,6 +166,8 @@ impl App {
 
     fn register_cli_handlers(&self) -> Result<()> {
         self.cli.register_handlers()?;
+
+        self.cli.handlers().register(&self.cli, crate::modules::metrics::Metrics::new(&self.core));
 
         Ok(())
     }
@@ -165,7 +199,7 @@ impl App {
         self.cli.start().await?;
 
         let kos_current_version = env!("CARGO_PKG_VERSION").to_string();
-        let kos_last_version = self.settings.get::<String>(AppSettings::Greeting).unwrap_or_default();
+        let kos_last_version = self.settings.get::<String>(TerminalSettings::Greeting).unwrap_or_default();
 
         if kos_last_version != kos_current_version {
             let greeting = r"
@@ -176,7 +210,7 @@ If you have any questions, please join us on discord at https://discord.gg/kaspa
             ";
 
             self.cli.term().writeln(greeting.crlf());
-            self.settings.set(AppSettings::Greeting, &kos_current_version).await?;
+            self.settings.set(TerminalSettings::Greeting, &kos_current_version).await?;
         }
         let framework_version = self.cli.version();
         let version = if framework_version == kos_current_version {
@@ -206,7 +240,7 @@ pub async fn init_application() -> Result<()> {
     kaspa_core::log::set_log_level(LevelFilter::Info);
     workflow_log::set_colors_enabled(true);
 
-    let terminal = App::try_new().await?;
+    let terminal = Terminal::try_new().await?;
     terminal.main().await?;
 
     Ok(())

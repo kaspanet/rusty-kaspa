@@ -1921,6 +1921,7 @@ name = "kaspa-cli"
 version = "0.1.6"
 dependencies = [
  "async-trait",
+ "borsh",
  "cfg-if 1.0.0",
  "convert_case 0.5.0",
  "downcast",
@@ -1930,6 +1931,7 @@ dependencies = [
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-daemon",
+ "kaspa-rpc-core",
  "kaspa-wallet-core",
  "kaspa-wrpc-client",
  "nw-sys",
@@ -1946,6 +1948,7 @@ dependencies = [
  "workflow-dom",
  "workflow-log",
  "workflow-node",
+ "workflow-nw",
  "workflow-store",
  "workflow-terminal",
  "workflow-wasm",
@@ -2418,6 +2421,7 @@ dependencies = [
  "nw-sys",
  "regex",
  "serde",
+ "serde_json",
  "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3453,8 +3457,6 @@ checksum = "6aa2c4e539b869820a2b82e1aef6ff40aa85e65decdd5185e83fb4b1249cd00f"
 [[package]]
 name = "nw-sys"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "796f2a9574c6b232300c52f5a49fd2038e86319794c982d78379abf0617ff3b6"
 dependencies = [
  "cfg-if 1.0.0",
  "js-sys",

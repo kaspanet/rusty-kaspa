@@ -5,6 +5,7 @@ pub mod error;
 mod helpers;
 mod imports;
 mod matchers;
+pub mod metrics;
 mod modules;
 mod notifier;
 pub mod result;

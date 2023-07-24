@@ -11,7 +11,7 @@ pub enum MetricsSettings {
 
 #[async_trait]
 impl DefaultSettings for MetricsSettings {
-    async fn defaults() -> Vec<(Self, String)> {
+    async fn defaults() -> Vec<(Self, Value)> {
         vec![]
     }
 }

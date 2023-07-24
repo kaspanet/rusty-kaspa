@@ -15,13 +15,13 @@ pub enum MinerSettings {
 
 #[async_trait]
 impl DefaultSettings for MinerSettings {
-    async fn defaults() -> Vec<(Self, String)> {
-        let mut settings = vec![(Self::Server, "127.0.0.1".to_string()), (Self::Mute, "true".to_string())];
+    async fn defaults() -> Vec<(Self, Value)> {
+        let mut settings = vec![(Self::Server, to_value("127.0.0.1").unwrap()), (Self::Mute, to_value(true).unwrap())];
 
         let root = nw_sys::app::folder();
         if let Ok(binaries) = locate_binaries(&root, "kaspa-cpu-miner").await {
             if let Some(path) = binaries.first() {
-                settings.push((Self::Location, path.to_string_lossy().to_string()));
+                settings.push((Self::Location, to_value(path.to_string_lossy().to_string()).unwrap()));
             }
         }
 
@@ -141,7 +141,8 @@ impl Miner {
                 let version = cpu_miner.version().await?;
                 tprintln!(ctx, "{}", version);
             }
-            _ => {
+            v => {
+                tprintln!(ctx, "unknown command: '{v}'\r\n");
                 return self.display_help(ctx, argv).await;
             }
         }

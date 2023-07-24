@@ -13,13 +13,13 @@ pub enum KaspadSettings {
 
 #[async_trait]
 impl DefaultSettings for KaspadSettings {
-    async fn defaults() -> Vec<(Self, String)> {
-        let mut settings = vec![(Self::Mute, "true".to_string())];
+    async fn defaults() -> Vec<(Self, Value)> {
+        let mut settings = vec![(Self::Mute, to_value(true).unwrap())];
 
         let root = nw_sys::app::folder();
         if let Ok(binaries) = kaspa_daemon::locate_binaries(&root, "kaspad").await {
             if let Some(path) = binaries.first() {
-                settings.push((Self::Location, path.to_string_lossy().to_string()));
+                settings.push((Self::Location, to_value(path.to_string_lossy().to_string()).unwrap()));
             }
         }
 
@@ -31,9 +31,6 @@ impl DefaultSettings for KaspadSettings {
 pub struct Node {
     settings: SettingsStore<KaspadSettings>,
     mute: Arc<AtomicBool>,
-    // mute_on_start_triggered: Arc<AtomicBool>,
-    // start_flag: Arc<AtomicBool>,
-    // lines: Arc<AtomicUsize>,
 }
 
 impl Default for Node {
@@ -41,9 +38,6 @@ impl Default for Node {
         Node {
             settings: SettingsStore::try_new("kaspad.settings").expect("Failed to create miner settings store"),
             mute: Arc::new(AtomicBool::new(true)),
-            // mute_on_start_triggered: Arc::new(AtomicBool::new(true)),
-            // start_flag: Arc::new(AtomicBool::new(true)),
-            // lines: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
@@ -138,7 +132,9 @@ impl Node {
                 let version = kaspad.version().await?;
                 tprintln!(ctx, "{}", version);
             }
-            _ => {
+            v => {
+                tprintln!(ctx, "unknown command: '{v}'\r\n");
+
                 return self.display_help(ctx, argv).await;
             }
         }

@@ -9,3 +9,5 @@ mod modules;
 mod core;
 mod metrics;
 mod terminal;
+
+mod layout;

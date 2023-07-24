@@ -6,6 +6,7 @@ pub enum TermOps {
     FontCtl,
     EditCtl,
     DaemonEvent,
+    MetricsCtl,
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -18,6 +19,12 @@ pub enum FontCtl {
 pub enum EditCtl {
     Copy,
     Paste,
+}
+
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+pub enum MetricsSinkCtl {
+    Activate,
+    Deactivate,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +59,11 @@ impl TerminalIpc {
 
     pub async fn relay_event(&self, event: DaemonEvent) -> Result<()> {
         self.target.notify(TermOps::DaemonEvent, event).await?;
+        Ok(())
+    }
+
+    pub async fn metrics_ctl(&self, ctl: MetricsSinkCtl) -> Result<()> {
+        self.target.notify(TermOps::MetricsCtl, ctl).await?;
         Ok(())
     }
 }

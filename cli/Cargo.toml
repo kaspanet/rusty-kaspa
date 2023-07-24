@@ -23,6 +23,7 @@ workflow-core.workspace = true
 workflow-store.workspace = true
 workflow-dom.workspace = true
 workflow-log.workspace = true
+workflow-nw.workspace = true
 workflow-terminal.workspace = true
 workflow-node.workspace = true
 workflow-wasm.workspace = true
@@ -40,6 +41,8 @@ kaspa-daemon.workspace = true
 wasm-bindgen.workspace = true
 regex.workspace = true
 js-sys.workspace = true
+kaspa-rpc-core.workspace = true
+borsh.workspace = true
 # web-sys.workspace = true
 
 [dependencies.web-sys]

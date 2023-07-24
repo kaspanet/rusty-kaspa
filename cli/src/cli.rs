@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::imports::*;
+pub use crate::metrics;
 use crate::modules::miner::Miner;
 use crate::modules::node::Node;
 use crate::notifier::{Notification, Notifier};
@@ -186,6 +187,11 @@ impl KaspaCli {
         self.mute.load(Ordering::SeqCst)
     }
 
+    pub fn register_metrics(self: &Arc<Self>) -> Result<()> {
+        register_handlers!(self, self.handlers(), [metrics]);
+        Ok(())
+    }
+
     pub fn register_handlers(self: &Arc<Self>) -> Result<()> {
         crate::modules::register_handlers(self)?;
 
@@ -224,6 +230,8 @@ impl KaspaCli {
 
         Ok(())
     }
+
+    // pub async fn
 
     pub async fn start(self: &Arc<Self>) -> Result<()> {
         self.start_notification_pipe_task();
