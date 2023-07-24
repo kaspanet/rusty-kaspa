@@ -39,8 +39,7 @@ impl Storage {
             PathBuf::from(name)
         } else {
             let filename = Path::new(super::DEFAULT_STORAGE_FOLDER).join(name);
-            let filename = fs::resolve_path(filename.to_str().unwrap());
-            filename
+            fs::resolve_path(filename.to_str().unwrap())?
         };
 
         Ok(Storage { filename })
@@ -52,8 +51,7 @@ impl Storage {
         } else {
             // let filename = Path::new(DEFAULT_WALLET_FOLDER).join(name);
             let filename = Path::new(folder).join(name);
-            let filename = fs::resolve_path(filename.to_str().unwrap());
-            filename
+            fs::resolve_path(filename.to_str().unwrap())?
         };
 
         Ok(Storage { filename })
