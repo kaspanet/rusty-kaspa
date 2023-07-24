@@ -13,6 +13,7 @@ pub struct Terminal {
     pub callbacks: CallbackMap,
     pub settings: Arc<SettingsStore<TerminalSettings>>,
     pub layout: Arc<Layout<SettingsStore<TerminalSettings>>>,
+    pub metrics: Arc<Mutex<Option<Arc<IpcTarget>>>>,
 }
 
 impl Terminal {
@@ -41,6 +42,7 @@ impl Terminal {
             callbacks: CallbackMap::default(),
             settings,
             layout,
+            metrics: Arc::new(Mutex::new(None)),
         });
 
         unsafe {
@@ -120,7 +122,6 @@ impl Terminal {
                     let metrics = this.cli.handlers().get("metrics").expect("MetricsCtlSink: missing metrics module");
                     let metrics =
                         metrics.downcast_arc::<crate::modules::metrics::Metrics>().expect("MetricsCtlSink: invalid metrics module");
-
                     match args {
                         MetricsSinkCtl::Activate => {
                             let ipc = get_ipc_target(Modules::Metrics)
@@ -128,16 +129,22 @@ impl Terminal {
                                 .expect("Error actuiring ipc for the metrics window")
                                 .expect("Unable to locate ipc for the metrics window");
 
+                            this.metrics.lock().unwrap().replace(Arc::new(ipc));
                             metrics.register_sink(Arc::new(Box::new(move |data: MetricsData| {
-                                // let this = this.clone();
-                                let ipc = ipc.clone();
+                                let this = this.clone();
+
                                 Box::pin(async move {
-                                    ipc.notify(MetricsOps::MetricsData, data).await.map_err(|e| e.to_string())?;
+                                    let ipc = this.metrics.lock().unwrap().as_ref().unwrap().clone();
+                                    ipc.notify(MetricsOps::MetricsData, data).await.unwrap_or_else(|err| {
+                                        log_error!("error posting metrics data to metrics window: {:?}", err);
+                                    });
+
                                     Ok(())
                                 })
                             })))
                         }
                         MetricsSinkCtl::Deactivate => {
+                            this.metrics.lock().unwrap().take();
                             metrics.unregister_sink();
                         }
                     }

@@ -1,11 +1,9 @@
 use crate::imports::*;
 
-#[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(rename_all = "lowercase")]
 pub enum TerminalSettings {
-    #[describe("Welcome message")]
     Greeting,
-    #[describe("Terminal font size")]
     FontSize,
 }
 

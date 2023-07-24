@@ -123,7 +123,7 @@ impl Metrics {
 
         spawn(async move {
             loop {
-                let poll = sleep(Duration::from_millis(0));
+                let poll = sleep(Duration::from_millis(1000));
 
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
@@ -143,14 +143,13 @@ impl Metrics {
                                 // - TODO - post zero values...
                             }
 
-                            let data = MetricsData::Noop;
+                            let data = MetricsData::TestData(123.45);
                             Some(data)
                         };
 
                         if let Some(data) = data {
 
                             // TODO - output to terminal...
-
                             if let Some(sink) = this.sink() {
                                 sink(data).await.ok();
                             }

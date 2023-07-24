@@ -75,7 +75,7 @@ impl Core {
 
     /// Create a new application instance
     pub async fn try_new() -> Result<Arc<Self>> {
-        let settings = Arc::new(SettingsStore::<CoreSettings>::try_new("kaspa-os.settings")?);
+        let settings = Arc::new(SettingsStore::<CoreSettings>::try_new("core.settings")?);
         settings.try_load().await?;
 
         let app = Arc::new(Self {
@@ -430,23 +430,7 @@ impl Core {
             Method::new(move |_op: ()| {
                 let this = this.clone();
                 Box::pin(async move {
-                    if this.metrics().is_none() {
-                        // let window = Arc::new(
-                        //     Application::create_window_async(
-                        //         "/app/metrics.html",
-                        //         &nw_sys::window::Options::new().new_instance(false).height(768).width(1280),
-                        //     )
-                        //     .await
-                        //     .expect("Core: failed to create metrics window"),
-                        // );
-
-                        // let metrics = Arc::new(Metrics::new(window));
-                        // *this.metrics.lock().unwrap() = Some(metrics);
-                        this.terminal().ipc().metrics_ctl(MetricsSinkCtl::Activate).await.unwrap_or_else(|e| log_error!("{}", e));
-
-                        // this.terminal().
-                    }
-
+                    this.terminal().ipc().metrics_ctl(MetricsSinkCtl::Activate).await.unwrap_or_else(|e| log_error!("{}", e));
                     Ok(())
                 })
             }),
