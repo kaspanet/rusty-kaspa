@@ -5,7 +5,9 @@ use serde::de::DeserializeOwned;
 use serde_json::{from_value, to_value, Map, Value};
 use std::hash::Hash;
 use std::marker::PhantomData;
+use std::path::PathBuf;
 use workflow_core::enums::Describe;
+use workflow_store::fs;
 
 #[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(rename_all = "lowercase")]
@@ -128,6 +130,7 @@ where
 
     pub async fn try_store(&self) -> Result<()> {
         let map = Map::from_iter(self.map.clone().into_iter());
+        self.storage.ensure_dir().await?;
         workflow_store::fs::write_json(self.storage.filename(), &Value::Object(map)).await?;
         Ok(())
     }
@@ -167,4 +170,15 @@ where
         self.try_store().await?;
         Ok(())
     }
+}
+
+pub fn application_folder() -> Result<PathBuf> {
+    Ok(fs::resolve_path(storage::local::DEFAULT_STORAGE_FOLDER)?)
+}
+
+pub async fn ensure_application_folder() -> Result<()> {
+    let path = application_folder()?;
+    log_info!("Creating application folder: `{}`", path.display());
+    fs::create_dir_all(&path).await?;
+    Ok(())
 }
