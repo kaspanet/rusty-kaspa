@@ -33,7 +33,7 @@ pub use workflow_core::channel::*;
 pub use workflow_core::enums::Describe;
 pub use workflow_core::runtime as application_runtime;
 pub use workflow_core::task::{spawn, yield_executor};
-pub use workflow_core::time::{Duration, Instant};
+pub use workflow_core::time::{unixtime_as_millis_f64, Duration, Instant};
 pub use workflow_log::*;
 pub use workflow_nw::ipc::result::Result as IpcResult;
 pub use workflow_terminal::prelude::*;

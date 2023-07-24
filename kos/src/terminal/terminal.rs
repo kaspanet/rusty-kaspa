@@ -23,22 +23,22 @@ impl Terminal {
         let core = Arc::new(CoreIpc::new(core_ipc_target));
         log_info!("-> creating daemon interface");
         let daemons = Arc::new(Daemons::new().with_kaspad(core.clone()).with_cpu_miner(core.clone()));
-        
+
         log_info!("-> loading settings");
         let settings = Arc::new(SettingsStore::<TerminalSettings>::try_new("terminal.settings")?);
         settings.try_load().await?;
         let font_size = settings.get::<f64>(TerminalSettings::FontSize);
-        
+
         log_info!("-> terminal cli init");
         let terminal_options = TerminalOptions { font_size, ..TerminalOptions::default() };
         let options = KaspaCliOptions::new(terminal_options, Some(daemons));
         let cli = KaspaCli::try_new_arc(options).await?;
-        
+
         log_info!("-> getting local nw window");
         let window = Arc::new(nw_sys::window::get());
         log_info!("-> init window layout manager");
         let layout = Arc::new(Layout::try_new(&window, &settings).await?);
-        
+
         log_info!("-> creating terminal application instance");
         let app = Arc::new(Self {
             inner: Application::new()?,

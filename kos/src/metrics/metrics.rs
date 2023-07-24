@@ -112,7 +112,7 @@ impl Metrics {
     async fn ingest(self: &Arc<Self>, data: MetricsData) -> Result<()> {
         for metric in Metric::list() {
             let value = data.get(&metric);
-            self.graph(&metric).ingest(data.time, value).await?;
+            self.graph(&metric).ingest(data.unixtime, value).await?;
         }
 
         yield_executor().await;

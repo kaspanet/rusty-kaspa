@@ -134,7 +134,7 @@ impl Metrics {
                     },
                     _ = poll.fuse() => {
 
-                        *this.data.lock().unwrap() = MetricsData::default();
+                        *this.data.lock().unwrap() = MetricsData::new(unixtime_as_millis_f64());
 
                         if let Some(rpc) = this.rpc() {
                             let samples = vec![

@@ -52,7 +52,7 @@ impl Graph {
         &self.element
     }
 
-    pub async fn ingest(&self, time: u64, value: Sendable<JsValue>) -> Result<()> {
+    pub async fn ingest(&self, time: f64, value: Sendable<JsValue>) -> Result<()> {
         // TODO - ingest into graph
         self.element().set_inner_html(format!("{} -> {:?}", time, value).as_str());
 

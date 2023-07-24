@@ -22,7 +22,7 @@ pub enum Metric {
 
 #[derive(Default, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct MetricsData {
-    pub time: u64,
+    pub unixtime: f64,
     // ---
     pub blocks_submitted: u64,
     pub header_counts: u64,
@@ -41,6 +41,10 @@ pub struct MetricsData {
 }
 
 impl MetricsData {
+    pub fn new(unixtime: f64) -> Self {
+        Self { unixtime, ..Default::default() }
+    }
+
     pub fn get(&self, metric: &Metric) -> Sendable<JsValue> {
         let v = match metric {
             Metric::BlocksSubmitted => JsValue::from(self.blocks_submitted as f64),
