@@ -96,7 +96,6 @@ pub enum UtxoEntryVariant {
     Consumed(UtxoEntryReference),
 }
 
-// #[derive(Default)]
 pub struct Inner {
     pub(crate) mature: Vec<UtxoEntryReference>,
     pub(crate) pending: HashMap<UtxoEntryId, UtxoEntryReference>,
@@ -139,7 +138,6 @@ impl Inner {
 pub struct UtxoContext {
     pub(crate) inner: Arc<Mutex<Inner>>,
     pub(crate) processor: UtxoProcessor,
-    // pub(crate) id : Id,
 }
 
 #[wasm_bindgen]
@@ -180,10 +178,6 @@ impl UtxoContext {
     pub fn bind_to_id(&self, id: UtxoContextId) {
         self.inner().binding = Binding::Id(id);
     }
-
-    // pub fn account(&self) -> Option<Arc<Account>> {
-    //     self.inner().account.clone()
-    // }
 
     pub fn binding(&self) -> Binding {
         self.inner().binding.clone()
@@ -236,35 +230,27 @@ impl UtxoContext {
 
     /// Insert `utxo_entry` into the `UtxoSet`.
     /// NOTE: The insert will be ignored if already present in the inner map.
-    // pub fn insert(&self, utxo_entries: Vec<UtxoEntryReference>, current_daa_score : u64) {
     pub async fn insert(
         &self,
         utxo_entry: UtxoEntryReference,
         current_daa_score: u64,
-        // ctx: Option<&UtxoProcessorContext>,
     ) -> Result<()> {
         let mut inner = self.inner();
 
-        // for utxo_entry in utxo_entries.into_iter() {
         if let std::collections::hash_map::Entry::Vacant(e) = inner.map.entry(utxo_entry.id()) {
             e.insert(utxo_entry.clone());
             if utxo_entry.is_mature(current_daa_score) {
                 inner.mature.sorted_insert_asc_binary(utxo_entry);
-                // yield_executor().await;
                 Ok(())
             } else {
                 inner.pending.insert(utxo_entry.id(), utxo_entry.clone());
                 self.processor.pending().insert(utxo_entry.id(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
-                // yield_executor().await;
                 Ok(())
             }
         } else {
-            // Err(Error::DuplicateUtxoEntry)
             log_error!("ignoring duplicate utxo entry");
             Ok(())
         }
-
-        // }
     }
 
     pub async fn remove(&self, ids: Vec<UtxoEntryId>) -> Result<Vec<UtxoEntryVariant>> {
@@ -284,17 +270,6 @@ impl UtxoContext {
                 } else {
                     remove_mature_ids.push(id);
                 }
-
-                // remove from local pending
-                // if inner.pending.remove(&id).is_none() {
-                //     // if item was not in local pending, it is in the mature list
-                //     removed_mature_ids.push(id);
-                // } else {
-                //     // if item was in local pending, it is also in global pending
-                //     if self.core.pending().remove(&id).is_none() {
-                //         log_error!("Error: unable to remove utxo entry from global pending (with context)");
-                //     }
-                // }
             } else {
                 log_error!("Error: unable to remove utxo entry from local map (with context)");
             }
@@ -346,7 +321,6 @@ impl UtxoContext {
                     self.processor.pending().insert(utxo_entry.id(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
                 }
             } else {
-                // Err(Error::DuplicateUtxoEntry)
                 log_warning!("ignoring duplicate utxo entry");
             }
         }
@@ -382,67 +356,9 @@ impl UtxoContext {
         Ok(())
     }
 
-    /*
-
-    // pub async fn select(&self, transaction_amount: u64, order: UtxoOrdering, mark_utxo: bool) -> Result<SelectionContext> {
-    pub async fn select(&self, transaction_amount: u64, mark_utxo: bool) -> Result<SelectionContext> {
-        // if self.ordered.load(Ordering::SeqCst) != order as u32 {
-        //     self.order(order)?;
-        // }
-
-        // TODO: move to ticker callback
-        self.update_inuse_utxos().await?;
-
-        const FEE_PER_INPUT: u64 = 1124;
-
-        let mut selected_entries = vec![];
-        let mut in_use = vec![];
-        let total_selected_amount = {
-            let inner = self.inner();
-            inner
-                .entries
-                .iter()
-                .scan(0u64, |total, entry| {
-                    let outpoint = entry.as_ref().outpoint.inner().clone();
-                    if inner.in_use.contains_key(&outpoint) {
-                        return Some(0);
-                    }
-
-                    if mark_utxo {
-                        in_use.push(outpoint);
-                    }
-                    if *total >= transaction_amount + selected_entries.len() as u64 * FEE_PER_INPUT {
-                        return None;
-                    }
-
-                    selected_entries.push(entry.clone());
-
-                    let amount = entry.as_ref().utxo_entry.amount;
-                    *total += amount;
-                    Some(amount)
-                })
-                .sum()
-        };
-
-        if mark_utxo {
-            let map = &mut self.inner().in_use;
-            let now = Instant::now();
-            for outpoint in in_use {
-                map.insert(outpoint, now);
-            }
-        }
-
-        Ok(SelectionContext { transaction_amount, total_selected_amount, selected_entries })
-    }
-
-    */
-
     pub async fn calculate_balance(&self) -> Balance {
-        let ts = Instant::now();
-
         let mature = self.inner().mature.iter().map(|e| e.as_ref().entry.amount).sum();
         let pending = self.inner().pending.values().map(|e| e.as_ref().entry.amount).sum();
-        log_info!("balance calc duration: {}", ts.elapsed().as_secs_f64());
         Balance::new(mature, pending)
     }
 
@@ -451,7 +367,6 @@ impl UtxoContext {
         let current_daa_score = self.processor.current_daa_score();
 
         for utxo in utxos.iter() {
-            // match
             if let Err(err) = self.insert(utxo.clone(), current_daa_score).await {
                 log_error!("{}", err);
             }
@@ -468,7 +383,6 @@ impl UtxoContext {
     }
 
     pub(crate) async fn handle_utxo_removed(&self, utxos: Vec<UtxoEntryReference>) -> Result<()> {
-        // let current_daa_score = self.core.current_daa_score();
 
         // remove UTXOs from account set
         let utxo_ids: Vec<UtxoEntryId> = utxos.iter().map(|utxo| utxo.id()).collect();
@@ -491,26 +405,16 @@ impl UtxoContext {
             }
         }
 
-        // post update notifications
-        // for utxo in utxos.into_iter() {
-        //     let record = (TransactionType::Debit, self, utxo).into();
-        //     self.core.notify(Events::DebitPending { record }).await?;
-        // }
-
         // post balance update
         self.update_balance().await?;
         Ok(())
     }
 
     pub async fn register_addresses(self: &Arc<Self>, addresses: &[Address]) -> Result<()> {
-        // pub async fn register_addresses(self: &Arc<Self>, addresses: Vec<Address>) -> Result<()> {
-        // log_info!("registering addresses (1) {:#?}", addresses);
 
         let local = self.addresses();
 
         let addresses = addresses
-            // .clone()
-            // .into_iter()
             .iter()
             .filter_map(|address| {
                 let address = Arc::new(address.clone());
@@ -522,29 +426,15 @@ impl UtxoContext {
             })
             .collect::<Vec<_>>();
 
-        // log_info!("registering addresses (2) {:#?}", addresses);
-
-        // self.inner().addresses.extend(addresses.clone());
         self.processor.register_addresses(addresses, self).await?;
-        // self.wallet.utxo_processor_core().address_to_account_map().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
-        // let listener_id = self.core.listener_id();
-        // // for address in addresses.iter() {
-        // //     log_info!("{}: subscribing to {}", self.id, address);
-        // // }
-        // let utxos_changed_scope = UtxosChangedScope { addresses };
-        // self.wallet.rpc().start_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
 
         Ok(())
     }
 
     pub async fn unregister_addresses(self: &Arc<Self>, addresses: Vec<Address>) -> Result<()> {
         if !addresses.is_empty() {
-            // log_info!("unregistering addresses (1) {:#?}", addresses);
             let local = self.addresses();
-
             let addresses = addresses.clone().into_iter().map(Arc::new).collect::<Vec<_>>();
-            // log_info!("unregistering addresses (2) {:#?}", addresses);
-
             self.processor.unregister_addresses(addresses.clone()).await?;
             addresses.iter().for_each(|address| {
                 local.remove(address);
@@ -552,19 +442,6 @@ impl UtxoContext {
         } else {
             log_warning!("utxo processor: unregistering empty address set")
         }
-        // let addresses = addresses.clone().into_iter().filter_map(|address|{
-        //     let address = Arc::new(address);
-        //     local.remove(&address)
-        // }).collect::<Vec<_>>();
-
-        // self.wallet.utxo_processor_core().unregister_addresses(addresses.clone().into_iter().map(Arc::new).collect());
-        // // self.wallet.address_to_account_map().lock().unwrap().extend(addresses.iter().map(|a| (a.clone(), self.clone())));
-
-        // let listener_id = self
-        //     .listener_id()
-        //     .expect("subscribe_utxos_changed() requires `listener_id` (must call `register_notification_listener()` before use)");
-        // let utxos_changed_scope = UtxosChangedScope { addresses: addresses.to_vec() };
-        // self.wallet.rpc().stop_notify(listener_id, Scope::UtxosChanged(utxos_changed_scope)).await?;
 
         Ok(())
     }
@@ -594,20 +471,6 @@ impl UtxoContext {
         Ok(removed.into_iter().map(JsValue::from).collect::<Array>())
     }
 
-    // pub fn exists(&self, utxo_entry: &UtxoEntryReference) -> bool {
-    //     let id = utxo_entry.id();
-    //     self.inner.entries.lock().unwrap().iter().find(|entry| entry.id() == id).cloned().is_some()
-    // }
-
-    // pub fn find(&self, id: String) -> Option<UtxoEntryReference> {
-    //     self.inner.entries.lock().unwrap().iter().find(|entry| entry.utxo.outpoint.id() == id).cloned()
-    // }
-
-    // #[wasm_bindgen(js_name=select)]
-    // pub async fn select_utxos(&self, transaction_amount: u64, order: UtxoOrdering, mark_utxo: bool) -> Result<SelectionContext> {
-    //     let data = self.select(transaction_amount, order, mark_utxo).await?;
-    //     Ok(data)
-    // }
 
     // #[wasm_bindgen(constructor)]
     // pub fn constructor(core: &JsValue, id_or_account : &JsValue, utxo_by_address_response: JsValue) -> Result<UtxoProcessor> {

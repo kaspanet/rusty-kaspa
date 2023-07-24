@@ -271,10 +271,6 @@ impl UtxoProcessor {
         *self.inner.event_consumer.lock().unwrap() = event_consumer;
 
         let this = self.clone();
-        // self.rpc().downcast_arc::<KaspaRpcClient>().expect("unable to downcast DynRpcApi to KaspaRpcClient")
-
-        // let rpc :
-        // let rpc_ctl_channel = self.rpc().downcast_arc::<Arc<KaspaRpcClient>>().ctl_multiplexer_channel();
         let rpc_ctl_channel = this
             .rpc()
             .clone()
@@ -285,7 +281,6 @@ impl UtxoProcessor {
 
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
-        // let multiplexer = self.multiplexer().clone();
         let notification_receiver = self.inner.notification_channel.receiver.clone();
 
         spawn(async move {
