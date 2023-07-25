@@ -23,7 +23,7 @@ pub mod builder;
 pub mod counters;
 pub mod error;
 
-const SERVICE_NAME: &str = "perf-monitor";
+pub const SERVICE_NAME: &str = "perf-monitor";
 
 pub struct Monitor<TS: AsRef<TickService>> {
     tick_service: TS,

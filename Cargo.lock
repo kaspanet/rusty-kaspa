@@ -2604,6 +2604,7 @@ dependencies = [
  "kaspa-index-processor",
  "kaspa-mining",
  "kaspa-p2p-flows",
+ "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
  "kaspa-utils",
@@ -2677,7 +2678,7 @@ version = "0.11.0+8.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3386f101bcb4bd252d8e9d2fb41ec3b0862a15a62b478c355b2982efa469e3e"
 dependencies = [
- "bindgen 0.64.0",
+ "bindgen 0.65.1",
  "bzip2-sys",
  "cc",
  "glob",
@@ -4117,6 +4118,12 @@ dependencies = [
  "nalgebra",
  "rand 0.7.3",
 ]
+
+[[package]]
+name = "strsim"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 
 [[package]]
 name = "strsim"
