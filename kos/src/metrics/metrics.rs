@@ -98,7 +98,7 @@ impl Metrics {
         *self.container.lock().unwrap() = Some(container.clone());
 
         for metric in Metric::list() {
-            let graph = Arc::new(Graph::try_new(&self.window.window(), &container, &metric).await?);
+            let graph = Arc::new(Graph::try_new(&self.window.window(), &container, 20.0, 20.0, 20.0, 20.0).await?);
             self.graphs.lock().unwrap().insert(metric, graph);
         }
 

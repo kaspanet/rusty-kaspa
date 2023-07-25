@@ -29,16 +29,16 @@ function build(){
     y = d3.scaleLinear()
         .range([size.height, 0]);
 
-    line = d3.line()
-        .x(function(d) { return x(d.date); })
-        .y(function(d) { return y(d.close); })
-        .curve(d3.curveStep)
-        .context(context);
+    // line = d3.line()
+    //     .x(function(d) { return x(d.date); })
+    //     .y(function(d) { return y(d.value); })
+    //     .curve(d3.curveStep)
+    //     .context(context);
         
     area = d3.area()
         .x(function(d) { return x(d.date); })
         .y0(size.height)
-        .y1(function(d) { return y(d.close); })
+        .y1(function(d) { return y(d.value); })
         .context(context);
 
     context.translate(margin.left, margin.top);
@@ -47,22 +47,35 @@ init();
 
 d3.tsv("/resources/data.tsv", function(d) {
     d.date = parseTime(d.date);
-    d.close = +d.close;
+    d.value = +d.close;
     return d;
 }).then(function(data, error) {
-    
+    data = [];
+    let date1 = new Date();
+    //for (let i=0; i<300; i++){
+    setInterval(()=>{
+        let s = parseInt(Math.random()*20);
+        date1.setDate(date1.getDate() + s);
+        let date = new Date(date1.getTime())
+        //console.log("data", s, data)
+        data.push({
+            date,
+            value: Math.random()*100
+        });
+        x.domain(d3.extent(data, function(d) { return d.date; }));
+        y.domain(d3.extent(data, function(d) { return d.value; }));
+        context.clearRect(-margin.left, -margin.top, 
+            size.width+margin.left+margin.right,
+            size.height+margin.top+margin.bottom)
+        xAxis();
+        yAxis();
 
-    x.domain(d3.extent(data, function(d) { return d.date; }));
-    y.domain(d3.extent(data, function(d) { return d.close; }));
-
-    xAxis();
-    yAxis();
-
-    context.beginPath();
-    area(data);
-    context.fillStyle = 'red';
-    context.strokeStyle = 'red';
-    context.fill();
+        context.beginPath();
+        area(data);
+        context.fillStyle = 'red';
+        context.strokeStyle = 'red';
+        context.fill();
+    }, 1000);
 
 });
 

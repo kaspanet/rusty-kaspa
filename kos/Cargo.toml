@@ -49,6 +49,9 @@ features = [
     'Window',
     'HtmlElement',
     'CustomEvent',
-    'MouseEvent'
+    'DomRect',
+    'MouseEvent',
+    'HtmlCanvasElement',
+    'CanvasRenderingContext2d'
 ]
 
