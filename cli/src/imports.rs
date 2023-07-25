@@ -23,6 +23,7 @@ pub use regex::Regex;
 pub use separator::Separatable;
 pub use serde::{Deserialize, Serialize};
 pub use serde_json::{to_value, Value};
+pub use std::cmp;
 pub use std::collections::HashMap;
 pub use std::ops::Deref;
 pub use std::path::{Path, PathBuf};
