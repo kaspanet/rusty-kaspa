@@ -19,7 +19,7 @@ pub use kaspa_utils::hashmap::*;
 pub use kaspa_utils::hex::{FromHex, ToHex};
 pub use pad::PadStr;
 pub use serde::{Deserialize, Deserializer, Serialize};
-pub use std::collections::HashMap;
+pub use std::collections::{HashMap, HashSet};
 pub use std::pin::Pin;
 pub use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 pub use std::sync::{Arc, Mutex, MutexGuard};

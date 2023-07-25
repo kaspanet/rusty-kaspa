@@ -80,7 +80,7 @@ impl Core {
     /// Create a new application instance
     pub async fn try_new() -> Result<Arc<Self>> {
         log_info!("-> loading core settings");
-        let settings = Arc::new(SettingsStore::<CoreSettings>::try_new("core.settings")?);
+        let settings = Arc::new(SettingsStore::<CoreSettings>::try_new("core")?);
         settings.try_load().await?;
 
         log_info!("-> creating core application instance");

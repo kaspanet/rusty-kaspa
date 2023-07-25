@@ -15,6 +15,7 @@ static mut DOM_INIT: bool = false;
 
 #[derive(Clone)]
 pub struct Graph {
+    #[allow(dead_code)]
     element: Element,
     canvas: HtmlCanvasElement,
     context: web_sys::CanvasRenderingContext2d,
@@ -133,7 +134,7 @@ impl Graph {
         let x_cb = callback!(move |d: js_sys::Object| { that.x.call1(&JsValue::NULL, &d.get("date").unwrap()) });
         let that = self.clone();
         let y_cb = callback!(move |d: js_sys::Object| { that.y.call1(&JsValue::NULL, &d.get("value").unwrap()) });
-        self.area = Some(Arc::new(D3::area().x(x_cb.get_fn()).y0(self.height).y1(y_cb.get_fn()).context(&context)));
+        self.area = Some(Arc::new(D3::area().x(x_cb.get_fn()).y0(self.height).y1(y_cb.get_fn()).context(context)));
 
         self.callbacks.retain(x_cb)?;
         self.callbacks.retain(y_cb)?;
@@ -197,7 +198,7 @@ impl Graph {
 
         context.set_text_align("right");
         context.set_text_baseline("middle");
-        for tick in ticks.clone() {
+        for tick in ticks {
             let y = self.y.call1(&JsValue::NULL, &tick).unwrap().as_f64().unwrap();
             let text = tick_format.call1(&JsValue::NULL, &tick).unwrap().as_string().unwrap();
             context.fill_text(&text, -tick_size - tick_padding, y)?;

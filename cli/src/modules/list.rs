@@ -21,6 +21,12 @@ impl List {
             tprintln!(ctx);
         }
 
+        if !ctx.wallet().is_connected() {
+            tprintln!(ctx);
+            tprintln!(ctx, "{}", style("Wallet is not connected to the network").magenta());
+            tprintln!(ctx);
+        }
+
         Ok(())
     }
 }

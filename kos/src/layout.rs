@@ -32,7 +32,6 @@ where
         let move_window = callback!(move |x: u32, y: u32| {
             let settings_ = settings_.clone();
             let position = Position { x, y };
-            log_info!("Move window to ({}, {})", position.x, position.x);
             spawn(async move {
                 settings_.set("window.position", position).await.unwrap_or_else(|err| {
                     log_error!("Unable to store window position: {err}");
@@ -46,7 +45,6 @@ where
         let resize_window = callback!(move |width: u32, height: u32| {
             let settings_ = settings_.clone();
             let size = Size { width, height };
-            log_info!("Size window to ({}, {})", size.width, size.height);
             spawn(async move {
                 settings_.set("window.size", size).await.unwrap_or_else(|err| {
                     log_error!("Unable to store window size: {err}");

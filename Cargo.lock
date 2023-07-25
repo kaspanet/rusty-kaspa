@@ -5605,6 +5605,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "workflow-core",
  "workflow-log",

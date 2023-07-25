@@ -41,7 +41,7 @@ impl Set {
 
             match key {
                 "network" => {
-                    let network: NetworkType = value.parse().map_err(|_| "Unknown network type".to_string())?;
+                    let network: NetworkId = value.parse()?;
                     ctx.wallet().settings().set(WalletSettings::Network, network).await?;
                 }
                 "server" => {

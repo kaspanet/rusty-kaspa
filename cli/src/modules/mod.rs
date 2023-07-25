@@ -16,6 +16,7 @@ pub mod guide;
 pub mod halt;
 pub mod help;
 pub mod hint;
+pub mod history;
 pub mod import;
 pub mod info;
 pub mod list;
@@ -59,6 +60,7 @@ pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
             halt,
             help,
             hint,
+            history,
             import,
             info,
             list,

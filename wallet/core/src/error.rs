@@ -75,6 +75,9 @@ pub enum Error {
     #[error("Invalid network suffix '{0}'")]
     InvalidNetworkSuffix(String),
 
+    #[error("Network suffix is required for network '{0}'")]
+    MissingNetworkSuffix(String),
+
     #[error("Unexpected extra network suffix '{0}'")]
     UnexpectedExtraSuffixToken(String),
 
