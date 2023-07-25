@@ -661,6 +661,9 @@ impl Wallet {
     /// handle connection event
     pub async fn handle_connect(self: &Arc<Self>) -> Result<()> {
         self.init_state_from_server().await?;
+
+        self.utxo_processor().set_network_id(self.network()?);
+        // self.utxo_processor().handle_connect().await?;
         // self.inner.is_synced.store(false, Ordering::SeqCst);
         self.inner.is_connected.store(true, Ordering::SeqCst);
         self.register_notification_listener().await?;
@@ -677,7 +680,7 @@ impl Wallet {
 
     /// handle disconnection event
     pub async fn handle_disconnect(self: &Arc<Self>) -> Result<()> {
-        self.utxo_processor().handle_disconnect().await?;
+        // self.utxo_processor().handle_disconnect().await?;
         self.inner.is_connected.store(false, Ordering::SeqCst);
         self.unsubscribe_daa_score().await?;
         self.unregister_notification_listener().await?;

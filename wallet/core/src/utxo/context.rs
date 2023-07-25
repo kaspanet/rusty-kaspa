@@ -370,7 +370,8 @@ impl UtxoContext {
 
         for utxo in utxos.into_iter() {
             // post update notifications
-            let record = (TransactionType::Credit, self, utxo).into();
+            let txid = utxo.data().outpoint.transaction_id();
+            let record = (self, TransactionType::Credit, txid, vec![utxo]).into();
             self.processor.notify(Events::Pending { record }).await?;
         }
         // post balance update
@@ -386,7 +387,8 @@ impl UtxoContext {
         for removed in removed.into_iter() {
             match removed {
                 UtxoEntryVariant::Mature(utxo) => {
-                    let record = (TransactionType::Debit, self, utxo).into();
+                    let txid = utxo.data().outpoint.transaction_id();
+                    let record = (self, TransactionType::Debit, txid, vec![utxo]).into();
                     self.processor.notify(Events::External { record }).await?;
                 }
                 UtxoEntryVariant::Consumed(_utxo) => {
@@ -394,7 +396,8 @@ impl UtxoContext {
                     // self.core.notify(Events::Debit { record }).await?;
                 }
                 UtxoEntryVariant::Pending(utxo) => {
-                    let record = (TransactionType::Reorg, self, utxo).into();
+                    let txid = utxo.data().outpoint.transaction_id();
+                    let record = (self, TransactionType::Reorg, txid, vec![utxo]).into();
                     self.processor.notify(Events::Reorg { record }).await?;
                 }
             }

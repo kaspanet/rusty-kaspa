@@ -1,11 +1,13 @@
 pub mod cache;
 pub mod collection;
 pub mod interface;
+pub mod payload;
 pub mod storage;
 pub mod streams;
 pub mod wallet;
 
 pub use collection::Collection;
+pub use payload::Payload;
 pub use storage::Storage;
 pub use wallet::Wallet;
 

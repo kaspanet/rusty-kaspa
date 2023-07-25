@@ -178,7 +178,7 @@ impl Hash {
     }
 
     #[wasm_bindgen(js_name = toString)]
-    pub fn to_str(&self) -> String {
+    pub fn js_to_string(&self) -> String {
         self.to_string()
     }
 }

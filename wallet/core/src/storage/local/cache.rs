@@ -12,8 +12,8 @@ pub struct Cache {
     pub prv_key_data_info: Collection<PrvKeyDataId, PrvKeyDataInfo>,
     pub accounts: Collection<AccountId, Account>,
     pub metadata: Collection<AccountId, Metadata>,
-    pub transaction_records: Collection<TransactionRecordId, TransactionRecord>,
-    pub transaction_metadata: HashMap<TransactionRecordId, TransactionMetadata>,
+    pub transaction_records: Collection<TransactionId, TransactionRecord>,
+    pub transaction_metadata: HashMap<TransactionId, TransactionMetadata>,
     pub address_book: Vec<AddressBookEntry>,
 }
 
@@ -31,9 +31,8 @@ impl TryFrom<(Wallet, &Secret)> for Cache {
         let accounts: Collection<AccountId, Account> = payload.0.accounts.try_into()?;
         let metadata: Collection<AccountId, Metadata> = wallet.metadata.try_into()?;
         let user_hint = wallet.user_hint;
-        let transaction_records: Collection<TransactionRecordId, TransactionRecord> = payload.0.transaction_records.try_into()?;
-        let transaction_metadata: HashMap<TransactionRecordId, TransactionMetadata> =
-            payload.0.transaction_metadata.into_iter().collect();
+        let transaction_records: Collection<TransactionId, TransactionRecord> = payload.0.transaction_records.try_into()?;
+        let transaction_metadata: HashMap<TransactionId, TransactionMetadata> = payload.0.transaction_metadata.into_iter().collect();
         let address_book = payload.0.address_book.into_iter().collect();
 
         Ok(Cache {

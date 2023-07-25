@@ -8,7 +8,7 @@ pub mod interface;
 pub mod keydata;
 pub mod local;
 pub mod metadata;
-pub mod payload;
+// pub mod payload;
 pub mod transaction;
 pub mod wasm;
 
@@ -19,8 +19,8 @@ pub use id::IdT;
 pub use interface::{AccessContextT, AccountStore, Interface, MetadataStore, PrvKeyDataStore, TransactionRecordStore};
 pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload, PubKeyData, PubKeyDataId};
 pub use metadata::Metadata;
-pub use payload::Payload;
-pub use transaction::{TransactionMetadata, TransactionRecord, TransactionRecordId, TransactionType};
+// pub use payload::Payload;
+pub use transaction::{TransactionMetadata, TransactionRecord, TransactionType};
 
 pub use crate::runtime::{AccountId, AccountKind};
 
@@ -30,7 +30,8 @@ mod tests {
     use super::*;
     use crate::result::Result;
     use crate::secret::Secret;
-    use crate::storage::local::wallet::Wallet;
+    use crate::storage::local::Payload;
+    use crate::storage::local::Wallet;
     use kaspa_bip32::{Language, Mnemonic};
 
     #[tokio::test]

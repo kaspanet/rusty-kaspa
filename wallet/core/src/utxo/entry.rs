@@ -86,6 +86,11 @@ impl UtxoEntryReference {
         self.as_ref().clone()
     }
 
+    #[wasm_bindgen(js_name = "getTransactionId")]
+    pub fn transaction_id_as_string(&self) -> String {
+        self.utxo.outpoint.get_transaction_id_as_string()
+    }
+
     #[wasm_bindgen(js_name = "getId")]
     pub fn id_string(&self) -> String {
         self.utxo.outpoint.id_string()
@@ -112,6 +117,10 @@ impl UtxoEntryReference {
 impl UtxoEntryReference {
     pub fn id(&self) -> UtxoEntryId {
         self.utxo.outpoint.inner().clone()
+    }
+
+    pub fn transaction_id(&self) -> TransactionId {
+        self.utxo.outpoint.transaction_id()
     }
 }
 

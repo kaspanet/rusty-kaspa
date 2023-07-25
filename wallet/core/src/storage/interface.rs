@@ -86,10 +86,10 @@ pub trait MetadataStore: Send + Sync {
 #[async_trait]
 pub trait TransactionRecordStore: Send + Sync {
     async fn iter(&self) -> Result<StorageStream<TransactionRecord>>;
-    async fn load(&self, id: &[TransactionRecordId]) -> Result<Vec<Arc<TransactionRecord>>>;
+    async fn load(&self, id: &[TransactionId]) -> Result<Vec<Arc<TransactionRecord>>>;
     async fn store(&self, data: &[&TransactionRecord]) -> Result<()>;
-    async fn remove(&self, id: &[&TransactionRecordId]) -> Result<()>;
-    async fn store_transaction_metadata(&self, id: TransactionRecordId, metadata: TransactionMetadata) -> Result<()>;
+    async fn remove(&self, id: &[&TransactionId]) -> Result<()>;
+    async fn store_transaction_metadata(&self, id: TransactionId, metadata: TransactionMetadata) -> Result<()>;
 }
 
 pub struct CreateArgs {

@@ -379,7 +379,10 @@ impl VirtualTransaction {
                 final_amount += utxo_ref.utxo.amount();
                 final_utxos.push(utxo_ref.data());
                 final_inputs.push(TransactionInput::new(utxo_ref.utxo.outpoint.clone(), vec![], 0, sig_op_count));
-                log_debug!("final_amount: {final_amount}, transaction_id: {}\r\n", utxo_ref.utxo.outpoint.get_transaction_id());
+                log_debug!(
+                    "final_amount: {final_amount}, transaction_id: {}\r\n",
+                    utxo_ref.utxo.outpoint.get_transaction_id_as_string()
+                );
             });
 
             return Ok(Transactions { transactions, inputs: final_inputs, utxos: final_utxos, amount: final_amount });

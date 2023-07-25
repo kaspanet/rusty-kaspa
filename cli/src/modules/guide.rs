@@ -10,13 +10,13 @@ impl Guide {
         let guide = include_str!("guide.txt");
 
         let mut info: Vec<(String, String)> = vec![];
-        let lines = guide.split("\n");
+        let lines = guide.split('\n');
         let mut cmd = String::new();
         let mut help = String::new();
         let remove_prefixes_regex = Regex::new(r"^#(\[desktop\])?\s*").unwrap();
         let collapse_spaces_regex = Regex::new(r"\s+").unwrap();
         for line in lines {
-            if line.starts_with("#") {
+            if line.starts_with('#') {
                 if !cmd.is_empty() {
                     info.push((cmd.clone(), collapse_spaces_regex.replace_all(&help, " ").trim().to_string()));
                     cmd.clear();
@@ -27,7 +27,7 @@ impl Guide {
                 cmd.push_str(&line.to_lowercase());
             } else {
                 help.push_str(line);
-                help.push_str(" ");
+                help.push(' ');
             }
         }
 

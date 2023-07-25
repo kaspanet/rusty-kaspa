@@ -5,8 +5,9 @@ use crate::secret::Secret;
 use workflow_core::runtime;
 use workflow_store::fs;
 
-use crate::storage::{Decrypted, Encrypted, Hint, Metadata, Payload, PrvKeyData, PrvKeyDataId};
+use crate::storage::{Decrypted, Encrypted, Hint, Metadata, PrvKeyData, PrvKeyDataId};
 
+use crate::storage::local::Payload;
 use crate::storage::local::Storage;
 
 #[derive(Clone, Serialize, Deserialize)]

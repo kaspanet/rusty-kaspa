@@ -23,6 +23,7 @@ pub struct Inner {
     address_to_utxo_context_map: DashMap<Arc<Address>, Arc<UtxoContext>>,
     event_consumer: Mutex<Option<Arc<dyn EventConsumer>>>,
     current_daa_score: AtomicU64,
+    network: Arc<Mutex<Option<NetworkId>>>,
 
     rpc: Arc<DynRpcApi>,
     is_connected: AtomicBool,
@@ -38,6 +39,7 @@ impl Inner {
             address_to_utxo_context_map: DashMap::new(),
             event_consumer: Mutex::new(None),
             current_daa_score: AtomicU64::new(0),
+            network: Arc::new(Mutex::new(None)),
 
             rpc: rpc.clone(),
             is_connected: AtomicBool::new(false),
@@ -65,6 +67,14 @@ impl UtxoProcessor {
 
     pub fn listener_id(&self) -> ListenerId {
         self.inner.listener_id.lock().unwrap().expect("missing listener_id in UtxoProcessor::listener_id()")
+    }
+
+    pub fn set_network_id(&self, network_id: NetworkId) {
+        self.inner.network.lock().unwrap().replace(network_id);
+    }
+
+    pub fn network_id(&self) -> Result<NetworkId> {
+        (*self.inner.network.lock().unwrap()).ok_or(Error::MissingNetworkId)
     }
 
     pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {

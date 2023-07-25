@@ -4,8 +4,15 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::storage::{
-    Account, AddressBookEntry, Encryptable, KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataPayload, TransactionMetadata,
-    TransactionRecord, TransactionRecordId,
+    Account,
+    AddressBookEntry,
+    Encryptable,
+    KeyCaps,
+    PrvKeyData,
+    PrvKeyDataId,
+    PrvKeyDataPayload,
+    TransactionMetadata,
+    TransactionRecord, //, TransactionRecordId,
 };
 use kaspa_bip32::Mnemonic;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -22,7 +29,7 @@ pub struct Payload {
     pub transaction_records: Vec<TransactionRecord>,
     // - TODO - remove
     #[serde(default)]
-    pub transaction_metadata: HashMap<TransactionRecordId, TransactionMetadata>,
+    pub transaction_metadata: HashMap<TransactionId, TransactionMetadata>,
 }
 
 impl ZeroizeOnDrop for Payload {}

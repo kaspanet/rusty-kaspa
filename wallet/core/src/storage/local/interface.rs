@@ -7,6 +7,7 @@ use crate::storage::interface::StorageStream;
 use crate::storage::local::cache::*;
 use crate::storage::local::streams::*;
 use crate::storage::local::wallet::Wallet;
+use crate::storage::local::Payload;
 use crate::storage::local::Storage;
 use crate::storage::*;
 use std::sync::atomic::AtomicBool;
@@ -382,7 +383,7 @@ impl TransactionRecordStore for LocalStoreInner {
         Ok(Box::pin(TransactionRecordStream::new(self.cache.clone())))
     }
 
-    async fn load(&self, ids: &[TransactionRecordId]) -> Result<Vec<Arc<TransactionRecord>>> {
+    async fn load(&self, ids: &[TransactionId]) -> Result<Vec<Arc<TransactionRecord>>> {
         self.cache().transaction_records.load(ids)
     }
 
@@ -392,13 +393,13 @@ impl TransactionRecordStore for LocalStoreInner {
         Ok(())
     }
 
-    async fn remove(&self, ids: &[&TransactionRecordId]) -> Result<()> {
+    async fn remove(&self, ids: &[&TransactionId]) -> Result<()> {
         self.cache().transaction_records.remove(ids)?;
         self.set_modified(true);
         Ok(())
     }
 
-    async fn store_transaction_metadata(&self, _id: TransactionRecordId, _metadata: TransactionMetadata) -> Result<()> {
+    async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
         Ok(())
     }
 }

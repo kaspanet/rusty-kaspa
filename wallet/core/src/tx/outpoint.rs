@@ -62,6 +62,10 @@ impl TransactionOutpoint {
     pub fn inner(&self) -> MutexGuard<'_, TransactionOutpointInner> {
         self.inner.lock().unwrap()
     }
+
+    pub fn transaction_id(&self) -> TransactionId {
+        self.inner.lock().unwrap().transaction_id
+    }
 }
 
 #[wasm_bindgen]
@@ -73,16 +77,16 @@ impl TransactionOutpoint {
 
     #[wasm_bindgen(js_name = "getId")]
     pub fn id_string(&self) -> String {
-        format!("{}-{}", self.get_transaction_id(), self.get_index())
+        format!("{}-{}", self.get_transaction_id_as_string(), self.get_index())
     }
 
     #[wasm_bindgen(getter, js_name = transactionId)]
-    pub fn get_transaction_id(&self) -> String {
+    pub fn get_transaction_id_as_string(&self) -> String {
         self.inner().transaction_id.to_string()
     }
 
     #[wasm_bindgen(setter, js_name = transactionId)]
-    pub fn set_transaction_id(&self, transaction_id: &str) -> Result<(), Error> {
+    pub fn set_transaction_id_from_str(&self, transaction_id: &str) -> Result<(), Error> {
         self.inner().transaction_id = Hash::from_str(transaction_id)?;
         Ok(())
     }

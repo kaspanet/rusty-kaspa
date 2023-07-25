@@ -1,9 +1,10 @@
+use kaspa_consensus_core::tx::TransactionId;
 use kaspa_utils::hex::ToHex;
 use std::cmp::Eq;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use crate::storage::{Account, AccountId, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord, TransactionRecordId};
+use crate::storage::{Account, AccountId, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord};
 
 pub trait IdT {
     type Id: Eq + Hash + Debug + ToHex;
@@ -39,8 +40,8 @@ impl IdT for Account {
 // }
 
 impl IdT for TransactionRecord {
-    type Id = TransactionRecordId;
-    fn id(&self) -> &TransactionRecordId {
+    type Id = TransactionId;
+    fn id(&self) -> &TransactionId {
         &self.id
     }
 }
