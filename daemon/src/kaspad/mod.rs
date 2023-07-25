@@ -76,6 +76,8 @@ impl TryFrom<KaspadConfig> for Vec<String> {
         let binary_path = args.path.unwrap();
         argv.push(binary_path.as_str());
 
+        argv.push("--yes");
+
         let network = args.network.unwrap();
 
         match network.network_type {
