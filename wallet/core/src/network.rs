@@ -1,10 +1,10 @@
 use crate::imports::*;
 use kaspa_addresses::Prefix;
 pub use kaspa_consensus_core::networktype::NetworkType;
+use serde::{de, Deserializer, Serializer};
 use std::{ops::Deref, str::FromStr};
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Copy, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
 pub struct NetworkId {
     pub network_type: NetworkType,
     pub suffix: Option<u32>,
@@ -73,6 +73,12 @@ impl FromStr for NetworkId {
         let mut parts = network_name.split('-').fuse();
         let network_type = NetworkType::from_str(parts.next().unwrap_or_default())?;
         let suffix = parts.next().map(|x| u32::from_str(x).map_err(|_| Error::InvalidNetworkSuffix(x.to_string()))).transpose()?;
+        // diallow network types without suffix (other than mainnet)
+        // lack of suffix makes it impossible to distinguish between
+        // multiple testnet networks
+        if !matches!(network_type, NetworkType::Mainnet) && suffix.is_none() {
+            return Err(Error::MissingNetworkSuffix(network_name.to_string()));
+        }
         match parts.next() {
             Some(extra_token) => Err(Error::UnexpectedExtraSuffixToken(extra_token.to_string())),
             None => Ok(Self { network_type, suffix }),
@@ -87,5 +93,40 @@ impl std::fmt::Display for NetworkId {
         } else {
             write!(f, "{}", self.network_type)
         }
+    }
+}
+
+impl Serialize for NetworkId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+struct NetworkIdVisitor;
+
+impl<'de> de::Visitor<'de> for NetworkIdVisitor {
+    type Value = NetworkId;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a string containing network_type and optional suffix separated by a '-'")
+    }
+
+    fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        NetworkId::from_str(value).map_err(|err| de::Error::custom(err.to_string()))
+    }
+}
+
+impl<'de> Deserialize<'de> for NetworkId {
+    fn deserialize<D>(deserializer: D) -> Result<NetworkId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(NetworkIdVisitor)
     }
 }
