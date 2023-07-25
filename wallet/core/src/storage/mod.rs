@@ -2,13 +2,13 @@ pub use crate::encryption::{Decrypted, Encryptable, Encrypted};
 
 pub mod account;
 pub mod address;
+pub mod binding;
 pub mod hint;
 pub mod id;
 pub mod interface;
 pub mod keydata;
 pub mod local;
 pub mod metadata;
-// pub mod payload;
 pub mod transaction;
 pub mod wasm;
 
@@ -19,10 +19,9 @@ pub use id::IdT;
 pub use interface::{AccessContextT, AccountStore, Interface, MetadataStore, PrvKeyDataStore, TransactionRecordStore};
 pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload, PubKeyData, PubKeyDataId};
 pub use metadata::Metadata;
-// pub use payload::Payload;
-pub use transaction::{TransactionMetadata, TransactionRecord, TransactionType};
-
 pub use crate::runtime::{AccountId, AccountKind};
+pub use binding::Binding;
+pub use transaction::{TransactionMetadata, TransactionRecord, TransactionType};
 
 #[cfg(test)]
 mod tests {

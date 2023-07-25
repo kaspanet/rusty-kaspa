@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+// use std::collections::HashMap;
 
 use crate::imports::*;
 use crate::result::Result;
@@ -11,8 +11,6 @@ use crate::storage::{
     PrvKeyData,
     PrvKeyDataId,
     PrvKeyDataPayload,
-    TransactionMetadata,
-    TransactionRecord, //, TransactionRecordId,
 };
 use kaspa_bip32::Mnemonic;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -21,15 +19,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 pub struct Payload {
     pub prv_key_data: Vec<PrvKeyData>,
     pub accounts: Vec<Account>,
-    // - TODO - remove
-    #[serde(default)]
     pub address_book: Vec<AddressBookEntry>,
-
-    // ------
-    pub transaction_records: Vec<TransactionRecord>,
-    // - TODO - remove
-    #[serde(default)]
-    pub transaction_metadata: HashMap<TransactionId, TransactionMetadata>,
 }
 
 impl ZeroizeOnDrop for Payload {}
@@ -38,7 +28,6 @@ impl Zeroize for Payload {
     fn zeroize(&mut self) {
         self.prv_key_data.zeroize();
         self.accounts.zeroize();
-        // self.transaction_records.zeroize();
     }
 }
 

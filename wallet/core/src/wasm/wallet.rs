@@ -92,7 +92,7 @@ impl Wallet {
     }
 
     #[wasm_bindgen(js_name = "isOpen")]
-    pub fn is_open(&self) -> Result<bool> {
+    pub fn is_open(&self) -> bool {
         self.wallet.is_open()
     }
 

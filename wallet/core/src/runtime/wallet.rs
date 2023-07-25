@@ -229,7 +229,7 @@ impl Wallet {
         self.utxo_processor().clear().await?;
 
         // TODO - parallelize?
-        if self.is_open()? {
+        if self.is_open() {
             // log_info!("reloading accounts...");
             // let mut accounts = self.accounts(None).await?;
             let mut accounts = self.accounts(None).await?;
@@ -797,7 +797,7 @@ impl Wallet {
 
     // pub fn store(&self) -> &Arc<
 
-    pub fn is_open(&self) -> Result<bool> {
+    pub fn is_open(&self) -> bool {
         self.inner.store.is_open()
     }
 
@@ -840,6 +840,20 @@ impl Wallet {
 #[async_trait]
 impl utxo::EventConsumer for Wallet {
     async fn notify(&self, event: utxo::Events) -> Result<()> {
+        // log_info!("wallet notification event: {:?}", event);
+        match &event {
+            utxo::Events::Pending { record }
+            | utxo::Events::Reorg { record }
+            | utxo::Events::External { record }
+            | utxo::Events::Maturity { record }
+            | utxo::Events::Debit { record } => {
+                log_info!("######## EVENT CONSUMER A");
+                self.store().as_transaction_record_store()?.store(&[record]).await?;
+                log_info!("######## EVENT CONSUMER B");
+            }
+            _ => {}
+        }
+
         self.notify(Events::UtxoProcessor(event)).await?;
         Ok(())
     }

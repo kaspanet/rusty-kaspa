@@ -12,8 +12,8 @@ pub struct Cache {
     pub prv_key_data_info: Collection<PrvKeyDataId, PrvKeyDataInfo>,
     pub accounts: Collection<AccountId, Account>,
     pub metadata: Collection<AccountId, Metadata>,
-    pub transaction_records: Collection<TransactionId, TransactionRecord>,
-    pub transaction_metadata: HashMap<TransactionId, TransactionMetadata>,
+    // pub transaction_records: Collection<TransactionId, TransactionRecord>,
+    // pub transaction_metadata: HashMap<TransactionId, TransactionMetadata>,
     pub address_book: Vec<AddressBookEntry>,
 }
 
@@ -31,8 +31,8 @@ impl TryFrom<(Wallet, &Secret)> for Cache {
         let accounts: Collection<AccountId, Account> = payload.0.accounts.try_into()?;
         let metadata: Collection<AccountId, Metadata> = wallet.metadata.try_into()?;
         let user_hint = wallet.user_hint;
-        let transaction_records: Collection<TransactionId, TransactionRecord> = payload.0.transaction_records.try_into()?;
-        let transaction_metadata: HashMap<TransactionId, TransactionMetadata> = payload.0.transaction_metadata.into_iter().collect();
+        // let transaction_records: Collection<TransactionId, TransactionRecord> = payload.0.transaction_records.try_into()?;
+        // let transaction_metadata: HashMap<TransactionId, TransactionMetadata> = payload.0.transaction_metadata.into_iter().collect();
         let address_book = payload.0.address_book.into_iter().collect();
 
         Ok(Cache {
@@ -42,8 +42,8 @@ impl TryFrom<(Wallet, &Secret)> for Cache {
             accounts,
             metadata,
             address_book,
-            transaction_records,
-            transaction_metadata,
+            // transaction_records,
+            // transaction_metadata,
         })
     }
 }
@@ -56,10 +56,10 @@ impl TryFrom<(&Cache, &Secret)> for Wallet {
         let prv_key_data = prv_key_data.values().cloned().collect::<Vec<_>>();
         let accounts: Vec<Account> = (&cache.accounts).try_into()?;
         let metadata: Vec<Metadata> = (&cache.metadata).try_into()?;
-        let transaction_records: Vec<TransactionRecord> = (&cache.transaction_records).try_into()?;
-        let transaction_metadata = cache.transaction_metadata.clone();
+        // let transaction_records: Vec<TransactionRecord> = (&cache.transaction_records).try_into()?;
+        // let transaction_metadata = cache.transaction_metadata.clone();
         let address_book = cache.address_book.clone();
-        let payload = Payload { prv_key_data, accounts, address_book, transaction_records, transaction_metadata };
+        let payload = Payload { prv_key_data, accounts, address_book };
         let payload = Decrypted::new(payload).encrypt(secret)?;
 
         Ok(Wallet { payload, metadata, user_hint: cache.user_hint.clone() })

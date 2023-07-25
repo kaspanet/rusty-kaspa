@@ -262,13 +262,11 @@ impl Account {
     }
 
     pub fn balance_as_strings(&self, padding: Option<usize>) -> Result<BalanceStrings> {
-        // Ok(BalanceStrings::from((&self.balance(), &self.wallet.network()?, Some(DEFAULT_AMOUNT_PADDING))))
         Ok(BalanceStrings::from((&self.balance(), &self.wallet.network()?.into(), padding)))
     }
 
     pub fn get_list_string(&self) -> Result<String> {
-        let name = style(self.name_or_id().pad_to_width(16)).cyan();
-        // let balance = self.balance_as_strings(Some(DEFAULT_AMOUNT_PADDING))?;
+        let name = style(self.name_or_id()).blue();
         let balance = self.balance_as_strings(None)?;
         let mature_utxo_size = self.utxo_context.mature_utxo_size();
         let pending_utxo_size = self.utxo_context.pending_utxo_size();

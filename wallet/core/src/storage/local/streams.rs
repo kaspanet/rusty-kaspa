@@ -153,31 +153,3 @@ impl Stream for AddressBookEntryStream {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct TransactionRecordStream {
-    inner: StoreStreamInner,
-}
-
-impl TransactionRecordStream {
-    pub(crate) fn new(cache: Arc<Mutex<Cache>>) -> Self {
-        Self { inner: StoreStreamInner::new(cache) }
-    }
-}
-
-impl Stream for TransactionRecordStream {
-    type Item = Result<Arc<TransactionRecord>>;
-
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let cache = self.inner.cache.clone();
-        let cache = cache.lock().unwrap();
-        let vec = &cache.transaction_records.vec;
-
-        if self.inner.cursor < vec.len() {
-            let transaction_record = vec[self.inner.cursor].clone();
-            self.inner.cursor += 1;
-            Poll::Ready(Some(Ok(transaction_record)))
-        } else {
-            Poll::Ready(None)
-        }
-    }
-}

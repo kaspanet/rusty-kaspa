@@ -1,3 +1,4 @@
+pub mod binding;
 pub mod context;
 pub mod entry;
 pub mod events;
@@ -6,7 +7,8 @@ pub mod processor;
 pub mod scan;
 pub mod selection;
 
-pub use context::{Binding, UtxoContext, UtxoContextId};
+pub use binding::Binding;
+pub use context::{UtxoContext, UtxoContextId};
 pub use entry::{PendingUtxoEntryReference, UtxoEntries, UtxoEntry, UtxoEntryId, UtxoEntryReference};
 pub use events::{EventConsumer, Events};
 pub use iterator::UtxoSetIterator;

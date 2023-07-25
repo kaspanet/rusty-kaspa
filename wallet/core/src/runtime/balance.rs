@@ -18,12 +18,12 @@ impl Delta {
     pub fn style(&self, s: &str, delta_style: DeltaStyle) -> String {
         match self {
             Delta::NoChange => " ".to_string() + s,
-            Delta::Increase => style("+".to_string() + s).green().to_string(),
+            Delta::Increase => style(s).green().to_string(),
             Delta::Decrease => {
                 if matches!(delta_style, DeltaStyle::Mature) {
-                    style("-".to_string() + s).red().to_string()
+                    style(s).red().to_string()
                 } else {
-                    style("-".to_string() + s).dim().to_string()
+                    style(s).dim().to_string()
                 }
             }
         }

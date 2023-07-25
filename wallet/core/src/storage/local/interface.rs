@@ -6,6 +6,7 @@ use crate::storage::interface::OpenArgs;
 use crate::storage::interface::StorageStream;
 use crate::storage::local::cache::*;
 use crate::storage::local::streams::*;
+use crate::storage::local::transaction::*;
 use crate::storage::local::wallet::Wallet;
 use crate::storage::local::Payload;
 use crate::storage::local::Storage;
@@ -21,6 +22,7 @@ pub enum Store {
 pub(crate) struct LocalStoreInner {
     pub cache: Arc<Mutex<Cache>>,
     pub store: Store,
+    pub transactions: Arc<TransactionStore>,
     pub is_modified: AtomicBool,
     pub name: String,
 }
@@ -31,12 +33,12 @@ impl LocalStoreInner {
             (Store::Resident, "resident".to_string())
         } else {
             // prevent accessing the storage named 'settings'
-            if args.name.as_ref().is_some_and(|name| name.as_str() == super::DEFAULT_SETTINGS_FILE) {
-                return Err(Error::WalletNameNotAllowed);
-            }
+            // if args.name.as_ref().is_some_and(|name| name.as_str() == super::DEFAULT_SETTINGS_FILE) {
+            //     return Err(Error::WalletNameNotAllowed);
+            // }
 
             let name = args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
-            let storage = Storage::new_with_folder(folder, &name)?;
+            let storage = Storage::new_with_folder(folder, &format!("{name}.wallet"))?;
             if storage.exists().await? && !args.overwrite_wallet {
                 return Err(Error::WalletAlreadyExists);
             }
@@ -48,30 +50,36 @@ impl LocalStoreInner {
         let wallet = Wallet::try_new(&secret, payload)?;
         let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
         let modified = AtomicBool::new(false);
+        let transactions = Arc::new(TransactionStore::new(folder));
 
-        Ok(Self { cache, store, is_modified: modified, name })
+        Ok(Self { cache, store, is_modified: modified, name, transactions })
     }
 
     pub async fn try_load(ctx: &Arc<dyn AccessContextT>, folder: &str, args: OpenArgs) -> Result<Self> {
         // prevent accessing the storage named 'settings'
-        if args.name.as_ref().is_some_and(|name| name.as_str() == super::DEFAULT_SETTINGS_FILE) {
-            return Err(Error::WalletNameNotAllowed);
-        }
+        // if args.name.as_ref().is_some_and(|name| name.as_str() == super::DEFAULT_SETTINGS_FILE) {
+        //     return Err(Error::WalletNameNotAllowed);
+        // }
 
         let name = args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
-        let storage = Storage::new_with_folder(folder, &name)?;
+        let storage = Storage::new_with_folder(folder, &format!("{name}.wallet"))?;
 
         let secret = ctx.wallet_secret().await;
         let wallet = Wallet::try_load(&storage).await?;
         let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
         let modified = AtomicBool::new(false);
+        let transactions = Arc::new(TransactionStore::new(folder));
 
-        Ok(Self { cache, store: Store::Storage(storage), is_modified: modified, name })
+        Ok(Self { cache, store: Store::Storage(storage), is_modified: modified, name, transactions })
     }
 
     pub fn cache(&self) -> MutexGuard<Cache> {
         self.cache.lock().unwrap()
     }
+
+    // pub fn transactions(&self) -> &Arc<TransactionStore> {
+    //     &self.transactions
+    // }
 
     // pub async fn reload(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
     //     let secret = ctx.wallet_secret().await.expect("wallet requires an encryption secret");
@@ -207,8 +215,8 @@ impl Interface for LocalStore {
         Ok(())
     }
 
-    fn is_open(&self) -> Result<bool> {
-        Ok(self.inner.lock().unwrap().is_some())
+    fn is_open(&self) -> bool {
+        self.inner.lock().unwrap().is_some()
     }
 
     fn descriptor(&self) -> Result<Option<String>> {
@@ -243,7 +251,7 @@ impl Interface for LocalStore {
             panic!("LocalStore::close called while modified flag is true");
         }
 
-        if !self.is_open()? {
+        if !self.is_open() {
             panic!("LocalStore::close called while wallet is not open");
         }
 
@@ -379,24 +387,34 @@ impl MetadataStore for LocalStoreInner {
 
 #[async_trait]
 impl TransactionRecordStore for LocalStoreInner {
-    async fn iter(&self) -> Result<StorageStream<TransactionRecord>> {
-        Ok(Box::pin(TransactionRecordStream::new(self.cache.clone())))
+    async fn transaction_id_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionId>> {
+        Ok(Box::pin(TransactionIdStream::try_new(&self.transactions, binding, network_id).await?))
     }
 
-    async fn load(&self, ids: &[TransactionId]) -> Result<Vec<Arc<TransactionRecord>>> {
-        self.cache().transaction_records.load(ids)
+    // async fn transaction_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionRecord>> {
+    //     Ok(Box::pin(TransactionRecordStream::try_new(&self.transactions, binding, network_id).await?))
+    // }
+
+    async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>> {
+        self.transactions.load_single(binding, network_id, id).await
+    }
+
+    async fn load_multiple(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        ids: &[TransactionId],
+    ) -> Result<Vec<Arc<TransactionRecord>>> {
+        self.transactions.load_multiple(binding, network_id, ids).await
     }
 
     async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()> {
-        self.cache().transaction_records.store(transaction_records)?;
-        self.set_modified(true);
-        Ok(())
+        log_info!("**** TRANSACTION RECORD STORE **** STORING");
+        self.transactions.store(transaction_records).await
     }
 
-    async fn remove(&self, ids: &[&TransactionId]) -> Result<()> {
-        self.cache().transaction_records.remove(ids)?;
-        self.set_modified(true);
-        Ok(())
+    async fn remove(&self, binding: &Binding, network_id: &NetworkId, ids: &[&TransactionId]) -> Result<()> {
+        self.transactions.remove(binding, network_id, ids).await
     }
 
     async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {

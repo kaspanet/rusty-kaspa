@@ -258,7 +258,7 @@ impl UtxoProcessor {
     }
 
     async fn handle_notification(&self, notification: Notification) -> Result<()> {
-        //log_info!("handling notification: {:?}", notification);
+        log_info!("handling notification: {:?}", notification);
 
         match notification {
             Notification::VirtualDaaScoreChanged(virtual_daa_score_changed_notification) => {

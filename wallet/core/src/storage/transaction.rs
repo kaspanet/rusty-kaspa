@@ -1,33 +1,14 @@
-// use crate::encryption::sha256_hash;
 use crate::imports::*;
-use crate::runtime::{AccountId, Wallet};
-use crate::utxo::{Binding as UtxoProcessorBinding, UtxoContext, UtxoContextId, UtxoEntryReference};
-// use faster_hex::{hex_decode, hex_string};
+use crate::runtime::Wallet;
+use crate::storage::Binding;
+use crate::utxo::{UtxoContext, UtxoEntryReference};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::ScriptPublicKey;
-// use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Serialize};
 use workflow_log::style;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-#[serde(tag = "binding", content = "id")]
-pub enum Binding {
-    UtxoProcessor(UtxoContextId),
-    Account(AccountId),
-}
-
-impl From<UtxoProcessorBinding> for Binding {
-    fn from(b: UtxoProcessorBinding) -> Self {
-        match b {
-            UtxoProcessorBinding::Internal(id) => Binding::UtxoProcessor(id),
-            UtxoProcessorBinding::Id(id) => Binding::UtxoProcessor(id),
-            UtxoProcessorBinding::Account(account) => Binding::Account(*account.id()),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum TransactionType {
     Credit,
     Debit,
@@ -62,14 +43,25 @@ impl TransactionType {
     }
 }
 
-impl ToString for TransactionType {
-    fn to_string(&self) -> String {
-        match self {
+// impl ToString for TransactionType {
+//     fn to_string(&self) -> String {
+//         match self {
+//             TransactionType::Credit => "credit",
+//             TransactionType::Debit => "debit",
+//             TransactionType::Reorg => "reorg",
+//         }
+//         .to_string()
+//     }
+// }
+
+impl std::fmt::Display for TransactionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
             TransactionType::Credit => "credit",
             TransactionType::Debit => "debit",
             TransactionType::Reorg => "reorg",
-        }
-        .to_string()
+        };
+        write!(f, "{s}")
     }
 }
 
@@ -154,64 +146,62 @@ pub struct TransactionMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRecord {
-    // pub id: TransactionRecordId,
     pub id: TransactionId,
-
-    // #[serde(rename = "assocId")]
-    // pub assoc_id: UtxoProcessorId,
+    pub unixtime: u64,
     pub binding: Binding,
-    // pub address: Option<Address>,
-    // pub outpoint: cctx::TransactionOutpoint,
-    // pub amount: u64,
-    // #[serde(rename = "scriptPubKey")]
-    // pub script_public_key: ScriptPublicKey,
     #[serde(rename = "blockDaaScore")]
     pub block_daa_score: u64,
-    // #[serde(rename = "isCoinbase")]
-    // pub is_coinbase: bool,
-    #[serde(rename = "transactionType")]
+    #[serde(rename = "type")]
     pub transaction_type: TransactionType,
-    // TODO: support network type
-    #[serde(rename = "networkId")]
-    network_id: NetworkId,
-
+    #[serde(rename = "network")]
+    pub network_id: NetworkId,
     #[serde(rename = "utxoEntries")]
-    utxo_entries: Vec<UtxoRecord>,
+    pub utxo_entries: Vec<UtxoRecord>,
 }
 
 impl TransactionRecord {
-    pub fn format(&self, _wallet: &Wallet) -> String {
-        // let TransactionRecord { id, binding, address, amount, is_coinbase, transaction_type, .. } = self;
-        let TransactionRecord { id, .. } = self;
-        // binding,
-        // block_daa_score,
-        // transaction_type,
-        // network_id,
-        // utxo_entries,
-        // ..
+    pub fn network_id(&self) -> &NetworkId {
+        &self.network_id
+    }
 
-        // let address = style(address.as_ref().map(|addr| addr.short(16)).unwrap_or_else(|| "n/a".to_string())).yellow();
-        // let is_coinbase = if *is_coinbase { style("(coinbase tx)").dim() } else { style("(standard tx)").dim() };
-        // let id = style(id.short()).cyan();
+    pub fn binding(&self) -> &Binding {
+        &self.binding
+    }
+}
 
-        // let name = match binding {
-        //     Binding::UtxoProcessor(id) => style(id.short()).cyan(),
-        //     Binding::Account(account_id) => {
-        //         if let Some(account) = wallet.account_with_id(account_id).ok().flatten() {
-        //             style(account.name_or_id()).cyan()
-        //         } else {
-        //             style(account_id.short() + " ??").magenta()
-        //         }
-        //     }
-        // };
+impl TransactionRecord {
+    pub fn format(&self, wallet: &Wallet) -> String {
+        let TransactionRecord { id, binding, block_daa_score, transaction_type, utxo_entries, .. } = self;
 
-        // let suffix = utils::kaspa_suffix(&wallet.network().unwrap());
-        // let amount = transaction_type.style_with_sign(utils::sompi_to_kaspa_string(*amount).pad_to_width(19).as_str());
+        let name = match binding {
+            Binding::Custom(id) => style(id.short()).cyan(),
+            Binding::Account(account_id) => {
+                if let Some(account) = wallet.account_with_id(account_id).ok().flatten() {
+                    style(account.name_or_id()).cyan()
+                } else {
+                    style(account_id.short() + " ??").magenta()
+                }
+            }
+        };
 
-        // let kind = transaction_type.style(&transaction_type.to_string().pad_to_width(8));
+        let kind = transaction_type.style(&transaction_type.to_string().pad_to_width(8));
 
-        // format!("{kind} {id} {name}  {address}  {amount} {suffix} {is_coinbase}")
-        format!("{id} ")
+        let mut lines = vec![format!("{name} {id} @{block_daa_score} DAA - {kind}")];
+
+        let suffix = utils::kaspa_suffix(&self.network_id.network_type);
+
+        for utxo_entry in utxo_entries {
+            let address =
+                style(utxo_entry.address.as_ref().map(|addr| addr.to_string()).unwrap_or_else(|| "n/a".to_string())).yellow();
+            let is_coinbase = if utxo_entry.is_coinbase { style("(coinbase tx)").dim() } else { style("(standard tx)").dim() };
+            let index = utxo_entry.index;
+            let amount = transaction_type.style_with_sign(utils::sompi_to_kaspa_string(utxo_entry.amount).pad_to_width(19).as_str());
+
+            lines.push(format!("    {address}"));
+            lines.push(format!("    {index} {amount} {suffix} {is_coinbase}"));
+        }
+
+        lines.join("\r\n")
     }
 }
 
@@ -233,6 +223,7 @@ impl From<(&UtxoContext, TransactionType, TransactionId, Vec<UtxoEntryReference>
 
         TransactionRecord {
             id,
+            unixtime: 0,
             binding,
             utxo_entries,
             // address: utxo.address.clone(),

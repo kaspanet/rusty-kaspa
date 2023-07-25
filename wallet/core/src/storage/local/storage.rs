@@ -27,11 +27,11 @@ impl Storage {
 
 impl Storage {
     pub fn default_wallet_store() -> Self {
-        Self::new(super::DEFAULT_WALLET_FILE).unwrap()
+        Self::new(&format!("{}.wallet", super::DEFAULT_WALLET_FILE)).unwrap()
     }
 
     pub fn default_settings_store() -> Self {
-        Self::new(super::DEFAULT_SETTINGS_FILE).unwrap()
+        Self::new(&format!("{}.settings", super::DEFAULT_SETTINGS_FILE)).unwrap()
     }
 
     pub fn new(name: &str) -> Result<Storage> {

@@ -85,10 +85,18 @@ pub trait MetadataStore: Send + Sync {
 
 #[async_trait]
 pub trait TransactionRecordStore: Send + Sync {
-    async fn iter(&self) -> Result<StorageStream<TransactionRecord>>;
-    async fn load(&self, id: &[TransactionId]) -> Result<Vec<Arc<TransactionRecord>>>;
-    async fn store(&self, data: &[&TransactionRecord]) -> Result<()>;
-    async fn remove(&self, id: &[&TransactionId]) -> Result<()>;
+    async fn transaction_id_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionId>>;
+    // async fn transaction_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionRecord>>;
+    async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>>;
+    async fn load_multiple(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        ids: &[TransactionId],
+    ) -> Result<Vec<Arc<TransactionRecord>>>;
+    async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()>;
+    async fn remove(&self, binding: &Binding, network_id: &NetworkId, ids: &[&TransactionId]) -> Result<()>;
+
     async fn store_transaction_metadata(&self, id: TransactionId, metadata: TransactionMetadata) -> Result<()>;
 }
 
@@ -116,7 +124,7 @@ impl OpenArgs {
 
 #[async_trait]
 pub trait Interface: Send + Sync + AnySync {
-    fn is_open(&self) -> Result<bool>;
+    fn is_open(&self) -> bool;
 
     /// return storage information string (file location)
     fn descriptor(&self) -> Result<Option<String>>;

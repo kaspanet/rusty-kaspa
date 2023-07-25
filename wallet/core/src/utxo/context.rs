@@ -2,7 +2,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Account, AccountId, Balance};
 use crate::storage::TransactionType;
-use crate::utxo::{Events, PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext};
+use crate::utxo::{Binding, Events, PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext};
 use crate::wasm;
 use kaspa_rpc_core::GetUtxosByAddressesResponse;
 use serde_wasm_bindgen::from_value;
@@ -51,33 +51,6 @@ impl ToHex for UtxoContextId {
         format!("{:x}", self.0)
     }
 }
-
-#[derive(Clone)]
-pub enum Binding {
-    Internal(UtxoContextId),
-    Account(Arc<Account>),
-    Id(UtxoContextId),
-}
-
-impl Default for Binding {
-    fn default() -> Self {
-        Binding::Internal(UtxoContextId::default())
-    }
-}
-
-impl Binding {
-    pub fn id(&self) -> UtxoContextId {
-        match self {
-            Binding::Internal(id) => *id,
-            Binding::Account(account) => account.id().into(),
-            Binding::Id(id) => *id,
-        }
-    }
-}
-
-// impl Binding {
-//     pub fn id
-// }
 
 pub struct Consumed {
     entry: UtxoEntryReference,
@@ -231,6 +204,7 @@ impl UtxoContext {
     /// Insert `utxo_entry` into the `UtxoSet`.
     /// NOTE: The insert will be ignored if already present in the inner map.
     pub async fn insert(&self, utxo_entry: UtxoEntryReference, current_daa_score: u64) -> Result<()> {
+        log_info!("inserting utxo_entry: {:?}", utxo_entry);
         let mut inner = self.inner();
 
         if let std::collections::hash_map::Entry::Vacant(e) = inner.map.entry(utxo_entry.id()) {
@@ -360,6 +334,7 @@ impl UtxoContext {
 
     pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>) -> Result<()> {
         // add UTXOs to account set
+        log_info!("handle utxo added: {:?}", utxos);
         let current_daa_score = self.processor.current_daa_score();
 
         for utxo in utxos.iter() {
