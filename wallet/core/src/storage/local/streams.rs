@@ -152,4 +152,3 @@ impl Stream for AddressBookEntryStream {
         }
     }
 }
-

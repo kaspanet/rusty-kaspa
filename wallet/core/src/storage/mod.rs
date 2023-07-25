@@ -12,15 +12,15 @@ pub mod metadata;
 pub mod transaction;
 pub mod wasm;
 
+pub use crate::runtime::{AccountId, AccountKind};
 pub use account::Account;
 pub use address::AddressBookEntry;
+pub use binding::Binding;
 pub use hint::Hint;
 pub use id::IdT;
 pub use interface::{AccessContextT, AccountStore, Interface, MetadataStore, PrvKeyDataStore, TransactionRecordStore};
 pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload, PubKeyData, PubKeyDataId};
 pub use metadata::Metadata;
-pub use crate::runtime::{AccountId, AccountKind};
-pub use binding::Binding;
 pub use transaction::{TransactionMetadata, TransactionRecord, TransactionType};
 
 #[cfg(test)]

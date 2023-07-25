@@ -3,15 +3,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::storage::{
-    Account,
-    AddressBookEntry,
-    Encryptable,
-    KeyCaps,
-    PrvKeyData,
-    PrvKeyDataId,
-    PrvKeyDataPayload,
-};
+use crate::storage::{Account, AddressBookEntry, Encryptable, KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataPayload};
 use kaspa_bip32::Mnemonic;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 

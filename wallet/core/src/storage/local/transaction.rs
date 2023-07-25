@@ -72,7 +72,7 @@ impl TransactionStore {
 
     pub async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>> {
         let folder = self.ensure_folder(binding, network_id).await?;
-        let path = folder.join(&id.to_hex());
+        let path = folder.join(id.to_hex());
         Ok(Arc::new(fs::read_json::<TransactionRecord>(&path).await?))
     }
 
