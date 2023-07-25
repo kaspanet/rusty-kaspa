@@ -278,9 +278,12 @@ impl KaspaCli {
                             match msg {
                                 Events::Connect(_url) => {
                                     // log_info!("Connected to {url}");
+                                    this.term().refresh_prompt();
+
                                 },
                                 Events::Disconnect(url) => {
                                     tprintln!(this, "Disconnected from {url}");
+                                    this.term().refresh_prompt();
                                 },
                                 Events::UtxoIndexNotEnabled => {
                                     tprintln!(this, "Error: Kaspa node UTXO index is not enabled...")
@@ -295,8 +298,7 @@ impl KaspaCli {
 
                                     tprintln!(this, "Connected to Kaspa node version {server_version} at {url}");
 
-
-                                    let is_open = this.wallet.is_open().unwrap_or_else(|err| { terrorln!(this, "Unable to check if wallet is open: {err}"); false });
+                                    let is_open = this.wallet.is_open();
 
                                     if !is_synced {
                                         if is_open {
@@ -339,7 +341,7 @@ impl KaspaCli {
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
                                                 let tx = record.format(&this.wallet);
-                                                tprintln!(this, "pending {tx}");
+                                                tprintln!(this, "reorg {tx}");
                                             }
                                         },
                                         utxo::Events::External {
@@ -743,11 +745,19 @@ impl Cli for KaspaCli {
 
     fn prompt(&self) -> Option<String> {
         if let Some(name) = self.wallet.name() {
-            let mut name_ = if name == "kaspa" { "".to_string() } else { "{name} ".to_string() };
+            let nc = if self.wallet.is_open() && !self.wallet.is_connected() {
+                style("N/C").red().to_string() + " • "
+            } else {
+                "".to_string()
+            };
+
+            let mut name_ = if name == "kaspa" { nc } else { format!("{nc}{name} ") };
 
             if let Ok(account) = self.wallet.account() {
-                name_ += "• ";
-                let ident = account.name_or_id();
+                if !name_.is_empty() {
+                    name_ += "• ";
+                }
+                let ident = style(account.name_or_id()).blue();
                 if let Ok(balance) = account.balance_as_strings(None) {
                     if let Some(pending) = balance.pending {
                         Some(format!("{name_}{ident} {} ({}) $ ", balance.mature, pending))
