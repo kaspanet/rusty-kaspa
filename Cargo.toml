@@ -44,6 +44,7 @@ members = [
     "crypto/txscript/errors",
     "testing/integration",
     "rothschild",
+    "perf_monitor"
 ]
 
 [workspace.package]
@@ -103,6 +104,7 @@ kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
 kaspa-wrpc-proxy = { path = "rpc/wrpc/proxy" }
 kaspa-wrpc-server = { path = "rpc/wrpc/server" }
 kaspad = { path = "kaspad" }
+kaspa-perf-monitor = { path = "perf_monitor" }
 
 # external
 thiserror = "1"
