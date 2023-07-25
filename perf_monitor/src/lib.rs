@@ -41,13 +41,7 @@ impl<TS: AsRef<TickService>> Monitor<TS> {
         let mut last_log_time = Instant::now();
         let mut last_read = 0;
         let mut last_written = 0;
-        loop {
-            if let TickReason::Shutdown = self.tick_service.as_ref().tick(self.fetch_interval).await {
-                // Let the system print final logs before exiting
-                tokio::time::sleep(Duration::from_millis(500)).await;
-                break;
-            }
-
+        while let TickReason::Wakeup = self.tick_service.as_ref().tick(self.fetch_interval).await {
             let ProcessMemoryInfo { resident_set_size, virtual_memory_size, .. } = get_process_memory_info()?;
             let core_num = processor_numbers()?;
             let cpu_usage = ProcessStat::cur()?.cpu()?;
@@ -79,7 +73,8 @@ impl<TS: AsRef<TickService>> Monitor<TS> {
                 cb(counters);
             }
         }
-
+        // Let the system print final logs before exiting
+        tokio::time::sleep(Duration::from_millis(500)).await;
         trace!("{SERVICE_NAME} worker exiting");
         Ok(())
     }

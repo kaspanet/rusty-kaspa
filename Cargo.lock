@@ -4046,6 +4046,7 @@ dependencies = [
  "kaspa-core",
  "kaspa-database",
  "kaspa-hashes",
+ "kaspa-perf-monitor",
  "kaspa-utils",
  "log",
  "num_cpus",
