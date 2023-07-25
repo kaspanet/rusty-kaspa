@@ -1,3 +1,4 @@
+use crossbeam::atomic::AtomicCell;
 use kaspa_core::{
     error,
     task::{
@@ -8,16 +9,14 @@ use kaspa_core::{
 };
 use perf_monitor::{
     cpu::{processor_numbers, ProcessStat},
+    fd::fd_count_cur,
+    io::{get_process_io_stats, IOStats},
     mem::{get_process_memory_info, ProcessMemoryInfo},
 };
 
-use crossbeam::atomic::AtomicCell;
-use perf_monitor::fd::fd_count_cur;
-use perf_monitor::io::{get_process_io_stats, IOStats};
 use std::{sync::Arc, time::Duration, time::Instant};
 
-use crate::counters::Counters;
-use crate::error::Error;
+use crate::{counters::Counters, error::Error};
 
 pub mod builder;
 pub mod counters;
