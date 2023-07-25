@@ -28,7 +28,7 @@ impl Metrics {
         let core_ipc_target = get_ipc_target(Modules::Core).await?.expect("Unable to aquire background window");
         let core = Arc::new(CoreIpc::new(core_ipc_target));
 
-        let settings = Arc::new(SettingsStore::<MetricsSettings>::try_new("metrics.settings")?);
+        let settings = Arc::new(SettingsStore::<MetricsSettings>::try_new("metrics")?);
         settings.try_load().await?;
         // - TODO - setup graph time duration
         let _default_duration = settings.get::<f64>(MetricsSettings::Duration);

@@ -9,7 +9,7 @@ impl Create {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
         let wallet = ctx.wallet();
 
-        let is_open = wallet.is_open()?;
+        let is_open = wallet.is_open();
 
         let op = if argv.is_empty() { if is_open { "account" } else { "wallet" }.to_string() } else { argv.remove(0) };
 

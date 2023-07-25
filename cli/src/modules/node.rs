@@ -36,7 +36,7 @@ pub struct Node {
 impl Default for Node {
     fn default() -> Self {
         Node {
-            settings: SettingsStore::try_new("kaspad.settings").expect("Failed to create miner settings store"),
+            settings: SettingsStore::try_new("kaspad").expect("Failed to create miner settings store"),
             mute: Arc::new(AtomicBool::new(true)),
         }
     }

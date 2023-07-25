@@ -12,7 +12,7 @@ use workflow_store::fs;
 #[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(rename_all = "lowercase")]
 pub enum WalletSettings {
-    #[describe("Network type (mainnet|testnet|devnet|simnet)")]
+    #[describe("Network type (mainnet|testnet|testnet-11)")]
     Network,
     #[describe("Server address (default: 127.0.0.1)")]
     Server,
@@ -53,7 +53,7 @@ where
     K: DefaultSettings + Clone + Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     pub fn try_new(filename: &str) -> Result<Self> {
-        Ok(Self { map: DashMap::default(), storage: Storage::new(filename)?, phantom: PhantomData })
+        Ok(Self { map: DashMap::default(), storage: Storage::new(&format!("{filename}.settings"))?, phantom: PhantomData })
     }
 
     pub fn new_with_storage(storage: Storage) -> Self {

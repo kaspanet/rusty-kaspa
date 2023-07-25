@@ -1,8 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-#[allow(unused_imports)]
-use workflow_core::runtime;
 use workflow_store::fs;
 
 use crate::storage::{Decrypted, Encrypted, Hint, Metadata, PrvKeyData, PrvKeyDataId};
@@ -12,6 +10,7 @@ use crate::storage::local::Storage;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Wallet {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user_hint: Option<Hint>,
     pub payload: Encrypted,
     pub metadata: Vec<Metadata>,

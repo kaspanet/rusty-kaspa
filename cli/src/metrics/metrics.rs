@@ -44,7 +44,7 @@ pub struct Metrics {
 impl Default for Metrics {
     fn default() -> Self {
         Metrics {
-            settings: SettingsStore::try_new("metrics.settings").expect("Failed to create miner settings store"),
+            settings: SettingsStore::try_new("metrics").expect("Failed to create miner settings store"),
             mute: Arc::new(AtomicBool::new(true)),
             task_ctl: DuplexChannel::oneshot(),
             rpc: Arc::new(Mutex::new(None)),

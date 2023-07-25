@@ -25,7 +25,7 @@ impl Terminal {
         let daemons = Arc::new(Daemons::new().with_kaspad(core.clone()).with_cpu_miner(core.clone()));
 
         log_info!("-> loading settings");
-        let settings = Arc::new(SettingsStore::<TerminalSettings>::try_new("terminal.settings")?);
+        let settings = Arc::new(SettingsStore::<TerminalSettings>::try_new("terminal")?);
         settings.try_load().await?;
         let font_size = settings.get::<f64>(TerminalSettings::FontSize);
 

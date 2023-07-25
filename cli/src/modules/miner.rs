@@ -37,7 +37,7 @@ pub struct Miner {
 impl Default for Miner {
     fn default() -> Self {
         Miner {
-            settings: SettingsStore::try_new("miner.settings").expect("Failed to create miner settings store"),
+            settings: SettingsStore::try_new("miner").expect("Failed to create miner settings store"),
             mute: Arc::new(AtomicBool::new(true)),
         }
     }
