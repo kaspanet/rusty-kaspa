@@ -1,4 +1,4 @@
-use crate::{Counters, Monitor};
+use crate::{CountersSnapshot, Monitor};
 use kaspa_core::task::tick::TickService;
 use std::time::Duration;
 
@@ -35,10 +35,10 @@ impl<TS, CB> Builder<TS, Unspecified, CB> {
 }
 
 impl<TS, D> Builder<TS, D, Unspecified> {
-    pub fn with_fetch_cb<CB: Fn(Counters) + Send + Sync + 'static>(
+    pub fn with_fetch_cb<CB: Fn(CountersSnapshot) + Send + Sync + 'static>(
         self,
         fetch_callback: CB,
-    ) -> Builder<TS, D, Box<dyn Fn(Counters) + Sync + Send>> {
+    ) -> Builder<TS, D, Box<dyn Fn(CountersSnapshot) + Sync + Send>> {
         Builder { tick_service: self.tick_service, fetch_interval: self.fetch_interval, fetch_callback: Box::new(fetch_callback) as _ }
     }
 }
@@ -65,7 +65,7 @@ impl<TS: AsRef<TickService>> Builder<TS, Duration, Unspecified> {
     }
 }
 
-impl<TS: AsRef<TickService>> Builder<TS, Unspecified, Box<dyn Fn(Counters) + Sync + Send>> {
+impl<TS: AsRef<TickService>> Builder<TS, Unspecified, Box<dyn Fn(CountersSnapshot) + Sync + Send>> {
     pub fn build(self) -> Monitor<TS> {
         Monitor {
             tick_service: self.tick_service,
@@ -76,7 +76,7 @@ impl<TS: AsRef<TickService>> Builder<TS, Unspecified, Box<dyn Fn(Counters) + Syn
     }
 }
 
-impl<TS: AsRef<TickService>> Builder<TS, Duration, Box<dyn Fn(Counters) + Sync + Send>> {
+impl<TS: AsRef<TickService>> Builder<TS, Duration, Box<dyn Fn(CountersSnapshot) + Sync + Send>> {
     pub fn build(self) -> Monitor<TS> {
         Monitor {
             tick_service: self.tick_service,

@@ -13,7 +13,7 @@ kaspa-core.workspace = true
 log.workspace = true
 thiserror.workspace = true
 
-crossbeam = "0.8.2"
 #procfs = "0.15.1"
 perf_monitor = {version = "0.2.0", git = "https://github.com/larksuite/perf-monitor-rs", branch = "memory"}
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
+portable-atomic = {version = "1.4.1", features = ["float"]}

@@ -1,4 +1,3 @@
-use crossbeam::atomic::AtomicCell;
 use kaspa_core::{
     error,
     task::{
@@ -16,6 +15,7 @@ use perf_monitor::{
 
 use std::{sync::Arc, time::Duration, time::Instant};
 
+use crate::counters::CountersSnapshot;
 use crate::{counters::Counters, error::Error};
 
 pub mod builder;
@@ -27,13 +27,13 @@ pub const SERVICE_NAME: &str = "perf-monitor";
 pub struct Monitor<TS: AsRef<TickService>> {
     tick_service: TS,
     fetch_interval: Duration,
-    counters: AtomicCell<Counters>,
-    fetch_callback: Option<Box<dyn Fn(Counters) + Sync + Send>>,
+    counters: Counters,
+    fetch_callback: Option<Box<dyn Fn(CountersSnapshot) + Sync + Send>>,
 }
 
 impl<TS: AsRef<TickService>> Monitor<TS> {
-    pub fn counters(&self) -> Counters {
-        self.counters.load()
+    pub fn snapshot(&self) -> CountersSnapshot {
+        self.counters.snapshot()
     }
 
     pub async fn worker(&self) -> Result<(), Error> {
@@ -56,7 +56,7 @@ impl<TS: AsRef<TickService>> Monitor<TS> {
             last_written = disk_io_write_bytes;
             last_read = disk_io_read_bytes;
 
-            let counters = Counters {
+            let counters_snapshot = CountersSnapshot {
                 resident_set_size,
                 virtual_memory_size,
                 core_num,
@@ -67,9 +67,9 @@ impl<TS: AsRef<TickService>> Monitor<TS> {
                 disk_io_read_per_sec: read_delta as f64 * 1000.0 / time_delta.as_millis() as f64,
                 disk_io_write_per_sec: write_delta as f64 * 1000.0 / time_delta.as_millis() as f64,
             };
-            self.counters.store(counters);
+            self.counters.update(counters_snapshot);
             if let Some(ref cb) = self.fetch_callback {
-                cb(counters);
+                cb(counters_snapshot);
             }
         }
         // Let the system print final logs before exiting
