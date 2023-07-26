@@ -55,7 +55,7 @@ impl Serialize for ScriptPublicKey {
         S: Serializer,
     {
         if serializer.is_human_readable() {
-            let mut hex = [0u8; SCRIPT_VECTOR_SIZE * 2 + 4];
+            let mut hex = vec![0u8; self.script.len() * 2 + 4];
             faster_hex::hex_encode(&self.version.to_be_bytes(), &mut hex).map_err(serde::ser::Error::custom)?;
             faster_hex::hex_encode(&self.script, &mut hex[4..]).map_err(serde::ser::Error::custom)?;
             serializer.serialize_str(unsafe { str::from_utf8_unchecked(&hex) })
@@ -82,9 +82,13 @@ impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
 
 impl FromStr for ScriptPublicKey {
     type Err = faster_hex::Error;
-    fn from_str(hash_str: &str) -> Result<Self, Self::Err> {
-        let mut bytes = [0u8; SCRIPT_VECTOR_SIZE + 2];
-        faster_hex::hex_decode(hash_str.as_bytes(), &mut bytes)?;
+    fn from_str(hex_str: &str) -> Result<Self, Self::Err> {
+        let hex_len = hex_str.len();
+        if hex_len < 4 {
+            return Err(faster_hex::Error::InvalidLength(hex_len));
+        }
+        let mut bytes = vec![0u8; hex_len / 2];
+        faster_hex::hex_decode(hex_str.as_bytes(), bytes.as_mut_slice())?;
         let version = u16::from_be_bytes(bytes[0..2].try_into().unwrap());
         Ok(Self { version, script: SmallVec::from_slice(&bytes[2..]) })
     }
@@ -502,6 +506,11 @@ mod tests {
         let spk = serde_json::from_str::<ScriptPublicKey>(&hex).unwrap();
         assert_eq!(spk.version, 0xc0de);
         assert_eq!(spk.script.as_slice(), vec.as_slice());
+        let result = "00".parse::<ScriptPublicKey>();
+        assert!(matches!(result, Err(faster_hex::Error::InvalidLength(2))));
+        let result = "0000".parse::<ScriptPublicKey>();
+        let _empty = ScriptPublicKey { version: 0, script: ScriptVec::new() };
+        assert!(matches!(result, Ok(_empty)));
     }
 
     #[test]
