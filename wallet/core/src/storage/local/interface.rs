@@ -52,9 +52,9 @@ impl LocalStoreInner {
         let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
         let modified = AtomicBool::new(false);
         let transactions: Arc<dyn TransactionRecordStore> = if !is_web() {
-            Arc::new(fsio::TransactionStore::new(folder))
+            Arc::new(fsio::TransactionStore::new(folder, &name))
         } else {
-            Arc::new(indexdb::TransactionStore::new(name.clone()))
+            Arc::new(indexdb::TransactionStore::new(&name))
         };
 
         Ok(Self { cache, store, is_modified: modified, name, transactions })
@@ -75,9 +75,9 @@ impl LocalStoreInner {
         let modified = AtomicBool::new(false);
 
         let transactions: Arc<dyn TransactionRecordStore> = if !is_web() {
-            Arc::new(fsio::TransactionStore::new(folder))
+            Arc::new(fsio::TransactionStore::new(folder, &name))
         } else {
-            Arc::new(indexdb::TransactionStore::new(name.clone()))
+            Arc::new(indexdb::TransactionStore::new(&name))
         };
 
         // let transactions = Arc::new(TransactionStore::new(folder));
@@ -131,6 +131,11 @@ impl LocalStoreInner {
             Store::Storage(_) => self.is_modified.load(Ordering::SeqCst),
         }
     }
+
+    async fn close(&self) -> Result<()> {
+        Ok(())
+    }
+
 }
 
 impl Drop for LocalStoreInner {
@@ -267,7 +272,8 @@ impl Interface for LocalStore {
             panic!("LocalStore::close called while wallet is not open");
         }
 
-        self.inner.lock().unwrap().take();
+        let inner = self.inner.lock().unwrap().take().unwrap();
+        inner.close().await?;
 
         Ok(())
     }
