@@ -332,39 +332,39 @@ impl KaspaCli {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                                let tx = record.format(&this.wallet);
-                                                tprintln!(this, "pending {tx}");
+                                                let tx = record.format_with_state(&this.wallet,Some("pending"));
+                                                tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
                                         utxo::Events::Reorg {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                                let tx = record.format(&this.wallet);
-                                                tprintln!(this, "reorg {tx}");
+                                                let tx = record.format_with_state(&this.wallet,Some("reorg"));
+                                                tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
                                         utxo::Events::External {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                                let tx = record.format(&this.wallet);
-                                                tprintln!(this,"external {tx}");
+                                                let tx = record.format_with_state(&this.wallet,Some("external"));
+                                                tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
                                         utxo::Events::Maturity {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                                let tx = record.format(&this.wallet);
-                                                tprintln!(this,"maturity {tx}");
+                                                let tx = record.format_with_state(&this.wallet,Some("confirmed"));
+                                                tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
                                         utxo::Events::Debit {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                                let tx = record.format(&this.wallet);
+                                                let tx = record.format_with_state(&this.wallet,Some("debit"));
                                                 tprintln!(this,"{tx}");
                                             }
                                         },
@@ -745,31 +745,31 @@ impl Cli for KaspaCli {
 
     fn prompt(&self) -> Option<String> {
         if let Some(name) = self.wallet.name() {
-            let nc = if self.wallet.is_open() && !self.wallet.is_connected() {
-                style("N/C").red().to_string() + " • "
-            } else {
-                "".to_string()
-            };
+            let mut prompt = vec![];
 
-            let mut name_ = if name == "kaspa" { nc } else { format!("{nc}{name} ") };
+            if self.wallet.is_open() && !self.wallet.is_connected() {
+                prompt.push(style("N/C").red().to_string());
+            }
+
+            if name != "kaspa" {
+                prompt.push(name);
+            }
 
             if let Ok(account) = self.wallet.account() {
-                if !name_.is_empty() {
-                    name_ += "• ";
-                }
-                let ident = style(account.name_or_id()).blue();
+                prompt.push(style(account.name_or_id()).blue().to_string());
+
                 if let Ok(balance) = account.balance_as_strings(None) {
                     if let Some(pending) = balance.pending {
-                        Some(format!("{name_}{ident} {} ({}) $ ", balance.mature, pending))
+                        prompt.push(format!("{} ({})", balance.mature, pending));
                     } else {
-                        Some(format!("{name_}{ident} {} $ ", balance.mature))
+                        prompt.push(balance.mature);
                     }
                 } else {
-                    Some(format!("{name_}{ident} n/a $ "))
+                    prompt.push("N/A".to_string());
                 }
-            } else {
-                Some(format!("{name_}$ "))
             }
+
+            (!prompt.is_empty()).then(|| prompt.join(" • ") + " $ ")
         } else {
             None
         }
