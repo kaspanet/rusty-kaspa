@@ -16,13 +16,15 @@ pub struct Inner {
 pub struct TransactionStore {
     inner: Arc<Mutex<Inner>>,
     folder: PathBuf,
+    name: String,
 }
 
 impl TransactionStore {
-    pub fn new<P: AsRef<Path>>(folder: P) -> TransactionStore {
+    pub fn new<P: AsRef<Path>>(folder: P, name: &str) -> TransactionStore {
         TransactionStore {
             inner: Arc::new(Mutex::new(Inner { known_folders: HashMap::default() })),
             folder: fs::resolve_path(folder.as_ref().to_str().unwrap()).expect("transaction store folder is invalid"),
+            name: name.to_string(),
         }
     }
 
@@ -56,7 +58,7 @@ impl TransactionStore {
     async fn ensure_folder(&self, binding: &Binding, network_id: &NetworkId) -> Result<PathBuf> {
         let binding_hex = binding.to_hex();
         let network_id = network_id.to_string();
-        let folder = self.folder.join("transactions").join(&binding_hex).join(&network_id);
+        let folder = self.folder.join(&format!("{}.transactions", self.name)).join(&binding_hex).join(&network_id);
         if !self.folder_is_registered(&binding_hex, &network_id) {
             fs::create_dir_all(&folder).await?;
             self.register_folder(&binding_hex, &network_id)?;
