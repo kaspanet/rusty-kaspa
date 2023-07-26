@@ -43,6 +43,7 @@ pub struct ScriptPublicKey {
 
 #[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
 #[serde(rename_all = "camelCase")]
+#[serde(rename = "ScriptPublicKey")]
 struct ScriptPublicKeyInternal<'a> {
     version: ScriptPublicKeyVersion,
     script: &'a [u8],
@@ -57,7 +58,7 @@ impl Serialize for ScriptPublicKey {
             let mut hex = [0u8; SCRIPT_VECTOR_SIZE * 2 + 4];
             faster_hex::hex_encode(&self.version.to_be_bytes(), &mut hex).expect("Unable to serialize ScriptPubKey version");
             faster_hex::hex_encode(&self.script, &mut hex[4..]).expect("Unable to serialize ScriptPubKey script");
-            serializer.serialize_str(str::from_utf8(&hex).expect("hex is must be a valid UTF-8"))
+            serializer.serialize_str(unsafe { str::from_utf8_unchecked(&hex) })
         } else {
             ScriptPublicKeyInternal { version: self.version, script: &self.script }.serialize(serializer)
         }
@@ -70,8 +71,8 @@ impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
         D: Deserializer<'de>,
     {
         if deserializer.is_human_readable() {
-            let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-            FromStr::from_str(&s).map_err(serde::de::Error::custom)
+            let s = <&str as Deserialize>::deserialize(deserializer)?;
+            FromStr::from_str(s).map_err(serde::de::Error::custom)
         } else {
             ScriptPublicKeyInternal::deserialize(deserializer)
                 .map(|ScriptPublicKeyInternal { script, version }| Self { version, script: SmallVec::from_slice(script) })
