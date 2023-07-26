@@ -16,6 +16,7 @@ static mut DOM_INIT: bool = false;
 
 #[derive(Clone)]
 pub enum GraphTimeline {
+    Seconds(u32),
     Minutes(u32),
     Hours(u32),
     Days(u32),
@@ -80,6 +81,7 @@ struct Inner {
     margin_right: f32,
     margin_top: f32,
     margin_bottom: f32,
+    min_date: js_sys::Date,
 }
 
 #[derive(Clone)]
@@ -163,6 +165,7 @@ impl Graph {
                 margin_right,
                 margin_top,
                 margin_bottom,
+                min_date: js_sys::Date::new_0(),
             })),
             x: Arc::new(D3::scale_time()),
             y: Arc::new(D3::scale_linear()),
@@ -262,6 +265,8 @@ impl Graph {
 
     pub async fn init(&mut self) -> Result<()> {
         self.update_size()?;
+        self.update_x_domain()?;
+        self.x.set_clamp(true);
         // line = d3.line()
         //     .x(function(d) { return x(d.date); })
         //     .y(function(d) { return y(d.value); })
@@ -304,7 +309,7 @@ impl Graph {
             inner.full_width = width;
             inner.full_height = height;
 
-            self.x.range([inner.width, 0.0]);
+            self.x.range([0.0, inner.width]);
             self.y.range([inner.height, 0.0]);
             (inner.margin_left, inner.margin_top)
         };
@@ -320,6 +325,9 @@ impl Graph {
     }
     pub fn width(&self) -> f32 {
         self.inner().width
+    }
+    pub fn min_date(&self) -> js_sys::Date {
+        self.inner().min_date.clone()
     }
     pub fn area_color(&self) -> String {
         self.options().area_color.clone()
@@ -384,15 +392,15 @@ impl Graph {
         for tick in ticks.clone() {
             let y = self.y.call1(&JsValue::NULL, &tick).unwrap().as_f64().unwrap();
             context.move_to(0.0, y);
-            context.line_to(-6.0, y);
+            context.line_to(-tick_size, y);
         }
         context.set_stroke_style(&JsValue::from(&options.y_axis_color));
         context.stroke();
         let height = self.height();
         context.begin_path();
         context.move_to(-tick_size, 0.0);
-        context.line_to(0.5, 0.0);
-        context.line_to(0.5, height as f64);
+        context.line_to(0.0, 0.0);
+        context.line_to(0.0, height as f64);
         context.line_to(-tick_size, height as f64);
         context.set_stroke_style(&JsValue::from(&options.y_axis_color));
         context.stroke();
@@ -436,30 +444,39 @@ impl Graph {
         Ok(())
     }
 
-    fn update_axis_and_title(&self) -> Result<()> {
+    fn update_x_domain(&self) -> Result<()> {
         // let cb = js_sys::Function::new_with_args("d", "return d.date");
         // self.x.domain(D3::extent(&self.data, cb));
         let date1 = js_sys::Date::new_0();
-        let date2 = js_sys::Date::new(&date1.get_time().into());
+        let time = date1.get_time();
+        let date2 = js_sys::Date::new(&time.into());
 
         match self.timeline {
+            GraphTimeline::Seconds(seconds) => {
+                date2.set_time(time - seconds as f64 * 1000.0);
+            }
             GraphTimeline::Minutes(minutes) => {
-                date2.set_minutes(date2.get_minutes() - minutes);
+                date2.set_time(time - minutes as f64 * 60000.0);
             }
             GraphTimeline::Hours(hours) => {
-                date2.set_hours(date2.get_hours() - hours);
+                date2.set_time(time - hours as f64 * 3600000.0);
             }
             GraphTimeline::Days(days) => {
-                date2.set_date(date2.get_date() - days);
+                date2.set_time(time - days as f64 * 86400000.0);
             }
         }
 
         let x_domain = js_sys::Array::new();
         x_domain.push(&date2);
         x_domain.push(&date1);
+        self.inner().min_date = date2;
 
         self.x.set_domain_array(x_domain);
+        Ok(())
+    }
 
+    fn update_axis_and_title(&self) -> Result<()> {
+        self.update_x_domain()?;
         let cb = js_sys::Function::new_with_args("d", "return d.value");
         self.y.set_domain_array(D3::extent(&self.data, cb));
         self.clear()?;
@@ -482,6 +499,24 @@ impl Graph {
         let _ = item.set("value", &value);
         workflow_log::log_info!("item: {item:?}");
         self.data.push(&item.into());
+        let min_date = self.min_date();
+
+        loop {
+            let item = self.data.at(0);
+            if let Ok(item) = item.dyn_into::<js_sys::Object>() {
+                if let Ok(item_date_v) = item.get("date") {
+                    if let Ok(item_date) = item_date_v.dyn_into::<js_sys::Date>() {
+                        //workflow_log::log_info!("item_date: {item_date:?} min_date:{min_date:?}");
+                        if item_date.lt(&min_date) {
+                            self.data.shift();
+                            continue;
+                        }
+                    }
+                }
+            }
+            break;
+        }
+
         self.update_axis_and_title()?;
 
         let area_color = self.area_color();

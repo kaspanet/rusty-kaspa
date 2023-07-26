@@ -45,6 +45,9 @@ extern "C" {
     #[wasm_bindgen(method, js_name=tickFormat)]
     pub fn tick_format(this: &ScaleTime) -> Function;
 
+    #[wasm_bindgen(method, js_name=clamp)]
+    pub fn set_clamp(this: &ScaleTime, clamp: bool);
+
     // #[wasm_bindgen(method, js_name=tickFormat)]
     // pub fn call1(this: &ScaleTime, value: JsValue) -> f64;
 
