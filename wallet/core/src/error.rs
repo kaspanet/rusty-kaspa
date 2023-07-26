@@ -66,7 +66,7 @@ pub enum Error {
     #[error("Wallet is not connected")]
     WalletNotConnected,
 
-    #[error("Unable to determine network type, please use `network (mainnet|testnet|testnet-11)` to select a network")]
+    #[error("Unable to determine network type, please use `network (mainnet|testnet-10|testnet-11)` to select a network")]
     MissingNetworkId,
 
     #[error("Invalid network type - client {0} node {1}")]

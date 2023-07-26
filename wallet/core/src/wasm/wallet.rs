@@ -211,12 +211,8 @@ impl TryFrom<JsValue> for WalletCtorArgs {
             let resident = object.get("resident")?.as_bool().unwrap_or(false);
 
             let network_id = object.get("networkType")?;
-            // let network_type = if let Some(network_type) = network_type.as_f64() {
-            //     Some(NetworkType::try_from(network_type as u8)?)
-            // } else
             let network_id = if let Some(network_id) = network_id.as_string() {
                 let network_id = NetworkId::from_str(network_id.as_str())?;
-                // .ok_or(Error::Custom("networkType must be one of: mainnet|testnet|devnet|simnet".to_string()))?;
                 Some(network_id)
             } else {
                 None
