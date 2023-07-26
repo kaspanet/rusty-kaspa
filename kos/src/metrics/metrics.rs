@@ -99,8 +99,18 @@ impl Metrics {
 
         for metric in Metric::list() {
             let graph = Arc::new(
-                Graph::try_new(&self.window.window(), &container, GraphTimeline::Minutes(5), GraphTheme::Light, 30.0, 20.0, 20.0, 30.0)
-                    .await?,
+                Graph::try_new(
+                    &self.window.window(),
+                    &container,
+                    metric.descr(),
+                    GraphTimeline::Minutes(5),
+                    GraphTheme::Light,
+                    30.0,
+                    20.0,
+                    20.0,
+                    30.0,
+                )
+                .await?,
             );
             self.graphs.lock().unwrap().insert(metric, graph);
         }

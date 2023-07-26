@@ -53,9 +53,9 @@ impl GraphTheme {
             x_axis_font: String::from("20px serif"),
             y_axis_font: String::from("20px serif"),
             area_color: String::from("blue"),
-            x_axis_color: String::from("green"),
-            y_axis_color: String::from("red"),
-            title_color: String::from("yellow"),
+            x_axis_color: String::from("black"),
+            y_axis_color: String::from("black"),
+            title_color: String::from("black"),
         }
     }
     pub fn dark_theme_options() -> GraphThemeOptions {
@@ -134,9 +134,10 @@ impl Graph {
         Ok(())
     }
 
-    pub async fn try_new(
+    pub async fn try_new<T: Into<String>>(
         window: &web_sys::Window,
         container: &Arc<Container>,
+        title: T,
         timeline: GraphTimeline,
         theme: GraphTheme,
         margin_left: f32,
@@ -179,7 +180,7 @@ impl Graph {
             x_tick_count: 10,
             y_tick_count: 10,
             y_tick_padding: 3.0,
-            title: String::from("Price"),
+            title: title.into(),
             options,
             callbacks: CallbackMap::new(),
         };
