@@ -10,7 +10,6 @@ pub mod keydata;
 pub mod local;
 pub mod metadata;
 pub mod transaction;
-pub mod wasm;
 
 pub use crate::runtime::{AccountId, AccountKind};
 pub use account::Account;

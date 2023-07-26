@@ -1,6 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::storage::Binding;
+use crate::storage::interface::StorageStream;
+use crate::storage::{Binding, TransactionRecordStore};
 use crate::storage::{TransactionMetadata, TransactionRecord};
 use std::{
     collections::VecDeque,
@@ -52,13 +53,6 @@ impl TransactionStore {
         Ok(())
     }
 
-    // fn make_folder(&self, binding: &Binding, network_id: &NetworkId) -> Result<PathBuf> {
-    //     let binding_hex = binding.to_hex();
-    //     let network_id = network_id.to_string();
-    //     let folder = self.folder.join("transactions").join(&binding_hex).join(&network_id);
-    //     Ok(folder)
-    // }
-
     async fn ensure_folder(&self, binding: &Binding, network_id: &NetworkId) -> Result<PathBuf> {
         let binding_hex = binding.to_hex();
         let network_id = network_id.to_string();
@@ -68,30 +62,6 @@ impl TransactionStore {
             self.register_folder(&binding_hex, &network_id)?;
         }
         Ok(folder)
-    }
-
-    pub async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>> {
-        let folder = self.ensure_folder(binding, network_id).await?;
-        let path = folder.join(id.to_hex());
-        Ok(Arc::new(fs::read_json::<TransactionRecord>(&path).await?))
-    }
-
-    pub async fn load_multiple(
-        &self,
-        binding: &Binding,
-        network_id: &NetworkId,
-        ids: &[TransactionId],
-    ) -> Result<Vec<Arc<TransactionRecord>>> {
-        let folder = self.ensure_folder(binding, network_id).await?;
-        let mut transactions = vec![];
-
-        for id in ids {
-            let path = folder.join(&id.to_hex());
-            let tx: TransactionRecord = fs::read_json(&path).await?;
-            transactions.push(Arc::new(tx));
-        }
-
-        Ok(transactions)
     }
 
     async fn enumerate(&self, binding: &Binding, network_id: &NetworkId) -> Result<VecDeque<TransactionId>> {
@@ -116,19 +86,56 @@ impl TransactionStore {
         Ok(transactions)
     }
 
-    pub async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()> {
-        log_info!("*** TRANSACTION RECORD STORE *** IN RECORD STORE");
+    pub async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl TransactionRecordStore for TransactionStore {
+    async fn transaction_id_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionId>> {
+        Ok(Box::pin(TransactionIdStream::try_new(self, binding, network_id).await?))
+    }
+
+    // async fn transaction_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionRecord>> {
+    //     Ok(Box::pin(TransactionRecordStream::try_new(&self.transactions, binding, network_id).await?))
+    // }
+
+    async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>> {
+        let folder = self.ensure_folder(binding, network_id).await?;
+        let path = folder.join(id.to_hex());
+        Ok(Arc::new(fs::read_json::<TransactionRecord>(&path).await?))
+    }
+
+    async fn load_multiple(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        ids: &[TransactionId],
+    ) -> Result<Vec<Arc<TransactionRecord>>> {
+        let folder = self.ensure_folder(binding, network_id).await?;
+        let mut transactions = vec![];
+
+        for id in ids {
+            let path = folder.join(&id.to_hex());
+            let tx: TransactionRecord = fs::read_json(&path).await?;
+            transactions.push(Arc::new(tx));
+        }
+
+        Ok(transactions)
+    }
+
+    async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()> {
         for tx in transaction_records {
             let folder = self.ensure_folder(tx.binding(), tx.network_id()).await?;
-            let filename = folder.join(tx.id.to_hex());
-            log_info!("Storing transaction in {}", filename.display());
+            let filename = folder.join(tx.id().to_hex());
             fs::write_json(&filename, tx).await?;
         }
 
         Ok(())
     }
 
-    pub async fn remove(&self, binding: &Binding, network_id: &NetworkId, ids: &[&TransactionId]) -> Result<()> {
+    async fn remove(&self, binding: &Binding, network_id: &NetworkId, ids: &[&TransactionId]) -> Result<()> {
         let folder = self.ensure_folder(binding, network_id).await?;
         for id in ids {
             let filename = folder.join(id.to_hex());
@@ -138,21 +145,18 @@ impl TransactionStore {
         Ok(())
     }
 
-    pub async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
+    async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
         Ok(())
     }
 }
 
 #[derive(Clone)]
 pub struct TransactionIdStream {
-    // store: Arc<TransactionStore>,
-    // folder: PathBuf,
     transactions: VecDeque<TransactionId>,
 }
 
 impl TransactionIdStream {
-    pub(crate) async fn try_new(store: &Arc<TransactionStore>, binding: &Binding, network_id: &NetworkId) -> Result<Self> {
-        // let folder = store.make_folder(binding, network_id)?;
+    pub(crate) async fn try_new(store: &TransactionStore, binding: &Binding, network_id: &NetworkId) -> Result<Self> {
         let transactions = store.enumerate(binding, network_id).await?;
         Ok(Self { transactions })
     }
@@ -169,6 +173,7 @@ impl Stream for TransactionIdStream {
         }
     }
 }
+
 /*
 #[derive(Clone)]
 pub struct TransactionRecordStream {

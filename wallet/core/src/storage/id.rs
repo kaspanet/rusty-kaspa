@@ -32,16 +32,9 @@ impl IdT for Account {
     }
 }
 
-// impl IdT for Metadata {
-//     type Id = AccountId;
-//     fn id(&self) -> &AccountId {
-//         &self.id
-//     }
-// }
-
 impl IdT for TransactionRecord {
     type Id = TransactionId;
     fn id(&self) -> &TransactionId {
-        &self.id
+        self.id()
     }
 }

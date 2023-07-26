@@ -13,6 +13,7 @@ use crate::storage::local::Storage;
 use crate::storage::*;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use workflow_core::runtime::is_web;
 
 pub enum Store {
     Resident,
@@ -22,7 +23,7 @@ pub enum Store {
 pub(crate) struct LocalStoreInner {
     pub cache: Arc<Mutex<Cache>>,
     pub store: Store,
-    pub transactions: Arc<TransactionStore>,
+    pub transactions: Arc<dyn TransactionRecordStore>,
     pub is_modified: AtomicBool,
     pub name: String,
 }
@@ -50,7 +51,11 @@ impl LocalStoreInner {
         let wallet = Wallet::try_new(&secret, payload)?;
         let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
         let modified = AtomicBool::new(false);
-        let transactions = Arc::new(TransactionStore::new(folder));
+        let transactions: Arc<dyn TransactionRecordStore> = if !is_web() {
+            Arc::new(fsio::TransactionStore::new(folder))
+        } else {
+            Arc::new(indexdb::TransactionStore::new(name.clone()))
+        };
 
         Ok(Self { cache, store, is_modified: modified, name, transactions })
     }
@@ -68,7 +73,14 @@ impl LocalStoreInner {
         let wallet = Wallet::try_load(&storage).await?;
         let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
         let modified = AtomicBool::new(false);
-        let transactions = Arc::new(TransactionStore::new(folder));
+
+        let transactions: Arc<dyn TransactionRecordStore> = if !is_web() {
+            Arc::new(fsio::TransactionStore::new(folder))
+        } else {
+            Arc::new(indexdb::TransactionStore::new(name.clone()))
+        };
+
+        // let transactions = Arc::new(TransactionStore::new(folder));
 
         Ok(Self { cache, store: Store::Storage(storage), is_modified: modified, name, transactions })
     }
@@ -187,7 +199,7 @@ impl Interface for LocalStore {
     }
 
     fn as_transaction_record_store(&self) -> Result<Arc<dyn TransactionRecordStore>> {
-        Ok(self.inner()?)
+        Ok(self.inner()?.transactions.clone())
     }
 
     fn name(&self) -> Option<String> {
@@ -382,42 +394,5 @@ impl MetadataStore for LocalStoreInner {
 
     async fn load(&self, ids: &[AccountId]) -> Result<Vec<Arc<Metadata>>> {
         Ok(self.cache().metadata.load(ids)?)
-    }
-}
-
-#[async_trait]
-impl TransactionRecordStore for LocalStoreInner {
-    async fn transaction_id_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionId>> {
-        Ok(Box::pin(TransactionIdStream::try_new(&self.transactions, binding, network_id).await?))
-    }
-
-    // async fn transaction_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionRecord>> {
-    //     Ok(Box::pin(TransactionRecordStream::try_new(&self.transactions, binding, network_id).await?))
-    // }
-
-    async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>> {
-        self.transactions.load_single(binding, network_id, id).await
-    }
-
-    async fn load_multiple(
-        &self,
-        binding: &Binding,
-        network_id: &NetworkId,
-        ids: &[TransactionId],
-    ) -> Result<Vec<Arc<TransactionRecord>>> {
-        self.transactions.load_multiple(binding, network_id, ids).await
-    }
-
-    async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()> {
-        log_info!("**** TRANSACTION RECORD STORE **** STORING");
-        self.transactions.store(transaction_records).await
-    }
-
-    async fn remove(&self, binding: &Binding, network_id: &NetworkId, ids: &[&TransactionId]) -> Result<()> {
-        self.transactions.remove(binding, network_id, ids).await
-    }
-
-    async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
-        Ok(())
     }
 }

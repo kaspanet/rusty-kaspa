@@ -43,17 +43,6 @@ impl TransactionType {
     }
 }
 
-// impl ToString for TransactionType {
-//     fn to_string(&self) -> String {
-//         match self {
-//             TransactionType::Credit => "credit",
-//             TransactionType::Debit => "debit",
-//             TransactionType::Reorg => "reorg",
-//         }
-//         .to_string()
-//     }
-// }
-
 impl std::fmt::Display for TransactionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
@@ -64,55 +53,6 @@ impl std::fmt::Display for TransactionType {
         write!(f, "{s}")
     }
 }
-
-// #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-// pub struct TransactionRecordId(pub(crate) [u8; 8]);
-
-// impl TransactionRecordId {
-//     pub(crate) fn new(utxo: &UtxoEntryReference) -> TransactionRecordId {
-//         Self::new_from_slice(&sha256_hash(&utxo.id().to_bytes()).unwrap().as_ref()[0..8])
-//     }
-//     pub fn new_from_slice(vec: &[u8]) -> Self {
-//         Self(<[u8; 8]>::try_from(<&[u8]>::clone(&vec)).expect("Error: invalid slice size for id"))
-//     }
-//     pub fn short(&self) -> String {
-//         let hex = self.to_hex();
-//         format!("{}..{}", &hex[0..4], &hex[hex.len() - 4..])
-//     }
-// }
-
-// impl ToHex for TransactionRecordId {
-//     fn to_hex(&self) -> String {
-//         self.0.to_vec().to_hex()
-//     }
-// }
-
-// impl Serialize for TransactionRecordId {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         serializer.serialize_str(&hex_string(&self.0))
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for TransactionRecordId {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-//         let mut data = vec![0u8; s.len() / 2];
-//         hex_decode(s.as_bytes(), &mut data).map_err(serde::de::Error::custom)?;
-//         Ok(Self::new_from_slice(&data))
-//     }
-// }
-
-// impl std::fmt::Display for TransactionRecordId {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "{}", self.to_hex())
-//     }
-// }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UtxoRecord {
@@ -139,33 +79,55 @@ impl From<UtxoEntryReference> for UtxoRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TransactionMetadata {
-    pub id: TransactionId,
-    pub metadata: String,
+pub enum TransactionMetadata {
+    Custom(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRecord {
-    pub id: TransactionId,
-    pub unixtime: u64,
-    pub binding: Binding,
+    id: TransactionId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unixtime: Option<u64>,
+    binding: Binding,
     #[serde(rename = "blockDaaScore")]
-    pub block_daa_score: u64,
+    block_daa_score: u64,
     #[serde(rename = "type")]
-    pub transaction_type: TransactionType,
+    transaction_type: TransactionType,
     #[serde(rename = "network")]
-    pub network_id: NetworkId,
+    network_id: NetworkId,
     #[serde(rename = "utxoEntries")]
-    pub utxo_entries: Vec<UtxoRecord>,
+    utxo_entries: Vec<UtxoRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<TransactionMetadata>,
 }
 
 impl TransactionRecord {
-    pub fn network_id(&self) -> &NetworkId {
-        &self.network_id
+    pub fn id(&self) -> &TransactionId {
+        &self.id
+    }
+
+    pub fn unixtime(&self) -> Option<u64> {
+        self.unixtime
     }
 
     pub fn binding(&self) -> &Binding {
         &self.binding
+    }
+
+    pub fn block_daa_score(&self) -> u64 {
+        self.block_daa_score
+    }
+
+    pub fn transaction_type(&self) -> &TransactionType {
+        &self.transaction_type
+    }
+
+    pub fn network_id(&self) -> &NetworkId {
+        &self.network_id
+    }
+
+    pub fn is_coinbase(&self) -> bool {
+        self.utxo_entries.first().expect("transaction has no utxo entries").is_coinbase
     }
 }
 
@@ -205,35 +167,23 @@ impl TransactionRecord {
     }
 }
 
-// impl Zeroize for TransactionRecord {
-//     fn zeroize(&mut self) {
-//         self.0.zeroize()
-//     }
-// }
-
 impl From<(&UtxoContext, TransactionType, TransactionId, Vec<UtxoEntryReference>)> for TransactionRecord {
     fn from(
         (utxo_context, transaction_type, id, utxos): (&UtxoContext, TransactionType, TransactionId, Vec<UtxoEntryReference>),
     ) -> Self {
-        // let id = TransactionRecordId::new(&utxo);
         let binding = Binding::from(utxo_context.binding());
-        // let UtxoEntryReference { utxo } = utxo;
         let block_daa_score = utxos[0].utxo.entry.block_daa_score;
         let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
 
         TransactionRecord {
             id,
-            unixtime: 0,
+            unixtime: None,
             binding,
             utxo_entries,
-            // address: utxo.address.clone(),
-            // outpoint: utxo.outpoint.clone().into(),
-            // amount: utxo.entry.amount,
-            // script_public_key: utxo.entry.script_public_key.clone(),
-            block_daa_score, //: utxo.entry.block_daa_score,
-            // is_coinbase: utxo.entry.is_coinbase,
+            block_daa_score,
             transaction_type,
             network_id: utxo_context.processor.network_id().expect("network expected for transaction record generation"),
+            metadata: None,
         }
     }
 }
