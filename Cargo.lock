@@ -3456,7 +3456,9 @@ checksum = "6aa2c4e539b869820a2b82e1aef6ff40aa85e65decdd5185e83fb4b1249cd00f"
 
 [[package]]
 name = "nw-sys"
-version = "0.1.4"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dde0375029a7d6e44538818aaf2e1791fc4e7b50ca0cfe5067e34a820a2a927c"
 dependencies = [
  "cfg-if 1.0.0",
  "js-sys",
