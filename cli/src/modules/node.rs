@@ -1,6 +1,8 @@
 use crate::imports::*;
 use kaspa_daemon::KaspadConfig;
 pub use workflow_node::process::Event;
+use workflow_store::fs;
+use workflow_node::process;
 
 #[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(rename_all = "lowercase")]
@@ -82,7 +84,7 @@ impl Node {
         Ok(config)
     }
 
-    async fn main(self: Arc<Self>, ctx: Arc<KaspaCli>, mut argv: Vec<String>, _cmd: &str) -> Result<()> {
+    async fn main(self: Arc<Self>, ctx: Arc<KaspaCli>, mut argv: Vec<String>, cmd: &str) -> Result<()> {
         if argv.is_empty() {
             return self.display_help(ctx, argv).await;
         }
@@ -125,7 +127,10 @@ impl Node {
                 tprintln!(ctx, "{}", status);
             }
             "select" => {
-                self.select(ctx).await?;
+
+                let regex = Regex::new(r"(?i)^\s*node\s*select\s*").unwrap();
+                let path = regex.replace(cmd, "").trim().to_string();
+                self.select(ctx,path.is_empty().then_some(path)).await?;
             }
             "version" => {
                 kaspad.configure(self.create_config(&ctx).await?).await?;
@@ -160,22 +165,38 @@ impl Node {
         Ok(())
     }
 
-    async fn select(self: Arc<Self>, ctx: Arc<KaspaCli>) -> Result<()> {
+    async fn select(self: Arc<Self>, ctx: Arc<KaspaCli>, path : Option<String>) -> Result<()> {
         let root = nw_sys::app::folder();
 
-        let binaries = kaspa_daemon::locate_binaries(root.as_str(), "kaspad").await?;
-
-        if binaries.is_empty() {
-            tprintln!(ctx, "No kaspad binaries found");
-        } else {
-            let binaries = binaries.iter().map(|p| p.display().to_string()).collect::<Vec<_>>();
-            if let Some(selection) = ctx.term().select("Please select a kaspad binary", &binaries).await? {
-                tprintln!(ctx, "selecting: {}", selection);
-                self.settings.set(KaspadSettings::Location, selection.as_str()).await?;
-                // let config = KaspadConfig::new(selection.as_str(), NetworkType::Testnet)?;
-                // ctx.daemons().kaspad().configure(config).await?;
-            } else {
-                tprintln!(ctx, "no selection is made");
+        match path {
+            None => {
+                let binaries = kaspa_daemon::locate_binaries(root.as_str(), "kaspad").await?;
+        
+                if binaries.is_empty() {
+                    tprintln!(ctx, "No kaspad binaries found");
+                } else {
+                    let binaries = binaries.iter().map(|p| p.display().to_string()).collect::<Vec<_>>();
+                    if let Some(selection) = ctx.term().select("Please select a kaspad binary", &binaries).await? {
+                        tprintln!(ctx, "selecting: {}", selection);
+                        self.settings.set(KaspadSettings::Location, selection.as_str()).await?;
+                        // let config = KaspadConfig::new(selection.as_str(), NetworkType::Testnet)?;
+                        // ctx.daemons().kaspad().configure(config).await?;
+                    } else {
+                        tprintln!(ctx, "no selection is made");
+                    }
+                }
+            },
+            Some(path) => {
+                if fs::exists(&path).await? {
+                    let version = process::version(&path).await?;
+                    tprintln!(ctx, "detected binary version: {}", version);
+                    tprintln!(ctx, "selecting: {path}");
+                    self.settings.set(KaspadSettings::Location, path.as_str()).await?;
+                } else {
+                    twarnln!(ctx, "destination binary not found, please specify full path including the binary name");
+                    twarnln!(ctx, "example: 'node select /home/user/testnet/kaspad'");
+                    tprintln!(ctx, "no selection is made");
+                }
             }
         }
 
