@@ -36,8 +36,8 @@ extern "C" {
     #[wasm_bindgen(method, js_name=range)]
     pub fn range_impl(this: &ScaleTime, range: Array) -> ScaleTime;
 
-    #[wasm_bindgen(method)]
-    pub fn domain(this: &ScaleTime, domain: Array) -> ScaleTime;
+    #[wasm_bindgen(method, js_name=domain)]
+    pub fn set_domain_array(this: &ScaleTime, domain: Array) -> ScaleTime;
 
     #[wasm_bindgen(method)]
     pub fn ticks(this: &ScaleTime, count: u32) -> Array;
@@ -68,8 +68,8 @@ extern "C" {
     #[wasm_bindgen(method, js_name=range)]
     pub fn range_impl(this: &ScaleLinear, range: Array) -> ScaleLinear;
 
-    #[wasm_bindgen(method)]
-    pub fn domain(this: &ScaleLinear, domain: Array) -> ScaleLinear;
+    #[wasm_bindgen(method, js_name=domain)]
+    pub fn set_domain_array(this: &ScaleLinear, domain: Array) -> ScaleLinear;
 
     #[wasm_bindgen(method)]
     pub fn ticks(this: &ScaleLinear, count: u32) -> Array;
@@ -84,6 +84,14 @@ impl ScaleLinear {
         range_value.push(&range[0].into());
         range_value.push(&range[1].into());
         self.range_impl(range_value);
+        self
+    }
+
+    pub fn set_domain(&self, min: u32, max: u32) -> &Self {
+        let domain = Array::new();
+        domain.push(&min.into());
+        domain.push(&max.into());
+        self.set_domain_array(domain);
         self
     }
 }

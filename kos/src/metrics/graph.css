@@ -1,12 +1,13 @@
 .graph {
     display: block;
-    min-width: 400px;
-    max-width:100px;
-    height: 400px;
+    min-width: 300px;
+    max-width: 500px;
+    height: 150px;
     border: 1px solid #ccc;
     border-radius: 5px;
-    /*flex: 1; TODO*/
+    flex: 1;
     box-sizing:border-box;
+    margin:5px;
 }
 .graph canvas{
     width:100%;

@@ -98,7 +98,20 @@ impl Metrics {
         *self.container.lock().unwrap() = Some(container.clone());
 
         for metric in Metric::list() {
-            let graph = Arc::new(Graph::try_new(&self.window.window(), &container, 20.0, 20.0, 20.0, 20.0).await?);
+            let graph = Arc::new(
+                Graph::try_new(
+                    &self.window.window(),
+                    &container,
+                    metric.descr(),
+                    GraphTimeline::Minutes(5),
+                    GraphTheme::Light,
+                    30.0,
+                    20.0,
+                    20.0,
+                    30.0,
+                )
+                .await?,
+            );
             self.graphs.lock().unwrap().insert(metric, graph);
         }
 
@@ -113,6 +126,14 @@ impl Metrics {
         for metric in Metric::list() {
             let value = data.get(&metric);
             self.graph(&metric).ingest(data.unixtime, value).await?;
+            // let color = { self.graph(&metric).options().title_color.clone() };
+            // workflow_log::log_info!("color: {color:?}");
+            // let is_dark = color.eq("white");
+            // if is_dark {
+            //     self.graph(&metric).set_theme(GraphTheme::Light);
+            // } else {
+            //     self.graph(&metric).set_theme(GraphTheme::Dark);
+            // }
         }
 
         yield_executor().await;
