@@ -212,10 +212,14 @@ impl Wallet {
         &self.inner.active_accounts
     }
 
-    pub async fn reset(&self) -> Result<()> {
+    pub async fn reset(self: &Arc<Self>) -> Result<()> {
         // log_info!("**** WALLET RESET ****");
+
+        self.select(None).await?;
+
         let accounts = self.inner.active_accounts.cloned_flat_list();
         let futures = accounts.iter().map(|account| account.stop());
+
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
         self.utxo_processor().clear().await?;
 
@@ -301,8 +305,8 @@ impl Wallet {
         &self.inner.settings
     }
 
-    pub fn current_daa_score(&self) -> u64 {
-        self.inner.virtual_daa_score.load(Ordering::SeqCst)
+    pub fn current_daa_score(&self) -> Option<u64> {
+        self.is_connected().then_some(self.inner.virtual_daa_score.load(Ordering::SeqCst))
     }
 
     pub async fn load_settings(&self) -> Result<()> {

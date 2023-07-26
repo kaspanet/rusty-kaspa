@@ -292,7 +292,7 @@ impl Account {
     pub async fn scan(self: &Arc<Self>, window_size: Option<usize>, extent: Option<u32>) -> Result<()> {
         self.utxo_context().clear().await?;
 
-        let current_daa_score = self.wallet.current_daa_score();
+        let current_daa_score = self.wallet.current_daa_score().ok_or(Error::NotConnected)?;
         let balance = Arc::new(AtomicBalance::default());
 
         let extent = match extent {

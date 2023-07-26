@@ -42,7 +42,8 @@ impl UtxoContextId {
 
     pub fn short(&self) -> String {
         let hex = self.to_hex();
-        format!("{}..{}", &hex[0..4], &hex[hex.len() - 4..])
+        format!("[{}]", &hex[0..4])
+        // format!("{}..{}", &hex[0..4], &hex[hex.len() - 4..])
     }
 }
 

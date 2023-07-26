@@ -10,8 +10,8 @@ use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
 use super::UtxoContext;
 
 // thresholds for 1 BPS network
-const MATURITY_PERIOD_COINBASE_TRANSACTION: u64 = 128;
-const MATURITY_PERIOD_USER_TRANSACTION: u64 = 16;
+pub const MATURITY_PERIOD_COINBASE_TRANSACTION: u64 = 128;
+pub const MATURITY_PERIOD_USER_TRANSACTION: u64 = 16;
 
 pub type UtxoEntryId = TransactionOutpointInner;
 

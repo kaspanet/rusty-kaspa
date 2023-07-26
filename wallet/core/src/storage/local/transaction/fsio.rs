@@ -58,7 +58,7 @@ impl TransactionStore {
     async fn ensure_folder(&self, binding: &Binding, network_id: &NetworkId) -> Result<PathBuf> {
         let binding_hex = binding.to_hex();
         let network_id = network_id.to_string();
-        let folder = self.folder.join(&format!("{}.transactions", self.name)).join(&binding_hex).join(&network_id);
+        let folder = self.folder.join(format!("{}.transactions", self.name)).join(&binding_hex).join(&network_id);
         if !self.folder_is_registered(&binding_hex, &network_id) {
             fs::create_dir_all(&folder).await?;
             self.register_folder(&binding_hex, &network_id)?;
@@ -106,6 +106,7 @@ impl TransactionRecordStore for TransactionStore {
     async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>> {
         let folder = self.ensure_folder(binding, network_id).await?;
         let path = folder.join(id.to_hex());
+        log_info!("TransactionStore::load_single(): path: {}", path.display());
         Ok(Arc::new(fs::read_json::<TransactionRecord>(&path).await?))
     }
 

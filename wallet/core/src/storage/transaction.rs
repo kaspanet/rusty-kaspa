@@ -4,6 +4,7 @@ use crate::storage::Binding;
 use crate::utxo::{UtxoContext, UtxoEntryReference};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::ScriptPublicKey;
+use separator::Separatable;
 use serde::{Deserialize, Serialize};
 use workflow_log::style;
 
@@ -127,12 +128,20 @@ impl TransactionRecord {
     }
 
     pub fn is_coinbase(&self) -> bool {
-        self.utxo_entries.first().expect("transaction has no utxo entries").is_coinbase
+        self.utxo_entries.iter().any(|entry| entry.is_coinbase)
     }
 }
 
 impl TransactionRecord {
     pub fn format(&self, wallet: &Wallet) -> String {
+        self.format_with_args(wallet, None, None)
+    }
+
+    pub fn format_with_state(&self, wallet: &Wallet, state: Option<&str>) -> String {
+        self.format_with_args(wallet, state, None)
+    }
+
+    pub fn format_with_args(&self, wallet: &Wallet, state: Option<&str>, current_daa_score: Option<u64>) -> String {
         let TransactionRecord { id, binding, block_daa_score, transaction_type, utxo_entries, .. } = self;
 
         let name = match binding {
@@ -148,19 +157,42 @@ impl TransactionRecord {
 
         let kind = transaction_type.style(&transaction_type.to_string().pad_to_width(8));
 
-        let mut lines = vec![format!("{name} {id} @{block_daa_score} DAA - {kind}")];
+        let maturity = current_daa_score
+            .map(|score| {
+                // TODO - refactor @ high BPS processing
+                let maturity = if self.is_coinbase() {
+                    crate::utxo::entry::MATURITY_PERIOD_COINBASE_TRANSACTION
+                } else {
+                    crate::utxo::entry::MATURITY_PERIOD_USER_TRANSACTION
+                };
+
+                if score < self.block_daa_score() + maturity {
+                    style("pending").dim().to_string()
+                } else {
+                    style("confirmed").dim().to_string()
+                }
+            })
+            .unwrap_or_default();
+
+        // let current_daa_score = current_daa_score.map(|score| score ).unwrap_or_else(|| "".to_string()
+        let block_daa_score = block_daa_score.separated_string();
+        let state = state.unwrap_or(&maturity);
+        let mut lines = vec![format!("{name} {id} @{block_daa_score} DAA - {kind} {state}")];
 
         let suffix = utils::kaspa_suffix(&self.network_id.network_type);
 
         for utxo_entry in utxo_entries {
-            let address =
-                style(utxo_entry.address.as_ref().map(|addr| addr.to_string()).unwrap_or_else(|| "n/a".to_string())).yellow();
-            let is_coinbase = if utxo_entry.is_coinbase { style("(coinbase tx)").dim() } else { style("(standard tx)").dim() };
+            let address = style(utxo_entry.address.as_ref().map(|addr| addr.to_string()).unwrap_or_else(|| "n/a".to_string())).blue();
             let index = utxo_entry.index;
-            let amount = transaction_type.style_with_sign(utils::sompi_to_kaspa_string(utxo_entry.amount).pad_to_width(19).as_str());
+            let is_coinbase = if utxo_entry.is_coinbase {
+                style(format!("coinbase utxo [{index}]")).dim()
+            } else {
+                style(format!("standard utxo [{index}]")).dim()
+            };
+            let amount = transaction_type.style_with_sign(utils::sompi_to_kaspa_string(utxo_entry.amount).as_str());
 
             lines.push(format!("    {address}"));
-            lines.push(format!("    {index} {amount} {suffix} {is_coinbase}"));
+            lines.push(format!("    {amount} {suffix} {is_coinbase}"));
         }
 
         lines.join("\r\n")

@@ -135,7 +135,6 @@ impl LocalStoreInner {
     async fn close(&self) -> Result<()> {
         Ok(())
     }
-
 }
 
 impl Drop for LocalStoreInner {
