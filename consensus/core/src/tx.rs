@@ -62,7 +62,7 @@ impl Serialize for ScriptPublicKey {
             let mut hex = vec![0u8; self.script.len() * 2 + 4];
             faster_hex::hex_encode(&self.version.to_be_bytes(), &mut hex).map_err(serde::ser::Error::custom)?;
             faster_hex::hex_encode(&self.script, &mut hex[4..]).map_err(serde::ser::Error::custom)?;
-            serializer.serialize_str(unsafe { str::from_utf8_unchecked(&hex) })    
+            serializer.serialize_str(unsafe { str::from_utf8_unchecked(&hex) })
         } else {
             ScriptPublicKeyInternal { version: self.version, script: &self.script }.serialize(serializer)
         }
