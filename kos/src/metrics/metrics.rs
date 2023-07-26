@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use crate::imports::*;
-use crate::metrics::container::*;
-use crate::metrics::graph::*;
 use kaspa_cli::metrics::{Metric, MetricsData};
+use workflow_d3::container::*;
+use workflow_d3::graph::*;
 
 static mut METRICS: Option<Arc<Metrics>> = None;
 
@@ -105,10 +105,7 @@ impl Metrics {
                     metric.descr(),
                     GraphTimeline::Minutes(5),
                     GraphTheme::Light,
-                    30.0,
-                    20.0,
-                    20.0,
-                    30.0,
+                    Margin::new(30.0, 20.0, 20.0, 30.0),
                 )
                 .await?,
             );

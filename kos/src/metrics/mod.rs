@@ -5,6 +5,3 @@ mod ipc;
 pub use ipc::*;
 mod settings;
 pub use settings::*;
-mod container;
-mod d3;
-mod graph;

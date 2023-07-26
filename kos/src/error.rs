@@ -52,6 +52,9 @@ pub enum Error {
 
     #[error(transparent)]
     Dom(#[from] workflow_dom::error::Error),
+
+    #[error(transparent)]
+    D3(#[from] workflow_d3::error::Error),
 }
 
 impl From<Error> for JsValue {
