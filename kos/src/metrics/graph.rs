@@ -71,12 +71,7 @@ impl GraphTheme {
     }
 }
 
-#[derive(Clone)]
-pub struct Graph {
-    #[allow(dead_code)]
-    element: Element,
-    canvas: HtmlCanvasElement,
-    context: web_sys::CanvasRenderingContext2d,
+struct Inner {
     width: f32,
     height: f32,
     full_width: f32,
@@ -85,7 +80,16 @@ pub struct Graph {
     margin_right: f32,
     margin_top: f32,
     margin_bottom: f32,
+}
 
+#[derive(Clone)]
+pub struct Graph {
+    #[allow(dead_code)]
+    element: Element,
+    canvas: HtmlCanvasElement,
+    context: web_sys::CanvasRenderingContext2d,
+
+    inner: Arc<Mutex<Inner>>,
     x: Arc<d3::ScaleTime>,
     y: Arc<d3::ScaleLinear>,
     area: Option<Arc<d3::Area>>,
@@ -97,20 +101,10 @@ pub struct Graph {
     y_tick_count: u32,
     y_tick_padding: f64,
     title: String,
-
-    // x_axis_font: String,
-    // y_axis_font: String,
-    // title_font: String,
-    // area_color: String,
-    // x_axis_color: String,
-    // y_axis_color: String,
-    // title_color: String,
     options: Arc<Mutex<GraphThemeOptions>>,
 
     /// holds references to [Callback](workflow_wasm::callback::Callback)
     pub callbacks: CallbackMap,
-    // #[allow(dead_code)]
-    // metric: Metric,
 }
 
 unsafe impl Sync for Graph {}
@@ -124,8 +118,8 @@ impl Graph {
 
             // TODO: this should be used for development only, then embedded directly into this file
             // alternatively use Function() to bootstrap the js graph code
-            let graph_js = include_bytes!("graph.js");
-            inject_blob(Content::Script(None, graph_js)).await?;
+            // let graph_js = include_bytes!("graph.js");
+            // inject_blob(Content::Script(None, graph_js)).await?;
             unsafe {
                 DOM_INIT = true;
             }
@@ -160,14 +154,16 @@ impl Graph {
 
         let mut graph: Graph = Graph {
             element,
-            width: 0.0,
-            height: 0.0,
-            full_width: 0.0,
-            full_height: 0.0,
-            margin_left,
-            margin_right,
-            margin_top,
-            margin_bottom,
+            inner: Arc::new(Mutex::new(Inner {
+                width: 0.0,
+                height: 0.0,
+                full_width: 0.0,
+                full_height: 0.0,
+                margin_left,
+                margin_right,
+                margin_top,
+                margin_bottom,
+            })),
             x: Arc::new(D3::scale_time()),
             y: Arc::new(D3::scale_linear()),
             area: None,
@@ -184,7 +180,7 @@ impl Graph {
             options,
             callbacks: CallbackMap::new(),
         };
-        graph.init(window).await?;
+        graph.init().await?;
         Ok(graph)
     }
 
@@ -220,6 +216,9 @@ impl Graph {
 
     pub fn options(&self) -> MutexGuard<GraphThemeOptions> {
         self.options.lock().unwrap()
+    }
+    pub fn inner(&self) -> MutexGuard<Inner> {
+        self.inner.lock().unwrap()
     }
 
     pub fn set_title_font<T: Into<String>>(&self, font: T) -> &Self {
@@ -261,47 +260,75 @@ impl Graph {
         *self.options() = theme.get_options();
     }
 
-    pub async fn init(&mut self, window: &web_sys::Window) -> Result<()> {
-        let rect = self.canvas.get_bounding_client_rect();
-        let pixel_ratio = window.device_pixel_ratio() as f32;
-        //workflow_log::log_info!("rectrectrect: {:?}, pixel_ratio:{pixel_ratio}", rect);
-        let width = (pixel_ratio * rect.right() as f32).round() - (pixel_ratio * rect.left() as f32).round();
-        let height = (pixel_ratio * rect.bottom() as f32).round() - (pixel_ratio * rect.top() as f32).round();
-        self.canvas.set_width(width as u32);
-        self.canvas.set_height(height as u32);
-
-        self.width = width - self.margin_left - self.margin_right;
-        self.height = height - self.margin_top - self.margin_bottom;
-        self.full_width = width;
-        self.full_height = height;
-
-        self.x.range([self.width, 0.0]);
-        self.y.range([self.height, 0.0]);
-
-        self.x_axis()?;
-        self.y_axis()?;
-
+    pub async fn init(&mut self) -> Result<()> {
+        self.update_size()?;
         // line = d3.line()
         //     .x(function(d) { return x(d.date); })
         //     .y(function(d) { return y(d.value); })
         //     .curve(d3.curveStep)
         //     .context(context);
 
-        let context = &self.context;
-
         //let x_cb = js_sys::Function::new_with_args("d", "return d.date");
         //let y_cb = js_sys::Function::new_with_args("d", "return d.value");
+        let height = self.height();
         let that = self.clone();
         let x_cb = callback!(move |d: js_sys::Object| { that.x.call1(&JsValue::NULL, &d.get("date").unwrap()) });
         let that = self.clone();
         let y_cb = callback!(move |d: js_sys::Object| { that.y.call1(&JsValue::NULL, &d.get("value").unwrap()) });
-        self.area = Some(Arc::new(D3::area().x(x_cb.get_fn()).y0(self.height).y1(y_cb.get_fn()).context(context)));
+        self.area = Some(Arc::new(D3::area().x(x_cb.get_fn()).y0(height).y1(y_cb.get_fn()).context(&self.context)));
+
+        let that = self.clone();
+        let on_resize = callback!(move || { that.update_size() });
+
+        window().add_event_listener_with_callback("resize", on_resize.get_fn())?;
 
         self.callbacks.retain(x_cb)?;
         self.callbacks.retain(y_cb)?;
-        context.translate(self.margin_left as f64, self.margin_top as f64)?;
+        self.callbacks.retain(on_resize)?;
 
         Ok(())
+    }
+
+    fn update_size(&self) -> Result<()> {
+        let rect = self.canvas.get_bounding_client_rect();
+        let pixel_ratio = workflow_dom::utils::window().device_pixel_ratio() as f32;
+        //workflow_log::log_info!("rectrectrect: {:?}, pixel_ratio:{pixel_ratio}", rect);
+        let width = (pixel_ratio * rect.right() as f32).round() - (pixel_ratio * rect.left() as f32).round();
+        let height = (pixel_ratio * rect.bottom() as f32).round() - (pixel_ratio * rect.top() as f32).round();
+        self.canvas.set_width(width as u32);
+        self.canvas.set_height(height as u32);
+        let (margin_left, margin_top) = {
+            let mut inner = self.inner();
+            inner.width = width - inner.margin_left - inner.margin_right;
+            inner.height = height - inner.margin_top - inner.margin_bottom;
+            inner.full_width = width;
+            inner.full_height = height;
+
+            self.x.range([inner.width, 0.0]);
+            self.y.range([inner.height, 0.0]);
+            (inner.margin_left, inner.margin_top)
+        };
+        let context = &self.context;
+        context.translate(margin_left as f64, margin_top as f64)?;
+        self.x_axis()?;
+        self.y_axis()?;
+        Ok(())
+    }
+
+    pub fn height(&self) -> f32 {
+        self.inner().height
+    }
+    pub fn width(&self) -> f32 {
+        self.inner().width
+    }
+    pub fn area_color(&self) -> String {
+        self.options().area_color.clone()
+    }
+    pub fn title_font(&self) -> String {
+        self.options().title_font.clone()
+    }
+    pub fn title_color(&self) -> String {
+        self.options().title_color.clone()
     }
 
     fn x_axis(&self) -> Result<()> {
@@ -312,10 +339,12 @@ impl Graph {
         let context = &self.context;
         //workflow_log::log_info!("tick_format:::: {:?}", tick_format);
         let options = self.options();
+        let height = self.height();
+        let width = self.width();
 
         context.begin_path();
-        context.move_to(0.0, self.height as f64);
-        context.line_to(self.width as f64, self.height as f64);
+        context.move_to(0.0, height as f64);
+        context.line_to(width as f64, height as f64);
         context.set_stroke_style(&JsValue::from(&options.x_axis_color));
         context.stroke();
 
@@ -324,8 +353,8 @@ impl Graph {
             //workflow_log::log_info!("tick:::: {:?}", tick);
             let x = self.x.call1(&JsValue::NULL, &tick).unwrap().as_f64().unwrap();
             //workflow_log::log_info!("tick::::x: {:?}", x);
-            context.move_to(x, self.height as f64);
-            context.line_to(x, self.height as f64 + tick_size);
+            context.move_to(x, height as f64);
+            context.line_to(x, height as f64 + tick_size);
         }
         context.set_stroke_style(&JsValue::from(&options.x_axis_color));
         context.stroke();
@@ -337,7 +366,7 @@ impl Graph {
         for tick in ticks {
             let x = self.x.call1(&JsValue::NULL, &tick).unwrap().as_f64().unwrap();
             let text = tick_format.call1(&JsValue::NULL, &tick).unwrap().as_string().unwrap();
-            context.fill_text(&text, x, self.height as f64 + tick_size)?;
+            context.fill_text(&text, x, height as f64 + tick_size)?;
         }
 
         Ok(())
@@ -359,12 +388,12 @@ impl Graph {
         }
         context.set_stroke_style(&JsValue::from(&options.y_axis_color));
         context.stroke();
-
+        let height = self.height();
         context.begin_path();
         context.move_to(-tick_size, 0.0);
         context.line_to(0.5, 0.0);
-        context.line_to(0.5, self.height as f64);
-        context.line_to(-tick_size, self.height as f64);
+        context.line_to(0.5, height as f64);
+        context.line_to(-tick_size, height as f64);
         context.set_stroke_style(&JsValue::from(&options.y_axis_color));
         context.stroke();
 
@@ -382,13 +411,14 @@ impl Graph {
 
     fn build_title(&self) -> Result<()> {
         let context = &self.context;
-        let options = self.options();
+        let title_font = self.title_font();
+        let title_color = self.title_color();
         context.save();
         context.rotate(-std::f64::consts::PI / 2.0)?;
         context.set_text_align("right");
         context.set_text_baseline("top");
-        context.set_font(&options.title_font);
-        context.set_fill_style(&JsValue::from(&options.title_color));
+        context.set_font(&title_font);
+        context.set_fill_style(&JsValue::from(&title_color));
         context.fill_text(&self.title, -10.0, 10.0)?;
         context.restore();
 
@@ -400,8 +430,9 @@ impl Graph {
     }
 
     pub fn clear(&self) -> Result<()> {
+        let inner = self.inner();
         let context = &self.context;
-        context.clear_rect(-self.margin_left as f64, -self.margin_top as f64, self.full_width as f64, self.full_height as f64);
+        context.clear_rect(-inner.margin_left as f64, -inner.margin_top as f64, inner.full_width as f64, inner.full_height as f64);
         Ok(())
     }
 
@@ -427,10 +458,10 @@ impl Graph {
         x_domain.push(&date2);
         x_domain.push(&date1);
 
-        self.x.domain(x_domain);
+        self.x.set_domain_array(x_domain);
 
         let cb = js_sys::Function::new_with_args("d", "return d.value");
-        self.y.domain(D3::extent(&self.data, cb));
+        self.y.set_domain_array(D3::extent(&self.data, cb));
         self.clear()?;
         self.x_axis()?;
         self.y_axis()?;
@@ -453,13 +484,13 @@ impl Graph {
         self.data.push(&item.into());
         self.update_axis_and_title()?;
 
-        let options = self.options();
+        let area_color = self.area_color();
 
         let context = &self.context;
         context.begin_path();
         self.area.as_ref().unwrap().call1(&JsValue::NULL, &self.data)?;
-        context.set_fill_style(&JsValue::from(&options.area_color));
-        context.set_stroke_style(&JsValue::from(&options.area_color));
+        context.set_fill_style(&JsValue::from(&area_color));
+        context.set_stroke_style(&JsValue::from(&area_color));
         context.fill();
         Ok(())
     }
