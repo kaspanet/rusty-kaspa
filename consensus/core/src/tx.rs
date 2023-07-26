@@ -1,8 +1,13 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_utils::hex::*;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
-use std::{collections::HashSet, fmt::Display, ops::Range};
+use std::{
+    collections::HashSet,
+    fmt::Display,
+    ops::Range,
+    str::{self, FromStr},
+};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::jsvalue::JsValueTrait;
 
@@ -33,12 +38,35 @@ pub use smallvec::smallvec as scriptvec;
 pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, Debug, PartialEq, Eq, Serialize, Clone, Hash)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, Debug, PartialEq, Eq, Clone, Hash)]
 #[wasm_bindgen(inspectable)]
 pub struct ScriptPublicKey {
     pub version: ScriptPublicKeyVersion,
     script: ScriptVec, // Kept private to preserve read-only semantics
+}
+
+#[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
+#[serde(rename_all = "camelCase")]
+#[serde(rename = "ScriptPublicKey")]
+struct ScriptPublicKeyInternal<'a> {
+    version: ScriptPublicKeyVersion,
+    script: &'a [u8],
+}
+
+impl Serialize for ScriptPublicKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            let mut hex = vec![0u8; self.script.len() * 2 + 4];
+            faster_hex::hex_encode(&self.version.to_be_bytes(), &mut hex).map_err(serde::ser::Error::custom)?;
+            faster_hex::hex_encode(&self.script, &mut hex[4..]).map_err(serde::ser::Error::custom)?;
+            serializer.serialize_str(unsafe { str::from_utf8_unchecked(&hex) })    
+        } else {
+            ScriptPublicKeyInternal { version: self.version, script: &self.script }.serialize(serializer)
+        }
+    }
 }
 
 impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
@@ -46,15 +74,26 @@ impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
-        #[serde(rename_all = "camelCase")]
-        struct ScriptPublicKeyInternal<'a> {
-            version: ScriptPublicKeyVersion,
-            script: &'a [u8],
+        if deserializer.is_human_readable() {
+            let s = <&str as Deserialize>::deserialize(deserializer)?;
+            FromStr::from_str(s).map_err(serde::de::Error::custom)
+        } else {
+            ScriptPublicKeyInternal::deserialize(deserializer)
+                .map(|ScriptPublicKeyInternal { script, version }| Self { version, script: SmallVec::from_slice(script) })
         }
+    }
+}
 
-        ScriptPublicKeyInternal::deserialize(deserializer)
-            .map(|ScriptPublicKeyInternal { script, version }| Self { version, script: SmallVec::from_slice(script) })
+impl FromStr for ScriptPublicKey {
+    type Err = faster_hex::Error;
+    fn from_str(hex_str: &str) -> Result<Self, Self::Err> {
+        if hex_str.len() < 4 {
+            return Err(faster_hex::Error::InvalidLength(0));
+        }
+        let mut bytes = vec![0u8; hex_str.len() / 2];
+        faster_hex::hex_decode(hex_str.as_bytes(), bytes.as_mut_slice())?;
+        let version = u16::from_be_bytes(bytes[0..2].try_into().unwrap());
+        Ok(Self { version, script: SmallVec::from_slice(&bytes[2..]) })
     }
 }
 
@@ -480,6 +519,17 @@ pub type SignableTransaction = MutableTransaction<Transaction>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_spk_serde_json() {
+        let vec = (0..SCRIPT_VECTOR_SIZE as u8).collect::<Vec<_>>();
+        let spk = ScriptPublicKey::from_vec(0xc0de, vec.clone());
+        let hex = serde_json::to_string(&spk).unwrap();
+        assert_eq!("\"c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223\"", hex);
+        let spk = serde_json::from_str::<ScriptPublicKey>(&hex).unwrap();
+        assert_eq!(spk.version, 0xc0de);
+        assert_eq!(spk.script.as_slice(), vec.as_slice());
+    }
 
     #[test]
     fn test_spk_borsh() {
