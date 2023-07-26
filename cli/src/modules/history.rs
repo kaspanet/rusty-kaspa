@@ -26,6 +26,8 @@ impl History {
                 }
             }
         }
+        
+        tprintln!(ctx);
 
         Ok(())
     }
