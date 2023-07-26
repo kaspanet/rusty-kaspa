@@ -10,12 +10,12 @@ pub struct Inner {
 
 pub struct TransactionStore {
     inner: Arc<Mutex<Inner>>,
-    wallet_name: String,
+    name: String,
 }
 
 impl TransactionStore {
-    pub fn new(wallet_name: String) -> TransactionStore {
-        TransactionStore { inner: Arc::new(Mutex::new(Inner { known_databases: HashMap::default() })), wallet_name }
+    pub fn new(name: &str) -> TransactionStore {
+        TransactionStore { inner: Arc::new(Mutex::new(Inner { known_databases: HashMap::default() })), name: name.to_string() }
     }
 
     #[inline(always)]
@@ -24,7 +24,7 @@ impl TransactionStore {
     }
 
     pub fn make_db_name(&self, binding: &str, network_id: &str) -> String {
-        format!("{}_{}_{}", self.wallet_name, binding, network_id)
+        format!("{}_{}_{}", self.name, binding, network_id)
     }
 
     pub fn database_is_registered(&self, binding: &str, network_id: &str) -> bool {
