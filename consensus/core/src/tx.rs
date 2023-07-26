@@ -56,8 +56,8 @@ impl Serialize for ScriptPublicKey {
     {
         if serializer.is_human_readable() {
             let mut hex = [0u8; SCRIPT_VECTOR_SIZE * 2 + 4];
-            faster_hex::hex_encode(&self.version.to_be_bytes(), &mut hex).expect("Unable to serialize ScriptPubKey version");
-            faster_hex::hex_encode(&self.script, &mut hex[4..]).expect("Unable to serialize ScriptPubKey script");
+            faster_hex::hex_encode(&self.version.to_be_bytes(), &mut hex).map_err(serde::ser::Error::custom)?;
+            faster_hex::hex_encode(&self.script, &mut hex[4..]).map_err(serde::ser::Error::custom)?;
             serializer.serialize_str(unsafe { str::from_utf8_unchecked(&hex) })
         } else {
             ScriptPublicKeyInternal { version: self.version, script: &self.script }.serialize(serializer)
