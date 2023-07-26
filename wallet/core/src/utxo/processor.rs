@@ -3,15 +3,16 @@ use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
 };
-use kaspa_rpc_core::message::UtxosChangedNotification;
+use kaspa_rpc_core::{message::UtxosChangedNotification, GetBlockDagInfoResponse, GetInfoResponse};
 use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::{Channel, DuplexChannel};
 use workflow_core::task::spawn;
 use workflow_rpc::client::Ctl;
 
+use crate::events::Events;
 use crate::imports::*;
 use crate::result::Result;
-use crate::utxo::{EventConsumer, Events, PendingUtxoEntryReference, UtxoContext, UtxoContextId, UtxoEntryId, UtxoEntryReference};
+use crate::utxo::{PendingUtxoEntryReference, UtxoContext, UtxoContextId, UtxoEntryId, UtxoEntryReference};
 use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
     Notification,
@@ -21,31 +22,35 @@ use std::collections::HashMap;
 pub struct Inner {
     pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
     address_to_utxo_context_map: DashMap<Arc<Address>, Arc<UtxoContext>>,
-    event_consumer: Mutex<Option<Arc<dyn EventConsumer>>>,
-    current_daa_score: AtomicU64,
-    network: Arc<Mutex<Option<NetworkId>>>,
+    // event_consumer: Mutex<Option<Arc<dyn EventConsumer>>>,
+    current_daa_score: Arc<AtomicU64>,
+    network_id: Arc<Mutex<Option<NetworkId>>>,
 
     rpc: Arc<DynRpcApi>,
     is_connected: AtomicBool,
+    is_synced: AtomicBool,
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
     notification_channel: Channel<Notification>,
+    multiplexer: Multiplexer<Events>,
 }
 
 impl Inner {
-    pub fn new(rpc: &Arc<DynRpcApi>) -> Self {
+    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: &Multiplexer<Events>) -> Self {
         Self {
             pending: DashMap::new(),
             address_to_utxo_context_map: DashMap::new(),
-            event_consumer: Mutex::new(None),
-            current_daa_score: AtomicU64::new(0),
-            network: Arc::new(Mutex::new(None)),
+            // event_consumer: Mutex::new(None),
+            current_daa_score: Arc::new(AtomicU64::new(0)),
+            network_id: Arc::new(Mutex::new(network_id)),
 
             rpc: rpc.clone(),
             is_connected: AtomicBool::new(false),
+            is_synced: AtomicBool::new(false),
             listener_id: Mutex::new(None),
             task_ctl: DuplexChannel::oneshot(),
             notification_channel: Channel::<Notification>::unbounded(),
+            multiplexer: multiplexer.clone(),
         }
     }
 }
@@ -57,12 +62,20 @@ pub struct UtxoProcessor {
 }
 
 impl UtxoProcessor {
-    pub fn new(rpc: &Arc<DynRpcApi>) -> Self {
-        UtxoProcessor { inner: Arc::new(Inner::new(rpc)) }
+    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: &Multiplexer<Events>) -> Self {
+        UtxoProcessor { inner: Arc::new(Inner::new(rpc, network_id, multiplexer)) }
     }
 
     pub fn rpc(&self) -> &Arc<DynRpcApi> {
         &self.inner.rpc
+    }
+
+    pub fn rpc_client(&self) -> Arc<KaspaRpcClient> {
+        self.rpc().clone().downcast_arc::<KaspaRpcClient>().expect("unable to downcast DynRpcApi to KaspaRpcClient")
+    }
+
+    pub fn multiplexer(&self) -> &Multiplexer<Events> {
+        &self.inner.multiplexer
     }
 
     pub fn listener_id(&self) -> ListenerId {
@@ -70,19 +83,23 @@ impl UtxoProcessor {
     }
 
     pub fn set_network_id(&self, network_id: NetworkId) {
-        self.inner.network.lock().unwrap().replace(network_id);
+        self.inner.network_id.lock().unwrap().replace(network_id);
     }
 
     pub fn network_id(&self) -> Result<NetworkId> {
-        (*self.inner.network.lock().unwrap()).ok_or(Error::MissingNetworkId)
+        (*self.inner.network_id.lock().unwrap()).ok_or(Error::MissingNetworkId)
     }
 
     pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
         &self.inner.pending
     }
 
-    pub fn current_daa_score(&self) -> u64 {
-        self.inner.current_daa_score.load(Ordering::SeqCst)
+    // pub fn current_daa_score(&self) -> u64 {
+    //     self.inner.virtual_daa_score.load(Ordering::SeqCst)
+    // }
+
+    pub fn current_daa_score(&self) -> Option<u64> {
+        self.is_connected().then_some(self.inner.current_daa_score.load(Ordering::SeqCst))
     }
 
     pub async fn clear(&self) -> Result<()> {
@@ -141,14 +158,15 @@ impl UtxoProcessor {
     //     self.inner.event_consumer.lock().unwrap().replace(event_consumer);
     // }
 
-    pub fn event_consumer(&self) -> Option<Arc<dyn EventConsumer>> {
-        self.inner.event_consumer.lock().unwrap().clone()
-    }
+    // pub fn event_consumer(&self) -> Option<Arc<dyn EventConsumer>> {
+    //     self.inner.event_consumer.lock().unwrap().clone()
+    // }
 
     pub async fn notify(&self, event: Events) -> Result<()> {
-        if let Some(event_consumer) = self.event_consumer() {
-            event_consumer.notify(event).await?;
-        }
+        self.multiplexer()
+            .broadcast(event)
+            .await
+            .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
         Ok(())
     }
 
@@ -224,13 +242,49 @@ impl UtxoProcessor {
         self.inner.is_connected.load(Ordering::SeqCst)
     }
 
+    pub fn is_synced(&self) -> bool {
+        self.inner.is_synced.load(Ordering::SeqCst)
+    }
+
+    pub async fn init_state_from_server(self: &Arc<Self>) -> Result<()> {
+        let network_id = self.network_id()?;
+
+        let GetInfoResponse { is_synced, is_utxo_indexed: has_utxo_index, server_version, .. } = self.rpc().get_info().await?;
+        // let network = self.rpc().get_current_network().await?;
+
+        if !has_utxo_index {
+            self.notify(Events::UtxoIndexNotEnabled).await?;
+            return Err(Error::MissingUtxoIndex);
+        }
+
+        let GetBlockDagInfoResponse { virtual_daa_score, network: server_network_id, .. } = self.rpc().get_block_dag_info().await?;
+
+        let server_network_id = NetworkId::from(server_network_id);
+        if network_id != server_network_id {
+            return Err(Error::InvalidNetworkType(network_id.to_string(), server_network_id.to_string()));
+        }
+
+        self.inner.current_daa_score.store(virtual_daa_score, Ordering::SeqCst);
+
+        self.inner.is_synced.store(is_synced, Ordering::SeqCst);
+        self.notify(Events::ServerStatus { server_version, is_synced, network_id, url: self.rpc_client().url().to_string() }).await?;
+
+        Ok(())
+    }
+
     pub async fn handle_connect(self: &Arc<Self>) -> Result<()> {
+        self.init_state_from_server().await?;
+
+        self.inner.is_connected.store(true, Ordering::SeqCst);
         self.register_notification_listener().await?;
         // self.start_task().await?;
+        self.notify(Events::UtxoProcessingStarted).await?;
         Ok(())
     }
 
     pub async fn handle_disconnect(&self) -> Result<()> {
+        self.inner.is_connected.store(false, Ordering::SeqCst);
+        self.notify(Events::UtxoProcessingStopped).await?;
         self.unregister_notification_listener().await?;
         // self.stop_task().await?;
         Ok(())
@@ -266,6 +320,11 @@ impl UtxoProcessor {
             }
 
             Notification::UtxosChanged(utxos_changed_notification) => {
+                if !self.is_synced() {
+                    self.inner.is_synced.store(true, Ordering::SeqCst);
+                    self.notify(Events::NodeSync { is_synced: true }).await?;
+                }
+
                 self.handle_utxo_changed(utxos_changed_notification).await?;
             }
 
@@ -277,8 +336,8 @@ impl UtxoProcessor {
         Ok(())
     }
 
-    pub async fn start(self: &Arc<Self>, event_consumer: Option<Arc<dyn EventConsumer>>) -> Result<()> {
-        *self.inner.event_consumer.lock().unwrap() = event_consumer;
+    pub async fn start(self: &Arc<Self>) -> Result<()> {
+        // *self.inner.event_consumer.lock().unwrap() = event_consumer;
 
         let this = self.clone();
         let rpc_ctl_channel = this
@@ -304,11 +363,17 @@ impl UtxoProcessor {
                             Ok(msg) => {
                                 match msg {
                                     Ctl::Open => {
-                                        this.inner.is_connected.store(true, Ordering::SeqCst);
+                                        this.inner.multiplexer.broadcast(Events::Connect {
+                                            network_id : this.network_id().expect("network id expected during connection"),
+                                            url : this.rpc_client().url().to_string()
+                                        }).await.unwrap_or_else(|err| log_error!("{err}"));
                                         this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
                                     },
                                     Ctl::Close => {
-                                        this.inner.is_connected.store(false, Ordering::SeqCst);
+                                        this.inner.multiplexer.broadcast(Events::Disconnect {
+                                            network_id : this.network_id().expect("network id expected during connection"),
+                                            url : this.rpc_client().url().to_string()
+                                        }).await.unwrap_or_else(|err| log_error!("{err}"));
                                         this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
                                     }
                                 }
@@ -337,7 +402,7 @@ impl UtxoProcessor {
 
                 }
             }
-            this.inner.event_consumer.lock().unwrap().take();
+            // this.inner.event_consumer.lock().unwrap().take();
             task_ctl_sender.send(()).await.unwrap();
         });
         Ok(())

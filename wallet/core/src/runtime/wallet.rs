@@ -1,6 +1,5 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::Events;
 use crate::runtime::{Account, AccountId, AccountMap};
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
@@ -14,28 +13,17 @@ use crate::{accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts:
 use futures::future::join_all;
 use futures::stream::StreamExt;
 use futures::{select, FutureExt, Stream};
-use kaspa_addresses::Prefix as AddressPrefix;
 use kaspa_bip32::{Language, Mnemonic};
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
-use kaspa_rpc_core::{
-    notify::{
-        connection::{ChannelConnection, ChannelType},
-        mode::NotificationMode,
-    },
-    Notification,
-};
-use kaspa_rpc_core::{GetBlockDagInfoResponse, GetInfoResponse};
+use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use storage::PubKeyData;
-use workflow_core::channel::{Channel, DuplexChannel, Multiplexer};
 use workflow_core::task::spawn;
 use workflow_log::log_error;
-use workflow_rpc::client::Ctl;
 use zeroize::Zeroize;
 
 pub struct WalletCreateArgs {
@@ -106,33 +94,13 @@ impl AccountCreateArgs {
     }
 }
 
-pub struct NetworkInfo {
-    pub network_id: NetworkId,
-    pub prefix: AddressPrefix,
-}
-
-impl From<NetworkId> for NetworkInfo {
-    fn from(network_id: NetworkId) -> Self {
-        Self { network_id, prefix: network_id.into() }
-    }
-}
-// impl From<NetworkType> for NetworkInfo {
-//     fn from(network_type: NetworkType) -> Self {
-//         Self { network_id: network_type, prefix: network_type.into() }
-//     }
-// }
-
 pub struct Inner {
     active_accounts: AccountMap,
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
-    notification_channel: Channel<Notification>,
     selected_account: Mutex<Option<Arc<Account>>>,
-    is_connected: AtomicBool,
     is_synced: AtomicBool,
     store: Arc<dyn Interface>,
-    virtual_daa_score: Arc<AtomicU64>,
-    network: Arc<Mutex<Option<NetworkInfo>>>,
     settings: SettingsStore<WalletSettings>,
     utxo_processor: Arc<UtxoProcessor>,
     rpc: Arc<DynRpcApi>,
@@ -166,7 +134,7 @@ impl Wallet {
         };
 
         let multiplexer = Multiplexer::new();
-        let utxo_processor = Arc::new(UtxoProcessor::new(&rpc));
+        let utxo_processor = Arc::new(UtxoProcessor::new(&rpc, network_id, &multiplexer));
 
         let wallet = Wallet {
             inner: Arc::new(Inner {
@@ -176,14 +144,8 @@ impl Wallet {
                 active_accounts: AccountMap::default(),
                 listener_id: Mutex::new(None),
                 task_ctl: DuplexChannel::oneshot(),
-                notification_channel: Channel::<Notification>::unbounded(),
                 selected_account: Mutex::new(None),
-                is_connected: AtomicBool::new(false),
                 is_synced: AtomicBool::new(false),
-                virtual_daa_score: Arc::new(AtomicU64::new(0)),
-                network: Arc::new(Mutex::new(
-                    network_id.map(|t| t.into()).or_else(|| Some(NetworkId::from(NetworkType::Mainnet).into())),
-                )),
                 settings: SettingsStore::new_with_storage(Storage::default_settings_store()), //::default(),
                 utxo_processor,
             }),
@@ -213,8 +175,6 @@ impl Wallet {
     }
 
     pub async fn reset(self: &Arc<Self>) -> Result<()> {
-        // log_info!("**** WALLET RESET ****");
-
         self.select(None).await?;
 
         let accounts = self.inner.active_accounts.cloned_flat_list();
@@ -306,7 +266,8 @@ impl Wallet {
     }
 
     pub fn current_daa_score(&self) -> Option<u64> {
-        self.is_connected().then_some(self.inner.virtual_daa_score.load(Ordering::SeqCst))
+        self.utxo_processor().current_daa_score()
+        // self.is_connected().then_some(self.inner.virtual_daa_score.load(Ordering::SeqCst))
     }
 
     pub async fn load_settings(&self) -> Result<()> {
@@ -315,7 +276,7 @@ impl Wallet {
         let settings = self.settings();
 
         if let Some(network_type) = settings.get(WalletSettings::Network) {
-            self.select_network(network_type).unwrap_or_else(|_| log_error!("Unable to select network type: `{}`", network_type));
+            self.set_network_id(network_type).unwrap_or_else(|_| log_error!("Unable to select network type: `{}`", network_type));
         }
 
         if let Some(url) = settings.get::<String>(WalletSettings::Server) {
@@ -330,22 +291,15 @@ impl Wallet {
         self.load_settings().await.unwrap_or_else(|_| log_error!("Unable to load settings, discarding..."));
         // internal event loop
         self.start_task().await?;
-        self.utxo_processor().start(Some(self.clone())).await?;
+        self.utxo_processor().start().await?;
         // rpc services (notifier)
-
         self.rpc_client().start().await?;
 
-        // self.subscribe_daa_score().await?;
-        // start async RPC connection
-
-        // TODO handle reconnect flag
-        // self.rpc.connect_as_task()?;
         Ok(())
     }
 
     // intended for stopping async management task
     pub async fn stop(&self) -> Result<()> {
-        // self.unsubscribe_daa_score().await?;
         self.utxo_processor().stop().await?;
         self.stop_task().await?;
         self.rpc_client().stop().await?;
@@ -380,27 +334,24 @@ impl Wallet {
         Ok(())
     }
 
-    pub fn select_network(&self, network_id: NetworkId) -> Result<()> {
+    pub fn set_network_id(&self, network_id: NetworkId) -> Result<()> {
         if self.is_connected() {
             return Err(Error::NetworkTypeConnected);
         }
-        let network_info = NetworkInfo::from(network_id);
-        *self.inner.network.lock().unwrap() = Some(network_info);
+        self.utxo_processor().set_network_id(network_id);
         Ok(())
     }
 
-    pub fn network(&self) -> Result<NetworkId> {
-        let network = self.inner.network.lock().unwrap();
-        let network = network.as_ref().ok_or(Error::MissingNetworkId)?;
-        Ok(network.network_id)
+    pub fn network_id(&self) -> Result<NetworkId> {
+        self.utxo_processor().network_id()
     }
 
-    pub fn address_prefix(&self) -> Result<AddressPrefix> {
-        Ok(self.network()?.into())
+    pub fn address_prefix(&self) -> Result<kaspa_addresses::Prefix> {
+        Ok(self.network_id()?.into())
     }
 
     pub fn default_port(&self) -> Result<u16> {
-        let network_type = self.network()?;
+        let network_type = self.network_id()?;
         let port = match self.rpc_client().encoding() {
             WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
             WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
@@ -436,8 +387,6 @@ impl Wallet {
 
     pub async fn create_bip32_account(
         self: &Arc<Wallet>,
-        // wallet_secret: Option<Secret>,
-        // payment_secret: Option<Secret>,
         prv_key_data_id: PrvKeyDataId,
         args: AccountCreateArgs,
     ) -> Result<Arc<Account>> {
@@ -621,35 +570,6 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn init_state_from_server(self: &Arc<Self>) -> Result<()> {
-        let GetInfoResponse { is_synced, is_utxo_indexed: has_utxo_index, server_version, .. } = self.rpc().get_info().await?;
-        let network = self.rpc().get_current_network().await?;
-
-        if !has_utxo_index {
-            self.notify(Events::UtxoIndexNotEnabled).await?;
-            return Err(Error::MissingUtxoIndex);
-        }
-
-        if let Some(network_id) = self.inner.network.lock().unwrap().as_ref() {
-            if network_id.network_id.network_type != network {
-                return Err(Error::InvalidNetworkType(network_id.network_id.network_type.to_string(), network.to_string()));
-            }
-        } else {
-            return Err(Error::MissingNetworkId);
-            // *self.inner.network.lock().unwrap() = Some(network.into());
-        }
-
-        let GetBlockDagInfoResponse { virtual_daa_score, .. } = self.rpc().get_block_dag_info().await?;
-
-        self.inner.virtual_daa_score.store(virtual_daa_score, Ordering::SeqCst);
-
-        self.inner.is_synced.store(is_synced, Ordering::SeqCst);
-        self.notify(Events::ServerStatus { server_version, is_synced, has_utxo_index, url: self.rpc_client().url().to_string() })
-            .await?;
-
-        Ok(())
-    }
-
     pub async fn notify(&self, event: Events) -> Result<()> {
         self.multiplexer()
             .broadcast(event)
@@ -662,70 +582,35 @@ impl Wallet {
         self.inner.is_synced.load(Ordering::SeqCst)
     }
 
-    /// handle connection event
-    pub async fn handle_connect(self: &Arc<Self>) -> Result<()> {
-        self.init_state_from_server().await?;
-
-        self.utxo_processor().set_network_id(self.network()?);
-        // self.utxo_processor().handle_connect().await?;
-        // self.inner.is_synced.store(false, Ordering::SeqCst);
-        self.inner.is_connected.store(true, Ordering::SeqCst);
-        self.register_notification_listener().await?;
-
-        self.subscribe_daa_score().await?;
-
-        if self.inner.is_synced.load(Ordering::SeqCst) {
-            // log_info!("executing reload...");
-            self.reload().await?;
-        }
-
-        Ok(())
-    }
-
-    /// handle disconnection event
-    pub async fn handle_disconnect(self: &Arc<Self>) -> Result<()> {
-        // self.utxo_processor().handle_disconnect().await?;
-        self.inner.is_connected.store(false, Ordering::SeqCst);
-        self.unsubscribe_daa_score().await?;
-        self.unregister_notification_listener().await?;
-        Ok(())
-    }
-
     pub fn is_connected(&self) -> bool {
-        self.inner.is_connected.load(Ordering::SeqCst)
+        self.utxo_processor().is_connected()
     }
 
-    async fn register_notification_listener(&self) -> Result<()> {
-        let listener_id = self
-            .rpc()
-            .register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone(), ChannelType::Persistent));
-        *self.inner.listener_id.lock().unwrap() = Some(listener_id);
-
-        Ok(())
-    }
-
-    async fn unregister_notification_listener(&self) -> Result<()> {
-        let listener_id = self.inner.listener_id.lock().unwrap().take();
-        if let Some(id) = listener_id {
-            // we do not need this as we are unregister the entire listener here...
-            // self.rpc.stop_notify(id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
-            self.rpc().unregister_listener(id).await?;
+    async fn handle_event(self: &Arc<Self>, event: Events) -> Result<()> {
+        match &event {
+            Events::Pending { record }
+            | Events::Reorg { record }
+            | Events::External { record }
+            | Events::Maturity { record }
+            | Events::Debit { record } => {
+                self.store().as_transaction_record_store()?.store(&[record]).await?;
+            }
+            Events::UtxoProcessingStarted => {
+                if self.inner.is_synced.load(Ordering::SeqCst) {
+                    self.reload().await?;
+                }
+            }
+            _ => {}
         }
-        Ok(())
-    }
 
-    async fn handle_notification(&self, _notification: Notification) -> Result<()> {
         Ok(())
     }
 
     pub async fn start_task(self: &Arc<Self>) -> Result<()> {
         let this = self.clone();
-        let rpc_ctl_channel = self.rpc_client().ctl_multiplexer().create_channel();
-
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
-        let multiplexer = self.multiplexer().clone();
-        let notification_receiver = self.inner.notification_channel.receiver.clone();
+        let events = self.multiplexer().create_channel();
 
         spawn(async move {
             loop {
@@ -734,43 +619,18 @@ impl Wallet {
                         break;
                     },
 
-                    msg = rpc_ctl_channel.receiver.recv().fuse() => {
+                    msg = events.receiver.recv().fuse() => {
                         match msg {
-                            Ok(msg) => {
-
-                                match msg {
-                                    Ctl::Open => {
-                                        multiplexer.broadcast(Events::Connect(this.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
-                                        this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
-                                    },
-                                    Ctl::Close => {
-                                        multiplexer.broadcast(Events::Disconnect(this.rpc_client().url().to_string())).await.unwrap_or_else(|err| log_error!("{err}"));
-                                        this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
-                                    }
-                                }
-
+                            Ok(event) => {
+                                this.handle_event(event).await.unwrap_or_else(|e| log_error!("handle_event error: {}", e));
                             },
                             Err(err) => {
-                                log_error!("{err}");
+                                log_error!("Wallet: error while receiving multiplexer message: {err}");
                                 log_error!("Suspending Wallet processing...");
-                            }
-                        }
-                    }
 
-                    notification = notification_receiver.recv().fuse() => {
-                        match notification {
-                            Ok(notification) => {
-                                this.handle_notification(notification).await.unwrap_or_else(|err| {
-                                    log_error!("error while handling notification: {err}");
-                                });
-                            },
-                            Err(err) => {
-                                log_error!("RPC notification channel error: {err}");
-                                log_error!("Suspending Wallet notification processing...");
                                 break;
                             }
                         }
-
                     },
                 }
             }
@@ -784,22 +644,6 @@ impl Wallet {
         self.inner.task_ctl.signal(()).await.expect("Wallet::stop_task() `signal` error");
         Ok(())
     }
-
-    // pub async fn connect(&self) -> Result<()> {
-    //     for account in self.inner.accounts.iter() {
-    //         account.connect().await?;
-    //     }
-    //     Ok(())
-    // }
-
-    // pub async fn disconnect(&self) -> Result<()> {
-    //     for account in self.inner.accounts.iter() {
-    //         account.disconnect().await?;
-    //     }
-    //     Ok(())
-    // }
-
-    // pub fn store(&self) -> &Arc<
 
     pub fn is_open(&self) -> bool {
         self.inner.store.is_open()
@@ -838,28 +682,6 @@ impl Wallet {
         });
 
         Ok(Box::pin(stream))
-    }
-}
-
-#[async_trait]
-impl utxo::EventConsumer for Wallet {
-    async fn notify(&self, event: utxo::Events) -> Result<()> {
-        // log_info!("wallet notification event: {:?}", event);
-        match &event {
-            utxo::Events::Pending { record }
-            | utxo::Events::Reorg { record }
-            | utxo::Events::External { record }
-            | utxo::Events::Maturity { record }
-            | utxo::Events::Debit { record } => {
-                log_info!("######## EVENT CONSUMER A");
-                self.store().as_transaction_record_store()?.store(&[record]).await?;
-                log_info!("######## EVENT CONSUMER B");
-            }
-            _ => {}
-        }
-
-        self.notify(Events::UtxoProcessor(event)).await?;
-        Ok(())
     }
 }
 
@@ -916,7 +738,8 @@ mod test {
         // wallet.load_accounts(stored_accounts);
 
         let rpc = wallet.rpc();
-        let utxo_processor = UtxoProcessor::new(rpc);
+        // let utxo_processor = UtxoProcessor::new(rpc, None);
+        let utxo_processor = wallet.utxo_processor();
 
         let rpc_client = wallet.rpc_client();
 

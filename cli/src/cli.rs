@@ -15,7 +15,6 @@ use kaspa_wallet_core::imports::{AtomicBool, Ordering, ToHex};
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
 use kaspa_wallet_core::storage::interface::AccessContext;
 use kaspa_wallet_core::storage::{AccessContextT, AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
-use kaspa_wallet_core::utxo;
 use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret, Events};
 use pad::PadStr;
 use separator::Separatable;
@@ -247,9 +246,10 @@ impl KaspaCli {
     }
 
     pub async fn stop(self: &Arc<Self>) -> Result<()> {
-        self.handlers.stop(self).await?;
-        // wallet stops the notifier
         self.wallet.stop().await?;
+
+        self.handlers.stop(self).await?;
+
         // stop notification pipe task
         self.stop_notification_pipe_task().await?;
         Ok(())
@@ -276,18 +276,31 @@ impl KaspaCli {
 
                         if let Ok(msg) = msg {
                             match msg {
-                                Events::Connect(_url) => {
+                                Events::UtxoProcessingStarted => {},
+                                Events::UtxoProcessingStopped => {},
+                                #[allow(unused_variables)]
+                                Events::Connect{ url, network_id } => {
                                     // log_info!("Connected to {url}");
-                                    this.term().refresh_prompt();
+                                    // this.term().refresh_prompt();
 
                                 },
-                                Events::Disconnect(url) => {
+                                #[allow(unused_variables)]
+                                Events::Disconnect{ url, network_id } => {
                                     tprintln!(this, "Disconnected from {url}");
                                     this.term().refresh_prompt();
                                 },
                                 Events::UtxoIndexNotEnabled => {
                                     tprintln!(this, "Error: Kaspa node UTXO index is not enabled...")
                                 },
+                                #[allow(unused_variables)]
+                                Events::NodeSync { is_synced } => {
+
+                                }
+                                #[allow(unused_variables)]
+                                Events::NodeProgress {
+                                    task, status, progress
+                                } => {
+                                }
                                 Events::ServerStatus {
                                     is_synced,
                                     server_version,
@@ -308,6 +321,9 @@ impl KaspaCli {
                                             terrorln!(this, "Error: Kaspa node is currently syncing with the network, please wait for the sync to complete...");
                                         }
                                     }
+
+                                    this.term().refresh_prompt();
+
                                 },
                                 Events::WalletHasLoaded {
                                     hint
@@ -319,16 +335,16 @@ impl KaspaCli {
 
                                     this.list().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
                                 },
-                                Events::UtxoProcessor(event) => {
+                                // Events::UtxoProcessor(event) => {
 
-                                    match event {
+                                //     match event {
 
-                                        utxo::Events::DAAScoreChange(daa) => {
+                                        Events::DAAScoreChange(daa) => {
                                             if this.is_mutted() && this.flags.get(Track::Daa) {
                                                 tprintln!(this, "DAAScoreChange: {daa}");
                                             }
                                         },
-                                        utxo::Events::Pending {
+                                        Events::Pending {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
@@ -336,7 +352,7 @@ impl KaspaCli {
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
-                                        utxo::Events::Reorg {
+                                        Events::Reorg {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
@@ -344,7 +360,7 @@ impl KaspaCli {
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
-                                        utxo::Events::External {
+                                        Events::External {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
@@ -352,7 +368,7 @@ impl KaspaCli {
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
-                                        utxo::Events::Maturity {
+                                        Events::Maturity {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
@@ -360,7 +376,7 @@ impl KaspaCli {
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
-                                        utxo::Events::Debit {
+                                        Events::Debit {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
@@ -368,7 +384,7 @@ impl KaspaCli {
                                                 tprintln!(this,"{tx}");
                                             }
                                         },
-                                        utxo::Events::Balance {
+                                        Events::Balance {
                                             balance,
                                             id,
                                             mature_utxo_size,
@@ -376,7 +392,7 @@ impl KaspaCli {
                                         } => {
 
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
-                                                let network_id = this.wallet.network().expect("missing network type");
+                                                let network_id = this.wallet.network_id().expect("missing network type");
                                                 let network_type = NetworkType::from(network_id);
                                                 // let balance = BalanceStrings::from((&balance,&network_type, Some(19)));
                                                 let balance = BalanceStrings::from((&balance,&network_type, None));
@@ -391,8 +407,8 @@ impl KaspaCli {
                                             }
 
                                             this.term().refresh_prompt();
-                                        },
-                                    }
+                                    //     },
+                                    // }
                                 }
                             }
                         }

@@ -10,7 +10,7 @@ impl History {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         let account = ctx.account().await?;
-        let network_id = ctx.wallet().network()?;
+        let network_id = ctx.wallet().network_id()?;
         let binding = Binding::from(&account);
         let current_daa_score = ctx.wallet().current_daa_score();
         let store = ctx.wallet().store().as_transaction_record_store()?;
@@ -26,7 +26,7 @@ impl History {
                 }
             }
         }
-        
+
         tprintln!(ctx);
 
         Ok(())

@@ -14,8 +14,6 @@ use workflow_wasm::printable::*;
 
 use thiserror::Error;
 
-// use crate::wallet::Events;
-
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("{0}")]
@@ -66,10 +64,10 @@ pub enum Error {
     #[error("Wallet is not connected")]
     NotConnected,
 
-    #[error("Unable to determine network type, please use `network (mainnet|testnet-10|testnet-11)` to select a network")]
+    #[error("No network selected. Please use `network (mainnet|testnet-10|testnet-11)` to select a network.")]
     MissingNetworkId,
 
-    #[error("Invalid network type - client {0} node {1}")]
+    #[error("Invalid network type - expected: {0} connected to: {1}")]
     InvalidNetworkType(String, String),
 
     #[error("Invalid network suffix '{0}'")]

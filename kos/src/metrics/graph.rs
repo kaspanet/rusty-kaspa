@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::imports::*;
 use crate::metrics::container::*;
 use crate::metrics::d3::{self, D3};
@@ -220,7 +222,8 @@ impl Graph {
     pub fn options(&self) -> MutexGuard<GraphThemeOptions> {
         self.options.lock().unwrap()
     }
-    pub fn inner(&self) -> MutexGuard<Inner> {
+
+    fn inner(&self) -> MutexGuard<Inner> {
         self.inner.lock().unwrap()
     }
 

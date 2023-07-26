@@ -262,7 +262,7 @@ impl Account {
     }
 
     pub fn balance_as_strings(&self, padding: Option<usize>) -> Result<BalanceStrings> {
-        Ok(BalanceStrings::from((&self.balance(), &self.wallet.network()?.into(), padding)))
+        Ok(BalanceStrings::from((&self.balance(), &self.wallet.network_id()?.into(), padding)))
     }
 
     pub fn get_list_string(&self) -> Result<String> {

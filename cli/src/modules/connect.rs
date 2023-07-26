@@ -9,7 +9,7 @@ impl Connect {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
         let url = argv.first().cloned().or_else(|| ctx.wallet().settings().get(WalletSettings::Server));
 
-        let network_type = ctx.wallet().network()?;
+        let network_type = ctx.wallet().network_id()?;
         let url = ctx.wallet().rpc_client().parse_url(url, network_type.into()).map_err(|e| e.to_string())?;
         // tprintln!("Connecting to {}...", url.clone().unwrap_or_else(|| "default".to_string()));
 

@@ -10,12 +10,12 @@ impl Network {
 
         if let Some(network_id) = argv.first() {
             let network_id: NetworkId = network_id.trim().parse::<NetworkId>()?;
-            tprintln!(ctx, "Setting network type to: {network_id}");
-            ctx.wallet().select_network(network_id)?;
+            tprintln!(ctx, "Setting network id to: {network_id}");
+            ctx.wallet().set_network_id(network_id)?;
             ctx.wallet().settings().set(WalletSettings::Network, network_id).await?;
         } else {
-            let network_type = ctx.wallet().network()?;
-            tprintln!(ctx, "Current network type is: {network_type}");
+            let network_id = ctx.wallet().network_id()?;
+            tprintln!(ctx, "Current network id is: {network_id}");
         }
 
         Ok(())

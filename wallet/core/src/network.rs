@@ -67,6 +67,12 @@ impl From<NetworkId> for kaspa_consensus_core::networktype::NetworkId {
     }
 }
 
+impl From<kaspa_consensus_core::networktype::NetworkId> for NetworkId {
+    fn from(net: kaspa_consensus_core::networktype::NetworkId) -> Self {
+        NetworkId { network_type: net.network_type, suffix: net.suffix }
+    }
+}
+
 impl FromStr for NetworkId {
     type Err = Error;
     fn from_str(network_name: &str) -> Result<Self, Self::Err> {

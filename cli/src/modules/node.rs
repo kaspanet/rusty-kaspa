@@ -78,7 +78,7 @@ impl Node {
             .settings
             .get(KaspadSettings::Location)
             .ok_or_else(|| Error::Custom("No miner binary specified, please use `miner select` to select a binary.".into()))?;
-        let network_id = ctx.wallet().network()?;
+        let network_id = ctx.wallet().network_id()?;
         let mute = self.mute.load(Ordering::SeqCst);
         let config = KaspadConfig::new(location.as_str(), network_id, mute);
         Ok(config)

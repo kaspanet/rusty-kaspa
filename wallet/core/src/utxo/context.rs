@@ -1,8 +1,9 @@
+use crate::events::Events;
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Account, AccountId, Balance};
 use crate::storage::TransactionType;
-use crate::utxo::{Binding, Events, PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext};
+use crate::utxo::{Binding, PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext};
 use crate::wasm;
 use kaspa_rpc_core::GetUtxosByAddressesResponse;
 use serde_wasm_bindgen::from_value;
@@ -335,8 +336,8 @@ impl UtxoContext {
 
     pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>) -> Result<()> {
         // add UTXOs to account set
-        log_info!("handle utxo added: {:?}", utxos);
-        let current_daa_score = self.processor.current_daa_score();
+        // log_info!("handle utxo added: {:?}", utxos);
+        let current_daa_score = self.processor.current_daa_score().expect("daa score expected when invoking handle_utxo_added()");
 
         for utxo in utxos.iter() {
             if let Err(err) = self.insert(utxo.clone(), current_daa_score).await {

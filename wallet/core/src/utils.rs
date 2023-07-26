@@ -230,7 +230,7 @@ mod wasm {
     #[wasm_bindgen(js_name = "sompiToKaspaStringWithSuffix")]
     pub fn sompi_to_kaspa_string_with_suffix(sompi: JsValue, wallet: &crate::wasm::Wallet) -> Result<String> {
         let sompi = sompi.try_as_u64()?;
-        let network_type = wallet.wallet.network()?;
+        let network_type = wallet.wallet.network_id()?.network_type;
         Ok(super::sompi_to_kaspa_string_with_suffix(sompi, &network_type))
     }
 }
