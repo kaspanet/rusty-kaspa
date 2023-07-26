@@ -149,45 +149,6 @@ impl TransactionsPool {
         self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))
     }
 
-    pub(crate) fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {
-        let now = unix_now();
-        if virtual_daa_score < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score
-            || now < self.last_expire_scan_time + self.config.transaction_expire_scan_interval_milliseconds
-        {
-            return Ok(());
-        }
-
-        // Never expire high priority transactions
-        // Remove all transactions whose added_at_daa_score is older then transaction_expire_interval_daa_score
-        let expired_low_priority_transactions: Vec<TransactionId> = self
-            .all_transactions
-            .values()
-            .filter_map(|x| {
-                if (x.priority == Priority::Low)
-                    && virtual_daa_score > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
-                {
-                    debug!(
-                        "Removing transaction {}, because it expired, virtual DAA score is {} and expire limit is {}",
-                        x.id(),
-                        virtual_daa_score,
-                        x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
-                    );
-                    Some(x.id())
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        for transaction_id in expired_low_priority_transactions.iter() {
-            self.remove_transaction(transaction_id)?;
-        }
-
-        self.last_expire_scan_daa_score = virtual_daa_score;
-        self.last_expire_scan_time = now;
-        Ok(())
-    }
-
     /// Is the mempool transaction identified by `transaction_id` ready for being inserted into a block template?
     pub(crate) fn is_transaction_ready(&self, transaction_id: &TransactionId) -> bool {
         if self.all_transactions.contains_key(transaction_id) {
@@ -298,5 +259,44 @@ impl Pool for TransactionsPool {
     #[inline]
     fn chained_mut(&mut self) -> &mut TransactionsEdges {
         &mut self.chained_transactions
+    }
+
+    fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {
+        let now = unix_now();
+        if virtual_daa_score < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score
+            || now < self.last_expire_scan_time + self.config.transaction_expire_scan_interval_milliseconds
+        {
+            return Ok(());
+        }
+
+        // Never expire high priority transactions
+        // Remove all transactions whose added_at_daa_score is older then transaction_expire_interval_daa_score
+        let expired_low_priority_transactions: Vec<TransactionId> = self
+            .all_transactions
+            .values()
+            .filter_map(|x| {
+                if (x.priority == Priority::Low)
+                    && virtual_daa_score > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
+                {
+                    debug!(
+                        "Removing transaction {}, because it expired, virtual DAA score is {} and expire limit is {}",
+                        x.id(),
+                        virtual_daa_score,
+                        x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
+                    );
+                    Some(x.id())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for transaction_id in expired_low_priority_transactions.iter() {
+            self.remove_transaction(transaction_id)?;
+        }
+
+        self.last_expire_scan_daa_score = virtual_daa_score;
+        self.last_expire_scan_time = now;
+        Ok(())
     }
 }

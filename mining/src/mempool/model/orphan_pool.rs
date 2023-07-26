@@ -214,36 +214,6 @@ impl OrphanPool {
         self.get_redeemer_ids_in_pool(transaction_id).iter().map(|x| self.remove_single_orphan(x)).collect()
     }
 
-    pub(crate) fn expire_low_priority_transactions(&mut self, consensus: &dyn ConsensusApi) -> RuleResult<()> {
-        let virtual_daa_score = consensus.get_virtual_daa_score();
-        if virtual_daa_score < self.last_expire_scan + self.config.orphan_expire_scan_interval_daa_score {
-            return Ok(());
-        }
-
-        // Never expire high priority transactions
-        // Remove all transactions whose addedAtDAAScore is older then TransactionExpireIntervalDAAScore
-        let expired_low_priority_transactions: Vec<TransactionId> = self
-            .all_orphans
-            .values()
-            .filter_map(|x| {
-                if (x.priority == Priority::Low)
-                    && virtual_daa_score > x.added_at_daa_score + self.config.orphan_expire_interval_daa_score
-                {
-                    Some(x.id())
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        for transaction_id in expired_low_priority_transactions.iter() {
-            self.remove_orphan(transaction_id, false)?;
-        }
-
-        self.last_expire_scan = virtual_daa_score;
-        Ok(())
-    }
-
     pub(crate) fn update_orphans_after_transaction_removed(
         &mut self,
         removed_transaction: &MempoolTransaction,
@@ -289,5 +259,34 @@ impl Pool for OrphanPool {
 
     fn chained_mut(&mut self) -> &mut TransactionsEdges {
         &mut self.chained_orphans
+    }
+
+    fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {
+        if virtual_daa_score < self.last_expire_scan + self.config.orphan_expire_scan_interval_daa_score {
+            return Ok(());
+        }
+
+        // Never expire high priority transactions
+        // Remove all transactions whose addedAtDAAScore is older then TransactionExpireIntervalDAAScore
+        let expired_low_priority_transactions: Vec<TransactionId> = self
+            .all_orphans
+            .values()
+            .filter_map(|x| {
+                if (x.priority == Priority::Low)
+                    && virtual_daa_score > x.added_at_daa_score + self.config.orphan_expire_interval_daa_score
+                {
+                    Some(x.id())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for transaction_id in expired_low_priority_transactions.iter() {
+            self.remove_orphan(transaction_id, false)?;
+        }
+
+        self.last_expire_scan = virtual_daa_score;
+        Ok(())
     }
 }

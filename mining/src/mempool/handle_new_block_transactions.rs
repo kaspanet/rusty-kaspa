@@ -2,6 +2,8 @@ use crate::mempool::{errors::RuleResult, Mempool};
 use kaspa_consensus_core::{api::ConsensusApi, tx::Transaction};
 use std::{collections::HashSet, sync::Arc};
 
+use super::model::pool::Pool;
+
 impl Mempool {
     pub(crate) fn handle_new_block_transactions(
         &mut self,
@@ -17,7 +19,7 @@ impl Mempool {
             let mut unorphaned_transactions = self.process_orphans_after_accepted_transaction(consensus, transaction)?;
             accepted_orphans.append(&mut unorphaned_transactions);
         }
-        self.orphan_pool.expire_low_priority_transactions(consensus)?;
+        self.orphan_pool.expire_low_priority_transactions(consensus.get_virtual_daa_score())?;
         self.transaction_pool.expire_low_priority_transactions(consensus.get_virtual_daa_score())?;
         Ok(accepted_orphans)
     }

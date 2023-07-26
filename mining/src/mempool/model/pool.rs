@@ -1,8 +1,8 @@
-use std::collections::{hash_set::Iter, HashMap, HashSet};
-
-use super::{map::MempoolTransactionCollection, tx::MempoolTransaction};
 use crate::{
-    mempool::tx::Priority,
+    mempool::{
+        model::{map::MempoolTransactionCollection, tx::MempoolTransaction},
+        tx::Priority,
+    },
     model::{
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
         topological_index::TopologicalIndex,
@@ -10,6 +10,8 @@ use crate::{
     },
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
+use kaspa_mining_errors::mempool::RuleResult;
+use std::collections::{hash_set::Iter, HashMap, HashSet};
 
 pub(crate) type TransactionsEdges = HashMap<TransactionId, TransactionIdSet>;
 
@@ -115,6 +117,8 @@ pub(crate) trait Pool {
             });
         });
     }
+
+    fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()>;
 }
 
 pub(crate) struct PoolIndex {
