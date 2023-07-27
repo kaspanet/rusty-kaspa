@@ -62,7 +62,8 @@ pub trait PrvKeyDataStore: Send + Sync {
 pub trait AccountStore: Send + Sync {
     async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Account>>;
     async fn len(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize>;
-    async fn load(&self, ids: &[AccountId]) -> Result<Vec<Arc<Account>>>;
+    async fn load_single(&self, ids: &AccountId) -> Result<Option<Arc<Account>>>;
+    async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<Arc<Account>>>;
     async fn store(&self, data: &[&Account]) -> Result<()>;
     async fn remove(&self, id: &[&AccountId]) -> Result<()>;
 }

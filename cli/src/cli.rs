@@ -194,13 +194,15 @@ impl KaspaCli {
     pub fn register_handlers(self: &Arc<Self>) -> Result<()> {
         crate::modules::register_handlers(self)?;
 
-        let node = self.handlers().get("node").unwrap();
-        let node = node.downcast_arc::<crate::modules::node::Node>().ok();
-        *self.node.lock().unwrap() = node;
+        if let Some(node) = self.handlers().get("node") {
+            let node = node.downcast_arc::<crate::modules::node::Node>().ok();
+            *self.node.lock().unwrap() = node;
+        }
 
-        let miner = self.handlers().get("miner").unwrap();
-        let miner = miner.downcast_arc::<crate::modules::miner::Miner>().ok();
-        *self.miner.lock().unwrap() = miner;
+        if let Some(miner) = self.handlers().get("miner") {
+            let miner = miner.downcast_arc::<crate::modules::miner::Miner>().ok();
+            *self.miner.lock().unwrap() = miner;
+        }
 
         crate::matchers::register_link_matchers(self)?;
 
@@ -348,7 +350,7 @@ impl KaspaCli {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                                let tx = record.format_with_state(&this.wallet,Some("pending"));
+                                                let tx = record.format_with_state(&this.wallet,Some("pending")).await;
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
@@ -356,7 +358,7 @@ impl KaspaCli {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                                let tx = record.format_with_state(&this.wallet,Some("reorg"));
+                                                let tx = record.format_with_state(&this.wallet,Some("reorg")).await;
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
@@ -364,7 +366,7 @@ impl KaspaCli {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                                let tx = record.format_with_state(&this.wallet,Some("external"));
+                                                let tx = record.format_with_state(&this.wallet,Some("external")).await;
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
@@ -372,7 +374,7 @@ impl KaspaCli {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                                let tx = record.format_with_state(&this.wallet,Some("confirmed"));
+                                                let tx = record.format_with_state(&this.wallet,Some("confirmed")).await;
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
                                         },
@@ -380,7 +382,7 @@ impl KaspaCli {
                                             record
                                         } => {
                                             if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
-                                                let tx = record.format_with_state(&this.wallet,Some("debit"));
+                                                let tx = record.format_with_state(&this.wallet,Some("debit")).await;
                                                 tprintln!(this,"{tx}");
                                             }
                                         },

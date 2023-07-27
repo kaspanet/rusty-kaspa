@@ -3,6 +3,7 @@ use crate::result::Result;
 use crate::storage::interface::StorageStream;
 use crate::storage::{Binding, TransactionRecordStore};
 use crate::storage::{TransactionMetadata, TransactionRecord};
+use kaspa_utils::hex::ToHex;
 use std::{
     collections::VecDeque,
     path::{Path, PathBuf},
@@ -10,7 +11,7 @@ use std::{
 use workflow_store::fs;
 
 pub struct Inner {
-    known_folders: HashMap<String, HashSet<String>>,
+    known_folders: HashSet<String>,
 }
 
 pub struct TransactionStore {
@@ -22,7 +23,7 @@ pub struct TransactionStore {
 impl TransactionStore {
     pub fn new<P: AsRef<Path>>(folder: P, name: &str) -> TransactionStore {
         TransactionStore {
-            inner: Arc::new(Mutex::new(Inner { known_folders: HashMap::default() })),
+            inner: Arc::new(Mutex::new(Inner { known_folders: HashSet::default() })),
             folder: fs::resolve_path(folder.as_ref().to_str().unwrap()).expect("transaction store folder is invalid"),
             name: name.to_string(),
         }
@@ -33,45 +34,34 @@ impl TransactionStore {
         self.inner.lock().unwrap()
     }
 
-    fn folder_is_registered(&self, binding: &str, network_id: &str) -> bool {
-        let inner = self.inner();
-        if let Some(network_ids) = inner.known_folders.get(binding) {
-            network_ids.contains(network_id)
-        } else {
-            false
-        }
+    fn make_subfolder(&self, binding: &Binding, network_id: &NetworkId) -> String {
+        let name = self.name.as_str();
+        let binding_hex = binding.to_hex();
+        let network_id = network_id.to_string();
+        format!("{name}.transactions/{binding_hex}/{network_id}")
     }
 
-    fn register_folder(&self, binding: &str, network_id: &str) -> Result<()> {
-        let mut inner = self.inner();
-        if let Some(network_ids) = inner.known_folders.get_mut(binding) {
-            network_ids.insert(network_id.to_string());
-        } else {
-            let mut network_ids = HashSet::new();
-            network_ids.insert(network_id.to_string());
-            inner.known_folders.insert(binding.to_string(), network_ids);
-        }
-
-        Ok(())
+    fn make_folder(&self, binding: &Binding, network_id: &NetworkId) -> PathBuf {
+        self.folder.join(self.make_subfolder(binding, network_id))
     }
 
     async fn ensure_folder(&self, binding: &Binding, network_id: &NetworkId) -> Result<PathBuf> {
-        let binding_hex = binding.to_hex();
-        let network_id = network_id.to_string();
-        let folder = self.folder.join(format!("{}.transactions", self.name)).join(&binding_hex).join(&network_id);
-        if !self.folder_is_registered(&binding_hex, &network_id) {
+        let subfolder = self.make_subfolder(binding, network_id);
+        let folder = self.folder.join(&subfolder);
+        if !self.inner().known_folders.contains(&subfolder) {
             fs::create_dir_all(&folder).await?;
-            self.register_folder(&binding_hex, &network_id)?;
+            self.inner().known_folders.insert(subfolder);
         }
         Ok(folder)
     }
 
     async fn enumerate(&self, binding: &Binding, network_id: &NetworkId) -> Result<VecDeque<TransactionId>> {
-        let folder = self.ensure_folder(binding, network_id).await?;
-        let folder = folder.to_str().unwrap().to_string();
+        let folder = self.make_folder(binding, network_id);
         let mut transactions = VecDeque::new();
-        match fs::readdir(folder).await {
-            Ok(files) => {
+        match fs::readdir(folder, true).await {
+            Ok(mut files) => {
+                files.sort_by_key(|f| f.metadata().unwrap().created());
+
                 for file in files {
                     if let Ok(id) = TransactionId::from_hex(file.file_name()) {
                         transactions.push_back(id);
@@ -104,9 +94,8 @@ impl TransactionRecordStore for TransactionStore {
     // }
 
     async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>> {
-        let folder = self.ensure_folder(binding, network_id).await?;
+        let folder = self.make_folder(binding, network_id);
         let path = folder.join(id.to_hex());
-        log_info!("TransactionStore::load_single(): path: {}", path.display());
         Ok(Arc::new(fs::read_json::<TransactionRecord>(&path).await?))
     }
 
@@ -174,6 +163,10 @@ impl Stream for TransactionIdStream {
         } else {
             Poll::Ready(Some(Ok(self.transactions.pop_front().map(Arc::new).unwrap())))
         }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.transactions.len(), Some(self.transactions.len()))
     }
 }
 

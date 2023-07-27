@@ -15,18 +15,40 @@ impl History {
         let current_daa_score = ctx.wallet().current_daa_score();
         let store = ctx.wallet().store().as_transaction_record_store()?;
         let mut ids = store.transaction_id_iter(&binding, &network_id).await?;
+        let length = ids.size_hint().0;
+        let mut index = 0;
+        let page = 25;
         while let Some(id) = ids.try_next().await? {
+            if index > 0 && index % page == 0 {
+                tprintln!(ctx);
+                let prompt = format!(
+                    "Displaying transactions {} to {} of {} (press any key to continue, 'Q' to abort)",
+                    index.separated_string(),
+                    (index + page).separated_string(),
+                    length.separated_string()
+                );
+                let query = ctx.term().kbhit(&prompt).await?;
+                tprintln!(ctx);
+                if query.to_lowercase() == "q" {
+                    return Ok(());
+                }
+            }
+
             match store.load_single(&binding, &network_id, &id).await {
                 Ok(tx) => {
-                    let text = tx.format_with_args(&ctx.wallet(), None, current_daa_score);
+                    let text = tx.format_with_args(&ctx.wallet(), None, current_daa_score, true, Some(account.clone())).await;
                     tprintln!(ctx, "{text}");
                 }
                 Err(err) => {
                     terrorln!(ctx, "{err}");
                 }
             }
+
+            index += 1;
         }
 
+        tprintln!(ctx);
+        tprintln!(ctx, "{} transactions", length.separated_string());
         tprintln!(ctx);
 
         Ok(())

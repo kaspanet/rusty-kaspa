@@ -513,8 +513,19 @@ impl Wallet {
         self.inner.selected_account.lock().unwrap().clone().ok_or_else(|| Error::AccountSelection)
     }
 
-    pub fn account_with_id(&self, account_id: &AccountId) -> Result<Option<Arc<Account>>> {
-        Ok(self.inner.active_accounts.get(account_id))
+    pub async fn get_account_by_id(self: &Arc<Self>, account_id: &AccountId) -> Result<Option<Arc<Account>>> {
+        if let Some(account) = self.inner.active_accounts.get(account_id) {
+            Ok(Some(account))
+        } else {
+            let account_storage = self.inner.store.as_account_store()?;
+            let stored_account = account_storage.load_single(account_id).await?;
+            if let Some(stored_account) = stored_account {
+                let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
+                Ok(Some(account))
+            } else {
+                Ok(None)
+            }
+        }
     }
 
     pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<Arc<Account>> {

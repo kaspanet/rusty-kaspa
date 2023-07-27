@@ -101,7 +101,11 @@ where
         Ok(())
     }
 
-    pub fn load(&self, ids: &[Id]) -> Result<Vec<Arc<Data>>> {
+    pub fn load_single(&self, id: &Id) -> Result<Option<Arc<Data>>> {
+        Ok(self.map.get(id).cloned())
+    }
+
+    pub fn load_multiple(&self, ids: &[Id]) -> Result<Vec<Arc<Data>>> {
         Ok(ids
             .iter()
             .map(|id| match self.map.get(id).cloned() {

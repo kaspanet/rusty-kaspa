@@ -24,11 +24,18 @@ impl TransactionType {
             TransactionType::Reorg => style(s).blue().to_string(),
         }
     }
-    pub fn style_with_sign(&self, s: &str) -> String {
+    pub fn style_with_sign(&self, s: &str, history: bool) -> String {
         match self {
             TransactionType::Credit => style("+".to_string() + s).green().to_string(),
             TransactionType::Debit => style("-".to_string() + s).red().to_string(),
-            TransactionType::Reorg => style("-".to_string() + s).red().to_string(),
+            TransactionType::Reorg => {
+                if history {
+                    style("".to_string() + s).dim()
+                } else {
+                    style("-".to_string() + s).red()
+                }
+            }
+            .to_string(),
         }
     }
 }
@@ -133,21 +140,34 @@ impl TransactionRecord {
 }
 
 impl TransactionRecord {
-    pub fn format(&self, wallet: &Wallet) -> String {
-        self.format_with_args(wallet, None, None)
+    pub async fn format(&self, wallet: &Arc<Wallet>) -> String {
+        self.format_with_args(wallet, None, None, false, None).await
     }
 
-    pub fn format_with_state(&self, wallet: &Wallet, state: Option<&str>) -> String {
-        self.format_with_args(wallet, state, None)
+    pub async fn format_with_state(&self, wallet: &Arc<Wallet>, state: Option<&str>) -> String {
+        self.format_with_args(wallet, state, None, false, None).await
     }
 
-    pub fn format_with_args(&self, wallet: &Wallet, state: Option<&str>, current_daa_score: Option<u64>) -> String {
+    pub async fn format_with_args(
+        &self,
+        wallet: &Arc<Wallet>,
+        state: Option<&str>,
+        current_daa_score: Option<u64>,
+        history: bool,
+        account: Option<Arc<runtime::Account>>,
+    ) -> String {
         let TransactionRecord { id, binding, block_daa_score, transaction_type, utxo_entries, .. } = self;
 
         let name = match binding {
             Binding::Custom(id) => style(id.short()).cyan(),
             Binding::Account(account_id) => {
-                if let Some(account) = wallet.account_with_id(account_id).ok().flatten() {
+                let account = if let Some(account) = account {
+                    Some(account)
+                } else {
+                    wallet.get_account_by_id(account_id).await.ok().flatten()
+                };
+
+                if let Some(account) = account {
                     style(account.name_or_id()).cyan()
                 } else {
                     style(account_id.short() + " ??").magenta()
@@ -155,7 +175,7 @@ impl TransactionRecord {
             }
         };
 
-        let kind = transaction_type.style(&transaction_type.to_string().pad_to_width(8));
+        let kind = transaction_type.style(&transaction_type.to_string());
 
         let maturity = current_daa_score
             .map(|score| {
@@ -189,7 +209,7 @@ impl TransactionRecord {
             } else {
                 style(format!("standard utxo [{index}]")).dim()
             };
-            let amount = transaction_type.style_with_sign(utils::sompi_to_kaspa_string(utxo_entry.amount).as_str());
+            let amount = transaction_type.style_with_sign(utils::sompi_to_kaspa_string(utxo_entry.amount).as_str(), history);
 
             lines.push(format!("    {address}"));
             lines.push(format!("    {amount} {suffix} {is_coinbase}"));

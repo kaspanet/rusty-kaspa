@@ -338,8 +338,12 @@ impl AccountStore for LocalStoreInner {
         Ok(len)
     }
 
-    async fn load(&self, ids: &[AccountId]) -> Result<Vec<Arc<Account>>> {
-        self.cache().accounts.load(ids)
+    async fn load_single(&self, ids: &AccountId) -> Result<Option<Arc<Account>>> {
+        self.cache().accounts.load_single(ids)
+    }
+
+    async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<Arc<Account>>> {
+        self.cache().accounts.load_multiple(ids)
     }
 
     async fn store(&self, accounts: &[&Account]) -> Result<()> {
@@ -398,6 +402,6 @@ impl MetadataStore for LocalStoreInner {
     }
 
     async fn load(&self, ids: &[AccountId]) -> Result<Vec<Arc<Metadata>>> {
-        Ok(self.cache().metadata.load(ids)?)
+        Ok(self.cache().metadata.load_multiple(ids)?)
     }
 }
