@@ -37,6 +37,7 @@ pub mod set;
 pub mod sign;
 pub mod sweep;
 pub mod test;
+pub mod theme;
 pub mod track;
 // pub mod error;
 
@@ -79,6 +80,7 @@ pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
             set,
             // sign,
             // sweep,
+            theme,
             track,
             test,
             // error,
