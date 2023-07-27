@@ -99,7 +99,6 @@ pub struct Inner {
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
     selected_account: Mutex<Option<Arc<Account>>>,
-    is_synced: AtomicBool,
     store: Arc<dyn Interface>,
     settings: SettingsStore<WalletSettings>,
     utxo_processor: Arc<UtxoProcessor>,
@@ -145,7 +144,6 @@ impl Wallet {
                 listener_id: Mutex::new(None),
                 task_ctl: DuplexChannel::oneshot(),
                 selected_account: Mutex::new(None),
-                is_synced: AtomicBool::new(false),
                 settings: SettingsStore::new_with_storage(Storage::default_settings_store()), //::default(),
                 utxo_processor,
             }),
@@ -590,7 +588,7 @@ impl Wallet {
     }
 
     pub fn is_synced(&self) -> bool {
-        self.inner.is_synced.load(Ordering::SeqCst)
+        self.utxo_processor().is_synced()
     }
 
     pub fn is_connected(&self) -> bool {
@@ -606,8 +604,8 @@ impl Wallet {
             | Events::Debit { record } => {
                 self.store().as_transaction_record_store()?.store(&[record]).await?;
             }
-            Events::UtxoProcessingStarted => {
-                if self.inner.is_synced.load(Ordering::SeqCst) {
+            Events::UtxoProcStart => {
+                if self.is_synced() && self.is_open() {
                     self.reload().await?;
                 }
             }
@@ -633,7 +631,7 @@ impl Wallet {
                     msg = events.receiver.recv().fuse() => {
                         match msg {
                             Ok(event) => {
-                                this.handle_event(event).await.unwrap_or_else(|e| log_error!("handle_event error: {}", e));
+                                this.handle_event(event).await.unwrap_or_else(|e| log_error!("Wallet::handle_event() error: {}", e));
                             },
                             Err(err) => {
                                 log_error!("Wallet: error while receiving multiplexer message: {err}");

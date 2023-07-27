@@ -48,8 +48,12 @@ impl Create {
                     Some(name)
                 };
 
+                // wallet.account().ok().is_none().then(||{
+                //     tprintln!(ctx,"");
+                // });
+
                 // TODO - switch to selection; temporarily use existing account
-                let account = wallet.account()?;
+                let account = ctx.select_account().await?; //wallet.account()?;
                 let prv_key_data_id = account.prv_key_data_id;
 
                 let account_name = account_name.as_deref();

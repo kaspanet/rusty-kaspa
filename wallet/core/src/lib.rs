@@ -25,7 +25,7 @@ pub mod xpublickey;
 
 pub use accounts::dummy_address;
 pub use address::AddressDerivationManager;
-pub use events::Events;
+pub use events::{Events, SyncState};
 pub use kaspa_addresses::{Address, Prefix as AddressPrefix};
 pub use kaspa_wrpc_client::client::{ConnectOptions, ConnectStrategy};
 pub use result::Result;

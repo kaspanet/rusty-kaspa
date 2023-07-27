@@ -28,6 +28,7 @@ pub use workflow_terminal::{
     cli::*, parse, Cli, CrLf, Event as TerminalEvent, Handler, Options as TerminalOptions, Result as TerminalResult,
     TargetElement as TerminalTarget,
 };
+// use kaspa_wallet_core::events::NodeState;
 
 pub struct Options {
     pub daemons: Option<Arc<Daemons>>,
@@ -53,6 +54,7 @@ pub struct KaspaCli {
     node: Mutex<Option<Arc<Node>>>,
     miner: Mutex<Option<Arc<Miner>>>,
     notifier: Notifier,
+    sync_state: Mutex<Option<SyncState>>,
 }
 
 impl From<&KaspaCli> for Arc<Terminal> {
@@ -128,6 +130,7 @@ impl KaspaCli {
             node: Mutex::new(None),
             miner: Mutex::new(None),
             notifier: Notifier::try_new()?,
+            sync_state: Mutex::new(None),
         });
 
         let term = Arc::new(Terminal::try_new_with_options(kaspa_cli.clone(), options.terminal)?);
@@ -278,8 +281,8 @@ impl KaspaCli {
 
                         if let Ok(msg) = msg {
                             match msg {
-                                Events::UtxoProcessingStarted => {},
-                                Events::UtxoProcessingStopped => {},
+                                Events::UtxoProcStart => {},
+                                Events::UtxoProcStop => {},
                                 #[allow(unused_variables)]
                                 Events::Connect{ url, network_id } => {
                                     // log_info!("Connected to {url}");
@@ -298,10 +301,13 @@ impl KaspaCli {
                                 Events::NodeSync { is_synced } => {
 
                                 }
-                                #[allow(unused_variables)]
-                                Events::NodeProgress {
-                                    task, status, progress
+                                Events::SyncState {
+                                    state
                                 } => {
+                                    // log_info!("REFRESHING STATE IN CLI: {state:?}");
+
+                                    this.sync_state.lock().unwrap().replace(state);
+                                    this.term().refresh_prompt();
                                 }
                                 Events::ServerStatus {
                                     is_synced,
@@ -317,10 +323,10 @@ impl KaspaCli {
 
                                     if !is_synced {
                                         if is_open {
-                                            terrorln!(this, "Error: Unable to update the wallet state - Kaspa node is currently syncing with the network...");
+                                            terrorln!(this, "Unable to update the wallet state - Kaspa node is currently syncing with the network...");
 
                                         } else {
-                                            terrorln!(this, "Error: Kaspa node is currently syncing with the network, please wait for the sync to complete...");
+                                            terrorln!(this, "Kaspa node is currently syncing with the network, please wait for the sync to complete...");
                                         }
                                     }
 
@@ -729,6 +735,55 @@ impl KaspaCli {
 
         Ok(())
     }
+
+    fn sync_state(&self) -> Option<String> {
+        // if !self.wallet.is_synced() {
+        if let Some(state) = self.sync_state.lock().unwrap().as_ref() {
+            match state {
+                SyncState::Proof { level } => {
+                    if *level == 0 {
+                        Some(style("SYNC PROC").red().to_string())
+                    } else {
+                        Some([style("SYNC PROOF").red().to_string(), style(level.separated_string()).dim().to_string()].join(" "))
+                    }
+                }
+                SyncState::Headers { headers, progress } => Some(
+                    [
+                        style("SYNC HEADERS").red().to_string(),
+                        style(format!("{} ({}%)", headers.separated_string(), progress)).dim().to_string(),
+                    ]
+                    .join(" "),
+                ),
+                SyncState::Blocks { blocks, progress } => Some(
+                    [
+                        style("SYNC BLOCKS").red().to_string(),
+                        style(format!("{} ({}%)", blocks.separated_string(), progress)).dim().to_string(),
+                    ]
+                    .join(" "),
+                ),
+                SyncState::TrustSync { processed, total } => {
+                    let progress = processed * 100 / total;
+                    Some(
+                        [
+                            style("SYNC TRUST").red().to_string(),
+                            style(format!("{} ({}%)", processed.separated_string(), progress)).dim().to_string(),
+                        ]
+                        .join(" "),
+                    )
+                }
+                SyncState::UtxoSync { total, .. } => {
+                    Some([style("SYNC UTXO").red().to_string(), style(total.separated_string()).dim().to_string()].join(" "))
+                }
+                SyncState::UtxoResync => Some([style("SYNC").red().to_string(), style("...").dim().to_string()].join(" ")),
+                SyncState::Synced { .. } => None,
+            }
+        } else {
+            Some(style("SYNC").red().to_string())
+        }
+        // } else {
+        //     None
+        // }
+    }
 }
 
 #[async_trait]
@@ -762,13 +817,29 @@ impl Cli for KaspaCli {
     }
 
     fn prompt(&self) -> Option<String> {
-        if let Some(name) = self.wallet.name() {
-            let mut prompt = vec![];
+        // - IF NODE IS RUNNING SHOW N/C
+        let mut prompt = vec![];
 
-            if self.wallet.is_open() && !self.wallet.is_connected() {
-                prompt.push(style("N/C").red().to_string());
+        let node_running = if let Some(node) = self.node.lock().unwrap().as_ref() { node.is_running() } else { false };
+
+        let _miner_running = if let Some(miner) = self.miner.lock().unwrap().as_ref() { miner.is_running() } else { false };
+
+        // match (node_running, miner_running) {
+        //     (true, true) => prompt.push(style("NM").green().to_string()),
+        //     (true, false) => prompt.push(style("N").green().to_string()),
+        //     (false, true) => prompt.push(style("M").green().to_string()),
+        //     _ => {}
+        // }
+
+        if (self.wallet.is_open() && !self.wallet.is_connected()) || (node_running && !self.wallet.is_connected()) {
+            prompt.push(style("N/C").red().to_string());
+        } else if self.wallet.is_connected() && !self.wallet.is_synced() {
+            if let Some(state) = self.sync_state() {
+                prompt.push(state);
             }
+        }
 
+        if let Some(name) = self.wallet.name() {
             if name != "kaspa" {
                 prompt.push(name);
             }
@@ -786,11 +857,12 @@ impl Cli for KaspaCli {
                     prompt.push("N/A".to_string());
                 }
             }
-
-            (!prompt.is_empty()).then(|| prompt.join(" • ") + " $ ")
-        } else {
-            None
         }
+
+        (!prompt.is_empty()).then(|| prompt.join(" • ") + " $ ")
+        // } else {
+        //     None
+        // }
     }
 }
 

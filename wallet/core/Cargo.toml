@@ -65,6 +65,7 @@ separator.workspace = true
 pad.workspace = true
 async-std.workspace = true
 xxhash-rust.workspace = true
+regex.workspace = true
 
 [dependencies.web-sys]
 workspace = true

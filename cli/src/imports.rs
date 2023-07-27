@@ -17,7 +17,9 @@ pub use kaspa_wallet_core::storage::interface::{AccessContext, Interface};
 pub use kaspa_wallet_core::storage::{AccessContextT, AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
 pub use kaspa_wallet_core::tx::PaymentOutputs;
 pub use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
-pub use kaspa_wallet_core::{Address, ConnectOptions, ConnectStrategy, DefaultSettings, Events, SettingsStore, WalletSettings};
+pub use kaspa_wallet_core::{
+    Address, ConnectOptions, ConnectStrategy, DefaultSettings, Events, SettingsStore, SyncState, WalletSettings,
+};
 pub use pad::PadStr;
 pub use regex::Regex;
 pub use separator::Separatable;

@@ -32,6 +32,7 @@ impl DefaultSettings for MinerSettings {
 pub struct Miner {
     settings: SettingsStore<MinerSettings>,
     mute: Arc<AtomicBool>,
+    is_running: Arc<AtomicBool>,
 }
 
 impl Default for Miner {
@@ -39,6 +40,7 @@ impl Default for Miner {
         Miner {
             settings: SettingsStore::try_new("miner").expect("Failed to create miner settings store"),
             mute: Arc::new(AtomicBool::new(true)),
+            is_running: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -73,6 +75,10 @@ impl Handler for Miner {
 }
 
 impl Miner {
+    pub fn is_running(&self) -> bool {
+        self.is_running.load(Ordering::SeqCst)
+    }
+
     async fn create_config(&self, ctx: &Arc<KaspaCli>) -> Result<CpuMinerConfig> {
         let location: String = self
             .settings
@@ -190,11 +196,19 @@ impl Miner {
         let term = ctx.term();
 
         match event {
+            Event::Start => {
+                self.is_running.store(true, Ordering::SeqCst);
+                term.refresh_prompt();
+            }
             Event::Exit(_code) => {
                 tprintln!(ctx, "Miner has exited");
+                self.is_running.store(false, Ordering::SeqCst);
+                term.refresh_prompt();
             }
             Event::Error(error) => {
                 tprintln!(ctx, "{}", style(format!("Miner error: {error}")).red());
+                self.is_running.store(false, Ordering::SeqCst);
+                term.refresh_prompt();
             }
             Event::Stdout(text) | Event::Stderr(text) => {
                 let sanitize = true;

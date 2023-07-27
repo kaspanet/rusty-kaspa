@@ -6,6 +6,19 @@ use crate::utxo::context::UtxoContextId;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
+// #[serde(tag = "state", content = "progress")]
+pub enum SyncState {
+    Proof { level: u64 },
+    Headers { headers: u64, progress: u64 },
+    Blocks { blocks: u64, progress: u64 },
+    UtxoSync { chunks: u64, total: u64 },
+    TrustSync { processed: u64, total: u64 },
+    UtxoResync,
+    Synced,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
 #[serde(tag = "event", content = "data")]
 pub enum Events {
     Connect {
@@ -23,10 +36,8 @@ pub enum Events {
         #[serde(rename = "isSynced")]
         is_synced: bool,
     },
-    NodeProgress {
-        task: String,
-        status: String,
-        progress: f64,
+    SyncState {
+        state: SyncState,
     },
     WalletHasLoaded {
         hint: Option<Hint>,
@@ -40,8 +51,8 @@ pub enum Events {
         is_synced: bool,
         url: String,
     },
-    UtxoProcessingStarted,
-    UtxoProcessingStopped,
+    UtxoProcStart,
+    UtxoProcStop,
 
     // UtxoProcessor(utxo::Events),
     DAAScoreChange(u64),

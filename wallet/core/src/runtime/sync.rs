@@ -1,0 +1,258 @@
+use kaspa_rpc_core::GetInfoResponse;
+
+use crate::imports::*;
+use crate::result::Result;
+use regex::Regex;
+struct Inner {
+    task_ctl: DuplexChannel,
+    rpc: Arc<DynRpcApi>,
+    multiplexer: Multiplexer<Events>,
+    running: AtomicBool,
+    is_synced: AtomicBool,
+    state_observer: StateObserver,
+}
+
+#[derive(Clone)]
+pub struct SyncMonitor {
+    inner: Arc<Inner>,
+}
+
+impl SyncMonitor {
+    pub fn new(rpc: &Arc<DynRpcApi>, multiplexer: &Multiplexer<Events>) -> Self {
+        Self {
+            inner: Arc::new(Inner {
+                rpc: rpc.clone(),
+                multiplexer: multiplexer.clone(),
+                task_ctl: DuplexChannel::oneshot(),
+                running: AtomicBool::new(false),
+                is_synced: AtomicBool::new(false),
+                state_observer: StateObserver::default(),
+            }),
+        }
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.inner.running.load(Ordering::SeqCst)
+    }
+
+    pub fn is_synced(&self) -> bool {
+        self.inner.is_synced.load(Ordering::SeqCst)
+    }
+
+    pub async fn track(&self, is_synced: bool) -> Result<()> {
+        log_info!("XXX TRACK SYNCED: {} CURRENT: {}", is_synced, self.is_synced());
+        if self.is_synced() != is_synced || !is_synced && !self.is_running() {
+            log_info!("XXX TRACK SYNCED: PROCESSING");
+            if is_synced {
+                self.inner.is_synced.store(true, Ordering::SeqCst);
+                if self.is_running() {
+                    log_info!("XXX TRACK SYNCED: RUNNING - STOP");
+                    self.stop_task().await?;
+                }
+                self.notify(Events::NodeSync { is_synced }).await?;
+            } else {
+                self.inner.is_synced.store(false, Ordering::SeqCst);
+                if !self.is_running() {
+                    log_info!("XXX TRACK SYNCED: NOT RUNNING - START");
+                    self.start_task().await?;
+                }
+                self.notify(Events::NodeSync { is_synced }).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn stop(&self) -> Result<()> {
+        if self.is_running() {
+            self.stop_task().await?;
+        }
+        Ok(())
+    }
+
+    pub fn rpc(&self) -> &Arc<DynRpcApi> {
+        &self.inner.rpc
+    }
+
+    pub fn multiplexer(&self) -> &Multiplexer<Events> {
+        &self.inner.multiplexer
+    }
+
+    pub async fn notify(&self, event: Events) -> Result<()> {
+        self.multiplexer()
+            .broadcast(event)
+            .await
+            .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
+        Ok(())
+    }
+
+    async fn handle_event(&self, event: Events) -> Result<()> {
+        match &event {
+            Events::UtxoProcStart { .. } => {}
+            Events::UtxoProcStop { .. } => {}
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    pub async fn start_task(&self) -> Result<()> {
+        if self.is_running() {
+            panic!("SyncProc::start_task() called while already running");
+        }
+
+        let this = self.clone();
+        this.inner.running.store(true, Ordering::SeqCst);
+        let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
+        let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
+        let events = self.multiplexer().create_channel();
+
+        spawn(async move {
+            loop {
+                log_info!("sync timer iteration...");
+                let timer = sleep(Duration::from_secs(5));
+
+                select! {
+                    _ = task_ctl_receiver.recv().fuse() => {
+                        // this.inner.is_synced.store(true, Ordering::SeqCst);
+                        log_info!("XXX TRACK SYNCED: NOT RUNNING - ABORTING...");
+
+                        break;
+                    },
+
+                    _ = timer.fuse() => {
+                        log_info!("XXX TRACK SYNCED: TIMER...");
+
+                        if this.is_synced() {
+                            log_info!("XXX TRACK SYNCED: THIS IS SYNCED - BAILING...");
+                            break;
+                        } else if let Ok(GetInfoResponse { is_synced, .. }) = this.rpc().get_info().await {
+                            log_info!("XXX TRACK SYNCED: RPC SYNCED STATUS {is_synced}...");
+                            if is_synced {
+                                log_info!("XXX TRACK SYNCED: RPC SYNCED STATUS - PROCESSING...");
+                                if is_synced != this.is_synced() {
+                                    log_info!("XXX TRACK SYNCED: RPC SYNCED STATUS - SYNCED != SYNCED SETTING TRUE...");
+                                    this.inner.is_synced.store(true, Ordering::SeqCst);
+                                    this.notify(Events::NodeSync { is_synced }).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
+                                }
+
+                                break;
+                            }
+                        }
+                    }
+
+                    msg = events.receiver.recv().fuse() => {
+                        match msg {
+                            Ok(event) => {
+                                this.handle_event(event).await.unwrap_or_else(|e| log_error!("SyncProc::handle_event() error: {}", e));
+                            },
+                            Err(err) => {
+                                log_error!("SyncProc: error while receiving multiplexer message: {err}");
+                                log_error!("Suspending Wallet processing...");
+
+                                break;
+                            }
+                        }
+                    },
+                }
+            }
+
+            this.inner.running.store(false, Ordering::SeqCst);
+            task_ctl_sender.send(()).await.unwrap();
+        });
+        Ok(())
+    }
+
+    pub async fn stop_task(&self) -> Result<()> {
+        self.inner.task_ctl.signal(()).await.expect("SyncProc::stop_task() `signal` error");
+        Ok(())
+    }
+
+    pub async fn handle_stdout(&self, text: &str) -> Result<()> {
+        let lines = text.split('\n').collect::<Vec<_>>();
+
+        let mut state: Option<SyncState> = None;
+        for line in lines {
+            if !line.is_empty() {
+                if let Some(new_state) = self.inner.state_observer.get(line) {
+                    state.replace(new_state);
+                }
+            }
+        }
+        if let Some(state) = state {
+            self.notify(Events::SyncState { state }).await?;
+        }
+
+        Ok(())
+    }
+}
+
+pub struct StateObserver {
+    proof: Regex,
+    ibd_headers: Regex,
+    ibd_blocks: Regex,
+    utxo_resync: Regex,
+    utxo_sync: Regex,
+    trust_blocks: Regex,
+    // accepted_block: Regex,
+}
+
+impl Default for StateObserver {
+    fn default() -> Self {
+        Self {
+            proof: Regex::new(r"Validating level (\d+) from the pruning point proof").unwrap(),
+            ibd_headers: Regex::new(r"IBD: Processed (\d+) block headers \((\d+)%\)").unwrap(),
+            ibd_blocks: Regex::new(r"IBD: Processed (\d+) blocks \((\d+)%\)").unwrap(),
+            utxo_resync: Regex::new(r"Resyncing the utxoindex...").unwrap(),
+            utxo_sync: Regex::new(r"Received (\d+) UTXO set chunks so far, totaling in (\d+) UTXOs").unwrap(),
+            trust_blocks: Regex::new(r"Processed (\d) trusted blocks in the last .* (total (\d))").unwrap(),
+            // accepted_block: Regex::new(r"Accepted block .* via").unwrap(),
+        }
+    }
+}
+
+impl StateObserver {
+    pub fn get(&self, line: &str) -> Option<SyncState> {
+        let mut state: Option<SyncState> = None;
+
+        if let Some(captures) = self.ibd_headers.captures(line) {
+            if let (Some(headers), Some(progress)) = (captures.get(1), captures.get(2)) {
+                if let (Ok(headers), Ok(progress)) = (headers.as_str().parse::<u64>(), progress.as_str().parse::<u64>()) {
+                    state = Some(SyncState::Headers { headers, progress });
+                }
+            }
+        } else if let Some(captures) = self.ibd_blocks.captures(line) {
+            if let (Some(blocks), Some(progress)) = (captures.get(1), captures.get(2)) {
+                if let (Ok(blocks), Ok(progress)) = (blocks.as_str().parse::<u64>(), progress.as_str().parse::<u64>()) {
+                    state = Some(SyncState::Blocks { blocks, progress });
+                }
+            }
+        } else if let Some(captures) = self.utxo_sync.captures(line) {
+            if let (Some(chunks), Some(total)) = (captures.get(1), captures.get(2)) {
+                if let (Ok(chunks), Ok(total)) = (chunks.as_str().parse::<u64>(), total.as_str().parse::<u64>()) {
+                    state = Some(SyncState::UtxoSync { chunks, total });
+                }
+            }
+        } else if let Some(captures) = self.trust_blocks.captures(line) {
+            if let (Some(processed), Some(total)) = (captures.get(1), captures.get(2)) {
+                if let (Ok(processed), Ok(total)) = (processed.as_str().parse::<u64>(), total.as_str().parse::<u64>()) {
+                    state = Some(SyncState::TrustSync { processed, total });
+                }
+            }
+        } else if let Some(captures) = self.proof.captures(line) {
+            if let Some(level) = captures.get(1) {
+                if let Ok(level) = level.as_str().parse::<u64>() {
+                    state = Some(SyncState::Proof { level });
+                }
+            }
+        } else if self.utxo_resync.is_match(line) {
+            state = Some(SyncState::UtxoResync);
+            // } else if self.accepted_block.is_match(line) {
+            //     state = Some(SyncState::UtxoResync);
+        }
+
+        // log_info!("FOUND STATE: {state:?}");
+
+        state
+    }
+}

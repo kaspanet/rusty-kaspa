@@ -2763,6 +2763,7 @@ dependencies = [
  "pad",
  "pbkdf2",
  "rand 0.8.5",
+ "regex",
  "ripemd",
  "secp256k1",
  "separator",
@@ -5443,6 +5444,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "workflow-async-trait",
  "workflow-core-macros",
+ "workflow-log",
 ]
 
 [[package]]

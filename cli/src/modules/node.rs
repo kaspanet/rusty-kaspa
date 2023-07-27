@@ -1,5 +1,6 @@
 use crate::imports::*;
 use kaspa_daemon::KaspadConfig;
+use workflow_core::task::sleep;
 use workflow_node::process;
 pub use workflow_node::process::Event;
 use workflow_store::fs;
@@ -33,6 +34,7 @@ impl DefaultSettings for KaspadSettings {
 pub struct Node {
     settings: SettingsStore<KaspadSettings>,
     mute: Arc<AtomicBool>,
+    is_running: Arc<AtomicBool>,
 }
 
 impl Default for Node {
@@ -40,6 +42,7 @@ impl Default for Node {
         Node {
             settings: SettingsStore::try_new("kaspad").expect("Failed to create miner settings store"),
             mute: Arc::new(AtomicBool::new(true)),
+            is_running: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -73,13 +76,19 @@ impl Handler for Node {
 }
 
 impl Node {
+    pub fn is_running(&self) -> bool {
+        self.is_running.load(Ordering::SeqCst)
+    }
+
     async fn create_config(&self, ctx: &Arc<KaspaCli>) -> Result<KaspadConfig> {
         let location: String = self
             .settings
             .get(KaspadSettings::Location)
             .ok_or_else(|| Error::Custom("No miner binary specified, please use `miner select` to select a binary.".into()))?;
         let network_id = ctx.wallet().network_id()?;
-        let mute = self.mute.load(Ordering::SeqCst);
+        // disabled for prompt update (until progress events are implemented)
+        // let mute = self.mute.load(Ordering::SeqCst);
+        let mute = false;
         let config = KaspadConfig::new(location.as_str(), network_id, mute);
         Ok(config)
     }
@@ -93,13 +102,18 @@ impl Node {
             "start" => {
                 let mute = self.mute.load(Ordering::SeqCst);
                 if mute {
-                    tprintln!(ctx, "starting kaspad... {}", style("(logs are muted, use 'node mute' to toggle)").dim());
+                    tprintln!(ctx, "starting kaspa node... {}", style("(logs are muted, use 'node mute' to toggle)").dim());
                 } else {
-                    tprintln!(ctx, "starting kaspad... {}", style("(use 'node mute' to mute logging)").dim());
+                    tprintln!(ctx, "starting kaspa node... {}", style("(use 'node mute' to mute logging)").dim());
                 }
 
                 kaspad.configure(self.create_config(&ctx).await?).await?;
                 kaspad.start().await?;
+
+                spawn(async move {
+                    sleep(Duration::from_millis(1000)).await;
+                    ctx.term().exec("connect".to_string()).await.ok();
+                });
             }
             "stop" => {
                 kaspad.stop().await?;
@@ -119,7 +133,7 @@ impl Node {
                 } else {
                     tprintln!(ctx, "{}", style("node is unmuted").dim());
                 }
-                kaspad.mute(mute).await?;
+                // kaspad.mute(mute).await?;
                 self.settings.set(KaspadSettings::Mute, mute).await?;
             }
             "status" => {
@@ -206,43 +220,57 @@ impl Node {
         let term = ctx.term();
 
         match event {
+            Event::Start => {
+                self.is_running.store(true, Ordering::SeqCst);
+                term.refresh_prompt();
+            }
             Event::Exit(_code) => {
                 tprintln!(ctx, "Kaspad has exited");
+                self.is_running.store(false, Ordering::SeqCst);
+                term.refresh_prompt();
             }
             Event::Error(error) => {
                 tprintln!(ctx, "{}", style(format!("Kaspad error: {error}")).red());
+                self.is_running.store(false, Ordering::SeqCst);
+                term.refresh_prompt();
             }
             Event::Stdout(text) | Event::Stderr(text) => {
-                let sanitize = true;
-                if sanitize {
-                    // let text: String = stdio.into();
-                    let lines = text.split('\n').collect::<Vec<_>>();
-                    lines.into_iter().for_each(|line| {
-                        let line = line.trim();
-                        if !line.is_empty() {
-                            if line.len() < 38 || &line[30..31] != "[" {
-                                term.writeln(line);
-                            } else {
-                                let time = &line[11..23];
-                                let kind = &line[31..36];
-                                let text = &line[38..];
-                                // 𐤊
-                                match kind {
-                                    "WARN " => {
-                                        term.writeln(format!("{time} {}", style(text).yellow()));
-                                    }
-                                    "ERROR" => {
-                                        term.writeln(format!("{time} {}", style(text).red()));
-                                    }
-                                    _ => {
-                                        term.writeln(format!("{time} {text}"));
+                if !ctx.wallet().utxo_processor().is_synced() {
+                    ctx.wallet().utxo_processor().sync_proc().handle_stdout(&text).await?;
+                }
+
+                if !self.mute.load(Ordering::SeqCst) {
+                    let sanitize = true;
+                    if sanitize {
+                        // let text: String = stdio.into();
+                        let lines = text.split('\n').collect::<Vec<_>>();
+                        lines.into_iter().for_each(|line| {
+                            let line = line.trim();
+                            if !line.is_empty() {
+                                if line.len() < 38 || &line[30..31] != "[" {
+                                    term.writeln(line);
+                                } else {
+                                    let time = &line[11..23];
+                                    let kind = &line[31..36];
+                                    let text = &line[38..];
+                                    // 𐤊
+                                    match kind {
+                                        "WARN " => {
+                                            term.writeln(format!("{time} {}", style(text).yellow()));
+                                        }
+                                        "ERROR" => {
+                                            term.writeln(format!("{time} {}", style(text).red()));
+                                        }
+                                        _ => {
+                                            term.writeln(format!("{time} {text}"));
+                                        }
                                     }
                                 }
                             }
-                        }
-                    });
-                } else {
-                    term.writeln(text.trim().crlf());
+                        });
+                    } else {
+                        term.writeln(text.trim().crlf());
+                    }
                 }
             }
         }

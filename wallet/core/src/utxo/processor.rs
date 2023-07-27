@@ -9,10 +9,10 @@ use workflow_core::channel::{Channel, DuplexChannel};
 use workflow_core::task::spawn;
 use workflow_rpc::client::Ctl;
 
-use crate::events::Events;
 use crate::imports::*;
 use crate::result::Result;
 use crate::utxo::{PendingUtxoEntryReference, UtxoContext, UtxoContextId, UtxoEntryId, UtxoEntryReference};
+use crate::{events::Events, runtime::SyncMonitor};
 use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
     Notification,
@@ -28,11 +28,12 @@ pub struct Inner {
 
     rpc: Arc<DynRpcApi>,
     is_connected: AtomicBool,
-    is_synced: AtomicBool,
+    // is_synced: AtomicBool,
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
     notification_channel: Channel<Notification>,
     multiplexer: Multiplexer<Events>,
+    sync_proc: SyncMonitor,
 }
 
 impl Inner {
@@ -46,11 +47,12 @@ impl Inner {
 
             rpc: rpc.clone(),
             is_connected: AtomicBool::new(false),
-            is_synced: AtomicBool::new(false),
+            // is_synced: AtomicBool::new(false),
             listener_id: Mutex::new(None),
             task_ctl: DuplexChannel::oneshot(),
             notification_channel: Channel::<Notification>::unbounded(),
             multiplexer: multiplexer.clone(),
+            sync_proc: SyncMonitor::new(rpc, multiplexer),
         }
     }
 }
@@ -76,6 +78,10 @@ impl UtxoProcessor {
 
     pub fn multiplexer(&self) -> &Multiplexer<Events> {
         &self.inner.multiplexer
+    }
+
+    pub fn sync_proc(&self) -> &SyncMonitor {
+        &self.inner.sync_proc
     }
 
     pub fn listener_id(&self) -> ListenerId {
@@ -243,7 +249,7 @@ impl UtxoProcessor {
     }
 
     pub fn is_synced(&self) -> bool {
-        self.inner.is_synced.load(Ordering::SeqCst)
+        self.sync_proc().is_synced()
     }
 
     pub async fn init_state_from_server(self: &Arc<Self>) -> Result<()> {
@@ -266,7 +272,10 @@ impl UtxoProcessor {
 
         self.inner.current_daa_score.store(virtual_daa_score, Ordering::SeqCst);
 
-        self.inner.is_synced.store(is_synced, Ordering::SeqCst);
+        log_info!("Connected to kaspad: '{server_version}' on '{server_network_id}';  SYNC: {is_synced}  DAA: {virtual_daa_score}");
+
+        // self.inner.is_synced.store(is_synced, Ordering::SeqCst);
+        self.sync_proc().track(is_synced).await?;
         self.notify(Events::ServerStatus { server_version, is_synced, network_id, url: self.rpc_client().url().to_string() }).await?;
 
         Ok(())
@@ -278,13 +287,13 @@ impl UtxoProcessor {
         self.inner.is_connected.store(true, Ordering::SeqCst);
         self.register_notification_listener().await?;
         // self.start_task().await?;
-        self.notify(Events::UtxoProcessingStarted).await?;
+        self.notify(Events::UtxoProcStart).await?;
         Ok(())
     }
 
     pub async fn handle_disconnect(&self) -> Result<()> {
         self.inner.is_connected.store(false, Ordering::SeqCst);
-        self.notify(Events::UtxoProcessingStopped).await?;
+        self.notify(Events::UtxoProcStop).await?;
         self.unregister_notification_listener().await?;
         // self.stop_task().await?;
         Ok(())
@@ -321,8 +330,9 @@ impl UtxoProcessor {
 
             Notification::UtxosChanged(utxos_changed_notification) => {
                 if !self.is_synced() {
-                    self.inner.is_synced.store(true, Ordering::SeqCst);
-                    self.notify(Events::NodeSync { is_synced: true }).await?;
+                    self.sync_proc().track(true).await?;
+                    // self.inner.is_synced.store(true, Ordering::SeqCst);
+                    // self.notify(Events::NodeSync { is_synced: true }).await?;
                 }
 
                 self.handle_utxo_changed(utxos_changed_notification).await?;
@@ -409,7 +419,8 @@ impl UtxoProcessor {
     }
 
     pub async fn stop(&self) -> Result<()> {
-        self.inner.task_ctl.signal(()).await.expect("Wallet::stop_task() `signal` error");
+        self.inner.sync_proc.stop().await?;
+        self.inner.task_ctl.signal(()).await.expect("UtxoProcessor::stop_task() `signal` error");
         Ok(())
     }
 }

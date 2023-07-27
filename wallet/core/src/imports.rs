@@ -1,6 +1,6 @@
 pub use crate::convert::ScriptPublicKeyTrait;
 pub use crate::error::Error;
-pub use crate::events::Events;
+pub use crate::events::{Events, SyncState};
 pub use crate::network::NetworkId;
 pub use crate::utxo::scan::{Scan, ScanExtent};
 pub use crate::DynRpcApi;
@@ -28,7 +28,7 @@ pub use std::sync::{Arc, Mutex, MutexGuard};
 pub use std::task::{Context, Poll};
 pub use wasm_bindgen::prelude::*;
 pub use workflow_core::channel::{Channel, DuplexChannel, Multiplexer};
-pub use workflow_core::task::{spawn, yield_executor};
+pub use workflow_core::task::{sleep, spawn, yield_executor};
 pub use workflow_core::time::{Duration, Instant};
 pub use workflow_log::prelude::*;
 pub use workflow_wasm::jsvalue::*;
