@@ -263,6 +263,7 @@ impl UtxoProcessor {
 
         if !has_utxo_index {
             self.notify(Events::UtxoIndexNotEnabled).await?;
+            self.rpc_client().disconnect().await?;
             return Err(Error::MissingUtxoIndex);
         }
 
