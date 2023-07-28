@@ -103,9 +103,10 @@ impl Metrics {
                     &self.window.window(),
                     &container,
                     metric.descr(),
+                    "Price",
                     GraphTimeline::Minutes(5),
                     GraphTheme::Light,
-                    Margin::new(30.0, 20.0, 20.0, 30.0),
+                    Margin::new(20.0, 20.0, 10.0, 30.0),
                 )
                 .await?,
             );
@@ -123,14 +124,6 @@ impl Metrics {
         for metric in Metric::list() {
             let value = data.get(&metric);
             self.graph(&metric).ingest(data.unixtime, value).await?;
-            // let color = { self.graph(&metric).options().title_color.clone() };
-            // workflow_log::log_info!("color: {color:?}");
-            // let is_dark = color.eq("white");
-            // if is_dark {
-            //     self.graph(&metric).set_theme(GraphTheme::Light);
-            // } else {
-            //     self.graph(&metric).set_theme(GraphTheme::Dark);
-            // }
         }
 
         yield_executor().await;
