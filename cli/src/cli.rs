@@ -742,21 +742,21 @@ impl KaspaCli {
             match state {
                 SyncState::Proof { level } => {
                     if *level == 0 {
-                        Some(style("SYNC PROC").red().to_string())
+                        Some([style("SYNC").red().to_string(), style("...").black().to_string()].join(" "))
                     } else {
                         Some([style("SYNC PROOF").red().to_string(), style(level.separated_string()).dim().to_string()].join(" "))
                     }
                 }
                 SyncState::Headers { headers, progress } => Some(
                     [
-                        style("SYNC HEADERS").red().to_string(),
+                        style("SYNC IBD HEADERS").red().to_string(),
                         style(format!("{} ({}%)", headers.separated_string(), progress)).dim().to_string(),
                     ]
                     .join(" "),
                 ),
                 SyncState::Blocks { blocks, progress } => Some(
                     [
-                        style("SYNC BLOCKS").red().to_string(),
+                        style("SYNC IBD BLOCKS").red().to_string(),
                         style(format!("{} ({}%)", blocks.separated_string(), progress)).dim().to_string(),
                     ]
                     .join(" "),
@@ -774,7 +774,7 @@ impl KaspaCli {
                 SyncState::UtxoSync { total, .. } => {
                     Some([style("SYNC UTXO").red().to_string(), style(total.separated_string()).dim().to_string()].join(" "))
                 }
-                SyncState::UtxoResync => Some([style("SYNC").red().to_string(), style("...").dim().to_string()].join(" ")),
+                SyncState::UtxoResync => Some([style("SYNC").red().to_string(), style("...").black().to_string()].join(" ")),
                 SyncState::Synced { .. } => None,
             }
         } else {
