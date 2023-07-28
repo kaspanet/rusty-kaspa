@@ -1,7 +1,7 @@
 use std::pin::Pin;
 
-use futures::future::join_all;
-use workflow_core::task::sleep;
+use futures::{future::join_all, pin_mut};
+use workflow_core::task::interval;
 
 use crate::imports::*;
 use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse};
@@ -125,14 +125,15 @@ impl Metrics {
         let task_ctl_sender = self.task_ctl.response.sender.clone();
 
         spawn(async move {
-            loop {
-                let poll = sleep(Duration::from_millis(1000));
+            let interval = interval(Duration::from_secs(1));
+            pin_mut!(interval);
 
+            loop {
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
                         break;
                     },
-                    _ = poll.fuse() => {
+                    _ = interval.next().fuse() => {
 
                         *this.data.lock().unwrap() = MetricsData::new(unixtime_as_millis_f64());
 
