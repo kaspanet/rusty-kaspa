@@ -110,10 +110,14 @@ impl Node {
                 kaspad.configure(self.create_config(&ctx).await?).await?;
                 kaspad.start().await?;
 
-                spawn(async move {
-                    sleep(Duration::from_millis(1000)).await;
-                    ctx.term().exec("connect".to_string()).await.ok();
-                });
+                // temporary setup for autoconnect
+                let url = ctx.wallet().rpc_client().url();
+                if url.contains("127.0.0.1") || url.contains("localhost") {
+                    spawn(async move {
+                        sleep(Duration::from_millis(1000)).await;
+                        ctx.term().exec("connect".to_string()).await.ok();
+                    });
+                }
             }
             "stop" => {
                 kaspad.stop().await?;
