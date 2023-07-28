@@ -37,7 +37,7 @@ use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::tick::TickService;
 use kaspa_core::time::unix_now;
-use kaspa_database::utils::{create_temp_db, get_kaspa_tempdir};
+use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
 
 use flate2::read::GzDecoder;
@@ -47,6 +47,8 @@ use kaspa_core::core::Core;
 use kaspa_core::info;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
+use kaspa_database::create_temp_db;
+use kaspa_database::prelude::ConnBuilder;
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
@@ -110,7 +112,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
     map.get_mut(&blocks[0]).unwrap().parents.push(root);
 
     // Act
-    let (_temp_db_lifetime, db) = create_temp_db();
+    let (_temp_db_lifetime, db) = create_temp_db!(ConnBuilder::default());
     let mut store = DbReachabilityStore::new(db.clone(), 100000);
     let mut relations = DbRelationsStore::new(db, 0, 100000); // TODO: remove level
     let mut builder = DagBuilder::new(&mut store, &mut relations);
@@ -910,10 +912,9 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv));
 
     // External storage for storing block bodies. This allows separating header and body processing phases
-    let (_external_db_lifetime, external_storage) = create_temp_db();
+    let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default());
     let external_block_store = DbBlockTransactionsStore::new(external_storage, config.perf.block_data_cache_size);
-
-    let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
+    let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default());
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(UtxoIndexProxy::new(utxoindex.clone()))));
@@ -1683,7 +1684,7 @@ async fn staging_consensus_test() {
     let consensus_db_dir = db_path.join("consensus");
     let meta_db_dir = db_path.join("meta");
 
-    let meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir);
+    let meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir).build();
 
     let (notification_send, _notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));

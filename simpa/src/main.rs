@@ -20,7 +20,8 @@ use kaspa_consensus_core::{
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{info, task::service::AsyncService, task::tick::TickService, trace, warn};
-use kaspa_database::utils::{create_temp_db_with_parallelism, load_existing_db};
+use kaspa_database::prelude::ConnBuilder;
+use kaspa_database::{create_temp_db, load_existing_db};
 use kaspa_hashes::Hash;
 use kaspa_perf_monitor::builder::Builder;
 use simulator::network::KaspaNetworkSimulator;
@@ -96,6 +97,16 @@ struct Args {
     perf_metrics: bool,
     #[arg(long, default_value_t = 10)]
     perf_metrics_interval_sec: u64,
+
+    /// Enable rocksdb statistics
+    #[arg(long, default_value_t = false)]
+    rocksdb_stats: bool,
+    #[arg(long)]
+    rocksdb_stats_period_sec: Option<u32>,
+    #[arg(long)]
+    rocksdb_files_limit: Option<i32>,
+    #[arg(long)]
+    rocksdb_mem_budget: Option<usize>,
 }
 
 fn main() {
@@ -150,10 +161,25 @@ fn main() {
         builder = builder.set_archival();
     }
     let config = Arc::new(builder.build());
-
+    let mut conn_builder = ConnBuilder::default().with_parallelism(num_cpus::get());
+    if let Some(rocksdb_files_limit) = args.rocksdb_files_limit {
+        conn_builder = conn_builder.with_files_limit(rocksdb_files_limit);
+    }
+    if let Some(rocksdb_mem_budget) = args.rocksdb_mem_budget {
+        conn_builder = conn_builder.with_mem_budget(rocksdb_mem_budget);
+    }
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
-        let (lifetime, db) = load_existing_db(input_dir, num_cpus::get());
+        let (lifetime, db) = if args.rocksdb_stats {
+            let conn_builder = conn_builder.enable_stats();
+            if let Some(rocksdb_stats_period_sec) = args.rocksdb_stats_period_sec {
+                load_existing_db!(input_dir, conn_builder.with_stats_period(rocksdb_stats_period_sec))
+            } else {
+                load_existing_db!(input_dir, conn_builder)
+            }
+        } else {
+            load_existing_db!(input_dir, conn_builder)
+        };
         let (dummy_notification_sender, _) = unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
         let consensus = Arc::new(Consensus::new(db, config.clone(), Default::default(), notification_root, Default::default()));
@@ -161,7 +187,16 @@ fn main() {
     } else {
         let until = if args.target_blocks.is_none() { config.genesis.timestamp + args.sim_time * 1000 } else { u64::MAX }; // milliseconds
         let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, config.clone(), args.output_dir);
-        let (consensus, handles, lifetime) = sim.init(args.miners, args.tpb).run(until);
+        let (consensus, handles, lifetime) = sim
+            .init(
+                args.miners,
+                args.tpb,
+                args.rocksdb_stats,
+                args.rocksdb_stats_period_sec,
+                args.rocksdb_files_limit,
+                args.rocksdb_mem_budget,
+            )
+            .run(until);
         consensus.shutdown(handles);
         (consensus, lifetime)
     };
@@ -172,7 +207,7 @@ fn main() {
     }
 
     // Benchmark the DAG validation time
-    let (_lifetime2, db2) = create_temp_db_with_parallelism(num_cpus::get());
+    let (_lifetime2, db2) = create_temp_db!(ConnBuilder::default().with_parallelism(num_cpus::get()));
     let (dummy_notification_sender, _) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
     let consensus2 = Arc::new(Consensus::new(db2, config.clone(), Default::default(), notification_root, Default::default()));

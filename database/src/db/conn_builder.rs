@@ -7,6 +7,11 @@ use std::sync::Arc;
 #[derive(Debug, Copy, Clone)]
 pub struct Unspecified;
 
+pub trait StatsPeriod: Clone {}
+
+impl StatsPeriod for Unspecified {}
+impl StatsPeriod for u32 {}
+
 #[derive(Debug, Clone)]
 pub struct ConnBuilder<Path: Clone, const STATS_ENABLED: bool, StatsPeriod: Clone> {
     db_path: Path,
@@ -120,7 +125,7 @@ impl<Path: Clone, StatsPeriod: Clone> ConnBuilder<Path, true, StatsPeriod> {
 }
 
 macro_rules! default_opts {
-    ($self: ident) => {{
+    ($self: expr) => {{
         let mut opts = rocksdb::Options::default();
         if $self.parallelism > 1 {
             opts.increase_parallelism($self.parallelism as i32);
@@ -139,7 +144,7 @@ macro_rules! default_opts {
     }};
 }
 
-impl ConnBuilder<PathBuf, false, Unspecified> {
+impl<SP: StatsPeriod> ConnBuilder<PathBuf, false, SP> {
     pub fn build(self) -> Arc<DB> {
         let opts = default_opts!(self);
         let db = Arc::new(DB::open(&opts, self.db_path.to_str().unwrap()).unwrap());

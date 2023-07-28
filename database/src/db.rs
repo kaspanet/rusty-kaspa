@@ -1,7 +1,7 @@
 use rocksdb::{DBWithThreadMode, MultiThreaded};
 use std::path::PathBuf;
 
-pub use conn_builder::ConnBuilder;
+pub use conn_builder::{ConnBuilder, StatsPeriod, Unspecified};
 
 mod conn_builder;
 

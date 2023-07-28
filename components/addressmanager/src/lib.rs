@@ -358,7 +358,8 @@ mod address_store_with_cache {
         use super::*;
         use address_manager::AddressManager;
         use kaspa_consensus_core::config::{params::SIMNET_PARAMS, Config};
-        use kaspa_database::utils::create_temp_db;
+        use kaspa_database::create_temp_db;
+        use kaspa_database::prelude::ConnBuilder;
         use kaspa_utils::networking::IpAddress;
         use statest::ks::KSTest;
         use statrs::distribution::Uniform;
@@ -387,7 +388,7 @@ mod address_store_with_cache {
             // Assert that initial distribution is skewed, and hence not uniform from the outset.
             assert!(bucket_reduction_ratio >= 1.25);
 
-            let db = create_temp_db();
+            let db = create_temp_db!(ConnBuilder::default());
             let config = Config::new(SIMNET_PARAMS);
             let am = AddressManager::new(Arc::new(config), db.1);
 
