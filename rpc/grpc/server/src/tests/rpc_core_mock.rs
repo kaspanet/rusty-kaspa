@@ -60,6 +60,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_connection_info_call(&self, _request: GetConnectionInfoRequest) -> RpcResult<GetConnectionInfoResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_sync_status_call(&self, _request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     async fn get_current_network_call(&self, _request: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
         Err(RpcError::NotImplemented)
     }

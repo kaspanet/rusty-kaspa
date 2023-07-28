@@ -180,6 +180,13 @@ impl RpcApi for GrpcClient {
     //     self.inner.call(RpcApiOps::SubmitBlock, request).await?.as_ref().try_into()
     // }
 
+    async fn get_connection_info_call(&self, _request: GetConnectionInfoRequest) -> RpcResult<GetConnectionInfoResponse> {
+        todo!()
+    }
+    async fn get_sync_status_call(&self, _request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse> {
+        todo!()
+    }
+
     route!(ping_call, Ping);
     route!(get_metrics_call, GetMetrics);
     route!(submit_block_call, SubmitBlock);

@@ -676,6 +676,8 @@ pub struct PingRequest {}
 #[serde(rename_all = "camelCase")]
 pub struct PingResponse {}
 
+// custom wRPC commands (need review and implementation in gRPC)
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMetricsRequest {
@@ -727,6 +729,29 @@ impl GetMetricsResponse {
     pub fn new(server_time: u128, process_metrics: Option<ProcessMetrics>, consensus_metrics: Option<ConsensusMetrics>) -> Self {
         Self { process_metrics, consensus_metrics, server_time }
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetConnectionInfoRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetConnectionInfoResponse {
+    pub server_version: String,
+    pub network_id: RpcNetworkId,
+    pub is_synced: bool,
+    pub virtual_daa_score: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSyncStatusRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSyncStatusResponse {
+    pub is_synced: bool,
 }
 
 // ----------------------------------------------------------------------------

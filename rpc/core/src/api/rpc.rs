@@ -26,11 +26,27 @@ pub trait RpcApi: Sync + Send + AnySync {
     }
     async fn ping_call(&self, request: PingRequest) -> RpcResult<PingResponse>;
 
-    ///
+    // ---
+
     async fn get_metrics(&self, process_metrics: bool, consensus_metrics: bool) -> RpcResult<GetMetricsResponse> {
         self.get_metrics_call(GetMetricsRequest { process_metrics, consensus_metrics }).await
     }
     async fn get_metrics_call(&self, request: GetMetricsRequest) -> RpcResult<GetMetricsResponse>;
+
+    // get_info alternative that carries only version, network_id (full), is_synced, virtual_daa_score
+    // these are the only variables needed to negotiate a wRPC connection (besides the wRPC handshake)
+    async fn get_connection_info(&self) -> RpcResult<GetConnectionInfoResponse> {
+        self.get_connection_info_call(GetConnectionInfoRequest {}).await
+    }
+    async fn get_connection_info_call(&self, request: GetConnectionInfoRequest) -> RpcResult<GetConnectionInfoResponse>;
+
+    // Get current sync status of the node (should be converted to a notification subscription)
+    async fn get_sync_status(&self) -> RpcResult<bool> {
+        Ok(self.get_sync_status_call(GetSyncStatusRequest {}).await?.is_synced)
+    }
+    async fn get_sync_status_call(&self, request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse>;
+
+    // ---
 
     /// Requests the network the node is currently running against.
     async fn get_current_network(&self) -> RpcResult<RpcNetworkType> {

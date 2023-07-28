@@ -19,6 +19,8 @@ use workflow_core::enums::Describe;
 pub enum RpcApiOps {
     Ping = 0,
     GetMetrics,
+    GetConnectionInfo,
+    GetSyncStatus,
     GetCurrentNetwork,
     SubmitBlock,
     GetBlockTemplate,
