@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_cli::metrics::MetricsData;
+use kaspa_cli::metrics::MetricsSnapshot;
 
 static mut TERMINAL: Option<Arc<Terminal>> = None;
 
@@ -137,12 +137,12 @@ impl Terminal {
                                 .expect("Unable to locate ipc for the metrics window");
 
                             this.metrics.lock().unwrap().replace(Arc::new(ipc));
-                            metrics.register_sink(Arc::new(Box::new(move |data: MetricsData| {
+                            metrics.register_sink(Arc::new(Box::new(move |data: MetricsSnapshot| {
                                 let this = this.clone();
 
                                 Box::pin(async move {
                                     let ipc = this.metrics.lock().unwrap().as_ref().unwrap().clone();
-                                    ipc.notify(MetricsOps::MetricsData, data).await.unwrap_or_else(|err| {
+                                    ipc.notify(MetricsOps::MetricsSnapshot, data).await.unwrap_or_else(|err| {
                                         log_error!("error posting metrics data to metrics window: {:?}", err);
                                     });
 

@@ -1,12 +1,12 @@
 // use kaspa_rpc_core::{ConsensusMetrics, ProcessMetrics};
 
 use crate::imports::*;
-use kaspa_cli::metrics::MetricsData;
+use kaspa_cli::metrics::MetricsSnapshot;
 // use kaspa_rpc_core::
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum MetricsOps {
-    MetricsData,
+    MetricsSnapshot,
 }
 
 #[derive(Debug, Clone)]
@@ -35,5 +35,5 @@ impl MetricsIpc {
 
 #[async_trait]
 pub trait MetricsCtl: Send + Sync + 'static {
-    async fn post_data(&self, data: MetricsData) -> Result<()>;
+    async fn post_data(&self, data: MetricsSnapshot) -> Result<()>;
 }

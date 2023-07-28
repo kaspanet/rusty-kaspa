@@ -44,7 +44,30 @@ impl MetricsData {
     pub fn new(unixtime: f64) -> Self {
         Self { unixtime, ..Default::default() }
     }
+}
 
+#[derive(Default, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+pub struct MetricsSnapshot {
+    pub unixtime: f64,
+    pub duration: f64,
+    // ---
+    pub blocks_submitted: f64,
+    pub header_counts: f64,
+    pub dep_counts: f64,
+    pub body_counts: f64,
+    pub txs_counts: f64,
+    pub chain_block_counts: f64,
+    pub mass_counts: f64,
+    // ---
+    pub block_count: f64,
+    pub tip_hashes: f64,
+    pub difficulty: f64,
+    pub past_median_time: f64,
+    pub virtual_parent_hashes: f64,
+    pub virtual_daa_score: f64,
+}
+
+impl MetricsSnapshot {
     pub fn get(&self, metric: &Metric) -> Sendable<JsValue> {
         let v = match metric {
             Metric::BlocksSubmitted => JsValue::from(self.blocks_submitted as f64),
@@ -63,5 +86,29 @@ impl MetricsData {
         };
 
         Sendable(v)
+    }
+}
+
+impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
+    fn from((a, b): (&MetricsData, &MetricsData)) -> Self {
+        Self {
+            unixtime: b.unixtime,
+            duration: b.unixtime - a.unixtime,
+            // ---
+            blocks_submitted: b.blocks_submitted as f64,     // - a.blocks_submitted,
+            header_counts: b.header_counts as f64,           // - a.header_counts,
+            dep_counts: b.dep_counts as f64,                 // - a.dep_counts,
+            body_counts: b.body_counts as f64,               // - a.body_counts,
+            txs_counts: b.txs_counts as f64,                 // - a.txs_counts,
+            chain_block_counts: b.chain_block_counts as f64, // - a.chain_block_counts,
+            mass_counts: b.mass_counts as f64,               // - a.mass_counts,
+            // ---
+            block_count: b.block_count as f64,                     // - a.block_count,
+            tip_hashes: b.tip_hashes as f64,                       // - a.tip_hashes,
+            difficulty: b.difficulty as f64,                       // - a.difficulty,
+            past_median_time: b.past_median_time as f64,           // - a.past_median_time,
+            virtual_parent_hashes: b.virtual_parent_hashes as f64, // - a.virtual_parent_hashes,
+            virtual_daa_score: b.virtual_daa_score as f64,         // - a.virtual_daa_score,
+        }
     }
 }

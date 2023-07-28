@@ -9,11 +9,11 @@ use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse};
 // use kaspa_rpc_core::{ConsensusMetrics, ProcessMetrics};
 // use workflow_nw::ipc::*;
 // use kaspa_metrics::{MetricsCtl, data::MetricsData, result::Result as MetricsResult};
-use super::MetricsData;
+use super::{MetricsData, MetricsSnapshot};
 
 // pub type MetricsSinkFn = Arc<Box<(dyn Fn(MetricsData))>>;
 pub type MetricsSinkFn =
-    Arc<Box<dyn Send + Sync + Fn(MetricsData) -> Pin<Box<(dyn Send + 'static + Future<Output = Result<()>>)>> + 'static>>;
+    Arc<Box<dyn Send + Sync + Fn(MetricsSnapshot) -> Pin<Box<(dyn Send + 'static + Future<Output = Result<()>>)>> + 'static>>;
 
 #[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(rename_all = "lowercase")]
@@ -38,7 +38,7 @@ pub struct Metrics {
     rpc: Arc<Mutex<Option<Arc<dyn RpcApi>>>>,
     // target : Arc<Mutex<Option<Arc<dyn MetricsCtl>>>>,
     sink: Arc<Mutex<Option<MetricsSinkFn>>>,
-    data: Arc<Mutex<MetricsData>>,
+    data: Arc<Mutex<Option<MetricsData>>>,
 }
 
 impl Default for Metrics {
@@ -49,7 +49,7 @@ impl Default for Metrics {
             task_ctl: DuplexChannel::oneshot(),
             rpc: Arc::new(Mutex::new(None)),
             sink: Arc::new(Mutex::new(None)),
-            data: Arc::new(Mutex::new(MetricsData::default())),
+            data: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -64,11 +64,15 @@ impl Handler for Metrics {
         "Manage metrics monitoring"
     }
 
-    async fn start(self: Arc<Self>, _ctx: &Arc<dyn Context>) -> cli::Result<()> {
+    async fn start(self: Arc<Self>, ctx: &Arc<dyn Context>) -> cli::Result<()> {
+        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+
         self.settings.try_load().await.ok();
         if let Some(mute) = self.settings.get(MetricsSettings::Mute) {
             self.mute.store(mute, Ordering::Relaxed);
         }
+
+        self.rpc.lock().unwrap().replace(ctx.wallet().rpc().clone());
 
         self.start_task().await?;
         Ok(())
@@ -124,6 +128,8 @@ impl Metrics {
         let task_ctl_receiver = self.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.task_ctl.response.sender.clone();
 
+        *this.data.lock().unwrap() = Some(MetricsData::new(unixtime_as_millis_f64()));
+
         spawn(async move {
             let interval = interval(Duration::from_secs(1));
             pin_mut!(interval);
@@ -135,9 +141,12 @@ impl Metrics {
                     },
                     _ = interval.next().fuse() => {
 
-                        *this.data.lock().unwrap() = MetricsData::new(unixtime_as_millis_f64());
 
+                        let last_data = this.data.lock().unwrap().take().unwrap();
+                        this.data.lock().unwrap().replace(MetricsData::new(unixtime_as_millis_f64()));
+                        log_info!("++++ STARTING METRICS COLLECTION");
                         if let Some(rpc) = this.rpc() {
+                            log_info!("++++ EXECUTING RPC METRICS COLLECTION");
                             let samples = vec![
                                 this.sample_metrics(rpc.clone()).boxed(),
                                 this.sample_gbdi(rpc.clone()).boxed(),
@@ -147,10 +156,13 @@ impl Metrics {
                             join_all(samples).await;
                         }
 
+                            log_info!("++++ DONE WITH METRICS COLLECTION");
                         // TODO - output to terminal...
                         if let Some(sink) = this.sink() {
-                            let data = this.data.lock().unwrap().clone();
-                            sink(data).await.ok();
+                            // let data = this.data.lock().unwrap().as_ref().unwrap();
+                            // let data = data.as_ref().unwrap();
+                            let snapshot = MetricsSnapshot::from((&last_data, this.data.lock().unwrap().as_ref().unwrap()));
+                            sink(snapshot).await.ok();
                         }
                     }
                 }
@@ -181,11 +193,14 @@ impl Metrics {
     // --- samplers
 
     async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
+        log_info!("**** DOIN SAMPLE METRICS");
+
         if let Ok(metrics) = rpc.get_metrics(true, true).await {
             #[allow(unused_variables)]
             let GetMetricsResponse { server_time, consensus_metrics, process_metrics } = metrics;
 
             let mut data = self.data.lock().unwrap();
+            let data = data.as_mut().unwrap();
             if let Some(consensus_metrics) = consensus_metrics {
                 data.blocks_submitted = consensus_metrics.blocks_submitted;
                 data.header_counts = consensus_metrics.header_counts;
@@ -203,6 +218,7 @@ impl Metrics {
     async fn sample_gbdi(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
         if let Ok(gdbi) = rpc.get_block_dag_info().await {
             let mut data = self.data.lock().unwrap();
+            let data = data.as_mut().unwrap();
             data.block_count = gdbi.block_count;
             // data.header_count = gdbi.header_count;
             data.tip_hashes = gdbi.tip_hashes.len();

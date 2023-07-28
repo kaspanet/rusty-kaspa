@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::toolbar::*;
 use crate::imports::*;
-use kaspa_cli::metrics::{Metric, MetricsData};
+use kaspa_cli::metrics::{Metric, MetricsSnapshot};
 use web_sys::HtmlSelectElement;
 use workflow_d3::container::*;
 use workflow_d3::graph::*;
@@ -67,12 +67,13 @@ impl Metrics {
     fn register_ipc_handlers(self: &Arc<Self>) -> Result<()> {
         let this = self.clone();
         self.ipc.notification(
-            MetricsOps::MetricsData,
-            Notification::new(move |data: MetricsData| {
+            MetricsOps::MetricsSnapshot,
+            Notification::new(move |data: MetricsSnapshot| {
                 let this = this.clone();
                 Box::pin(async move {
                     log_info!("Received metrics data: {:?}", data);
                     this.ingest(data).await?;
+                    yield_executor().await;
                     Ok(())
                 })
             }),
@@ -110,7 +111,7 @@ impl Metrics {
                     &self.window.window(),
                     &container,
                     metric.descr(),
-                    "Price",
+                    "",
                     GraphTimeline::Minutes(5),
                     GraphTheme::Light,
                     Margin::new(20.0, 20.0, 10.0, 30.0),
@@ -130,7 +131,7 @@ impl Metrics {
         self.graphs.lock().unwrap().get(metric).cloned().expect("Unable to find graph")
     }
 
-    async fn ingest(self: &Arc<Self>, data: MetricsData) -> Result<()> {
+    async fn ingest(self: &Arc<Self>, data: MetricsSnapshot) -> Result<()> {
         for metric in Metric::list() {
             let value = data.get(&metric);
             self.graph(&metric).ingest(data.unixtime, value).await?;

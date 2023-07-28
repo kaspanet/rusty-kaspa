@@ -114,7 +114,7 @@ impl Button {
     pub fn try_new(toolbar: &Toolbar, html: &str, tooltip: &str, callback: Arc<ButtonCallback>) -> Result<Self> {
         let element = toolbar.document().create_element("div").unwrap();
         element.set_class_name("button");
-        element.set_attribute("tooltip", tooltip);
+        element.set_attribute("tooltip", tooltip)?;
         element.set_inner_html(html);
         toolbar.element().append_child(&element).unwrap();
         let callback = Arc::new(callback);
