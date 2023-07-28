@@ -740,6 +740,7 @@ pub struct GetConnectionInfoRequest {}
 pub struct GetConnectionInfoResponse {
     pub server_version: String,
     pub network_id: RpcNetworkId,
+    pub has_utxo_index: bool,
     pub is_synced: bool,
     pub virtual_daa_score: u64,
 }

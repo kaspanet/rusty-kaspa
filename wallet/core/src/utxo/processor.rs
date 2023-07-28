@@ -3,7 +3,7 @@ use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
 };
-use kaspa_rpc_core::{message::UtxosChangedNotification, GetBlockDagInfoResponse, GetInfoResponse};
+use kaspa_rpc_core::{message::UtxosChangedNotification, GetConnectionInfoResponse};
 use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::{Channel, DuplexChannel};
 use workflow_core::task::spawn;
@@ -255,7 +255,10 @@ impl UtxoProcessor {
     pub async fn init_state_from_server(self: &Arc<Self>) -> Result<()> {
         let network_id = self.network_id()?;
 
-        let GetInfoResponse { is_synced, is_utxo_indexed: has_utxo_index, server_version, .. } = self.rpc().get_info().await?;
+        let GetConnectionInfoResponse { server_version, network_id: server_network_id, has_utxo_index, is_synced, virtual_daa_score } =
+            self.rpc().get_connection_info().await?;
+
+        // let GetInfoResponse { is_synced, is_utxo_indexed: has_utxo_index, server_version, .. } = self.rpc().get_info().await?;
         // let network = self.rpc().get_current_network().await?;
 
         if !has_utxo_index {
@@ -263,7 +266,7 @@ impl UtxoProcessor {
             return Err(Error::MissingUtxoIndex);
         }
 
-        let GetBlockDagInfoResponse { virtual_daa_score, network: server_network_id, .. } = self.rpc().get_block_dag_info().await?;
+        // let GetBlockDagInfoResponse { virtual_daa_score, network: server_network_id, .. } = self.rpc().get_block_dag_info().await?;
 
         let server_network_id = NetworkId::from(server_network_id);
         if network_id != server_network_id {

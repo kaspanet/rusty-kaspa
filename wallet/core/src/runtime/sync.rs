@@ -2,7 +2,6 @@ use crate::imports::*;
 use crate::result::Result;
 use futures::pin_mut;
 use futures::stream::StreamExt;
-use kaspa_rpc_core::GetInfoResponse;
 use regex::Regex;
 struct Inner {
     task_ctl: DuplexChannel,
@@ -119,7 +118,7 @@ impl SyncMonitor {
                     _ = interval.next().fuse() => {
                         if this.is_synced() {
                             break;
-                        } else if let Ok(GetInfoResponse { is_synced, .. }) = this.rpc().get_info().await {
+                        } else if let Ok(is_synced) = this.rpc().get_sync_status().await {
                             if is_synced {
                                 if is_synced != this.is_synced() {
                                     this.inner.is_synced.store(true, Ordering::SeqCst);

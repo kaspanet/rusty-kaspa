@@ -269,6 +269,8 @@ build_wrpc_wasm_bindgen_interface!(
         GetSinkBlueScore,
         Ping,
         Shutdown,
+        GetConnectionInfo,
+        GetSyncStatus,
     ],
     [
         // functions with `request` argument

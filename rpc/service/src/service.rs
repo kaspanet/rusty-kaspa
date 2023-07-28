@@ -667,6 +667,7 @@ impl RpcApi for RpcCoreService {
             is_synced,
             network_id: self.config.net,
             server_version: version().to_string(),
+            has_utxo_index: self.config.utxoindex,
             virtual_daa_score,
         })
     }
