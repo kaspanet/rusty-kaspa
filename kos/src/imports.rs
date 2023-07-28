@@ -34,4 +34,4 @@ pub use workflow_nw::ipc::*;
 pub use workflow_nw::prelude::*;
 pub use workflow_terminal::prelude::*;
 pub use workflow_terminal::{CrLf, Modifiers, Options as TerminalOptions};
-pub use workflow_wasm::callback::{callback, Callback, CallbackMap};
+pub use workflow_wasm::callback::{callback, AsCallback, Callback, CallbackMap};

@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
+use super::toolbar::*;
 use crate::imports::*;
 use kaspa_cli::metrics::{Metric, MetricsData};
+use web_sys::HtmlSelectElement;
 use workflow_d3::container::*;
 use workflow_d3::graph::*;
 
@@ -19,6 +21,7 @@ pub struct Metrics {
     pub layout: Arc<Layout<SettingsStore<MetricsSettings>>>,
     pub container: Arc<Mutex<Option<Arc<Container>>>>,
     pub graphs: Arc<Mutex<HashMap<Metric, Arc<Graph>>>>,
+    pub toolbar: Toolbar,
 }
 
 impl Metrics {
@@ -36,7 +39,10 @@ impl Metrics {
         let window = Arc::new(nw_sys::window::get());
 
         let layout = Arc::new(Layout::try_new(&window, &settings).await?);
-
+        let container = Arc::new(Mutex::new(None));
+        let graphs = Arc::new(Mutex::new(HashMap::new()));
+        let toolbar = Toolbar::try_new(&window.window(), &container, &graphs)?;
+        toolbar.try_init()?;
         let app = Arc::new(Self {
             inner: Application::new()?,
             ipc: Ipc::try_new_window_binding(&window, Modules::Metrics)?,
@@ -46,8 +52,9 @@ impl Metrics {
             // shutdown: Arc::new(AtomicBool::new(false)),
             settings,
             layout,
-            container: Arc::new(Mutex::new(None)),
-            graphs: Arc::new(Mutex::new(HashMap::new())),
+            container,
+            graphs,
+            toolbar,
         });
 
         unsafe {
@@ -114,7 +121,7 @@ impl Metrics {
             graphs.push(graph);
         }
 
-        container.init_duration_selector(&window, graphs)?;
+        self.init_duration_selector(&window, graphs)?;
 
         Ok(())
     }
@@ -145,6 +152,29 @@ impl Metrics {
         // initiating metrica data relay
         self.core.metrics_ready().await?;
 
+        Ok(())
+    }
+
+    pub fn init_duration_selector(&self, window: &web_sys::Window, graphs: Vec<Arc<Graph>>) -> Result<()> {
+        let doc = window.document().unwrap();
+        let element = doc
+            .query_selector("select.duration-selector")
+            .unwrap()
+            .ok_or_else(|| "Unable to get select.duration-selector element".to_string())?;
+        let el = Arc::new(element.dyn_into::<HtmlSelectElement>().unwrap());
+        let el_clone = el.clone();
+        let on_change = callback!(move || {
+            let value = el_clone.value();
+            workflow_log::log_info!("duration-selector:change: {value:?}");
+            if let Ok(timeline) = GraphTimeline::try_from(value) {
+                for graph in &graphs {
+                    graph.set_timeline(&timeline);
+                }
+            }
+        });
+
+        el.add_event_listener_with_callback("change", on_change.get_fn())?;
+        self.callbacks.retain(on_change)?;
         Ok(())
     }
 }
