@@ -229,7 +229,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
     let consensus_monitor = Arc::new(ConsensusMonitor::new(counters, tick_service.clone()));
 
-    let perf_monitor = args.perf_metrics.then_some({
+    let perf_monitor = args.perf_metrics.then(|| {
         let cb = move |counters| {
             trace!("[{}] metrics: {:?}", kaspa_perf_monitor::SERVICE_NAME, counters);
         };
