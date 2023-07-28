@@ -96,7 +96,7 @@ impl Metrics {
 
         let container = Arc::new(Container::try_new(&window).await?);
         *self.container.lock().unwrap() = Some(container.clone());
-
+        let mut graphs = vec![];
         for metric in Metric::list() {
             let graph = Arc::new(
                 Graph::try_new(
@@ -110,8 +110,11 @@ impl Metrics {
                 )
                 .await?,
             );
-            self.graphs.lock().unwrap().insert(metric, graph);
+            self.graphs.lock().unwrap().insert(metric, graph.clone());
+            graphs.push(graph);
         }
+
+        container.init_duration_selector(&window, graphs)?;
 
         Ok(())
     }
