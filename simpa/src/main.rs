@@ -110,7 +110,7 @@ fn main() {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    let stop_perf_monitor = args.perf_metrics.then_some({
+    let stop_perf_monitor = args.perf_metrics.then(|| {
         let ts = Arc::new(TickService::new());
         let cb = move |counters| {
             trace!("metrics: {:?}", counters);
