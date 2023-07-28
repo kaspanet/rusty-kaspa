@@ -10,6 +10,27 @@
                 padding: 0;
             }
 
+            .settings{
+                padding:10px;
+            }
+            .control{display: inline-block}
+
+            .select-container{
+                display:inline-block;
+                width: auto;
+                border:2px solid #CCC;
+                border-radius:6px;
+                padding:1px 5px 1px 1px;
+                margin:0px 10px 0px 0px;
+            }
+            .select-container select{
+                appearance: button;
+                -webkit-appearance: button;
+                border:0px;
+                outline:none;
+                padding: 5px 10px 5px 5px;
+            }
+
         </style>
         <script>
             (async()=>{
@@ -20,6 +41,48 @@
         </script>
     </head>
     <body>
+        <div class="settings">
+            <div class="control">
+                <label>Duration:</label>
+                <div class="select-container">
+                    <select class="duration-selector">
+                        <option selected value="5m">5 Min</option>
+                        <option value="15m">15 Min</option>
+                        <option value="30m">30 Min</option>
+                        <option value="1h">1 Hour</option>
+                        <option value="4h">4 Hours</option>
+                        <option value="8h">8 Hours</option>
+                        <option value="12h">12 Hours</option>
+                        <option value="24h">24 Hours</option>
+                        <option value="36h">36 Hours</option>
+                        <option value="48h">48 Hours</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control">
+                <label>Height:</label>
+                <div class="select-container height-selector">
+                    <select>
+                        <option selected>LARGE</option>
+                        <option>MEDIUM</option>
+                        <option>SMALL</option>
+                        <option>TINY</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control">
+                <label>Columns:</label>
+                <div class="select-container columns-selector">
+                    <select>
+                        <option>1</option>
+                        <option>2</option>
+                        <option>3</option>
+                        <option>4</option>
+                        <option selected>5</option>
+                    </select>
+                </div>
+            </div>
+        </div>
         <!-- <canvas width="300" height="300" style="width:300px;height:300px"></canvas> -->
     </body>
 </html>
