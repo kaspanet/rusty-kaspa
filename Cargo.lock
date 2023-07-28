@@ -3226,7 +3226,7 @@ checksum = "9b2a4787296e9989611394c33f193f676704af1686e70b8f8033ab5ba9a35a94"
 [[package]]
 name = "perf_monitor"
 version = "0.2.0"
-source = "git+https://github.com/larksuite/perf-monitor-rs?branch=memory#af43f9f18d5d4d4e9855f0786bcaac7599ade55a"
+source = "git+https://github.com/larksuite/perf-monitor-rs?rev=3b2d52768f229c481186b991ae56559ab4cd087a#3b2d52768f229c481186b991ae56559ab4cd087a"
 dependencies = [
  "bindgen 0.59.2",
  "cc",
