@@ -1,7 +1,8 @@
-use kaspa_rpc_core::GetInfoResponse;
-
 use crate::imports::*;
 use crate::result::Result;
+use futures::pin_mut;
+use futures::stream::StreamExt;
+use kaspa_rpc_core::GetInfoResponse;
 use regex::Regex;
 struct Inner {
     task_ctl: DuplexChannel,
@@ -40,20 +41,18 @@ impl SyncMonitor {
     }
 
     pub async fn track(&self, is_synced: bool) -> Result<()> {
-        log_info!("XXX TRACK SYNCED: {} CURRENT: {}", is_synced, self.is_synced());
         if self.is_synced() != is_synced || !is_synced && !self.is_running() {
-            log_info!("XXX TRACK SYNCED: PROCESSING");
             if is_synced {
                 self.inner.is_synced.store(true, Ordering::SeqCst);
                 if self.is_running() {
-                    log_info!("XXX TRACK SYNCED: RUNNING - STOP");
+                    log_info!("synced state detected, stopping sync monitor");
                     self.stop_task().await?;
                 }
                 self.notify(Events::NodeSync { is_synced }).await?;
             } else {
                 self.inner.is_synced.store(false, Ordering::SeqCst);
                 if !self.is_running() {
-                    log_info!("XXX TRACK SYNCED: NOT RUNNING - START");
+                    log_info!("connection is not synced, starting sync monitor");
                     self.start_task().await?;
                 }
                 self.notify(Events::NodeSync { is_synced }).await?;
@@ -108,30 +107,21 @@ impl SyncMonitor {
         let events = self.multiplexer().create_channel();
 
         spawn(async move {
-            loop {
-                log_info!("sync timer iteration...");
-                let timer = sleep(Duration::from_secs(5));
+            let interval = interval(Duration::from_secs(5));
+            pin_mut!(interval);
 
+            loop {
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
-                        // this.inner.is_synced.store(true, Ordering::SeqCst);
-                        log_info!("XXX TRACK SYNCED: NOT RUNNING - ABORTING...");
-
                         break;
                     },
 
-                    _ = timer.fuse() => {
-                        log_info!("XXX TRACK SYNCED: TIMER...");
-
+                    _ = interval.next().fuse() => {
                         if this.is_synced() {
-                            log_info!("XXX TRACK SYNCED: THIS IS SYNCED - BAILING...");
                             break;
                         } else if let Ok(GetInfoResponse { is_synced, .. }) = this.rpc().get_info().await {
-                            log_info!("XXX TRACK SYNCED: RPC SYNCED STATUS {is_synced}...");
                             if is_synced {
-                                log_info!("XXX TRACK SYNCED: RPC SYNCED STATUS - PROCESSING...");
                                 if is_synced != this.is_synced() {
-                                    log_info!("XXX TRACK SYNCED: RPC SYNCED STATUS - SYNCED != SYNCED SETTING TRUE...");
                                     this.inner.is_synced.store(true, Ordering::SeqCst);
                                     this.notify(Events::NodeSync { is_synced }).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
                                 }
@@ -187,6 +177,8 @@ impl SyncMonitor {
     }
 }
 
+// This is a temporary implementation that extracts sync state from the node's stdout.
+// This will be removed one a proper RPC notification API is implemented.
 pub struct StateObserver {
     proof: Regex,
     ibd_headers: Regex,

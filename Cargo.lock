@@ -5444,7 +5444,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "workflow-async-trait",
  "workflow-core-macros",
- "workflow-log",
 ]
 
 [[package]]
