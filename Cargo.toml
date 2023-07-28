@@ -49,6 +49,7 @@ members = [
     "testing/integration",
     "utils",
     "rothschild",
+    "metrics/perf_monitor"
 ]
 
 [workspace.package]
@@ -114,6 +115,7 @@ kaspa-wrpc-proxy = { version = "0.1.6", path = "rpc/wrpc/proxy" }
 kaspa-wrpc-server = { version = "0.1.6", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.1.6", path = "rpc/wrpc/wasm" }
 kaspad = { version = "0.1.6", path = "kaspad" }
+kaspa-perf-monitor = { path = "metrics/perf_monitor" }
 
 # external
 thiserror = "1"

@@ -25,6 +25,8 @@ pub struct Defaults {
     pub archival: bool,
     pub sanity: bool,
     pub yes: bool,
+    pub perf_metrics: bool,
+    pub perf_metrics_interval_sec: u64,
 }
 
 impl Default for Defaults {
@@ -48,6 +50,8 @@ impl Default for Defaults {
             archival: false,
             sanity: false,
             yes: false,
+            perf_metrics: false,
+            perf_metrics_interval_sec: 1,
         }
     }
 }
@@ -84,6 +88,8 @@ pub struct Args {
     pub sanity: bool,
     pub yes: bool,
     pub externalip: Option<IpAddress>,
+    pub perf_metrics: bool,
+    pub perf_metrics_interval_sec: u64,
 }
 
 pub fn cli(defaults: &Defaults) -> Command {
@@ -231,6 +237,14 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .value_parser(clap::value_parser!(IpAddress))
                 .help("Add an ip to the list of local addresses we claim to listen on to peers"),
         )
+    .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
+    .arg(
+        Arg::new("perf-metrics-interval-sec")
+            .long("perf-metrics-interval-sec")
+            .require_equals(true)
+            .value_parser(clap::value_parser!(u64))
+            .help("Interval in seconds for performance metrics collection."),
+    )
 }
 
 impl Args {
@@ -266,6 +280,11 @@ impl Args {
             yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
             user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
             externalip: m.get_one::<IpAddress>("externalip").cloned(),
+            perf_metrics: m.get_one::<bool>("perf-metrics").cloned().unwrap_or(defaults.perf_metrics),
+            perf_metrics_interval_sec: m
+                .get_one::<u64>("perf-metrics-interval-sec")
+                .cloned()
+                .unwrap_or(defaults.perf_metrics_interval_sec),
         }
     }
 

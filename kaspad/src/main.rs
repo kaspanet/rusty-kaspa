@@ -26,6 +26,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::exit;
 use std::sync::Arc;
+use std::time::Duration;
 
 use args::{Args, Defaults};
 
@@ -33,9 +34,10 @@ use kaspa_consensus::config::ConfigBuilder;
 use kaspa_utxoindex::UtxoIndex;
 
 use async_channel::unbounded;
-use kaspa_core::info;
+use kaspa_core::{info, trace};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_p2p_flows::service::P2pService;
+use kaspa_perf_monitor::builder::Builder as PerfMonitorBuilder;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, ServerCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
 mod args;
@@ -226,8 +228,22 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         notification_root.clone(),
         processing_counters.clone(),
     ));
+
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
-    let monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
+    let consensus_monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
+
+    let perf_monitor = args.perf_metrics.then(|| {
+        let cb = move |counters| {
+            trace!("[{}] metrics: {:?}", kaspa_perf_monitor::SERVICE_NAME, counters);
+        };
+        Arc::new(
+            PerfMonitorBuilder::new()
+                .with_fetch_interval(Duration::from_secs(args.perf_metrics_interval_sec))
+                .with_fetch_cb(cb)
+                .with_tick_service(tick_service.clone())
+                .build(),
+        )
+    });
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
@@ -288,8 +304,10 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     async_runtime.register(rpc_core_service.clone());
     async_runtime.register(grpc_service);
     async_runtime.register(p2p_service);
-    async_runtime.register(monitor);
-
+    async_runtime.register(consensus_monitor);
+    if let Some(perf_monitor) = perf_monitor {
+        async_runtime.register(perf_monitor);
+    }
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments
     [
