@@ -1759,6 +1759,7 @@ dependencies = [
  "secp256k1",
  "serde",
  "serde_bytes",
+ "serde_json",
  "smallvec",
  "thiserror",
 ]

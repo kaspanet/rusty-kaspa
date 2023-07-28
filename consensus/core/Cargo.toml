@@ -25,6 +25,7 @@ itertools.workspace = true
 cfg-if.workspace = true
 getrandom.workspace = true
 serde_bytes.workspace = true
+serde_json.workspace = true
 
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 
