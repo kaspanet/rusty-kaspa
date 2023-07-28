@@ -77,7 +77,12 @@ impl Toolbar {
     pub fn try_init(&self) -> Result<()> {
         // let graphs = self.graphs.clone();
         let this = self.clone();
-        self.push(Button::try_new(self, "1H", Arc::new(move || this.action(Action::Duration(12345))))?);
+        self.push(Button::try_new(
+            self,
+            "1H",
+            "Set graph time range to 1 Hour",
+            Arc::new(move || this.action(Action::Duration(12345))),
+        )?);
 
         Ok(())
     }
@@ -106,9 +111,10 @@ pub struct Button {
 }
 
 impl Button {
-    pub fn try_new(toolbar: &Toolbar, html: &str, callback: Arc<ButtonCallback>) -> Result<Self> {
+    pub fn try_new(toolbar: &Toolbar, html: &str, tooltip: &str, callback: Arc<ButtonCallback>) -> Result<Self> {
         let element = toolbar.document().create_element("div").unwrap();
         element.set_class_name("button");
+        element.set_attribute("tooltip", tooltip);
         element.set_inner_html(html);
         toolbar.element().append_child(&element).unwrap();
         let callback = Arc::new(callback);
