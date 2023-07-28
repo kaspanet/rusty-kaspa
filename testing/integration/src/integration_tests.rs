@@ -1683,7 +1683,7 @@ async fn staging_consensus_test() {
     let consensus_db_dir = db_path.join("consensus");
     let meta_db_dir = db_path.join("meta");
 
-    let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
+    let meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir);
 
     let (notification_send, _notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));

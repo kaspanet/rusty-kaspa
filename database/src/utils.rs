@@ -1,4 +1,4 @@
-use crate::prelude::{open_db, DB};
+use crate::prelude::{ConnBuilder, DB};
 use std::{
     path::PathBuf,
     sync::{Arc, Weak},
@@ -56,7 +56,7 @@ pub fn get_kaspa_tempdir() -> TempDir {
 pub fn create_temp_db_with_parallelism(parallelism: usize) -> (DbLifetime, Arc<DB>) {
     let db_tempdir = get_kaspa_tempdir();
     let db_path = db_tempdir.path().to_owned();
-    let db = open_db(db_path, true, parallelism);
+    let db = ConnBuilder::default().with_db_path(db_path).with_parallelism(parallelism).build();
     (DbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)
 }
 
@@ -77,7 +77,7 @@ pub fn create_permanent_db(db_path: String, parallelism: usize) -> (DbLifetime, 
             _ => panic!("{e}"),
         }
     }
-    let db = open_db(db_dir, true, parallelism);
+    let db = ConnBuilder::default().with_db_path(db_dir).with_parallelism(parallelism).build();
     (DbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
 
@@ -85,6 +85,6 @@ pub fn create_permanent_db(db_path: String, parallelism: usize) -> (DbLifetime, 
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
 pub fn load_existing_db(db_path: String, parallelism: usize) -> (DbLifetime, Arc<DB>) {
     let db_dir = PathBuf::from(db_path);
-    let db = open_db(db_dir, false, parallelism);
+    let db = ConnBuilder::default().with_db_path(db_dir).with_parallelism(parallelism).with_create_if_missing(false).build();
     (DbLifetime::without_destroy(Arc::downgrade(&db)), db)
 }
