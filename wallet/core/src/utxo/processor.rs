@@ -263,7 +263,6 @@ impl UtxoProcessor {
 
         if !has_utxo_index {
             self.notify(Events::UtxoIndexNotEnabled).await?;
-            self.rpc_client().disconnect().await?;
             return Err(Error::MissingUtxoIndex);
         }
 
@@ -285,13 +284,21 @@ impl UtxoProcessor {
         Ok(())
     }
 
-    pub async fn handle_connect(self: &Arc<Self>) -> Result<()> {
+    pub async fn handle_connect_impl(self: &Arc<Self>) -> Result<()> {
         self.init_state_from_server().await?;
 
         self.inner.is_connected.store(true, Ordering::SeqCst);
         self.register_notification_listener().await?;
         // self.start_task().await?;
         self.notify(Events::UtxoProcStart).await?;
+        Ok(())
+    }
+
+    pub async fn handle_connect(self: &Arc<Self>) -> Result<()> {
+        if let Err(err) = self.handle_connect_impl().await {
+            self.notify(Events::UtxoProcError(err.to_string())).await?;
+            self.rpc_client().disconnect().await?;
+        }
         Ok(())
     }
 

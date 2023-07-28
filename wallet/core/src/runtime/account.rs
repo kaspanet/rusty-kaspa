@@ -446,7 +446,6 @@ impl Account {
 
     /// Start Account service task
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        // self.start_task().await
         if self.wallet.is_connected() {
             self.connect().await?;
         }
@@ -456,8 +455,6 @@ impl Account {
 
     /// Stop Account service task
     pub async fn stop(self: &Arc<Self>) -> Result<()> {
-        // self.stop_task().await
-        // self.unsubscribe_utxos_changed(vec![]).await?;
         self.utxo_context().clear().await?;
         self.disconnect().await?;
         Ok(())
@@ -465,10 +462,9 @@ impl Account {
 
     /// handle connection event
     pub async fn connect(self: &Arc<Self>) -> Result<()> {
-        self.wallet.active_accounts().insert(self.clone());
-        // self.is_connected.store(true, Ordering::SeqCst);
-        // self.register_notification_listener().await?;
-        self.scan(None, None).await?;
+        if self.wallet.active_accounts().insert(self.clone()).is_none() {
+            self.scan(None, None).await?;
+        }
         Ok(())
     }
 
@@ -493,6 +489,18 @@ impl AccountMap {
         self.inner().clear();
     }
 
+    pub fn len(&self) -> usize {
+        self.inner().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner().is_empty()
+    }
+
+    pub fn first(&self) -> Option<Arc<Account>> {
+        self.inner().values().next().cloned()
+    }
+
     pub fn get(&self, account_id: &AccountId) -> Option<Arc<Account>> {
         self.inner().get(account_id).cloned()
     }
@@ -503,9 +511,8 @@ impl AccountMap {
         map.extend(accounts);
     }
 
-    pub fn insert(&self, account: Arc<Account>) {
-        log_info!("XXX INSERTING ACCOUNT {}", account.id);
-        self.inner().insert(account.id, account);
+    pub fn insert(&self, account: Arc<Account>) -> Option<Arc<Account>> {
+        self.inner().insert(account.id, account)
     }
 
     pub fn remove(&self, id: &AccountId) {

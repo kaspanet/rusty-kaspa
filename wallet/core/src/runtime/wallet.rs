@@ -185,23 +185,10 @@ impl Wallet {
     }
 
     pub async fn reload(self: &Arc<Self>) -> Result<()> {
-        let accounts = self.inner.active_accounts.cloned_flat_list();
-        let futures = accounts.iter().map(|account| account.stop());
-        join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
-        self.utxo_processor().clear().await?;
+        self.reset().await?;
 
-        // TODO - parallelize?
         if self.is_open() {
-            // log_info!("reloading accounts...");
-            // let mut accounts = self.accounts(None).await?;
-            let mut accounts = self.accounts(None).await?;
-            while let Some(_account) = accounts.try_next().await? {
-                //     account.start().await?;
-                //     // TODO - parallelize?
-            }
-
-            let hint = self.store().get_user_hint().await?;
-            self.notify(Events::WalletHasLoaded { hint }).await?;
+            self.notify(Events::WalletLoaded).await?;
         }
 
         Ok(())
@@ -213,23 +200,28 @@ impl Wallet {
         Ok(())
     }
 
+    pub async fn autoselect_default_account_if_single(self: &Arc<Wallet>) -> Result<()> {
+        if self.active_accounts().len() == 1 {
+            self.select(self.active_accounts().first().as_ref()).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn activate_all_stored_accounts(self: &Arc<Wallet>) -> Result<()> {
+        self.accounts(None).await?.try_collect::<Vec<_>>().await?;
+        Ok(())
+    }
+
     pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
-        // - TODO - RESET?
         self.reset().await?;
 
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
         self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
-        let store_accounts = self.store().as_account_store()?;
-        let mut iter = store_accounts.iter(None).await?;
-
-        while let Some(stored_account) = iter.try_next().await? {
-            let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
-            account.start().await?;
-        }
 
         let hint = self.store().get_user_hint().await?;
-        self.notify(Events::WalletHasLoaded { hint }).await?;
+        self.notify(Events::WalletHint { hint }).await?;
+        self.notify(Events::WalletLoaded).await?;
 
         Ok(())
     }
@@ -604,8 +596,8 @@ impl Wallet {
             | Events::Debit { record } => {
                 self.store().as_transaction_record_store()?.store(&[record]).await?;
             }
-            Events::UtxoProcStart => {
-                if self.is_synced() && self.is_open() {
+            Events::NodeSync { is_synced } => {
+                if *is_synced && self.is_open() {
                     self.reload().await?;
                 }
             }

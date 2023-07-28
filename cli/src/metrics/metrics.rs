@@ -74,7 +74,7 @@ impl Handler for Metrics {
 
         self.rpc.lock().unwrap().replace(ctx.wallet().rpc().clone());
 
-        self.start_task().await?;
+        self.start_task(&ctx).await?;
         Ok(())
     }
 
@@ -122,8 +122,9 @@ impl Metrics {
         Ok(())
     }
 
-    pub async fn start_task(self: &Arc<Self>) -> Result<()> {
+    pub async fn start_task(self: &Arc<Self>, ctx: &Arc<KaspaCli>) -> Result<()> {
         let this = self.clone();
+        let ctx = ctx.clone();
 
         let task_ctl_receiver = self.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.task_ctl.response.sender.clone();
@@ -141,12 +142,13 @@ impl Metrics {
                     },
                     _ = interval.next().fuse() => {
 
+                        if !ctx.is_connected() {
+                            continue;
+                        }
 
                         let last_data = this.data.lock().unwrap().take().unwrap();
                         this.data.lock().unwrap().replace(MetricsData::new(unixtime_as_millis_f64()));
-                        log_info!("++++ STARTING METRICS COLLECTION");
                         if let Some(rpc) = this.rpc() {
-                            log_info!("++++ EXECUTING RPC METRICS COLLECTION");
                             let samples = vec![
                                 this.sample_metrics(rpc.clone()).boxed(),
                                 this.sample_gbdi(rpc.clone()).boxed(),
@@ -156,11 +158,7 @@ impl Metrics {
                             join_all(samples).await;
                         }
 
-                            log_info!("++++ DONE WITH METRICS COLLECTION");
-                        // TODO - output to terminal...
                         if let Some(sink) = this.sink() {
-                            // let data = this.data.lock().unwrap().as_ref().unwrap();
-                            // let data = data.as_ref().unwrap();
                             let snapshot = MetricsSnapshot::from((&last_data, this.data.lock().unwrap().as_ref().unwrap()));
                             sink(snapshot).await.ok();
                         }
@@ -193,8 +191,6 @@ impl Metrics {
     // --- samplers
 
     async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
-        log_info!("**** DOIN SAMPLE METRICS");
-
         if let Ok(metrics) = rpc.get_metrics(true, true).await {
             #[allow(unused_variables)]
             let GetMetricsResponse { server_time, consensus_metrics, process_metrics } = metrics;

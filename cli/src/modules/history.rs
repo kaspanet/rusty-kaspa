@@ -6,8 +6,11 @@ use kaspa_wallet_core::storage::Binding;
 pub struct History;
 
 impl History {
-    async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, _argv: Vec<String>, _cmd: &str) -> Result<()> {
+    async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        tprintln!(ctx);
+
+        let last = if argv.is_empty() { None } else { argv[0].parse::<usize>().ok() };
 
         let account = ctx.account().await?;
         let network_id = ctx.wallet().network_id()?;
@@ -16,34 +19,44 @@ impl History {
         let store = ctx.wallet().store().as_transaction_record_store()?;
         let mut ids = store.transaction_id_iter(&binding, &network_id).await?;
         let length = ids.size_hint().0;
+        let skip = if let Some(last) = last {
+            if last > length {
+                0
+            } else {
+                length - last
+            }
+        } else {
+            0
+        };
         let mut index = 0;
         let page = 25;
         while let Some(id) = ids.try_next().await? {
-            if index > 0 && index % page == 0 {
-                tprintln!(ctx);
-                let prompt = format!(
-                    "Displaying transactions {} to {} of {} (press any key to continue, 'Q' to abort)",
-                    index.separated_string(),
-                    (index + page).separated_string(),
-                    length.separated_string()
-                );
-                let query = ctx.term().kbhit(&prompt).await?;
-                tprintln!(ctx);
-                if query.to_lowercase() == "q" {
-                    return Ok(());
+            if index >= skip {
+                if index > 0 && index % page == 0 {
+                    tprintln!(ctx);
+                    let prompt = format!(
+                        "Displaying transactions {} to {} of {} (press any key to continue, 'Q' to abort)",
+                        index.separated_string(),
+                        (index + page).separated_string(),
+                        length.separated_string()
+                    );
+                    let query = ctx.term().kbhit(&prompt).await?;
+                    tprintln!(ctx);
+                    if query.to_lowercase() == "q" {
+                        return Ok(());
+                    }
+                }
+
+                match store.load_single(&binding, &network_id, &id).await {
+                    Ok(tx) => {
+                        let text = tx.format_with_args(&ctx.wallet(), None, current_daa_score, true, Some(account.clone())).await;
+                        tprintln!(ctx, "{text}");
+                    }
+                    Err(err) => {
+                        terrorln!(ctx, "{err}");
+                    }
                 }
             }
-
-            match store.load_single(&binding, &network_id, &id).await {
-                Ok(tx) => {
-                    let text = tx.format_with_args(&ctx.wallet(), None, current_daa_score, true, Some(account.clone())).await;
-                    tprintln!(ctx, "{text}");
-                }
-                Err(err) => {
-                    terrorln!(ctx, "{err}");
-                }
-            }
-
             index += 1;
         }
 

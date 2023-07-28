@@ -15,7 +15,9 @@ use kaspa_wallet_core::imports::{AtomicBool, Ordering, ToHex};
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
 use kaspa_wallet_core::storage::interface::AccessContext;
 use kaspa_wallet_core::storage::{AccessContextT, AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
+use kaspa_wallet_core::DynRpcApi;
 use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret, Events};
+use kaspa_wrpc_client::KaspaRpcClient;
 use pad::PadStr;
 use separator::Separatable;
 use std::ops::Deref;
@@ -121,7 +123,7 @@ impl KaspaCli {
             term: Arc::new(Mutex::new(None)),
             wallet,
             notifications_task_ctl: DuplexChannel::oneshot(),
-            mute: Arc::new(AtomicBool::new(false)),
+            mute: Arc::new(AtomicBool::new(true)),
             flags: Flags::default(),
             last_interaction: Arc::new(Mutex::new(Instant::now())),
             handlers: Arc::new(HandlerCli::default()),
@@ -163,6 +165,18 @@ impl KaspaCli {
 
     pub fn wallet(&self) -> Arc<Wallet> {
         self.wallet.clone()
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.wallet.is_connected()
+    }
+
+    pub fn rpc(&self) -> Arc<DynRpcApi> {
+        self.wallet.rpc().clone()
+    }
+
+    pub fn rpc_client(&self) -> Arc<KaspaRpcClient> {
+        self.wallet.rpc_client().clone()
     }
 
     pub fn store(&self) -> Arc<dyn Interface> {
@@ -283,6 +297,9 @@ impl KaspaCli {
                             match msg {
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},
+                                Events::UtxoProcError(err) => {
+                                    terrorln!(this,"{err}");
+                                },
                                 #[allow(unused_variables)]
                                 Events::Connect{ url, network_id } => {
                                     // log_info!("Connected to {url}");
@@ -333,7 +350,7 @@ impl KaspaCli {
                                     this.term().refresh_prompt();
 
                                 },
-                                Events::WalletHasLoaded {
+                                Events::WalletHint {
                                     hint
                                 } => {
 
@@ -341,7 +358,19 @@ impl KaspaCli {
                                         tprintln!(this, "\nYour wallet hint is: {hint}\n");
                                     }
 
+                                },
+                                Events::WalletLoaded => {
+
+                                    // load all accounts
+                                    this.wallet().activate_all_stored_accounts().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
+
+                                    // list all accounts
                                     this.list().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
+
+                                    // load default account if only one account exists
+                                    this.wallet().autoselect_default_account_if_single().await.ok();
+                                    this.term().refresh_prompt();
+
                                 },
                                 // Events::UtxoProcessor(event) => {
 
@@ -355,7 +384,7 @@ impl KaspaCli {
                                         Events::Pending {
                                             record
                                         } => {
-                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
                                                 let tx = record.format_with_state(&this.wallet,Some("pending")).await;
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
@@ -363,7 +392,7 @@ impl KaspaCli {
                                         Events::Reorg {
                                             record
                                         } => {
-                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
                                                 let tx = record.format_with_state(&this.wallet,Some("reorg")).await;
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
@@ -371,7 +400,7 @@ impl KaspaCli {
                                         Events::External {
                                             record
                                         } => {
-                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
                                                 let tx = record.format_with_state(&this.wallet,Some("external")).await;
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
@@ -379,7 +408,7 @@ impl KaspaCli {
                                         Events::Maturity {
                                             record
                                         } => {
-                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
                                                 let tx = record.format_with_state(&this.wallet,Some("confirmed")).await;
                                                 tprintln!(this,"\r\n{tx}\r\n");
                                             }
@@ -387,7 +416,7 @@ impl KaspaCli {
                                         Events::Debit {
                                             record
                                         } => {
-                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Utxo)) {
+                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
                                                 let tx = record.format_with_state(&this.wallet,Some("debit")).await;
                                                 tprintln!(this,"{tx}");
                                             }
@@ -692,7 +721,7 @@ impl KaspaCli {
             while let Some(account) = accounts.try_next().await? {
                 let receive_address = account.receive_address().await?;
                 tprintln!(self, "    • {}", account.get_list_string()?);
-                tprintln!(self, "      {}", style(receive_address.to_string()).yellow());
+                tprintln!(self, "      {}", style(receive_address.to_string()).blue());
             }
         }
         tprintln!(self);

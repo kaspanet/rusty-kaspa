@@ -39,9 +39,10 @@ pub enum Events {
     SyncState {
         state: SyncState,
     },
-    WalletHasLoaded {
+    WalletHint {
         hint: Option<Hint>,
     },
+    WalletLoaded,
     ServerStatus {
         #[serde(rename = "networkId")]
         network_id: NetworkId,
@@ -53,6 +54,7 @@ pub enum Events {
     },
     UtxoProcStart,
     UtxoProcStop,
+    UtxoProcError(String),
 
     // UtxoProcessor(utxo::Events),
     DAAScoreChange(u64),
