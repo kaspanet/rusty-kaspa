@@ -112,7 +112,7 @@ impl Metrics {
                     &container,
                     metric.descr(),
                     "",
-                    GraphTimeline::Minutes(5),
+                    GraphDuration::parse("5m").unwrap(),
                     GraphTheme::Light,
                     Margin::new(20.0, 20.0, 10.0, 30.0),
                 )
@@ -122,7 +122,7 @@ impl Metrics {
             graphs.push(graph);
         }
 
-        self.init_duration_selector(&window, graphs)?;
+        //self.init_duration_selector(&window, graphs)?;
 
         Ok(())
     }
@@ -134,7 +134,7 @@ impl Metrics {
     async fn ingest(self: &Arc<Self>, data: MetricsSnapshot) -> Result<()> {
         for metric in Metric::list() {
             let value = data.get(&metric);
-            self.graph(&metric).ingest(data.unixtime, value).await?;
+            self.graph(&metric).ingest(data.unixtime, value.clone(), &format!("{:.4}", value.as_f64().unwrap())).await?;
         }
 
         yield_executor().await;
@@ -156,28 +156,28 @@ impl Metrics {
         Ok(())
     }
 
-    pub fn init_duration_selector(&self, window: &web_sys::Window, graphs: Vec<Arc<Graph>>) -> Result<()> {
-        let doc = window.document().unwrap();
-        let element = doc
-            .query_selector("select.duration-selector")
-            .unwrap()
-            .ok_or_else(|| "Unable to get select.duration-selector element".to_string())?;
-        let el = Arc::new(element.dyn_into::<HtmlSelectElement>().unwrap());
-        let el_clone = el.clone();
-        let on_change = callback!(move || {
-            let value = el_clone.value();
-            workflow_log::log_info!("duration-selector:change: {value:?}");
-            if let Ok(timeline) = GraphTimeline::try_from(value) {
-                for graph in &graphs {
-                    graph.set_timeline(&timeline);
-                }
-            }
-        });
+    // pub fn init_duration_selector(&self, window: &web_sys::Window, graphs: Vec<Arc<Graph>>) -> Result<()> {
+    //     let doc = window.document().unwrap();
+    //     let element = doc
+    //         .query_selector("select.duration-selector")
+    //         .unwrap()
+    //         .ok_or_else(|| "Unable to get select.duration-selector element".to_string())?;
+    //     let el = Arc::new(element.dyn_into::<HtmlSelectElement>().unwrap());
+    //     let el_clone = el.clone();
+    //     let on_change = callback!(move || {
+    //         let value = el_clone.value();
+    //         workflow_log::log_info!("duration-selector:change: {value:?}");
+    //         if let Ok(duration) = GraphDuration::parse(value) {
+    //             for graph in &graphs {
+    //                 graph.set_duration(duration);
+    //             }
+    //         }
+    //     });
 
-        el.add_event_listener_with_callback("change", on_change.get_fn())?;
-        self.callbacks.retain(on_change)?;
-        Ok(())
-    }
+    //     el.add_event_listener_with_callback("change", on_change.get_fn())?;
+    //     self.callbacks.retain(on_change)?;
+    //     Ok(())
+    // }
 }
 
 #[wasm_bindgen]
