@@ -15,6 +15,7 @@ kaspa-database.workspace = true
 kaspa-consensus.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
+kaspa-perf-monitor.workspace = true
 
 rand.workspace = true
 itertools.workspace = true

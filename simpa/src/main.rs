@@ -19,11 +19,12 @@ use kaspa_consensus_core::{
     BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_core::{info, warn};
+use kaspa_core::{info, task::service::AsyncService, task::tick::TickService, trace, warn};
 use kaspa_database::utils::{create_temp_db_with_parallelism, load_existing_db};
 use kaspa_hashes::Hash;
+use kaspa_perf_monitor::builder::Builder;
 use simulator::network::KaspaNetworkSimulator;
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 pub mod simulator;
 
@@ -90,6 +91,11 @@ struct Args {
     /// Use testnet-11 consensus params
     #[arg(long, default_value_t = false)]
     testnet11: bool,
+    /// Enable performance metrics: cpu, memory, disk io usage
+    #[arg(long, default_value_t = false)]
+    perf_metrics: bool,
+    #[arg(long, default_value_t = 10)]
+    perf_metrics_interval_sec: u64,
 }
 
 fn main() {
@@ -101,6 +107,25 @@ fn main() {
 
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let stop_perf_monitor = args.perf_metrics.then_some({
+        let ts = Arc::new(TickService::new());
+        let cb = move |counters| {
+            trace!("metrics: {:?}", counters);
+        };
+        let m = Arc::new(
+            Builder::new()
+                .with_fetch_interval(Duration::from_secs(args.perf_metrics_interval_sec))
+                .with_fetch_cb(cb)
+                .with_tick_service(ts.clone())
+                .build(),
+        );
+        let monitor = m.clone();
+        rt.spawn(async move { monitor.start().await });
+        m.stop()
+    });
 
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
@@ -152,8 +177,11 @@ fn main() {
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
     let consensus2 = Arc::new(Consensus::new(db2, config.clone(), Default::default(), notification_root, Default::default()));
     let handles2 = consensus2.run_processors();
-    validate(&consensus, &consensus2, &config, args.delay, args.bps);
+    rt.block_on(validate(&consensus, &consensus2, &config, args.delay, args.bps));
     consensus2.shutdown(handles2);
+    if let Some(stop_perf_monitor) = stop_perf_monitor {
+        _ = rt.block_on(stop_perf_monitor);
+    }
     drop(consensus);
 }
 
@@ -220,7 +248,6 @@ fn apply_args_to_perf_params(args: &Args, perf_params: &mut PerfParams) {
     }
 }
 
-#[tokio::main]
 async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params, delay: f64, bps: f64) {
     let hashes = topologically_ordered_hashes(src_consensus, params.genesis.hash);
     let num_blocks = hashes.len();
