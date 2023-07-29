@@ -10,6 +10,11 @@ include.workspace = true
 license.workspace = true
 repository = "https://github.com/kaspanet/rusty-kaspa"
 
+[features]
+metrics = []
+legacy-rpc = ["kaspa-cli/legacy-rpc","kaspa-wallet-core/legacy-rpc"]
+default = ["metrics"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

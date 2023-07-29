@@ -9,7 +9,8 @@ license.workspace = true
 
 [features]
 multi-user = []
-default = []
+legacy-rpc = []
+default = ["legacy-rpc"]
 
 [lib]
 crate-type = ["cdylib", "lib"]

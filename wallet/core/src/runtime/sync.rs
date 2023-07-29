@@ -1,7 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
-use futures::pin_mut;
 use futures::stream::StreamExt;
+use futures::{pin_mut, TryFutureExt};
 use regex::Regex;
 struct Inner {
     task_ctl: DuplexChannel,
@@ -96,6 +96,16 @@ impl SyncMonitor {
         Ok(())
     }
 
+    async fn get_sync_status(&self) -> Result<bool> {
+        cfg_if! {
+            if #[cfg(feature = "legacy-rpc")] {
+                Ok(self.rpc().get_info().map_ok(|info| info.is_synced).await?)
+            } else {
+                Ok(self.rpc().get_sync_status().await?)
+            }
+        }
+    }
+
     pub async fn start_task(&self) -> Result<()> {
         if self.is_running() {
             panic!("SyncProc::start_task() called while already running");
@@ -120,7 +130,7 @@ impl SyncMonitor {
                     _ = interval.next().fuse() => {
                         if this.is_synced() {
                             break;
-                        } else if let Ok(is_synced) = this.rpc().get_sync_status().await {
+                        } else if let Ok(is_synced) = this.get_sync_status().await {
                             if is_synced {
                                 if is_synced != this.is_synced() {
                                     this.inner.is_synced.store(true, Ordering::SeqCst);
