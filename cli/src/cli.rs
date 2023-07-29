@@ -681,7 +681,8 @@ impl KaspaCli {
 
                 accounts.iter().for_each(|(seq, account)| {
                     let seq = style(seq.to_string()).cyan();
-                    tprintln!(self, "    {seq}: {}", account.get_list_string().unwrap_or_else(|err| panic!("{err}")));
+                    let ls_string = account.get_list_string().unwrap_or_else(|err| panic!("{err}"));
+                    tprintln!(self, "    {seq}: {ls_string}");
                 })
             });
 
