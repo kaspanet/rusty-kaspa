@@ -84,7 +84,7 @@ impl Notifier {
     pub fn create_elements() -> Result<HashMap<Notification, Element>> {
         let mut elements = HashMap::new();
 
-        inject_css(include_str!("./notifier.css"))?;
+        inject_css(None, include_str!("./notifier.css"))?;
 
         let document = document();
         let body = body()?;

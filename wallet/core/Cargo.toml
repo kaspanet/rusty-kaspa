@@ -7,6 +7,10 @@ authors.workspace = true
 include.workspace = true
 license.workspace = true
 
+[features]
+multi-user = []
+default = []
+
 [lib]
 crate-type = ["cdylib", "lib"]
 

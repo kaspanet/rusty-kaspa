@@ -100,7 +100,7 @@ impl Metrics {
         let window = self.window.window();
 
         Container::try_init().await?;
-        Graph::try_init().await?;
+        Graph::try_init(Some("graph")).await?;
 
         let container = Arc::new(Container::try_new(&window).await?);
         *self.container.lock().unwrap() = Some(container.clone());

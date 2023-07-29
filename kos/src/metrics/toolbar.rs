@@ -13,8 +13,39 @@ use workflow_d3::{
     graph::{Graph, DAYS, HOURS, MINUTES},
 };
 
+#[derive(Clone)]
+pub struct Count(usize);
+// enum Size {
+//     Tiny,
+//     Small,
+//     Medium,
+//     Large,
+// }
+
+impl Count {
+    pub fn iter() -> impl Iterator<Item = Self> {
+        static COUNTS: [Count; 4] = [Count(1), Count(2), Count(3), Count(4)];
+        COUNTS.iter().cloned()
+    }
+
+    fn get_cols(&self) -> String {
+        let w = 100.0 / self.0 as f64;
+        format!("width: {w}vw;")
+    }
+
+    fn get_rows(&self) -> String {
+        let h = 100.0 / self.0 as f64;
+        format!("height: {h}vh;")
+    }
+}
+
+type Rows = Count;
+type Cols = Count;
+
 pub enum Action {
     Duration(u64),
+    Cols(Count),
+    Rows(Count),
 }
 
 pub struct ToolbarInner {
@@ -24,6 +55,7 @@ pub struct ToolbarInner {
     pub container: Arc<Mutex<Option<Arc<Container>>>>,
     pub graphs: Arc<Mutex<HashMap<Metric, Arc<Graph>>>>,
     pub controls: Arc<Mutex<Vec<Arc<dyn Control>>>>,
+    pub layout: Arc<Mutex<(Cols, Rows)>>,
 }
 
 unsafe impl Send for ToolbarInner {}
@@ -54,6 +86,7 @@ impl Toolbar {
                 graphs: graphs.clone(),
                 callbacks: CallbackMap::default(),
                 controls: Arc::new(Mutex::new(Vec::new())),
+                layout: Arc::new(Mutex::new((Count(3), Count(5)))),
             }),
         })
     }
@@ -64,6 +97,10 @@ impl Toolbar {
 
     pub fn element(&self) -> &Element {
         &self.inner.element
+    }
+
+    pub fn layout(&self) -> MutexGuard<(Cols, Rows)> {
+        self.inner.layout.lock().unwrap()
     }
 
     pub fn controls(&self) -> MutexGuard<Vec<Arc<dyn Control>>> {
@@ -102,6 +139,30 @@ impl Toolbar {
             )?);
         }
 
+        for width in Count::iter() {
+            let this = self.clone();
+            self.push(RadioButton::try_new(
+                self,
+                self.element(),
+                "width",
+                &format!("{}", width.0),
+                &format!("Set graph layout to {} columns", width.0),
+                Arc::new(move |btn| this.action(btn, Action::Cols(width.clone()))),
+            )?);
+        }
+
+        for height in Count::iter() {
+            let this = self.clone();
+            self.push(RadioButton::try_new(
+                self,
+                self.element(),
+                "height",
+                &format!("{}", height.0),
+                &format!("Set graph layout to {} rows", height.0),
+                Arc::new(move |btn| this.action(btn, Action::Rows(height.clone()))),
+            )?);
+        }
+
         Ok(())
     }
 
@@ -113,7 +174,42 @@ impl Toolbar {
                     graph.set_duration(duration);
                 }
             }
+            Action::Cols(cols) => {
+                let layout = {
+                    let mut layout = self.layout();
+                    layout.0 = cols;
+                    layout.clone()
+                };
+                self.update_layout(layout);
+            }
+            Action::Rows(rows) => {
+                let layout = {
+                    let mut layout = self.layout();
+                    layout.1 = rows;
+                    layout.clone()
+                };
+                self.update_layout(layout);
+            }
         }
+    }
+
+    fn update_layout(&self, layout: (Cols, Rows)) {
+        dispatch(async move {
+            let style = Graph::default_style().await.expect("unable to get graph style");
+            // let re = Regex::new(r"(min|max)?-?(width|height)\s*:\d+(vw|vh);").unwrap();
+            // let style = re.replace_all(style.as_str(), "");
+            let new_style = format!(
+                r#"{}
+                    .graph {{ {}{} }}
+                "#,
+                style,
+                layout.0.get_cols(),
+                layout.1.get_rows()
+            );
+            Graph::replace_graph_style("graph", &new_style).await.unwrap_or_else(|err| {
+                log_error!("unable to replace graph style: {}", err);
+            })
+        })
     }
 }
 
@@ -172,8 +268,8 @@ impl RadioButton {
         radio.set_attribute("name", name)?;
         radio.set_attribute("type", "radio")?;
         radio.set_attribute("value", html)?;
-        parent.append_child(&radio)?;
-        toolbar.element().append_child(&element).unwrap();
+        element.append_child(&radio)?;
+        parent.append_child(&element).unwrap();
         let callbacks = CallbackMap::default();
         let button = Self { callbacks, element };
         let this = button.clone();

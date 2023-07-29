@@ -7,6 +7,7 @@ pub use crate::DynRpcApi;
 pub use crate::{runtime, storage, utils, utxo};
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+pub use cfg_if::cfg_if;
 pub use dashmap::{DashMap, DashSet};
 pub use futures::future::join_all;
 pub use futures::{select, stream, FutureExt, Stream, StreamExt, TryStreamExt};

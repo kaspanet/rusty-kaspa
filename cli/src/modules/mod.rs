@@ -87,9 +87,9 @@ pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
         ]
     );
 
-    if application_runtime::is_web() {
-        register_handlers!(cli, cli.handlers(), [reload,]);
-    }
+    // if application_runtime::is_web() {
+    //     register_handlers!(cli, cli.handlers(), [reload,]);
+    // }
 
     Ok(())
 }
