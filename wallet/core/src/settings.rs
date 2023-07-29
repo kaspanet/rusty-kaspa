@@ -22,7 +22,7 @@ pub enum WalletSettings {
 
 impl WalletSettings {
     pub fn to_lowercase_string(&self) -> String {
-        self.to_string().to_lowercase()
+        self.describe().to_lowercase()
     }
 }
 
