@@ -7,6 +7,10 @@ authors.workspace = true
 include.workspace = true
 license.workspace = true
 
+[features]
+legacy-rpc = ["kaspa-cli/legacy-rpc"]
+default = []
+
 [lib]
 crate-type = ["cdylib", "lib"]
 

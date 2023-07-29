@@ -7,6 +7,10 @@ authors.workspace = true
 include.workspace = true
 license.workspace = true
 
+[features]
+legacy-rpc = ["kaspa-wallet-core/legacy-rpc"]
+default = []
+
 [lib]
 crate-type = ["cdylib", "lib"]
 

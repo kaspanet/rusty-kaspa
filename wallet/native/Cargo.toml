@@ -7,6 +7,10 @@ authors.workspace = true
 include.workspace = true
 license.workspace = true
 
+[features]
+legacy-rpc = ["kaspa-cli/legacy-rpc"]
+default = []
+
 [dependencies]
 kaspa-cli.workspace = true
 workflow-terminal.workspace = true
