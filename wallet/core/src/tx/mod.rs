@@ -5,7 +5,7 @@ pub mod output;
 pub mod payment;
 pub mod transaction;
 pub mod txscript;
-pub mod virtual_transaction;
+pub mod virtual_transaction_v1;
 
 pub use input::*;
 pub use mtx::*;
@@ -14,7 +14,7 @@ pub use output::*;
 pub use payment::*;
 pub use transaction::*;
 pub use txscript::*;
-pub use virtual_transaction::*;
+pub use virtual_transaction_v1::*;
 
 use crate::result::Result;
 use crate::utils::*;

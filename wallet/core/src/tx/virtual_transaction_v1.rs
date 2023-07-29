@@ -53,14 +53,14 @@ impl From<LimitCalcStrategy> for LimitStrategy {
     }
 }
 
-pub struct Transactions {
+pub struct TransactionsV1 {
     pub transactions: Vec<MutableTransaction>,
     pub inputs: Vec<TransactionInput>,
     pub utxos: Vec<UtxoEntry>,
     pub amount: u64,
 }
 
-impl Transactions {
+impl TransactionsV1 {
     pub async fn merge(
         &mut self,
         outputs: &PaymentOutputs,
@@ -197,14 +197,14 @@ pub fn mass_per_input_and_mass_without_inputs(
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 #[allow(dead_code)] //TODO: remove me
-pub struct VirtualTransaction {
+pub struct VirtualTransactionV1 {
     transactions: Vec<MutableTransaction>,
     payload: Vec<u8>,
     // include_fees : bool,
 }
 
 #[wasm_bindgen]
-impl VirtualTransaction {
+impl VirtualTransactionV1 {
     #[wasm_bindgen(constructor)]
     pub async fn constructor(
         sig_op_count: u8,
@@ -216,7 +216,7 @@ impl VirtualTransaction {
         payload: Vec<u8>,
         limit_calc_strategy: LimitCalcStrategy,
         abortable: &Abortable,
-    ) -> crate::Result<VirtualTransaction> {
+    ) -> crate::Result<VirtualTransactionV1> {
         Self::new(
             sig_op_count,
             minimum_signatures,
@@ -266,7 +266,7 @@ impl VirtualTransaction {
     }
 }
 
-impl VirtualTransaction {
+impl VirtualTransactionV1 {
     pub async fn new(
         sig_op_count: u8,
         minimum_signatures: u16,
@@ -277,7 +277,7 @@ impl VirtualTransaction {
         payload: Vec<u8>,
         limit_calc_strategy: LimitCalcStrategy,
         abortable: &Abortable,
-    ) -> crate::Result<VirtualTransaction> {
+    ) -> crate::Result<VirtualTransactionV1> {
         let transaction_amount = outputs.amount() + priority_fee_sompi.as_ref().cloned().unwrap_or_default();
         ctx.select(transaction_amount).await?;
         let selected_amount = ctx.selected_amount();
@@ -309,7 +309,7 @@ impl VirtualTransaction {
                 abortable.check()?;
                 let mass = calculate_mass(&tx, &consensus_params, true, minimum_signatures);
                 if mass <= MAXIMUM_STANDARD_TRANSACTION_MASS {
-                    return Ok(VirtualTransaction { transactions: vec![mtx], payload });
+                    return Ok(VirtualTransactionV1 { transactions: vec![mtx], payload });
                 }
                 abortable.check()?;
                 let max_inputs = calculate_chunk_size(&tx, mass, &consensus_params, true, minimum_signatures).await? as usize;
@@ -321,7 +321,7 @@ impl VirtualTransaction {
                         .await?;
                 abortable.check()?;
                 txs.merge(outputs, change_address, priority_fee, payload.clone(), minimum_signatures).await?;
-                Ok(VirtualTransaction { transactions: txs.transactions, payload })
+                Ok(VirtualTransactionV1 { transactions: txs.transactions, payload })
             }
             LimitStrategy::Inputs(inputs) => {
                 abortable.check()?;
@@ -333,7 +333,7 @@ impl VirtualTransaction {
                         .await?;
                 abortable.check()?;
                 txs.merge(outputs, change_address, priority_fee, payload.clone(), minimum_signatures).await?;
-                Ok(VirtualTransaction { transactions: txs.transactions, payload })
+                Ok(VirtualTransactionV1 { transactions: txs.transactions, payload })
             }
         }
     }
@@ -368,7 +368,7 @@ impl VirtualTransaction {
         sig_op_count: u8,
         minimum_signatures: u16,
         abortable: &Abortable,
-    ) -> crate::Result<Transactions> {
+    ) -> crate::Result<TransactionsV1> {
         let mut final_inputs = vec![];
         let mut final_utxos = vec![];
         let mut final_amount = 0;
@@ -385,7 +385,7 @@ impl VirtualTransaction {
                 );
             });
 
-            return Ok(Transactions { transactions, inputs: final_inputs, utxos: final_utxos, amount: final_amount });
+            return Ok(TransactionsV1 { transactions, inputs: final_inputs, utxos: final_utxos, amount: final_amount });
         }
 
         abortable.check()?;
@@ -450,6 +450,6 @@ impl VirtualTransaction {
             transactions.push(MutableTransaction::new(&tx, &entries.into()));
         }
 
-        Ok(Transactions { transactions, inputs: final_inputs, utxos: final_utxos, amount: final_amount })
+        Ok(TransactionsV1 { transactions, inputs: final_inputs, utxos: final_utxos, amount: final_amount })
     }
 }
