@@ -202,21 +202,44 @@ impl Wallet {
         Ok(())
     }
 
-    /// For end-user wallets only - selects an account only if there
-    /// is only a single account currently active in the wallet.
-    /// Can be used to automatically select the default account.
-    pub async fn autoselect_default_account_if_single(self: &Arc<Wallet>) -> Result<()> {
-        if self.active_accounts().len() == 1 {
-            self.select(self.active_accounts().first().as_ref()).await?;
-        }
-        Ok(())
-    }
+    cfg_if! {
+        if #[cfg(not(feature = "multi-user"))] {
 
-    /// For end-user wallets only - activates all accounts in the wallet
-    /// storage.  
-    pub async fn activate_all_stored_accounts(self: &Arc<Wallet>) -> Result<()> {
-        self.accounts(None).await?.try_collect::<Vec<_>>().await?;
-        Ok(())
+            /// For end-user wallets only - selects an account only if there
+            /// is only a single account currently active in the wallet.
+            /// Can be used to automatically select the default account.
+            pub async fn autoselect_default_account_if_single(self: &Arc<Wallet>) -> Result<()> {
+                if self.active_accounts().len() == 1 {
+                    self.select(self.active_accounts().first().as_ref()).await?;
+                }
+                Ok(())
+            }
+
+            /// For end-user wallets only - activates all accounts in the wallet
+            /// storage.
+            pub async fn activate_all_stored_accounts(self: &Arc<Wallet>) -> Result<()> {
+                self.accounts(None).await?.try_collect::<Vec<_>>().await?;
+                Ok(())
+            }
+
+            /// Select an account as 'active'. Supply `None` to remove active selection.
+            pub async fn select(self: &Arc<Self>, account: Option<&Arc<Account>>) -> Result<()> {
+                *self.inner.selected_account.lock().unwrap() = account.cloned();
+                if let Some(account) = account {
+                    // log_info!("selecting account: {}", account.name_or_id());
+                    account.start().await?;
+                }
+                Ok(())
+            }
+
+            /// Get currently selected account
+            pub fn account(&self) -> Result<Arc<Account>> {
+                self.inner.selected_account.lock().unwrap().clone().ok_or_else(|| Error::AccountSelection)
+            }
+
+
+
+        }
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
@@ -494,22 +517,9 @@ impl Wallet {
         Ok((mnemonic, descriptor, account))
     }
 
-    pub async fn dump_unencrypted(&self) -> Result<()> {
-        Ok(())
-    }
-
-    pub async fn select(self: &Arc<Self>, account: Option<&Arc<Account>>) -> Result<()> {
-        *self.inner.selected_account.lock().unwrap() = account.cloned();
-        if let Some(account) = account {
-            // log_info!("selecting account: {}", account.name_or_id());
-            account.start().await?;
-        }
-        Ok(())
-    }
-
-    pub fn account(&self) -> Result<Arc<Account>> {
-        self.inner.selected_account.lock().unwrap().clone().ok_or_else(|| Error::AccountSelection)
-    }
+    // pub async fn dump_unencrypted(&self) -> Result<()> {
+    //     Ok(())
+    // }
 
     pub async fn get_account_by_id(self: &Arc<Self>, account_id: &AccountId) -> Result<Option<Arc<Account>>> {
         if let Some(account) = self.inner.active_accounts.get(account_id) {
@@ -615,7 +625,7 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn start_task(self: &Arc<Self>) -> Result<()> {
+    async fn start_task(self: &Arc<Self>) -> Result<()> {
         let this = self.clone();
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
@@ -649,7 +659,7 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn stop_task(&self) -> Result<()> {
+    async fn stop_task(&self) -> Result<()> {
         self.inner.task_ctl.signal(()).await.expect("Wallet::stop_task() `signal` error");
         Ok(())
     }
