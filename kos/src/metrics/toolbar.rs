@@ -78,8 +78,9 @@ impl Toolbar {
     pub fn try_init(&self) -> Result<()> {
         let durations = vec![
             ("1m", "1 Minute"),
-            ("10m", "10 Minutes"),
+            ("5m", "1 Minutes"),
             ("15m", "15 Minutes"),
+            ("30m", "30 Minutes"),
             ("1H", "1 Hour"),
             ("4H", "4 Hours"),
             ("8H", "8 Hours"),
@@ -93,6 +94,7 @@ impl Toolbar {
             let duration = GraphDuration::parse(html.to_lowercase()).unwrap();
             self.push(RadioButton::try_new(
                 self,
+                self.element(),
                 "duration",
                 html,
                 &format!("Set graph time range to {tip}"),
@@ -103,11 +105,11 @@ impl Toolbar {
         Ok(())
     }
 
-    pub fn action(&self, btn: &dyn Control, action: Action) {
+    pub fn action(&self, _btn: &dyn Control, action: Action) {
         match action {
             Action::Duration(duration) => {
                 let graphs = self.inner.graphs.lock().unwrap();
-                for (_, graph) in &*graphs {
+                for graph in (*graphs).values() {
                     graph.set_duration(duration);
                 }
             }
@@ -124,12 +126,12 @@ pub struct Button {
 }
 
 impl Button {
-    pub fn try_new(toolbar: &Toolbar, html: &str, tooltip: &str, callback: Arc<ButtonCallback>) -> Result<Self> {
+    pub fn try_new(toolbar: &Toolbar, parent: &Element, html: &str, tooltip: &str, callback: Arc<ButtonCallback>) -> Result<Self> {
         let element = toolbar.document().create_element("div").unwrap();
         element.set_class_name("button");
         element.set_attribute("title", tooltip)?;
         element.set_inner_html(html);
-        toolbar.element().append_child(&element).unwrap();
+        parent.append_child(&element).unwrap();
         let callbacks = CallbackMap::default();
         let button = Self { callbacks, element };
         let this = button.clone();
@@ -154,7 +156,14 @@ pub struct RadioButton {
 }
 
 impl RadioButton {
-    pub fn try_new(toolbar: &Toolbar, name: &str, html: &str, tooltip: &str, callback: Arc<RadioButtonCallback>) -> Result<Self> {
+    pub fn try_new(
+        toolbar: &Toolbar,
+        parent: &Element,
+        name: &str,
+        html: &str,
+        tooltip: &str,
+        callback: Arc<RadioButtonCallback>,
+    ) -> Result<Self> {
         let element = toolbar.document().create_element("label").unwrap();
         element.set_class_name("button");
         element.set_attribute("title", tooltip)?;
@@ -163,7 +172,7 @@ impl RadioButton {
         radio.set_attribute("name", name)?;
         radio.set_attribute("type", "radio")?;
         radio.set_attribute("value", html)?;
-        element.append_child(&radio)?;
+        parent.append_child(&radio)?;
         toolbar.element().append_child(&element).unwrap();
         let callbacks = CallbackMap::default();
         let button = Self { callbacks, element };

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::toolbar::*;
 use crate::imports::*;
 use kaspa_cli::metrics::{Metric, MetricsSnapshot};
-use web_sys::HtmlSelectElement;
+// use web_sys::HtmlSelectElement;
 use workflow_d3::container::*;
 use workflow_d3::graph::*;
 
@@ -110,7 +110,7 @@ impl Metrics {
                 Graph::try_new(
                     &self.window.window(),
                     &container,
-                    metric.descr(),
+                    None,
                     "",
                     GraphDuration::parse("5m").unwrap(),
                     GraphTheme::Light,
@@ -134,7 +134,7 @@ impl Metrics {
     async fn ingest(self: &Arc<Self>, data: MetricsSnapshot) -> Result<()> {
         for metric in Metric::list() {
             let value = data.get(&metric);
-            self.graph(&metric).ingest(data.unixtime, value.clone(), &format!("{:.4}", value.as_f64().unwrap())).await?;
+            self.graph(&metric).ingest(data.unixtime, value.clone(), &data.format(&metric)).await?;
         }
 
         yield_executor().await;
