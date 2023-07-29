@@ -7,7 +7,7 @@ pub mod convert;
 pub mod encryption;
 pub mod error;
 pub mod events;
-pub mod imports;
+mod imports;
 pub mod keypair;
 pub mod network;
 pub mod result;

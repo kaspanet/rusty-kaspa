@@ -42,7 +42,9 @@ pub enum Events {
     WalletHint {
         hint: Option<Hint>,
     },
-    WalletLoaded,
+    WalletOpen,
+    WalletReload,
+    WalletClose,
     ServerStatus {
         #[serde(rename = "networkId")]
         network_id: NetworkId,
@@ -52,6 +54,8 @@ pub enum Events {
         is_synced: bool,
         url: String,
     },
+
+    /// Successful start of [`UtxoProcessor`](super::utxo::processor::UtxoProcessor)
     UtxoProcStart,
     UtxoProcStop,
     UtxoProcError(String),

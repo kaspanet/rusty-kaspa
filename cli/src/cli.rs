@@ -11,7 +11,6 @@ use cfg_if::cfg_if;
 use futures::stream::{Stream, StreamExt, TryStreamExt};
 use futures::*;
 use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
-use kaspa_wallet_core::imports::{AtomicBool, Ordering, ToHex};
 use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
 use kaspa_wallet_core::storage::interface::AccessContext;
 use kaspa_wallet_core::storage::{AccessContextT, AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
@@ -359,7 +358,8 @@ impl KaspaCli {
                                     }
 
                                 },
-                                Events::WalletLoaded => {
+                                Events::WalletOpen |
+                                Events::WalletReload => {
 
                                     // load all accounts
                                     this.wallet().activate_all_stored_accounts().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
@@ -372,80 +372,77 @@ impl KaspaCli {
                                     this.term().refresh_prompt();
 
                                 },
-                                // Events::UtxoProcessor(event) => {
+                                Events::WalletClose => {
+                                    this.term().refresh_prompt();
+                                },
+                                Events::DAAScoreChange(daa) => {
+                                    if this.is_mutted() && this.flags.get(Track::Daa) {
+                                        tprintln!(this, "DAAScoreChange: {daa}");
+                                    }
+                                },
+                                Events::Pending {
+                                    record
+                                } => {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
+                                        let tx = record.format_with_state(&this.wallet,Some("pending")).await;
+                                        tprintln!(this,"\r\n{tx}\r\n");
+                                    }
+                                },
+                                Events::Reorg {
+                                    record
+                                } => {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
+                                        let tx = record.format_with_state(&this.wallet,Some("reorg")).await;
+                                        tprintln!(this,"\r\n{tx}\r\n");
+                                    }
+                                },
+                                Events::External {
+                                    record
+                                } => {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                        let tx = record.format_with_state(&this.wallet,Some("external")).await;
+                                        tprintln!(this,"\r\n{tx}\r\n");
+                                    }
+                                },
+                                Events::Maturity {
+                                    record
+                                } => {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                        let tx = record.format_with_state(&this.wallet,Some("confirmed")).await;
+                                        tprintln!(this,"\r\n{tx}\r\n");
+                                    }
+                                },
+                                Events::Debit {
+                                    record
+                                } => {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                        let tx = record.format_with_state(&this.wallet,Some("debit")).await;
+                                        tprintln!(this,"{tx}");
+                                    }
+                                },
+                                Events::Balance {
+                                    balance,
+                                    id,
+                                    mature_utxo_size,
+                                    pending_utxo_size,
+                                } => {
 
-                                //     match event {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
+                                        let network_id = this.wallet.network_id().expect("missing network type");
+                                        let network_type = NetworkType::from(network_id);
+                                        // let balance = BalanceStrings::from((&balance,&network_type, Some(19)));
+                                        let balance = BalanceStrings::from((&balance,&network_type, None));
+                                        let id = id.short();
 
-                                        Events::DAAScoreChange(daa) => {
-                                            if this.is_mutted() && this.flags.get(Track::Daa) {
-                                                tprintln!(this, "DAAScoreChange: {daa}");
-                                            }
-                                        },
-                                        Events::Pending {
-                                            record
-                                        } => {
-                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
-                                                let tx = record.format_with_state(&this.wallet,Some("pending")).await;
-                                                tprintln!(this,"\r\n{tx}\r\n");
-                                            }
-                                        },
-                                        Events::Reorg {
-                                            record
-                                        } => {
-                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
-                                                let tx = record.format_with_state(&this.wallet,Some("reorg")).await;
-                                                tprintln!(this,"\r\n{tx}\r\n");
-                                            }
-                                        },
-                                        Events::External {
-                                            record
-                                        } => {
-                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
-                                                let tx = record.format_with_state(&this.wallet,Some("external")).await;
-                                                tprintln!(this,"\r\n{tx}\r\n");
-                                            }
-                                        },
-                                        Events::Maturity {
-                                            record
-                                        } => {
-                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
-                                                let tx = record.format_with_state(&this.wallet,Some("confirmed")).await;
-                                                tprintln!(this,"\r\n{tx}\r\n");
-                                            }
-                                        },
-                                        Events::Debit {
-                                            record
-                                        } => {
-                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
-                                                let tx = record.format_with_state(&this.wallet,Some("debit")).await;
-                                                tprintln!(this,"{tx}");
-                                            }
-                                        },
-                                        Events::Balance {
-                                            balance,
-                                            id,
-                                            mature_utxo_size,
-                                            pending_utxo_size,
-                                        } => {
+                                        let pending_utxo_info = if pending_utxo_size > 0 {
+                                            format!("({pending_utxo_size} pending)")
+                                        } else { "".to_string() };
+                                        let utxo_info = style(format!("{} UTXOs {pending_utxo_info}", mature_utxo_size.separated_string())).dim();
 
-                                            if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
-                                                let network_id = this.wallet.network_id().expect("missing network type");
-                                                let network_type = NetworkType::from(network_id);
-                                                // let balance = BalanceStrings::from((&balance,&network_type, Some(19)));
-                                                let balance = BalanceStrings::from((&balance,&network_type, None));
-                                                let id = id.short();
+                                        tprintln!(this, "{} {id}: {balance}   {utxo_info}",style("balance".pad_to_width(8)).blue());
+                                    }
 
-                                                let pending_utxo_info = if pending_utxo_size > 0 {
-                                                    format!("({pending_utxo_size} pending)")
-                                                } else { "".to_string() };
-                                                let utxo_info = style(format!("{} UTXOs {pending_utxo_info}", mature_utxo_size.separated_string())).dim();
-
-                                                tprintln!(this, "{} {id}: {balance}   {utxo_info}",style("balance".pad_to_width(8)).blue());
-                                            }
-
-                                            this.term().refresh_prompt();
-                                    //     },
-                                    // }
+                                    this.term().refresh_prompt();
                                 }
                             }
                         }
@@ -846,7 +843,6 @@ impl Cli for KaspaCli {
     }
 
     fn prompt(&self) -> Option<String> {
-        // - IF NODE IS RUNNING SHOW N/C
         let mut prompt = vec![];
 
         let node_running = if let Some(node) = self.node.lock().unwrap().as_ref() { node.is_running() } else { false };
@@ -889,9 +885,6 @@ impl Cli for KaspaCli {
         }
 
         (!prompt.is_empty()).then(|| prompt.join(" • ") + " $ ")
-        // } else {
-        //     None
-        // }
     }
 }
 

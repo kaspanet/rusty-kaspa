@@ -1,4 +1,4 @@
-pub use kaspa_wallet_core::imports::DashMap;
+use dashmap::DashMap;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

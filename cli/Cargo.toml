@@ -43,6 +43,8 @@ regex.workspace = true
 js-sys.workspace = true
 kaspa-rpc-core.workspace = true
 borsh.workspace = true
+kaspa-utils.workspace = true
+dashmap.workspace = true
 # web-sys.workspace = true
 
 [dependencies.web-sys]

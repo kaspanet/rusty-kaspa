@@ -173,13 +173,13 @@ impl Wallet {
     }
 
     pub async fn reset(self: &Arc<Self>) -> Result<()> {
+        self.utxo_processor().clear().await?;
+
         self.select(None).await?;
 
         let accounts = self.inner.active_accounts.cloned_flat_list();
         let futures = accounts.iter().map(|account| account.stop());
-
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
-        self.utxo_processor().clear().await?;
 
         Ok(())
     }
@@ -188,7 +188,7 @@ impl Wallet {
         self.reset().await?;
 
         if self.is_open() {
-            self.notify(Events::WalletLoaded).await?;
+            self.notify(Events::WalletReload).await?;
         }
 
         Ok(())
@@ -197,9 +197,14 @@ impl Wallet {
     pub async fn close(self: &Arc<Wallet>) -> Result<()> {
         self.reset().await?;
         self.store().close().await?;
+        self.notify(Events::WalletClose).await?;
+
         Ok(())
     }
 
+    /// For end-user wallets only - selects an account only if there
+    /// is only a single account currently active in the wallet.
+    /// Can be used to automatically select the default account.
     pub async fn autoselect_default_account_if_single(self: &Arc<Wallet>) -> Result<()> {
         if self.active_accounts().len() == 1 {
             self.select(self.active_accounts().first().as_ref()).await?;
@@ -207,11 +212,14 @@ impl Wallet {
         Ok(())
     }
 
+    /// For end-user wallets only - activates all accounts in the wallet
+    /// storage.  
     pub async fn activate_all_stored_accounts(self: &Arc<Wallet>) -> Result<()> {
         self.accounts(None).await?.try_collect::<Vec<_>>().await?;
         Ok(())
     }
 
+    /// Loads a wallet from storage. Accounts are not activated by this call.
     pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
         self.reset().await?;
 
@@ -221,7 +229,7 @@ impl Wallet {
 
         let hint = self.store().get_user_hint().await?;
         self.notify(Events::WalletHint { hint }).await?;
-        self.notify(Events::WalletLoaded).await?;
+        self.notify(Events::WalletOpen).await?;
 
         Ok(())
     }
