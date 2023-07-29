@@ -5,9 +5,14 @@ use crate::imports::*;
 pub struct Reload;
 
 impl Reload {
-    async fn main(self: Arc<Self>, _ctx: &Arc<dyn Context>, _argv: Vec<String>, _cmd: &str) -> Result<()> {
-        #[cfg(target_arch = "wasm32")]
-        workflow_dom::utils::window().location().reload().ok();
+    async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, _argv: Vec<String>, _cmd: &str) -> Result<()> {
+        // #[cfg(target_arch = "wasm32")]
+        // workflow_dom::utils::window().location().reload().ok();
+
+        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        tprintln!(ctx, "{}", style("reloading wallet ...").magenta());
+        ctx.wallet().reload().await?;
+
         Ok(())
     }
 }
