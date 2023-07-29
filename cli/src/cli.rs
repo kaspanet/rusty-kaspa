@@ -885,7 +885,7 @@ impl Cli for KaspaCli {
             }
         }
 
-        (!prompt.is_empty()).then(|| prompt.join(" • ") + " $ ")
+        prompt.is_not_empty().then(|| prompt.join(" • ") + " $ ")
     }
 }
 

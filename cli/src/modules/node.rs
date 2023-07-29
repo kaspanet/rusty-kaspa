@@ -147,7 +147,7 @@ impl Node {
             "select" => {
                 let regex = Regex::new(r"(?i)^\s*node\s*select\s*").unwrap();
                 let path = regex.replace(cmd, "").trim().to_string();
-                self.select(ctx, (!path.is_empty()).then_some(path)).await?;
+                self.select(ctx, path.is_not_empty().then_some(path)).await?;
             }
             "version" => {
                 kaspad.configure(self.create_config(&ctx).await?).await?;
