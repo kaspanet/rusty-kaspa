@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::{Account, AccountId, AccountMap};
+use crate::runtime::{Account, AccountId, ActiveAccountMap};
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
@@ -95,7 +95,7 @@ impl AccountCreateArgs {
 }
 
 pub struct Inner {
-    active_accounts: AccountMap,
+    active_accounts: ActiveAccountMap, //Arc<Mutex<HashMap<AccountId, Arc<Account>>>>,
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
     selected_account: Mutex<Option<Arc<Account>>>,
@@ -140,7 +140,7 @@ impl Wallet {
                 rpc,
                 multiplexer,
                 store,
-                active_accounts: AccountMap::default(),
+                active_accounts: ActiveAccountMap::default(), //Arc::new(Mutex::new(HashMap::new())),
                 listener_id: Mutex::new(None),
                 task_ctl: DuplexChannel::oneshot(),
                 selected_account: Mutex::new(None),
@@ -168,16 +168,32 @@ impl Wallet {
         &self.inner.store
     }
 
-    pub fn active_accounts(&self) -> &AccountMap {
+    pub fn active_accounts(&self) -> &ActiveAccountMap {
         &self.inner.active_accounts
     }
+    // pub fn active_accounts(&self) -> MutexGuard<HashMap<AccountId,Arc<Account>>> {
+    //     self.inner.active_accounts.lock().unwrap()
+    // }
+
+    // pub fn get_active_account_by_id(&self, id: &AccountId) -> Option<Arc<Account>> {
+    //     self.inner.active_accounts.lock().unwrap().get(id).cloned()
+    // }
+
+    // pub fn collect_active_accounts(&self) -> Vec<Arc<Account>> {
+    //     self.inner.active_accounts.lock().unwrap().values().cloned().collect()
+    // }
+
+    // pub fn active_accounts_len(&self) -> usize {
+    //     self.inner.active_accounts.lock().unwrap().len()
+    // }
 
     pub async fn reset(self: &Arc<Self>) -> Result<()> {
         self.utxo_processor().clear().await?;
 
         self.select(None).await?;
 
-        let accounts = self.inner.active_accounts.cloned_flat_list();
+        // let accounts = self.inner.active_accounts.cloned_flat_list();
+        let accounts = self.active_accounts().collect(); //self.active_accounts().values().collect::<Vec<_>>();
         let futures = accounts.iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
 
@@ -205,12 +221,16 @@ impl Wallet {
     cfg_if! {
         if #[cfg(not(feature = "multi-user"))] {
 
+            fn default_active_account(&self) -> Option<Arc<Account>> {
+                self.active_accounts().first()
+            }
+
             /// For end-user wallets only - selects an account only if there
             /// is only a single account currently active in the wallet.
             /// Can be used to automatically select the default account.
             pub async fn autoselect_default_account_if_single(self: &Arc<Wallet>) -> Result<()> {
                 if self.active_accounts().len() == 1 {
-                    self.select(self.active_accounts().first().as_ref()).await?;
+                    self.select(self.default_active_account().as_ref()).await?;
                 }
                 Ok(())
             }
@@ -522,8 +542,8 @@ impl Wallet {
     // }
 
     pub async fn get_account_by_id(self: &Arc<Self>, account_id: &AccountId) -> Result<Option<Arc<Account>>> {
-        if let Some(account) = self.inner.active_accounts.get(account_id) {
-            Ok(Some(account))
+        if let Some(account) = self.active_accounts().get(account_id) {
+            Ok(Some(account.clone()))
         } else {
             let account_storage = self.inner.store.as_account_store()?;
             let stored_account = account_storage.load_single(account_id).await?;

@@ -8,7 +8,7 @@ use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
-use crate::tx::{LimitCalcStrategy, PaymentOutputs, VirtualTransaction};
+use crate::tx::{LimitCalcStrategy, PaymentOutputs, VirtualTransactionV1};
 use crate::utxo::UtxoContext;
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
@@ -17,7 +17,6 @@ use kaspa_bip32::{ChildNumber, PrivateKey};
 use kaspa_notify::listener::ListenerId;
 use separator::Separatable;
 use serde::Serializer;
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::str::FromStr;
 use workflow_core::abortable::Abortable;
@@ -319,63 +318,6 @@ impl Account {
         // Ok(())
     }
 
-    pub async fn send(
-        &self,
-        outputs: &PaymentOutputs,
-        priority_fee_sompi: Option<u64>,
-        _include_fees_in_amount: bool,
-        wallet_secret: Secret,
-        payment_secret: Option<Secret>,
-        abortable: &Abortable,
-    ) -> Result<Vec<kaspa_hashes::Hash>> {
-        let mut ctx = self.utxo_context().create_selection_context();
-
-        let change_address = self.change_address().await?;
-        let payload = vec![];
-        let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
-        let minimum_signatures = self.inner().stored.minimum_signatures;
-        let vt = VirtualTransaction::new(
-            sig_op_count,
-            minimum_signatures,
-            &mut ctx,
-            outputs,
-            &change_address,
-            priority_fee_sompi,
-            payload,
-            LimitCalcStrategy::inputs(80),
-            abortable,
-        )
-        .await?;
-
-        let addresses = ctx.addresses();
-        let indexes = self.derivation.addresses_indexes(&addresses)?;
-        let receive_indexes = indexes.0;
-        let change_indexes = indexes.1;
-
-        let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
-        let keydata = self
-            .wallet
-            .store()
-            .as_prv_key_data_store()?
-            .load_key_data(&access_ctx, &self.prv_key_data_id)
-            .await?
-            .ok_or(Error::PrivateKeyNotFound(self.prv_key_data_id.to_hex()))?;
-
-        let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
-        let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
-        let mut tx_ids = vec![];
-        for mtx in vt.transactions().clone() {
-            let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
-            let id = self.wallet.rpc().submit_transaction(mtx.try_into()?, false).await?;
-            //println!("id: {id}\r\n");
-            tx_ids.push(id);
-        }
-
-        ctx.commit()?;
-
-        Ok(tx_ids)
-    }
-
     fn create_private_keys(
         &self,
         keydata: PrvKeyData,
@@ -475,51 +417,61 @@ impl Account {
         // self.unregister_notification_listener().await?;
         Ok(())
     }
-}
 
-#[derive(Default, Clone)]
-pub struct AccountMap(Arc<Mutex<HashMap<AccountId, Arc<Account>>>>);
+    pub async fn send(
+        &self,
+        outputs: &PaymentOutputs,
+        priority_fee_sompi: Option<u64>,
+        _include_fees_in_amount: bool,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        abortable: &Abortable,
+    ) -> Result<Vec<kaspa_hashes::Hash>> {
+        let mut ctx = self.utxo_context().create_selection_context();
 
-impl AccountMap {
-    pub fn inner(&self) -> MutexGuard<HashMap<AccountId, Arc<Account>>> {
-        self.0.lock().unwrap()
-    }
+        let change_address = self.change_address().await?;
+        let payload = vec![];
+        let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
+        let minimum_signatures = self.inner().stored.minimum_signatures;
+        let vt = VirtualTransactionV1::new(
+            sig_op_count,
+            minimum_signatures,
+            &mut ctx,
+            outputs,
+            &change_address,
+            priority_fee_sompi,
+            payload,
+            LimitCalcStrategy::inputs(80),
+            abortable,
+        )
+        .await?;
 
-    pub fn clear(&self) {
-        self.inner().clear();
-    }
+        let addresses = ctx.addresses();
+        let indexes = self.derivation.addresses_indexes(&addresses)?;
+        let receive_indexes = indexes.0;
+        let change_indexes = indexes.1;
 
-    pub fn len(&self) -> usize {
-        self.inner().len()
-    }
+        let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        let keydata = self
+            .wallet
+            .store()
+            .as_prv_key_data_store()?
+            .load_key_data(&access_ctx, &self.prv_key_data_id)
+            .await?
+            .ok_or(Error::PrivateKeyNotFound(self.prv_key_data_id.to_hex()))?;
 
-    pub fn is_empty(&self) -> bool {
-        self.inner().is_empty()
-    }
+        let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
+        let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
+        let mut tx_ids = vec![];
+        for mtx in vt.transactions().clone() {
+            let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
+            let id = self.wallet.rpc().submit_transaction(mtx.try_into()?, false).await?;
+            //println!("id: {id}\r\n");
+            tx_ids.push(id);
+        }
 
-    pub fn first(&self) -> Option<Arc<Account>> {
-        self.inner().values().next().cloned()
-    }
+        ctx.commit()?;
 
-    pub fn get(&self, account_id: &AccountId) -> Option<Arc<Account>> {
-        self.inner().get(account_id).cloned()
-    }
-
-    pub fn extend(&self, accounts: Vec<Arc<Account>>) {
-        let mut map = self.inner();
-        let accounts = accounts.into_iter().map(|a| (a.id, a)); //.collect::<Vec<_>>();
-        map.extend(accounts);
-    }
-
-    pub fn insert(&self, account: Arc<Account>) -> Option<Arc<Account>> {
-        self.inner().insert(account.id, account)
-    }
-
-    pub fn remove(&self, id: &AccountId) {
-        self.inner().remove(id);
-    }
-
-    pub fn cloned_flat_list(&self) -> Vec<Arc<Account>> {
-        self.inner().values().cloned().collect()
+        Ok(tx_ids)
     }
 }
