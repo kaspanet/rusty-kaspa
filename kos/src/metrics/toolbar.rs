@@ -12,25 +12,19 @@ use workflow_d3::{
     container::Container,
     graph::{Graph, DAYS, HOURS, MINUTES},
 };
+use workflow_dom::inject::inject_css;
 
 #[derive(Clone)]
-pub struct Count(usize);
-// enum Size {
-//     Tiny,
-//     Small,
-//     Medium,
-//     Large,
-// }
+pub struct Count(usize, String);
 
 impl Count {
-    pub fn iter() -> impl Iterator<Item = Self> {
-        static COUNTS: [Count; 4] = [Count(1), Count(2), Count(3), Count(4)];
-        COUNTS.iter().cloned()
+    pub fn list() -> [Count; 4] {
+        [Count(1, "L".into()), Count(2, "M".into()), Count(3, "S".into()), Count(4, "T".into())]
     }
 
     fn get_cols(&self) -> String {
         let w = 100.0 / self.0 as f64;
-        format!("width: {w}vw;")
+        format!("width: calc({w}vw - 10px);")
     }
 
     fn get_rows(&self) -> String {
@@ -61,6 +55,9 @@ pub struct ToolbarInner {
 unsafe impl Send for ToolbarInner {}
 unsafe impl Sync for ToolbarInner {}
 
+const STYLE: &str = include_str!("toolbar.css");
+static mut DOM_INIT: bool = false;
+
 #[derive(Clone)]
 pub struct Toolbar {
     inner: Arc<ToolbarInner>,
@@ -72,6 +69,13 @@ impl Toolbar {
         container: &Arc<Mutex<Option<Arc<Container>>>>,
         graphs: &Arc<Mutex<HashMap<Metric, Arc<Graph>>>>,
     ) -> Result<Self> {
+        if !unsafe { DOM_INIT } {
+            inject_css(Some("toolbar-style"), STYLE)?;
+            unsafe {
+                DOM_INIT = true;
+            }
+        }
+
         let document = window.document().unwrap();
         let element = document.create_element("div").unwrap();
         element.set_class_name("toolbar");
@@ -86,7 +90,7 @@ impl Toolbar {
                 graphs: graphs.clone(),
                 callbacks: CallbackMap::default(),
                 controls: Arc::new(Mutex::new(Vec::new())),
-                layout: Arc::new(Mutex::new((Count(3), Count(5)))),
+                layout: Arc::new(Mutex::new((Count(3, "M".into()), Count(5, "L".into())))),
             }),
         })
     }
@@ -139,25 +143,25 @@ impl Toolbar {
             )?);
         }
 
-        for width in Count::iter() {
+        for width in Count::list() {
             let this = self.clone();
             self.push(RadioButton::try_new(
                 self,
                 self.element(),
                 "width",
-                &format!("{}", width.0),
+                &format!("{}", width.1),
                 &format!("Set graph layout to {} columns", width.0),
                 Arc::new(move |btn| this.action(btn, Action::Cols(width.clone()))),
             )?);
         }
 
-        for height in Count::iter() {
+        for height in Count::list() {
             let this = self.clone();
             self.push(RadioButton::try_new(
                 self,
                 self.element(),
                 "height",
-                &format!("{}", height.0),
+                &format!("{}", height.1),
                 &format!("Set graph layout to {} rows", height.0),
                 Arc::new(move |btn| this.action(btn, Action::Rows(height.clone()))),
             )?);

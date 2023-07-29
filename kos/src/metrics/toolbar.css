@@ -1,0 +1,21 @@
+.toolbar{
+    padding:10px;
+}
+.toolbar .control{display: inline-block}
+
+.toolbar .button{
+    display:inline-block;
+    width: auto;
+    border:1px solid #CCC;
+    border-radius:4px;
+    padding:5px 8px;
+    margin:2px;
+    cursor:pointer;
+}
+.toolbar .button:hover,
+.toolbar .button:has(input:checked){
+    background-color: #efefef;
+    border-color: #aaa;
+    color: #000;
+}
+.toolbar .button input{display:none;}
