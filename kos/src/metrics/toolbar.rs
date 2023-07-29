@@ -143,6 +143,8 @@ impl Toolbar {
             )?);
         }
 
+        Separator::try_new(self)?;
+
         for width in Count::list() {
             let this = self.clone();
             self.push(RadioButton::try_new(
@@ -154,6 +156,7 @@ impl Toolbar {
                 Arc::new(move |btn| this.action(btn, Action::Cols(width.clone()))),
             )?);
         }
+        Separator::try_new(self)?;
 
         for height in Count::list() {
             let this = self.clone();
