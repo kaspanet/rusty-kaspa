@@ -170,15 +170,12 @@ fn main() {
     }
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
-        let (lifetime, db) = if args.rocksdb_stats {
-            let conn_builder = conn_builder.enable_stats();
-            if let Some(rocksdb_stats_period_sec) = args.rocksdb_stats_period_sec {
-                load_existing_db!(input_dir, conn_builder.with_stats_period(rocksdb_stats_period_sec))
-            } else {
-                load_existing_db!(input_dir, conn_builder)
+        let (lifetime, db) = match (args.rocksdb_stats, args.rocksdb_stats_period_sec) {
+            (true, Some(rocksdb_stats_period_sec)) => {
+                load_existing_db!(input_dir, conn_builder.enable_stats().with_stats_period(rocksdb_stats_period_sec))
             }
-        } else {
-            load_existing_db!(input_dir, conn_builder)
+            (true, None) => load_existing_db!(input_dir, conn_builder.enable_stats()),
+            (false, _) => load_existing_db!(input_dir, conn_builder),
         };
         let (dummy_notification_sender, _) = unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));

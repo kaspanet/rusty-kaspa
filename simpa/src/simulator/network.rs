@@ -59,31 +59,20 @@ impl KaspaNetworkSimulator {
             if let Some(rocksdb_mem_budget) = rocksdb_mem_budget {
                 builder = builder.with_mem_budget(rocksdb_mem_budget);
             }
-            let (lifetime, db) = if i == 0 && self.output_dir.is_some() {
-                builder = builder.with_parallelism(num_cpus::get());
-                let dir = self.output_dir.clone().unwrap();
-                if rocksdb_stats {
-                    let builder = builder.enable_stats();
-                    if let Some(rocksdb_stats_period_sec) = rocksdb_stats_period_sec {
-                        create_permanent_db!(dir, builder.with_stats_period(rocksdb_stats_period_sec))
-                    } else {
-                        create_permanent_db!(dir, builder)
-                    }
-                } else {
-                    create_permanent_db!(dir, builder)
+            let (lifetime, db) = match (i == 0, &self.output_dir, rocksdb_stats, rocksdb_stats_period_sec) {
+                (true, Some(dir), true, Some(rocksdb_stats_period_sec)) => {
+                    create_permanent_db!(dir, builder.enable_stats().with_stats_period(rocksdb_stats_period_sec))
                 }
-            } else {
-                if rocksdb_stats {
-                    let builder = builder.enable_stats();
-                    if let Some(rocksdb_stats_period_sec) = rocksdb_stats_period_sec {
-                        create_temp_db!(builder.with_stats_period(rocksdb_stats_period_sec))
-                    } else {
-                        create_temp_db!(builder)
-                    }
-                } else {
-                    create_temp_db!(builder)
+                (true, Some(dir), true, None) => create_permanent_db!(dir, builder.enable_stats()),
+                (true, Some(dir), false, _) => create_permanent_db!(dir, builder),
+
+                (_, _, true, Some(rocksdb_stats_period_sec)) => {
+                    create_temp_db!(builder.enable_stats().with_stats_period(rocksdb_stats_period_sec))
                 }
+                (_, _, true, None) => create_temp_db!(builder.enable_stats()),
+                (_, _, false, _) => create_temp_db!(builder),
             };
+
             let (dummy_notification_sender, _) = unbounded();
             let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
             let consensus =
