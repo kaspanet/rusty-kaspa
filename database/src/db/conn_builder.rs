@@ -7,11 +7,6 @@ use std::sync::Arc;
 #[derive(Debug, Copy, Clone)]
 pub struct Unspecified;
 
-pub trait StatsPeriod: Clone {}
-
-impl StatsPeriod for Unspecified {}
-impl StatsPeriod for u32 {}
-
 #[derive(Debug, Clone)]
 pub struct ConnBuilder<Path: Clone, const STATS_ENABLED: bool, StatsPeriod: Clone> {
     db_path: Path,
@@ -47,44 +42,16 @@ impl<Path: Clone, const STATS_ENABLED: bool, StatsPeriod: Clone> ConnBuilder<Pat
         }
     }
     pub fn with_create_if_missing(self, create_if_missing: bool) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod> {
-        ConnBuilder {
-            db_path: self.db_path,
-            create_if_missing,
-            parallelism: self.parallelism,
-            files_limit: self.files_limit,
-            mem_budget: self.mem_budget,
-            stats_period: self.stats_period,
-        }
+        ConnBuilder { create_if_missing, ..self }
     }
     pub fn with_parallelism(self, parallelism: impl Into<usize>) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod> {
-        ConnBuilder {
-            db_path: self.db_path,
-            create_if_missing: self.create_if_missing,
-            parallelism: parallelism.into(),
-            files_limit: self.files_limit,
-            mem_budget: self.mem_budget,
-            stats_period: self.stats_period,
-        }
+        ConnBuilder { parallelism: parallelism.into(), ..self }
     }
     pub fn with_files_limit(self, files_limit: impl Into<i32>) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod> {
-        ConnBuilder {
-            db_path: self.db_path,
-            create_if_missing: self.create_if_missing,
-            parallelism: self.parallelism,
-            files_limit: files_limit.into(),
-            mem_budget: self.mem_budget,
-            stats_period: self.stats_period,
-        }
+        ConnBuilder { files_limit: files_limit.into(), ..self }
     }
     pub fn with_mem_budget(self, mem_budget: impl Into<usize>) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod> {
-        ConnBuilder {
-            db_path: self.db_path,
-            create_if_missing: self.create_if_missing,
-            parallelism: self.parallelism,
-            files_limit: self.files_limit,
-            mem_budget: mem_budget.into(),
-            stats_period: self.stats_period,
-        }
+        ConnBuilder { mem_budget: mem_budget.into(), ..self }
     }
 }
 
@@ -144,7 +111,7 @@ macro_rules! default_opts {
     }};
 }
 
-impl<SP: StatsPeriod> ConnBuilder<PathBuf, false, SP> {
+impl ConnBuilder<PathBuf, false, Unspecified> {
     pub fn build(self) -> Arc<DB> {
         let opts = default_opts!(self);
         let db = Arc::new(DB::open(&opts, self.db_path.to_str().unwrap()).unwrap());
