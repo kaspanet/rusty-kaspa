@@ -689,10 +689,18 @@ pub struct GetMetricsRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ProcessMetrics {
     // pub uptime: u64,
-    // pub memory_used: u64,
-    // pub storage_used: u64,
     // pub grpc_connections: u32,
     // pub wrpc_connections: u32,
+    pub resident_set_size_bytes: u64,
+    pub virtual_memory_size_bytes: u64,
+    pub core_num: u64,
+    pub cpu_usage: f64,
+    pub fd_num: u64,
+    pub disk_io_read_bytes: u64,
+    pub disk_io_write_bytes: u64,
+    pub disk_io_read_per_sec: f64,
+    pub disk_io_write_per_sec: f64,
+
     pub borsh_live_connections: u64,
     pub borsh_connection_attempts: u64,
     pub borsh_handshake_failures: u64,

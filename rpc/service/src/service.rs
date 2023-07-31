@@ -23,6 +23,7 @@ use kaspa_core::{
     kaspad_env::version,
     signals::Shutdown,
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
+    task::tick::TickService,
     trace, warn,
 };
 use kaspa_index_core::{
@@ -40,6 +41,7 @@ use kaspa_notify::{
     subscriber::{Subscriber, SubscriptionManager},
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
+use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
     api::rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
     model::*,
@@ -89,6 +91,7 @@ pub struct RpcCoreService {
     wrpc_borsh_counters: Arc<WrpcServerCounters>,
     wrpc_json_counters: Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
+    perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -107,6 +110,7 @@ impl RpcCoreService {
         processing_counters: Arc<ProcessingCounters>,
         wrpc_borsh_counters: Arc<WrpcServerCounters>,
         wrpc_json_counters: Arc<WrpcServerCounters>,
+        perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -168,6 +172,7 @@ impl RpcCoreService {
             wrpc_borsh_counters,
             wrpc_json_counters,
             shutdown: SingleTrigger::default(),
+            perf_monitor,
         }
     }
 
@@ -352,7 +357,12 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_mempool_entry_call(&self, request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
-        let Some(transaction) = self.mining_manager.clone().get_transaction(request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool).await else {
+        let Some(transaction) = self
+            .mining_manager
+            .clone()
+            .get_transaction(request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool)
+            .await
+        else {
             return Err(RpcError::TransactionNotFound(request.transaction_id));
         };
         let session = self.consensus_manager.consensus().session().await;
@@ -630,7 +640,28 @@ impl RpcApi for RpcCoreService {
     // UNIMPLEMENTED METHODS
 
     async fn get_metrics_call(&self, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
+        let CountersSnapshot {
+            resident_set_size_bytes,
+            virtual_memory_size_bytes,
+            core_num,
+            cpu_usage,
+            fd_num,
+            disk_io_read_bytes,
+            disk_io_write_bytes,
+            disk_io_read_per_sec,
+            disk_io_write_per_sec,
+            ..
+        } = self.perf_monitor.snapshot();
         let process_metrics = req.process_metrics.then_some(ProcessMetrics {
+            resident_set_size_bytes,
+            virtual_memory_size_bytes,
+            core_num: core_num as u64,
+            cpu_usage,
+            fd_num: fd_num as u64,
+            disk_io_read_bytes,
+            disk_io_write_bytes,
+            disk_io_read_per_sec,
+            disk_io_write_per_sec,
             borsh_live_connections: self.wrpc_borsh_counters.live_connections.load(Ordering::Relaxed),
             borsh_connection_attempts: self.wrpc_borsh_counters.connection_attempts.load(Ordering::Relaxed),
             borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed),

@@ -232,18 +232,17 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
     let consensus_monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
 
-    let perf_monitor = args.perf_metrics.then(|| {
+    let perf_monitor_builder = PerfMonitorBuilder::new()
+        .with_fetch_interval(Duration::from_secs(args.perf_metrics_interval_sec))
+        .with_tick_service(tick_service.clone());
+    let perf_monitor = if args.perf_metrics {
         let cb = move |counters| {
             trace!("[{}] metrics: {:?}", kaspa_perf_monitor::SERVICE_NAME, counters);
         };
-        Arc::new(
-            PerfMonitorBuilder::new()
-                .with_fetch_interval(Duration::from_secs(args.perf_metrics_interval_sec))
-                .with_fetch_cb(cb)
-                .with_tick_service(tick_service.clone())
-                .build(),
-        )
-    });
+        Arc::new(perf_monitor_builder.with_fetch_cb(cb).build())
+    } else {
+        Arc::new(perf_monitor_builder.build())
+    };
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
@@ -291,6 +290,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         processing_counters,
         wrpc_borsh_counters.clone(),
         wrpc_json_counters.clone(),
+        perf_monitor.clone(),
     ));
     let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients));
 
@@ -305,9 +305,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     async_runtime.register(grpc_service);
     async_runtime.register(p2p_service);
     async_runtime.register(consensus_monitor);
-    if let Some(perf_monitor) = perf_monitor {
-        async_runtime.register(perf_monitor);
-    }
+    async_runtime.register(perf_monitor);
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments
     [
