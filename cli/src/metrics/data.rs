@@ -203,7 +203,7 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             unixtime: b.unixtime,
             duration: b.unixtime - a.unixtime,
             // ---
-            cpu_usage: b.cpu_usage as f64,
+            cpu_usage: b.cpu_usage,
             cpu_cores: b.cpu_cores as f64,
             resident_set_size_bytes: b.resident_set_size_bytes as f64,
             virtual_memory_size_bytes: b.virtual_memory_size_bytes as f64,
