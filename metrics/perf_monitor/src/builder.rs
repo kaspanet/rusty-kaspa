@@ -8,6 +8,7 @@ pub struct Builder<TS, D, CB> {
     tick_service: TS,
     fetch_interval: D,
     fetch_callback: CB,
+    page_size: usize,
 }
 
 impl Builder<Unspecified, Unspecified, Unspecified> {
@@ -18,19 +19,24 @@ impl Builder<Unspecified, Unspecified, Unspecified> {
 
 impl Default for Builder<Unspecified, Unspecified, Unspecified> {
     fn default() -> Self {
-        Self { tick_service: Unspecified {}, fetch_interval: Unspecified {}, fetch_callback: Unspecified {} }
+        Self {
+            tick_service: Unspecified {},
+            fetch_interval: Unspecified {},
+            fetch_callback: Unspecified {},
+            page_size: page_size::get(),
+        }
     }
 }
 
 impl<D, CB> Builder<Unspecified, D, CB> {
     pub fn with_tick_service<TS: AsRef<TickService>>(self, tick_service: TS) -> Builder<TS, D, CB> {
-        Builder { tick_service, fetch_interval: self.fetch_interval, fetch_callback: self.fetch_callback }
+        Builder { tick_service, fetch_interval: self.fetch_interval, fetch_callback: self.fetch_callback, page_size: self.page_size }
     }
 }
 
 impl<TS, CB> Builder<TS, Unspecified, CB> {
     pub fn with_fetch_interval(self, fetch_interval: Duration) -> Builder<TS, Duration, CB> {
-        Builder { tick_service: self.tick_service, fetch_interval, fetch_callback: self.fetch_callback }
+        Builder { tick_service: self.tick_service, fetch_interval, fetch_callback: self.fetch_callback, page_size: self.page_size }
     }
 }
 
@@ -39,7 +45,12 @@ impl<TS, D> Builder<TS, D, Unspecified> {
         self,
         fetch_callback: CB,
     ) -> Builder<TS, D, Box<dyn Fn(CountersSnapshot) + Sync + Send>> {
-        Builder { tick_service: self.tick_service, fetch_interval: self.fetch_interval, fetch_callback: Box::new(fetch_callback) as _ }
+        Builder {
+            tick_service: self.tick_service,
+            fetch_interval: self.fetch_interval,
+            fetch_callback: Box::new(fetch_callback) as _,
+            page_size: self.page_size,
+        }
     }
 }
 
@@ -50,6 +61,7 @@ impl<TS: AsRef<TickService>> Builder<TS, Unspecified, Unspecified> {
             fetch_interval: Duration::from_secs(1),
             counters: Default::default(),
             fetch_callback: None,
+            page_size: self.page_size as u64,
         }
     }
 }
@@ -61,6 +73,7 @@ impl<TS: AsRef<TickService>> Builder<TS, Duration, Unspecified> {
             fetch_interval: self.fetch_interval,
             counters: Default::default(),
             fetch_callback: None,
+            page_size: self.page_size as u64,
         }
     }
 }
@@ -72,6 +85,7 @@ impl<TS: AsRef<TickService>> Builder<TS, Unspecified, Box<dyn Fn(CountersSnapsho
             fetch_interval: Duration::from_secs(1),
             counters: Default::default(),
             fetch_callback: Some(self.fetch_callback),
+            page_size: self.page_size as u64,
         }
     }
 }
@@ -83,6 +97,7 @@ impl<TS: AsRef<TickService>> Builder<TS, Duration, Box<dyn Fn(CountersSnapshot) 
             fetch_interval: self.fetch_interval,
             counters: Default::default(),
             fetch_callback: Some(self.fetch_callback),
+            page_size: self.page_size as u64,
         }
     }
 }
