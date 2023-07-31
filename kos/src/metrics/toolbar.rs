@@ -5,18 +5,22 @@ use crate::result::Result;
 use std::{collections::HashMap, sync::MutexGuard};
 
 use kaspa_cli::metrics::Metric;
-use web_sys::{Document, Element};
+use web_sys::{Document, Element, MouseEvent};
 use workflow_d3::graph::GraphDuration;
 #[allow(unused_imports)]
 use workflow_d3::{container::Container, graph::Graph};
 use workflow_dom::inject::inject_css;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Count(usize, String);
 
 impl Count {
-    pub fn list() -> [Count; 4] {
-        [Count(1, "L".into()), Count(2, "M".into()), Count(4, "S".into()), Count(6, "T".into())]
+    pub fn cols() -> [Count; 4] {
+        [Count(1, "L".into()), Count(2, "M".into()), Count(3, "S".into()), Count(4, "T".into())]
+    }
+
+    pub fn rows() -> [Count; 5] {
+        [Count(1, "F".into()), Count(2, "L".into()), Count(4, "M".into()), Count(6, "S".into()), Count(8, "T".into())]
     }
 
     fn get_cols(&self) -> String {
@@ -33,6 +37,7 @@ impl Count {
 type Rows = Count;
 type Cols = Count;
 
+#[derive(Debug)]
 pub enum Action {
     Duration(Duration),
     Cols(Count),
@@ -87,7 +92,7 @@ impl Toolbar {
                 graphs: graphs.clone(),
                 callbacks: CallbackMap::default(),
                 controls: Arc::new(Mutex::new(Vec::new())),
-                layout: Arc::new(Mutex::new((Count(3, "M".into()), Count(5, "L".into())))),
+                layout: Arc::new(Mutex::new((Count::cols().get(2).unwrap().clone(), Count::rows().get(3).unwrap().clone()))),
             }),
         })
     }
@@ -142,37 +147,54 @@ impl Toolbar {
 
         Separator::try_new(self)?;
 
-        for width in Count::list() {
+        for cols in Count::cols() {
             let this = self.clone();
             self.push(RadioButton::try_new(
                 self,
                 self.element(),
-                "width",
+                "cols",
                 // &format!("{}", width.1),
-                &width.1.to_string(),
-                &format!("Set graph layout to {} columns", width.0),
-                Arc::new(move |btn| this.action(btn, Action::Cols(width.clone()))),
+                &cols.1.to_string(),
+                &format!("Set graph layout to {} columns", cols.0),
+                Arc::new(move |btn| this.action(btn, Action::Cols(cols.clone()))),
             )?);
         }
         Separator::try_new(self)?;
 
-        for height in Count::list() {
+        for rows in Count::rows() {
             let this = self.clone();
             self.push(RadioButton::try_new(
                 self,
                 self.element(),
-                "height",
+                "rows",
                 // &format!("{}", height.1),
-                &height.1.to_string(),
-                &format!("Set graph layout to {} rows", height.0),
-                Arc::new(move |btn| this.action(btn, Action::Rows(height.clone()))),
+                &rows.1.to_string(),
+                &format!("Set graph layout to {} rows", rows.0),
+                Arc::new(move |btn| this.action(btn, Action::Rows(rows.clone()))),
             )?);
         }
+
+        let this = self.clone();
+        spawn(async move {
+            // sleep(Duration::from_millis(100)).await;
+            this.select("duration", "5m").expect("unable to locate duration element");
+            this.select("cols", "S").expect("unable to locate width element");
+            this.select("rows", "S").expect("unable to locate height element");
+            this.update_layout(this.inner.layout.lock().unwrap().clone());
+        });
 
         Ok(())
     }
 
+    pub fn select(&self, name: &str, value: &str) -> Result<()> {
+        let el = self.document().query_selector(&format!("input[name='{}'][value='{}']", name, value))?.unwrap();
+        let event = MouseEvent::new("click").unwrap();
+        el.dispatch_event(&event).unwrap();
+        Ok(())
+    }
+
     pub fn action(&self, _btn: &dyn Control, action: Action) {
+        log_info!("action: {:?}", action);
         match action {
             Action::Duration(duration) => {
                 let graphs = self.inner.graphs.lock().unwrap();

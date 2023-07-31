@@ -72,7 +72,7 @@ impl Metrics {
             Notification::new(move |data: MetricsSnapshot| {
                 let this = this.clone();
                 Box::pin(async move {
-                    log_info!("Received metrics data: {:?}", data);
+                    // log_info!("Received metrics data: {:?}", data);
                     this.ingest(data).await?;
                     yield_executor().await;
                     Ok(())
@@ -107,8 +107,8 @@ impl Metrics {
         };
 
         match kind {
-            "kaspa" => GraphThemeOptions::new(font, primary, "rgb(220, 231, 240)", "rgb(17, 125, 187)", primary),
-            _ => GraphThemeOptions::new(font, primary, "rgb(220, 240, 231)", "rgb(17, 187, 125)", primary),
+            "kaspa" => GraphThemeOptions::new(font, primary, "rgb(220, 240, 231)", "rgb(17, 187, 125)", primary),
+            _ => GraphThemeOptions::new(font, primary, "rgb(220, 231, 240)", "rgb(17, 125, 187)", primary),
         }
     }
 

@@ -1,5 +1,6 @@
 .toolbar{
     padding:10px;
+    user-select: none;
 }
 .toolbar .control{display: inline-block}
 .toolbar .separator{
@@ -19,7 +20,12 @@
     margin:2px;
     cursor:pointer;
 }
-.toolbar .button:hover,
+.toolbar .button:hover {
+    background-color: #fefefe;
+    transform-origin: center center;
+    transform: scale(1.1);
+    transition: all 1s;
+}
 .toolbar .button:has(input:checked){
     background-color: #efefef;
     border-color: #aaa;
