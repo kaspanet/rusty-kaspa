@@ -146,6 +146,7 @@ impl Generator {
         let change_output_mass = self.inner.change_output_mass;
 
         let mut transaction_amount_accumulator = 0;
+        let mut change_amount = 0;
         // let mut change_amount = 0;
         let mut mass_accumulator = calc.blank_transaction_serialized_mass();
         let payload_mass = calc.calc_mass_for_payload(self.inner.final_transaction_payload.len());
@@ -186,11 +187,33 @@ impl Generator {
             inputs.push(input);
             sequence += 1;
 
+            // TODO - WIP
+            let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(mass_accumulator);
+            if !self.inner.final_transaction_include_fees_in_amount {
+                final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
+            }
+
             // check if we have and we have reached the desired transaction amount
             if let Some(final_transaction_amount) = self.inner.final_transaction_amount {
-                if transaction_amount_accumulator > final_transaction_amount {
-                    // if mass+final_output_mass+payload doest not fit, require additional transaction
-                    is_final = mass_accumulator + final_outputs_mass + payload_mass < MAXIMUM_STANDARD_TRANSACTION_MASS;
+                let final_transaction_total = final_transaction_amount + final_transaction_fees;
+                if transaction_amount_accumulator > final_transaction_total {
+                    // ------------------------- WIP
+
+                    change_amount = transaction_amount_accumulator - final_transaction_total;
+
+                    // - TODO - REFACTOR TO USE CUSTOM CONSTANT DERIVED FROM STANDARD OUTPUT
+                    const STANDARD_OUTPUT_DUST_LIMIT: u64 = MINIMUM_RELAY_TRANSACTION_FEE;
+                    if change_amount < STANDARD_OUTPUT_DUST_LIMIT {
+                        change_amount = 0;
+
+                        is_final = mass_accumulator + final_outputs_mass + payload_mass < MAXIMUM_STANDARD_TRANSACTION_MASS;
+                    } else {
+                        is_final = mass_accumulator + change_output_mass + final_outputs_mass + payload_mass
+                            < MAXIMUM_STANDARD_TRANSACTION_MASS;
+                    }
+
+                    // ------------------------- WIP
+
                     break;
                 }
             }
@@ -204,10 +227,17 @@ impl Generator {
         if is_final {
             context.is_done = true;
 
+            let mut final_outputs = self.inner.final_transaction_outputs.clone();
+            if change_amount > 0 {
+                let script_public_key = pay_to_address_script(&self.inner.change_address);
+                let output = TransactionOutput::new(change_amount, &script_public_key);
+                final_outputs.push(output);
+            }
+
             let tx = Transaction::new(
                 0,
                 inputs,
-                self.inner.final_transaction_outputs.clone(),
+                final_outputs,
                 0,
                 SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                 0,

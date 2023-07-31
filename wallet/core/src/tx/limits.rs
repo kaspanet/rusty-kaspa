@@ -24,7 +24,7 @@ pub const MAXIMUM_STANDARD_TRANSACTION_MASS: u64 = 100_000;
 
 /// minimum_required_transaction_relay_fee returns the minimum transaction fee required
 /// for a transaction with the passed mass to be accepted into the mempool and relayed.
-pub fn minimum_required_transaction_relay_fee(mass: u64) -> u64 {
+pub fn calc_minimum_required_transaction_relay_fee(mass: u64) -> u64 {
     // Calculate the minimum fee for a transaction to be allowed into the
     // mempool and relayed by scaling the base fee. MinimumRelayTransactionFee is in
     // sompi/kg so multiply by mass (which is in grams) and divide by 1000 to get
@@ -100,6 +100,19 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
     // Since the multiplication may overflow a u64, 2 separate calculation paths
     // are considered to avoid overflowing.
     let value = transaction_output.get_value();
+    match value.checked_mul(1000) {
+        Some(value_1000) => value_1000 / (3 * total_serialized_size) < MINIMUM_RELAY_TRANSACTION_FEE,
+        None => (value as u128 * 1000 / (3 * total_serialized_size as u128)) < MINIMUM_RELAY_TRANSACTION_FEE as u128,
+    }
+}
+
+// - TODO - WIP - REFACTOR TO BE A "STANDARD OUTPUT CONSTANT"
+pub fn is_standard_output_amount_dust(value: u64) -> bool {
+    // TODO - WIP
+    // let total_serialize_byte_size = transaction_output_serialized_byte_size(&TransactionOutput::new(0,&pay_to_address_script(&Address::new())));
+    let total_serialized_size = 123; // - TODO - FIX
+
+    // - TODO
     match value.checked_mul(1000) {
         Some(value_1000) => value_1000 / (3 * total_serialized_size) < MINIMUM_RELAY_TRANSACTION_FEE,
         None => (value as u128 * 1000 / (3 * total_serialized_size as u128)) < MINIMUM_RELAY_TRANSACTION_FEE as u128,
@@ -200,8 +213,10 @@ impl MassCalculator {
         }
     }
 
-    pub fn calc_mass_for_tx(&self, tx: &Transaction) -> u64 {
-        self.calc_serialized_mass_for_tx(tx)
+    pub fn calc_mass_for_transaction(&self, tx: &Transaction) -> u64 {
+        // self.calc_serialized_mass_for_tx(tx)
+        self.blank_transaction_serialized_mass()
+            + self.calc_mass_for_payload(tx.inner().payload.len())
             + self.calc_mass_for_outputs(&tx.inner().outputs)
             + self.calc_mass_for_inputs(&tx.inner().inputs)
 
@@ -223,38 +238,35 @@ impl MassCalculator {
     // ==================================================================
     // added for wallet tx generation
 
-    pub fn calc_mass_for_payload(&self, payload_byte_size: usize) -> u64 {
-        payload_byte_size as u64 * self.mass_per_tx_byte
+    pub fn calc_serialized_mass_for_transaction(&self, tx: &Transaction) -> u64 {
+        transaction_serialized_byte_size(tx) * self.mass_per_tx_byte
     }
 
     pub fn blank_transaction_serialized_mass(&self) -> u64 {
         blank_transaction_serialized_byte_size() * self.mass_per_tx_byte
     }
 
-    fn calc_serialized_mass_for_tx(&self, tx: &Transaction) -> u64 {
-        transaction_serialized_byte_size(tx) * self.mass_per_tx_byte
+    pub fn calc_mass_for_payload(&self, payload_byte_size: usize) -> u64 {
+        payload_byte_size as u64 * self.mass_per_tx_byte
     }
-
     // pub fn calc_
 
     pub fn calc_mass_for_outputs(&self, outputs: &[TransactionOutput]) -> u64 {
-        let total_script_public_key_size: u64 = outputs
-            .iter()
-            .map(|output| 2 /* script public key version (u16) */ + output.inner().script_public_key.script().len() as u64)
-            .sum();
-        total_script_public_key_size * self.mass_per_script_pub_key_byte
+        outputs.iter().map(|output| self.calc_mass_for_output(output)).sum()
     }
 
     pub fn calc_mass_for_inputs(&self, inputs: &[TransactionInput]) -> u64 {
-        inputs.iter().map(|input| input.inner().sig_op_count as u64).sum::<u64>() * self.mass_per_sig_op
+        inputs.iter().map(|input| self.calc_mass_for_input(input)).sum::<u64>()
     }
 
     pub fn calc_mass_for_output(&self, output: &TransactionOutput) -> u64 {
         self.mass_per_script_pub_key_byte * (2 + output.inner().script_public_key.script().len() as u64)
+            + transaction_output_serialized_byte_size(output) * self.mass_per_tx_byte
     }
 
     pub fn calc_mass_for_input(&self, input: &TransactionInput) -> u64 {
         input.inner().sig_op_count as u64 * self.mass_per_sig_op
+            + transaction_input_serialized_byte_size(input) * self.mass_per_tx_byte
     }
 
     pub fn calc_signature_mass(&self, minimum_signatures: u16) -> u64 {
@@ -267,9 +279,14 @@ impl MassCalculator {
         SIGNATURE_SIZE * self.mass_per_tx_byte * minimum_signatures as u64 * number_of_inputs as u64
     }
 
+    pub fn calc_minimum_transaction_relay_fee_from_mass(&self, mass: u64) -> u64 {
+        calc_minimum_required_transaction_relay_fee(mass)
+    }
+
     pub fn calc_minium_tx_relay_fee(&self, tx: &Transaction, minimum_signatures: u16) -> u64 {
-        let mass = self.calc_mass_for_tx(tx) + self.calc_signature_mass_for_inputs(tx.inner().inputs.len(), minimum_signatures);
-        minimum_required_transaction_relay_fee(mass)
+        let mass =
+            self.calc_mass_for_transaction(tx) + self.calc_signature_mass_for_inputs(tx.inner().inputs.len(), minimum_signatures);
+        calc_minimum_required_transaction_relay_fee(mass)
     }
 }
 
