@@ -2603,7 +2603,6 @@ dependencies = [
  "kaspa-math",
  "kaspa-mining-errors",
  "kaspa-notify",
- "kaspa-perf-monitor",
  "kaspa-txscript",
  "kaspa-utils",
  "log",

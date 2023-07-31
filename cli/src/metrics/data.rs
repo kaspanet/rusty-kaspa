@@ -6,6 +6,17 @@ use workflow_core::{enums::Describe, sendable::Sendable};
 
 #[derive(Describe, Debug, Clone, Eq, PartialEq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum Metric {
+    // CpuCores is used to normalize CpuUsage metric
+    // CpuCores
+    CpuUsage,
+    ResidentSetSizeBytes,
+    VirtualMemorySizeBytes,
+    FdNum,
+    DiskIoReadBytes,
+    DiskIoWriteBytes,
+    DiskIoReadPerSec,
+    DiskIoWritePerSec,
+    // ---
     BlocksSubmitted,
     HeaderCount,
     DepCounts,
@@ -24,6 +35,17 @@ pub enum Metric {
 #[derive(Default, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct MetricsData {
     pub unixtime: f64,
+
+    // ---
+    pub resident_set_size_bytes: u64,
+    pub virtual_memory_size_bytes: u64,
+    pub cpu_cores: u64,
+    pub cpu_usage: f64,
+    pub fd_num: u64,
+    pub disk_io_read_bytes: u64,
+    pub disk_io_write_bytes: u64,
+    pub disk_io_read_per_sec: f64,
+    pub disk_io_write_per_sec: f64,
     // ---
     pub blocks_submitted: u64,
     pub header_counts: u64,
@@ -54,6 +76,16 @@ pub struct MetricsSnapshot {
     pub unixtime: f64,
     pub duration: f64,
     // ---
+    pub resident_set_size_bytes: f64,
+    pub virtual_memory_size_bytes: f64,
+    pub cpu_cores: f64,
+    pub cpu_usage: f64,
+    pub fd_num: f64,
+    pub disk_io_read_bytes: f64,
+    pub disk_io_write_bytes: f64,
+    pub disk_io_read_per_sec: f64,
+    pub disk_io_write_per_sec: f64,
+    // ---
     pub blocks_submitted: f64,
     pub header_counts: f64,
     pub dep_counts: f64,
@@ -73,6 +105,17 @@ pub struct MetricsSnapshot {
 impl MetricsSnapshot {
     pub fn get(&self, metric: &Metric) -> Sendable<JsValue> {
         let v = match metric {
+            // CpuCores
+            Metric::CpuUsage => JsValue::from(self.cpu_usage / self.cpu_cores),
+            Metric::ResidentSetSizeBytes => JsValue::from(self.resident_set_size_bytes),
+            Metric::VirtualMemorySizeBytes => JsValue::from(self.virtual_memory_size_bytes),
+            Metric::FdNum => JsValue::from(self.fd_num),
+            Metric::DiskIoReadBytes => JsValue::from(self.disk_io_read_bytes),
+            Metric::DiskIoWriteBytes => JsValue::from(self.disk_io_write_bytes),
+            Metric::DiskIoReadPerSec => JsValue::from(self.disk_io_read_per_sec),
+            Metric::DiskIoWritePerSec => JsValue::from(self.disk_io_write_per_sec),
+
+            // ---
             Metric::BlocksSubmitted => JsValue::from(self.blocks_submitted),
             Metric::HeaderCount => JsValue::from(self.header_counts),
             Metric::DepCounts => JsValue::from(self.dep_counts),
@@ -93,6 +136,19 @@ impl MetricsSnapshot {
 
     pub fn format(&self, metric: &Metric) -> String {
         match metric {
+            Metric::CpuUsage => format!("CPU: {:1.2}%", self.cpu_usage / self.cpu_cores * 100.0),
+            Metric::ResidentSetSizeBytes => {
+                format!("Resident Memory: {} Mb", (self.resident_set_size_bytes / 1024. / 1024.).separated_string())
+            }
+            Metric::VirtualMemorySizeBytes => {
+                format!("Virtual Memory: {} Mb", (self.virtual_memory_size_bytes / 1024. / 1024.).separated_string())
+            }
+            Metric::FdNum => format!("File Handles: {}", self.fd_num.separated_string()),
+            Metric::DiskIoReadBytes => format!("Storage Read: {} Kb", (self.disk_io_read_bytes / 1024.).separated_string()),
+            Metric::DiskIoWriteBytes => format!("Storage Write: {} Kb", (self.disk_io_write_bytes / 1024.).separated_string()),
+            Metric::DiskIoReadPerSec => format!("Storage Read: {} Kb/s", (self.disk_io_read_per_sec / 1024.).separated_string()),
+            Metric::DiskIoWritePerSec => format!("Storage Write: {} Kb/s", (self.disk_io_write_per_sec / 1024.).separated_string()),
+            // --
             Metric::BlocksSubmitted => format!("Blocks Submitted: {}", self.blocks_submitted.separated_string()),
             Metric::HeaderCount => format!("Headers: {}", self.header_counts.separated_string()),
             Metric::DepCounts => format!("Dependencies: {}", self.dep_counts.separated_string()),
@@ -110,6 +166,32 @@ impl MetricsSnapshot {
             Metric::VirtualDaaScore => format!("Virtual DAA Score: {}", self.virtual_daa_score.separated_string()),
         }
     }
+    pub fn group(&self, metric: &Metric) -> String {
+        match metric {
+            Metric::CpuUsage
+            | Metric::ResidentSetSizeBytes
+            | Metric::VirtualMemorySizeBytes
+            | Metric::FdNum
+            | Metric::DiskIoReadBytes
+            | Metric::DiskIoWriteBytes
+            | Metric::DiskIoReadPerSec
+            | Metric::DiskIoWritePerSec => "system".to_string(),
+            // --
+            Metric::BlocksSubmitted
+            | Metric::HeaderCount
+            | Metric::DepCounts
+            | Metric::BodyCounts
+            | Metric::TxnCounts
+            | Metric::ChainBlockCounts
+            | Metric::MassCounts
+            | Metric::BlockCount
+            | Metric::TipHashes
+            | Metric::Difficulty
+            | Metric::PastMedianTime
+            | Metric::VirtualParentHashes
+            | Metric::VirtualDaaScore => "kaspa".to_string(),
+        }
+    }
 }
 
 impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
@@ -117,6 +199,16 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
         Self {
             unixtime: b.unixtime,
             duration: b.unixtime - a.unixtime,
+            // ---
+            cpu_usage: b.cpu_usage as f64,
+            cpu_cores: b.cpu_cores as f64,
+            resident_set_size_bytes: b.resident_set_size_bytes as f64,
+            virtual_memory_size_bytes: b.virtual_memory_size_bytes as f64,
+            fd_num: b.fd_num as f64,
+            disk_io_read_bytes: b.disk_io_read_bytes as f64,
+            disk_io_write_bytes: b.disk_io_write_bytes as f64,
+            disk_io_read_per_sec: b.disk_io_read_per_sec as f64,
+            disk_io_write_per_sec: b.disk_io_write_per_sec as f64,
             // ---
             blocks_submitted: b.blocks_submitted as f64,
             header_counts: b.header_counts as f64,
@@ -137,27 +229,3 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
         }
     }
 }
-
-// impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
-//     fn from((a, b): (&MetricsData, &MetricsData)) -> Self {
-//         Self {
-//             unixtime: b.unixtime,
-//             duration: b.unixtime - a.unixtime,
-//             // ---
-//             blocks_submitted: b.blocks_submitted as f64,     // - a.blocks_submitted,
-//             header_counts: b.header_counts as f64,           // - a.header_counts,
-//             dep_counts: b.dep_counts as f64,                 // - a.dep_counts,
-//             body_counts: b.body_counts as f64,               // - a.body_counts,
-//             txs_counts: b.txs_counts as f64,                 // - a.txs_counts,
-//             chain_block_counts: b.chain_block_counts as f64, // - a.chain_block_counts,
-//             mass_counts: b.mass_counts as f64,               // - a.mass_counts,
-//             // ---
-//             block_count: b.block_count as f64,                     // - a.block_count,
-//             tip_hashes: b.tip_hashes as f64,                       // - a.tip_hashes,
-//             difficulty: b.difficulty as f64,                       // - a.difficulty,
-//             past_median_time: b.past_median_time as f64,           // - a.past_median_time,
-//             virtual_parent_hashes: b.virtual_parent_hashes as f64, // - a.virtual_parent_hashes,
-//             virtual_daa_score: b.virtual_daa_score as f64,         // - a.virtual_daa_score,
-//         }
-//     }
-// }

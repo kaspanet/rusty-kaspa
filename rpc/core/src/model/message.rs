@@ -688,9 +688,6 @@ pub struct GetMetricsRequest {
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessMetrics {
-    // pub uptime: u64,
-    // pub grpc_connections: u32,
-    // pub wrpc_connections: u32,
     pub resident_set_size_bytes: u64,
     pub virtual_memory_size_bytes: u64,
     pub core_num: u64,

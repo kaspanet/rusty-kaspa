@@ -11,6 +11,8 @@ pub struct KaspadConfig {
     pub path: Option<String>,
     pub network: Option<NetworkId>,
     pub utxo_index: bool,
+    pub perf_metrics: bool,
+    pub perf_metrics_interval_sec: Option<u64>,
     // --- TODO: these are not used yet ---
     pub peers: Vec<String>,
     pub enablge_grpc: bool,
@@ -46,6 +48,9 @@ impl Default for KaspadConfig {
             is_borsh_rpc_public: false,
             enablge_json_rpc: false,
             is_json_rpc_public: false,
+            // --
+            perf_metrics: true,
+            perf_metrics_interval_sec: Some(1),
             // --- TODO: these are not used yet ---
             peers: vec![],
             unsafe_rpc: false,
@@ -132,6 +137,12 @@ impl TryFrom<KaspadConfig> for Vec<String> {
         };
         if args.enablge_grpc {
             argv.push(grpc_listen_flag.as_str());
+        }
+
+        let perf_metrics_interval_sec = format!("--perf-metrics-interval-sec={}", args.perf_metrics_interval_sec.unwrap_or(1));
+        if args.perf_metrics {
+            argv.push("--perf-metrics");
+            argv.push(perf_metrics_interval_sec.as_str());
         }
 
         Ok(argv.into_iter().map(String::from).collect())

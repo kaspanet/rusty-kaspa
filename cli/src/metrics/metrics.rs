@@ -192,8 +192,7 @@ impl Metrics {
 
     async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
         if let Ok(metrics) = rpc.get_metrics(true, true).await {
-            #[allow(unused_variables)]
-            let GetMetricsResponse { server_time, consensus_metrics, process_metrics } = metrics;
+            let GetMetricsResponse { server_time: _, consensus_metrics, process_metrics } = metrics;
 
             let mut data = self.data.lock().unwrap();
             let data = data.as_mut().unwrap();
@@ -205,6 +204,18 @@ impl Metrics {
                 data.txs_counts = consensus_metrics.txs_counts;
                 data.chain_block_counts = consensus_metrics.chain_block_counts;
                 data.mass_counts = consensus_metrics.mass_counts;
+            }
+
+            if let Some(process_metrics) = process_metrics {
+                data.resident_set_size_bytes = process_metrics.resident_set_size_bytes;
+                data.virtual_memory_size_bytes = process_metrics.virtual_memory_size_bytes;
+                data.cpu_cores = process_metrics.core_num;
+                data.cpu_usage = process_metrics.cpu_usage;
+                data.fd_num = process_metrics.fd_num;
+                data.disk_io_read_bytes = process_metrics.disk_io_read_bytes;
+                data.disk_io_write_bytes = process_metrics.disk_io_write_bytes;
+                data.disk_io_read_per_sec = process_metrics.disk_io_read_per_sec;
+                data.disk_io_write_per_sec = process_metrics.disk_io_write_per_sec;
             }
         }
 
