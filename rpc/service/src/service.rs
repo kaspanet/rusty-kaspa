@@ -689,12 +689,12 @@ impl RpcApi for RpcCoreService {
         Ok(response)
     }
 
-    async fn get_connection_info_call(&self, _request: GetConnectionInfoRequest) -> RpcResult<GetConnectionInfoResponse> {
+    async fn get_server_info_call(&self, _request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse> {
         let session = self.consensus_manager.consensus().session().await;
         let is_synced: bool = self.flow_context.hub().has_peers() && session.async_is_nearly_synced().await;
         let virtual_daa_score = session.async_get_virtual_daa_score().await;
 
-        Ok(GetConnectionInfoResponse {
+        Ok(GetServerInfoResponse {
             is_synced,
             network_id: self.config.net,
             server_version: version().to_string(),

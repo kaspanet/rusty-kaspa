@@ -340,7 +340,7 @@ impl RpcApi for KaspaRpcClient {
             GetBlockTemplate,
             GetCoinSupply,
             GetConnectedPeerInfo,
-            GetConnectionInfo,
+            GetServerInfo,
             GetCurrentNetwork,
             GetHeaders,
             GetInfo,

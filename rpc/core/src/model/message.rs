@@ -738,11 +738,11 @@ impl GetMetricsResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetConnectionInfoRequest {}
+pub struct GetServerInfoRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetConnectionInfoResponse {
+pub struct GetServerInfoResponse {
     pub server_version: String,
     pub network_id: RpcNetworkId,
     pub has_utxo_index: bool,

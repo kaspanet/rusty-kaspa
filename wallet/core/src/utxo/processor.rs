@@ -286,8 +286,8 @@ impl UtxoProcessor {
 
             pub async fn init_state_from_server(self: &Arc<Self>) -> Result<()> {
 
-                let GetConnectionInfoResponse { server_version, network_id: server_network_id, has_utxo_index, is_synced, virtual_daa_score } =
-                self.rpc().get_connection_info().await?;
+                let GetServerInfoResponse { server_version, network_id: server_network_id, has_utxo_index, is_synced, virtual_daa_score } =
+                self.rpc().get_server_info().await?;
 
                 if !has_utxo_index {
                     self.notify(Events::UtxoIndexNotEnabled).await?;

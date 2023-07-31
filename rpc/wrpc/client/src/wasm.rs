@@ -269,7 +269,7 @@ build_wrpc_wasm_bindgen_interface!(
         GetSinkBlueScore,
         Ping,
         Shutdown,
-        GetConnectionInfo,
+        GetServerInfo,
         GetSyncStatus,
     ],
     [

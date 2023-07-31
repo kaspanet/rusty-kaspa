@@ -35,10 +35,10 @@ pub trait RpcApi: Sync + Send + AnySync {
 
     // get_info alternative that carries only version, network_id (full), is_synced, virtual_daa_score
     // these are the only variables needed to negotiate a wRPC connection (besides the wRPC handshake)
-    async fn get_connection_info(&self) -> RpcResult<GetConnectionInfoResponse> {
-        self.get_connection_info_call(GetConnectionInfoRequest {}).await
+    async fn get_server_info(&self) -> RpcResult<GetServerInfoResponse> {
+        self.get_server_info_call(GetServerInfoRequest {}).await
     }
-    async fn get_connection_info_call(&self, request: GetConnectionInfoRequest) -> RpcResult<GetConnectionInfoResponse>;
+    async fn get_server_info_call(&self, request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse>;
 
     // Get current sync status of the node (should be converted to a notification subscription)
     async fn get_sync_status(&self) -> RpcResult<bool> {
