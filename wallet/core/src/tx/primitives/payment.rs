@@ -4,14 +4,15 @@ use kaspa_txscript::pay_to_address_script;
 // use workflow_core::traits::IsNotEmpty;
 
 pub enum PaymentDestination {
-    Address(Address),
+    // Address(Address),
+    Change,
     PaymentOutputs(PaymentOutputs),
 }
 
 impl PaymentDestination {
     pub fn amount(&self) -> Option<u64> {
         match self {
-            Self::Address(_) => None,
+            Self::Change => None,
             Self::PaymentOutputs(payment_outputs) => Some(payment_outputs.amount()),
         }
     }
@@ -21,11 +22,11 @@ impl PaymentDestination {
     // }
 }
 
-impl From<Address> for PaymentDestination {
-    fn from(address: Address) -> Self {
-        Self::Address(address)
-    }
-}
+// impl From<Address> for PaymentDestination {
+//     fn from(address: Address) -> Self {
+//         Self::Address(address)
+//     }
+// }
 
 #[derive(Debug)]
 // #[wasm_bindgen(inspectable)]

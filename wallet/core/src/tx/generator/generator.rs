@@ -10,7 +10,7 @@ use kaspa_txscript::pay_to_address_script;
 use std::collections::VecDeque;
 
 struct Context {
-    utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference>>,
+    utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
 
     aggregated_utxos: usize,
     // total fees of all transactions issued by
@@ -62,7 +62,7 @@ pub struct Generator {
 }
 
 impl Generator {
-    pub fn new(abortable: &Abortable, settings: GeneratorSettings) -> Self {
+    pub fn new(settings: GeneratorSettings, abortable: &Abortable) -> Self {
         let GeneratorSettings {
             utxo_iterator,
             utxo_context,
@@ -78,7 +78,8 @@ impl Generator {
         let mass_calculator = MassCalculator::new(get_consensus_params_by_address(&change_address));
 
         let (final_transaction_outputs, final_transaction_amount) = match final_transaction_destination {
-            PaymentDestination::Address(address) => (vec![TransactionOutput::new(0, &pay_to_address_script(&address))], None),
+            // PaymentDestination::Address(address) => (vec![TransactionOutput::new(0, &pay_to_address_script(&address))], None),
+            PaymentDestination::Change => (vec![TransactionOutput::new(0, &pay_to_address_script(&change_address))], None),
             PaymentDestination::PaymentOutputs(outputs) => (
                 outputs.iter().map(|output| TransactionOutput::new(output.amount, &pay_to_address_script(&output.address))).collect(),
                 Some(outputs.iter().map(|output| output.amount).sum()),
@@ -111,7 +112,7 @@ impl Generator {
             final_transaction_include_fees_in_amount,
             final_transaction_outputs,
             final_transaction_outputs_mass,
-            final_transaction_payload,
+            final_transaction_payload: final_transaction_payload.unwrap_or_default(),
         };
 
         Self { inner: Arc::new(inner) }
@@ -125,8 +126,17 @@ impl Generator {
         self.inner.context.lock().unwrap()
     }
 
+    pub fn aggregate_fees(&self) -> u64 {
+        self.context().aggregated_fees
+    }
+
+    pub fn aggregate_utxos(&self) -> usize {
+        self.context().aggregated_utxos
+    }
+
     pub fn stream(&self) -> impl Stream<Item = Result<PendingTransaction>> {
         Box::pin(PendingTransactionStream::new(self))
+        // PendingTransactionStream::new(self)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Result<PendingTransaction>> {

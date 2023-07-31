@@ -64,7 +64,7 @@ impl UtxoSelectionContext {
     //     self.selection().entries
     // }
 
-    pub fn iter(&self) -> impl Iterator<Item = UtxoEntryReference> {
+    pub fn iter(&self) -> impl Iterator<Item = UtxoEntryReference> + Send + Sync + 'static {
         UtxoSelectionContextIterator::new(self.inner.clone())
     }
 

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use workflow_core::prelude::Abortable;
 
 pub struct GeneratorSettings {
-    pub utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference>>,
+    pub utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
     // Utxo Context
     pub utxo_context: Option<UtxoContext>,
     // typically a number of keys required to sign the transaction
@@ -23,7 +23,7 @@ pub struct GeneratorSettings {
     // final transaction outputs
     pub final_transaction_destination: PaymentDestination,
     // payload
-    pub final_transaction_payload: Vec<u8>,
+    pub final_transaction_payload: Option<Vec<u8>>,
 }
 
 impl GeneratorSettings {
@@ -32,7 +32,7 @@ impl GeneratorSettings {
         final_transaction_destination: PaymentDestination,
         final_priority_fee: Option<u64>,
         final_include_fees_in_amount: bool,
-        final_transaction_payload: Vec<u8>,
+        final_transaction_payload: Option<Vec<u8>>,
     ) -> Result<Self> {
         let change_address = account.change_address().await?;
         let inner = account.inner();
@@ -58,6 +58,6 @@ impl GeneratorSettings {
     }
 
     pub fn generator(self, abortable: &Abortable) -> Generator {
-        Generator::new(abortable, self)
+        Generator::new(self, abortable)
     }
 }

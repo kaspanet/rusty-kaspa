@@ -2,6 +2,7 @@ use crate::result::Result;
 use crate::tx::{Generator, MutableTransaction, Transaction};
 use crate::utxo::UtxoEntryReference;
 use crate::DynRpcApi;
+use kaspa_consensus_core::tx::TransactionId;
 // use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
 use std::sync::Mutex;
@@ -26,6 +27,10 @@ impl PendingTransaction {
         let mutable_transaction = Mutex::new(MutableTransaction::new(transaction, utxo_entries.into()));
 
         Self { inner: Arc::new(Inner { generator: generator.clone(), mutable_transaction, is_committed: AtomicBool::new(false) }) }
+    }
+
+    pub fn id(&self) -> TransactionId {
+        self.inner.mutable_transaction.lock().unwrap().id()
     }
 
     fn commit(&self) -> Result<()> {

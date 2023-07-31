@@ -30,8 +30,8 @@ impl MutableTransaction {
     }
 
     #[wasm_bindgen(getter=id)]
-    pub fn id(&self) -> Result<String, JsError> {
-        Ok(self.tx.lock()?.id_string())
+    pub fn id_string(&self) -> String {
+        self.tx.lock().unwrap().id_string()
     }
 
     #[wasm_bindgen(js_name=toJSON)]
@@ -104,6 +104,10 @@ impl MutableTransaction {
 impl MutableTransaction {
     pub fn new(tx: Transaction, entries: UtxoEntries) -> Self {
         Self { tx: Arc::new(Mutex::new(tx)), entries }
+    }
+
+    pub fn id(&self) -> TransactionId {
+        self.tx.lock().unwrap().id()
     }
 
     pub fn tx(&self) -> MutexGuard<'_, Transaction> {

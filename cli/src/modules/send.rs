@@ -39,9 +39,23 @@ impl Send {
         let abortable = Abortable::default();
 
         let outputs = PaymentOutputs::try_from((address.clone(), amount_sompi))?;
-        let ids =
-            // account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret, &abortable).await?;
-            account.send_v1(&outputs, priority_fee_sompi, false, wallet_secret, payment_secret, &abortable).await?;
+
+        // account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret, &abortable).await?;
+        let ctx_ = ctx.clone();
+        let ids = account
+            .send(
+                outputs.into(),
+                priority_fee_sompi,
+                false,
+                None,
+                wallet_secret,
+                payment_secret,
+                &abortable,
+                Some(Arc::new(move |ptx| {
+                    tprintln!(ctx_, "Sending transaction: {}", ptx.id());
+                })),
+            )
+            .await?;
 
         tprintln!(ctx, "\nSending {amount} KAS to {address}, tx ids:");
         tprintln!(ctx, "{}\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\n"));
