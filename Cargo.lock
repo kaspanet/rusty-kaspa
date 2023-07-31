@@ -2564,6 +2564,7 @@ version = "0.1.6"
 dependencies = [
  "kaspa-core",
  "log",
+ "page_size",
  "perf_monitor",
  "portable-atomic",
  "thiserror",
@@ -2602,6 +2603,7 @@ dependencies = [
  "kaspa-math",
  "kaspa-mining-errors",
  "kaspa-notify",
+ "kaspa-perf-monitor",
  "kaspa-txscript",
  "kaspa-utils",
  "log",
@@ -2646,6 +2648,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-p2p-flows",
  "kaspa-p2p-lib",
+ "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-txscript",
  "kaspa-utils",
@@ -3654,6 +3657,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2ad9b889f1b12e0b9ee24db044b5129150d5eada288edc800f789928dc8c0e3"
 dependencies = [
  "unicode-width",
+]
+
+[[package]]
+name = "page_size"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b7663cbd190cfd818d08efa8497f6cd383076688c49a391ef7c0d03cd12b561"
+dependencies = [
+ "libc",
+ "winapi",
 ]
 
 [[package]]

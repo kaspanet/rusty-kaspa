@@ -25,6 +25,7 @@ kaspa-p2p-flows.workspace = true
 kaspa-math.workspace = true
 kaspa-utxoindex.workspace = true
 kaspa-wrpc-core.workspace = true
+kaspa-perf-monitor.workspace = true
 
 log.workspace = true
 async-trait.workspace = true
