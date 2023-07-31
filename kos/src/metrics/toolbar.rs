@@ -8,10 +8,7 @@ use kaspa_cli::metrics::Metric;
 use web_sys::{Document, Element};
 use workflow_d3::graph::GraphDuration;
 #[allow(unused_imports)]
-use workflow_d3::{
-    container::Container,
-    graph::{Graph, DAYS, HOURS, MINUTES},
-};
+use workflow_d3::{container::Container, graph::Graph};
 use workflow_dom::inject::inject_css;
 
 #[derive(Clone)]
@@ -19,7 +16,7 @@ pub struct Count(usize, String);
 
 impl Count {
     pub fn list() -> [Count; 4] {
-        [Count(1, "L".into()), Count(2, "M".into()), Count(3, "S".into()), Count(4, "T".into())]
+        [Count(1, "L".into()), Count(2, "M".into()), Count(4, "S".into()), Count(6, "T".into())]
     }
 
     fn get_cols(&self) -> String {
@@ -37,7 +34,7 @@ type Rows = Count;
 type Cols = Count;
 
 pub enum Action {
-    Duration(u64),
+    Duration(Duration),
     Cols(Count),
     Rows(Count),
 }

@@ -32,6 +32,35 @@ pub enum Metric {
     VirtualDaaScore,
 }
 
+impl Metric {
+    pub fn group(&self) -> &'static str {
+        match self {
+            Metric::CpuUsage
+            | Metric::ResidentSetSizeBytes
+            | Metric::VirtualMemorySizeBytes
+            | Metric::FdNum
+            | Metric::DiskIoReadBytes
+            | Metric::DiskIoWriteBytes
+            | Metric::DiskIoReadPerSec
+            | Metric::DiskIoWritePerSec => "system",
+            // --
+            Metric::BlocksSubmitted
+            | Metric::HeaderCount
+            | Metric::DepCounts
+            | Metric::BodyCounts
+            | Metric::TxnCounts
+            | Metric::ChainBlockCounts
+            | Metric::MassCounts
+            | Metric::BlockCount
+            | Metric::TipHashes
+            | Metric::Difficulty
+            | Metric::PastMedianTime
+            | Metric::VirtualParentHashes
+            | Metric::VirtualDaaScore => "kaspa",
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct MetricsData {
     pub unixtime: f64,
@@ -134,20 +163,20 @@ impl MetricsSnapshot {
         Sendable(v)
     }
 
-    pub fn format(&self, metric: &Metric) -> String {
+    pub fn format(&self, metric: &Metric, si: bool) -> String {
         match metric {
             Metric::CpuUsage => format!("CPU: {:1.2}%", self.cpu_usage / self.cpu_cores * 100.0),
             Metric::ResidentSetSizeBytes => {
-                format!("Resident Memory: {} Mb", (self.resident_set_size_bytes / 1024. / 1024.).separated_string())
+                format!("Resident Memory: {}", as_gb(self.resident_set_size_bytes, si))
             }
             Metric::VirtualMemorySizeBytes => {
-                format!("Virtual Memory: {} Mb", (self.virtual_memory_size_bytes / 1024. / 1024.).separated_string())
+                format!("Virtual Memory: {}", as_gb(self.virtual_memory_size_bytes, si))
             }
             Metric::FdNum => format!("File Handles: {}", self.fd_num.separated_string()),
-            Metric::DiskIoReadBytes => format!("Storage Read: {} Kb", (self.disk_io_read_bytes / 1024.).separated_string()),
-            Metric::DiskIoWriteBytes => format!("Storage Write: {} Kb", (self.disk_io_write_bytes / 1024.).separated_string()),
-            Metric::DiskIoReadPerSec => format!("Storage Read: {} Kb/s", (self.disk_io_read_per_sec / 1024.).separated_string()),
-            Metric::DiskIoWritePerSec => format!("Storage Write: {} Kb/s", (self.disk_io_write_per_sec / 1024.).separated_string()),
+            Metric::DiskIoReadBytes => format!("Storage Read: {}", as_gb(self.disk_io_read_bytes, si)),
+            Metric::DiskIoWriteBytes => format!("Storage Write: {}", as_gb(self.disk_io_write_bytes, si)),
+            Metric::DiskIoReadPerSec => format!("Storage Read: {}/s", as_kb(self.disk_io_read_per_sec, si)),
+            Metric::DiskIoWritePerSec => format!("Storage Write: {}/s", as_kb(self.disk_io_write_per_sec, si)),
             // --
             Metric::BlocksSubmitted => format!("Blocks Submitted: {}", self.blocks_submitted.separated_string()),
             Metric::HeaderCount => format!("Headers: {}", self.header_counts.separated_string()),
@@ -164,32 +193,6 @@ impl MetricsSnapshot {
             Metric::PastMedianTime => format!("Past Median Time: {}", self.past_median_time.separated_string()),
             Metric::VirtualParentHashes => format!("Virtual Parent Hashes: {}", self.virtual_parent_hashes.separated_string()),
             Metric::VirtualDaaScore => format!("Virtual DAA Score: {}", self.virtual_daa_score.separated_string()),
-        }
-    }
-    pub fn group(&self, metric: &Metric) -> String {
-        match metric {
-            Metric::CpuUsage
-            | Metric::ResidentSetSizeBytes
-            | Metric::VirtualMemorySizeBytes
-            | Metric::FdNum
-            | Metric::DiskIoReadBytes
-            | Metric::DiskIoWriteBytes
-            | Metric::DiskIoReadPerSec
-            | Metric::DiskIoWritePerSec => "system".to_string(),
-            // --
-            Metric::BlocksSubmitted
-            | Metric::HeaderCount
-            | Metric::DepCounts
-            | Metric::BodyCounts
-            | Metric::TxnCounts
-            | Metric::ChainBlockCounts
-            | Metric::MassCounts
-            | Metric::BlockCount
-            | Metric::TipHashes
-            | Metric::Difficulty
-            | Metric::PastMedianTime
-            | Metric::VirtualParentHashes
-            | Metric::VirtualDaaScore => "kaspa".to_string(),
         }
     }
 }
@@ -228,4 +231,23 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             data: b.clone(),
         }
     }
+}
+
+fn as_kb(bytes: f64, si: bool) -> String {
+    let unit = if si { 1000. } else { 1024. };
+    let suffix = if si { " KB" } else { " KiB" };
+    let kb = ((bytes / unit * 100.) as u64) as f64 / 100.;
+    (kb).separated_string() + suffix
+}
+
+// fn format_storage_gb(bytes : f64) -> String {
+//     let gb = ((bytes / 1024. / 1024. / 1024. * 100.) as u64) as f64 / 100.;
+//     (gb).separated_string()
+// }
+
+fn as_gb(bytes: f64, si: bool) -> String {
+    let unit = if si { 1000. } else { 1024. };
+    let suffix = if si { " GB" } else { " GiB" };
+    let gb = ((bytes / unit / unit / unit * 100.) as u64) as f64 / 100.;
+    (gb).separated_string() + suffix
 }

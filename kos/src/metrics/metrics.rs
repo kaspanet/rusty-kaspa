@@ -4,6 +4,7 @@ use super::toolbar::*;
 use crate::imports::*;
 use kaspa_cli::metrics::{Metric, MetricsSnapshot};
 // use web_sys::HtmlSelectElement;
+use workflow_core::time::{HOURS, MINUTES};
 use workflow_d3::container::*;
 use workflow_d3::graph::*;
 
@@ -96,6 +97,21 @@ impl Metrics {
         Ok(())
     }
 
+    pub fn theme(name: &str, kind: &str) -> GraphThemeOptions {
+        let font = "'Consolas', 'Lucida Grande', 'Roboto Mono', 'Source Code Pro', 'Trebuchet'";
+
+        let primary = match name {
+            "light" => "black",
+            "dark" => "#ccc",
+            _ => "grey",
+        };
+
+        match kind {
+            "kaspa" => GraphThemeOptions::new(font, primary, "rgb(220, 231, 240)", "rgb(17, 125, 187)", primary),
+            _ => GraphThemeOptions::new(font, primary, "rgb(220, 240, 231)", "rgb(17, 187, 125)", primary),
+        }
+    }
+
     async fn init_graphs(self: &Arc<Self>) -> Result<()> {
         let window = self.window.window();
 
@@ -112,8 +128,9 @@ impl Metrics {
                     &container,
                     None,
                     "",
-                    GraphDuration::parse("5m").unwrap(),
-                    GraphTheme::Light,
+                    Duration::from_millis(5 * MINUTES), //GraphDuration::parse("5m").unwrap(),
+                    Duration::from_millis(48 * HOURS),
+                    GraphTheme::Custom(Self::theme("light", metric.group())),
                     Margin::new(20.0, 20.0, 10.0, 30.0),
                 )
                 .await?,
@@ -132,9 +149,10 @@ impl Metrics {
     }
 
     async fn ingest(self: &Arc<Self>, data: MetricsSnapshot) -> Result<()> {
+        let si = true;
         for metric in Metric::list() {
             let value = data.get(&metric);
-            self.graph(&metric).ingest(data.unixtime, value.clone(), &data.format(&metric)).await?;
+            self.graph(&metric).ingest(data.unixtime, value.clone(), &data.format(&metric, si)).await?;
         }
 
         yield_executor().await;
