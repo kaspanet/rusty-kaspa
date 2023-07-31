@@ -1,4 +1,5 @@
 use crate::tx::{Transaction, TransactionInput, TransactionOutput, TransactionOutputInner};
+use kaspa_consensus_core::tx::SCRIPT_VECTOR_SIZE;
 use wasm_bindgen::prelude::*;
 
 use kaspa_consensus_core::{
@@ -106,16 +107,16 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
     }
 }
 
-// - TODO - WIP - REFACTOR TO BE A "STANDARD OUTPUT CONSTANT"
-pub fn is_standard_output_amount_dust(value: u64) -> bool {
-    // TODO - WIP
-    // let total_serialize_byte_size = transaction_output_serialized_byte_size(&TransactionOutput::new(0,&pay_to_address_script(&Address::new())));
-    let total_serialized_size = 123; // - TODO - FIX
+// The most common scripts are pay-to-pubkey, and as per the above
+// breakdown, the minimum size of a p2pk input script is 148 bytes. So
+// that figure is used.
+pub const STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE: u64 = transaction_standard_output_serialized_byte_size() + 148;
+pub const STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X: u64 = STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE * 3;
 
-    // - TODO
+pub fn is_standard_output_amount_dust(value: u64) -> bool {
     match value.checked_mul(1000) {
-        Some(value_1000) => value_1000 / (3 * total_serialized_size) < MINIMUM_RELAY_TRANSACTION_FEE,
-        None => (value as u128 * 1000 / (3 * total_serialized_size as u128)) < MINIMUM_RELAY_TRANSACTION_FEE as u128,
+        Some(value_1000) => value_1000 / STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X < MINIMUM_RELAY_TRANSACTION_FEE,
+        None => (value as u128 * 1000 / STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X as u128) < MINIMUM_RELAY_TRANSACTION_FEE as u128,
     }
 }
 
@@ -191,6 +192,16 @@ pub fn transaction_output_serialized_byte_size_for_inner(output_inner: &Transact
     size += 2; // output.ScriptPublicKey.Version (u16)
     size += 8; // length of script public key (u64)
     size += output_inner.script_public_key.script().len() as u64;
+    size
+}
+
+pub const fn transaction_standard_output_serialized_byte_size() -> u64 {
+    let mut size: u64 = 0;
+    size += 8; // value (u64)
+    size += 2; // output.ScriptPublicKey.Version (u16)
+    size += 8; // length of script public key (u64)
+               //max script size as per SCRIPT_VECTOR_SIZE
+    size += SCRIPT_VECTOR_SIZE as u64;
     size
 }
 

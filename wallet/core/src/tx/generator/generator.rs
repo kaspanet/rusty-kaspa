@@ -212,8 +212,8 @@ impl Generator {
                     change_amount = transaction_amount_accumulator - final_transaction_total;
 
                     // - TODO - REFACTOR TO USE CUSTOM CONSTANT DERIVED FROM STANDARD OUTPUT
-                    const STANDARD_OUTPUT_DUST_LIMIT: u64 = MINIMUM_RELAY_TRANSACTION_FEE;
-                    if change_amount < STANDARD_OUTPUT_DUST_LIMIT {
+                    //const STANDARD_OUTPUT_DUST_LIMIT: u64 = MINIMUM_RELAY_TRANSACTION_FEE;
+                    if is_standard_output_amount_dust(change_amount) {
                         change_amount = 0;
 
                         is_final = mass_accumulator + final_outputs_mass + payload_mass < MAXIMUM_STANDARD_TRANSACTION_MASS;
@@ -256,14 +256,14 @@ impl Generator {
 
             Ok(Some(PendingTransaction::new(self, tx, utxo_entry_references)))
         } else {
-            let amount = 0;
+            let amount = transaction_amount_accumulator - MINIMUM_RELAY_TRANSACTION_FEE;
             let script_public_key = pay_to_address_script(&self.inner.change_address);
             let output = TransactionOutput::new(amount, &script_public_key);
 
             let tx = Transaction::new(
                 0,
                 inputs,
-                vec![output.clone()],
+                vec![output],
                 0,
                 SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                 0,
