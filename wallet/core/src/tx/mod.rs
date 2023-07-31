@@ -11,7 +11,9 @@ use std::sync::Arc;
 use crate::utxo::UtxoEntry;
 use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoSelectionContext};
 pub use consensus::*;
-pub use generator::{Generator, GeneratorSettings, PendingTransaction, PendingTransactionIterator, PendingTransactionStream};
+pub use generator::{
+    Generator, GeneratorSettings, GeneratorSummary, PendingTransaction, PendingTransactionIterator, PendingTransactionStream,
+};
 use kaspa_consensus_core::subnets::SubnetworkId;
 pub use primitives::{
     MutableTransaction, PaymentDestination, PaymentOutputs, Transaction, TransactionInput, TransactionOutpoint,

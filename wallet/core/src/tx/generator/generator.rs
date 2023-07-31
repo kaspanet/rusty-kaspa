@@ -1,8 +1,9 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{
-    get_consensus_params_by_address, limits::*, GeneratorSettings, PaymentDestination, PendingTransaction, PendingTransactionIterator,
-    PendingTransactionStream, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoContext, UtxoEntryReference,
+    get_consensus_params_by_address, limits::*, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction,
+    PendingTransactionIterator, PendingTransactionStream, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
+    UtxoContext, UtxoEntryReference,
 };
 use crate::utxo::UtxoEntry;
 use kaspa_consensus_core::tx as cctx;
@@ -15,11 +16,17 @@ struct Context {
     aggregated_utxos: usize,
     // total fees of all transactions issued by
     // the single generator instance
-    #[allow(dead_code)]
     aggregated_fees: u64,
+    // number of generated transactions
+    number_of_generated_transactions: usize,
     // UTXO entry consumed from the iterator but
     // was not used and remained for the next transaction
     utxo_stash: VecDeque<UtxoEntryReference>,
+    // final transaction id
+    final_transaction_id: Option<TransactionId>,
+    // signifies that the generator is finished
+    // no more items will be produced in the
+    // iterator or a stream
     is_done: bool,
 }
 
@@ -88,9 +95,11 @@ impl Generator {
 
         let context = Mutex::new(Context {
             utxo_iterator,
+            number_of_generated_transactions: 0,
             aggregated_utxos: 0,
             aggregated_fees: 0,
             utxo_stash: VecDeque::default(),
+            final_transaction_id: None,
             is_done: false,
         });
 
@@ -132,6 +141,10 @@ impl Generator {
 
     pub fn aggregate_utxos(&self) -> usize {
         self.context().aggregated_utxos
+    }
+
+    pub fn final_transaction_id(&self) -> Option<TransactionId> {
+        self.context().final_transaction_id
     }
 
     pub fn stream(&self) -> impl Stream<Item = Result<PendingTransaction>> {
@@ -254,6 +267,9 @@ impl Generator {
                 self.inner.final_transaction_payload.clone(),
             )?;
 
+            context.final_transaction_id = Some(tx.finalize()?);
+            context.number_of_generated_transactions += 1;
+
             Ok(Some(PendingTransaction::new(self, tx, utxo_entry_references)))
         } else {
             let amount = transaction_amount_accumulator - MINIMUM_RELAY_TRANSACTION_FEE;
@@ -270,9 +286,12 @@ impl Generator {
                 vec![],
             )?;
 
-            let utxo_entry_reference =
-                Self::create_utxo_entry_reference(tx.id(), amount, script_public_key, &self.inner.change_address);
+            let txid = tx.finalize()?;
+
+            let utxo_entry_reference = Self::create_utxo_entry_reference(txid, amount, script_public_key, &self.inner.change_address);
             context.utxo_stash.push_front(utxo_entry_reference);
+
+            context.number_of_generated_transactions += 1;
 
             Ok(Some(PendingTransaction::new(self, tx, utxo_entry_references)))
         }
@@ -288,5 +307,16 @@ impl Generator {
         let outpoint = TransactionOutpoint::new(txid, 0);
         let utxo = UtxoEntry { address: Some(address.clone()), outpoint, entry };
         UtxoEntryReference { utxo: Arc::new(utxo) }
+    }
+
+    pub fn summary(&self) -> GeneratorSummary {
+        let context = self.context();
+
+        GeneratorSummary {
+            aggregated_utxos: context.aggregated_utxos,
+            aggregated_fees: context.aggregated_fees,
+            final_transaction_id: context.final_transaction_id,
+            number_of_generated_transactions: context.number_of_generated_transactions,
+        }
     }
 }

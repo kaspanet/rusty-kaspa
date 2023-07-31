@@ -9,7 +9,8 @@ use crate::signer::sign_mutable_transaction;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
 use crate::tx::{
-    Generator, GeneratorSettings, LimitCalcStrategy, PaymentDestination, PaymentOutputs, PendingTransaction, VirtualTransactionV1,
+    Generator, GeneratorSettings, GeneratorSummary, LimitCalcStrategy, PaymentDestination, PaymentOutputs, PendingTransaction,
+    VirtualTransactionV1,
 };
 use crate::utxo::UtxoContext;
 // use crate::utxo::UtxoStream;
@@ -30,13 +31,13 @@ pub const DEFAULT_AMOUNT_PADDING: usize = 19;
 
 pub type GenerationNotifier = Arc<dyn Fn(&PendingTransaction) + Send + Sync>;
 
-#[derive(Default, Clone, Debug)]
-pub struct Estimate {
-    pub final_amount_including_fees: u64,
-    pub aggregate_fees: u64,
-    pub aggregate_utxos: usize,
-    pub transactions: usize,
-}
+// #[derive(Default, Clone, Debug)]
+// pub struct Estimate {
+//     pub final_amount_including_fees: u64,
+//     pub aggregate_fees: u64,
+//     pub aggregate_utxos: usize,
+//     pub transactions: usize,
+// }
 
 u8_try_from! {
     #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
@@ -543,7 +544,7 @@ impl Account {
         include_fees_in_amount: bool,
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
-    ) -> Result<Estimate> {
+    ) -> Result<GeneratorSummary> {
         // todo!()
 
         let settings =
@@ -552,23 +553,26 @@ impl Account {
         let generator = Generator::new(settings, abortable);
 
         // let mut iterator = generator.iter();
-        // let mut stream = generator.stream();
-        // while let Some(_transaction) = iterator.next() {
+        let mut stream = generator.stream();
+        while let Some(_transaction) = stream.try_next().await? {
+            _transaction.log().await?;
 
-        let mut transactions = 0;
-        for _transaction in generator.iter() {
-            transactions += 1;
+            yield_executor().await;
         }
 
-        let aggregate_fees = generator.aggregate_fees();
-        let aggregate_utxos = generator.aggregate_utxos();
-        let estimate = Estimate {
-            final_amount_including_fees: 0, // TODO
-            aggregate_fees,
-            aggregate_utxos,
-            transactions,
-        };
+        // for _ in generator.iter() {
+        //     yield_executor().await;
+        // }
 
-        Ok(estimate)
+        // let aggregate_fees = generator.aggregate_fees();
+        // let aggregate_utxos = generator.aggregate_utxos();
+        // let estimate = Estimate {
+        //     final_amount_including_fees: 0, // TODO
+        //     aggregate_fees,
+        //     aggregate_utxos,
+        //     transactions,
+        // };
+
+        Ok(generator.summary())
     }
 }

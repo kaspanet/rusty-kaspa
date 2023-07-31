@@ -210,8 +210,8 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             fd_num: b.fd_num as f64,
             disk_io_read_bytes: b.disk_io_read_bytes as f64,
             disk_io_write_bytes: b.disk_io_write_bytes as f64,
-            disk_io_read_per_sec: b.disk_io_read_per_sec as f64,
-            disk_io_write_per_sec: b.disk_io_write_per_sec as f64,
+            disk_io_read_per_sec: b.disk_io_read_per_sec,
+            disk_io_write_per_sec: b.disk_io_write_per_sec,
             // ---
             blocks_submitted: b.blocks_submitted as f64,
             header_counts: b.header_counts as f64,
