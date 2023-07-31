@@ -529,6 +529,8 @@ impl Account {
             }
 
             transaction.log().await?;
+
+            yield_executor().await;
         }
 
         Ok(vec![])
