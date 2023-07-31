@@ -46,7 +46,7 @@ impl Scan {
     }
 
     // pub async fn scan(self: &Arc<Self>, utxo_context: &Arc<UtxoContext>) -> Result<()> {
-    pub async fn scan(&self, utxo_context: &Arc<UtxoContext>) -> Result<()> {
+    pub async fn scan(&self, utxo_context: &UtxoContext) -> Result<()> {
         let window_size = self.window_size.unwrap_or(DEFAULT_WINDOW_SIZE) as u32;
 
         let mut cursor: u32 = 0;
@@ -68,7 +68,7 @@ impl Scan {
             utxo_context.register_addresses(&addresses).await?;
 
             let ts = Instant::now();
-            let resp = utxo_context.processor.rpc().get_utxos_by_addresses(addresses).await?;
+            let resp = utxo_context.processor().rpc().get_utxos_by_addresses(addresses).await?;
             let elapsed_msec = ts.elapsed().as_secs_f32();
             if elapsed_msec > 1.0 {
                 log_warning!("get_utxos_by_address() fetched {} entries in: {} msec", resp.len(), elapsed_msec);

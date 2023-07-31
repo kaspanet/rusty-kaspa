@@ -8,8 +8,9 @@ use crate::secret::Secret;
 use crate::signer::sign_mutable_transaction;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
-use crate::tx::{LimitCalcStrategy, PaymentOutputs, VirtualTransactionV1};
+use crate::tx::{GeneratorSettings, LimitCalcStrategy, PaymentDestination, PaymentOutputs, VirtualTransactionV1};
 use crate::utxo::UtxoContext;
+// use crate::utxo::UtxoStream;
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
 use futures::future::join_all;
@@ -138,7 +139,7 @@ pub struct Account {
     pub id: AccountId,
     inner: Arc<Mutex<Inner>>,
     wallet: Arc<Wallet>,
-    utxo_context: Arc<UtxoContext>,
+    utxo_context: UtxoContext,
     // balance: Mutex<Option<Balance>>,
     is_connected: AtomicBool,
     pub account_kind: AccountKind,
@@ -177,7 +178,7 @@ impl Account {
         );
 
         let inner = Inner { listener_id: None, stored };
-        let utxo_context = Arc::new(UtxoContext::new(wallet.utxo_processor()));
+        let utxo_context = UtxoContext::new(wallet.utxo_processor());
         let account = Arc::new(Account {
             id: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
             wallet: wallet.clone(),
@@ -211,7 +212,7 @@ impl Account {
         .await?;
 
         let inner = Inner { listener_id: None, stored: stored.clone() };
-        let utxo_context = Arc::new(UtxoContext::new(wallet.utxo_processor()));
+        let utxo_context = UtxoContext::new(wallet.utxo_processor());
         let account = Arc::new(Account {
             id: AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index),
             wallet: wallet.clone(),
@@ -235,7 +236,7 @@ impl Account {
         &self.id
     }
 
-    pub fn utxo_context(&self) -> &Arc<UtxoContext> {
+    pub fn utxo_context(&self) -> &UtxoContext {
         &self.utxo_context
     }
 
@@ -418,7 +419,7 @@ impl Account {
         Ok(())
     }
 
-    pub async fn send(
+    pub async fn send_v1(
         &self,
         outputs: &PaymentOutputs,
         priority_fee_sompi: Option<u64>,
@@ -433,7 +434,7 @@ impl Account {
         let payload = vec![];
         let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
         let minimum_signatures = self.inner().stored.minimum_signatures;
-        let vt = VirtualTransactionV1::new(
+        let vt = VirtualTransactionV1::try_new(
             sig_op_count,
             minimum_signatures,
             &mut ctx,
@@ -473,5 +474,92 @@ impl Account {
         ctx.commit()?;
 
         Ok(tx_ids)
+    }
+
+    pub async fn send_v2(
+        &self,
+        destination: PaymentDestination,
+        priority_fee_sompi: Option<u64>,
+        include_fees_in_amount: bool,
+        payload: Vec<u8>,
+        _wallet_secret: Secret,
+        _payment_secret: Option<Secret>,
+        abortable: &Abortable,
+    ) -> Result<Vec<kaspa_hashes::Hash>> {
+        // todo!()
+
+        let generator = GeneratorSettings::try_new_with_account(
+            self,
+            destination,
+            priority_fee_sompi,
+            include_fees_in_amount,
+            payload,
+            // wallet_secret,
+            // payment_secret,
+            // abortable,
+        )
+        .await?
+        .generator(abortable);
+
+        let mut stream = generator.stream();
+
+        while let Some(transaction) = stream.try_next().await? {
+            // transaction.submit(self.wallet.rpc()).await?;
+
+            // TODO - sign & submit
+
+            transaction.log().await?;
+        }
+
+        Ok(vec![])
+
+        // let utxo_stream = UtxoStream::new(&self.utxo_context());
+
+        // // let mut ctx = self.utxo_context().create_selection_context();
+
+        // let change_address = self.change_address().await?;
+        // let payload = vec![];
+        // let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
+        // let minimum_signatures = self.inner().stored.minimum_signatures;
+        // let vt = VirtualTransactionV2::try_new(
+        //     sig_op_count,
+        //     minimum_signatures,
+        //     &mut ctx,
+        //     outputs,
+        //     &change_address,
+        //     priority_fee_sompi,
+        //     payload,
+        //     LimitCalcStrategy::inputs(80),
+        //     abortable,
+        // )
+        // .await?;
+
+        // let addresses = ctx.addresses();
+        // let indexes = self.derivation.addresses_indexes(&addresses)?;
+        // let receive_indexes = indexes.0;
+        // let change_indexes = indexes.1;
+
+        // let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        // let keydata = self
+        //     .wallet
+        //     .store()
+        //     .as_prv_key_data_store()?
+        //     .load_key_data(&access_ctx, &self.prv_key_data_id)
+        //     .await?
+        //     .ok_or(Error::PrivateKeyNotFound(self.prv_key_data_id.to_hex()))?;
+
+        // let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
+        // let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
+        // let mut tx_ids = vec![];
+        // for mtx in vt.transactions().clone() {
+        //     let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
+        //     let id = self.wallet.rpc().submit_transaction(mtx.try_into()?, false).await?;
+        //     //println!("id: {id}\r\n");
+        //     tx_ids.push(id);
+        // }
+
+        // ctx.commit()?;
+
+        // Ok(tx_ids)
     }
 }

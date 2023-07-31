@@ -1,6 +1,31 @@
 use crate::imports::*;
 use crate::tx::{TransactionOutput, TransactionOutputInner};
 use kaspa_txscript::pay_to_address_script;
+// use workflow_core::traits::IsNotEmpty;
+
+pub enum PaymentDestination {
+    Address(Address),
+    PaymentOutputs(PaymentOutputs),
+}
+
+impl PaymentDestination {
+    pub fn amount(&self) -> Option<u64> {
+        match self {
+            Self::Address(_) => None,
+            Self::PaymentOutputs(payment_outputs) => Some(payment_outputs.amount()),
+        }
+    }
+
+    // pub fn mass(&self) -> u64 {
+
+    // }
+}
+
+impl From<Address> for PaymentDestination {
+    fn from(address: Address) -> Self {
+        Self::Address(address)
+    }
+}
 
 #[derive(Debug)]
 // #[wasm_bindgen(inspectable)]
@@ -16,11 +41,12 @@ impl TryFrom<JsValue> for PaymentOutput {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
         if let Ok(array) = js_value.clone().dyn_into::<Array>() {
-            if array.length() != 2 {
+            let length = array.length();
+            if length != 2 {
                 Err(Error::Custom("Invalid payment output".to_string()))
             } else {
                 let address = Address::try_from(array.get(0))?;
-                let amount = array.get(0).try_as_u64()?;
+                let amount = array.get(1).try_as_u64()?;
                 Ok(Self { address, amount })
             }
         } else if let Some(object) = Object::try_from(&js_value) {
@@ -47,6 +73,12 @@ impl From<PaymentOutput> for TransactionOutput {
     }
 }
 
+impl From<PaymentOutput> for PaymentDestination {
+    fn from(output: PaymentOutput) -> Self {
+        Self::PaymentOutputs(PaymentOutputs { outputs: vec![output] })
+    }
+}
+
 #[derive(Debug)]
 // #[wasm_bindgen]
 pub struct PaymentOutputs {
@@ -57,6 +89,16 @@ pub struct PaymentOutputs {
 impl PaymentOutputs {
     pub fn amount(&self) -> u64 {
         self.outputs.iter().map(|payment_output| payment_output.amount).sum()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &PaymentOutput> {
+        self.outputs.iter()
+    }
+}
+
+impl From<PaymentOutputs> for PaymentDestination {
+    fn from(outputs: PaymentOutputs) -> Self {
+        Self::PaymentOutputs(outputs)
     }
 }
 

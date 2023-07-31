@@ -1,8 +1,10 @@
 use crate::imports::*;
-use crate::tx::NetworkType;
+// use crate::tx::consensus::*;
+// use crate::tx::limits::*;
+// use crate::tx::NetworkType;
 use crate::tx::{script_hashes, Transaction, TransactionInput, TransactionOutput};
-use crate::utils::calculate_mass;
-use crate::utils::get_consensus_params_by_network;
+// use crate::utils::calculate_mass;
+// use crate::utils::get_consensus_params_by_network;
 use crate::utxo::UtxoEntries;
 use kaspa_consensus_core::tx;
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
@@ -23,7 +25,7 @@ pub struct MutableTransaction {
 #[wasm_bindgen]
 impl MutableTransaction {
     #[wasm_bindgen(constructor)]
-    pub fn new(tx: &Transaction, entries: &UtxoEntries) -> Self {
+    pub fn new_from_refs(tx: &Transaction, entries: &UtxoEntries) -> Self {
         Self { tx: Arc::new(Mutex::new(tx.clone())), entries: entries.clone() }
     }
 
@@ -90,13 +92,20 @@ impl MutableTransaction {
         Ok(outputs)
     }
 
-    pub fn mass(&self, network_type: NetworkType, estimate_signature_mass: bool, minimum_signatures: u16) -> Result<u64, JsError> {
-        let params = get_consensus_params_by_network(&network_type);
-        Ok(calculate_mass(&self.tx(), &params, estimate_signature_mass, minimum_signatures))
-    }
+    // pub fn mass(&self, network_type: NetworkType, estimate_signature_mass: bool, minimum_signatures: u16) -> Result<u64, JsError> {
+    //     let params = get_consensus_params_by_network(&network_type);
+    //     let calc = MassCalculator::new(params);
+
+    //     calc.calc_mass_for_tx(tx)
+    //     Ok(calculate_mass(&self.tx(), &params, estimate_signature_mass, minimum_signatures))
+    // }
 }
 
 impl MutableTransaction {
+    pub fn new(tx: Transaction, entries: UtxoEntries) -> Self {
+        Self { tx: Arc::new(Mutex::new(tx)), entries }
+    }
+
     pub fn tx(&self) -> MutexGuard<'_, Transaction> {
         self.tx.lock().unwrap()
     }

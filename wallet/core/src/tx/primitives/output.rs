@@ -1,5 +1,7 @@
+use kaspa_rpc_core::RpcTransactionOutput;
+
 use crate::imports::*;
-use crate::utils::is_transaction_output_dust;
+use crate::tx::limits::is_transaction_output_dust;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +28,13 @@ impl TransactionOutput {
     pub fn inner(&self) -> MutexGuard<'_, TransactionOutputInner> {
         self.inner.lock().unwrap()
     }
+
+    // pub fn set_amount(&self, amount: u64) {
+    //     self.inner().value = amount;
+    // }
+    // pub fn value(&self) -> u64 {
+    //     self.inner().value
+    // }
 }
 
 #[wasm_bindgen]
@@ -72,6 +81,13 @@ impl From<TransactionOutput> for cctx::TransactionOutput {
     fn from(output: TransactionOutput) -> Self {
         let inner = output.inner();
         cctx::TransactionOutput::new(inner.value, inner.script_public_key.clone())
+    }
+}
+
+impl From<TransactionOutput> for RpcTransactionOutput {
+    fn from(output: TransactionOutput) -> Self {
+        let inner = output.inner();
+        RpcTransactionOutput { value: inner.value, script_public_key: inner.script_public_key.clone(), verbose_data: None }
     }
 }
 

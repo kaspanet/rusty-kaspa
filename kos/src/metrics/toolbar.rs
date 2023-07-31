@@ -151,7 +151,8 @@ impl Toolbar {
                 self,
                 self.element(),
                 "width",
-                &format!("{}", width.1),
+                // &format!("{}", width.1),
+                &width.1.to_string(),
                 &format!("Set graph layout to {} columns", width.0),
                 Arc::new(move |btn| this.action(btn, Action::Cols(width.clone()))),
             )?);
@@ -164,7 +165,8 @@ impl Toolbar {
                 self,
                 self.element(),
                 "height",
-                &format!("{}", height.1),
+                // &format!("{}", height.1),
+                &height.1.to_string(),
                 &format!("Set graph layout to {} rows", height.0),
                 Arc::new(move |btn| this.action(btn, Action::Rows(height.clone()))),
             )?);

@@ -21,7 +21,7 @@ use std::collections::HashMap;
 
 pub struct Inner {
     pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
-    address_to_utxo_context_map: DashMap<Arc<Address>, Arc<UtxoContext>>,
+    address_to_utxo_context_map: DashMap<Arc<Address>, UtxoContext>,
     // event_consumer: Mutex<Option<Arc<dyn EventConsumer>>>,
     current_daa_score: Arc<AtomicU64>,
     network_id: Arc<Mutex<Option<NetworkId>>>,
@@ -114,17 +114,17 @@ impl UtxoProcessor {
         Ok(())
     }
 
-    pub fn address_to_utxo_context_map(&self) -> &DashMap<Arc<Address>, Arc<UtxoContext>> {
+    pub fn address_to_utxo_context_map(&self) -> &DashMap<Arc<Address>, UtxoContext> {
         &self.inner.address_to_utxo_context_map
     }
 
-    pub fn address_to_utxo_context(&self, address: &Address) -> Option<Arc<UtxoContext>> {
+    pub fn address_to_utxo_context(&self, address: &Address) -> Option<UtxoContext> {
         self.inner.address_to_utxo_context_map.get(address).map(|v| v.clone())
     }
 
-    pub async fn register_addresses(&self, addresses: Vec<Arc<Address>>, processor: &Arc<UtxoContext>) -> Result<()> {
+    pub async fn register_addresses(&self, addresses: Vec<Arc<Address>>, utxo_context: &UtxoContext) -> Result<()> {
         addresses.iter().for_each(|address| {
-            self.inner.address_to_utxo_context_map.insert(address.clone(), processor.clone());
+            self.inner.address_to_utxo_context_map.insert(address.clone(), utxo_context.clone());
         });
 
         if self.is_connected() {

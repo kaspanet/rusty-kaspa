@@ -130,7 +130,7 @@ impl Account {
         let args = AccountSendArgs::try_from(js_value)?;
 
         self.inner
-            .send(
+            .send_v1(
                 &args.outputs,
                 args.priority_fee_sompi,
                 args.include_fees_in_amount,

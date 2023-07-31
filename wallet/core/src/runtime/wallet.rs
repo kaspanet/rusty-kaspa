@@ -803,7 +803,7 @@ mod test {
 
         let mut ctx = utxo_set.create_selection_context();
         // let mut ctx = UtxoSelectionContext::new(utxo_set);
-        let selected_entries = ctx.select(100_000).await?;
+        let selected_entries = ctx.select(100_000)?;
 
         // let utxo_selection = utxo_set.select(100000, UtxoOrdering::AscendingAmount, true).await?;
 
@@ -839,7 +839,7 @@ mod test {
             vec![],
         )?;
 
-        let mtx = MutableTransaction::new(&tx, &(*entries).clone().into());
+        let mtx = MutableTransaction::new(tx, (*entries).clone().into());
 
         let derivation_path =
             gen1::WalletDerivationManager::build_derivate_path(false, 0, None, Some(kaspa_bip32::AddressType::Receive))?;

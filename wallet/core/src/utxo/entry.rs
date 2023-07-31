@@ -191,7 +191,7 @@ impl PendingUtxoEntryReference {
 
 impl From<(&Arc<Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
     fn from((account, entry): (&Arc<Account>, UtxoEntryReference)) -> Self {
-        Self { entry, utxo_context: (**account.utxo_context()).clone() }
+        Self { entry, utxo_context: (*account.utxo_context()).clone() }
     }
 }
 
@@ -203,9 +203,19 @@ impl From<PendingUtxoEntryReference> for UtxoEntryReference {
 
 // ---
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen]
 pub struct UtxoEntries(Arc<Vec<UtxoEntryReference>>);
+
+impl UtxoEntries {
+    pub fn contains(&self, entry: &UtxoEntryReference) -> bool {
+        self.0.contains(entry)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &UtxoEntryReference> {
+        self.0.iter()
+    }
+}
 
 #[wasm_bindgen]
 impl UtxoEntries {
@@ -266,10 +276,9 @@ impl TryFrom<Vec<Option<UtxoEntry>>> for UtxoEntries {
     }
 }
 
-impl TryFrom<Vec<UtxoEntryReference>> for UtxoEntries {
-    type Error = Error;
-    fn try_from(list: Vec<UtxoEntryReference>) -> std::result::Result<Self, Self::Error> {
-        Ok(Self(Arc::new(list)))
+impl From<Vec<UtxoEntryReference>> for UtxoEntries {
+    fn from(list: Vec<UtxoEntryReference>) -> Self {
+        Self(Arc::new(list))
     }
 }
 

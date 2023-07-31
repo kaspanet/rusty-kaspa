@@ -1,25 +1,22 @@
 use super::{UtxoContext, UtxoEntryReference};
 use crate::imports::*;
 
-pub struct UtxoIterator {
+pub struct UtxoStream {
     utxo_context: UtxoContext,
     cursor: usize,
 }
 
-impl UtxoIterator {
+impl UtxoStream {
     pub fn new(utxo_context: &UtxoContext) -> Self {
         Self { utxo_context: utxo_context.clone(), cursor: 0 }
     }
 }
 
-
-impl Iterator for UtxoIterator {
+impl Stream for UtxoStream {
     type Item = UtxoEntryReference;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let entry = self.utxo_context.inner.lock().unwrap().mature.get(self.cursor).cloned();
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let entry = self.utxo_context.context().mature.get(self.cursor).cloned();
         self.cursor += 1;
-        entry
+        Poll::Ready(entry)
     }
 }
-

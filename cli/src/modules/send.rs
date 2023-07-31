@@ -41,7 +41,7 @@ impl Send {
         let outputs = PaymentOutputs::try_from((address.clone(), amount_sompi))?;
         let ids =
             // account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret, &abortable).await?;
-            account.send(&outputs, priority_fee_sompi, false, wallet_secret, payment_secret, &abortable).await?;
+            account.send_v1(&outputs, priority_fee_sompi, false, wallet_secret, payment_secret, &abortable).await?;
 
         tprintln!(ctx, "\nSending {amount} KAS to {address}, tx ids:");
         tprintln!(ctx, "{}\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\n"));

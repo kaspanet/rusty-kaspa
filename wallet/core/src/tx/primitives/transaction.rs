@@ -3,6 +3,9 @@ use super::output::TransactionOutput;
 use super::payment::PaymentOutputs;
 use crate::imports::*;
 use crate::Result;
+use kaspa_rpc_core::RpcTransaction;
+use kaspa_rpc_core::RpcTransactionInput;
+use kaspa_rpc_core::RpcTransactionOutput;
 use workflow_wasm::abi::ref_from_abi;
 use workflow_wasm::jsvalue::JsValueTrait;
 
@@ -262,5 +265,26 @@ impl TryFrom<&Transaction> for cctx::Transaction {
             inner.gas,
             inner.payload.clone(),
         ))
+    }
+}
+
+impl TryFrom<&Transaction> for RpcTransaction {
+    type Error = Error;
+    fn try_from(tx: &Transaction) -> std::result::Result<Self, Self::Error> {
+        let inner = tx.inner();
+        let inputs: Vec<RpcTransactionInput> =
+            inner.inputs.clone().into_iter().map(|input| input.into()).collect::<Vec<RpcTransactionInput>>();
+        let outputs: Vec<RpcTransactionOutput> =
+            inner.outputs.clone().into_iter().map(|output| output.into()).collect::<Vec<RpcTransactionOutput>>();
+        Ok(RpcTransaction {
+            version: inner.version,
+            inputs,
+            outputs,
+            lock_time: inner.lock_time,
+            subnetwork_id: inner.subnetwork_id.clone(),
+            gas: inner.gas,
+            payload: inner.payload.clone(),
+            verbose_data: None,
+        })
     }
 }

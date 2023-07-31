@@ -234,7 +234,7 @@ impl From<(&UtxoContext, TransactionType, TransactionId, Vec<UtxoEntryReference>
             utxo_entries,
             block_daa_score,
             transaction_type,
-            network_id: utxo_context.processor.network_id().expect("network expected for transaction record generation"),
+            network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
             metadata: None,
         }
     }
