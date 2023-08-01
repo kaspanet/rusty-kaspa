@@ -102,9 +102,9 @@ impl Generator {
             final_transaction_id: None,
             is_done: false,
         });
-
         let change_output_mass =
             mass_calculator.calc_mass_for_output(&TransactionOutput::new(0, &pay_to_address_script(&change_address)));
+
         let final_transaction_outputs_mass = mass_calculator.calc_mass_for_outputs(&final_transaction_outputs);
 
         let inner = Inner {
@@ -123,7 +123,6 @@ impl Generator {
             final_transaction_outputs_mass,
             final_transaction_payload: final_transaction_payload.unwrap_or_default(),
         };
-
         Self { inner: Arc::new(inner) }
     }
 
@@ -162,12 +161,10 @@ impl Generator {
         if context.is_done {
             return Ok(None);
         }
-
         let calc = &self.inner.mass_calculator;
         let signature_mass_per_input = calc.calc_signature_mass(self.inner.minimum_signatures);
         let final_outputs_mass = self.inner.final_transaction_outputs_mass;
         let change_output_mass = self.inner.change_output_mass;
-
         let mut transaction_amount_accumulator = 0;
         let mut change_amount = 0;
         // let mut change_amount = 0;
@@ -188,7 +185,6 @@ impl Generator {
             } else {
                 context.utxo_iterator.next().ok_or(Error::InsufficientFunds)?
             };
-
             context.aggregated_utxos += 1;
             let UtxoEntryReference { utxo } = &utxo_entry_reference;
 
@@ -203,36 +199,50 @@ impl Generator {
                 context.utxo_stash.push_back(utxo_entry_reference);
                 break;
             }
-
             mass_accumulator += mass_for_input;
             transaction_amount_accumulator += input_amount;
             utxo_entry_references.push(utxo_entry_reference);
             inputs.push(input);
             sequence += 1;
 
-            // TODO - WIP
-            let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(mass_accumulator);
-            if !self.inner.final_transaction_include_fees_in_amount {
-                final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
-            }
-
             // check if we have and we have reached the desired transaction amount
             if let Some(final_transaction_amount) = self.inner.final_transaction_amount {
+                let final_tx_mass = mass_accumulator + final_outputs_mass + payload_mass;
+                let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
+
+                if !self.inner.final_transaction_include_fees_in_amount {
+                    final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
+                }
                 let final_transaction_total = final_transaction_amount + final_transaction_fees;
                 if transaction_amount_accumulator > final_transaction_total {
                     // ------------------------- WIP
 
                     change_amount = transaction_amount_accumulator - final_transaction_total;
 
-                    // - TODO - REFACTOR TO USE CUSTOM CONSTANT DERIVED FROM STANDARD OUTPUT
-                    //const STANDARD_OUTPUT_DUST_LIMIT: u64 = MINIMUM_RELAY_TRANSACTION_FEE;
                     if is_standard_output_amount_dust(change_amount) {
                         change_amount = 0;
 
-                        is_final = mass_accumulator + final_outputs_mass + payload_mass < MAXIMUM_STANDARD_TRANSACTION_MASS;
+                        is_final = final_tx_mass < MAXIMUM_STANDARD_TRANSACTION_MASS;
                     } else {
-                        is_final = mass_accumulator + change_output_mass + final_outputs_mass + payload_mass
-                            < MAXIMUM_STANDARD_TRANSACTION_MASS;
+                        //re-calculate fee with change outputs
+                        let mut final_transaction_fees =
+                            calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass + change_output_mass);
+
+                        if !self.inner.final_transaction_include_fees_in_amount {
+                            final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
+                        }
+
+                        let final_transaction_total = final_transaction_amount + final_transaction_fees;
+
+                        change_amount = transaction_amount_accumulator - final_transaction_total;
+
+                        if is_standard_output_amount_dust(change_amount) {
+                            change_amount = 0;
+
+                            is_final = final_tx_mass < MAXIMUM_STANDARD_TRANSACTION_MASS;
+                        } else {
+                            is_final = final_tx_mass + change_output_mass < MAXIMUM_STANDARD_TRANSACTION_MASS;
+                        }
                     }
 
                     // ------------------------- WIP
@@ -241,7 +251,6 @@ impl Generator {
                 }
             }
         }
-
         // -----------------------------
         // - TODO adjust fees
         // - TODO pre-check dust outputs
@@ -292,7 +301,6 @@ impl Generator {
             context.utxo_stash.push_front(utxo_entry_reference);
 
             context.number_of_generated_transactions += 1;
-
             Ok(Some(PendingTransaction::new(self, tx, utxo_entry_references)))
         }
     }
