@@ -173,7 +173,6 @@ impl Metrics {
 
         Ok(())
     }
-
 }
 
 #[wasm_bindgen]

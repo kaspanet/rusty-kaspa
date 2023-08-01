@@ -6,7 +6,7 @@ use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
-use crate::storage::{self, AccessContextT, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
+use crate::storage::{self, AccessContextT, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
 use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
 use crate::{accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
@@ -28,13 +28,13 @@ use zeroize::Zeroize;
 
 pub struct WalletCreateArgs {
     pub name: Option<String>,
-    pub user_hint: Option<String>,
+    pub user_hint: Option<Hint>,
     pub wallet_secret: Secret,
     pub overwrite_wallet_storage: bool,
 }
 
 impl WalletCreateArgs {
-    pub fn new(name: Option<String>, user_hint: Option<String>, secret: Secret, overwrite_wallet_storage: bool) -> Self {
+    pub fn new(name: Option<String>, user_hint: Option<Hint>, secret: Secret, overwrite_wallet_storage: bool) -> Self {
         Self { name, user_hint, wallet_secret: secret, overwrite_wallet_storage }
     }
 }
@@ -171,21 +171,6 @@ impl Wallet {
     pub fn active_accounts(&self) -> &ActiveAccountMap {
         &self.inner.active_accounts
     }
-    // pub fn active_accounts(&self) -> MutexGuard<HashMap<AccountId,Arc<Account>>> {
-    //     self.inner.active_accounts.lock().unwrap()
-    // }
-
-    // pub fn get_active_account_by_id(&self, id: &AccountId) -> Option<Arc<Account>> {
-    //     self.inner.active_accounts.lock().unwrap().get(id).cloned()
-    // }
-
-    // pub fn collect_active_accounts(&self) -> Vec<Arc<Account>> {
-    //     self.inner.active_accounts.lock().unwrap().values().cloned().collect()
-    // }
-
-    // pub fn active_accounts_len(&self) -> usize {
-    //     self.inner.active_accounts.lock().unwrap().len()
-    // }
 
     pub async fn reset(self: &Arc<Self>) -> Result<()> {
         self.utxo_processor().clear().await?;

@@ -167,6 +167,7 @@ impl MetricsSnapshot {
         match metric {
             Metric::CpuUsage => format!("CPU: {:1.2}%", self.cpu_usage / self.cpu_cores * 100.0),
             Metric::ResidentSetSizeBytes => {
+                workflow_log::log_info!("Resident Memory: {}", self.resident_set_size_bytes);
                 format!("Resident Memory: {}", as_gb(self.resident_set_size_bytes, si))
             }
             Metric::VirtualMemorySizeBytes => {
@@ -246,6 +247,7 @@ fn as_kb(bytes: f64, si: bool) -> String {
 // }
 
 fn as_gb(bytes: f64, si: bool) -> String {
+    // bytes.separated_string()
     let unit = if si { 1000. } else { 1024. };
     let suffix = if si { " GB" } else { " GiB" };
     let gb = ((bytes / unit / unit / unit * 100.) as u64) as f64 / 100.;

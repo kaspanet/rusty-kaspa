@@ -33,15 +33,9 @@ impl LocalStoreInner {
         let (store, name) = if is_resident {
             (Store::Resident, "resident".to_string())
         } else {
-            // prevent accessing the storage named 'settings'
-            // if args.name.as_ref().is_some_and(|name| name.as_str() == super::DEFAULT_SETTINGS_FILE) {
-            //     return Err(Error::WalletNameNotAllowed);
-            // }
-            log_info!("LocalStoreInner::try_create: folder: {}, args: {:?}, is_resident: {}", folder, args, is_resident);
+            // log_info!("LocalStoreInner::try_create: folder: {}, args: {:?}, is_resident: {}", folder, args, is_resident);
 
-            let name = args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
-
-            log_info!("GOT NAME: {}", name);
+            let name = args.name.clone().unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
 
             let storage = Storage::new_with_folder(folder, &format!("{name}.wallet"))?;
             if storage.exists().await? && !args.overwrite_wallet {
@@ -52,8 +46,7 @@ impl LocalStoreInner {
 
         let secret = ctx.wallet_secret().await;
         let payload = Payload::default();
-        let wallet = Wallet::try_new(&secret, payload)?;
-        let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
+        let cache = Arc::new(Mutex::new(Cache::try_from((args.user_hint, payload, &secret))?));
         let modified = AtomicBool::new(false);
         let transactions: Arc<dyn TransactionRecordStore> = if !is_web() {
             Arc::new(fsio::TransactionStore::new(folder, &name))
@@ -65,11 +58,6 @@ impl LocalStoreInner {
     }
 
     pub async fn try_load(ctx: &Arc<dyn AccessContextT>, folder: &str, args: OpenArgs) -> Result<Self> {
-        // prevent accessing the storage named 'settings'
-        // if args.name.as_ref().is_some_and(|name| name.as_str() == super::DEFAULT_SETTINGS_FILE) {
-        //     return Err(Error::WalletNameNotAllowed);
-        // }
-
         let name = args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
         let storage = Storage::new_with_folder(folder, &format!("{name}.wallet"))?;
 
@@ -84,18 +72,12 @@ impl LocalStoreInner {
             Arc::new(indexdb::TransactionStore::new(&name))
         };
 
-        // let transactions = Arc::new(TransactionStore::new(folder));
-
         Ok(Self { cache, store: Store::Storage(storage), is_modified: modified, name, transactions })
     }
 
     pub fn cache(&self) -> MutexGuard<Cache> {
         self.cache.lock().unwrap()
     }
-
-    // pub fn transactions(&self) -> &Arc<TransactionStore> {
-    //     &self.transactions
-    // }
 
     // pub async fn reload(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
     //     let secret = ctx.wallet_secret().await.expect("wallet requires an encryption secret");
@@ -264,6 +246,8 @@ impl Interface for LocalStore {
         if !self.batch.load(Ordering::SeqCst) {
             // log_info!("*** COMMITING ***");
             self.inner()?.store(ctx).await?;
+        } else {
+            // log_info!("*** BATCH MODE - SKIPPING COMMIT ***");
         }
         Ok(())
     }
@@ -296,7 +280,6 @@ impl Interface for LocalStore {
 #[async_trait]
 impl PrvKeyDataStore for LocalStoreInner {
     async fn iter(&self) -> Result<StorageStream<PrvKeyDataInfo>> {
-        log_info!("QQQQQQ : PrvKeyDataStore::iter cloning cache {}", self.cache().prv_key_data_info.map.len());
         Ok(Box::pin(PrvKeyDataInfoStream::new(self.cache.clone())))
     }
 

@@ -69,13 +69,18 @@ impl TransactionStore {
                         log_error!("TransactionStore::enumerate(): filename {:?} is not a hash (foreign file?)", file);
                     }
                 }
+
+                Ok(transactions)
             }
             Err(e) => {
-                return Err(e.into());
+                if e.code() == Some("ENOENT") {
+                    Err(Error::NoRecordsFound)
+                } else {
+                    log_info!("TransactionStore::enumerate(): error reading folder: {:?}", e);
+                    Err(e.into())
+                }
             }
         }
-
-        Ok(transactions)
     }
 
     pub async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {

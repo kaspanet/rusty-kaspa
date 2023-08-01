@@ -17,11 +17,11 @@ pub struct Wallet {
 }
 
 impl Wallet {
-    pub fn try_new(secret: &Secret, payload: Payload) -> Result<Self> {
+    pub fn try_new(user_hint: Option<Hint>, secret: &Secret, payload: Payload) -> Result<Self> {
         let metadata =
             payload.accounts.iter().filter_map(|account| if account.is_visible { Some(account.clone()) } else { None }).collect();
         let payload = Decrypted::new(payload).encrypt(secret)?;
-        Ok(Self { payload, metadata, user_hint: None })
+        Ok(Self { payload, metadata, user_hint })
     }
 
     pub fn payload(&self, secret: &Secret) -> Result<Decrypted<Payload>> {
@@ -37,12 +37,19 @@ impl Wallet {
         }
     }
 
-    pub async fn try_store_payload(store: &Storage, secret: &Secret, payload: Payload) -> Result<()> {
-        let wallet = Wallet::try_new(secret, payload)?;
-        store.ensure_dir().await?;
-        fs::write_json(store.filename(), &wallet).await?;
-        Ok(())
-    }
+    // pub async fn try_store_payload(store: &Storage, secret: &Secret, payload: Payload) -> Result<()> {
+    //     let wallet = Wallet::try_new(secret, payload)?;
+    //     store.ensure_dir().await?;
+    //     fs::write_json(store.filename(), &wallet).await?;
+    //     Ok(())
+    // }
+
+    // pub async fn try_store_payload(store: &Storage, secret: &Secret, payload: Payload) -> Result<()> {
+    //     let wallet = Wallet::try_new(secret, payload)?;
+    //     store.ensure_dir().await?;
+    //     fs::write_json(store.filename(), &wallet).await?;
+    //     Ok(())
+    // }
 
     pub async fn try_store(&self, store: &Storage) -> Result<()> {
         store.ensure_dir().await?;

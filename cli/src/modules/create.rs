@@ -1,4 +1,5 @@
 use crate::imports::*;
+use crate::wizards;
 
 #[derive(Default, Handler)]
 #[help("Create a new wallet or an account")]
@@ -25,7 +26,8 @@ impl Create {
                 };
 
                 let wallet_name = wallet_name.as_deref();
-                ctx.create_wallet(wallet_name).await?;
+                wizards::wallet::create(&ctx, wallet_name).await?;
+                // ctx.create_wallet(wallet_name).await?;
             }
             "account" => {
                 if !is_open {
@@ -57,7 +59,7 @@ impl Create {
                 let prv_key_data_id = account.prv_key_data_id;
 
                 let account_name = account_name.as_deref();
-                ctx.create_account(prv_key_data_id, account_kind, account_name).await?;
+                wizards::account::create(&ctx, prv_key_data_id, account_kind, account_name).await?;
             }
             _ => {
                 tprintln!(ctx, "\nError:\n");

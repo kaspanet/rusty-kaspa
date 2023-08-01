@@ -175,6 +175,9 @@ pub enum Error {
     #[error("{0}")]
     ToValue(String),
 
+    #[error("No records found")]
+    NoRecordsFound,
+
     #[error("The feature is not supported")]
     NotImplemented,
 }

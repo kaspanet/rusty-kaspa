@@ -18,6 +18,12 @@ impl From<&str> for Hint {
     }
 }
 
+impl From<String> for Hint {
+    fn from(text: String) -> Self {
+        Self::new(text)
+    }
+}
+
 impl Display for Hint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.text)

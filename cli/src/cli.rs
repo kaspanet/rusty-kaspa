@@ -11,11 +11,10 @@ use cfg_if::cfg_if;
 use futures::stream::{Stream, StreamExt, TryStreamExt};
 use futures::*;
 use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
-use kaspa_wallet_core::runtime::wallet::WalletCreateArgs;
-use kaspa_wallet_core::storage::interface::AccessContext;
-use kaspa_wallet_core::storage::{AccessContextT, AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
+use kaspa_wallet_core::runtime::{self, BalanceStrings};
+use kaspa_wallet_core::storage::{IdT, PrvKeyDataInfo};
 use kaspa_wallet_core::DynRpcApi;
-use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret, Events};
+use kaspa_wallet_core::{runtime::Wallet, Events};
 use kaspa_wrpc_client::KaspaRpcClient;
 use pad::PadStr;
 use separator::Separatable;
@@ -29,6 +28,7 @@ pub use workflow_terminal::{
     cli::*, parse, Cli, CrLf, Event as TerminalEvent, Handler, Options as TerminalOptions, Result as TerminalResult,
     TargetElement as TerminalTarget,
 };
+
 // use kaspa_wallet_core::events::NodeState;
 
 pub struct Options {
@@ -461,192 +461,6 @@ impl KaspaCli {
 
     // ---
 
-    pub(crate) async fn create_wallet(&self, name: Option<&str>) -> Result<()> {
-        let term = self.term();
-
-        if let Err(err) = self.wallet.network_id() {
-            tprintln!(self);
-            tprintln!(self, "You appear not to have selected the current Kaspa network.");
-            tprintln!(self, "Please use 'network <name>' command to select a network.");
-            tprintln!(self, "Currently available networks are 'mainnet', 'testnet-10' and 'testnet-11'");
-            tprintln!(self, "For example, type: 'network mainnet' or 'network testnet-10'");
-            tprintln!(self);
-            return Err(err.into());
-        }
-
-        if self.wallet.exists(name).await? {
-            tprintln!(self, "WARNING - A previously created wallet already exists!");
-
-            let overwrite = term
-                .ask(false, "Are you sure you want to overwrite it (type 'y' to approve)?: ")
-                .await?
-                .trim()
-                .to_string()
-                .to_lowercase();
-            if overwrite.ne("y") {
-                return Ok(());
-            }
-        }
-
-        let account_title = term.ask(false, "Default account title: ").await?.trim().to_string();
-        let account_name = account_title.replace(' ', "-").to_lowercase();
-
-        tpara!(
-            self,
-            "\n\
-        \"Phishing hint\" is a secret word or a phrase that is displayed \
-        when you open your wallet. If you do not see the hint when opening \
-        your wallet, you may be accessing a fake wallet designed to steal \
-        your private key. If this occurs, stop using the wallet immediately, \
-        check the browser URL domain name and seek help on social networks \
-        (Kaspa Discord or Telegram). \
-        \n\
-        ",
-        );
-
-        let hint = term.ask(false, "Create phishing hint (optional, press <enter> to skip): ").await?.trim().to_string();
-        let hint = if hint.is_empty() { None } else { Some(hint) };
-
-        let wallet_secret = Secret::new(term.ask(true, "Enter wallet encryption password: ").await?.trim().as_bytes().to_vec());
-        if wallet_secret.as_ref().is_empty() {
-            return Err(Error::WalletSecretRequired);
-        }
-        let wallet_secret_validate =
-            Secret::new(term.ask(true, "Re-enter wallet encryption password: ").await?.trim().as_bytes().to_vec());
-        if wallet_secret_validate.as_ref() != wallet_secret.as_ref() {
-            return Err(Error::WalletSecretMatch);
-        }
-
-        tprintln!(self, "");
-        tpara!(
-            self,
-            "\
-            PLEASE NOTE: The optional payment password, if provided, will be required to \
-            issue transactions. This password will also be required when recovering your wallet \
-            in addition to your private key or mnemonic. If you loose this password, you will not \
-            be able to use mnemonic to recover your wallet! \
-            ",
-        );
-
-        let payment_secret = term.ask(true, "Enter payment password (optional): ").await?;
-        let payment_secret =
-            if payment_secret.trim().is_empty() { None } else { Some(Secret::new(payment_secret.trim().as_bytes().to_vec())) };
-
-        if let Some(payment_secret) = payment_secret.as_ref() {
-            let payment_secret_validate = Secret::new(
-                term.ask(true, "Enter payment (private key encryption) password (optional): ").await?.trim().as_bytes().to_vec(),
-            );
-            if payment_secret_validate.as_ref() != payment_secret.as_ref() {
-                return Err(Error::PaymentSecretMatch);
-            }
-        }
-
-        let notifier = self.notifier().show(Notification::Processing).await;
-        yield_executor().await;
-        sleep(Duration::from_millis(500)).await;
-        yield_executor().await;
-
-        // suspend commits for multiple operations
-        self.wallet.store().batch().await?;
-
-        let account_kind = AccountKind::Bip32;
-        log_info!("WALLET NAME IS {:?}", name);
-        let wallet_args = WalletCreateArgs::new(name.map(String::from), hint, wallet_secret.clone(), true);
-        let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone());
-        let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_secret.clone(), payment_secret);
-        let descriptor = self.wallet.create_wallet(wallet_args).await?;
-        let (prv_key_data_id, mnemonic) = self.wallet.create_prv_key_data(prv_key_data_args).await?;
-        let account = self.wallet.create_bip32_account(prv_key_data_id, account_args).await?;
-
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
-        self.wallet.store().flush(&ctx).await?;
-        notifier.hide();
-
-        ["", "---", "", "IMPORTANT:", ""].into_iter().for_each(|line| term.writeln(line));
-
-        tpara!(
-            self,
-            "Your mnemonic phrase allows your to re-create your private key. \
-            The person who has access to this mnemonic will have full control of \
-            the Kaspa stored in it. Keep your mnemonic safe. Write it down and \
-            store it in a safe, preferably in a fire-resistant location. Do not \
-            store your mnemonic on this computer or a mobile device. This wallet \
-            will never ask you for this mnemonic phrase unless you manually \
-            initiate a private key recovery. \
-            ",
-        );
-
-        // descriptor
-
-        ["", "Never share your mnemonic with anyone!", "---", "", "Your default wallet account mnemonic:", mnemonic.phrase()]
-            .into_iter()
-            .for_each(|line| term.writeln(line));
-
-        term.writeln("");
-        if let Some(descriptor) = descriptor {
-            term.writeln(format!("Your wallet is stored in: {}", descriptor));
-            term.writeln("");
-        }
-
-        term.writeln("");
-        let receive_address = account.receive_address().await?;
-        term.writeln(format!("Your default account deposit address: {}", receive_address));
-
-        Ok(())
-    }
-
-    pub(crate) async fn create_account(
-        &self,
-        prv_key_data_id: PrvKeyDataId,
-        account_kind: AccountKind,
-        name: Option<&str>,
-    ) -> Result<()> {
-        let term = self.term();
-
-        if matches!(account_kind, AccountKind::MultiSig) {
-            return Err(Error::Custom(
-                "MultiSig accounts are not currently supported (will be available in the future version)".to_string(),
-            ));
-        }
-
-        let (title, name) = if let Some(name) = name {
-            (name.to_string(), name.to_string())
-        } else {
-            let title = term.ask(false, "Please enter account title (optional, press <enter> to skip): ").await?.trim().to_string();
-            let name = title.replace(' ', "-").to_lowercase();
-            (title, name)
-        };
-
-        let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
-        if wallet_secret.as_ref().is_empty() {
-            return Err(Error::WalletSecretRequired);
-        }
-
-        let prv_key_info = self.wallet.store().as_prv_key_data_store()?.load_key_info(&prv_key_data_id).await?;
-        if let Some(keyinfo) = prv_key_info {
-            let payment_secret = if keyinfo.is_encrypted() {
-                let payment_secret = Secret::new(term.ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec());
-                if payment_secret.as_ref().is_empty() {
-                    return Err(Error::PaymentSecretRequired);
-                } else {
-                    Some(payment_secret)
-                }
-            } else {
-                None
-            };
-
-            let account_args = AccountCreateArgs::new(name, title, account_kind, wallet_secret, payment_secret);
-            let account = self.wallet.create_bip32_account(prv_key_data_id, account_args).await?;
-
-            tprintln!(self, "\naccount created: {}\n", account.get_list_string()?);
-            self.wallet.select(Some(&account)).await?;
-        } else {
-            return Err(Error::KeyDataNotFound);
-        }
-
-        Ok(())
-    }
-
     pub async fn account(&self) -> Result<Arc<runtime::Account>> {
         if let Ok(account) = self.wallet.account() {
             Ok(account)
@@ -726,12 +540,12 @@ impl KaspaCli {
         Ok(account)
     }
 
-    async fn list(&self) -> Result<()> {
+    pub async fn list(&self) -> Result<()> {
         let mut keys = self.wallet.keys().await?;
 
         tprintln!(self);
         while let Some(key) = keys.try_next().await? {
-            tprintln!(self, "• {key}");
+            tprintln!(self, "• {}", style(&key).dim());
             let mut accounts = self.wallet.accounts(Some(key.id)).await?;
             while let Some(account) = accounts.try_next().await? {
                 let receive_address = account.receive_address().await?;
@@ -913,8 +727,6 @@ impl cli::Context for KaspaCli {
 }
 
 impl KaspaCli {}
-
-use kaspa_wallet_core::runtime::{self, BalanceStrings, PrvKeyDataCreateArgs};
 
 #[allow(dead_code)]
 async fn select_item<T>(

@@ -104,12 +104,12 @@ pub trait TransactionRecordStore: Send + Sync {
 #[derive(Debug)]
 pub struct CreateArgs {
     pub name: Option<String>,
-    pub user_hint: Option<String>,
+    pub user_hint: Option<Hint>,
     pub overwrite_wallet: bool,
 }
 
 impl CreateArgs {
-    pub fn new(name: Option<String>, user_hint: Option<String>, overwrite_wallet: bool) -> Self {
+    pub fn new(name: Option<String>, user_hint: Option<Hint>, overwrite_wallet: bool) -> Self {
         Self { name, user_hint, overwrite_wallet }
     }
 }

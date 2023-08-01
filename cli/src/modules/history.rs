@@ -8,7 +8,6 @@ pub struct History;
 impl History {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
-        tprintln!(ctx);
 
         let last = if argv.is_empty() { None } else { argv[0].parse::<usize>().ok() };
 
@@ -30,6 +29,9 @@ impl History {
         };
         let mut index = 0;
         let page = 25;
+
+        tprintln!(ctx);
+
         while let Some(id) = ids.try_next().await? {
             if index >= skip {
                 if index > 0 && index % page == 0 {

@@ -1,73 +1,68 @@
 use crate::imports::*;
+use crate::wizards;
 
 #[derive(Default, Handler)]
 #[help("Account management operations")]
 pub struct Account;
 
 impl Account {
-    async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, _argv: Vec<String>, _cmd: &str) -> Result<()> {
+    async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, mut argv: Vec<String>, _cmd: &str) -> Result<()> {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
         let wallet = ctx.wallet();
 
-        let _is_open = wallet.is_open();
+        if !wallet.is_open() {
+            return Err(Error::WalletIsNotOpen);
+        }
 
-        todo!()
+        if argv.is_empty() {
+            return self.display_help(ctx, argv).await;
+        }
 
-        // let op = if argv.is_empty() { if is_open { "account" } else { "wallet" }.to_string() } else { argv.remove(0) };
+        match argv.remove(0).as_str() {
+            "name" => {}
+            "create" => {
+                let account_kind = if argv.is_empty() {
+                    AccountKind::Bip32
+                } else {
+                    let kind = argv.remove(0);
+                    kind.parse::<AccountKind>()?
+                };
 
-        // match op.as_str() {
-        //     "wallet" => {
-        //         let wallet_name = if argv.is_empty() {
-        //             None
-        //         } else {
-        //             let name = argv.remove(0);
-        //             let name = name.trim().to_string();
+                let account_name = if argv.is_empty() {
+                    None
+                } else {
+                    let name = argv.remove(0);
+                    let name = name.trim().to_string();
 
-        //             Some(name)
-        //         };
+                    Some(name)
+                };
 
-        //         let wallet_name = wallet_name.as_deref();
-        //         ctx.create_wallet(wallet_name).await?;
-        //     }
-        //     "account" => {
-        //         if !is_open {
-        //             return Err(Error::WalletIsNotOpen);
-        //         }
+                let account = ctx.select_account().await?;
+                let prv_key_data_id = account.prv_key_data_id;
 
-        //         let account_kind = if argv.is_empty() {
-        //             AccountKind::Bip32
-        //         } else {
-        //             let kind = argv.remove(0);
-        //             kind.parse::<AccountKind>()?
-        //         };
+                let account_name = account_name.as_deref();
+                wizards::account::create(&ctx, prv_key_data_id, account_kind, account_name).await?;
+            }
+            v => {
+                tprintln!(ctx, "unknown command: '{v}'\r\n");
+                return self.display_help(ctx, argv).await;
+            }
+        }
 
-        //         let account_name = if argv.is_empty() {
-        //             None
-        //         } else {
-        //             let name = argv.remove(0);
-        //             let name = name.trim().to_string();
+        Ok(())
+    }
 
-        //             Some(name)
-        //         };
+    async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
+        ctx.term().help(
+            &[
+                ("create [<type>]", "Create a new account (types: 'bip32' (default), 'legacy')"),
+                // ("import", "Import a private key using 24 or 12 word mnemonic"),
+                ("name <name>", "Name or rename account"),
+                // ("purge", "Purge an account from the wallet"),
+            ],
+            None,
+        )?;
 
-        //         // wallet.account().ok().is_none().then(||{
-        //         //     tprintln!(ctx,"");
-        //         // });
-
-        //         // TODO - switch to selection; temporarily use existing account
-        //         let account = ctx.select_account().await?; //wallet.account()?;
-        //         let prv_key_data_id = account.prv_key_data_id;
-
-        //         let account_name = account_name.as_deref();
-        //         ctx.create_account(prv_key_data_id, account_kind, account_name).await?;
-        //     }
-        //     _ => {
-        //         tprintln!(ctx, "\nError:\n");
-        //         tprintln!(ctx, "Usage:\ncreate <account|wallet>");
-        //         return Ok(());
-        //     }
-        // }
-
-        // Ok(())
+        Ok(())
     }
 }

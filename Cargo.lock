@@ -5794,6 +5794,7 @@ dependencies = [
  "js-sys",
  "numtoa",
  "nw-sys",
+ "pad",
  "regex",
  "textwrap 0.16.0",
  "thiserror",

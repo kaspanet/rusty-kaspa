@@ -99,7 +99,7 @@ fn write_to_clipboard(cli: &Arc<KaspaCli>, text: &str) {
         let text = text.to_owned();
         dispatch(async move {
             if let Err(err) = clipboard::write_text(&text).await {
-                log_error!("{}", err.error_message());
+                log_error!("{:?}", JsErrorData::from(err));
             } else {
                 cli.notifier().notify(Notification::Clipboard);
             }

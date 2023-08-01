@@ -4,9 +4,9 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::runtime;
 use crate::secret::Secret;
-use crate::storage;
 use crate::storage::local::interface::LocalStore;
 use crate::storage::PrvKeyDataId;
+use crate::storage::{self, Hint};
 use crate::wasm::account::Account;
 use crate::wasm::keydata::PrvKeyDataInfo;
 use kaspa_wrpc_client::wasm::RpcClient;
@@ -227,7 +227,7 @@ impl TryFrom<JsValue> for WalletCtorArgs {
 
 struct WalletCreateArgs {
     pub name: Option<String>,
-    pub user_hint: Option<String>,
+    pub user_hint: Option<Hint>,
     pub wallet_secret: Secret,
     pub overwrite_wallet_storage: bool,
 }
@@ -238,7 +238,7 @@ impl TryFrom<&JsValue> for WalletCreateArgs {
         if let Some(object) = Object::try_from(js_value) {
             Ok(WalletCreateArgs {
                 name: object.get("name")?.as_string(),
-                user_hint: object.get("hint")?.as_string(),
+                user_hint: object.get("hint")?.as_string().map(Hint::from),
                 wallet_secret: object.get_string("walletSecret")?.into(),
                 overwrite_wallet_storage: object.get("overwrite")?.as_bool().unwrap_or(false),
             })

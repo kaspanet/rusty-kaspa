@@ -390,9 +390,9 @@ impl Account {
 
     /// Start Account service task
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        if self.wallet.is_connected() {
-            self.connect().await?;
-        }
+        // if self.wallet.is_connected() {
+        self.connect().await?;
+        // }
 
         Ok(())
     }
@@ -406,7 +406,7 @@ impl Account {
 
     /// handle connection event
     pub async fn connect(self: &Arc<Self>) -> Result<()> {
-        if self.wallet.active_accounts().insert(self.clone()).is_none() {
+        if self.wallet.is_connected() && self.wallet.active_accounts().insert(self.clone()).is_none() {
             self.scan(None, None).await?;
         }
         Ok(())
