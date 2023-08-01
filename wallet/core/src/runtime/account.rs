@@ -263,6 +263,18 @@ impl Account {
         }
     }
 
+    pub async fn rename(&self, name: &str) -> Result<()> {
+        let stored = {
+            let inner = self.inner();
+            let mut stored = inner.stored.clone();
+            stored.name = name.to_string();
+            stored
+        };
+
+        self.wallet.store().as_account_store()?.store(&[&stored]).await?;
+        Ok(())
+    }
+
     pub fn balance(&self) -> Option<Balance> {
         self.utxo_context().balance()
     }

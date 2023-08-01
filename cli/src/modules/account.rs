@@ -19,7 +19,16 @@ impl Account {
         }
 
         match argv.remove(0).as_str() {
-            "name" => {}
+            "name" => {
+                if argv.len() != 1 {
+                    tprintln!(ctx, "Usage: account name <name>");
+                    return Ok(());
+                } else {
+                    let name = argv.remove(0);
+                    let account = ctx.select_account().await?;
+                    account.rename(name.as_str()).await?;
+                }
+            }
             "create" => {
                 let account_kind = if argv.is_empty() {
                     AccountKind::Bip32
@@ -37,6 +46,7 @@ impl Account {
                     Some(name)
                 };
 
+                // TODO - list private keys instead of account selection
                 let account = ctx.select_account().await?;
                 let prv_key_data_id = account.prv_key_data_id;
 
