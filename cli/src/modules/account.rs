@@ -24,9 +24,12 @@ impl Account {
                     tprintln!(ctx, "Usage: account name <name>");
                     return Ok(());
                 } else {
+                    let secret = ctx.ask_wallet_secret().await?;
+                    let _ = ctx.notifier().show(Notification::Processing).await;
+
                     let name = argv.remove(0);
                     let account = ctx.select_account().await?;
-                    account.rename(name.as_str()).await?;
+                    account.rename(secret, name.as_str()).await?;
                 }
             }
             "create" => {

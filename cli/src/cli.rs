@@ -453,6 +453,10 @@ impl KaspaCli {
 
     // ---
 
+    pub(crate) async fn ask_wallet_secret(&self) -> Result<Secret> {
+        Ok(Secret::new(self.term().ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec()))
+    }
+
     pub async fn account(&self) -> Result<Arc<runtime::Account>> {
         if let Ok(account) = self.wallet.account() {
             Ok(account)

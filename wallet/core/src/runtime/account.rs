@@ -263,7 +263,7 @@ impl Account {
         }
     }
 
-    pub async fn rename(&self, name: &str) -> Result<()> {
+    pub async fn rename(&self, secret: Secret, name: &str) -> Result<()> {
         let stored = {
             let inner = self.inner();
             let mut stored = inner.stored.clone();
@@ -272,6 +272,9 @@ impl Account {
         };
 
         self.wallet.store().as_account_store()?.store(&[&stored]).await?;
+
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
+        self.wallet.store().commit(&ctx).await?;
         Ok(())
     }
 
