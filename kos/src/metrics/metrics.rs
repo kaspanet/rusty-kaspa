@@ -97,7 +97,7 @@ impl Metrics {
         Ok(())
     }
 
-    pub fn theme(name: &str, kind: &str) -> GraphThemeOptions {
+    pub fn theme(name: &str, kind: &str) -> Box<GraphThemeOptions> {
         let font = "'Consolas', 'Lucida Grande', 'Roboto Mono', 'Source Code Pro', 'Trebuchet'";
 
         let primary = match name {
@@ -106,10 +106,12 @@ impl Metrics {
             _ => "grey",
         };
 
-        match kind {
+        let theme = match kind {
             "kaspa" => GraphThemeOptions::new(font, primary, "rgb(220, 240, 231)", "rgb(17, 187, 125)", primary),
             _ => GraphThemeOptions::new(font, primary, "rgb(220, 231, 240)", "rgb(17, 125, 187)", primary),
-        }
+        };
+
+        Box::new(theme)
     }
 
     async fn init_graphs(self: &Arc<Self>) -> Result<()> {
@@ -138,8 +140,6 @@ impl Metrics {
             self.graphs.lock().unwrap().insert(metric, graph.clone());
             graphs.push(graph);
         }
-
-        //self.init_duration_selector(&window, graphs)?;
 
         Ok(())
     }
@@ -174,28 +174,6 @@ impl Metrics {
         Ok(())
     }
 
-    // pub fn init_duration_selector(&self, window: &web_sys::Window, graphs: Vec<Arc<Graph>>) -> Result<()> {
-    //     let doc = window.document().unwrap();
-    //     let element = doc
-    //         .query_selector("select.duration-selector")
-    //         .unwrap()
-    //         .ok_or_else(|| "Unable to get select.duration-selector element".to_string())?;
-    //     let el = Arc::new(element.dyn_into::<HtmlSelectElement>().unwrap());
-    //     let el_clone = el.clone();
-    //     let on_change = callback!(move || {
-    //         let value = el_clone.value();
-    //         workflow_log::log_info!("duration-selector:change: {value:?}");
-    //         if let Ok(duration) = GraphDuration::parse(value) {
-    //             for graph in &graphs {
-    //                 graph.set_duration(duration);
-    //             }
-    //         }
-    //     });
-
-    //     el.add_event_listener_with_callback("change", on_change.get_fn())?;
-    //     self.callbacks.retain(on_change)?;
-    //     Ok(())
-    // }
 }
 
 #[wasm_bindgen]
