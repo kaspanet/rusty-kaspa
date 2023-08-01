@@ -13,11 +13,17 @@ impl Select {
             ctx.wallet().select(Some(&account)).await?;
         } else {
             let pat = argv.remove(0);
-            let pat = pat.as_str();
+            let pat = pat.trim();
+            log_info!("searching for account with pattern: {}", pat);
             let accounts = ctx.wallet().active_accounts().inner().values().cloned().collect::<Vec<_>>();
             let matches = accounts
                 .into_iter()
-                .filter(|account| account.name().starts_with(pat) || account.id().to_hex().starts_with(pat))
+                .filter(|account| {
+                    log_info!("account.name(): {}", account.name());
+                    log_info!("account.id().to_hex(): {}", account.id().to_hex());
+
+                    account.name().starts_with(pat) || account.id().to_hex().starts_with(pat)
+                })
                 .collect::<Vec<_>>();
             if matches.is_empty() {
                 return Err(Error::AccountNotFound(pat.to_string()));
