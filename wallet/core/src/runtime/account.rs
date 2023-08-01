@@ -421,7 +421,8 @@ impl Account {
 
     /// handle connection event
     pub async fn connect(self: &Arc<Self>) -> Result<()> {
-        if self.wallet.is_connected() && self.wallet.active_accounts().insert(self.clone()).is_none() {
+        let vacated = self.wallet.active_accounts().insert(self.clone());
+        if vacated.is_none() && self.wallet.is_connected() {
             self.scan(None, None).await?;
         }
         Ok(())
