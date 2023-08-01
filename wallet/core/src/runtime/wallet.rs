@@ -619,8 +619,8 @@ impl Wallet {
             | Events::Debit { record } => {
                 self.store().as_transaction_record_store()?.store(&[record]).await?;
             }
-            Events::NodeSync { is_synced } => {
-                if *is_synced && self.is_open() {
+            Events::SyncState(state) => {
+                if state.is_synced() && self.is_open() {
                     self.reload().await?;
                 }
             }

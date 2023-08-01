@@ -14,7 +14,14 @@ pub enum SyncState {
     UtxoSync { chunks: u64, total: u64 },
     TrustSync { processed: u64, total: u64 },
     UtxoResync,
+    NotSynced,
     Synced,
+}
+
+impl SyncState {
+    pub fn is_synced(&self) -> bool {
+        matches!(self, SyncState::Synced)
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -32,13 +39,11 @@ pub enum Events {
         url: String,
     },
     UtxoIndexNotEnabled,
-    NodeSync {
-        #[serde(rename = "isSynced")]
-        is_synced: bool,
-    },
-    SyncState {
-        state: SyncState,
-    },
+    // NodeSync {
+    //     #[serde(rename = "isSynced")]
+    //     is_synced: bool,
+    // },
+    SyncState(SyncState),
     WalletHint {
         hint: Option<Hint>,
     },

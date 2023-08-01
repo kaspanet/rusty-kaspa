@@ -48,7 +48,7 @@ impl SyncMonitor {
                     log_info!("sync monitor: stopping sync monitor task");
                     self.stop_task().await?;
                 }
-                self.notify(Events::NodeSync { is_synced }).await?;
+                self.notify(Events::SyncState(SyncState::Synced)).await?;
             } else {
                 self.inner.is_synced.store(false, Ordering::SeqCst);
                 log_info!("sync monitor: node is not synced");
@@ -56,7 +56,7 @@ impl SyncMonitor {
                     log_info!("sync monitor: starting sync monitor task");
                     self.start_task().await?;
                 }
-                self.notify(Events::NodeSync { is_synced }).await?;
+                self.notify(Events::SyncState(SyncState::NotSynced)).await?;
             }
         }
 
@@ -134,7 +134,8 @@ impl SyncMonitor {
                             if is_synced {
                                 if is_synced != this.is_synced() {
                                     this.inner.is_synced.store(true, Ordering::SeqCst);
-                                    this.notify(Events::NodeSync { is_synced }).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
+                                    this.notify(Events::SyncState(SyncState::Synced)).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
+                                    // this.notify(Events::NodeSync { is_synced }).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
                                 }
 
                                 break;
@@ -158,6 +159,7 @@ impl SyncMonitor {
                 }
             }
 
+            log_info!("sync monitor task is shutting down...");
             this.inner.running.store(false, Ordering::SeqCst);
             task_ctl_sender.send(()).await.unwrap();
         });
@@ -181,7 +183,7 @@ impl SyncMonitor {
             }
         }
         if let Some(state) = state {
-            self.notify(Events::SyncState { state }).await?;
+            self.notify(Events::SyncState(state)).await?;
         }
 
         Ok(())

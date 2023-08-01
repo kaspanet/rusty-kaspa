@@ -313,15 +313,7 @@ impl KaspaCli {
                                 Events::UtxoIndexNotEnabled => {
                                     tprintln!(this, "Error: Kaspa node UTXO index is not enabled...")
                                 },
-                                #[allow(unused_variables)]
-                                Events::NodeSync { is_synced } => {
-
-                                }
-                                Events::SyncState {
-                                    state
-                                } => {
-                                    // log_info!("REFRESHING STATE IN CLI: {state:?}");
-
+                                Events::SyncState(state) => {
                                     this.sync_state.lock().unwrap().replace(state);
                                     this.term().refresh_prompt();
                                 }
@@ -632,7 +624,8 @@ impl KaspaCli {
                 SyncState::UtxoSync { total, .. } => {
                     Some([style("SYNC UTXO").red().to_string(), style(total.separated_string()).dim().to_string()].join(" "))
                 }
-                SyncState::UtxoResync => Some([style("SYNC").red().to_string(), style("...").black().to_string()].join(" ")),
+                SyncState::UtxoResync => Some([style("SYNC").red().to_string(), style("UTXO").black().to_string()].join(" ")),
+                SyncState::NotSynced => Some([style("SYNC").red().to_string(), style("...").black().to_string()].join(" ")),
                 SyncState::Synced { .. } => None,
             }
         } else {
