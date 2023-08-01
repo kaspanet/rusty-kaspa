@@ -1,5 +1,6 @@
 use crate::imports::*;
 
+pub mod account;
 pub mod address;
 pub mod broadcast;
 pub mod close;
@@ -39,6 +40,7 @@ pub mod sweep;
 pub mod test;
 pub mod theme;
 pub mod track;
+pub mod wallet;
 // pub mod error;
 
 pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
@@ -46,6 +48,7 @@ pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
         cli,
         cli.handlers(),
         [
+            account,
             address,
             // broadcast,
             close,
@@ -83,6 +86,7 @@ pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
             theme,
             track,
             test,
+            wallet,
             // error,
         ]
     );

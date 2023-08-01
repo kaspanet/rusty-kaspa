@@ -39,9 +39,9 @@ impl WalletCreateArgs {
     }
 }
 
-impl From<(Option<String>, &WalletCreateArgs)> for CreateArgs {
-    fn from((name, args): (Option<String>, &WalletCreateArgs)) -> Self {
-        CreateArgs::new(name, args.user_hint.clone(), args.overwrite_wallet_storage)
+impl From<WalletCreateArgs> for CreateArgs {
+    fn from(args: WalletCreateArgs) -> Self {
+        CreateArgs::new(args.name, args.user_hint, args.overwrite_wallet_storage)
     }
 }
 
@@ -468,9 +468,9 @@ impl Wallet {
 
     pub async fn create_wallet(self: &Arc<Wallet>, args: WalletCreateArgs) -> Result<Option<String>> {
         self.reset().await?;
-
+        log_info!("XXXX-YYYY WALLET NAME: {:?}", args.name);
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
-        self.inner.store.create(&ctx, (None, &args).into()).await?;
+        self.inner.store.create(&ctx, args.into()).await?;
         let descriptor = self.inner.store.descriptor()?;
         self.inner.store.commit(&ctx).await?;
         Ok(descriptor)
@@ -501,7 +501,7 @@ impl Wallet {
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(account_args.wallet_secret));
 
-        self.inner.store.create(&ctx, (None, &wallet_args).into()).await?;
+        self.inner.store.create(&ctx, wallet_args.into()).await?;
         let descriptor = self.inner.store.descriptor()?;
         // let prefix = self.address_prefix()?;
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;

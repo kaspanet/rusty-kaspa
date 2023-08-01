@@ -101,6 +101,7 @@ pub trait TransactionRecordStore: Send + Sync {
     async fn store_transaction_metadata(&self, id: TransactionId, metadata: TransactionMetadata) -> Result<()>;
 }
 
+#[derive(Debug)]
 pub struct CreateArgs {
     pub name: Option<String>,
     pub user_hint: Option<String>,
@@ -113,6 +114,7 @@ impl CreateArgs {
     }
 }
 
+#[derive(Debug)]
 pub struct OpenArgs {
     pub name: Option<String>,
 }

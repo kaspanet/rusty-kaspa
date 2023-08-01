@@ -37,8 +37,12 @@ impl LocalStoreInner {
             // if args.name.as_ref().is_some_and(|name| name.as_str() == super::DEFAULT_SETTINGS_FILE) {
             //     return Err(Error::WalletNameNotAllowed);
             // }
+            log_info!("LocalStoreInner::try_create: folder: {}, args: {:?}, is_resident: {}", folder, args, is_resident);
 
             let name = args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
+
+            log_info!("GOT NAME: {}", name);
+
             let storage = Storage::new_with_folder(folder, &format!("{name}.wallet"))?;
             if storage.exists().await? && !args.overwrite_wallet {
                 return Err(Error::WalletAlreadyExists);
@@ -218,6 +222,8 @@ impl Interface for LocalStore {
 
     async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()> {
         let location = self.location.lock().unwrap().clone().unwrap();
+
+        log_info!("WALLET CREATE INTERFACE: {:?}", args);
         let inner = Arc::new(LocalStoreInner::try_create(ctx, &location.folder, args, self.is_resident).await?);
         self.inner.lock().unwrap().replace(inner);
 
@@ -290,6 +296,7 @@ impl Interface for LocalStore {
 #[async_trait]
 impl PrvKeyDataStore for LocalStoreInner {
     async fn iter(&self) -> Result<StorageStream<PrvKeyDataInfo>> {
+        log_info!("QQQQQQ : PrvKeyDataStore::iter cloning cache {}", self.cache().prv_key_data_info.map.len());
         Ok(Box::pin(PrvKeyDataInfoStream::new(self.cache.clone())))
     }
 

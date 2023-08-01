@@ -464,6 +464,16 @@ impl KaspaCli {
     pub(crate) async fn create_wallet(&self, name: Option<&str>) -> Result<()> {
         let term = self.term();
 
+        if let Err(err) = self.wallet.network_id() {
+            tprintln!(self);
+            tprintln!(self, "You appear not to have selected the current Kaspa network.");
+            tprintln!(self, "Please use 'network <name>' command to select a network.");
+            tprintln!(self, "Currently available networks are 'mainnet', 'testnet-10' and 'testnet-11'");
+            tprintln!(self, "For example, type: 'network mainnet' or 'network testnet-10'");
+            tprintln!(self);
+            return Err(err.into());
+        }
+
         if self.wallet.exists(name).await? {
             tprintln!(self, "WARNING - A previously created wallet already exists!");
 
@@ -531,10 +541,16 @@ impl KaspaCli {
             }
         }
 
+        let notifier = self.notifier().show(Notification::Processing).await;
+        yield_executor().await;
+        sleep(Duration::from_millis(500)).await;
+        yield_executor().await;
+
         // suspend commits for multiple operations
         self.wallet.store().batch().await?;
 
         let account_kind = AccountKind::Bip32;
+        log_info!("WALLET NAME IS {:?}", name);
         let wallet_args = WalletCreateArgs::new(name.map(String::from), hint, wallet_secret.clone(), true);
         let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone());
         let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_secret.clone(), payment_secret);
@@ -544,6 +560,7 @@ impl KaspaCli {
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         self.wallet.store().flush(&ctx).await?;
+        notifier.hide();
 
         ["", "---", "", "IMPORTANT:", ""].into_iter().for_each(|line| term.writeln(line));
 
@@ -555,7 +572,7 @@ impl KaspaCli {
             store it in a safe, preferably in a fire-resistant location. Do not \
             store your mnemonic on this computer or a mobile device. This wallet \
             will never ask you for this mnemonic phrase unless you manually \
-            initial a private key recovery. \
+            initiate a private key recovery. \
             ",
         );
 
