@@ -125,6 +125,7 @@ impl Toolbar {
             ("15m", "15 Minutes"),
             ("30m", "30 Minutes"),
             ("1H", "1 Hour"),
+            ("2H", "2 Hours"),
             ("4H", "4 Hours"),
             ("8H", "8 Hours"),
             ("12H", "12 Hours"),
