@@ -1,4 +1,4 @@
-use crate::tx::{Transaction, TransactionInput, TransactionOutput, TransactionOutputInner};
+use crate::tx::{Transaction, TransactionInput, TransactionInputInner, TransactionOutput, TransactionOutputInner};
 use kaspa_consensus_core::tx::SCRIPT_VECTOR_SIZE;
 use wasm_bindgen::prelude::*;
 
@@ -164,6 +164,17 @@ pub const fn blank_transaction_serialized_byte_size() -> u64 {
     size
 }
 
+fn transaction_input_serialized_byte_size_for_inner(input: &TransactionInputInner) -> u64 {
+    let mut size = 0;
+    size += outpoint_estimated_serialized_size();
+
+    size += 8; // length of signature script (u64)
+    size += input.signature_script.len() as u64;
+
+    size += 8; // sequence (uint64)
+    size
+}
+
 fn transaction_input_serialized_byte_size(input: &TransactionInput) -> u64 {
     let mut size = 0;
     size += outpoint_estimated_serialized_size();
@@ -271,13 +282,15 @@ impl MassCalculator {
     }
 
     pub fn calc_mass_for_output(&self, output: &TransactionOutput) -> u64 {
-        let size = transaction_output_serialized_byte_size(output);
-        self.mass_per_script_pub_key_byte * (2 + output.script_length() as u64) + size * self.mass_per_tx_byte
+        let output_inner = output.inner();
+        self.mass_per_script_pub_key_byte * (2 + output_inner.script_public_key.script().len() as u64)
+            + transaction_output_serialized_byte_size_for_inner(&output_inner) * self.mass_per_tx_byte
     }
 
     pub fn calc_mass_for_input(&self, input: &TransactionInput) -> u64 {
-        let sig_op_count = input.sig_op_count();
-        sig_op_count as u64 * self.mass_per_sig_op + transaction_input_serialized_byte_size(input) * self.mass_per_tx_byte
+        let input_inner = input.inner();
+        input_inner.sig_op_count as u64 * self.mass_per_sig_op
+            + transaction_input_serialized_byte_size_for_inner(&input_inner) * self.mass_per_tx_byte
     }
 
     pub fn calc_signature_mass(&self, minimum_signatures: u16) -> u64 {

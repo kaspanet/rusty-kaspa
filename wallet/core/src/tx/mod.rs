@@ -16,7 +16,7 @@ pub use generator::{
 };
 use kaspa_consensus_core::subnets::SubnetworkId;
 pub use primitives::{
-    MutableTransaction, PaymentDestination, PaymentOutputs, Transaction, TransactionInput, TransactionOutpoint,
+    MutableTransaction, PaymentDestination, PaymentOutputs, Transaction, TransactionInput, TransactionInputInner, TransactionOutpoint,
     TransactionOutpointInner, TransactionOutput, TransactionOutputInner,
 };
 
