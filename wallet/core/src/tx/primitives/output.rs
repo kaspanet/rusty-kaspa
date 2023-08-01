@@ -29,6 +29,10 @@ impl TransactionOutput {
         self.inner.lock().unwrap()
     }
 
+    pub fn script_length(&self) -> usize {
+        self.inner().script_public_key.script().len()
+    }
+
     // pub fn set_amount(&self, amount: u64) {
     //     self.inner().value = amount;
     // }

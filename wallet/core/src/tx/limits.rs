@@ -271,13 +271,13 @@ impl MassCalculator {
     }
 
     pub fn calc_mass_for_output(&self, output: &TransactionOutput) -> u64 {
-        self.mass_per_script_pub_key_byte * (2 + output.inner().script_public_key.script().len() as u64)
-            + transaction_output_serialized_byte_size(output) * self.mass_per_tx_byte
+        let size = transaction_output_serialized_byte_size(output);
+        self.mass_per_script_pub_key_byte * (2 + output.script_length() as u64) + size * self.mass_per_tx_byte
     }
 
     pub fn calc_mass_for_input(&self, input: &TransactionInput) -> u64 {
-        input.inner().sig_op_count as u64 * self.mass_per_sig_op
-            + transaction_input_serialized_byte_size(input) * self.mass_per_tx_byte
+        let sig_op_count = input.sig_op_count();
+        sig_op_count as u64 * self.mass_per_sig_op + transaction_input_serialized_byte_size(input) * self.mass_per_tx_byte
     }
 
     pub fn calc_signature_mass(&self, minimum_signatures: u16) -> u64 {

@@ -31,6 +31,10 @@ impl TransactionInput {
     pub fn inner(&self) -> MutexGuard<'_, TransactionInputInner> {
         self.inner.lock().unwrap()
     }
+
+    pub fn sig_op_count(&self) -> u8 {
+        self.inner().sig_op_count
+    }
 }
 
 #[wasm_bindgen]
