@@ -1,6 +1,6 @@
 use crate::imports::*;
+use kaspa_wallet_core::error::Error as WalletError;
 use kaspa_wallet_core::storage::Binding;
-
 #[derive(Default, Handler)]
 #[help("Display transaction history")]
 pub struct History;
@@ -16,7 +16,19 @@ impl History {
         let binding = Binding::from(&account);
         let current_daa_score = ctx.wallet().current_daa_score();
         let store = ctx.wallet().store().as_transaction_record_store()?;
-        let mut ids = store.transaction_id_iter(&binding, &network_id).await?;
+        let mut ids = match store.transaction_id_iter(&binding, &network_id).await {
+            Ok(ids) => ids,
+            Err(err) => {
+                if matches!(err, WalletError::NoRecordsFound) {
+                    tprintln!(ctx);
+                    tprintln!(ctx, "No transactions found for this account.");
+                    tprintln!(ctx);
+                } else {
+                    terrorln!(ctx, "{err}");
+                }
+                return Ok(());
+            }
+        };
         let length = ids.size_hint().0;
         let skip = if let Some(last) = last {
             if last > length {
