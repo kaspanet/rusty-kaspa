@@ -11,6 +11,7 @@ use kaspa_rpc_core::GetUtxosByAddressesResponse;
 use serde_wasm_bindgen::from_value;
 use sorted_insert::SortedInsertBinary;
 use workflow_wasm::abi::ref_from_abi;
+// use std::collections::HashMap;
 
 static PROCESSOR_ID_SEQUENCER: AtomicU64 = AtomicU64::new(0);
 fn next_processor_id() -> u64 {
@@ -354,6 +355,8 @@ impl UtxoContext {
         Ok(l)
     }
 
+    // recover UTXOs that went into `consumed` state but were never removed
+    // from the set by the UtxoChanged notification.
     pub async fn recover(&self, duration: Option<Duration>) -> Result<()> {
         let checkpoint = Instant::now().checked_sub(duration.unwrap_or(Duration::from_secs(60))).unwrap();
         let mut context = self.context();
@@ -392,12 +395,14 @@ impl UtxoContext {
             }
         }
 
-        for utxo in utxos.into_iter() {
-            // post update notifications
-            let txid = utxo.data().outpoint.transaction_id();
-            let record = (self, TransactionType::Credit, txid, vec![utxo]).into();
+        // let pending = HashMap::default();
+
+        let pending = HashMap::group_from(utxos.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
+        for (txid, utxos) in pending.into_iter() {
+            let record = (self, TransactionType::Credit, txid, utxos).into();
             self.processor().notify(Events::Pending { record }).await?;
         }
+
         // post balance update
         self.update_balance().await?;
         Ok(())
@@ -408,6 +413,42 @@ impl UtxoContext {
         let utxo_ids: Vec<UtxoEntryId> = utxos.iter().map(|utxo| utxo.id()).collect();
         let removed = self.remove(utxo_ids).await?;
 
+        let mut mature = vec![];
+        let mut consumed = vec![];
+        let mut pending = vec![];
+
+        removed.into_iter().for_each(|entry| match entry {
+            UtxoEntryVariant::Mature(utxo) => {
+                mature.push(utxo);
+            }
+            UtxoEntryVariant::Consumed(utxo) => {
+                consumed.push(utxo);
+            }
+            UtxoEntryVariant::Pending(utxo) => {
+                pending.push(utxo);
+            }
+        });
+
+        let mature = HashMap::group_from(mature.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
+        let consumed = HashMap::group_from(consumed.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
+        let pending = HashMap::group_from(pending.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
+
+        for (txid, utxos) in mature.into_iter() {
+            let record = (self, TransactionType::Debit, txid, utxos).into();
+            self.processor().notify(Events::External { record }).await?;
+        }
+
+        for (txid, utxos) in consumed.into_iter() {
+            let record = (self, TransactionType::Debit, txid, utxos).into();
+            self.processor().notify(Events::Debit { record }).await?;
+        }
+
+        for (txid, utxos) in pending.into_iter() {
+            let record = (self, TransactionType::Reorg, txid, utxos).into();
+            self.processor().notify(Events::Reorg { record }).await?;
+        }
+
+        /*
         for removed in removed.into_iter() {
             match removed {
                 UtxoEntryVariant::Mature(utxo) => {
@@ -415,7 +456,7 @@ impl UtxoContext {
                     let record = (self, TransactionType::Debit, txid, vec![utxo]).into();
                     self.processor().notify(Events::External { record }).await?;
                 }
-                UtxoEntryVariant::Consumed(_utxo) => {
+                UtxoEntryVariant::Consumed(utxo) => {
                     // let record = (TransactionType::Debit, self, utxo).into();
                     // self.core.notify(Events::Debit { record }).await?;
                 }
@@ -426,6 +467,7 @@ impl UtxoContext {
                 }
             }
         }
+        */
 
         // post balance update
         self.update_balance().await?;
