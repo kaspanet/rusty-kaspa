@@ -641,8 +641,8 @@ impl RpcApi for RpcCoreService {
 
     async fn get_metrics_call(&self, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
         let CountersSnapshot {
-            resident_set_size_bytes,
-            virtual_memory_size_bytes,
+            resident_set_size,
+            virtual_memory_size,
             core_num,
             cpu_usage,
             fd_num,
@@ -653,8 +653,8 @@ impl RpcApi for RpcCoreService {
             ..
         } = self.perf_monitor.snapshot();
         let process_metrics = req.process_metrics.then_some(ProcessMetrics {
-            resident_set_size_bytes,
-            virtual_memory_size_bytes,
+            resident_set_size,
+            virtual_memory_size,
             core_num: core_num as u64,
             cpu_usage,
             fd_num: fd_num as u64,

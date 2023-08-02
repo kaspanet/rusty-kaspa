@@ -29,7 +29,6 @@ pub struct Monitor<TS: AsRef<TickService>> {
     fetch_interval: Duration,
     counters: Counters,
     fetch_callback: Option<Box<dyn Fn(CountersSnapshot) + Sync + Send>>,
-    page_size: u64,
 }
 
 impl<TS: AsRef<TickService>> Monitor<TS> {
@@ -60,8 +59,6 @@ impl<TS: AsRef<TickService>> Monitor<TS> {
             let counters_snapshot = CountersSnapshot {
                 resident_set_size,
                 virtual_memory_size,
-                resident_set_size_bytes: resident_set_size * self.page_size,
-                virtual_memory_size_bytes: virtual_memory_size * self.page_size,
                 core_num,
                 cpu_usage,
                 fd_num,
