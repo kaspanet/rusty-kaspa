@@ -1,14 +1,25 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{
-    get_consensus_params_by_address, limits::*, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction,
-    PendingTransactionIterator, PendingTransactionStream, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
-    UtxoContext, UtxoEntryReference,
+    get_consensus_params_by_address,
+    mass::*,
+    GeneratorSettings,
+    GeneratorSummary,
+    PaymentDestination,
+    PendingTransaction,
+    PendingTransactionIterator,
+    PendingTransactionStream,
+    // Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
+    UtxoContext,
+    UtxoEntryReference,
 };
 use crate::utxo::UtxoEntry;
 use kaspa_consensus_core::tx as cctx;
+use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_txscript::pay_to_address_script;
 use std::collections::VecDeque;
+
+use super::SignerT;
 
 struct Context {
     utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
@@ -32,6 +43,7 @@ struct Context {
 
 struct Inner {
     abortable: Abortable,
+    signer: Option<Arc<dyn SignerT>>,
     mass_calculator: MassCalculator,
 
     // Utxo Context
@@ -69,7 +81,7 @@ pub struct Generator {
 }
 
 impl Generator {
-    pub fn new(settings: GeneratorSettings, abortable: &Abortable) -> Self {
+    pub fn new(settings: GeneratorSettings, signer: Option<Arc<dyn SignerT>>, abortable: &Abortable) -> Self {
         let GeneratorSettings {
             utxo_iterator,
             utxo_context,
@@ -86,9 +98,9 @@ impl Generator {
 
         let (final_transaction_outputs, final_transaction_amount) = match final_transaction_destination {
             // PaymentDestination::Address(address) => (vec![TransactionOutput::new(0, &pay_to_address_script(&address))], None),
-            PaymentDestination::Change => (vec![TransactionOutput::new(0, &pay_to_address_script(&change_address))], None),
+            PaymentDestination::Change => (vec![TransactionOutput::new(0, pay_to_address_script(&change_address))], None),
             PaymentDestination::PaymentOutputs(outputs) => (
-                outputs.iter().map(|output| TransactionOutput::new(output.amount, &pay_to_address_script(&output.address))).collect(),
+                outputs.iter().map(|output| TransactionOutput::new(output.amount, pay_to_address_script(&output.address))).collect(),
                 Some(outputs.iter().map(|output| output.amount).sum()),
             ),
         };
@@ -103,12 +115,13 @@ impl Generator {
             is_done: false,
         });
         let change_output_mass =
-            mass_calculator.calc_mass_for_output(&TransactionOutput::new(0, &pay_to_address_script(&change_address)));
+            mass_calculator.calc_mass_for_output(&TransactionOutput::new(0, pay_to_address_script(&change_address)));
 
         let final_transaction_outputs_mass = mass_calculator.calc_mass_for_outputs(&final_transaction_outputs);
 
         let inner = Inner {
             context,
+            signer,
             abortable: abortable.clone(),
             mass_calculator,
             utxo_context,
@@ -132,6 +145,10 @@ impl Generator {
 
     fn context(&self) -> MutexGuard<Context> {
         self.inner.context.lock().unwrap()
+    }
+
+    pub(crate) fn signer(&self) -> &Option<Arc<dyn SignerT>> {
+        &self.inner.signer
     }
 
     pub fn aggregate_fees(&self) -> u64 {
@@ -171,6 +188,7 @@ impl Generator {
         let mut mass_accumulator = calc.blank_transaction_serialized_mass();
         let payload_mass = calc.calc_mass_for_payload(self.inner.final_transaction_payload.len());
 
+        let mut addresses = HashSet::<Address>::default();
         let mut utxo_entry_references = vec![];
         let mut inputs = vec![];
 
@@ -185,10 +203,9 @@ impl Generator {
             } else {
                 context.utxo_iterator.next().ok_or(Error::InsufficientFunds)?
             };
-            context.aggregated_utxos += 1;
             let UtxoEntryReference { utxo } = &utxo_entry_reference;
 
-            let input = TransactionInput::new(utxo.outpoint.clone(), vec![], sequence, self.inner.sig_op_count);
+            let input = TransactionInput::new(utxo.outpoint.clone().into(), vec![], sequence, self.inner.sig_op_count);
             let input_amount = utxo.amount();
             let mass_for_input = calc.calc_mass_for_input(&input) + signature_mass_per_input;
 
@@ -201,8 +218,12 @@ impl Generator {
             }
             mass_accumulator += mass_for_input;
             transaction_amount_accumulator += input_amount;
-            utxo_entry_references.push(utxo_entry_reference);
+            utxo_entry_references.push(utxo_entry_reference.clone());
             inputs.push(input);
+            if let Some(address) = utxo.address.as_ref() {
+                addresses.insert(address.clone());
+            }
+            context.aggregated_utxos += 1;
             sequence += 1;
 
             // check if we have and we have reached the desired transaction amount
@@ -261,12 +282,11 @@ impl Generator {
 
             let mut final_outputs = self.inner.final_transaction_outputs.clone();
             if change_amount > 0 {
-                let script_public_key = pay_to_address_script(&self.inner.change_address);
-                let output = TransactionOutput::new(change_amount, &script_public_key);
+                let output = TransactionOutput::new(change_amount, pay_to_address_script(&self.inner.change_address));
                 final_outputs.push(output);
             }
 
-            let tx = Transaction::new(
+            let mut tx = Transaction::new(
                 0,
                 inputs,
                 final_outputs,
@@ -274,18 +294,19 @@ impl Generator {
                 SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                 0,
                 self.inner.final_transaction_payload.clone(),
-            )?;
+            );
 
-            context.final_transaction_id = Some(tx.finalize()?);
+            tx.finalize();
+            context.final_transaction_id = Some(tx.id());
             context.number_of_generated_transactions += 1;
 
-            Ok(Some(PendingTransaction::new(self, tx, utxo_entry_references)))
+            Ok(Some(PendingTransaction::try_new(self, tx, utxo_entry_references, addresses.into_iter().collect())?))
         } else {
             let amount = transaction_amount_accumulator - MINIMUM_RELAY_TRANSACTION_FEE;
             let script_public_key = pay_to_address_script(&self.inner.change_address);
-            let output = TransactionOutput::new(amount, &script_public_key);
+            let output = TransactionOutput::new(amount, script_public_key.clone());
 
-            let tx = Transaction::new(
+            let mut tx = Transaction::new(
                 0,
                 inputs,
                 vec![output],
@@ -293,15 +314,17 @@ impl Generator {
                 SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                 0,
                 vec![],
-            )?;
+            );
 
-            let txid = tx.finalize()?;
+            tx.finalize();
+            // let txid = ;
 
-            let utxo_entry_reference = Self::create_utxo_entry_reference(txid, amount, script_public_key, &self.inner.change_address);
+            let utxo_entry_reference =
+                Self::create_utxo_entry_reference(tx.id(), amount, script_public_key, &self.inner.change_address);
             context.utxo_stash.push_front(utxo_entry_reference);
 
             context.number_of_generated_transactions += 1;
-            Ok(Some(PendingTransaction::new(self, tx, utxo_entry_references)))
+            Ok(Some(PendingTransaction::try_new(self, tx, utxo_entry_references, addresses.into_iter().collect())?))
         }
     }
 
@@ -313,7 +336,7 @@ impl Generator {
     ) -> UtxoEntryReference {
         let entry = cctx::UtxoEntry { amount, script_public_key, block_daa_score: u64::MAX, is_coinbase: false };
         let outpoint = TransactionOutpoint::new(txid, 0);
-        let utxo = UtxoEntry { address: Some(address.clone()), outpoint, entry };
+        let utxo = UtxoEntry { address: Some(address.clone()), outpoint: outpoint.into(), entry };
         UtxoEntryReference { utxo: Arc::new(utxo) }
     }
 

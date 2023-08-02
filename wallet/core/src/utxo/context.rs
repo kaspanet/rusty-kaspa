@@ -3,9 +3,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Account, AccountId, Balance};
 use crate::storage::TransactionType;
-use crate::utxo::{
-    Binding, PendingUtxoEntryReference, UtxoEntries, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext,
-};
+use crate::utxo::{Binding, PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext};
 use crate::wasm;
 use kaspa_rpc_core::GetUtxosByAddressesResponse;
 use serde_wasm_bindgen::from_value;
@@ -240,7 +238,8 @@ impl UtxoContext {
 
     /// Removes entries from mature utxo set and adds them to the consumed utxo set.
     // pub fn consume(&self, entries : &[UtxoEntryReference]) -> Result<()> {
-    pub fn consume(&self, entries: &UtxoEntries) -> Result<()> {
+    // pub fn consume(&self, entries: &UtxoEntries) -> Result<()> {
+    pub fn consume(&self, entries: &[UtxoEntryReference]) -> Result<()> {
         let mut context = self.context();
         context.mature.retain(|entry| entries.contains(entry));
         let now = Instant::now();

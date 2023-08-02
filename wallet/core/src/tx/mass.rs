@@ -1,6 +1,11 @@
-use crate::tx::{Transaction, TransactionInput, TransactionInputInner, TransactionOutput, TransactionOutputInner};
-use kaspa_consensus_core::tx::SCRIPT_VECTOR_SIZE;
-use wasm_bindgen::prelude::*;
+// use crate::tx::{Transaction, TransactionInput, TransactionInputInner, TransactionOutput, TransactionOutputInner};
+use kaspa_consensus_core::tx::{
+    Transaction,
+    TransactionInput,
+    TransactionOutput, //, TransactionOutpoint,
+    SCRIPT_VECTOR_SIZE,
+};
+// use wasm_bindgen::prelude::*;
 
 use kaspa_consensus_core::{
     config::params::Params,
@@ -52,7 +57,7 @@ pub fn calc_minimum_required_transaction_relay_fee(mass: u64) -> u64 {
 /// transaction relay fee, it is considered dust.
 ///
 /// It is exposed by [MiningManager] for use by transaction generators and wallets.
-#[wasm_bindgen(js_name=isTransactionOutputDust)]
+// #[wasm_bindgen(js_name=isTransactionOutputDust)]
 pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> bool {
     // Unspendable outputs are considered dust.
     //
@@ -61,7 +66,7 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
     //     return true
     // }
     // TODO: Remove this code when script engine is available
-    if transaction_output.get_script_public_key().script().len() < 33 {
+    if transaction_output.script_public_key.script().len() < 33 {
         return true;
     }
 
@@ -100,7 +105,7 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
     //
     // Since the multiplication may overflow a u64, 2 separate calculation paths
     // are considered to avoid overflowing.
-    let value = transaction_output.get_value();
+    let value = transaction_output.value;
     match value.checked_mul(1000) {
         Some(value_1000) => value_1000 / (3 * total_serialized_size) < MINIMUM_RELAY_TRANSACTION_FEE,
         None => (value as u128 * 1000 / (3 * total_serialized_size as u128)) < MINIMUM_RELAY_TRANSACTION_FEE as u128,
@@ -125,16 +130,16 @@ pub fn is_standard_output_amount_dust(value: u64) -> bool {
 // it's only used as the size component in the transaction and block mass limit
 // calculation.
 pub fn transaction_serialized_byte_size(tx: &Transaction) -> u64 {
-    let inner = tx.inner();
+    // let inner = tx.inner();
 
     let mut size: u64 = 0;
     size += 2; // Tx version (u16)
     size += 8; // Number of inputs (u64)
-    let inputs_size: u64 = inner.inputs.iter().map(transaction_input_serialized_byte_size).sum();
+    let inputs_size: u64 = tx.inputs.iter().map(transaction_input_serialized_byte_size).sum();
     size += inputs_size;
 
     size += 8; // number of outputs (u64)
-    let outputs_size: u64 = inner.outputs.iter().map(transaction_output_serialized_byte_size).sum();
+    let outputs_size: u64 = tx.outputs.iter().map(transaction_output_serialized_byte_size).sum();
     size += outputs_size;
 
     size += 8; // lock time (u64)
@@ -143,7 +148,7 @@ pub fn transaction_serialized_byte_size(tx: &Transaction) -> u64 {
     size += HASH_SIZE as u64; // payload hash
 
     size += 8; // length of the payload (u64)
-    size += inner.payload.len() as u64;
+    size += tx.payload.len() as u64;
     size
 }
 
@@ -164,7 +169,7 @@ pub const fn blank_transaction_serialized_byte_size() -> u64 {
     size
 }
 
-fn transaction_input_serialized_byte_size_for_inner(input: &TransactionInputInner) -> u64 {
+fn transaction_input_serialized_byte_size(input: &TransactionInput) -> u64 {
     let mut size = 0;
     size += outpoint_estimated_serialized_size();
 
@@ -175,16 +180,16 @@ fn transaction_input_serialized_byte_size_for_inner(input: &TransactionInputInne
     size
 }
 
-fn transaction_input_serialized_byte_size(input: &TransactionInput) -> u64 {
-    let mut size = 0;
-    size += outpoint_estimated_serialized_size();
+// fn transaction_input_serialized_byte_size(input: &TransactionInput) -> u64 {
+//     let mut size = 0;
+//     size += outpoint_estimated_serialized_size();
 
-    size += 8; // length of signature script (u64)
-    size += input.inner().signature_script.len() as u64;
+//     size += 8; // length of signature script (u64)
+//     size += input.inner().signature_script.len() as u64;
 
-    size += 8; // sequence (uint64)
-    size
-}
+//     size += 8; // sequence (uint64)
+//     size
+// }
 
 const fn outpoint_estimated_serialized_size() -> u64 {
     let mut size: u64 = 0;
@@ -193,11 +198,11 @@ const fn outpoint_estimated_serialized_size() -> u64 {
     size
 }
 
-pub fn transaction_output_serialized_byte_size(output: &TransactionOutput) -> u64 {
-    transaction_output_serialized_byte_size_for_inner(&output.inner())
-}
+// pub fn transaction_output_serialized_byte_size(output: &TransactionOutput) -> u64 {
+//     transaction_output_serialized_byte_size_for_inner(&output.inner())
+// }
 
-pub fn transaction_output_serialized_byte_size_for_inner(output_inner: &TransactionOutputInner) -> u64 {
+pub fn transaction_output_serialized_byte_size(output_inner: &TransactionOutput) -> u64 {
     let mut size: u64 = 0;
     size += 8; // value (u64)
     size += 2; // output.ScriptPublicKey.Version (u16)
@@ -238,9 +243,9 @@ impl MassCalculator {
     pub fn calc_mass_for_transaction(&self, tx: &Transaction) -> u64 {
         // self.calc_serialized_mass_for_tx(tx)
         self.blank_transaction_serialized_mass()
-            + self.calc_mass_for_payload(tx.inner().payload.len())
-            + self.calc_mass_for_outputs(&tx.inner().outputs)
-            + self.calc_mass_for_inputs(&tx.inner().inputs)
+            + self.calc_mass_for_payload(tx.payload.len())
+            + self.calc_mass_for_outputs(&tx.outputs)
+            + self.calc_mass_for_inputs(&tx.inputs)
 
         // let size = transaction_estimated_serialized_size(tx);
         // let mass_for_size = size * self.mass_per_tx_byte;
@@ -282,15 +287,12 @@ impl MassCalculator {
     }
 
     pub fn calc_mass_for_output(&self, output: &TransactionOutput) -> u64 {
-        let output_inner = output.inner();
-        self.mass_per_script_pub_key_byte * (2 + output_inner.script_public_key.script().len() as u64)
-            + transaction_output_serialized_byte_size_for_inner(&output_inner) * self.mass_per_tx_byte
+        self.mass_per_script_pub_key_byte * (2 + output.script_public_key.script().len() as u64)
+            + transaction_output_serialized_byte_size(output) * self.mass_per_tx_byte
     }
 
     pub fn calc_mass_for_input(&self, input: &TransactionInput) -> u64 {
-        let input_inner = input.inner();
-        input_inner.sig_op_count as u64 * self.mass_per_sig_op
-            + transaction_input_serialized_byte_size_for_inner(&input_inner) * self.mass_per_tx_byte
+        input.sig_op_count as u64 * self.mass_per_sig_op + transaction_input_serialized_byte_size(input) * self.mass_per_tx_byte
     }
 
     pub fn calc_signature_mass(&self, minimum_signatures: u16) -> u64 {
@@ -308,8 +310,7 @@ impl MassCalculator {
     }
 
     pub fn calc_minium_tx_relay_fee(&self, tx: &Transaction, minimum_signatures: u16) -> u64 {
-        let mass =
-            self.calc_mass_for_transaction(tx) + self.calc_signature_mass_for_inputs(tx.inner().inputs.len(), minimum_signatures);
+        let mass = self.calc_mass_for_transaction(tx) + self.calc_signature_mass_for_inputs(tx.inputs.len(), minimum_signatures);
         calc_minimum_required_transaction_relay_fee(mass)
     }
 }

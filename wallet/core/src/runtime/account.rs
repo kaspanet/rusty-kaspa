@@ -1,24 +1,22 @@
 #[allow(unused_imports)]
 use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::address::{build_derivate_paths, AddressManager};
-use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{AtomicBalance, Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
-use crate::signer::sign_mutable_transaction;
+// use crate::signer::sign_mutable_transaction;
+use crate::imports::*;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
-use crate::tx::{
-    Generator, GeneratorSettings, GeneratorSummary, LimitCalcStrategy, PaymentDestination, PaymentOutputs, PendingTransaction,
-    VirtualTransactionV1,
-};
+use crate::tx::generator::Signer;
+use crate::tx::{Generator, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction};
 use crate::utxo::UtxoContext;
 // use crate::utxo::UtxoStream;
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
 use futures::future::join_all;
 // use futures::pin_mut;
-use kaspa_bip32::{ChildNumber, PrivateKey};
+use kaspa_bip32::ChildNumber;
 use kaspa_notify::listener::ListenerId;
 use separator::Separatable;
 use serde::Serializer;
@@ -150,6 +148,7 @@ pub struct Account {
     is_connected: AtomicBool,
     pub account_kind: AccountKind,
     pub account_index: u64,
+    // pub cosigner_index: u32,
     pub prv_key_data_id: PrvKeyDataId,
     pub ecdsa: bool,
     pub derivation: Arc<AddressDerivationManager>,
@@ -335,13 +334,17 @@ impl Account {
         Ok(())
     }
 
-    fn create_private_keys(
+    pub fn cosigner_index(&self) -> u32 {
+        self.inner().stored.pub_key_data.cosigner_index.unwrap_or(0)
+    }
+
+    pub(crate) fn create_private_keys<'l>(
         &self,
-        keydata: PrvKeyData,
-        payment_secret: Option<Secret>,
-        receive_indexes: Vec<u32>,
-        change_indexes: Vec<u32>,
-    ) -> Result<Vec<secp256k1::SecretKey>> {
+        keydata: &PrvKeyData,
+        payment_secret: &Option<Secret>,
+        receive: &[(&'l Address, u32)],
+        change: &[(&'l Address, u32)],
+    ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
         let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
         let xkey = payload.get_xprv(payment_secret.as_ref())?;
 
@@ -351,11 +354,11 @@ impl Account {
         let change_xkey = xkey.derive_path(paths.1)?;
 
         let mut private_keys = vec![];
-        for index in receive_indexes {
-            private_keys.push(*receive_xkey.derive_child(ChildNumber::new(index, false)?)?.private_key());
+        for (address, index) in receive.iter() {
+            private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
         }
-        for index in change_indexes {
-            private_keys.push(*change_xkey.derive_child(ChildNumber::new(index, false)?)?.private_key());
+        for (address, index) in change.iter() {
+            private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
         }
 
         Ok(private_keys)
@@ -436,39 +439,74 @@ impl Account {
         Ok(())
     }
 
-    pub async fn send_v1(
-        &self,
-        outputs: &PaymentOutputs,
+    // pub async fn send_v1(
+    //     &self,
+    //     outputs: &PaymentOutputs,
+    //     priority_fee_sompi: Option<u64>,
+    //     _include_fees_in_amount: bool,
+    //     wallet_secret: Secret,
+    //     payment_secret: Option<Secret>,
+    //     abortable: &Abortable,
+    // ) -> Result<Vec<kaspa_hashes::Hash>> {
+    //     let mut ctx = self.utxo_context().create_selection_context();
+
+    //     let change_address = self.change_address().await?;
+    //     let payload = vec![];
+    //     let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
+    //     let minimum_signatures = self.inner().stored.minimum_signatures;
+    //     let vt = VirtualTransactionV1::try_new(
+    //         sig_op_count,
+    //         minimum_signatures,
+    //         &mut ctx,
+    //         outputs,
+    //         &change_address,
+    //         priority_fee_sompi,
+    //         payload,
+    //         LimitCalcStrategy::inputs(80),
+    //         abortable,
+    //     )
+    //     .await?;
+
+    //     let addresses = ctx.addresses();
+    //     let indexes = self.derivation.addresses_indexes(&addresses)?;
+    //     let receive_indexes = indexes.0;
+    //     let change_indexes = indexes.1;
+
+    //     let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+    //     let keydata = self
+    //         .wallet
+    //         .store()
+    //         .as_prv_key_data_store()?
+    //         .load_key_data(&access_ctx, &self.prv_key_data_id)
+    //         .await?
+    //         .ok_or(Error::PrivateKeyNotFound(self.prv_key_data_id.to_hex()))?;
+
+    //     let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
+    //     let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
+    //     let mut tx_ids = vec![];
+    //     for mtx in vt.transactions().clone() {
+    //         let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
+    //         let id = self.wallet.rpc().submit_transaction(mtx.try_into()?, false).await?;
+    //         //println!("id: {id}\r\n");
+    //         tx_ids.push(id);
+    //     }
+
+    //     ctx.commit()?;
+
+    //     Ok(tx_ids)
+    // }
+
+    pub async fn send(
+        self: &Arc<Self>,
+        destination: PaymentDestination,
         priority_fee_sompi: Option<u64>,
-        _include_fees_in_amount: bool,
+        include_fees_in_amount: bool,
+        payload: Option<Vec<u8>>,
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
         abortable: &Abortable,
+        notifier: Option<GenerationNotifier>,
     ) -> Result<Vec<kaspa_hashes::Hash>> {
-        let mut ctx = self.utxo_context().create_selection_context();
-
-        let change_address = self.change_address().await?;
-        let payload = vec![];
-        let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
-        let minimum_signatures = self.inner().stored.minimum_signatures;
-        let vt = VirtualTransactionV1::try_new(
-            sig_op_count,
-            minimum_signatures,
-            &mut ctx,
-            outputs,
-            &change_address,
-            priority_fee_sompi,
-            payload,
-            LimitCalcStrategy::inputs(80),
-            abortable,
-        )
-        .await?;
-
-        let addresses = ctx.addresses();
-        let indexes = self.derivation.addresses_indexes(&addresses)?;
-        let receive_indexes = indexes.0;
-        let change_indexes = indexes.1;
-
         let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         let keydata = self
             .wallet
@@ -477,78 +515,34 @@ impl Account {
             .load_key_data(&access_ctx, &self.prv_key_data_id)
             .await?
             .ok_or(Error::PrivateKeyNotFound(self.prv_key_data_id.to_hex()))?;
+        let signer = Arc::new(Signer::new(self, keydata, payment_secret));
 
-        let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
-        let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
-        let mut tx_ids = vec![];
-        for mtx in vt.transactions().clone() {
-            let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
-            let id = self.wallet.rpc().submit_transaction(mtx.try_into()?, false).await?;
-            //println!("id: {id}\r\n");
-            tx_ids.push(id);
-        }
+        let settings =
+            GeneratorSettings::try_new_with_account(self, destination, priority_fee_sompi, include_fees_in_amount, payload).await?;
 
-        ctx.commit()?;
+        let generator = Generator::new(settings, Some(signer), abortable);
 
-        Ok(tx_ids)
-    }
-
-    pub async fn send(
-        &self,
-        destination: PaymentDestination,
-        priority_fee_sompi: Option<u64>,
-        include_fees_in_amount: bool,
-        payload: Option<Vec<u8>>,
-        _wallet_secret: Secret,
-        _payment_secret: Option<Secret>,
-        abortable: &Abortable,
-        notifier: Option<GenerationNotifier>,
-    ) -> Result<Vec<kaspa_hashes::Hash>> {
-        // todo!()
-
-        let settings = GeneratorSettings::try_new_with_account(
-            self,
-            destination,
-            priority_fee_sompi,
-            include_fees_in_amount,
-            payload,
-            // wallet_secret,
-            // payment_secret,
-            // abortable,
-        )
-        .await?;
-        // .generator(abortable);
-
-        let generator = Generator::new(settings, abortable);
-        // pin_mut!(generator);
-
-        // ---
-        // let mut stream = generator.stream();
-        // while let Some(transaction) = stream.try_next().await? {
-        // let mut iterator = generator.iter();
-        // while let Some(transaction) = iterator.next() {
-        // ---
-
-        for transaction in generator.iter() {
-            let transaction = transaction?;
-            // -- WIP
-            // -- WIP
-            // -- WIP
-            // - TODO - sign & submit
-            // -- WIP
-            // -- WIP
-            // -- WIP
-
-            // transaction.submit(self.wallet.rpc()).await?;
-
+        let mut stream = generator.stream();
+        while let Some(transaction) = stream.try_next().await? {
             if let Some(notifier) = notifier.as_ref() {
                 notifier(&transaction);
             }
 
-            transaction.log().await?;
-
+            transaction.try_sign()?;
+            transaction.try_submit(self.wallet.rpc()).await?;
             yield_executor().await;
         }
+
+        // synchronous iterator loop
+        // for transaction in generator.iter() {
+        //     let transaction = transaction?;
+        //     if let Some(notifier) = notifier.as_ref() {
+        //         notifier(&transaction);
+        //     }
+        //     transaction.try_sign()?;
+        //     transaction.submit(self.wallet.rpc()).await?;
+        //     yield_executor().await;
+        // }
 
         Ok(vec![])
     }
@@ -561,33 +555,16 @@ impl Account {
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<GeneratorSummary> {
-        // todo!()
-
         let settings =
             GeneratorSettings::try_new_with_account(self, destination, priority_fee_sompi, include_fees_in_amount, payload).await?;
 
-        let generator = Generator::new(settings, abortable);
+        let generator = Generator::new(settings, None, abortable);
 
-        // let mut iterator = generator.iter();
         let mut stream = generator.stream();
         while let Some(_transaction) = stream.try_next().await? {
             _transaction.log().await?;
-
             yield_executor().await;
         }
-
-        // for _ in generator.iter() {
-        //     yield_executor().await;
-        // }
-
-        // let aggregate_fees = generator.aggregate_fees();
-        // let aggregate_utxos = generator.aggregate_utxos();
-        // let estimate = Estimate {
-        //     final_amount_including_fees: 0, // TODO
-        //     aggregate_fees,
-        //     aggregate_utxos,
-        //     transactions,
-        // };
 
         Ok(generator.summary())
     }

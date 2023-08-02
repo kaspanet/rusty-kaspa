@@ -1,6 +1,6 @@
 pub mod consensus;
 pub mod generator;
-pub mod limits;
+pub mod mass;
 pub mod primitives;
 pub mod strategy;
 pub mod virtual_transaction_v1;
@@ -28,7 +28,7 @@ use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_core::tx::SignableTransaction;
 use kaspa_txscript::pay_to_address_script;
-pub use limits::*;
+pub use mass::*;
 pub use strategy::*;
 pub use virtual_transaction_v1::VirtualTransactionV1;
 use wasm_bindgen::prelude::*;

@@ -215,7 +215,27 @@ impl AddressDerivationManager {
         self.change_address_manager.clone()
     }
 
-    pub fn addresses_indexes(&self, addresses: &Vec<Address>) -> Result<(Vec<u32>, Vec<u32>)> {
+    // pub fn addresses_indexes(&self, addresses: &Vec<Address>) -> Result<(Vec<u32>, Vec<u32>)> {
+    //     let mut receive_indexes = vec![];
+    //     let mut change_indexes = vec![];
+    //     let receive_map = &self.receive_address_manager.inner().address_to_index_map;
+    //     let change_map = &self.change_address_manager.inner().address_to_index_map;
+
+    //     for address in addresses {
+    //         if let Some(index) = receive_map.get(address) {
+    //             receive_indexes.push(*index);
+    //         } else if let Some(index) = change_map.get(address) {
+    //             change_indexes.push(*index);
+    //         } else {
+    //             return Err(Error::Custom(format!("Address ({address}) index not found.")));
+    //         }
+    //     }
+
+    //     Ok((receive_indexes, change_indexes))
+    // }
+
+    #[allow(clippy::type_complexity)]
+    pub fn addresses_indexes<'l>(&self, addresses: &[&'l Address]) -> Result<(Vec<(&'l Address, u32)>, Vec<(&'l Address, u32)>)> {
         let mut receive_indexes = vec![];
         let mut change_indexes = vec![];
         let receive_map = &self.receive_address_manager.inner().address_to_index_map;
@@ -223,9 +243,9 @@ impl AddressDerivationManager {
 
         for address in addresses {
             if let Some(index) = receive_map.get(address) {
-                receive_indexes.push(*index);
+                receive_indexes.push((*address, *index));
             } else if let Some(index) = change_map.get(address) {
-                change_indexes.push(*index);
+                change_indexes.push((*address, *index));
             } else {
                 return Err(Error::Custom(format!("Address ({address}) index not found.")));
             }

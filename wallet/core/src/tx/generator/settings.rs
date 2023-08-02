@@ -1,12 +1,12 @@
 use crate::result::Result;
 use crate::runtime::Account;
-use crate::tx::{Generator, PaymentDestination};
+use crate::tx::PaymentDestination;
 use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoSelectionContext};
 use kaspa_addresses::Address;
 use std::sync::Arc;
-use workflow_core::prelude::Abortable;
 
 pub struct GeneratorSettings {
+    // Utxo iterator
     pub utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
     // Utxo Context
     pub utxo_context: Option<UtxoContext>,
@@ -55,9 +55,5 @@ impl GeneratorSettings {
         };
 
         Ok(settings)
-    }
-
-    pub fn generator(self, abortable: &Abortable) -> Generator {
-        Generator::new(self, abortable)
     }
 }

@@ -1,7 +1,7 @@
 use kaspa_rpc_core::RpcTransactionOutput;
 
 use crate::imports::*;
-use crate::tx::limits::is_transaction_output_dust;
+// use crate::tx::limits::is_transaction_output_dust;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,10 +69,11 @@ impl TransactionOutput {
         self.inner().script_public_key = v.clone();
     }
 
-    #[wasm_bindgen(js_name=isDust)]
-    pub fn is_dust(&self) -> bool {
-        is_transaction_output_dust(self)
-    }
+    // TODO-WASM
+    // #[wasm_bindgen(js_name=isDust)]
+    // pub fn is_dust(&self) -> bool {
+    //     is_transaction_output_dust(self)
+    // }
 }
 
 impl From<cctx::TransactionOutput> for TransactionOutput {

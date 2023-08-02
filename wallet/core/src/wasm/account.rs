@@ -127,18 +127,18 @@ impl Account {
     }
 
     pub async fn send(&self, js_value: JsValue) -> Result<JsValue> {
-        let args = AccountSendArgs::try_from(js_value)?;
+        let _args = AccountSendArgs::try_from(js_value)?;
 
-        self.inner
-            .send_v1(
-                &args.outputs,
-                args.priority_fee_sompi,
-                args.include_fees_in_amount,
-                args.wallet_secret,
-                args.payment_secret,
-                &args.abortable,
-            )
-            .await?;
+        // self.inner
+        //     .send_v1(
+        //         &args.outputs,
+        //         args.priority_fee_sompi,
+        //         args.include_fees_in_amount,
+        //         args.wallet_secret,
+        //         args.payment_secret,
+        //         &args.abortable,
+        //     )
+        //     .await?;
 
         todo!()
     }
