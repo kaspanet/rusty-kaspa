@@ -207,8 +207,8 @@ impl Metrics {
             }
 
             if let Some(process_metrics) = process_metrics {
-                data.resident_set_size_bytes = process_metrics.resident_set_size_bytes;
-                data.virtual_memory_size_bytes = process_metrics.virtual_memory_size_bytes;
+                data.resident_set_size_bytes = process_metrics.resident_set_size;
+                data.virtual_memory_size_bytes = process_metrics.virtual_memory_size;
                 data.cpu_cores = process_metrics.core_num;
                 data.cpu_usage = process_metrics.cpu_usage;
                 data.fd_num = process_metrics.fd_num;
