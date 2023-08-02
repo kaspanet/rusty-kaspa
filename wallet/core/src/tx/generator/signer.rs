@@ -5,7 +5,7 @@ use std::{
 
 use kaspa_addresses::Address;
 use kaspa_bip32::PrivateKey;
-use kaspa_consensus_core::{sign::sign_with_multiple, tx::SignableTransaction};
+use kaspa_consensus_core::{sign::sign_with_multiple_v2, tx::SignableTransaction};
 
 use crate::result::Result;
 use crate::{runtime::Account, secret::Secret, storage::PrvKeyData};
@@ -53,6 +53,6 @@ impl SignerT for Signer {
 
         let keys = self.inner.keys.lock().unwrap();
         let keys_for_signing = addresses.iter().map(|address| *keys.get(address).unwrap()).collect::<Vec<_>>();
-        Ok(sign_with_multiple(mutable_tx, keys_for_signing))
+        Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing))
     }
 }
