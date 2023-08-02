@@ -1,7 +1,7 @@
 use crate::imports::*;
 
 #[derive(Default, Handler)]
-#[help("Track specific notifications when muted (balance|pending|tx|utxo|daa)")]
+#[help("Track specific notifications when muted (balance|pending|tx|daa)")]
 pub struct Track;
 
 impl Track {
