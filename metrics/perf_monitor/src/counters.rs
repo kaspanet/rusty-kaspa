@@ -16,9 +16,6 @@ pub(crate) struct Counters {
     /// Usage" "VM Size" column of taskmgr.exe.
     pub virtual_memory_size: AtomicU64,
 
-    pub resident_set_size_bytes: AtomicU64,
-    pub virtual_memory_size_bytes: AtomicU64,
-
     pub core_num: AtomicUsize,
     pub cpu_usage: AtomicF64,
 
@@ -34,8 +31,6 @@ impl Counters {
     pub(crate) fn update(&self, snapshot: CountersSnapshot) {
         self.resident_set_size.store(snapshot.resident_set_size, Ordering::Release);
         self.virtual_memory_size.store(snapshot.resident_set_size, Ordering::Release);
-        self.resident_set_size_bytes.store(snapshot.resident_set_size_bytes, Ordering::Release);
-        self.virtual_memory_size_bytes.store(snapshot.virtual_memory_size_bytes, Ordering::Release);
         self.core_num.store(snapshot.core_num, Ordering::Release);
         self.cpu_usage.store(snapshot.cpu_usage, Ordering::Release);
         self.fd_num.store(snapshot.fd_num, Ordering::Release);
@@ -48,8 +43,6 @@ impl Counters {
         CountersSnapshot {
             resident_set_size: self.resident_set_size.load(Ordering::Acquire),
             virtual_memory_size: self.virtual_memory_size.load(Ordering::Acquire),
-            resident_set_size_bytes: self.resident_set_size_bytes.load(Ordering::Acquire),
-            virtual_memory_size_bytes: self.virtual_memory_size_bytes.load(Ordering::Acquire),
             core_num: self.core_num.load(Ordering::Acquire),
             cpu_usage: self.cpu_usage.load(Ordering::Acquire),
             fd_num: self.fd_num.load(Ordering::Acquire),
@@ -75,9 +68,6 @@ pub struct CountersSnapshot {
     /// On Windows this is an alias for pagefile field and it matches "Mem
     /// Usage" "VM Size" column of taskmgr.exe.
     pub virtual_memory_size: u64,
-
-    pub resident_set_size_bytes: u64,
-    pub virtual_memory_size_bytes: u64,
 
     pub core_num: usize,
     pub cpu_usage: f64,

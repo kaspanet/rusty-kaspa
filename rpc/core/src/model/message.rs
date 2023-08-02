@@ -688,8 +688,8 @@ pub struct GetMetricsRequest {
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessMetrics {
-    pub resident_set_size_bytes: u64,
-    pub virtual_memory_size_bytes: u64,
+    pub resident_set_size: u64,
+    pub virtual_memory_size: u64,
     pub core_num: u64,
     pub cpu_usage: f64,
     pub fd_num: u64,
