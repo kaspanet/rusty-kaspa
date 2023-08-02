@@ -200,27 +200,25 @@ impl Generator {
             // take utxo from stash or from the iterator
             let utxo_entry_reference = if let Some(utxo_entry_reference) = context.utxo_stash.pop_front() {
                 utxo_entry_reference
-            } else {
-                if let Some(entry) = context.utxo_iterator.next() {
-                    entry
-                } else if self.inner.final_transaction_amount.is_none() {
-                    is_final = true;
+            } else if let Some(entry) = context.utxo_iterator.next() {
+                entry
+            } else if self.inner.final_transaction_amount.is_none() {
+                is_final = true;
 
-                    let final_tx_mass = mass_accumulator + change_output_mass + payload_mass;
-                    let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
+                let final_tx_mass = mass_accumulator + change_output_mass + payload_mass;
+                let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
 
-                    if !self.inner.final_transaction_include_fees_in_amount {
-                        final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
-                    }
-                    let change_amount = transaction_amount_accumulator - final_transaction_fees;
-                    if is_standard_output_amount_dust(change_amount) {
-                        return Ok(None);
-                    }
-
-                    break;
-                } else {
-                    return Err(Error::InsufficientFunds);
+                if !self.inner.final_transaction_include_fees_in_amount {
+                    final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
                 }
+                let change_amount = transaction_amount_accumulator - final_transaction_fees;
+                if is_standard_output_amount_dust(change_amount) {
+                    return Ok(None);
+                }
+
+                break;
+            } else {
+                return Err(Error::InsufficientFunds);
             };
             let UtxoEntryReference { utxo } = &utxo_entry_reference;
 
@@ -249,10 +247,14 @@ impl Generator {
             if let Some(final_transaction_amount) = self.inner.final_transaction_amount {
                 let final_tx_mass = mass_accumulator + final_outputs_mass + payload_mass;
                 let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
+                workflow_log::log_info!("final_transaction_fees A0: {final_transaction_fees:?}");
 
                 if !self.inner.final_transaction_include_fees_in_amount {
                     final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
                 }
+                workflow_log::log_info!("final_transaction_fees A1: {final_transaction_fees:?}");
+
+                //final_transaction_fees = 0;
                 let final_transaction_total = final_transaction_amount + final_transaction_fees;
                 if transaction_amount_accumulator > final_transaction_total {
                     // ------------------------- WIP
@@ -267,10 +269,13 @@ impl Generator {
                         //re-calculate fee with change outputs
                         let mut final_transaction_fees =
                             calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass + change_output_mass);
+                        workflow_log::log_info!("final_transaction_fees B0: {final_transaction_fees:?}");
 
                         if !self.inner.final_transaction_include_fees_in_amount {
                             final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
                         }
+                        workflow_log::log_info!("final_transaction_fees B1: {final_transaction_fees:?}");
+                        //final_transaction_fees = 10;
 
                         let final_transaction_total = final_transaction_amount + final_transaction_fees;
 
@@ -321,7 +326,9 @@ impl Generator {
 
             Ok(Some(PendingTransaction::try_new(self, tx, utxo_entry_references, addresses.into_iter().collect())?))
         } else {
-            let amount = transaction_amount_accumulator - MINIMUM_RELAY_TRANSACTION_FEE;
+            let fee = calc.calc_minimum_transaction_relay_fee_from_mass(mass_accumulator + change_output_mass);
+            workflow_log::log_info!("fee: {fee}");
+            let amount = transaction_amount_accumulator - fee;
             let script_public_key = pay_to_address_script(&self.inner.change_address);
             let output = TransactionOutput::new(amount, script_public_key.clone());
 

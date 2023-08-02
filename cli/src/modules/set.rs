@@ -50,6 +50,9 @@ impl Set {
                 "wallet" => {
                     ctx.wallet().settings().set(WalletSettings::Wallet, value).await?;
                 }
+                // "scrollback" => {
+                //     ctx.wallet().settings().set(WalletSettings::Wallet, value).await?;
+                // }
                 _ => return Err(Error::Custom(format!("Unknown setting '{}'", key))),
             }
             ctx.wallet().settings().try_store().await?;
