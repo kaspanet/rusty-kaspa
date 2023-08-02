@@ -1,17 +1,8 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{
-    get_consensus_params_by_address,
-    mass::*,
-    GeneratorSettings,
-    GeneratorSummary,
-    PaymentDestination,
-    PendingTransaction,
-    PendingTransactionIterator,
-    PendingTransactionStream,
-    // Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
-    UtxoContext,
-    UtxoEntryReference,
+    get_consensus_params_by_address, mass::*, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction,
+    PendingTransactionIterator, PendingTransactionStream, UtxoContext, UtxoEntryReference,
 };
 use crate::utxo::UtxoEntry;
 use kaspa_consensus_core::tx as cctx;
@@ -139,39 +130,60 @@ impl Generator {
         Self { inner: Arc::new(inner) }
     }
 
+    /// The underlying UtxoContext (if available).
     pub fn utxo_context(&self) -> &Option<UtxoContext> {
         &self.inner.utxo_context
     }
 
+    /// Mutable context used by the generator to track state
     fn context(&self) -> MutexGuard<Context> {
         self.inner.context.lock().unwrap()
     }
 
+    /// Returns the underlying instance of the [Signer](SignerT)
     pub(crate) fn signer(&self) -> &Option<Arc<dyn SignerT>> {
         &self.inner.signer
     }
 
+    /// The total amount of fees in SOMPI consumed during the transaction generation process.
     pub fn aggregate_fees(&self) -> u64 {
         self.context().aggregated_fees
     }
 
+    /// The total number of UTXOs consumed during the transaction generation process.
     pub fn aggregate_utxos(&self) -> usize {
         self.context().aggregated_utxos
     }
 
+    /// Returns the final transaction id if the generator has finished successfully.
     pub fn final_transaction_id(&self) -> Option<TransactionId> {
         self.context().final_transaction_id
     }
 
+    /// Returns an async Stream causes the [Generator] to produce
+    /// transaction for each stream item request. NOTE: transactions
+    /// are generated only when each stream item is polled.
     pub fn stream(&self) -> impl Stream<Item = Result<PendingTransaction>> {
         Box::pin(PendingTransactionStream::new(self))
-        // PendingTransactionStream::new(self)
     }
 
+    /// Returns an iterator that causes the [Generator] to produce
+    /// transaction for each iterator poll request. NOTE: transactions
+    /// are generated only when the returned iterator is iterated.
     pub fn iter(&self) -> impl Iterator<Item = Result<PendingTransaction>> {
         PendingTransactionIterator::new(self)
     }
 
+    /// Generates a single transaction by draining the supplied UTXO iterator.
+    /// This function is used by the by the available async Stream and Iterator
+    /// implementations to generate a stream of transactions.
+    ///
+    /// This function returns `None` once the supplied UTXO iterator is depleted.
+    ///
+    /// This function runs continious loop by ingestin inputs from the UTXO iterator,
+    /// analyzing the resulting transaction mass and eithe producing an intermediate
+    /// orphan transaction sending funds to the change address, or creating a final
+    /// transaction with the requested set of outputs and the payload.
     pub fn generate_transaction(&self) -> Result<Option<PendingTransaction>> {
         let mut context = self.context();
 
@@ -203,14 +215,19 @@ impl Generator {
             } else if let Some(entry) = context.utxo_iterator.next() {
                 entry
             } else if self.inner.final_transaction_amount.is_none() {
+                // we have now exhausted UTXO iterator. if final amount is None, we are
+                // doing a sweep transaction.  Produce a final tx if all looks ok.
                 is_final = true;
 
                 let final_tx_mass = mass_accumulator + change_output_mass + payload_mass;
-                let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
+                let final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
+                // let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
 
-                if !self.inner.final_transaction_include_fees_in_amount {
-                    final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
-                }
+                // We are doing a sweep transaction.  We don't care about "include fees in amount" flag here.
+                // if !self.inner.final_transaction_include_fees_in_amount {
+                //     final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
+                // }
+
                 let change_amount = transaction_amount_accumulator - final_transaction_fees;
                 if is_standard_output_amount_dust(change_amount) {
                     return Ok(None);
@@ -220,13 +237,12 @@ impl Generator {
             } else {
                 return Err(Error::InsufficientFunds);
             };
+
             let UtxoEntryReference { utxo } = &utxo_entry_reference;
 
             let input = TransactionInput::new(utxo.outpoint.clone().into(), vec![], sequence, self.inner.sig_op_count);
             let input_amount = utxo.amount();
             let mass_for_input = calc.calc_mass_for_input(&input) + signature_mass_per_input;
-
-            // let next_mass = mass + mass_for_input + final_outputs_mass;
 
             // maximum mass reached, require additional transaction
             if mass_accumulator + mass_for_input + change_output_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
@@ -243,7 +259,7 @@ impl Generator {
             context.aggregated_utxos += 1;
             sequence += 1;
 
-            // check if we have and we have reached the desired transaction amount
+            // check if we have reached the desired transaction amount
             if let Some(final_transaction_amount) = self.inner.final_transaction_amount {
                 let final_tx_mass = mass_accumulator + final_outputs_mass + payload_mass;
                 let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
@@ -254,7 +270,6 @@ impl Generator {
                 }
                 workflow_log::log_info!("final_transaction_fees A1: {final_transaction_fees:?}");
 
-                //final_transaction_fees = 0;
                 let final_transaction_total = final_transaction_amount + final_transaction_fees;
                 if transaction_amount_accumulator > final_transaction_total {
                     // ------------------------- WIP
@@ -296,10 +311,8 @@ impl Generator {
                 }
             }
         }
-        // -----------------------------
-        // - TODO adjust fees
-        // - TODO pre-check dust outputs
-        // -----------------------------
+
+        // generate transaction from inputs aggregated so far
 
         if is_final {
             context.is_done = true;
@@ -343,7 +356,6 @@ impl Generator {
             );
 
             tx.finalize();
-            // let txid = ;
 
             let utxo_entry_reference =
                 Self::create_utxo_entry_reference(tx.id(), amount, script_public_key, &self.inner.change_address);
@@ -366,6 +378,8 @@ impl Generator {
         UtxoEntryReference { utxo: Arc::new(utxo) }
     }
 
+    /// Produces [`GeneratorSummary`] for the current state of the generator.
+    /// This method is useful for creation of transaction estimations.
     pub fn summary(&self) -> GeneratorSummary {
         let context = self.context();
 
