@@ -54,7 +54,7 @@ impl History {
                         (index + page).separated_string(),
                         length.separated_string()
                     );
-                    let query = ctx.term().kbhit(&prompt).await?;
+                    let query = ctx.term().kbhit(Some(&prompt)).await?;
                     tprintln!(ctx);
                     if query.to_lowercase() == "q" {
                         return Ok(());

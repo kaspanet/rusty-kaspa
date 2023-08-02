@@ -10,23 +10,10 @@ impl List {
 
         ctx.list().await?;
 
-        // tprintln!(ctx);
-
-        // let mut keys = ctx.wallet().keys().await?;
-        // while let Some(key) = keys.try_next().await? {
-        //     tprintln!(ctx, "• pk{key}");
-        //     let mut accounts = ctx.wallet().accounts(Some(key.id)).await?;
-        //     while let Some(account) = accounts.try_next().await? {
-        //         tprintln!(ctx, "    {}", account.get_list_string()?);
-        //     }
-
-        //     tprintln!(ctx);
-        // }
-
         if !ctx.wallet().is_connected() {
             tprintln!(ctx, "{}", style("Wallet is not connected to the network").magenta());
             tprintln!(ctx);
-        } else if ctx.wallet().is_synced() {
+        } else if !ctx.wallet().is_synced() {
             tprintln!(ctx, "{}", style("Kaspa node is currently syncing").magenta());
             tprintln!(ctx);
         }
