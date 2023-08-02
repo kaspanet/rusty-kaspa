@@ -98,7 +98,7 @@ impl Generator {
 
         let (final_transaction_outputs, final_transaction_amount) = match final_transaction_destination {
             // PaymentDestination::Address(address) => (vec![TransactionOutput::new(0, &pay_to_address_script(&address))], None),
-            PaymentDestination::Change => (vec![TransactionOutput::new(0, pay_to_address_script(&change_address))], None),
+            PaymentDestination::Change => (vec![], None),
             PaymentDestination::PaymentOutputs(outputs) => (
                 outputs.iter().map(|output| TransactionOutput::new(output.amount, pay_to_address_script(&output.address))).collect(),
                 Some(outputs.iter().map(|output| output.amount).sum()),
@@ -201,7 +201,26 @@ impl Generator {
             let utxo_entry_reference = if let Some(utxo_entry_reference) = context.utxo_stash.pop_front() {
                 utxo_entry_reference
             } else {
-                context.utxo_iterator.next().ok_or(Error::InsufficientFunds)?
+                if let Some(entry) = context.utxo_iterator.next() {
+                    entry
+                } else if self.inner.final_transaction_amount.is_none() {
+                    is_final = true;
+
+                    let final_tx_mass = mass_accumulator + change_output_mass + payload_mass;
+                    let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
+
+                    if !self.inner.final_transaction_include_fees_in_amount {
+                        final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
+                    }
+                    let change_amount = transaction_amount_accumulator - final_transaction_fees;
+                    if is_standard_output_amount_dust(change_amount) {
+                        return Ok(None);
+                    }
+
+                    break;
+                } else {
+                    return Err(Error::InsufficientFunds);
+                }
             };
             let UtxoEntryReference { utxo } = &utxo_entry_reference;
 

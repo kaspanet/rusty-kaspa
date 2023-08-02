@@ -529,6 +529,7 @@ impl Account {
             }
 
             transaction.try_sign()?;
+            transaction.log().await?;
             transaction.try_submit(self.wallet.rpc()).await?;
             yield_executor().await;
         }
