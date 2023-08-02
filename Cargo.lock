@@ -2566,10 +2566,10 @@ dependencies = [
  "kaspa-core",
  "log",
  "page_size",
- "perf_monitor",
  "portable-atomic",
  "thiserror",
  "tokio",
+ "workflow-perf-monitor",
 ]
 
 [[package]]
@@ -3756,19 +3756,6 @@ name = "percent-encoding"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b2a4787296e9989611394c33f193f676704af1686e70b8f8033ab5ba9a35a94"
-
-[[package]]
-name = "perf_monitor"
-version = "0.2.0"
-source = "git+https://github.com/larksuite/perf-monitor-rs?rev=3b2d52768f229c481186b991ae56559ab4cd087a#3b2d52768f229c481186b991ae56559ab4cd087a"
-dependencies = [
- "bindgen 0.59.2",
- "cc",
- "libc",
- "mach",
- "thiserror",
- "windows-sys 0.48.0",
-]
 
 [[package]]
 name = "petgraph"
@@ -5699,6 +5686,20 @@ dependencies = [
  "cfg-if 1.0.0",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "workflow-perf-monitor"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ebdae6a2185fe18f18c8865b38ba84c2d60336170d989bd1a16b1eb3902e47e"
+dependencies = [
+ "bindgen 0.59.2",
+ "cc",
+ "libc",
+ "mach",
+ "thiserror",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

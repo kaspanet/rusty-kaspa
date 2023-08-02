@@ -6,14 +6,14 @@ license.workspace = true
 edition.workspace = true
 include.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 kaspa-core.workspace = true
 log.workspace = true
 thiserror.workspace = true
 
-perf_monitor = {version = "0.2.0", git = "https://github.com/larksuite/perf-monitor-rs", rev = "3b2d52768f229c481186b991ae56559ab4cd087a"}
+# perf_monitor = {version = "0.2.0", git = "https://github.com/larksuite/perf-monitor-rs", rev = "3b2d52768f229c481186b991ae56559ab4cd087a"}
+# workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
+workflow-perf-monitor = { version = "0.0.1" }
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
 portable-atomic = {version = "1.4.1", features = ["float"]}
 page_size = "0.5.0"
