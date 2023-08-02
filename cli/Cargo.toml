@@ -49,6 +49,7 @@ kaspa-rpc-core.workspace = true
 borsh.workspace = true
 kaspa-utils.workspace = true
 dashmap.workspace = true
+faster-hex.workspace = true
 # web-sys.workspace = true
 
 [dependencies.web-sys]

@@ -3,52 +3,74 @@ use kaspa_notify::events::EventType;
 use serde::{Deserialize, Serialize};
 use workflow_core::enums::Describe;
 
-//seal!(0x0a6c, {
-// ^^^^^ NOTE: This enum is used for binary RPC data exchange, if you
-//             add any new variants to this enum, please inform the
-//             core development team to facilitate a protocol update.
-//             If making any changes to this code block, please update
-//             to the new seal value reported by the compiler.
-//
-//             Also note that this macro produces a const variable
-//             named `SEAL`, that can be used during RPC protocol
-//             handshake negotiation.
-//
 #[derive(Describe, Clone, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RpcApiOps {
+    /// Ping the node to check if connectin is alive
     Ping = 0,
+    /// Get metrics for consensus information and node performance
     GetMetrics,
+    /// Get state infomation on the node
     GetServerInfo,
+    /// Get the current sync status of the node
     GetSyncStatus,
+    /// Returns the network this Kaspad is connected to (Mainnet, Testnet)
     GetCurrentNetwork,
+    /// Extracts a block out of the request message and attempts to add it to the DAG Returns an empty response or an error message
     SubmitBlock,
+    /// Returns a "template" by which a miner can mine a new block
     GetBlockTemplate,
+    /// Returns a list of all the addresses (IP, port) this Kaspad knows and a list of all addresses that are currently banned by this Kaspad
     GetPeerAddresses,
+    /// Returns the hash of the current selected tip block of the DAG
     GetSelectedTipHash,
+    /// Get information about an entry in the node's mempool
     GetMempoolEntry,
+    /// Get a snapshot of the node's mempool
     GetMempoolEntries,
+    /// Returns a list of the peers currently connected to this Kaspad, along with some statistics on them
     GetConnectedPeerInfo,
+    /// Instructs Kaspad to connect to a given IP address.
     AddPeer,
+    /// Extracts a transaction out of the request message and attempts to add it to the mempool Returns an empty response or an error message
     SubmitTransaction,
+    /// Requests info on a block corresponding to a given block hash Returns block info if the block is known.
     GetBlock,
+    //
     GetSubnetwork,
+    //
     GetVirtualChainFromBlock,
+    //
     GetBlocks,
+    /// Returns the amount of blocks in the DAG
     GetBlockCount,
+    /// Returns info on the current state of the DAG
     GetBlockDagInfo,
+    //
     ResolveFinalityConflict,
+    /// Instructs this node to shut down Returns an empty response or an error message
     Shutdown,
+    //
     GetHeaders,
+    /// Get a list of available UTXOs for a given address
     GetUtxosByAddresses,
+    /// Get a balance for a given address
     GetBalanceByAddress,
+    /// Get a balance for a number of addresses
     GetBalancesByAddresses,
+    // ?
     GetSinkBlueScore,
+    /// Ban a specific peer by it's IP address
     Ban,
+    /// Unban a specific peer by it's IP address
     Unban,
+    /// Get generic node information
     GetInfo,
+    //
     EstimateNetworkHashesPerSecond,
+    /// Get a list of mempool entries that belong to a specific address
     GetMempoolEntriesByAddresses,
+    /// Get current issuance supply
     GetCoinSupply,
 
     // Subscription commands for starting/stopping notifications
@@ -82,7 +104,6 @@ pub enum RpcApiOps {
     PruningPointUtxoSetOverrideNotification,
     NewBlockTemplateNotification,
 }
-//});
 
 impl From<RpcApiOps> for u32 {
     fn from(item: RpcApiOps) -> Self {

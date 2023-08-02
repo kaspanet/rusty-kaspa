@@ -1,3 +1,5 @@
+use std::net::AddrParseError;
+
 use downcast::DowncastError;
 use kaspa_wallet_core::error::Error as WalletError;
 use workflow_core::channel::ChannelError;
@@ -29,6 +31,9 @@ pub enum Error {
     WrpcError(#[from] kaspa_wrpc_client::error::Error),
 
     #[error(transparent)]
+    RpcError(#[from] kaspa_rpc_core::RpcError),
+
+    #[error(transparent)]
     SerdeJsonError(#[from] serde_json::Error),
 
     #[error(transparent)]
@@ -36,6 +41,12 @@ pub enum Error {
 
     #[error(transparent)]
     ParseIntError(#[from] std::num::ParseIntError),
+
+    #[error("invalid hex string: {0}")]
+    ParseHexError(#[from] faster_hex::Error),
+
+    #[error(transparent)]
+    AddrParseError(#[from] AddrParseError),
 
     #[error("account '{0}' not found")]
     AccountNotFound(String),

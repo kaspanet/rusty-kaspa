@@ -555,6 +555,8 @@ impl KaspaCli {
     }
 
     pub async fn shutdown(&self) -> Result<()> {
+        tprintln!(self, "{}", style("shutting down...").magenta());
+
         if !self.shutdown.load(Ordering::SeqCst) {
             self.shutdown.store(true, Ordering::SeqCst);
 
