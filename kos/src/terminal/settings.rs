@@ -4,6 +4,7 @@ use crate::imports::*;
 #[serde(rename_all = "lowercase")]
 pub enum TerminalSettings {
     Greeting,
+    Scrollback,
     FontSize,
 }
 

@@ -523,6 +523,7 @@ impl Account {
         let generator = Generator::new(settings, Some(signer), abortable);
 
         let mut stream = generator.stream();
+        let mut ids = vec![];
         while let Some(transaction) = stream.try_next().await? {
             if let Some(notifier) = notifier.as_ref() {
                 notifier(&transaction);
@@ -530,7 +531,8 @@ impl Account {
 
             transaction.try_sign()?;
             transaction.log().await?;
-            transaction.try_submit(self.wallet.rpc()).await?;
+            let id = transaction.try_submit(self.wallet.rpc()).await?;
+            ids.push(id);
             yield_executor().await;
         }
 
@@ -545,7 +547,7 @@ impl Account {
         //     yield_executor().await;
         // }
 
-        Ok(vec![])
+        Ok(ids)
     }
 
     pub async fn estimate(

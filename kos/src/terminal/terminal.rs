@@ -28,9 +28,10 @@ impl Terminal {
         let settings = Arc::new(SettingsStore::<TerminalSettings>::try_new("terminal")?);
         settings.try_load().await?;
         let font_size = settings.get::<f64>(TerminalSettings::FontSize);
-
+        settings.set::<u32>(TerminalSettings::Scrollback, 40000).await?;
+        let scrollback = settings.get::<u32>(TerminalSettings::Scrollback);
         log_info!("-> terminal cli init");
-        let terminal_options = TerminalOptions { font_size, ..TerminalOptions::default() };
+        let terminal_options = TerminalOptions { font_size, scrollback, ..TerminalOptions::default() };
         let options = KaspaCliOptions::new(terminal_options, Some(daemons));
         let cli = KaspaCli::try_new_arc(options).await?;
 
