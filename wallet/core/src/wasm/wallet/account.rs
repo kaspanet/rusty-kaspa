@@ -3,7 +3,6 @@ use crate::result::Result;
 use crate::runtime;
 use crate::secret::Secret;
 use crate::tx::PaymentOutputs;
-use crate::wasm;
 use workflow_core::abortable::Abortable;
 use workflow_wasm::abi::ref_from_abi;
 
@@ -63,7 +62,7 @@ impl Account {
     #[wasm_bindgen(getter)]
     pub fn balance(&self) -> JsValue {
         match self.inner.balance() {
-            Some(balance) => wasm::Balance::from(balance).into(),
+            Some(balance) => super::Balance::from(balance).into(),
             None => JsValue::UNDEFINED,
         }
     }

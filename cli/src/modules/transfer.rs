@@ -1,4 +1,5 @@
 use crate::imports::*;
+use kaspa_wallet_core::utils::*;
 
 #[derive(Default, Handler)]
 #[help("Transfer funds between wallet accounts")]
@@ -16,10 +17,9 @@ impl Transfer {
 
         let target_account = argv.get(0).unwrap();
         let amount = argv.get(1).unwrap();
-        let priority_fee = argv.get(2);
-
-        let priority_fee_sompi = if let Some(fee) = priority_fee { Some(helpers::kas_str_to_sompi(fee)?) } else { None };
-        let amount_sompi = helpers::kas_str_to_sompi(amount)?;
+        let amount_sompi = helpers::kas_str_to_sompi(amount)?.ok_or_else(|| Error::custom("Invalid amount"))?;
+        let priority_fee = argv.get(2).map(String::as_str);
+        let priority_fee_sompi = try_map_kaspa_str_to_sompi_i64(priority_fee)?.unwrap_or(0);
 
         let target_account = ctx.find_accounts_by_name_or_id(target_account).await?;
         if target_account.id == account.id {
@@ -41,8 +41,7 @@ impl Transfer {
         let (summary, _ids) = account
             .send(
                 outputs.into(),
-                priority_fee_sompi,
-                false,
+                priority_fee_sompi.into(),
                 None,
                 wallet_secret,
                 payment_secret,

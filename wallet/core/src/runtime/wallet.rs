@@ -724,12 +724,8 @@ mod test {
     use std::{str::FromStr, thread::sleep, time};
 
     use super::*;
-    use crate::{signer::sign_mutable_transaction, tx::MutableTransaction, utxo::UtxoContext};
-
-    // TODO - re-export subnets
-    use crate::tx::Transaction;
-    use crate::tx::TransactionInput;
-    use crate::tx::TransactionOutput;
+    use crate::wasm::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutput};
+    use crate::{utxo::UtxoContext, wasm::tx::signer::sign_mutable_transaction};
     use kaspa_consensus_core::subnets::SubnetworkId;
     //use kaspa_consensus_core::tx::ScriptPublicKey;
     //use kaspa_consensus_core::tx::MutableTransaction;

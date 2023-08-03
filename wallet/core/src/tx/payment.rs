@@ -1,5 +1,5 @@
 use crate::imports::*;
-use crate::tx::{TransactionOutput, TransactionOutputInner};
+use crate::wasm::tx::{TransactionOutput, TransactionOutputInner};
 use kaspa_txscript::pay_to_address_script;
 // use workflow_core::traits::IsNotEmpty;
 

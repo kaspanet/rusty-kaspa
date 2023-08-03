@@ -1,7 +1,7 @@
-use super::input::TransactionInput;
-use super::output::TransactionOutput;
-use super::payment::PaymentOutputs;
 use crate::imports::*;
+use crate::tx::payment::PaymentOutputs;
+use crate::wasm::tx::input::TransactionInput;
+use crate::wasm::tx::output::TransactionOutput;
 use crate::Result;
 use kaspa_rpc_core::RpcTransaction;
 use kaspa_rpc_core::RpcTransactionInput;

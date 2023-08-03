@@ -4,7 +4,6 @@ use crate::result::Result;
 use crate::runtime::{Account, AccountId, Balance};
 use crate::storage::TransactionType;
 use crate::utxo::{Binding, PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext};
-use crate::wasm;
 use kaspa_rpc_core::GetUtxosByAddressesResponse;
 use serde_wasm_bindgen::from_value;
 use sorted_insert::SortedInsertBinary;
@@ -555,7 +554,7 @@ impl UtxoContext {
     }
 
     #[wasm_bindgen(js_name=calculateBalance)]
-    pub async fn js_calculate_balance(&self) -> wasm::Balance {
+    pub async fn js_calculate_balance(&self) -> crate::wasm::wallet::Balance {
         self.calculate_balance().await.into()
     }
 

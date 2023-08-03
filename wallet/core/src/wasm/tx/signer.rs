@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::keypair::PrivateKey;
-use crate::tx::MutableTransaction;
+use crate::wasm::tx::MutableTransaction;
 use crate::Result;
 use itertools::Itertools;
 use js_sys::Array;

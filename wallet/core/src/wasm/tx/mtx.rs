@@ -1,11 +1,7 @@
 use crate::imports::*;
-// use crate::tx::consensus::*;
-// use crate::tx::limits::*;
-// use crate::tx::NetworkType;
-use crate::tx::{script_hashes, Transaction, TransactionInput, TransactionOutput};
-// use crate::utils::calculate_mass;
-// use crate::utils::get_consensus_params_by_network;
 use crate::utxo::UtxoEntries;
+use crate::wasm::tx::{Transaction, TransactionInput, TransactionOutput};
+use crate::wasm::utils::script_hashes;
 use kaspa_consensus_core::tx;
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
 use serde_wasm_bindgen::to_value;

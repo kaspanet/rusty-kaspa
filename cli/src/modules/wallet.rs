@@ -34,7 +34,7 @@ impl Wallet {
                     ctx.wallet().settings().get(WalletSettings::Wallet).clone()
                 };
 
-                let secret = ctx.ask_wallet_secret().await?;
+                let (secret, _) = ctx.ask_wallet_secret(None).await?;
                 let _ = ctx.notifier().show(Notification::Processing).await;
                 ctx.wallet().load(secret, name).await?;
             }

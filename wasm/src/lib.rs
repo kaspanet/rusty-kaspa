@@ -119,8 +119,9 @@ pub use kaspa_wallet_core::{
     keypair::{Keypair, PrivateKey},
     runtime::account::Account,
     runtime::wallet::Wallet,
-    signer::{js_sign_transaction as sign_transaction, Signer},
     storage::local::Storage,
-    tx::{MutableTransaction, VirtualTransactionV1},
     utxo::{UtxoContext, UtxoEntry, UtxoEntryReference},
+    wasm::tx::*,
+    wasm::utils::*,
+    wasm::wallet::*,
 };

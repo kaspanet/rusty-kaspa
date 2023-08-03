@@ -1,6 +1,6 @@
 use crate::result::Result;
 use crate::runtime::Account;
-use crate::tx::PaymentDestination;
+use crate::tx::{Fees, PaymentDestination};
 use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoSelectionContext};
 use kaspa_addresses::Address;
 use std::sync::Arc;
@@ -17,9 +17,7 @@ pub struct GeneratorSettings {
     // change address
     pub change_address: Address,
     // applies only to the final transaction
-    pub final_priority_fee: Option<u64>,
-    // applies only to the final transaction
-    pub final_include_fees_in_amount: bool,
+    pub final_priority_fee: Fees,
     // final transaction outputs
     pub final_transaction_destination: PaymentDestination,
     // payload
@@ -30,8 +28,7 @@ impl GeneratorSettings {
     pub async fn try_new_with_account(
         account: &Account,
         final_transaction_destination: PaymentDestination,
-        final_priority_fee: Option<u64>,
-        final_include_fees_in_amount: bool,
+        final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
     ) -> Result<Self> {
         let change_address = account.change_address().await?;
@@ -49,7 +46,6 @@ impl GeneratorSettings {
             utxo_context: Some(account.utxo_context().clone()),
 
             final_priority_fee,
-            final_include_fees_in_amount,
             final_transaction_destination,
             final_transaction_payload,
         };

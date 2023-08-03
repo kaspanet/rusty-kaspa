@@ -8,8 +8,7 @@ use crate::secret::Secret;
 use crate::imports::*;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
-use crate::tx::generator::Signer;
-use crate::tx::{Generator, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction};
+use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, Signer};
 use crate::utxo::UtxoContext;
 // use crate::utxo::UtxoStream;
 use crate::AddressDerivationManager;
@@ -396,10 +395,6 @@ impl Account {
         Ok(())
     }
 
-    pub async fn sweep(&self) -> Result<()> {
-        Ok(())
-    }
-
     pub async fn create_unsigned_transaction(&self) -> Result<()> {
         Ok(())
     }
@@ -496,12 +491,8 @@ impl Account {
     //     Ok(tx_ids)
     // }
 
-    pub async fn send(
+    pub async fn sweep(
         self: &Arc<Self>,
-        destination: PaymentDestination,
-        priority_fee_sompi: Option<u64>,
-        include_fees_in_amount: bool,
-        payload: Option<Vec<u8>>,
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
         abortable: &Abortable,
@@ -517,8 +508,7 @@ impl Account {
             .ok_or(Error::PrivateKeyNotFound(self.prv_key_data_id.to_hex()))?;
         let signer = Arc::new(Signer::new(self, keydata, payment_secret));
 
-        let settings =
-            GeneratorSettings::try_new_with_account(self, destination, priority_fee_sompi, include_fees_in_amount, payload).await?;
+        let settings = GeneratorSettings::try_new_with_account(self, PaymentDestination::Change, Fees::None, None).await?;
 
         let generator = Generator::new(settings, Some(signer), abortable);
 
@@ -536,16 +526,46 @@ impl Account {
             yield_executor().await;
         }
 
-        // synchronous iterator loop
-        // for transaction in generator.iter() {
-        //     let transaction = transaction?;
-        //     if let Some(notifier) = notifier.as_ref() {
-        //         notifier(&transaction);
-        //     }
-        //     transaction.try_sign()?;
-        //     transaction.submit(self.wallet.rpc()).await?;
-        //     yield_executor().await;
-        // }
+        Ok((generator.summary(), ids))
+    }
+
+    pub async fn send(
+        self: &Arc<Self>,
+        destination: PaymentDestination,
+        priority_fee_sompi: Fees,
+        payload: Option<Vec<u8>>,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        abortable: &Abortable,
+        notifier: Option<GenerationNotifier>,
+    ) -> Result<(GeneratorSummary, Vec<kaspa_hashes::Hash>)> {
+        let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        let keydata = self
+            .wallet
+            .store()
+            .as_prv_key_data_store()?
+            .load_key_data(&access_ctx, &self.prv_key_data_id)
+            .await?
+            .ok_or(Error::PrivateKeyNotFound(self.prv_key_data_id.to_hex()))?;
+        let signer = Arc::new(Signer::new(self, keydata, payment_secret));
+
+        let settings = GeneratorSettings::try_new_with_account(self, destination, priority_fee_sompi, payload).await?;
+
+        let generator = Generator::new(settings, Some(signer), abortable);
+
+        let mut stream = generator.stream();
+        let mut ids = vec![];
+        while let Some(transaction) = stream.try_next().await? {
+            if let Some(notifier) = notifier.as_ref() {
+                notifier(&transaction);
+            }
+
+            transaction.try_sign()?;
+            transaction.log().await?;
+            let id = transaction.try_submit(self.wallet.rpc()).await?;
+            ids.push(id);
+            yield_executor().await;
+        }
 
         Ok((generator.summary(), ids))
     }
@@ -553,13 +573,11 @@ impl Account {
     pub async fn estimate(
         &self,
         destination: PaymentDestination,
-        priority_fee_sompi: Option<u64>,
-        include_fees_in_amount: bool,
+        priority_fee_sompi: Fees,
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<GeneratorSummary> {
-        let settings =
-            GeneratorSettings::try_new_with_account(self, destination, priority_fee_sompi, include_fees_in_amount, payload).await?;
+        let settings = GeneratorSettings::try_new_with_account(self, destination, priority_fee_sompi, payload).await?;
 
         let generator = Generator::new(settings, None, abortable);
 

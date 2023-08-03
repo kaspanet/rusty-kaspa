@@ -36,14 +36,14 @@ pub async fn ask_mnemonic(term: &Arc<Terminal>) -> Result<Vec<String>> {
     }
 }
 
-pub fn kas_str_to_sompi(amount: &str) -> Result<u64> {
+pub fn kas_str_to_sompi(amount: &str) -> Result<Option<u64>> {
     let amount = amount.trim();
     if amount.is_empty() {
-        return Ok(0);
+        return Ok(None);
     }
 
     let amount = amount.parse::<f64>()? * SOMPI_PER_KASPA as f64;
-    Ok(amount as u64)
+    Ok(Some(amount as u64))
 }
 
 // #[allow(dead_code)]

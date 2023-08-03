@@ -1,18 +1,47 @@
-// use crate::tx::{Transaction, TransactionOutput};
+use crate::result::Result;
 use kaspa_addresses::Address;
-use kaspa_consensus_core::networktype::NetworkType;
-// use kaspa_consensus_core::{
-//     config::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS},
-//     constants::*,
-
-//     // mass::{self, MassCalculator},
-// };
 use kaspa_consensus_core::constants::*;
-
+use kaspa_consensus_core::networktype::NetworkType;
 use separator::Separatable;
-use wasm_bindgen::prelude::*;
 use workflow_log::style;
-// use crate::mass::{self,MassCalculator};
+
+pub fn try_map_kaspa_str_to_sompi(s: Option<&str>) -> Result<Option<u64>> {
+    if let Some(s) = s {
+        try_kaspa_str_to_sompi(s)
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn try_map_kaspa_str_to_sompi_i64(s: Option<&str>) -> Result<Option<i64>> {
+    if let Some(s) = s {
+        try_kaspa_str_to_sompi_i64(s)
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn try_kaspa_str_to_sompi<S: Into<String>>(s: S) -> Result<Option<u64>> {
+    let s: String = s.into();
+    let amount = s.trim();
+    if amount.is_empty() {
+        return Ok(None);
+    }
+
+    let amount = amount.parse::<f64>()? * SOMPI_PER_KASPA as f64;
+    Ok(Some(amount as u64))
+}
+
+pub fn try_kaspa_str_to_sompi_i64<S: Into<String>>(s: S) -> Result<Option<i64>> {
+    let s: String = s.into();
+    let amount = s.trim();
+    if amount.is_empty() {
+        return Ok(None);
+    }
+
+    let amount = amount.parse::<f64>()? * SOMPI_PER_KASPA as f64;
+    Ok(Some(amount as i64))
+}
 
 #[inline]
 pub fn sompi_to_kaspa(sompi: u64) -> f64 {
@@ -55,31 +84,4 @@ pub fn format_address_colors(address: &Address, range: Option<usize>) -> String 
     let right = &payload[finish..];
 
     format!("{prefix}:{left}:{center}:{right}")
-}
-
-mod wasm {
-    use super::*;
-    use crate::result::Result;
-    // use wasm_bindgen::prelude::*;
-    use workflow_wasm::jsvalue::*;
-    // use js_sys::BigInt;
-
-    #[wasm_bindgen(js_name = "sompiToKaspa")]
-    pub fn sompi_to_kaspa(sompi: JsValue) -> Result<f64> {
-        let sompi = sompi.try_as_u64()?;
-        Ok(super::sompi_to_kaspa(sompi))
-    }
-
-    #[wasm_bindgen(js_name = "sompiToKaspaString")]
-    pub fn sompi_to_kaspa_string(sompi: JsValue) -> Result<String> {
-        let sompi = sompi.try_as_u64()?;
-        Ok(super::sompi_to_kaspa_string(sompi))
-    }
-
-    #[wasm_bindgen(js_name = "sompiToKaspaStringWithSuffix")]
-    pub fn sompi_to_kaspa_string_with_suffix(sompi: JsValue, wallet: &crate::wasm::Wallet) -> Result<String> {
-        let sompi = sompi.try_as_u64()?;
-        let network_type = wallet.wallet.network_id()?.network_type;
-        Ok(super::sompi_to_kaspa_string_with_suffix(sompi, &network_type))
-    }
 }

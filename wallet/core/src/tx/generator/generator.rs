@@ -1,10 +1,11 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{
-    get_consensus_params_by_address, mass::*, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction,
-    PendingTransactionIterator, PendingTransactionStream, UtxoContext, UtxoEntryReference,
+    get_consensus_params_by_address, mass::*, Fees, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction,
+    PendingTransactionIterator, PendingTransactionStream,
 };
 use crate::utxo::UtxoEntry;
+use crate::utxo::{UtxoContext, UtxoEntryReference};
 use kaspa_consensus_core::tx as cctx;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_txscript::pay_to_address_script;
@@ -51,11 +52,7 @@ struct Inner {
     // `None` is used for sweep transactions
     final_transaction_amount: Option<u64>,
     // applies only to the final transaction
-    #[allow(dead_code)]
-    final_transaction_priority_fee: Option<u64>,
-    // applies only to the final transaction
-    #[allow(dead_code)]
-    final_transaction_include_fees_in_amount: bool,
+    final_transaction_priority_fee: Fees,
     // issued only in the final transaction
     final_transaction_outputs: Vec<TransactionOutput>,
     // mass of the final transaction
@@ -80,7 +77,6 @@ impl Generator {
             minimum_signatures,
             change_address,
             final_priority_fee: final_transaction_priority_fee,
-            final_include_fees_in_amount: final_transaction_include_fees_in_amount,
             final_transaction_destination,
             final_transaction_payload,
         } = settings;
@@ -122,7 +118,6 @@ impl Generator {
             change_output_mass,
             final_transaction_amount,
             final_transaction_priority_fee,
-            final_transaction_include_fees_in_amount,
             final_transaction_outputs,
             final_transaction_outputs_mass,
             final_transaction_payload: final_transaction_payload.unwrap_or_default(),
@@ -265,9 +260,13 @@ impl Generator {
                 let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
                 workflow_log::log_info!("final_transaction_fees A0: {final_transaction_fees:?}");
 
-                if !self.inner.final_transaction_include_fees_in_amount {
-                    final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
+                if let Fees::Exclude(fees) = self.inner.final_transaction_priority_fee {
+                    final_transaction_fees += fees;
                 }
+
+                // if !self.inner.final_transaction_include_fees_in_amount {
+                //     final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
+                // }
                 workflow_log::log_info!("final_transaction_fees A1: {final_transaction_fees:?}");
 
                 let final_transaction_total = final_transaction_amount + final_transaction_fees;
@@ -286,9 +285,13 @@ impl Generator {
                             calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass + change_output_mass);
                         workflow_log::log_info!("final_transaction_fees B0: {final_transaction_fees:?}");
 
-                        if !self.inner.final_transaction_include_fees_in_amount {
-                            final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
+                        if let Fees::Exclude(fees) = self.inner.final_transaction_priority_fee {
+                            final_transaction_fees += fees;
                         }
+
+                        // if !self.inner.final_transaction_include_fees_in_amount {
+                        //     final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
+                        // }
                         workflow_log::log_info!("final_transaction_fees B1: {final_transaction_fees:?}");
                         //final_transaction_fees = 10;
 

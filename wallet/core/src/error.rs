@@ -115,8 +115,11 @@ pub enum Error {
     #[error("Serde WASM bindgen -> {0}")]
     SerdeWasmBindgen(Sendable<Printable>),
 
-    #[error("FasterHex -> {0:?}")]
+    #[error(transparent)]
     FasterHexError(#[from] FasterHexError),
+
+    #[error(transparent)]
+    ParseFloatError(#[from] std::num::ParseFloatError),
 
     #[error("data decryption error (chacha20poly1305 -> {0})")]
     Chacha20poly1305(chacha20poly1305::Error),
