@@ -1,6 +1,6 @@
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
-        main() {}
+        fn main() {}
     } else {
         use kaspa_cli::{kaspa_cli, TerminalOptions};
 
