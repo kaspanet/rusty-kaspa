@@ -8,8 +8,8 @@ use crate::secret::Secret;
 use crate::imports::*;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
-use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, Signer};
-use crate::utxo::UtxoContext;
+use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, KeydataSigner, PaymentDestination, PendingTransaction, Signer};
+use crate::utxo::{UtxoContext, UtxoEntryReference};
 // use crate::utxo::UtxoStream;
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
@@ -17,6 +17,7 @@ use futures::future::join_all;
 // use futures::pin_mut;
 use kaspa_bip32::ChildNumber;
 use kaspa_notify::listener::ListenerId;
+use secp256k1::ONE_KEY;
 use separator::Separatable;
 use serde::Serializer;
 use std::hash::Hash;
@@ -27,6 +28,7 @@ use workflow_core::enums::u8_try_from;
 pub const DEFAULT_AMOUNT_PADDING: usize = 19;
 
 pub type GenerationNotifier = Arc<dyn Fn(&PendingTransaction) + Send + Sync>;
+pub type DeepScanNotifier = Arc<dyn Fn(usize, u64, Option<TransactionId>) + Send + Sync>;
 
 // #[derive(Default, Clone, Debug)]
 // pub struct Estimate {
@@ -329,6 +331,91 @@ impl Account {
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
 
         self.utxo_context().update_balance().await?;
+
+        Ok(())
+    }
+
+    // Custom function for scanning address derivation chains
+    pub async fn derivation_scan(
+        self: &Arc<Self>,
+        wallet_secret: Secret,
+        _payment_secret: Option<Secret>,
+        extent: usize,
+        window: usize,
+        abortable: &Abortable,
+        notifier: Option<DeepScanNotifier>,
+    ) -> Result<()> {
+        let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        let _keydata = self
+            .wallet
+            .store()
+            .as_prv_key_data_store()?
+            .load_key_data(&access_ctx, &self.prv_key_data_id)
+            .await?
+            .ok_or(Error::PrivateKeyNotFound(self.prv_key_data_id.to_hex()))?;
+        let change_address = self.change_address().await?;
+
+        let mut index: usize = 0;
+        let mut last_notification = 0;
+        let mut aggregate_balance = 0;
+
+        while index < extent {
+            let first = index as u32;
+            let last = (index + window) as u32;
+            index = last as usize;
+
+            // ----
+            // - _keydata is initialized above ^
+            // - TODO - generate pairs of private keys and addresses as a (Address, secp256k1::Secret) tuple without updating address indexes
+            let mut keypairs = self.derivation.receive_address_manager().get_range(first..last).await?;
+            let change_keypairs = self.derivation.change_address_manager().get_range(first..last).await?;
+            keypairs.extend(change_keypairs);
+            let keypairs: Vec<(Address, secp256k1::SecretKey)> =
+                keypairs.into_iter().map(|address| (address.clone(), ONE_KEY)).collect();
+
+            // ----
+
+            let addresses = keypairs.iter().map(|(address, _)| address.clone()).collect::<Vec<_>>();
+            let utxos = self.wallet.rpc().get_utxos_by_addresses(addresses).await?;
+            let balance = utxos.iter().map(|utxo| utxo.utxo_entry.amount).sum::<u64>();
+            if balance > 0 {
+                aggregate_balance += balance;
+
+                // TODO - populate with keypairs ^^^
+                let keydata: Vec<(Address, secp256k1::SecretKey)> = vec![];
+                let signer = Arc::new(KeydataSigner::new(keydata));
+
+                let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
+                let settings = GeneratorSettings::try_new_sweep_with_keydata_signer(
+                    change_address.clone(),
+                    Box::new(utxos.into_iter()),
+                    PaymentDestination::Change,
+                    Fees::None,
+                    None,
+                )
+                .await?;
+
+                let generator = Generator::new(settings, Some(signer), abortable);
+
+                let mut stream = generator.stream();
+                while let Some(transaction) = stream.try_next().await? {
+                    transaction.try_sign()?;
+                    let id = transaction.try_submit(self.wallet.rpc()).await?;
+                    if let Some(notifier) = notifier.as_ref() {
+                        notifier(index, balance, Some(id));
+                    }
+                    yield_executor().await;
+                }
+            }
+
+            if index > last_notification + 1_000 {
+                last_notification = index;
+                if let Some(notifier) = notifier.as_ref() {
+                    notifier(index, aggregate_balance, None);
+                }
+                yield_executor().await;
+            }
+        }
 
         Ok(())
     }

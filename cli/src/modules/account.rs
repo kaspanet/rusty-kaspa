@@ -56,6 +56,21 @@ impl Account {
                 let account_name = account_name.as_deref();
                 wizards::account::create(&ctx, prv_key_data_id, account_kind, account_name).await?;
             }
+            "scan" => {
+                let extent = if argv.is_empty() {
+                    100_000
+                } else {
+                    let extent = argv.remove(0);
+                    extent.parse::<usize>()?
+                };
+                let window = if argv.is_empty() {
+                    128
+                } else {
+                    let extent = argv.remove(0);
+                    extent.parse::<usize>()?
+                };
+                self.derivation_scan(&ctx, extent, window).await?;
+            }
             v => {
                 tprintln!(ctx, "unknown command: '{v}'\r\n");
                 return self.display_help(ctx, argv).await;
@@ -75,6 +90,38 @@ impl Account {
             ],
             None,
         )?;
+
+        Ok(())
+    }
+
+    async fn derivation_scan(self: &Arc<Self>, ctx: &Arc<KaspaCli>, extent: usize, window: usize) -> Result<()> {
+        let account = ctx.account().await?;
+        let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
+        let _ = ctx.notifier().show(Notification::Processing).await;
+        let abortable = Abortable::new();
+        let ctx_ = ctx.clone();
+        account
+            .derivation_scan(
+                wallet_secret,
+                payment_secret,
+                extent,
+                window,
+                &abortable,
+                Some(Arc::new(move |processed: usize, balance, txid| {
+                    if let Some(txid) = txid {
+                        tprintln!(
+                            ctx_,
+                            "Scan detected {} KAS at index {}; transfer txid: {}",
+                            sompi_to_kaspa_string(balance),
+                            processed,
+                            txid
+                        );
+                    } else {
+                        tprintln!(ctx_, "Scanned {} derivations, found {} KAS", processed, sompi_to_kaspa_string(balance));
+                    }
+                })),
+            )
+            .await?;
 
         Ok(())
     }

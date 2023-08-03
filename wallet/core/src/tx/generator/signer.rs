@@ -56,3 +56,28 @@ impl SignerT for Signer {
         Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing))
     }
 }
+
+// ---
+
+struct KeydataSignerInner {
+    keys: HashMap<Address, [u8; 32]>,
+}
+
+pub struct KeydataSigner {
+    inner: Arc<KeydataSignerInner>,
+}
+
+impl KeydataSigner {
+    pub fn new(keydata: Vec<(Address, secp256k1::SecretKey)>) -> Self {
+        let keys = keydata.into_iter().map(|(address, key)| (address, key.to_bytes())).collect();
+        Self { inner: Arc::new(KeydataSignerInner { keys }) }
+    }
+}
+
+impl SignerT for KeydataSigner {
+    fn try_sign(&self, mutable_tx: SignableTransaction, addresses: &[Address]) -> Result<SignableTransaction> {
+        // let keys = self.inner.keys.lock().unwrap();
+        let keys_for_signing = addresses.iter().map(|address| *self.inner.keys.get(address).unwrap()).collect::<Vec<_>>();
+        Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing))
+    }
+}

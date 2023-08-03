@@ -52,4 +52,28 @@ impl GeneratorSettings {
 
         Ok(settings)
     }
+    pub async fn try_new_sweep_with_keydata_signer(
+        change_address: Address,
+        utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
+        final_transaction_destination: PaymentDestination,
+        final_priority_fee: Fees,
+        final_transaction_payload: Option<Vec<u8>>,
+    ) -> Result<Self> {
+        let sig_op_count = 1;
+        let minimum_signatures = 1;
+
+        let settings = GeneratorSettings {
+            sig_op_count,
+            minimum_signatures,
+            change_address,
+            utxo_iterator: Box::new(utxo_iterator),
+            utxo_context: None,
+
+            final_priority_fee,
+            final_transaction_destination,
+            final_transaction_payload,
+        };
+
+        Ok(settings)
+    }
 }
