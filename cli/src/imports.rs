@@ -3,7 +3,8 @@ pub use crate::error::Error;
 pub(crate) use crate::helpers;
 pub use crate::notifier::Notification;
 pub use crate::result::Result;
-pub use crate::utils;
+pub use crate::utils::*;
+// pub use crate::utils;
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSerialize};
 pub use cfg_if::cfg_if;
@@ -16,6 +17,7 @@ pub use kaspa_wallet_core::network::{NetworkId, NetworkType};
 pub use kaspa_wallet_core::storage::interface::{AccessContext, Interface};
 pub use kaspa_wallet_core::storage::{AccessContextT, AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
 pub use kaspa_wallet_core::tx::PaymentOutputs;
+pub use kaspa_wallet_core::utils::*;
 pub use kaspa_wallet_core::{runtime::wallet::AccountCreateArgs, runtime::Wallet, secret::Secret};
 pub use kaspa_wallet_core::{
     Address, ConnectOptions, ConnectStrategy, DefaultSettings, Events, SettingsStore, SyncState, WalletSettings,

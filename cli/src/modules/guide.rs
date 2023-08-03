@@ -47,7 +47,7 @@ impl Guide {
             if cmd.trim() == "#" {
                 let options = textwrap::Options::new(term_width).line_ending(textwrap::LineEnding::CRLF);
                 textwrap::wrap(help.as_str(), options).into_iter().for_each(|line| {
-                    term.writeln(line);
+                    term.writeln(style(line).black().to_string());
                 });
             } else {
                 if !application_runtime::is_nw() && cmd.starts_with("#[desktop]") {

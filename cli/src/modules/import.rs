@@ -17,7 +17,7 @@ impl Import {
         let what = argv.get(0).unwrap();
         match what.as_str() {
             "mnemonic" => {
-                let mnemonic = helpers::ask_mnemonic(&ctx.term()).await?;
+                let mnemonic = crate::wizards::mnemonic::ask_mnemonic(&ctx.term()).await?;
                 tprintln!(ctx, "Mnemonic: {:?}", mnemonic);
             }
             "legacy" => {

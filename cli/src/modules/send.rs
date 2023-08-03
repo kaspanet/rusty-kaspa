@@ -1,5 +1,4 @@
 use crate::imports::*;
-use kaspa_wallet_core::utils::*;
 
 #[derive(Default, Handler)]
 #[help("Send a Kaspa transaction to a public address")]
@@ -16,31 +15,13 @@ impl Send {
             return Err("Usage: send <address> <amount> <priority fee>".into());
         }
 
-        let address = argv.get(0).unwrap();
-        let amount = argv.get(1).unwrap();
-        let priority_fee = argv.get(2).map(String::as_str);
-        let priority_fee_sompi = try_map_kaspa_str_to_sompi_i64(priority_fee)?.unwrap_or(0);
-
-        let address = Address::try_from(address.as_str())?;
-        let amount_sompi = helpers::kas_str_to_sompi(amount)?.ok_or_else(|| Error::custom("Invalid amount"))?;
-
-        let wallet_secret = Secret::new(ctx.term().ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
-        // let mut payment_secret = Option::<Secret>::None;
-
-        let payment_secret = if ctx.wallet().is_account_key_encrypted(&account).await?.is_some_and(|f| f) {
-            Some(Secret::new(ctx.term().ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec()))
-        } else {
-            None
-        };
-        // let keydata = self.wallet.get_prv_key_data(wallet_secret.clone(), &account.prv_key_data_id).await?;
-        // if keydata.is_none() {
-        //     return Err("It is read only wallet.".into());
-        // }
-        let abortable = Abortable::default();
-
+        let address = Address::try_from(argv.get(0).unwrap().as_str())?;
+        let amount_sompi = try_parse_required_nonzero_kaspa_as_sompi_u64(argv.get(1))?;
+        let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.get(2))?.unwrap_or(0);
         let outputs = PaymentOutputs::try_from((address.clone(), amount_sompi))?;
+        let abortable = Abortable::default();
+        let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
 
-        // account.send(&address, amount_sompi, priority_fee_sompi, keydata.unwrap(), payment_secret, &abortable).await?;
         let ctx_ = ctx.clone();
         let (summary, ids) = account
             .send(
@@ -57,7 +38,7 @@ impl Send {
             .await?;
 
         tprintln!(ctx, "Transfer: {summary}");
-        tprintln!(ctx, "\nSending {amount} KAS to {address}, tx ids:");
+        tprintln!(ctx, "\nSending {} KAS to {address}, tx ids:", sompi_to_kaspa_string(amount_sompi));
         tprintln!(ctx, "{}\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\n"));
 
         Ok(())

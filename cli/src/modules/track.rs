@@ -1,3 +1,4 @@
+use crate::helpers;
 use crate::imports::*;
 
 #[derive(Default, Handler)]
@@ -9,7 +10,7 @@ impl Track {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         if let Some(attr) = argv.first() {
-            let track: utils::Track = attr.parse()?;
+            let track: helpers::Track = attr.parse()?;
             ctx.flags().toggle(track);
         } else {
             for flag in ctx.flags().map().iter() {

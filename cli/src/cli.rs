@@ -1,35 +1,23 @@
 use crate::error::Error;
+use crate::helpers::*;
 use crate::imports::*;
 pub use crate::metrics;
 use crate::modules::miner::Miner;
 use crate::modules::node::Node;
 use crate::notifier::{Notification, Notifier};
 use crate::result::Result;
-use crate::utils::*;
-use async_trait::async_trait;
-use cfg_if::cfg_if;
-use futures::stream::{Stream, StreamExt, TryStreamExt};
-use futures::*;
 use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
 use kaspa_wallet_core::runtime::{self, BalanceStrings};
 use kaspa_wallet_core::storage::{IdT, PrvKeyDataInfo};
 use kaspa_wallet_core::DynRpcApi;
 use kaspa_wallet_core::{runtime::Wallet, Events};
 use kaspa_wrpc_client::KaspaRpcClient;
-use pad::PadStr;
-use separator::Separatable;
-use std::ops::Deref;
-use std::sync::{Arc, Mutex};
 use workflow_core::channel::*;
 use workflow_core::time::Instant;
 use workflow_log::*;
+pub use workflow_terminal::Event as TerminalEvent;
 use workflow_terminal::*;
-pub use workflow_terminal::{
-    cli::*, parse, Cli, CrLf, Event as TerminalEvent, Handler, Options as TerminalOptions, Result as TerminalResult,
-    TargetElement as TerminalTarget,
-};
-
-// use kaspa_wallet_core::events::NodeState;
+pub use workflow_terminal::{Options as TerminalOptions, TargetElement as TerminalTarget};
 
 pub struct Options {
     pub daemons: Option<Arc<Daemons>>,
@@ -195,7 +183,7 @@ impl KaspaCli {
     }
 
     pub fn toggle_mute(&self) -> &'static str {
-        utils::toggle(&self.mute)
+        helpers::toggle(&self.mute)
     }
 
     pub fn is_mutted(&self) -> bool {
@@ -247,8 +235,6 @@ impl KaspaCli {
 
         Ok(())
     }
-
-    // pub async fn
 
     pub async fn start(self: &Arc<Self>) -> Result<()> {
         self.start_notification_pipe_task();
@@ -321,7 +307,6 @@ impl KaspaCli {
                                     is_synced,
                                     server_version,
                                     url,
-                                    // has_utxo_index,
                                     ..
                                 } => {
 
@@ -629,7 +614,7 @@ impl KaspaCli {
                 }
                 SyncState::Headers { headers, progress } => Some(
                     [
-                        style("SYNC IBD HEADERS").red().to_string(),
+                        style("SYNC IBD HDRS").red().to_string(),
                         style(format!("{} ({}%)", headers.separated_string(), progress)).dim().to_string(),
                     ]
                     .join(" "),

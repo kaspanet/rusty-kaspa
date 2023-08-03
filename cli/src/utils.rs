@@ -1,79 +1,60 @@
-use dashmap::DashMap;
-use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use workflow_log::log_info;
-// use workflow_core::enums::{Describe,EnumTrait};
+use crate::error::Error;
+use crate::result::Result;
+use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
+use std::fmt::Display;
 
-pub fn toggle(flag: &Arc<AtomicBool>) -> &'static str {
-    let v = !flag.load(Ordering::SeqCst);
-    flag.store(v, Ordering::SeqCst);
-    if v {
-        "on"
+pub fn try_parse_required_nonzero_kaspa_as_sompi_u64<S: ToString + Display>(kaspa_amount: Option<S>) -> Result<u64> {
+    if let Some(kaspa_amount) = kaspa_amount {
+        let sompi_amount = kaspa_amount
+            .to_string()
+            .parse::<f64>()
+            .map_err(|_| Error::custom(format!("Supplied Kasapa amount is not valid: '{kaspa_amount}'")))?
+            * SOMPI_PER_KASPA as f64;
+        if sompi_amount < 0.0 {
+            Err(Error::custom("Supplied Kaspa amount is not valid: '{kaspa_amount}'"))
+        } else {
+            let sompi_amount = sompi_amount as u64;
+            if sompi_amount == 0 {
+                Err(Error::custom("Supplied required kaspa amount must not be a zero: '{kaspa_amount}'"))
+            } else {
+                Ok(sompi_amount)
+            }
+        }
     } else {
-        "off"
+        Err(Error::custom("Missing Kaspa amount"))
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Track {
-    Daa = 0,
-    Balance,
-    Pending,
-    Tx,
-}
-
-impl FromStr for Track {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Track, String> {
-        match s {
-            "daa" => Ok(Track::Daa),
-            "balance" => Ok(Track::Balance),
-            "pending" => Ok(Track::Pending),
-            "tx" => Ok(Track::Tx),
-            _ => Err(format!("unknown attribute '{}'", s)),
+pub fn try_parse_required_kaspa_as_sompi_u64<S: ToString + Display>(kaspa_amount: Option<S>) -> Result<u64> {
+    if let Some(kaspa_amount) = kaspa_amount {
+        let sompi_amount = kaspa_amount
+            .to_string()
+            .parse::<f64>()
+            .map_err(|_| Error::custom(format!("Supplied Kasapa amount is not valid: '{kaspa_amount}'")))?
+            * SOMPI_PER_KASPA as f64;
+        if sompi_amount < 0.0 {
+            Err(Error::custom("Supplied Kaspa amount is not valid: '{kaspa_amount}'"))
+        } else {
+            Ok(sompi_amount as u64)
         }
+    } else {
+        Err(Error::custom("Missing Kaspa amount"))
     }
 }
 
-impl ToString for Track {
-    fn to_string(&self) -> String {
-        match self {
-            Track::Daa => "daa".to_string(),
-            Track::Balance => "balance".to_string(),
-            Track::Pending => "pending".to_string(),
-            Track::Tx => "tx".to_string(),
+pub fn try_parse_optional_kaspa_as_sompi_i64<S: ToString + Display>(kaspa_amount: Option<S>) -> Result<Option<i64>> {
+    if let Some(kaspa_amount) = kaspa_amount {
+        let sompi_amount = kaspa_amount
+            .to_string()
+            .parse::<f64>()
+            .map_err(|_e| Error::custom(format!("Supplied Kasapa amount is not valid: '{kaspa_amount}'")))?
+            * SOMPI_PER_KASPA as f64;
+        if sompi_amount < 0.0 {
+            Err(Error::custom("Supplied Kaspa amount is not valid: '{kaspa_amount}'"))
+        } else {
+            Ok(Some(sompi_amount as i64))
         }
-    }
-}
-
-pub struct Flags(DashMap<Track, Arc<AtomicBool>>);
-
-impl Default for Flags {
-    fn default() -> Self {
-        let mut map = DashMap::new();
-        let iter = [(Track::Daa, false), (Track::Balance, false), (Track::Pending, false), (Track::Tx, false)]
-            .into_iter()
-            .map(|(flag, default)| (flag, Arc::new(AtomicBool::new(default))));
-        map.extend(iter);
-        Flags(map)
-    }
-}
-
-impl Flags {
-    pub fn map(&self) -> &DashMap<Track, Arc<AtomicBool>> {
-        &self.0
-    }
-
-    pub fn toggle(&self, track: Track) {
-        let flag = self.0.get(&track).unwrap();
-        let v = !flag.load(Ordering::SeqCst);
-        flag.store(v, Ordering::SeqCst);
-        let s = if v { "on" } else { "off" };
-        log_info!("{} is {s}", track.to_string());
-    }
-
-    pub fn get(&self, track: Track) -> bool {
-        self.0.get(&track).unwrap().load(Ordering::SeqCst)
+    } else {
+        Ok(None)
     }
 }

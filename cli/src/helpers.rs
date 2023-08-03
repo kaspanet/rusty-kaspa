@@ -1,62 +1,79 @@
-use crate::error::Error;
-use crate::result::Result;
-use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
+use dashmap::DashMap;
+// use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
+use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use workflow_terminal::Terminal;
+use workflow_log::log_info;
 
-pub async fn ask_mnemonic(term: &Arc<Terminal>) -> Result<Vec<String>> {
-    let mut words: Vec<String> = vec![];
-    loop {
-        if words.is_empty() {
-            term.writeln("Please enter mnemonic (12 or 24 words)");
-        } else if words.len() < 12 {
-            let remains_for_12 = 12 - words.len();
-            let remains_for_24 = 24 - words.len();
-            term.writeln(&format!("Please enter additional {} or {} words or <enter> to abort", remains_for_12, remains_for_24));
-        } else {
-            let remains_for_24 = 24 - words.len();
-            term.writeln(&format!("Please enter additional {} words or <enter> to abort", remains_for_24));
-        }
-        let text = term.ask(false, "Words:").await?;
-        let list = text.split_whitespace().map(|s| s.to_string()).collect::<Vec<String>>();
-        if list.is_empty() {
-            return Err(Error::UserAbort);
-        }
-        words.extend(list);
-
-        if words.len() > 24 || words.len() == 12 || words.len() == 24 {
-            break;
-        }
-    }
-
-    if words.len() > 24 {
-        Err("Mnemonic must be 12 or 24 words".into())
+pub fn toggle(flag: &Arc<AtomicBool>) -> &'static str {
+    let v = !flag.load(Ordering::SeqCst);
+    flag.store(v, Ordering::SeqCst);
+    if v {
+        "on"
     } else {
-        Ok(words)
+        "off"
     }
 }
 
-pub fn kas_str_to_sompi(amount: &str) -> Result<Option<u64>> {
-    let amount = amount.trim();
-    if amount.is_empty() {
-        return Ok(None);
-    }
-
-    let amount = amount.parse::<f64>()? * SOMPI_PER_KASPA as f64;
-    Ok(Some(amount as u64))
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Track {
+    Daa = 0,
+    Balance,
+    Pending,
+    Tx,
 }
 
-// #[allow(dead_code)]
-// pub async fn ask_account(term: &Arc<Terminal>, wallet: &Wallet) -> Result<Option<Arc<Account>>> {
-//     let accounts = wallet.accounts();
+impl FromStr for Track {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Track, String> {
+        match s {
+            "daa" => Ok(Track::Daa),
+            "balance" => Ok(Track::Balance),
+            "pending" => Ok(Track::Pending),
+            "tx" => Ok(Track::Tx),
+            _ => Err(format!("unknown attribute '{}'", s)),
+        }
+    }
+}
 
-//     for (index, account) in accounts.iter().enumerate() {
-//         term.writeln(format!("{index}) {}", account.name()));
-//     }
+impl ToString for Track {
+    fn to_string(&self) -> String {
+        match self {
+            Track::Daa => "daa".to_string(),
+            Track::Balance => "balance".to_string(),
+            Track::Pending => "pending".to_string(),
+            Track::Tx => "tx".to_string(),
+        }
+    }
+}
 
-//     let selection = term.ask(false, "Choose account:").await?;
-//     let index: usize = selection.parse()?;
-//     let acct = accounts.get(index).cloned();
+pub struct Flags(DashMap<Track, Arc<AtomicBool>>);
 
-//     Ok(acct)
-// }
+impl Default for Flags {
+    fn default() -> Self {
+        let mut map = DashMap::new();
+        let iter = [(Track::Daa, false), (Track::Balance, false), (Track::Pending, false), (Track::Tx, false)]
+            .into_iter()
+            .map(|(flag, default)| (flag, Arc::new(AtomicBool::new(default))));
+        map.extend(iter);
+        Flags(map)
+    }
+}
+
+impl Flags {
+    pub fn map(&self) -> &DashMap<Track, Arc<AtomicBool>> {
+        &self.0
+    }
+
+    pub fn toggle(&self, track: Track) {
+        let flag = self.0.get(&track).unwrap();
+        let v = !flag.load(Ordering::SeqCst);
+        flag.store(v, Ordering::SeqCst);
+        let s = if v { "on" } else { "off" };
+        log_info!("{} is {s}", track.to_string());
+    }
+
+    pub fn get(&self, track: Track) -> bool {
+        self.0.get(&track).unwrap().load(Ordering::SeqCst)
+    }
+}
