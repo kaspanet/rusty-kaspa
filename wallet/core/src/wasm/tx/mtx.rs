@@ -132,7 +132,7 @@ impl TryFrom<MutableTransaction> for tx::MutableTransaction<tx::Transaction> {
     type Error = Error;
     fn try_from(mtx: MutableTransaction) -> Result<Self, Self::Error> {
         let tx = &mtx.tx.lock()?.clone();
-        Ok(Self { tx: tx.try_into()?, entries: mtx.entries.into(), calculated_fee: None, calculated_mass: None })
+        Ok(Self { tx: tx.into(), entries: mtx.entries.into(), calculated_fee: None, calculated_mass: None })
     }
 }
 

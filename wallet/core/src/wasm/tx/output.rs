@@ -76,14 +76,20 @@ impl TransactionOutput {
     // }
 }
 
+impl AsRef<TransactionOutput> for TransactionOutput {
+    fn as_ref(&self) -> &TransactionOutput {
+        self
+    }
+}
+
 impl From<cctx::TransactionOutput> for TransactionOutput {
     fn from(output: cctx::TransactionOutput) -> Self {
         TransactionOutput::new(output.value, &output.script_public_key)
     }
 }
 
-impl From<TransactionOutput> for cctx::TransactionOutput {
-    fn from(output: TransactionOutput) -> Self {
+impl From<&TransactionOutput> for cctx::TransactionOutput {
+    fn from(output: &TransactionOutput) -> Self {
         let inner = output.inner();
         cctx::TransactionOutput::new(inner.value, inner.script_public_key.clone())
     }

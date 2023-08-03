@@ -85,6 +85,12 @@ impl TransactionInput {
     }
 }
 
+impl AsRef<TransactionInput> for TransactionInput {
+    fn as_ref(&self) -> &TransactionInput {
+        self
+    }
+}
+
 impl TryFrom<JsValue> for TransactionInput {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
@@ -112,8 +118,8 @@ impl From<cctx::TransactionInput> for TransactionInput {
     }
 }
 
-impl From<TransactionInput> for cctx::TransactionInput {
-    fn from(tx_input: TransactionInput) -> Self {
+impl From<&TransactionInput> for cctx::TransactionInput {
+    fn from(tx_input: &TransactionInput) -> Self {
         let inner = tx_input.inner();
         cctx::TransactionInput::new(
             inner.previous_outpoint.clone().into(),

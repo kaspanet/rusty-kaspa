@@ -192,7 +192,7 @@ impl Generator {
         let mut transaction_amount_accumulator = 0;
         let mut change_amount = 0;
         // let mut change_amount = 0;
-        let mut mass_accumulator = calc.blank_transaction_serialized_mass();
+        let mut mass_accumulator = calc.blank_transaction_mass();
         let payload_mass = calc.calc_mass_for_payload(self.inner.final_transaction_payload.len());
 
         let mut addresses = HashSet::<Address>::default();

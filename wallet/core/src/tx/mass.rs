@@ -242,7 +242,7 @@ impl MassCalculator {
 
     pub fn calc_mass_for_transaction(&self, tx: &Transaction) -> u64 {
         // self.calc_serialized_mass_for_tx(tx)
-        self.blank_transaction_serialized_mass()
+        self.blank_transaction_mass()
             + self.calc_mass_for_payload(tx.payload.len())
             + self.calc_mass_for_outputs(&tx.outputs)
             + self.calc_mass_for_inputs(&tx.inputs)
@@ -265,11 +265,11 @@ impl MassCalculator {
     // ==================================================================
     // added for wallet tx generation
 
-    pub fn calc_serialized_mass_for_transaction(&self, tx: &Transaction) -> u64 {
-        transaction_serialized_byte_size(tx) * self.mass_per_tx_byte
-    }
+    // pub fn calc_serialized_mass_for_transaction(&self, tx: &Transaction) -> u64 {
+    //     transaction_serialized_byte_size(tx) * self.mass_per_tx_byte
+    // }
 
-    pub fn blank_transaction_serialized_mass(&self) -> u64 {
+    pub fn blank_transaction_mass(&self) -> u64 {
         blank_transaction_serialized_byte_size() * self.mass_per_tx_byte
     }
 

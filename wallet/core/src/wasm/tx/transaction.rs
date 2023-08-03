@@ -83,7 +83,7 @@ impl Transaction {
 
     /// Recompute and finalize the tx id based on updated tx fields
     pub fn finalize(&self) -> Result<TransactionId> {
-        let tx: cctx::Transaction = self.try_into()?;
+        let tx: cctx::Transaction = self.into();
         self.inner().id = tx.id();
         Ok(self.inner().id)
     }
@@ -248,15 +248,15 @@ impl TryFrom<cctx::Transaction> for Transaction {
     }
 }
 
-impl TryFrom<&Transaction> for cctx::Transaction {
-    type Error = Error;
-    fn try_from(tx: &Transaction) -> std::result::Result<Self, Self::Error> {
+// impl TryFrom<&Transaction> for cctx::Transaction {
+impl From<&Transaction> for cctx::Transaction {
+    fn from(tx: &Transaction) -> Self {
         let inner = tx.inner();
         let inputs: Vec<cctx::TransactionInput> =
-            inner.inputs.clone().into_iter().map(|input| input.into()).collect::<Vec<cctx::TransactionInput>>();
+            inner.inputs.clone().into_iter().map(|input| input.as_ref().into()).collect::<Vec<cctx::TransactionInput>>();
         let outputs: Vec<cctx::TransactionOutput> =
-            inner.outputs.clone().into_iter().map(|output| output.into()).collect::<Vec<cctx::TransactionOutput>>();
-        Ok(cctx::Transaction::new(
+            inner.outputs.clone().into_iter().map(|output| output.as_ref().into()).collect::<Vec<cctx::TransactionOutput>>();
+        cctx::Transaction::new(
             inner.version,
             inputs,
             outputs,
@@ -264,7 +264,7 @@ impl TryFrom<&Transaction> for cctx::Transaction {
             inner.subnetwork_id.clone(),
             inner.gas,
             inner.payload.clone(),
-        ))
+        )
     }
 }
 
