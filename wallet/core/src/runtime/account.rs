@@ -158,8 +158,8 @@ pub struct Account {
 impl Account {
     pub async fn try_new_arc_with_args(
         wallet: &Arc<Wallet>,
-        name: &str,
-        title: &str,
+        name: Option<&str>,
+        title: Option<&str>,
         account_kind: AccountKind,
         account_index: u64,
         prv_key_data_id: PrvKeyDataId,
@@ -171,8 +171,8 @@ impl Account {
             AddressDerivationManager::new(wallet, account_kind, &pub_key_data, ecdsa, minimum_signatures, None, None).await?;
 
         let stored = storage::Account::new(
-            name.to_string(),
-            title.to_string(),
+            name.map(String::from),
+            title.map(String::from),
             account_kind,
             account_index,
             false,
@@ -250,24 +250,28 @@ impl Account {
         self.is_connected.load(std::sync::atomic::Ordering::SeqCst)
     }
 
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> Option<String> {
         self.inner.lock().unwrap().stored.name.clone()
     }
 
     pub fn name_or_id(&self) -> String {
-        let name = self.inner.lock().unwrap().stored.name.clone();
-        if name.is_empty() {
-            self.id.short()
+        if let Some(name) = self.name() {
+            // compensate for an empty name
+            if name.is_empty() {
+                self.id.short()
+            } else {
+                name
+            }
         } else {
-            name
+            self.id.short()
         }
     }
 
-    pub async fn rename(&self, secret: Secret, name: &str) -> Result<()> {
+    pub async fn rename(&self, secret: Secret, name: Option<&str>) -> Result<()> {
         let stored = {
             let inner = self.inner();
             let mut stored = inner.stored.clone();
-            stored.name = name.to_string();
+            stored.name = name.map(String::from);
             stored
         };
 

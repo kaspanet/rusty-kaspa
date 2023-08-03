@@ -3,7 +3,7 @@ use convert_case::{Case, Casing};
 use kaspa_rpc_core::{api::ops::RpcApiOps, *};
 
 #[derive(Default, Handler)]
-#[help("Get connected node information")]
+#[help("Execute RPC commands against the connected Kaspa node")]
 pub struct Rpc;
 
 impl Rpc {

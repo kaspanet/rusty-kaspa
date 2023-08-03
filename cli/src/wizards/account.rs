@@ -19,11 +19,11 @@ pub(crate) async fn create(
     }
 
     let (title, name) = if let Some(name) = name {
-        (name.to_string(), name.to_string())
+        (Some(name.to_string()), Some(name.to_string()))
     } else {
         let title = term.ask(false, "Please enter account title (optional, press <enter> to skip): ").await?.trim().to_string();
         let name = title.replace(' ', "-").to_lowercase();
-        (title, name)
+        (Some(title), Some(name))
     };
 
     let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());

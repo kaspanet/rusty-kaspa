@@ -75,8 +75,8 @@ impl Zeroize for PrvKeyDataCreateArgs {
 
 #[derive(Clone)]
 pub struct AccountCreateArgs {
-    pub name: String,
-    pub title: String,
+    pub name: Option<String>,
+    pub title: Option<String>,
     pub account_kind: storage::AccountKind,
     pub wallet_secret: Secret,
     pub payment_secret: Option<Secret>,
@@ -84,8 +84,8 @@ pub struct AccountCreateArgs {
 
 impl AccountCreateArgs {
     pub fn new(
-        name: String,
-        title: String,
+        name: Option<String>,
+        title: Option<String>,
         account_kind: storage::AccountKind,
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
@@ -498,7 +498,7 @@ impl Wallet {
         let pub_key_data = PubKeyData::new(vec![xpub_key.to_string(Some(xpub_prefix))], None, None);
 
         let stored_account = storage::Account::new(
-            account_args.title.replace(' ', "-").to_lowercase(),
+            account_args.title.as_ref().map(|s| s.replace(' ', "-").to_lowercase()),
             account_args.title.clone(),
             account_args.account_kind,
             account_index,
@@ -636,7 +636,9 @@ impl Wallet {
         let accounts = self.active_accounts().inner().values().cloned().collect::<Vec<_>>();
         let matches = accounts
             .into_iter()
-            .filter(|account| account.name().starts_with(pat) || account.id().to_hex().starts_with(pat))
+            .filter(|account| {
+                account.name().map(|name| name.starts_with(pat)).unwrap_or(false) || account.id().to_hex().starts_with(pat)
+            })
             .collect::<Vec<_>>();
         Ok(matches)
     }
@@ -677,8 +679,8 @@ impl Wallet {
         }
 
         let stored_account = storage::Account::new(
-            "imported-wallet".to_string(),       // name
-            "Imported Wallet".to_string(),       // title
+            None,                                // name
+            None,                                // title
             storage::AccountKind::Legacy,        // kind
             0,                                   // account index
             false,                               // public visibility
@@ -721,8 +723,8 @@ impl Wallet {
         }
 
         let stored_account = storage::Account::new(
-            "".to_string(),
-            "".to_string(),
+            None,
+            None,
             account_kind,
             0,                                            // account index
             false,                                        // public visibility

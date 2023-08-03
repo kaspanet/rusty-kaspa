@@ -5,8 +5,10 @@ use zeroize::Zeroize;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
     pub id: AccountId,
-    pub name: String,
-    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub account_kind: AccountKind,
     pub account_index: u64,
     pub is_visible: bool,
@@ -19,8 +21,8 @@ pub struct Account {
 
 impl Account {
     pub fn new(
-        name: String,
-        title: String,
+        name: Option<String>,
+        title: Option<String>,
         account_kind: AccountKind,
         account_index: u64,
         is_visible: bool,

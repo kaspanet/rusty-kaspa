@@ -71,8 +71,8 @@ mod tests {
         payload.prv_key_data.push(prv_key_data2.clone());
 
         let account1 = Account::new(
-            "Wallet-A".to_string(),
-            "Wallet A".to_string(),
+            Some("Wallet-A".to_string()),
+            Some("Wallet A".to_string()),
             AccountKind::Bip32,
             0,
             true,
@@ -86,8 +86,8 @@ mod tests {
         payload.accounts.push(account1);
 
         let account2 = Account::new(
-            "Wallet-B".to_string(),
-            "Wallet B".to_string(),
+            Some("Wallet-B".to_string()),
+            Some("Wallet B".to_string()),
             AccountKind::Bip32,
             0,
             true,

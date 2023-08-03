@@ -21,15 +21,18 @@ impl Account {
         match argv.remove(0).as_str() {
             "name" => {
                 if argv.len() != 1 {
-                    tprintln!(ctx, "Usage: account name <name>");
+                    tprintln!(ctx, "Usage: 'account name <name>' or 'account name remove'");
                     return Ok(());
                 } else {
                     let (secret, _) = ctx.ask_wallet_secret(None).await?;
                     let _ = ctx.notifier().show(Notification::Processing).await;
-
-                    let name = argv.remove(0);
                     let account = ctx.select_account().await?;
-                    account.rename(secret, name.as_str()).await?;
+                    let name = argv.remove(0);
+                    if name == "remove" {
+                        account.rename(secret, None).await?;
+                    } else {
+                        account.rename(secret, Some(name.as_str())).await?;
+                    }
                 }
             }
             "create" => {

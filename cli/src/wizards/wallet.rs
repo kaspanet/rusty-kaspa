@@ -31,6 +31,8 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
 
     let account_title = term.ask(false, "Default account title: ").await?.trim().to_string();
     let account_name = account_title.replace(' ', "-").to_lowercase();
+    let account_title = account_title.is_not_empty().then_some(account_title);
+    let account_name = account_name.is_not_empty().then_some(account_name);
 
     tpara!(
         ctx,
