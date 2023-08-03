@@ -37,9 +37,10 @@ pub mod sign;
 pub mod start;
 pub mod stop;
 pub mod sweep;
-pub mod test;
+// pub mod test;
 pub mod theme;
 pub mod track;
+pub mod transfer;
 pub mod wallet;
 
 // TODO
@@ -54,7 +55,7 @@ pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
         [
             account, address, close, connect, create, details, disconnect, estimate, exit, export, guide, halt, help, history, import,
             rpc, list, miner, monitor, mute, name, network, node, open, ping, reload, select, send, server, set, start, stop, sweep,
-            theme, track, test, wallet,
+            theme, track, transfer, wallet,
         ]
     );
 

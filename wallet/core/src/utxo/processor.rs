@@ -394,7 +394,7 @@ impl UtxoProcessor {
             .downcast_arc::<KaspaRpcClient>()
             .expect("unable to downcast DynRpcApi to KaspaRpcClient")
             .ctl_multiplexer()
-            .create_channel();
+            .channel();
 
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();

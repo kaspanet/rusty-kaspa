@@ -1,4 +1,5 @@
 use crate::imports::*;
+use kaspa_wallet_core::runtime::balance::*;
 use workflow_core::channel::*;
 use workflow_terminal::clear::*;
 use workflow_terminal::cursor::*;
@@ -39,6 +40,10 @@ impl Handler for Monitor {
 
 impl Monitor {
     async fn main(self: Arc<Self>, ctx: &Arc<KaspaCli>, _argv: Vec<String>, _cmd: &str) -> Result<()> {
+        let max_events = 16;
+        let events = Arc::new(Mutex::new(VecDeque::new()));
+        let events_rx = ctx.wallet().multiplexer().channel();
+
         let (shutdown_tx, shutdown_rx) = oneshot();
         self.shutdown_tx.lock().unwrap().replace(shutdown_tx.clone());
         let mut interval = interval(Duration::from_millis(1000));
@@ -55,8 +60,18 @@ impl Monitor {
             loop {
                 select! {
 
+                    event = events_rx.recv().fuse() => {
+                        if let Ok(event) = event {
+                            let mut events = events.lock().unwrap();
+                            events.push_front(event);
+                            while events.len() > max_events {
+                                events.pop_back();
+                            }
+                        }
+                    }
+
                     _ = interval.next().fuse() => {
-                        this.redraw(&ctx).await.ok();
+                        this.redraw(&ctx, &events).await.ok();
                         yield_executor().await;
                     }
 
@@ -67,7 +82,8 @@ impl Monitor {
                 }
             }
 
-            tprint!(ctx, "{ClearScreen}");
+            tprint!(ctx, "{}", ClearScreen);
+            tprint!(ctx, "{}", Goto(1, 1));
             this.shutdown_tx.lock().unwrap().take();
             ctx.term().refresh_prompt();
         });
@@ -75,21 +91,38 @@ impl Monitor {
         Ok(())
     }
 
-    async fn redraw(self: &Arc<Self>, ctx: &Arc<KaspaCli>) -> Result<()> {
+    async fn redraw(self: &Arc<Self>, ctx: &Arc<KaspaCli>, events: &Arc<Mutex<VecDeque<Events>>>) -> Result<()> {
         tprint!(ctx, "{}", ClearScreen);
         tprint!(ctx, "{}", Goto(1, 1));
 
-        log_info!("moinitor redrawing...");
+        let wallet = ctx.wallet();
 
-        if !ctx.wallet().is_connected() {
+        if !wallet.is_connected() {
             tprintln!(ctx, "{}", style("Wallet is not connected to the network").magenta());
             tprintln!(ctx);
-        } else if !ctx.wallet().is_synced() {
+        } else if !wallet.is_synced() {
             tprintln!(ctx, "{}", style("Kaspa node is currently syncing").magenta());
             tprintln!(ctx);
         }
 
         ctx.list().await?;
+
+        let events = events.lock().unwrap();
+        events.iter().for_each(|event| match event {
+            Events::DAAScoreChange(..) => {}
+            Events::Balance { balance, id, mature_utxo_size, pending_utxo_size } => {
+                let network_id = wallet.network_id().expect("missing network type");
+                let network_type = NetworkType::from(network_id);
+                let balance = BalanceStrings::from((balance, &network_type, None));
+                let id = id.short();
+
+                let pending_utxo_info = if *pending_utxo_size > 0 { format!("({pending_utxo_size} pending)") } else { "".to_string() };
+                let utxo_info = style(format!("{} UTXOs {pending_utxo_info}", mature_utxo_size.separated_string())).dim();
+
+                tprintln!(ctx, "{} {id}: {balance}   {utxo_info}", style("balance".pad_to_width(8)).blue());
+            }
+            _ => {}
+        });
 
         Ok(())
     }

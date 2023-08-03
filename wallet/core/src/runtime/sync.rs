@@ -115,7 +115,7 @@ impl SyncMonitor {
         this.inner.running.store(true, Ordering::SeqCst);
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
-        let events = self.multiplexer().create_channel();
+        let events = self.multiplexer().channel();
 
         spawn(async move {
             let interval = interval(Duration::from_secs(5));

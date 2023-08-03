@@ -506,7 +506,7 @@ impl Account {
         payment_secret: Option<Secret>,
         abortable: &Abortable,
         notifier: Option<GenerationNotifier>,
-    ) -> Result<Vec<kaspa_hashes::Hash>> {
+    ) -> Result<(GeneratorSummary, Vec<kaspa_hashes::Hash>)> {
         let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         let keydata = self
             .wallet
@@ -547,7 +547,7 @@ impl Account {
         //     yield_executor().await;
         // }
 
-        Ok(ids)
+        Ok((generator.summary(), ids))
     }
 
     pub async fn estimate(

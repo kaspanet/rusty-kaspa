@@ -14,19 +14,19 @@ impl Select {
         } else {
             let pat = argv.remove(0);
             let pat = pat.trim();
-            let accounts = ctx.wallet().active_accounts().inner().values().cloned().collect::<Vec<_>>();
-            let matches = accounts
-                .into_iter()
-                .filter(|account| account.name().starts_with(pat) || account.id().to_hex().starts_with(pat))
-                .collect::<Vec<_>>();
-            if matches.is_empty() {
-                return Err(Error::AccountNotFound(pat.to_string()));
-            } else if matches.len() > 1 {
-                return Err(Error::AmbigiousAccount(pat.to_string()));
-            } else {
-                let account = matches[0].clone();
-                ctx.wallet().select(Some(&account)).await?;
-            };
+
+            let account = ctx.find_accounts_by_name_or_id(pat).await?;
+            ctx.wallet().select(Some(&account)).await?;
+
+            // let matches = ctx.wallet().find_accounts_by_name_or_id(pat).await?;
+            // if matches.is_empty() {
+            //     return Err(Error::AccountNotFound(pat.to_string()));
+            // } else if matches.len() > 1 {
+            //     return Err(Error::AmbigiousAccount(pat.to_string()));
+            // } else {
+            //     let account = matches[0].clone();
+            //     ctx.wallet().select(Some(&account)).await?;
+            // };
         }
 
         Ok(())

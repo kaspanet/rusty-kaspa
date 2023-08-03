@@ -422,7 +422,6 @@ impl KaspaCli {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
                                         let network_id = this.wallet.network_id().expect("missing network type");
                                         let network_type = NetworkType::from(network_id);
-                                        // let balance = BalanceStrings::from((&balance,&network_type, Some(19)));
                                         let balance = BalanceStrings::from((&balance,&network_type, None));
                                         let id = id.short();
 
@@ -464,6 +463,17 @@ impl KaspaCli {
             let account = self.select_account().await?;
             self.wallet.select(Some(&account)).await?;
             Ok(account)
+        }
+    }
+
+    pub async fn find_accounts_by_name_or_id(&self, pat: &str) -> Result<Arc<runtime::Account>> {
+        let matches = self.wallet().find_accounts_by_name_or_id(pat).await?;
+        if matches.is_empty() {
+            Err(Error::AccountNotFound(pat.to_string()))
+        } else if matches.len() > 1 {
+            Err(Error::AmbigiousAccount(pat.to_string()))
+        } else {
+            Ok(matches[0].clone())
         }
     }
 

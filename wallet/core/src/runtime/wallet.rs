@@ -634,7 +634,7 @@ impl Wallet {
         let this = self.clone();
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
-        let events = self.multiplexer().create_channel();
+        let events = self.multiplexer().channel();
 
         spawn(async move {
             loop {
@@ -683,6 +683,15 @@ impl Wallet {
 
     pub async fn keys(&self) -> Result<impl Stream<Item = Result<Arc<PrvKeyDataInfo>>>> {
         self.inner.store.as_prv_key_data_store()?.iter().await
+    }
+
+    pub async fn find_accounts_by_name_or_id(&self, pat: &str) -> Result<Vec<Arc<Account>>> {
+        let accounts = self.active_accounts().inner().values().cloned().collect::<Vec<_>>();
+        let matches = accounts
+            .into_iter()
+            .filter(|account| account.name().starts_with(pat) || account.id().to_hex().starts_with(pat))
+            .collect::<Vec<_>>();
+        Ok(matches)
     }
 
     pub async fn accounts(self: &Arc<Self>, filter: Option<PrvKeyDataId>) -> Result<impl Stream<Item = Result<Arc<Account>>>> {
