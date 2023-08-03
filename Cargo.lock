@@ -1993,6 +1993,7 @@ dependencies = [
  "futures",
  "js-sys",
  "kaspa-addresses",
+ "kaspa-bip32",
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-daemon",

@@ -60,7 +60,7 @@ pub enum Error {
     #[error("please open a wallet")]
     WalletIsNotOpen,
 
-    #[error("Unrecognized argument '{0}', accepted arguments are: {1}")]
+    #[error("unrecognized argument '{0}', accepted arguments are: {1}")]
     UnrecognizedArgument(String, String),
 
     #[error("multiple matches for argument '{0}'; please be more specific.")]
@@ -107,6 +107,12 @@ pub enum Error {
 
     #[error(transparent)]
     NetworkId(#[from] kaspa_consensus_core::networktype::NetworkIdError),
+
+    #[error(transparent)]
+    Bip32(#[from] kaspa_bip32::Error),
+
+    #[error("private key {0} already exists")]
+    PrivateKeyAlreadyExists(String),
 }
 
 impl Error {

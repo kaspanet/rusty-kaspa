@@ -1,3 +1,3 @@
 pub mod account;
-pub mod mnemonic;
+pub mod import;
 pub mod wallet;

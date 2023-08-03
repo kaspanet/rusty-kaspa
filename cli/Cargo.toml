@@ -50,6 +50,7 @@ borsh.workspace = true
 kaspa-utils.workspace = true
 dashmap.workspace = true
 faster-hex.workspace = true
+kaspa-bip32.workspace = true
 # web-sys.workspace = true
 
 [dependencies.web-sys]

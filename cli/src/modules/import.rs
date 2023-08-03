@@ -18,7 +18,7 @@ impl Import {
         let what = argv.get(0).unwrap();
         match what.as_str() {
             "mnemonic" => {
-                crate::wizards::mnemonic::import(&ctx).await?;
+                crate::wizards::import::import_with_mnemonic(&ctx).await?;
             }
             "legacy" => {
                 if exists_legacy_v0_keydata().await? {
