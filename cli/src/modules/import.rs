@@ -7,6 +7,7 @@ pub struct Import;
 impl Import {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        // let term = ctx.term();
         let wallet = ctx.wallet();
 
         if argv.is_empty() || argv.get(0) == Some(&"help".to_string()) {
@@ -17,8 +18,7 @@ impl Import {
         let what = argv.get(0).unwrap();
         match what.as_str() {
             "mnemonic" => {
-                let mnemonic = crate::wizards::mnemonic::ask_mnemonic(&ctx.term()).await?;
-                tprintln!(ctx, "Mnemonic: {:?}", mnemonic);
+                crate::wizards::mnemonic::import(&ctx).await?;
             }
             "legacy" => {
                 if exists_legacy_v0_keydata().await? {
@@ -33,11 +33,25 @@ impl Import {
                     return Err("KDX/kaspanet keydata file not found".into());
                 }
             }
-            "kaspa-wallet" => {}
-            _ => {
-                return Err(format!("Invalid argument: {}", what).into());
+            // "kaspa-wallet" => {}
+            v => {
+                tprintln!(ctx, "unknown command: '{v}'\r\n");
+                return self.display_help(ctx, argv).await;
             }
         }
+
+        Ok(())
+    }
+
+    async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
+        ctx.term().help(
+            &[
+                ("mnemonic", "Import a 24 or 12 word mnemonic"),
+                ("legacy", "Import a legacy (local KDX) wallet"),
+                // ("purge", "Purge an account from the wallet"),
+            ],
+            None,
+        )?;
 
         Ok(())
     }

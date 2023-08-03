@@ -553,10 +553,6 @@ impl Wallet {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
         }
 
-        // TODO: integrate address generation
-        // let derivation_path = gen1::WalletAccount::build_derivate_path(false, 0, Some(kaspa_bip32::AddressType::Receive))?;
-        // let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?.derive_path(derivation_path)?;
-
         let stored_account = storage::Account::new(
             "imported-wallet".to_string(),       // name
             "Imported Wallet".to_string(),       // title
@@ -570,21 +566,14 @@ impl Wallet {
             0,                                   // cosigner_index
         );
 
-        // let prefix = AddressPrefix::Mainnet;
-
         let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
 
         prv_key_data_store.store(&ctx, prv_key_data).await?;
         let account_store = self.inner.store.as_account_store()?;
         account_store.store(&[&stored_account]).await?;
         self.inner.store.commit(&ctx).await?;
-        // payload.prv_key_data.push(prv_key_data);
-        // // TODO - prevent multiple addition of the same private key
-        // payload.accounts.push(stored_account);
-
-        // self.inner.account_map.insert(Arc::new(runtime_account))?;
-        // account.start().await?;
-
+        // TODO - prevent multiple addition of the same private key
+        account.start().await?;
         Ok(account)
     }
 

@@ -2008,6 +2008,7 @@ dependencies = [
  "serde_json",
  "textwrap 0.16.0",
  "thiserror",
+ "tokio",
  "wasm-bindgen",
  "web-sys",
  "workflow-core",
