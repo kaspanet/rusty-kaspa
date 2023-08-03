@@ -165,19 +165,19 @@ impl Node {
     }
 
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
-        let help = "\n\
-            \tselect  - Select Kaspad executable (binary) location\n\
-            \tversion - Display Kaspad executable version\n\
-            \tstart   - Start the local Kaspa node instance\n\
-            \tstop    - Stop the local Kaspa node instance\n\
-            \trestart - Restart the local Kaspa node instance\n\
-            \tkill    - Kill the local Kaspa node instance\n\
-            \tstatus  - Get the status of the local Kaspa node instance\n\
-            \tmute    - Toggle log output\n\
-        \n\
-        ";
-
-        tprintln!(ctx, "{}", help.crlf());
+        ctx.term().help(
+            &[
+                ("select", "Select Kaspad executable (binary) location"),
+                ("version", "Display Kaspad executable version"),
+                ("start", "Start the local Kaspa node instance"),
+                ("stop", "Stop the local Kaspa node instance"),
+                ("restart", "Restart the local Kaspa node instance"),
+                ("kill", "Kill the local Kaspa node instance"),
+                ("status", "Get the status of the local Kaspa node instance"),
+                ("mute", "Toggle log output"),
+            ],
+            None,
+        )?;
 
         Ok(())
     }

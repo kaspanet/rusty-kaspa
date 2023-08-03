@@ -1,7 +1,7 @@
 use std::pin::Pin;
 
 use futures::{future::join_all, pin_mut};
-use workflow_core::task::interval;
+use workflow_core::{runtime::is_nw, task::interval};
 
 use crate::imports::*;
 use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse};
@@ -177,13 +177,12 @@ impl Metrics {
     }
 
     pub async fn display_help(self: &Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
-        let help = "\n\
-            \topen  - Open metrics window\n\
-            \tclose - Close metrics window\n\
-        \n\
-        ";
+        // disable help in non-nw environments
+        if !is_nw() {
+            return Ok(());
+        }
 
-        tprintln!(ctx, "{}", help.crlf());
+        ctx.term().help(&[("open", "Open metrics window"), ("close", "Close metrics window")], None)?;
 
         Ok(())
     }

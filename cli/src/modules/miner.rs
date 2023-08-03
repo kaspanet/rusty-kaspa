@@ -157,17 +157,17 @@ impl Miner {
     }
 
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
-        let help = "\n\
-            \tselect  - Select CPU miner executable (binary) location\n\
-            \tstart   - Start the local CPU miner instance\n\
-            \tstop    - Stop the local CPU miner instance\n\
-            \trestart - Restart the local CPU miner instance\n\
-            \tkill    - Kill the local CPU miner instance\n\
-            \tstatus  - Get the status of the local CPU miner instance\n\
-        \n\
-        ";
-
-        tprintln!(ctx, "{}", help.crlf());
+        ctx.term().help(
+            &[
+                ("select", "Select CPU miner executable (binary) location"),
+                ("start", "Start the local CPU miner instance"),
+                ("stop", "Stop the local CPU miner instance"),
+                ("restart", "Restart the local CPU miner instance"),
+                ("kill", "Kill the local CPU miner instance"),
+                ("status", "Get the status of the local CPU miner instance"),
+            ],
+            None,
+        )?;
 
         Ok(())
     }
