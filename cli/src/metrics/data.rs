@@ -22,6 +22,7 @@ pub enum Metric {
     DepCounts,
     BodyCounts,
     TxnCounts,
+    Tps,
     ChainBlockCounts,
     MassCounts,
     BlockCount,
@@ -49,6 +50,7 @@ impl Metric {
             | Metric::DepCounts
             | Metric::BodyCounts
             | Metric::TxnCounts
+            | Metric::Tps
             | Metric::ChainBlockCounts
             | Metric::MassCounts
             | Metric::BlockCount
@@ -120,6 +122,7 @@ pub struct MetricsSnapshot {
     pub dep_counts: f64,
     pub body_counts: f64,
     pub txs_counts: f64,
+    pub tps: f64,
     pub chain_block_counts: f64,
     pub mass_counts: f64,
     // ---
@@ -150,6 +153,7 @@ impl MetricsSnapshot {
             Metric::DepCounts => JsValue::from(self.dep_counts),
             Metric::BodyCounts => JsValue::from(self.body_counts),
             Metric::TxnCounts => JsValue::from(self.txs_counts),
+            Metric::Tps => JsValue::from(self.tps),
             Metric::ChainBlockCounts => JsValue::from(self.chain_block_counts),
             Metric::MassCounts => JsValue::from(self.mass_counts),
             Metric::BlockCount => JsValue::from(self.block_count),
@@ -167,15 +171,15 @@ impl MetricsSnapshot {
         match metric {
             Metric::CpuUsage => format!("CPU: {:1.2}%", self.cpu_usage / self.cpu_cores * 100.0),
             Metric::ResidentSetSizeBytes => {
-                workflow_log::log_info!("Resident Memory: {}", self.resident_set_size_bytes);
-                format!("Resident Memory: {}", as_gb(self.resident_set_size_bytes, si))
+                // workflow_log::log_info!("Resident Memory: {}", self.resident_set_size_bytes);
+                format!("Resident Memory: {}", as_mb(self.resident_set_size_bytes, si))
             }
             Metric::VirtualMemorySizeBytes => {
-                format!("Virtual Memory: {}", as_gb(self.virtual_memory_size_bytes, si))
+                format!("Virtual Memory: {}", as_mb(self.virtual_memory_size_bytes, si))
             }
             Metric::FdNum => format!("File Handles: {}", self.fd_num.separated_string()),
-            Metric::DiskIoReadBytes => format!("Storage Read: {}", as_gb(self.disk_io_read_bytes, si)),
-            Metric::DiskIoWriteBytes => format!("Storage Write: {}", as_gb(self.disk_io_write_bytes, si)),
+            Metric::DiskIoReadBytes => format!("Storage Read: {}", as_mb(self.disk_io_read_bytes, si)),
+            Metric::DiskIoWriteBytes => format!("Storage Write: {}", as_mb(self.disk_io_write_bytes, si)),
             Metric::DiskIoReadPerSec => format!("Storage Read: {}/s", as_kb(self.disk_io_read_per_sec, si)),
             Metric::DiskIoWritePerSec => format!("Storage Write: {}/s", as_kb(self.disk_io_write_per_sec, si)),
             // --
@@ -184,6 +188,7 @@ impl MetricsSnapshot {
             Metric::DepCounts => format!("Dependencies: {}", self.dep_counts.separated_string()),
             Metric::BodyCounts => format!("Body Counts: {}", self.body_counts.separated_string()),
             Metric::TxnCounts => format!("Transactions: {}", self.txs_counts.separated_string()),
+            Metric::Tps => format!("TPS: {}", (((self.tps * 100.0) as u64) as f64 / 100.0).separated_string()),
             Metric::ChainBlockCounts => format!("Chain Blocks: {}", self.chain_block_counts.separated_string()),
             Metric::MassCounts => format!("Mass Counts: {}", self.mass_counts.separated_string()),
             Metric::BlockCount => format!("Blocks: {}", self.block_count.separated_string()),
@@ -200,9 +205,11 @@ impl MetricsSnapshot {
 
 impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
     fn from((a, b): (&MetricsData, &MetricsData)) -> Self {
+        let duration = b.unixtime - a.unixtime;
+        let tps = (b.txs_counts - a.txs_counts) as f64 * 1000. / duration;
         Self {
             unixtime: b.unixtime,
-            duration: b.unixtime - a.unixtime,
+            duration,
             // ---
             cpu_usage: b.cpu_usage,
             cpu_cores: b.cpu_cores as f64,
@@ -219,6 +226,7 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             dep_counts: b.dep_counts as f64,
             body_counts: b.body_counts as f64,
             txs_counts: b.txs_counts as f64,
+            tps,
             chain_block_counts: b.chain_block_counts as f64,
             mass_counts: b.mass_counts as f64,
             // ---
@@ -241,12 +249,15 @@ fn as_kb(bytes: f64, si: bool) -> String {
     (kb).separated_string() + suffix
 }
 
-// fn format_storage_gb(bytes : f64) -> String {
-//     let gb = ((bytes / 1024. / 1024. / 1024. * 100.) as u64) as f64 / 100.;
-//     (gb).separated_string()
-// }
+fn as_mb(bytes: f64, si: bool) -> String {
+    // bytes.separated_string()
+    let unit = if si { 1000. } else { 1024. };
+    let suffix = if si { " MB" } else { " MiB" };
+    let gb = ((bytes / unit / unit * 100.) as u64) as f64 / 100.;
+    (gb).separated_string() + suffix
+}
 
-fn as_gb(bytes: f64, si: bool) -> String {
+fn _as_gb(bytes: f64, si: bool) -> String {
     // bytes.separated_string()
     let unit = if si { 1000. } else { 1024. };
     let suffix = if si { " GB" } else { " GiB" };
