@@ -1,7 +1,5 @@
 use crate::imports::*;
 use kaspa_cli::metrics::{metrics::MetricsSinkFn, Metrics as Inner};
-// use workflow_terminal::Handler;
-// pub use workflow_terminal::prelude::*;
 
 pub struct Metrics {
     inner: Arc<Inner>,
@@ -60,13 +58,32 @@ impl Metrics {
             "close" => {
                 self.core.metrics_close().await?;
             }
+            "retention" => {
+                if argv.is_empty() {
+                    tprintln!(ctx, "missing retention value");
+                    return Ok(());
+                } else {
+                    let retention = argv.remove(0).parse::<u64>().map_err(|e| e.to_string())?;
+                    if !(1..=168).contains(&retention) {
+                        tprintln!(ctx, "retention value must be between 1 and 168 hours");
+                        return Ok(());
+                    }
+                    self.core.metrics_ctl(MetricsCtl::Retention(retention)).await?;
+                }
+            }
             v => {
                 tprintln!(ctx, "unknown command: '{v}'\r\n");
 
-                self.inner.display_help(ctx, argv).await?;
+                self.display_help(ctx, argv).await?;
                 return Ok(());
             }
         }
+
+        Ok(())
+    }
+
+    pub async fn display_help(self: &Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
+        ctx.term().help(&[("open", "Open metrics window"), ("close", "Close metrics window")], None)?;
 
         Ok(())
     }

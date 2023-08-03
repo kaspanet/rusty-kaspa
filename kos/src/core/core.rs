@@ -457,6 +457,18 @@ impl Core {
 
         let this = self.clone();
         self.ipc.method(
+            CoreOps::MetricsCtl,
+            Method::new(move |op: MetricsCtl| {
+                let this = this.clone();
+                Box::pin(async move {
+                    this.metrics_ctl(op).await?;
+                    Ok(())
+                })
+            }),
+        );
+
+        let this = self.clone();
+        self.ipc.method(
             CoreOps::TerminalReady,
             Method::new(move |_op: ()| {
                 let this = this.clone();
@@ -577,7 +589,7 @@ impl Core {
 
     pub async fn create_metrics_window(self: &Arc<Self>) -> Result<()> {
         if self.metrics().is_none() {
-            log_info!("*** CREATING WINDOW ***");
+            // log_info!("*** CREATING WINDOW ***");
             let window = Arc::new(
                 Application::create_window_async(
                     "/app/metrics.html",
@@ -586,7 +598,7 @@ impl Core {
                 .await
                 .expect("Core: failed to create metrics window"),
             );
-            log_info!("*** WINDOW CREATED ***");
+            // log_info!("*** WINDOW CREATED ***");
             let metrics = Arc::new(Metrics::new(window));
             *self.metrics.lock().unwrap() = Some(metrics);
 
@@ -603,6 +615,14 @@ impl Core {
             self.terminal().ipc().metrics_ctl(MetricsSinkCtl::Deactivate).await.unwrap_or_else(|e| log_error!("{}", e));
             metrics.window().close_impl(true);
             self.metrics.lock().unwrap().take();
+        }
+        Ok(())
+    }
+
+    pub async fn metrics_ctl(self: &Arc<Self>, _ctl: MetricsCtl) -> Result<()> {
+        if let Some(_metrics) = self.metrics() {
+            // metrics.ipc.
+            // metrics.ctl(ctl).await?;
         }
         Ok(())
     }

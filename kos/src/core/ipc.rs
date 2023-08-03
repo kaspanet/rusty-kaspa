@@ -14,6 +14,7 @@ pub enum CoreOps {
     MetricsOpen,
     MetricsClose,
     MetricsReady,
+    MetricsCtl,
 }
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -49,6 +50,11 @@ pub enum CpuMinerOps {
     DaemonCtl(DaemonCtl),
 }
 
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+pub enum MetricsCtl {
+    Retention(u64),
+}
+
 #[derive(Debug, Clone)]
 pub struct CoreIpc {
     target: IpcTarget,
@@ -71,6 +77,11 @@ impl CoreIpc {
 
     pub async fn metrics_close(&self) -> Result<()> {
         self.target.call(CoreOps::MetricsClose, ()).await?;
+        Ok(())
+    }
+
+    pub async fn metrics_ctl(&self, ctl: MetricsCtl) -> Result<()> {
+        self.target.call(CoreOps::MetricsCtl, ctl).await?;
         Ok(())
     }
 
