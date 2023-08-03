@@ -9,6 +9,8 @@ pub enum MinerSettings {
     Location,
     #[describe("gRPC server (default: 127.0.0.1)")]
     Server,
+    #[describe("Miner throttle (milliseconds, default: 5,000; lower = higher CPU usage)")]
+    Throttle,
     #[describe("Mute logs")]
     Mute,
 }
@@ -87,8 +89,9 @@ impl Miner {
         let network_id = ctx.wallet().network_id()?;
         let address = ctx.account().await?.receive_address().await?;
         let server: String = self.settings.get(MinerSettings::Server).unwrap_or("127.0.0.1".to_string());
+        let throttle: usize = self.settings.get(MinerSettings::Throttle).unwrap_or(5_000);
         let mute = self.mute.load(Ordering::SeqCst);
-        let config = CpuMinerConfig::new(location.as_str(), network_id.into(), address, server, mute);
+        let config = CpuMinerConfig::new(location.as_str(), network_id.into(), address, server, throttle, mute);
         Ok(config)
     }
 
@@ -111,6 +114,15 @@ impl Miner {
             }
             "stop" => {
                 cpu_miner.stop().await?;
+            }
+            "throttle" => {
+                let throttle: u64 = argv
+                    .remove(0)
+                    .parse()
+                    .map_err(|_| Error::Custom("Invalid throttle value, please specify a number of milliseconds".into()))?;
+                self.settings.set(MinerSettings::Throttle, throttle).await?;
+                cpu_miner.configure(self.create_config(&ctx).await?).await?;
+                cpu_miner.restart().await?;
             }
             "restart" => {
                 cpu_miner.configure(self.create_config(&ctx).await?).await?;
@@ -159,12 +171,13 @@ impl Miner {
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
         ctx.term().help(
             &[
-                ("select", "Select CPU miner executable (binary) location"),
+                ("select [<path>]", "Select CPU miner executable (binary) location"),
                 ("start", "Start the local CPU miner instance"),
                 ("stop", "Stop the local CPU miner instance"),
                 ("restart", "Restart the local CPU miner instance"),
                 ("kill", "Kill the local CPU miner instance"),
                 ("status", "Get the status of the local CPU miner instance"),
+                ("throttle <msec>", "Change CPU miner throttle value"),
             ],
             None,
         )?;

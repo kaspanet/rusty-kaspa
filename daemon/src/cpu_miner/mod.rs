@@ -17,13 +17,14 @@ pub struct CpuMinerConfig {
 }
 
 impl CpuMinerConfig {
-    pub fn new(path: &str, network: NetworkType, address: Address, server: String, mute: bool) -> Self {
+    pub fn new(path: &str, network: NetworkType, address: Address, server: String, throttle: usize, mute: bool) -> Self {
         Self {
             mute,
             path: Some(path.to_string()),
             network: Some(network),
             address: Some(address),
             server: Some(server),
+            throttle: Some(throttle),
             ..Default::default()
         }
     }
