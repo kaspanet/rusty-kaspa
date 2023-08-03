@@ -251,7 +251,7 @@ impl UtxoContext {
     /// Insert `utxo_entry` into the `UtxoSet`.
     /// NOTE: The insert will be ignored if already present in the inner map.
     pub async fn insert(&self, utxo_entry: UtxoEntryReference, current_daa_score: u64) -> Result<()> {
-        log_info!("inserting utxo_entry: {:?}", utxo_entry);
+        // log_trace!("inserting utxo_entry: {:?}", utxo_entry);
         let mut context = self.context();
 
         if let std::collections::hash_map::Entry::Vacant(e) = context.map.entry(utxo_entry.id()) {

@@ -274,7 +274,7 @@ impl UtxoProcessor {
 
                 self.inner.current_daa_score.store(virtual_daa_score, Ordering::SeqCst);
 
-                log_info!("Connected to kaspad: '{server_version}' on '{server_network_id}';  SYNC: {is_synced}  DAA: {virtual_daa_score}");
+                log_trace!("Connected to kaspad: '{server_version}' on '{server_network_id}';  SYNC: {is_synced}  DAA: {virtual_daa_score}");
 
                 self.sync_proc().track(is_synced).await?;
                 self.notify(Events::ServerStatus { server_version, is_synced, network_id, url: self.rpc_client().url().to_string() }).await?;
@@ -302,7 +302,7 @@ impl UtxoProcessor {
 
                 self.inner.current_daa_score.store(virtual_daa_score, Ordering::SeqCst);
 
-                log_info!("Connected to kaspad: '{server_version}' on '{server_network_id}';  SYNC: {is_synced}  DAA: {virtual_daa_score}");
+                log_trace!("Connected to kaspad: '{server_version}' on '{server_network_id}';  SYNC: {is_synced}  DAA: {virtual_daa_score}");
                 self.sync_proc().track(is_synced).await?;
                 self.notify(Events::ServerStatus { server_version, is_synced, network_id, url: self.rpc_client().url().to_string() }).await?;
 

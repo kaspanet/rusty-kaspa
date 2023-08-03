@@ -703,7 +703,7 @@ impl Wallet {
             async move {
                 let stored = stored.unwrap();
                 if let Some(account) = wallet.active_accounts().get(&stored.id) {
-                    log_info!("fetching active account: {}", account.id);
+                    // log_trace!("fetching active account: {}", account.id);
                     Ok(account)
                 } else {
                     let account = Account::try_new_arc_from_storage(&wallet, &stored).await?;

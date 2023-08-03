@@ -16,7 +16,7 @@ impl Set {
                 .map(|setting| {
                     let value: String = ctx.wallet().settings().get(setting.clone()).unwrap_or_else(|| "-".to_string());
                     let descr = setting.descr();
-                    (setting.to_lowercase_string(), value, descr)
+                    (setting.as_str().to_lowercase(), value, descr)
                 })
                 .collect::<Vec<(_, _, _)>>();
             let c1 = list.iter().map(|(c, _, _)| c.len()).fold(0, |a, b| a.max(b)) + 4;
