@@ -342,6 +342,7 @@ impl Account {
         _payment_secret: Option<Secret>,
         extent: usize,
         window: usize,
+        sweep: bool,
         abortable: &Abortable,
         notifier: Option<DeepScanNotifier>,
     ) -> Result<()> {
@@ -381,28 +382,35 @@ impl Account {
             if balance > 0 {
                 aggregate_balance += balance;
 
-                // TODO - populate with keypairs ^^^
-                let keydata: Vec<(Address, secp256k1::SecretKey)> = vec![];
-                let signer = Arc::new(KeydataSigner::new(keydata));
+                if sweep {
+                    // TODO - populate with keypairs ^^^
+                    let keydata: Vec<(Address, secp256k1::SecretKey)> = vec![];
+                    let signer = Arc::new(KeydataSigner::new(keydata));
 
-                let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
-                let settings = GeneratorSettings::try_new_sweep_with_keydata_signer(
-                    change_address.clone(),
-                    Box::new(utxos.into_iter()),
-                    PaymentDestination::Change,
-                    Fees::None,
-                    None,
-                )
-                .await?;
+                    let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
+                    let settings = GeneratorSettings::try_new_sweep_with_keydata_signer(
+                        change_address.clone(),
+                        Box::new(utxos.into_iter()),
+                        PaymentDestination::Change,
+                        Fees::None,
+                        None,
+                    )
+                    .await?;
 
-                let generator = Generator::new(settings, Some(signer), abortable);
+                    let generator = Generator::new(settings, Some(signer), abortable);
 
-                let mut stream = generator.stream();
-                while let Some(transaction) = stream.try_next().await? {
-                    transaction.try_sign()?;
-                    let id = transaction.try_submit(self.wallet.rpc()).await?;
+                    let mut stream = generator.stream();
+                    while let Some(transaction) = stream.try_next().await? {
+                        transaction.try_sign()?;
+                        let id = transaction.try_submit(self.wallet.rpc()).await?;
+                        if let Some(notifier) = notifier.as_ref() {
+                            notifier(index, balance, Some(id));
+                        }
+                        yield_executor().await;
+                    }
+                } else {
                     if let Some(notifier) = notifier.as_ref() {
-                        notifier(index, balance, Some(id));
+                        notifier(index, aggregate_balance, None);
                     }
                     yield_executor().await;
                 }

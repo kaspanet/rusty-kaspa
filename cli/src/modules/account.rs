@@ -69,7 +69,22 @@ impl Account {
                     let extent = argv.remove(0);
                     extent.parse::<usize>()?
                 };
-                self.derivation_scan(&ctx, extent, window).await?;
+                self.derivation_scan(&ctx, extent, window, false).await?;
+            }
+            "sweep" => {
+                let extent = if argv.is_empty() {
+                    100_000
+                } else {
+                    let extent = argv.remove(0);
+                    extent.parse::<usize>()?
+                };
+                let window = if argv.is_empty() {
+                    128
+                } else {
+                    let extent = argv.remove(0);
+                    extent.parse::<usize>()?
+                };
+                self.derivation_scan(&ctx, extent, window, true).await?;
             }
             v => {
                 tprintln!(ctx, "unknown command: '{v}'\r\n");
@@ -85,7 +100,9 @@ impl Account {
             &[
                 ("create [<type>]", "Create a new account (types: 'bip32' (default), 'legacy')"),
                 // ("import", "Import a private key using 24 or 12 word mnemonic"),
-                ("name <name>", "Name or rename account"),
+                ("name <name>", "Name or rename the selected account"),
+                ("scan [<derivations>]", "Scan extended address derivation chain (legacy accounts)"),
+                ("sweep [<derivations>]", "Sweep extended address derivation chain (legacy accounts)"),
                 // ("purge", "Purge an account from the wallet"),
             ],
             None,
@@ -94,7 +111,7 @@ impl Account {
         Ok(())
     }
 
-    async fn derivation_scan(self: &Arc<Self>, ctx: &Arc<KaspaCli>, extent: usize, window: usize) -> Result<()> {
+    async fn derivation_scan(self: &Arc<Self>, ctx: &Arc<KaspaCli>, extent: usize, window: usize, sweep: bool) -> Result<()> {
         let account = ctx.account().await?;
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
         let _ = ctx.notifier().show(Notification::Processing).await;
@@ -106,6 +123,7 @@ impl Account {
                 payment_secret,
                 extent,
                 window,
+                sweep,
                 &abortable,
                 Some(Arc::new(move |processed: usize, balance, txid| {
                     if let Some(txid) = txid {
