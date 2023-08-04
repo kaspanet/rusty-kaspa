@@ -3,6 +3,18 @@ use kaspa_notify::events::EventType;
 use serde::{Deserialize, Serialize};
 use workflow_core::enums::Describe;
 
+/// Rpc Api version (4 x short values); First short is reserved.
+/// The version format is as follows: `[reserved, major, minor, patch]`.
+/// The difference in the major version value indicates breaking binary API changes
+/// (i.e. changes in non-versioned model data structures)
+/// If such change occurs, BorshRPC-client should refuse to connect to the
+/// server and should request a client-side upgrade.  JsonRPC-client may opt-in to
+/// continue interop, but data structures should handle mutations by pre-filtering
+/// or using Serde attributes. This applies only to RPC infrastructure that uses internal
+/// data structures and does not affect gRPC. gRPC should issue and handle its
+/// own versioning.
+pub const RPC_API_VERSION: [u16; 4] = [0, 1, 0, 0];
+
 #[derive(Describe, Clone, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RpcApiOps {

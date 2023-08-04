@@ -743,6 +743,7 @@ pub struct GetServerInfoRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetServerInfoResponse {
+    pub rpc_api_version: [u16; 4],
     pub server_version: String,
     pub network_id: RpcNetworkId,
     pub has_utxo_index: bool,

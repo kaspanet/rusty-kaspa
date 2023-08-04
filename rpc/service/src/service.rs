@@ -43,7 +43,10 @@ use kaspa_notify::{
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
-    api::rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
+    api::{
+        ops::RPC_API_VERSION,
+        rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
+    },
     model::*,
     notify::connection::ChannelConnection,
     Notification, RpcError, RpcResult,
@@ -695,10 +698,11 @@ impl RpcApi for RpcCoreService {
         let virtual_daa_score = session.async_get_virtual_daa_score().await;
 
         Ok(GetServerInfoResponse {
-            is_synced,
-            network_id: self.config.net,
+            rpc_api_version: RPC_API_VERSION,
             server_version: version().to_string(),
+            network_id: self.config.net,
             has_utxo_index: self.config.utxoindex,
+            is_synced,
             virtual_daa_score,
         })
     }
