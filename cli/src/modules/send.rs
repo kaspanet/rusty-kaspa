@@ -12,7 +12,8 @@ impl Send {
         let account = ctx.wallet().account()?;
 
         if argv.len() < 2 {
-            return Err("Usage: send <address> <amount> <priority fee>".into());
+            tprintln!(ctx, "usage: send <address> <amount> <priority fee>");
+            return Ok(());
         }
 
         let address = Address::try_from(argv.get(0).unwrap().as_str())?;

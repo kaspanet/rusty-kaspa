@@ -28,8 +28,7 @@ impl Set {
 
             tprintln!(ctx);
         } else if argv.len() != 2 {
-            tprintln!(ctx, "\n\rError:\n\r");
-            tprintln!(ctx, "Usage:\n\rset <key> <value>");
+            tprintln!(ctx, "usage: set <key> <value>");
             return Ok(());
         } else {
             let key = argv[0].as_str();

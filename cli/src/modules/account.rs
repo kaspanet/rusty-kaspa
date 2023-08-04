@@ -21,7 +21,7 @@ impl Account {
         match argv.remove(0).as_str() {
             "name" => {
                 if argv.len() != 1 {
-                    tprintln!(ctx, "Usage: 'account name <name>' or 'account name remove'");
+                    tprintln!(ctx, "usage: 'account name <name>' or 'account name remove'");
                     return Ok(());
                 } else {
                     let (secret, _) = ctx.ask_wallet_secret(None).await?;
@@ -52,9 +52,8 @@ impl Account {
                     Some(name)
                 };
 
-                // TODO - list private keys instead of account selection
-                let account = ctx.select_account().await?;
-                let prv_key_data_id = account.prv_key_data_id;
+                let prv_key_data_info = ctx.select_private_key().await?;
+                let prv_key_data_id = prv_key_data_info.id;
 
                 let account_name = account_name.as_deref();
                 wizards::account::create(&ctx, prv_key_data_id, account_kind, account_name).await?;
@@ -101,9 +100,9 @@ impl Account {
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
         ctx.term().help(
             &[
-                ("create [<type>]", "Create a new account (types: 'bip32' (default), 'legacy')"),
+                ("create [<type>] [<name>]", "Create a new account (types: 'bip32' (default), 'legacy')"),
                 // ("import", "Import a private key using 24 or 12 word mnemonic"),
-                ("name <name>", "Name or rename the selected account"),
+                ("name <name>", "Name or rename the selected account (use 'remove' to remove the name"),
                 ("scan [<derivations>]", "Scan extended address derivation chain (legacy accounts)"),
                 ("sweep [<derivations>]", "Sweep extended address derivation chain (legacy accounts)"),
                 // ("purge", "Purge an account from the wallet"),

@@ -9,7 +9,7 @@ impl Export {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         if argv.is_empty() || argv.get(0) == Some(&"help".to_string()) {
-            tprintln!(ctx, "Usage: export [mnemonic]");
+            tprintln!(ctx, "usage: export [mnemonic]");
             return Ok(());
         }
 

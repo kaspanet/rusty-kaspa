@@ -54,7 +54,7 @@ impl Wallet {
                         store.set_user_hint(Some(hint.into())).await?;
                     }
                 } else {
-                    tprintln!(ctx, "Usage:\n'wallet hint <text>' or 'wallet hint remove' to remove the hint");
+                    tprintln!(ctx, "usage:\n'wallet hint <text>' or 'wallet hint remove' to remove the hint");
                 }
             }
             v => {

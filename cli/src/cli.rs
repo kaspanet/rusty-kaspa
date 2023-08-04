@@ -547,6 +547,56 @@ impl KaspaCli {
         Ok(account)
     }
 
+    pub async fn select_private_key(&self) -> Result<Arc<PrvKeyDataInfo>> {
+        self.select_private_key_with_args(true).await
+    }
+
+    pub async fn select_private_key_with_args(&self, autoselect: bool) -> Result<Arc<PrvKeyDataInfo>> {
+        let mut selection = None;
+
+        // let mut list_by_key = Vec::<(Arc<PrvKeyDataInfo>, Vec<(usize, Arc<runtime::Account>)>)>::new();
+        let mut flat_list = Vec::<Arc<PrvKeyDataInfo>>::new();
+
+        let mut keys = self.wallet.keys().await?;
+        while let Some(key) = keys.try_next().await? {
+            flat_list.push(key);
+        }
+
+        if flat_list.is_empty() {
+            return Err(Error::NoKeys);
+        } else if autoselect && flat_list.len() == 1 {
+            return Ok(flat_list.pop().unwrap());
+        }
+
+        while selection.is_none() {
+            tprintln!(self);
+
+            flat_list.iter().enumerate().for_each(|(seq, prv_key_data_info)| {
+                tprintln!(self, "    {seq}: {prv_key_data_info}");
+            });
+
+            tprintln!(self);
+
+            let range = if flat_list.len() > 1 { format!("[{}..{}] ", 0, flat_list.len() - 1) } else { "".to_string() };
+
+            let text =
+                self.term().ask(false, &format!("Please select private key {}or <enter> to abort: ", range)).await?.trim().to_string();
+            if text.is_empty() {
+                return Err(Error::UserAbort);
+            } else {
+                match text.parse::<usize>() {
+                    Ok(seq) if seq < flat_list.len() => selection = flat_list.get(seq).cloned(),
+                    _ => {}
+                };
+            }
+        }
+
+        let prv_key_data_info = selection.unwrap();
+        tprintln!(self, "\nselecting private key: {prv_key_data_info}\n");
+
+        Ok(prv_key_data_info)
+    }
+
     pub async fn list(&self) -> Result<()> {
         let mut keys = self.wallet.keys().await?;
 

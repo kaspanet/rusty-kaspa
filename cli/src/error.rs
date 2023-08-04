@@ -87,6 +87,9 @@ pub enum Error {
     #[error("no accounts found, please create an account to continue")]
     NoAccounts,
 
+    #[error("no private keys found in this wallet, please create a private key to continue")]
+    NoKeys,
+
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
 

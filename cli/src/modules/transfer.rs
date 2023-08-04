@@ -11,7 +11,8 @@ impl Transfer {
         let account = ctx.wallet().account()?;
 
         if argv.len() < 2 {
-            return Err("Usage: transfer <account> <amount> <priority fee>".into());
+            tprintln!(ctx, "usage: transfer <account> <amount> <priority fee>");
+            return Ok(());
         }
 
         let target_account = argv.get(0).unwrap();

@@ -12,7 +12,8 @@ impl Estimate {
         let account = ctx.wallet().account()?;
 
         if argv.is_empty() {
-            return Err("Usage: estimate <amount> [<priority fee>]".into());
+            tprintln!(ctx, "usage: estimate <amount> [<priority fee>]");
+            return Ok(());
         }
 
         let amount_sompi = try_parse_required_nonzero_kaspa_as_sompi_u64(argv.get(0))?;
@@ -24,7 +25,7 @@ impl Estimate {
         let destination = PaymentDestination::PaymentOutputs(PaymentOutputs::try_from((change_address.clone(), amount_sompi))?);
         let estimate = account.estimate(destination, priority_fee_sompi.into(), None, &abortable).await?;
 
-        tprintln!(ctx, "\nEstimate: {estimate:#?}");
+        tprintln!(ctx, "Estimate - {estimate:#?}");
 
         Ok(())
     }

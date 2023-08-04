@@ -7,11 +7,10 @@ pub struct Import;
 impl Import {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
-        // let term = ctx.term();
         let wallet = ctx.wallet();
 
-        if argv.is_empty() || argv.get(0) == Some(&"help".to_string()) {
-            tprintln!(ctx, "Usage: import [mnemonic]");
+        if argv.is_empty() {
+            self.display_help(ctx).await?;
             return Ok(());
         }
 
@@ -33,17 +32,17 @@ impl Import {
                     return Err("KDX/kaspanet keydata file not found".into());
                 }
             }
-            // "kaspa-wallet" => {}
+            // "core" => {}
             v => {
                 tprintln!(ctx, "unknown command: '{v}'\r\n");
-                return self.display_help(ctx, argv).await;
+                return self.display_help(ctx).await;
             }
         }
 
         Ok(())
     }
 
-    async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
+    async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>) -> Result<()> {
         ctx.term().help(
             &[
                 ("mnemonic", "Import a 24 or 12 word mnemonic"),
