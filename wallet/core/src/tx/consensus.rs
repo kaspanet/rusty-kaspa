@@ -2,8 +2,6 @@ use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::{
     config::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS},
     networktype::NetworkType,
-    // constants::*, subnets::SUBNETWORK_ID_SIZE,
-    // mass::{self, MassCalculator},
 };
 
 /// find Consensus parameters for given Address
