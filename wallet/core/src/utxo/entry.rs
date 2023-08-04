@@ -225,7 +225,6 @@ impl PendingUtxoEntryReference {
         self.inner().entry.transaction_id()
     }
 
-
     #[inline(always)]
     pub fn is_mature(&self, current_daa_score: u64) -> bool {
         self.inner().entry.is_mature(current_daa_score)

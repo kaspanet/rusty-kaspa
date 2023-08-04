@@ -23,7 +23,7 @@ impl Send {
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
 
         let ctx_ = ctx.clone();
-        let (summary, ids) = account
+        let (summary, _ids) = account
             .send(
                 outputs.into(),
                 priority_fee_sompi.into(),

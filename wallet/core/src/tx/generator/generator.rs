@@ -1,4 +1,5 @@
 use crate::imports::*;
+use crate::network::NetworkId;
 use crate::result::Result;
 use crate::tx::{
     get_consensus_params_by_address, mass::*, Fees, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction,
@@ -6,7 +7,6 @@ use crate::tx::{
 };
 use crate::utxo::UtxoEntry;
 use crate::utxo::{UtxoContext, UtxoEntryReference};
-use crate::network::NetworkId;
 use kaspa_consensus_core::tx as cctx;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_txscript::pay_to_address_script;
@@ -38,7 +38,7 @@ struct Inner {
     abortable: Abortable,
     signer: Option<Arc<dyn SignerT>>,
     mass_calculator: MassCalculator,
-    network_id : NetworkId,
+    network_id: NetworkId,
 
     // Utxo Context
     utxo_context: Option<UtxoContext>,
@@ -423,7 +423,7 @@ impl Generator {
         let context = self.context();
 
         GeneratorSummary {
-            network_id : self.inner.network_id,
+            network_id: self.inner.network_id,
             aggregated_utxos: context.aggregated_utxos,
             aggregated_fees: context.aggregate_fees,
             final_transaction_id: context.final_transaction_id,

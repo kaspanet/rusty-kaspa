@@ -1,10 +1,10 @@
 #[allow(unused_imports)]
 use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::address::{build_derivate_paths, AddressManager};
+use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{AtomicBalance, Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
-use crate::imports::*;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, KeydataSigner, PaymentDestination, PendingTransaction, Signer};
@@ -394,6 +394,7 @@ impl Account {
 
                     let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
                     let settings = GeneratorSettings::try_new_sweep_with_keydata_signer(
+                        self.wallet.network_id()?,
                         change_address.clone(),
                         Box::new(utxos.into_iter()),
                         PaymentDestination::Change,

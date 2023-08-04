@@ -87,9 +87,7 @@ pub struct Context {
     addresses: Arc<DashSet<Arc<Address>>>,
 }
 
-
 impl Context {
-
     fn new_with_mature(mature: Vec<UtxoEntryReference>) -> Self {
         Self { mature, ..Default::default() }
     }
