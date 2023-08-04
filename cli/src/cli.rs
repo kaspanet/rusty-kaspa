@@ -19,6 +19,8 @@ pub use workflow_terminal::Event as TerminalEvent;
 use workflow_terminal::*;
 pub use workflow_terminal::{Options as TerminalOptions, TargetElement as TerminalTarget};
 
+const NOTIFY: &str = "\x1B[2m⎟\x1B[0m";
+
 pub struct Options {
     pub daemons: Option<Arc<Daemons>>,
     pub terminal: TerminalOptions,
@@ -354,7 +356,7 @@ impl KaspaCli {
                                 },
                                 Events::DAAScoreChange(daa) => {
                                     if this.is_mutted() && this.flags.get(Track::Daa) {
-                                        tprintln!(this, "DAAScoreChange: {daa}");
+                                        tprintln!(this, "{NOTIFY} DAA: {daa}");
                                     }
                                 },
                                 Events::Pending {
@@ -362,7 +364,7 @@ impl KaspaCli {
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
                                         let tx = record.format_with_state(&this.wallet,Some("pending")).await;
-                                        tprintln!(this,"\r\n{tx}\r\n");
+                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
                                 Events::Reorg {
@@ -370,7 +372,7 @@ impl KaspaCli {
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
                                         let tx = record.format_with_state(&this.wallet,Some("reorg")).await;
-                                        tprintln!(this,"\r\n{tx}\r\n");
+                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
                                 Events::External {
@@ -378,7 +380,7 @@ impl KaspaCli {
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
                                         let tx = record.format_with_state(&this.wallet,Some("external")).await;
-                                        tprintln!(this,"\r\n{tx}\r\n");
+                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
                                 Events::Maturity {
@@ -386,15 +388,15 @@ impl KaspaCli {
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
                                         let tx = record.format_with_state(&this.wallet,Some("confirmed")).await;
-                                        tprintln!(this,"\r\n{tx}\r\n");
+                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
                                 Events::Debit {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
-                                        let tx = record.format_with_state(&this.wallet,Some("debit")).await;
-                                        tprintln!(this,"{tx}");
+                                        let tx = record.format_with_state(&this.wallet,Some("confirmed")).await;
+                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
                                 Events::Balance {
@@ -415,7 +417,7 @@ impl KaspaCli {
                                         } else { "".to_string() };
                                         let utxo_info = style(format!("{} UTXOs {pending_utxo_info}", mature_utxo_size.separated_string())).dim();
 
-                                        tprintln!(this, "{} {id}: {balance}   {utxo_info}",style("balance".pad_to_width(8)).blue());
+                                        tprintln!(this, "{NOTIFY} {} {id}: {balance}   {utxo_info}",style("balance".pad_to_width(8)).blue());
                                     }
 
                                     this.term().refresh_prompt();
@@ -564,10 +566,10 @@ impl KaspaCli {
     }
 
     pub async fn shutdown(&self) -> Result<()> {
-        tprintln!(self, "{}", style("shutting down...").magenta());
-
         if !self.shutdown.load(Ordering::SeqCst) {
             self.shutdown.store(true, Ordering::SeqCst);
+
+            tprintln!(self, "{}", style("shutting down...").magenta());
 
             // if self.wallet().is_connected() {
             //     self.wallet().rpc_client().disconnect().await?;

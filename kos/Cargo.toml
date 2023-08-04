@@ -1,7 +1,7 @@
 
 [package]
 name = "kaspa-os"
-description = "Kaspa Desktop Node Manager & Wallet"
+description = "Kaspa Node & Wallet Manager"
 # please keep this version detached from the workspace
 version = "0.0.1"
 edition.workspace = true

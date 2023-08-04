@@ -6,7 +6,7 @@ pub mod scan;
 pub mod selection;
 pub mod stream;
 
-pub use binding::Binding;
+pub use binding::UtxoContextBinding;
 pub use context::{UtxoContext, UtxoContextId};
 pub use entry::{PendingUtxoEntryReference, UtxoEntries, UtxoEntry, UtxoEntryId, UtxoEntryReference};
 pub use processor::UtxoProcessor;

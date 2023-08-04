@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::runtime::{Account, AccountId};
-use crate::utxo::{Binding as UtxoProcessorBinding, UtxoContextId};
+use crate::utxo::{UtxoContextBinding as UtxoProcessorBinding, UtxoContextId};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -15,7 +15,7 @@ impl From<UtxoProcessorBinding> for Binding {
         match b {
             UtxoProcessorBinding::Internal(id) => Binding::Custom(id),
             UtxoProcessorBinding::Id(id) => Binding::Custom(id),
-            UtxoProcessorBinding::Account(account) => Binding::Account(*account.id()),
+            UtxoProcessorBinding::AccountId(id) => Binding::Account(id),
         }
     }
 }

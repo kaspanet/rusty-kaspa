@@ -1,13 +1,17 @@
 use crate::imports::*;
 use crate::result::Result;
-use kaspa_hashes::Hash;
-use std::str::FromStr;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpointInner {
     pub transaction_id: TransactionId,
     pub index: TransactionIndexType,
+}
+
+impl std::fmt::Display for TransactionOutpointInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}-{}", self.transaction_id, self.index)
+    }
 }
 
 impl TransactionOutpointInner {
@@ -50,21 +54,36 @@ impl TryFrom<&JsValue> for TransactionOutpointInner {
     }
 }
 
-/// Represents a Kaspa transaction outpoint
+/// Represents a Kaspa transaction outpoint.
+/// NOTE: This struct is immutable - to create a custom outpoint
+/// use the `TransactionOutpoint::new` constructor. (in JavaScript
+/// use `new TransactionOutpoint(transactionId, index)`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
 pub struct TransactionOutpoint {
-    inner: Arc<Mutex<TransactionOutpointInner>>,
+    inner: Arc<TransactionOutpointInner>,
 }
 
 impl TransactionOutpoint {
-    pub fn inner(&self) -> MutexGuard<'_, TransactionOutpointInner> {
-        self.inner.lock().unwrap()
+    #[inline(always)]
+    pub fn inner(&self) -> &TransactionOutpointInner {
+        &self.inner
     }
 
+    #[inline(always)]
     pub fn transaction_id(&self) -> TransactionId {
-        self.inner.lock().unwrap().transaction_id
+        self.inner().transaction_id
+    }
+
+    #[inline(always)]
+    pub fn transaction_id_as_ref(&self) -> &TransactionId {
+        &self.inner().transaction_id
+    }
+
+    #[inline(always)]
+    pub fn id(&self) -> &TransactionOutpointInner {
+        self.inner()
     }
 }
 
@@ -72,7 +91,7 @@ impl TransactionOutpoint {
 impl TransactionOutpoint {
     #[wasm_bindgen(constructor)]
     pub fn new(transaction_id: TransactionId, index: u32) -> TransactionOutpoint {
-        Self { inner: Arc::new(Mutex::new(TransactionOutpointInner { transaction_id, index })) }
+        Self { inner: Arc::new(TransactionOutpointInner { transaction_id, index }) }
     }
 
     #[wasm_bindgen(js_name = "getId")]
@@ -85,25 +104,15 @@ impl TransactionOutpoint {
         self.inner().transaction_id.to_string()
     }
 
-    #[wasm_bindgen(setter, js_name = transactionId)]
-    pub fn set_transaction_id_from_str(&self, transaction_id: &str) -> Result<(), Error> {
-        self.inner().transaction_id = Hash::from_str(transaction_id)?;
-        Ok(())
-    }
-
     #[wasm_bindgen(getter, js_name = index)]
     pub fn get_index(&self) -> TransactionIndexType {
         self.inner().index
-    }
-    #[wasm_bindgen(setter, js_name = index)]
-    pub fn set_index(&self, index: TransactionIndexType) {
-        self.inner().index = index;
     }
 }
 
 impl std::fmt::Display for TransactionOutpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner();
         write!(f, "({}, {})", inner.transaction_id, inner.index)
     }
 }
@@ -112,13 +121,13 @@ impl TryFrom<JsValue> for TransactionOutpoint {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
         let inner: TransactionOutpointInner = js_value.as_ref().try_into()?;
-        Ok(TransactionOutpoint { inner: Arc::new(Mutex::new(inner)) })
+        Ok(TransactionOutpoint { inner: Arc::new(inner) })
     }
 }
 
 impl From<cctx::TransactionOutpoint> for TransactionOutpoint {
     fn from(outpoint: cctx::TransactionOutpoint) -> Self {
-        let transaction_id = outpoint.transaction_id; //.to_string();
+        let transaction_id = outpoint.transaction_id;
         let index = outpoint.index;
         TransactionOutpoint::new(transaction_id, index)
     }

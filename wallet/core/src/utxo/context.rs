@@ -1,21 +1,22 @@
 use crate::events::Events;
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::{Account, AccountId, Balance};
-use crate::storage::TransactionType;
-use crate::utxo::{Binding, PendingUtxoEntryReference, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext};
+use crate::runtime::{AccountId, Balance};
+use crate::storage::{TransactionRecord, TransactionType};
+use crate::utxo::{
+    PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext,
+};
 use kaspa_rpc_core::GetUtxosByAddressesResponse;
 use serde_wasm_bindgen::from_value;
-use sorted_insert::SortedInsertBinary;
+use sorted_insert::SortedInsertBinaryByKey;
 use workflow_wasm::abi::ref_from_abi;
-// use std::collections::HashMap;
 
 static PROCESSOR_ID_SEQUENCER: AtomicU64 = AtomicU64::new(0);
 fn next_processor_id() -> u64 {
     PROCESSOR_ID_SEQUENCER.fetch_add(1, Ordering::SeqCst)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct UtxoContextId(pub(crate) u64);
 
 impl Default for UtxoContextId {
@@ -44,7 +45,6 @@ impl UtxoContextId {
     pub fn short(&self) -> String {
         let hex = self.to_hex();
         format!("[{}]", &hex[0..4])
-        // format!("{}..{}", &hex[0..4], &hex[hex.len() - 4..])
     }
 }
 
@@ -84,39 +84,14 @@ pub struct Context {
     pub(crate) consumed: HashMap<UtxoEntryId, Consumed>,
     pub(crate) map: HashMap<UtxoEntryId, UtxoEntryReference>,
     balance: Option<Balance>,
-    binding: Binding,
     addresses: Arc<DashSet<Arc<Address>>>,
 }
 
-// impl Default for Context {
-//     fn default() -> Self {
-//         Self::new()
-//     }
-// }
 
 impl Context {
-    // fn new() -> Self {
-    //     Self {
-    //         mature: vec![],
-    //         pending: HashMap::default(),
-    //         map: HashMap::default(),
-    //         consumed: HashMap::default(),
-    //         balance: None,
-    //         binding: Binding::default(),
-    //         addresses: Arc::new(DashSet::default()),
-    //     }
-    // }
 
-    fn new_with_mature(entries: Vec<UtxoEntryReference>) -> Self {
-        Self {
-            mature: entries,
-            pending: HashMap::default(),
-            map: HashMap::default(),
-            consumed: HashMap::default(),
-            balance: None,
-            binding: Binding::default(),
-            addresses: Arc::new(DashSet::default()),
-        }
+    fn new_with_mature(mature: Vec<UtxoEntryReference>) -> Self {
+        Self { mature, ..Default::default() }
     }
 
     pub fn clear(&mut self) {
@@ -130,13 +105,20 @@ impl Context {
 }
 
 struct Inner {
+    id: UtxoContextId,
+    binding: UtxoContextBinding,
     context: Mutex<Context>,
     processor: UtxoProcessor,
 }
 
 impl Inner {
-    pub fn new(processor: &UtxoProcessor) -> Self {
-        Self { context: Mutex::new(Context::default()), processor: processor.clone() }
+    pub fn new(processor: &UtxoProcessor, binding: UtxoContextBinding) -> Self {
+        Self { id: binding.id(), binding, context: Mutex::new(Context::default()), processor: processor.clone() }
+    }
+
+    pub fn new_with_mature_entries(processor: &UtxoProcessor, binding: UtxoContextBinding, mature: Vec<UtxoEntryReference>) -> Self {
+        let context = Context::new_with_mature(mature);
+        Self { id: binding.id(), binding, context: Mutex::new(context), processor: processor.clone() }
     }
 }
 
@@ -166,8 +148,16 @@ impl UtxoContext {
 }
 
 impl UtxoContext {
-    pub fn new(processor: &UtxoProcessor) -> Self {
-        Self { inner: Arc::new(Inner::new(processor)) }
+    pub fn new(processor: &UtxoProcessor, binding: UtxoContextBinding) -> Self {
+        Self { inner: Arc::new(Inner::new(processor, binding)) }
+    }
+
+    pub fn new_with_mature_entries(
+        processor: &UtxoProcessor,
+        binding: UtxoContextBinding,
+        mature_entries: Vec<UtxoEntryReference>,
+    ) -> Self {
+        Self { inner: Arc::new(Inner::new_with_mature_entries(processor, binding, mature_entries)) }
     }
 
     pub fn context(&self) -> MutexGuard<Context> {
@@ -178,20 +168,16 @@ impl UtxoContext {
         &self.inner.processor
     }
 
-    pub fn bind_to_account(&self, account: &Arc<Account>) {
-        self.context().binding = Binding::Account(account.clone());
-    }
-
-    pub fn bind_to_id(&self, id: UtxoContextId) {
-        self.context().binding = Binding::Id(id);
-    }
-
-    pub fn binding(&self) -> Binding {
-        self.context().binding.clone()
+    pub fn binding(&self) -> UtxoContextBinding {
+        self.inner.binding.clone()
     }
 
     pub fn id(&self) -> UtxoContextId {
-        self.context().binding.id()
+        self.inner.id
+    }
+
+    pub fn id_as_ref(&self) -> &UtxoContextId {
+        &self.inner.id
     }
 
     pub fn mature_utxo_size(&self) -> usize {
@@ -236,32 +222,37 @@ impl UtxoContext {
     }
 
     /// Removes entries from mature utxo set and adds them to the consumed utxo set.
-    // pub fn consume(&self, entries : &[UtxoEntryReference]) -> Result<()> {
-    // pub fn consume(&self, entries: &UtxoEntries) -> Result<()> {
     pub fn consume(&self, entries: &[UtxoEntryReference]) -> Result<()> {
+        log_info!("CONSUME ENTRIES: {}", entries.len());
+
         let mut context = self.context();
-        context.mature.retain(|entry| entries.contains(entry));
+        log_info!("MATURE SIZE: {}", context.mature.len());
+        // !entries.iter().any(|e| e.id == entry.id)
+        context.mature.retain(|entry| !entries.contains(entry));
+        log_info!("MATURE SIZE AFTER RETAIN: {}", context.mature.len());
+        log_info!("CONSUMED SIZE BEFORE INSERT: {}", context.consumed.len());
         let now = Instant::now();
         entries.iter().for_each(|entry| {
-            context.consumed.insert(entry.id(), (entry, &now).into());
+            context.consumed.insert(entry.id().clone(), (entry, &now).into());
         });
+        log_info!("CONSUMED SIZE AFTER INSERT: {}", context.consumed.len());
         Ok(())
     }
 
     /// Insert `utxo_entry` into the `UtxoSet`.
     /// NOTE: The insert will be ignored if already present in the inner map.
     pub async fn insert(&self, utxo_entry: UtxoEntryReference, current_daa_score: u64) -> Result<()> {
-        // log_trace!("inserting utxo_entry: {:?}", utxo_entry);
+        log_trace!("NEW UTXO INCOMING: {:?}", utxo_entry.id());
         let mut context = self.context();
 
-        if let std::collections::hash_map::Entry::Vacant(e) = context.map.entry(utxo_entry.id()) {
+        if let std::collections::hash_map::Entry::Vacant(e) = context.map.entry(utxo_entry.id().clone()) {
             e.insert(utxo_entry.clone());
             if utxo_entry.is_mature(current_daa_score) {
-                context.mature.sorted_insert_asc_binary(utxo_entry);
+                context.mature.sorted_insert_binary_asc_by_key(utxo_entry, |entry| entry.amount_as_ref());
                 Ok(())
             } else {
-                context.pending.insert(utxo_entry.id(), utxo_entry.clone());
-                self.processor().pending().insert(utxo_entry.id(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
+                context.pending.insert(utxo_entry.id().clone(), utxo_entry.clone());
+                self.processor().pending().insert(utxo_entry.id().clone(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
                 Ok(())
             }
         } else {
@@ -272,19 +263,25 @@ impl UtxoContext {
 
     pub async fn remove(&self, ids: Vec<UtxoEntryId>) -> Result<Vec<UtxoEntryVariant>> {
         let mut context = self.context();
+        log_info!("REMOVE (A) - MATURE SIZE: {}", context.mature.len());
 
         let mut removed = vec![];
 
         let mut remove_mature_ids = vec![];
         for id in ids.into_iter() {
             // remove from local map
+            log_info!("TRYING TO REMOVE FROM LOCAL MAP: {id}");
+
             if context.map.remove(&id).is_some() {
+                log_info!("TRYING TO REMOVE FROM LOCAL MAP (HAS SOME): {id}");
                 if let Some(pending) = context.pending.remove(&id) {
+                    log_info!("FOUND ONE PENDING: {id}");
                     removed.push(UtxoEntryVariant::Pending(pending));
                     if self.processor().pending().remove(&id).is_none() {
                         log_error!("Error: unable to remove utxo entry from global pending (with context)");
                     }
                 } else {
+                    log_info!("DID NOT FIND PENDING - REMOVED FROM MATURE: {id}");
                     remove_mature_ids.push(id);
                 }
             } else {
@@ -292,39 +289,72 @@ impl UtxoContext {
             }
         }
 
+        log_info!("REMOVE (B) - MATURE SIZE: {}", context.mature.len());
+
         let remove_mature_ids = remove_mature_ids
             .into_iter()
             .filter(|id| {
                 // inner.consumed.remove(id).is_none()
                 if let Some(consumed) = context.consumed.remove(id) {
+                    log_info!("REMOVED CONSUMED: {id}");
+
                     removed.push(UtxoEntryVariant::Consumed(consumed.entry));
                     false
                 } else {
+                    log_info!("UNABLE TO REMOVE CONSUMED (NOT FOUND): {id}");
                     true
                 }
             })
             .collect::<Vec<_>>();
+
+        log_info!("REMOVE (C) - MATURE SIZE: {}", context.mature.len());
+
         context.mature.retain(|entry| {
             if remove_mature_ids.contains(&entry.id()) {
+                // log_info!("REMOVE MATURE VIA REMOVED LIST: {}", entry.id());
                 removed.push(UtxoEntryVariant::Mature(entry.clone()));
                 false
             } else {
+                // log_info!("MATURE NOT IN REMOVED LIST - RETAINING {}", entry.id());
                 true
             }
         });
 
+        log_info!("REMOVE (D) - MATURE SIZE: {}", context.mature.len());
+
         Ok(removed)
     }
 
-    pub fn promote(&self, utxo_entry: UtxoEntryReference) {
-        let id = utxo_entry.id();
-        let mut context = self.context();
-        if context.pending.remove(&id).is_some() {
-            context.mature.sorted_insert_asc_binary(utxo_entry);
-        } else {
-            log_error!("Error: non-pending utxo promotion!");
+    pub async fn promote(&self, utxos: Vec<UtxoEntryReference>) -> Result<()> {
+        let transactions = HashMap::group_from(utxos.iter().map(|utxo| (utxo.transaction_id(), utxo.clone())));
+
+        for (txid, utxos) in transactions.into_iter() {
+            for utxo_entry in utxos.iter() {
+                // let id = utxo_entry.id();
+                let mut context = self.context();
+                if context.pending.remove(utxo_entry.id_as_ref()).is_some() {
+                    context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
+                } else {
+                    log_error!("Error: non-pending utxo promotion!");
+                }
+            }
+
+            let record = TransactionRecord::new(self, TransactionType::Credit, txid, utxos);
+            self.processor().notify(Events::Maturity { record }).await?;
         }
+
+        Ok(())
     }
+
+    // pub fn promote(&self, utxo_entry: UtxoEntryReference) {
+    //     let id = utxo_entry.id();
+    //     let mut context = self.context();
+    //     if context.pending.remove(&id).is_some() {
+    //         context.mature.sorted_insert_binary_asc_by_key(utxo_entry, |entry| entry.amount_as_ref());
+    //     } else {
+    //         log_error!("Error: non-pending utxo promotion!");
+    //     }
+    // }
 
     pub async fn extend(&self, utxo_entries: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
         let mut context = self.context();
@@ -369,7 +399,7 @@ impl UtxoContext {
         });
 
         removed.into_iter().for_each(|entry| {
-            context.mature.sorted_insert_asc_binary(entry);
+            context.mature.sorted_insert_binary_asc_by_key(entry, |entry| entry.amount_as_ref());
         });
 
         Ok(())
@@ -397,7 +427,7 @@ impl UtxoContext {
 
         let pending = HashMap::group_from(utxos.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
         for (txid, utxos) in pending.into_iter() {
-            let record = (self, TransactionType::Credit, txid, utxos).into();
+            let record = TransactionRecord::new(self, TransactionType::Credit, txid, utxos);
             self.processor().notify(Events::Pending { record }).await?;
         }
 
@@ -432,17 +462,17 @@ impl UtxoContext {
         let pending = HashMap::group_from(pending.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
 
         for (txid, utxos) in mature.into_iter() {
-            let record = (self, TransactionType::Debit, txid, utxos).into();
+            let record = TransactionRecord::new(self, TransactionType::Debit, txid, utxos);
             self.processor().notify(Events::External { record }).await?;
         }
 
         for (txid, utxos) in consumed.into_iter() {
-            let record = (self, TransactionType::Debit, txid, utxos).into();
+            let record = TransactionRecord::new(self, TransactionType::Debit, txid, utxos);
             self.processor().notify(Events::Debit { record }).await?;
         }
 
         for (txid, utxos) in pending.into_iter() {
-            let record = (self, TransactionType::Reorg, txid, utxos).into();
+            let record = TransactionRecord::new(self, TransactionType::Reorg, txid, utxos);
             self.processor().notify(Events::Reorg { record }).await?;
         }
 
@@ -533,7 +563,7 @@ impl UtxoContext {
 
     // #[wasm_bindgen(constructor)]
     // pub fn constructor(core: &JsValue, id_or_account : &JsValue, utxo_by_address_response: JsValue) -> Result<UtxoProcessor> {
-    pub fn from(processor: &JsValue, utxo_by_address_response: JsValue) -> Result<UtxoContext> {
+    pub fn from(processor: &JsValue, id: u32, utxo_by_address_response: JsValue) -> Result<UtxoContext> {
         // pub fn from(utxo_by_address_response: JsValue) -> Result<UtxoProcessor> {
         //log_info!("js_value: {:?}", js_value);
         let processor = ref_from_abi!(UtxoProcessor, processor)?;
@@ -546,11 +576,14 @@ impl UtxoContext {
         //log_info!("entries ...");
         entries.sort();
 
-        let utxos = UtxoContext {
-            inner: Arc::new(Inner { context: Mutex::new(Context::new_with_mature(entries)), processor }), // id,
-        };
+        let binding = UtxoContextBinding::Id(UtxoContextId::new(id as u64));
+
+        let utxo_context = UtxoContext::new_with_mature_entries(&processor, binding, entries);
+        // let utxos = UtxoContext {
+        //     inner: Arc::new(Inner { context: Mutex::new(Context::new_with_mature(entries)), processor,  }), // id,
+        // };
         //log_info!("utxo_set ...");
-        Ok(utxos)
+        Ok(utxo_context)
     }
 
     #[wasm_bindgen(js_name=calculateBalance)]
@@ -561,5 +594,31 @@ impl UtxoContext {
     #[wasm_bindgen(js_name=createSelectionContext)]
     pub fn js_create_selection_context(&self) -> UtxoSelectionContext {
         UtxoSelectionContext::new(self)
+    }
+}
+
+impl Eq for UtxoContext {}
+
+impl PartialEq for UtxoContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+    }
+}
+
+impl std::hash::Hash for UtxoContext {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id().hash(state);
+    }
+}
+
+impl Ord for UtxoContext {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id().cmp(other.id_as_ref())
+    }
+}
+
+impl PartialOrd for UtxoContext {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.id().cmp(other.id_as_ref()))
     }
 }

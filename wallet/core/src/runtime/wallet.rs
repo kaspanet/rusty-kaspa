@@ -753,8 +753,9 @@ mod test {
     use std::{str::FromStr, thread::sleep, time};
 
     use super::*;
+    use crate::utxo::{UtxoContext, UtxoContextBinding};
+    use crate::wasm::tx::signer::sign_mutable_transaction;
     use crate::wasm::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutput};
-    use crate::{utxo::UtxoContext, wasm::tx::signer::sign_mutable_transaction};
     use kaspa_consensus_core::subnets::SubnetworkId;
     //use kaspa_consensus_core::tx::ScriptPublicKey;
     //use kaspa_consensus_core::tx::MutableTransaction;
@@ -772,7 +773,7 @@ mod test {
         core: &UtxoProcessor,
     ) -> Result<UtxoContext> {
         let utxos = rpc.get_utxos_by_addresses(addresses).await?;
-        let utxo_set = UtxoContext::new(core);
+        let utxo_set = UtxoContext::new(core, UtxoContextBinding::default());
         let entries = utxos.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
         for entry in entries.into_iter() {
             utxo_set.insert(entry, current_daa_score).await?;

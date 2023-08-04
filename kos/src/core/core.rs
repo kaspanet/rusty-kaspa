@@ -223,7 +223,6 @@ impl Core {
             .build()?;
 
         let metrics_item = MenuItemBuilder::new().label("Metrics").submenus(vec![toggle_metrics]).build()?;
-
         MenubarBuilder::new("Kaspa OS", is_macos())
             .mac_hide_edit(true)
             .mac_hide_window(true)

@@ -19,6 +19,10 @@ struct Inner {
     mutable_tx: Mutex<SignableTransaction>,
     addresses: Vec<Address>,
     is_committed: AtomicBool,
+    input_aggregate: u64,
+    output_aggregate: u64,
+    fees: u64,
+    is_final: bool,
 }
 pub struct PendingTransaction {
     inner: Arc<Inner>,
@@ -30,6 +34,10 @@ impl PendingTransaction {
         transaction: Transaction,
         utxo_entries: Vec<UtxoEntryReference>,
         addresses: Vec<Address>,
+        input_aggregate: u64,
+        output_aggregate: u64,
+        fees: u64,
+        is_final: bool,
     ) -> Result<Self> {
         let entries = utxo_entries.iter().map(|e| e.utxo.entry.clone()).collect::<Vec<_>>();
         let mutable_tx = Mutex::new(SignableTransaction::with_entries(transaction, entries));
@@ -40,6 +48,10 @@ impl PendingTransaction {
                 utxo_entries,
                 addresses,
                 is_committed: AtomicBool::new(false),
+                input_aggregate,
+                output_aggregate,
+                fees,
+                is_final,
             }),
         })
     }
@@ -51,6 +63,26 @@ impl PendingTransaction {
     /// Addresses used by the pending transaction
     pub fn addresses(&self) -> &Vec<Address> {
         &self.inner.addresses
+    }
+
+    pub fn fees(&self) -> u64 {
+        self.inner.fees
+    }
+
+    pub fn input_aggregate(&self) -> u64 {
+        self.inner.input_aggregate
+    }
+
+    pub fn output_aggregate(&self) -> u64 {
+        self.inner.output_aggregate
+    }
+
+    pub fn is_final(&self) -> bool {
+        self.inner.is_final
+    }
+
+    pub fn is_batch(&self) -> bool {
+        !self.inner.is_final
     }
 
     fn commit(&self) -> Result<()> {

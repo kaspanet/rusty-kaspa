@@ -4,17 +4,14 @@ use crate::address::{build_derivate_paths, AddressManager};
 use crate::result::Result;
 use crate::runtime::{AtomicBalance, Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
-// use crate::signer::sign_mutable_transaction;
 use crate::imports::*;
 use crate::storage::interface::AccessContext;
 use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, KeydataSigner, PaymentDestination, PendingTransaction, Signer};
-use crate::utxo::{UtxoContext, UtxoEntryReference};
-// use crate::utxo::UtxoStream;
+use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoEntryReference};
 use crate::AddressDerivationManager;
 use faster_hex::hex_string;
 use futures::future::join_all;
-// use futures::pin_mut;
 use kaspa_bip32::ChildNumber;
 use kaspa_notify::listener::ListenerId;
 use secp256k1::ONE_KEY;
@@ -149,7 +146,7 @@ pub struct Account {
     is_connected: AtomicBool,
     pub account_kind: AccountKind,
     pub account_index: u64,
-    // pub cosigner_index: u32,
+    pub cosigner_index: u32,
     pub prv_key_data_id: PrvKeyDataId,
     pub ecdsa: bool,
     pub derivation: Arc<AddressDerivationManager>,
@@ -184,9 +181,10 @@ impl Account {
         );
 
         let inner = Inner { listener_id: None, stored };
-        let utxo_context = UtxoContext::new(wallet.utxo_processor());
+        let id = AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index);
+        let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
         let account = Arc::new(Account {
-            id: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
+            id, //: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
             wallet: wallet.clone(),
             utxo_context: utxo_context.clone(),
             // balance: Mutex::new(None), // Arc::new(AtomicU64::new(0)),
@@ -194,12 +192,13 @@ impl Account {
             inner: Arc::new(Mutex::new(inner)),
             account_kind,
             account_index,
+            cosigner_index: pub_key_data.cosigner_index.unwrap_or(0),
             prv_key_data_id,
             ecdsa: false,
             derivation,
         });
 
-        utxo_context.bind_to_account(&account);
+        // utxo_context.bind_to_account(&account);
 
         Ok(account)
     }
@@ -218,9 +217,10 @@ impl Account {
         .await?;
 
         let inner = Inner { listener_id: None, stored: stored.clone() };
-        let utxo_context = UtxoContext::new(wallet.utxo_processor());
+        let id = AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index);
+        let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
         let account = Arc::new(Account {
-            id: AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index),
+            id, //: AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index),
             wallet: wallet.clone(),
             utxo_context: utxo_context.clone(),
             // balance: Mutex::new(None), //Arc::new(AtomicU64::new(0)),
@@ -228,12 +228,13 @@ impl Account {
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
             account_index: stored.account_index,
+            cosigner_index: stored.cosigner_index,
             prv_key_data_id: stored.prv_key_data_id,
             ecdsa: stored.ecdsa,
             derivation,
         });
 
-        utxo_context.bind_to_account(&account);
+        // utxo_context.bind_to_account(&account);
 
         Ok(account)
     }
@@ -432,10 +433,6 @@ impl Account {
         Ok(())
     }
 
-    pub fn cosigner_index(&self) -> u32 {
-        self.inner().stored.pub_key_data.cosigner_index.unwrap_or(0)
-    }
-
     pub(crate) fn create_private_keys<'l>(
         &self,
         keydata: &PrvKeyData,
@@ -446,7 +443,7 @@ impl Account {
         let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
         let xkey = payload.get_xprv(payment_secret.as_ref())?;
 
-        let cosigner_index = self.inner().stored.pub_key_data.cosigner_index.unwrap_or(0);
+        let cosigner_index = self.cosigner_index;
         let paths = build_derivate_paths(self.account_kind, self.account_index, cosigner_index)?;
         let receive_xkey = xkey.clone().derive_path(paths.0)?;
         let change_xkey = xkey.derive_path(paths.1)?;

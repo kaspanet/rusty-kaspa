@@ -140,11 +140,33 @@ impl TransactionRecord {
 }
 
 impl TransactionRecord {
-    pub async fn format(&self, wallet: &Arc<Wallet>) -> String {
+    pub fn new(
+        utxo_context: &UtxoContext,
+        transaction_type: TransactionType,
+        id: TransactionId,
+        utxos: Vec<UtxoEntryReference>,
+    ) -> Self {
+        let binding = Binding::from(utxo_context.binding());
+        let block_daa_score = utxos[0].utxo.entry.block_daa_score;
+        let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
+
+        TransactionRecord {
+            id,
+            unixtime: None,
+            binding,
+            utxo_entries,
+            block_daa_score,
+            transaction_type,
+            network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
+            metadata: None,
+        }
+    }
+
+    pub async fn format(&self, wallet: &Arc<Wallet>) -> Vec<String> {
         self.format_with_args(wallet, None, None, false, None).await
     }
 
-    pub async fn format_with_state(&self, wallet: &Arc<Wallet>, state: Option<&str>) -> String {
+    pub async fn format_with_state(&self, wallet: &Arc<Wallet>, state: Option<&str>) -> Vec<String> {
         self.format_with_args(wallet, state, None, false, None).await
     }
 
@@ -155,7 +177,7 @@ impl TransactionRecord {
         current_daa_score: Option<u64>,
         history: bool,
         account: Option<Arc<runtime::Account>>,
-    ) -> String {
+    ) -> Vec<String> {
         let TransactionRecord { id, binding, block_daa_score, transaction_type, utxo_entries, .. } = self;
 
         let name = match binding {
@@ -194,7 +216,6 @@ impl TransactionRecord {
             })
             .unwrap_or_default();
 
-        // let current_daa_score = current_daa_score.map(|score| score ).unwrap_or_else(|| "".to_string()
         let block_daa_score = block_daa_score.separated_string();
         let state = state.unwrap_or(&maturity);
         let mut lines = vec![format!("{name} {id} @{block_daa_score} DAA - {kind} {state}")];
@@ -215,27 +236,6 @@ impl TransactionRecord {
             lines.push(format!("    {amount} {suffix} {is_coinbase}"));
         }
 
-        lines.join("\r\n")
-    }
-}
-
-impl From<(&UtxoContext, TransactionType, TransactionId, Vec<UtxoEntryReference>)> for TransactionRecord {
-    fn from(
-        (utxo_context, transaction_type, id, utxos): (&UtxoContext, TransactionType, TransactionId, Vec<UtxoEntryReference>),
-    ) -> Self {
-        let binding = Binding::from(utxo_context.binding());
-        let block_daa_score = utxos[0].utxo.entry.block_daa_score;
-        let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
-
-        TransactionRecord {
-            id,
-            unixtime: None,
-            binding,
-            utxo_entries,
-            block_daa_score,
-            transaction_type,
-            network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
-            metadata: None,
-        }
+        lines
     }
 }

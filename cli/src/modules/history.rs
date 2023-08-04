@@ -63,8 +63,8 @@ impl History {
 
                 match store.load_single(&binding, &network_id, &id).await {
                     Ok(tx) => {
-                        let text = tx.format_with_args(&ctx.wallet(), None, current_daa_score, true, Some(account.clone())).await;
-                        tprintln!(ctx, "{text}");
+                        let lines = tx.format_with_args(&ctx.wallet(), None, current_daa_score, true, Some(account.clone())).await;
+                        lines.iter().for_each(|line| tprintln!(ctx, "{line}"));
                     }
                     Err(err) => {
                         terrorln!(ctx, "{err}");

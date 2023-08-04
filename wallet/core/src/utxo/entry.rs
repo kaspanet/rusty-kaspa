@@ -115,12 +115,29 @@ impl UtxoEntryReference {
 }
 
 impl UtxoEntryReference {
+    #[inline(always)]
     pub fn id(&self) -> UtxoEntryId {
         self.utxo.outpoint.inner().clone()
     }
 
+    #[inline(always)]
+    pub fn id_as_ref(&self) -> &UtxoEntryId {
+        self.utxo.outpoint.inner()
+    }
+
+    #[inline(always)]
+    pub fn amount_as_ref(&self) -> &u64 {
+        &self.utxo.entry.amount
+    }
+
+    #[inline(always)]
     pub fn transaction_id(&self) -> TransactionId {
         self.utxo.outpoint.transaction_id()
+    }
+
+    #[inline(always)]
+    pub fn transaction_id_as_ref(&self) -> &TransactionId {
+        self.utxo.outpoint.transaction_id_as_ref()
     }
 }
 
@@ -152,52 +169,78 @@ impl Eq for UtxoEntryReference {}
 
 impl PartialEq for UtxoEntryReference {
     fn eq(&self, other: &Self) -> bool {
-        self.amount() == other.amount()
-    }
-}
-
-impl PartialOrd for UtxoEntryReference {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.amount().cmp(&other.amount()))
+        self.id() == other.id()
     }
 }
 
 impl Ord for UtxoEntryReference {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.amount().cmp(&other.amount())
+        self.id().cmp(&other.id())
     }
 }
 
-#[derive(Clone)]
-pub struct PendingUtxoEntryReference {
+impl PartialOrd for UtxoEntryReference {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.id().cmp(&other.id()))
+    }
+}
+
+pub struct PendingUtxoEntryReferenceInner {
     pub entry: UtxoEntryReference,
     pub utxo_context: UtxoContext,
 }
 
+#[derive(Clone)]
+pub struct PendingUtxoEntryReference {
+    pub inner: Arc<PendingUtxoEntryReferenceInner>,
+}
+
 impl PendingUtxoEntryReference {
     pub fn new(entry: UtxoEntryReference, utxo_context: UtxoContext) -> Self {
-        Self { entry, utxo_context }
-    }
-
-    pub fn id(&self) -> UtxoEntryId {
-        self.entry.id()
+        Self { inner: Arc::new(PendingUtxoEntryReferenceInner { entry, utxo_context }) }
     }
 
     #[inline(always)]
+    pub fn inner(&self) -> &PendingUtxoEntryReferenceInner {
+        &self.inner
+    }
+
+    #[inline(always)]
+    pub fn entry(&self) -> &UtxoEntryReference {
+        &self.inner().entry
+    }
+
+    #[inline(always)]
+    pub fn utxo_context(&self) -> &UtxoContext {
+        &self.inner().utxo_context
+    }
+
+    #[inline(always)]
+    pub fn id(&self) -> UtxoEntryId {
+        self.inner().entry.id()
+    }
+
+    #[inline(always)]
+    pub fn transaction_id(&self) -> TransactionId {
+        self.inner().entry.transaction_id()
+    }
+
+
+    #[inline(always)]
     pub fn is_mature(&self, current_daa_score: u64) -> bool {
-        self.entry.is_mature(current_daa_score)
+        self.inner().entry.is_mature(current_daa_score)
     }
 }
 
 impl From<(&Arc<Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
     fn from((account, entry): (&Arc<Account>, UtxoEntryReference)) -> Self {
-        Self { entry, utxo_context: (*account.utxo_context()).clone() }
+        Self::new(entry, (*account.utxo_context()).clone())
     }
 }
 
 impl From<PendingUtxoEntryReference> for UtxoEntryReference {
-    fn from(entry: PendingUtxoEntryReference) -> Self {
-        entry.entry
+    fn from(pending: PendingUtxoEntryReference) -> Self {
+        pending.inner().entry.clone()
     }
 }
 

@@ -11,7 +11,7 @@ use workflow_rpc::client::Ctl;
 
 use crate::imports::*;
 use crate::result::Result;
-use crate::utxo::{PendingUtxoEntryReference, UtxoContext, UtxoContextId, UtxoEntryId, UtxoEntryReference};
+use crate::utxo::{PendingUtxoEntryReference, UtxoContext, UtxoEntryId, UtxoEntryReference};
 use crate::{events::Events, runtime::SyncMonitor};
 use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
@@ -199,18 +199,17 @@ impl UtxoProcessor {
             mature_entries
         };
 
-        let mut contexts = HashMap::<UtxoContextId, UtxoContext>::default();
-        for mature in mature_entries.into_iter() {
-            let utxo_context = &mature.utxo_context;
-            let entry = mature.entry;
-            utxo_context.promote(entry);
+        // ------
 
-            contexts.insert(utxo_context.id(), utxo_context.clone());
+        let promotions =
+            HashMap::group_from(mature_entries.into_iter().map(|utxo| (utxo.inner.utxo_context.clone(), utxo.inner.entry.clone())));
+        let contexts = promotions.keys().cloned().collect::<Vec<_>>();
+
+        for (context, utxos) in promotions.into_iter() {
+            context.promote(utxos).await?;
         }
 
-        let contexts = contexts.values().cloned().collect::<Vec<_>>();
-
-        for context in contexts.iter() {
+        for context in contexts.into_iter() {
             context.update_balance().await?;
         }
 
@@ -218,18 +217,6 @@ impl UtxoProcessor {
     }
 
     pub async fn handle_utxo_changed(&self, utxos: UtxosChangedNotification) -> Result<()> {
-        // log_info!("utxo changed: {:?}", utxos);
-        let added = (*utxos.added).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
-        let added = HashMap::group_from(added);
-        for (address, entries) in added.into_iter() {
-            if let Some(utxo_context) = self.address_to_utxo_context(&address) {
-                let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
-                utxo_context.handle_utxo_added(entries).await?;
-            } else {
-                log_error!("receiving UTXO Changed 'added' notification for an unknown address: {}", address);
-            }
-        }
-
         let removed = (*utxos.removed).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
         let removed = HashMap::group_from(removed);
         for (address, entries) in removed.into_iter() {
@@ -238,6 +225,17 @@ impl UtxoProcessor {
                 utxo_context.handle_utxo_removed(entries).await?;
             } else {
                 log_error!("receiving UTXO Changed 'removed' notification for an unknown address: {}", address);
+            }
+        }
+
+        let added = (*utxos.added).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
+        let added = HashMap::group_from(added);
+        for (address, entries) in added.into_iter() {
+            if let Some(utxo_context) = self.address_to_utxo_context(&address) {
+                let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
+                utxo_context.handle_utxo_added(entries).await?;
+            } else {
+                log_error!("receiving UTXO Changed 'added' notification for an unknown address: {}", address);
             }
         }
 

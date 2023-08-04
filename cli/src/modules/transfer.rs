@@ -42,7 +42,7 @@ impl Transfer {
             )
             .await?;
 
-        tprintln!(ctx, "Transfer: {summary}");
+        tprintln!(ctx, "Transfer - {summary}");
 
         Ok(())
     }

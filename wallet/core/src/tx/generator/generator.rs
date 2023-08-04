@@ -6,6 +6,7 @@ use crate::tx::{
 };
 use crate::utxo::UtxoEntry;
 use crate::utxo::{UtxoContext, UtxoEntryReference};
+use crate::network::NetworkId;
 use kaspa_consensus_core::tx as cctx;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_txscript::pay_to_address_script;
@@ -19,7 +20,7 @@ struct Context {
     aggregated_utxos: usize,
     // total fees of all transactions issued by
     // the single generator instance
-    aggregated_fees: u64,
+    aggregate_fees: u64,
     // number of generated transactions
     number_of_generated_transactions: usize,
     // UTXO entry consumed from the iterator but
@@ -37,6 +38,7 @@ struct Inner {
     abortable: Abortable,
     signer: Option<Arc<dyn SignerT>>,
     mass_calculator: MassCalculator,
+    network_id : NetworkId,
 
     // Utxo Context
     utxo_context: Option<UtxoContext>,
@@ -71,6 +73,7 @@ pub struct Generator {
 impl Generator {
     pub fn new(settings: GeneratorSettings, signer: Option<Arc<dyn SignerT>>, abortable: &Abortable) -> Self {
         let GeneratorSettings {
+            network_id,
             utxo_iterator,
             utxo_context,
             sig_op_count,
@@ -96,7 +99,7 @@ impl Generator {
             utxo_iterator,
             number_of_generated_transactions: 0,
             aggregated_utxos: 0,
-            aggregated_fees: 0,
+            aggregate_fees: 0,
             utxo_stash: VecDeque::default(),
             final_transaction_id: None,
             is_done: false,
@@ -107,6 +110,7 @@ impl Generator {
         let final_transaction_outputs_mass = mass_calculator.calc_mass_for_outputs(&final_transaction_outputs);
 
         let inner = Inner {
+            network_id,
             context,
             signer,
             abortable: abortable.clone(),
@@ -142,7 +146,7 @@ impl Generator {
 
     /// The total amount of fees in SOMPI consumed during the transaction generation process.
     pub fn aggregate_fees(&self) -> u64 {
-        self.context().aggregated_fees
+        self.context().aggregate_fees
     }
 
     /// The total number of UTXOs consumed during the transaction generation process.
@@ -191,7 +195,6 @@ impl Generator {
         let change_output_mass = self.inner.change_output_mass;
         let mut transaction_amount_accumulator = 0;
         let mut change_amount = 0;
-        // let mut change_amount = 0;
         let mut mass_accumulator = calc.blank_transaction_mass();
         let payload_mass = calc.calc_mass_for_payload(self.inner.final_transaction_payload.len());
 
@@ -216,12 +219,6 @@ impl Generator {
 
                 let final_tx_mass = mass_accumulator + change_output_mass + payload_mass;
                 let final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
-                // let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
-
-                // We are doing a sweep transaction.  We don't care about "include fees in amount" flag here.
-                // if !self.inner.final_transaction_include_fees_in_amount {
-                //     final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
-                // }
 
                 let change_amount = transaction_amount_accumulator - final_transaction_fees;
                 if is_standard_output_amount_dust(change_amount) {
@@ -258,10 +255,12 @@ impl Generator {
             if let Some(final_transaction_amount) = self.inner.final_transaction_amount {
                 let final_tx_mass = mass_accumulator + final_outputs_mass + payload_mass;
                 let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
+                // context.aggregate_fees += final_transaction_fees;
                 workflow_log::log_info!("final_transaction_fees A0: {final_transaction_fees:?}");
 
                 if let Fees::Exclude(fees) = self.inner.final_transaction_priority_fee {
                     final_transaction_fees += fees;
+                    // context.aggregate_fees += fees;
                 }
 
                 // if !self.inner.final_transaction_include_fees_in_amount {
@@ -276,6 +275,7 @@ impl Generator {
                     change_amount = transaction_amount_accumulator - final_transaction_total;
 
                     if is_standard_output_amount_dust(change_amount) {
+                        context.aggregate_fees += final_transaction_fees + change_amount;
                         change_amount = 0;
 
                         is_final = final_tx_mass < MAXIMUM_STANDARD_TRANSACTION_MASS;
@@ -300,6 +300,9 @@ impl Generator {
                         change_amount = transaction_amount_accumulator - final_transaction_total;
 
                         if is_standard_output_amount_dust(change_amount) {
+                            // if we encounter dust output, we do not include it in the transaction
+                            // instead, we remove it (adding it to the transaction fees)
+                            context.aggregate_fees += change_amount;
                             change_amount = 0;
 
                             is_final = final_tx_mass < MAXIMUM_STANDARD_TRANSACTION_MASS;
@@ -326,6 +329,14 @@ impl Generator {
                 final_outputs.push(output);
             }
 
+            // --- TODO gate checks
+            let input_aggregate = utxo_entry_references.iter().map(|entry| entry.amount()).sum::<u64>();
+            let output_aggregate = final_outputs.iter().map(|output| output.value).sum::<u64>();
+            let transaction_fees = input_aggregate - output_aggregate;
+            context.aggregate_fees += transaction_fees;
+            assert_eq!(transaction_amount_accumulator, input_aggregate);
+            // ---
+
             let mut tx = Transaction::new(
                 0,
                 inputs,
@@ -340,13 +351,29 @@ impl Generator {
             context.final_transaction_id = Some(tx.id());
             context.number_of_generated_transactions += 1;
 
-            Ok(Some(PendingTransaction::try_new(self, tx, utxo_entry_references, addresses.into_iter().collect())?))
+            Ok(Some(PendingTransaction::try_new(
+                self,
+                tx,
+                utxo_entry_references,
+                addresses.into_iter().collect(),
+                input_aggregate,
+                output_aggregate,
+                transaction_fees,
+                true,
+            )?))
         } else {
-            let fee = calc.calc_minimum_transaction_relay_fee_from_mass(mass_accumulator + change_output_mass);
-            workflow_log::log_info!("fee: {fee}");
-            let amount = transaction_amount_accumulator - fee;
+            let transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(mass_accumulator + change_output_mass);
+            workflow_log::log_info!("fees: {transaction_fees}");
+            let amount = transaction_amount_accumulator - transaction_fees;
             let script_public_key = pay_to_address_script(&self.inner.change_address);
             let output = TransactionOutput::new(amount, script_public_key.clone());
+
+            // --- TODO gate checks
+            let input_aggregate = utxo_entry_references.iter().map(|entry| entry.amount()).sum::<u64>();
+            let output_aggregate = output.value;
+            context.aggregate_fees += transaction_fees;
+            assert_eq!(transaction_amount_accumulator, input_aggregate);
+            // ---
 
             let mut tx = Transaction::new(
                 0,
@@ -361,15 +388,24 @@ impl Generator {
             tx.finalize();
 
             let utxo_entry_reference =
-                Self::create_utxo_entry_reference(tx.id(), amount, script_public_key, &self.inner.change_address);
+                Self::create_batch_utxo_entry_reference(tx.id(), amount, script_public_key, &self.inner.change_address);
             context.utxo_stash.push_front(utxo_entry_reference);
 
             context.number_of_generated_transactions += 1;
-            Ok(Some(PendingTransaction::try_new(self, tx, utxo_entry_references, addresses.into_iter().collect())?))
+            Ok(Some(PendingTransaction::try_new(
+                self,
+                tx,
+                utxo_entry_references,
+                addresses.into_iter().collect(),
+                input_aggregate,
+                output_aggregate,
+                transaction_fees,
+                false,
+            )?))
         }
     }
 
-    fn create_utxo_entry_reference(
+    fn create_batch_utxo_entry_reference(
         txid: TransactionId,
         amount: u64,
         script_public_key: ScriptPublicKey,
@@ -387,8 +423,9 @@ impl Generator {
         let context = self.context();
 
         GeneratorSummary {
+            network_id : self.inner.network_id,
             aggregated_utxos: context.aggregated_utxos,
-            aggregated_fees: context.aggregated_fees,
+            aggregated_fees: context.aggregate_fees,
             final_transaction_id: context.final_transaction_id,
             number_of_generated_transactions: context.number_of_generated_transactions,
         }

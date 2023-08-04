@@ -2,10 +2,13 @@ use crate::result::Result;
 use crate::runtime::Account;
 use crate::tx::{Fees, PaymentDestination};
 use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoSelectionContext};
+use crate::network::NetworkId;
 use kaspa_addresses::Address;
 use std::sync::Arc;
 
 pub struct GeneratorSettings {
+    // Network type
+    network_id : NetworkId,
     // Utxo iterator
     pub utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
     // Utxo Context
@@ -31,6 +34,7 @@ impl GeneratorSettings {
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
     ) -> Result<Self> {
+        let network_id = account.utxo_context().processor().network_id()?;
         let change_address = account.change_address().await?;
         let inner = account.inner();
         let sig_op_count = inner.stored.pub_key_data.keys.len() as u8;
@@ -39,6 +43,7 @@ impl GeneratorSettings {
         let utxo_selector = Arc::new(UtxoSelectionContext::new(account.utxo_context()));
 
         let settings = GeneratorSettings {
+            network_id,
             sig_op_count,
             minimum_signatures,
             change_address,
@@ -53,6 +58,7 @@ impl GeneratorSettings {
         Ok(settings)
     }
     pub async fn try_new_sweep_with_keydata_signer(
+        network_id: &NetworkId,
         change_address: Address,
         utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
         final_transaction_destination: PaymentDestination,
@@ -63,6 +69,7 @@ impl GeneratorSettings {
         let minimum_signatures = 1;
 
         let settings = GeneratorSettings {
+            network_id: network_id.clone(),
             sig_op_count,
             minimum_signatures,
             change_address,

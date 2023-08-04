@@ -1,26 +1,26 @@
+use runtime::AccountId;
 use crate::imports::*;
-use crate::runtime::Account;
 use crate::utxo::UtxoContextId;
 
 #[derive(Clone)]
-pub enum Binding {
+pub enum UtxoContextBinding {
     Internal(UtxoContextId),
-    Account(Arc<Account>),
+    AccountId(AccountId),
     Id(UtxoContextId),
 }
 
-impl Default for Binding {
+impl Default for UtxoContextBinding {
     fn default() -> Self {
-        Binding::Internal(UtxoContextId::default())
+        UtxoContextBinding::Internal(UtxoContextId::default())
     }
 }
 
-impl Binding {
+impl UtxoContextBinding {
     pub fn id(&self) -> UtxoContextId {
         match self {
-            Binding::Internal(id) => *id,
-            Binding::Account(account) => account.id().into(),
-            Binding::Id(id) => *id,
+            UtxoContextBinding::Internal(id) => *id,
+            UtxoContextBinding::AccountId(id) => (*id).into(), //account.id().into(),
+            UtxoContextBinding::Id(id) => *id,
         }
     }
 }
