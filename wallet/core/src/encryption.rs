@@ -84,22 +84,6 @@ impl<T> From<T> for Encryptable<T> {
 }
 
 pub struct Decrypted<T>(pub(crate) T);
-// where T: Zeroize;
-
-// impl<T> Zeroize for Decrypted<T>
-// where T: Zeroize
-
-// {
-//     fn zeroize(&mut self) {
-//         self.0.zeroize()
-//     }
-// }
-
-// impl<T> Drop for Decrypted<T> {
-//     fn drop(&mut self) {
-//         self.0.zeroize()
-//     }
-// }
 
 impl<T> AsRef<T> for Decrypted<T> {
     fn as_ref(&self) -> &T {

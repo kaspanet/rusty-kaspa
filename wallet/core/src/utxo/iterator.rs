@@ -1,5 +1,5 @@
-use super::{UtxoContext, UtxoEntryReference};
 use crate::imports::*;
+use crate::utxo::{UtxoContext, UtxoEntryReference};
 
 pub struct UtxoIterator {
     entries : Vec<UtxoEntryReference>,

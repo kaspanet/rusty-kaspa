@@ -6,7 +6,7 @@ use crate::utxo::context::UtxoContextId;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
-// #[serde(tag = "state", content = "progress")]
+#[serde(tag = "sync", content = "state")]
 pub enum SyncState {
     Proof { level: u64 },
     Headers { headers: u64, progress: u64 },
@@ -39,10 +39,6 @@ pub enum Events {
         url: String,
     },
     UtxoIndexNotEnabled,
-    // NodeSync {
-    //     #[serde(rename = "isSynced")]
-    //     is_synced: bool,
-    // },
     SyncState(SyncState),
     WalletHint {
         hint: Option<Hint>,
@@ -64,8 +60,7 @@ pub enum Events {
     UtxoProcStart,
     UtxoProcStop,
     UtxoProcError(String),
-
-    // UtxoProcessor(utxo::Events),
+    /// DAA score change
     DAAScoreChange(u64),
     // New pending transaction
     Pending {
@@ -94,8 +89,3 @@ pub enum Events {
         id: UtxoContextId,
     },
 }
-
-// #[async_trait]
-// pub trait EventConsumer: Send + Sync {
-//     async fn notify(&self, event: Events) -> Result<()>;
-// }

@@ -1,5 +1,5 @@
 use crate::imports::*;
-use crate::keypair::PrivateKey;
+use crate::wasm::keypair::PrivateKey;
 use crate::wasm::tx::MutableTransaction;
 use crate::Result;
 use itertools::Itertools;

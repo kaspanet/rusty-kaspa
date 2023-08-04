@@ -1,6 +1,6 @@
-use kaspa_rpc_core::RpcTransactionOutput;
-
 use crate::imports::*;
+use crate::wasm::tx::scriptpubkey::*;
+use kaspa_rpc_core::RpcTransactionOutput;
 // use crate::tx::limits::is_transaction_output_dust;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

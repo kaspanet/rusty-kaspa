@@ -1,3 +1,4 @@
+use crate::result::Result;
 use secp256k1::{PublicKey, Secp256k1, SecretKey, XOnlyPublicKey};
 use serde_wasm_bindgen::*;
 use std::str::FromStr;
@@ -73,7 +74,7 @@ impl From<&PrivateKey> for [u8; 32] {
 #[wasm_bindgen]
 impl PrivateKey {
     #[wasm_bindgen(constructor)]
-    pub fn new(key: &str) -> Result<PrivateKey, super::error::Error> {
+    pub fn new(key: &str) -> Result<PrivateKey> {
         Ok(Self { inner: SecretKey::from_str(key)? })
     }
 }

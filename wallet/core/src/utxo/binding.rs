@@ -19,7 +19,7 @@ impl UtxoContextBinding {
     pub fn id(&self) -> UtxoContextId {
         match self {
             UtxoContextBinding::Internal(id) => *id,
-            UtxoContextBinding::AccountId(id) => (*id).into(), //account.id().into(),
+            UtxoContextBinding::AccountId(id) => (*id).into(),
             UtxoContextBinding::Id(id) => *id,
         }
     }

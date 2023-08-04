@@ -1,10 +1,8 @@
 use crate::imports::*;
 use crate::wasm::tx::{TransactionOutput, TransactionOutputInner};
 use kaspa_txscript::pay_to_address_script;
-// use workflow_core::traits::IsNotEmpty;
 
 pub enum PaymentDestination {
-    // Address(Address),
     Change,
     PaymentOutputs(PaymentOutputs),
 }
@@ -16,26 +14,14 @@ impl PaymentDestination {
             Self::PaymentOutputs(payment_outputs) => Some(payment_outputs.amount()),
         }
     }
-
-    // pub fn mass(&self) -> u64 {
-
-    // }
 }
 
-// impl From<Address> for PaymentDestination {
-//     fn from(address: Address) -> Self {
-//         Self::Address(address)
-//     }
-// }
-
 #[derive(Debug)]
-// #[wasm_bindgen(inspectable)]
-// #[allow(dead_code)] //TODO: remove me
+#[wasm_bindgen(inspectable)]
 pub struct PaymentOutput {
-    // #[wasm_bindgen(getter_with_clone)]
+    #[wasm_bindgen(getter_with_clone)]
     pub address: Address,
     pub amount: u64,
-    // utxo_entry: Option<Arc<UtxoEntry>>,
 }
 
 impl TryFrom<JsValue> for PaymentOutput {
@@ -60,9 +46,9 @@ impl TryFrom<JsValue> for PaymentOutput {
     }
 }
 
-// #[wasm_bindgen]
+#[wasm_bindgen]
 impl PaymentOutput {
-    // #[wasm_bindgen(constructor)]
+    #[wasm_bindgen(constructor)]
     pub fn new(address: Address, amount: u64) -> Self {
         Self { address, amount }
     }
@@ -81,9 +67,9 @@ impl From<PaymentOutput> for PaymentDestination {
 }
 
 #[derive(Debug)]
-// #[wasm_bindgen]
+#[wasm_bindgen]
 pub struct PaymentOutputs {
-    // #[wasm_bindgen(skip)]
+    #[wasm_bindgen(skip)]
     pub outputs: Vec<PaymentOutput>,
 }
 
@@ -103,19 +89,19 @@ impl From<PaymentOutputs> for PaymentDestination {
     }
 }
 
-// #[wasm_bindgen]
-// impl PaymentOutputs {
-//     #[wasm_bindgen(constructor)]
-//     pub fn constructor(output_array: JsValue) -> crate::Result<PaymentOutputs> {
-//         let mut outputs = vec![];
-//         let iterator = js_sys::try_iter(&output_array)?.ok_or("need to pass iterable JS values!")?;
-//         for x in iterator {
-//             outputs.push(from_value(x?)?);
-//         }
+#[wasm_bindgen]
+impl PaymentOutputs {
+    #[wasm_bindgen(constructor)]
+    pub fn constructor(output_array: JsValue) -> crate::Result<PaymentOutputs> {
+        let mut outputs = vec![];
+        let iterator = js_sys::try_iter(&output_array)?.ok_or("need to pass iterable JS values!")?;
+        for x in iterator {
+            outputs.push((x?).try_into()?);
+        }
 
-//         Ok(Self { outputs })
-//     }
-// }
+        Ok(Self { outputs })
+    }
+}
 
 impl TryFrom<JsValue> for PaymentOutputs {
     type Error = Error;

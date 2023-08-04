@@ -125,7 +125,6 @@ impl Inner {
 #[wasm_bindgen]
 pub struct UtxoContext {
     inner: Arc<Inner>,
-    // pub(crate) processor: UtxoProcessor,
 }
 
 #[wasm_bindgen]
@@ -138,7 +137,6 @@ impl UtxoContext {
             local.clear();
         }
 
-        // let mut context =
         self.context().clear();
 
         Ok(())
@@ -221,28 +219,19 @@ impl UtxoContext {
 
     /// Removes entries from mature utxo set and adds them to the consumed utxo set.
     pub fn consume(&self, entries: &[UtxoEntryReference]) -> Result<()> {
-        log_info!("CONSUME ENTRIES: {}", entries.len());
-
         let mut context = self.context();
-        log_info!("MATURE SIZE: {}", context.mature.len());
-        // !entries.iter().any(|e| e.id == entry.id)
         context.mature.retain(|entry| !entries.contains(entry));
-        log_info!("MATURE SIZE AFTER RETAIN: {}", context.mature.len());
-        log_info!("CONSUMED SIZE BEFORE INSERT: {}", context.consumed.len());
         let now = Instant::now();
         entries.iter().for_each(|entry| {
             context.consumed.insert(entry.id().clone(), (entry, &now).into());
         });
-        log_info!("CONSUMED SIZE AFTER INSERT: {}", context.consumed.len());
         Ok(())
     }
 
     /// Insert `utxo_entry` into the `UtxoSet`.
     /// NOTE: The insert will be ignored if already present in the inner map.
     pub async fn insert(&self, utxo_entry: UtxoEntryReference, current_daa_score: u64) -> Result<()> {
-        log_trace!("NEW UTXO INCOMING: {:?}", utxo_entry.id());
         let mut context = self.context();
-
         if let std::collections::hash_map::Entry::Vacant(e) = context.map.entry(utxo_entry.id().clone()) {
             e.insert(utxo_entry.clone());
             if utxo_entry.is_mature(current_daa_score) {
@@ -261,25 +250,18 @@ impl UtxoContext {
 
     pub async fn remove(&self, ids: Vec<UtxoEntryId>) -> Result<Vec<UtxoEntryVariant>> {
         let mut context = self.context();
-        log_info!("REMOVE (A) - MATURE SIZE: {}", context.mature.len());
-
         let mut removed = vec![];
-
         let mut remove_mature_ids = vec![];
+
         for id in ids.into_iter() {
             // remove from local map
-            log_info!("TRYING TO REMOVE FROM LOCAL MAP: {id}");
-
             if context.map.remove(&id).is_some() {
-                log_info!("TRYING TO REMOVE FROM LOCAL MAP (HAS SOME): {id}");
                 if let Some(pending) = context.pending.remove(&id) {
-                    log_info!("FOUND ONE PENDING: {id}");
                     removed.push(UtxoEntryVariant::Pending(pending));
                     if self.processor().pending().remove(&id).is_none() {
                         log_error!("Error: unable to remove utxo entry from global pending (with context)");
                     }
                 } else {
-                    log_info!("DID NOT FIND PENDING - REMOVED FROM MATURE: {id}");
                     remove_mature_ids.push(id);
                 }
             } else {
@@ -287,25 +269,18 @@ impl UtxoContext {
             }
         }
 
-        log_info!("REMOVE (B) - MATURE SIZE: {}", context.mature.len());
-
         let remove_mature_ids = remove_mature_ids
             .into_iter()
             .filter(|id| {
                 // inner.consumed.remove(id).is_none()
                 if let Some(consumed) = context.consumed.remove(id) {
-                    log_info!("REMOVED CONSUMED: {id}");
-
                     removed.push(UtxoEntryVariant::Consumed(consumed.entry));
                     false
                 } else {
-                    log_info!("UNABLE TO REMOVE CONSUMED (NOT FOUND): {id}");
                     true
                 }
             })
             .collect::<Vec<_>>();
-
-        log_info!("REMOVE (C) - MATURE SIZE: {}", context.mature.len());
 
         context.mature.retain(|entry| {
             if remove_mature_ids.contains(&entry.id()) {
@@ -318,8 +293,6 @@ impl UtxoContext {
             }
         });
 
-        log_info!("REMOVE (D) - MATURE SIZE: {}", context.mature.len());
-
         Ok(removed)
     }
 
@@ -328,7 +301,6 @@ impl UtxoContext {
 
         for (txid, utxos) in transactions.into_iter() {
             for utxo_entry in utxos.iter() {
-                // let id = utxo_entry.id();
                 let mut context = self.context();
                 if context.pending.remove(utxo_entry.id_as_ref()).is_some() {
                     context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
@@ -343,16 +315,6 @@ impl UtxoContext {
 
         Ok(())
     }
-
-    // pub fn promote(&self, utxo_entry: UtxoEntryReference) {
-    //     let id = utxo_entry.id();
-    //     let mut context = self.context();
-    //     if context.pending.remove(&id).is_some() {
-    //         context.mature.sorted_insert_binary_asc_by_key(utxo_entry, |entry| entry.amount_as_ref());
-    //     } else {
-    //         log_error!("Error: non-pending utxo promotion!");
-    //     }
-    // }
 
     pub async fn extend(&self, utxo_entries: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
         let mut context = self.context();
@@ -412,7 +374,6 @@ impl UtxoContext {
 
     pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>) -> Result<()> {
         // add UTXOs to account set
-        // log_info!("handle utxo added: {:?}", utxos);
         let current_daa_score = self.processor().current_daa_score().expect("daa score expected when invoking handle_utxo_added()");
 
         for utxo in utxos.iter() {
@@ -421,15 +382,12 @@ impl UtxoContext {
             }
         }
 
-        // let pending = HashMap::default();
-
         let pending = HashMap::group_from(utxos.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
         for (txid, utxos) in pending.into_iter() {
             let record = TransactionRecord::new(self, TransactionType::Credit, txid, utxos);
             self.processor().notify(Events::Pending { record }).await?;
         }
 
-        // post balance update
         self.update_balance().await?;
         Ok(())
     }
@@ -473,27 +431,6 @@ impl UtxoContext {
             let record = TransactionRecord::new(self, TransactionType::Reorg, txid, utxos);
             self.processor().notify(Events::Reorg { record }).await?;
         }
-
-        /*
-        for removed in removed.into_iter() {
-            match removed {
-                UtxoEntryVariant::Mature(utxo) => {
-                    let txid = utxo.data().outpoint.transaction_id();
-                    let record = (self, TransactionType::Debit, txid, vec![utxo]).into();
-                    self.processor().notify(Events::External { record }).await?;
-                }
-                UtxoEntryVariant::Consumed(utxo) => {
-                    // let record = (TransactionType::Debit, self, utxo).into();
-                    // self.core.notify(Events::Debit { record }).await?;
-                }
-                UtxoEntryVariant::Pending(utxo) => {
-                    let txid = utxo.data().outpoint.transaction_id();
-                    let record = (self, TransactionType::Reorg, txid, vec![utxo]).into();
-                    self.processor().notify(Events::Reorg { record }).await?;
-                }
-            }
-        }
-        */
 
         // post balance update
         self.update_balance().await?;
@@ -562,25 +499,12 @@ impl UtxoContext {
     // #[wasm_bindgen(constructor)]
     // pub fn constructor(core: &JsValue, id_or_account : &JsValue, utxo_by_address_response: JsValue) -> Result<UtxoProcessor> {
     pub fn from(processor: &JsValue, id: u32, utxo_by_address_response: JsValue) -> Result<UtxoContext> {
-        // pub fn from(utxo_by_address_response: JsValue) -> Result<UtxoProcessor> {
-        //log_info!("js_value: {:?}", js_value);
         let processor = ref_from_abi!(UtxoProcessor, processor)?;
-        // let id_or_account =
-
-        // Id::new(id_or_account.try_as_u64()?);
         let r: GetUtxosByAddressesResponse = from_value(utxo_by_address_response)?;
-        //log_info!("r: {:?}", r);
         let mut entries = r.entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
-        //log_info!("entries ...");
-        entries.sort();
-
+        entries.sort_by_key(|e| e.amount());
         let binding = UtxoContextBinding::Id(UtxoContextId::new(id as u64));
-
         let utxo_context = UtxoContext::new_with_mature_entries(&processor, binding, entries);
-        // let utxos = UtxoContext {
-        //     inner: Arc::new(Inner { context: Mutex::new(Context::new_with_mature(entries)), processor,  }), // id,
-        // };
-        //log_info!("utxo_set ...");
         Ok(utxo_context)
     }
 

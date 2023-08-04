@@ -20,12 +20,6 @@ pub enum WalletSettings {
     Wallet,
 }
 
-// impl WalletSettings {
-//     pub fn to_lowercase_string(&self) -> String {
-//         self.describe().to_lowercase()
-//     }
-// }
-
 #[async_trait]
 impl DefaultSettings for WalletSettings {
     async fn defaults() -> Vec<(Self, Value)> {

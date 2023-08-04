@@ -116,12 +116,9 @@ pub mod rpc {
 }
 
 pub use kaspa_wallet_core::{
-    keypair::{Keypair, PrivateKey},
     runtime::account::Account,
     runtime::wallet::Wallet,
     storage::local::Storage,
     utxo::{UtxoContext, UtxoEntry, UtxoEntryReference},
-    wasm::tx::*,
-    wasm::utils::*,
-    wasm::wallet::*,
+    wasm::{keypair::*, tx::*, utils::*, wallet::*, xprivatekey::*, xpublickey::*},
 };

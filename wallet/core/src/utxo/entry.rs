@@ -1,7 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Account, Balance};
-use crate::wasm::tx::{TransactionOutpoint, TransactionOutpointInner};
+use crate::wasm::tx::{ScriptPublicKeyTrait, TransactionOutpoint, TransactionOutpointInner};
 use itertools::Itertools;
 use kaspa_rpc_core::RpcUtxosByAddressesEntry;
 use std::cmp::Ordering;

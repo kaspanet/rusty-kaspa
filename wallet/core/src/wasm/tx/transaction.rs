@@ -243,7 +243,7 @@ impl TryFrom<cctx::Transaction> for Transaction {
             gas: tx.gas,
             payload: tx.payload,
             subnetwork_id: tx.subnetwork_id,
-            id, // : tx.id(),
+            id,
         }))
     }
 }

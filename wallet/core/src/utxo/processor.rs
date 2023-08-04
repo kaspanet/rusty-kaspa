@@ -22,13 +22,10 @@ use std::collections::HashMap;
 pub struct Inner {
     pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
     address_to_utxo_context_map: DashMap<Arc<Address>, UtxoContext>,
-    // event_consumer: Mutex<Option<Arc<dyn EventConsumer>>>,
     current_daa_score: Arc<AtomicU64>,
     network_id: Arc<Mutex<Option<NetworkId>>>,
-
     rpc: Arc<DynRpcApi>,
     is_connected: AtomicBool,
-    // is_synced: AtomicBool,
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
     notification_channel: Channel<Notification>,
@@ -41,13 +38,10 @@ impl Inner {
         Self {
             pending: DashMap::new(),
             address_to_utxo_context_map: DashMap::new(),
-            // event_consumer: Mutex::new(None),
             current_daa_score: Arc::new(AtomicU64::new(0)),
             network_id: Arc::new(Mutex::new(network_id)),
-
             rpc: rpc.clone(),
             is_connected: AtomicBool::new(false),
-            // is_synced: AtomicBool::new(false),
             listener_id: Mutex::new(None),
             task_ctl: DuplexChannel::oneshot(),
             notification_channel: Channel::<Notification>::unbounded(),
@@ -100,17 +94,12 @@ impl UtxoProcessor {
         &self.inner.pending
     }
 
-    // pub fn current_daa_score(&self) -> u64 {
-    //     self.inner.virtual_daa_score.load(Ordering::SeqCst)
-    // }
-
     pub fn current_daa_score(&self) -> Option<u64> {
         self.is_connected().then_some(self.inner.current_daa_score.load(Ordering::SeqCst))
     }
 
     pub async fn clear(&self) -> Result<()> {
         self.inner.address_to_utxo_context_map.clear();
-        // TODO - clear processors?
         Ok(())
     }
 
@@ -130,9 +119,6 @@ impl UtxoProcessor {
         if self.is_connected() {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
-                // let listener_id = self.listener_id();
-                // log_info!("registering addresses {:?}", addresses);
-
                 let utxos_changed_scope = UtxosChangedScope { addresses };
                 self.rpc().start_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
             } else {
@@ -150,7 +136,6 @@ impl UtxoProcessor {
         if self.is_connected() {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
-                // log_info!("unregistering addresses {:?}", addresses);
                 let utxos_changed_scope = UtxosChangedScope { addresses };
                 self.rpc().stop_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
             } else {
@@ -159,14 +144,6 @@ impl UtxoProcessor {
         }
         Ok(())
     }
-
-    // pub fn register_event_consumer(&self, event_consumer : Arc<dyn EventConsumer>) {
-    //     self.inner.event_consumer.lock().unwrap().replace(event_consumer);
-    // }
-
-    // pub fn event_consumer(&self) -> Option<Arc<dyn EventConsumer>> {
-    //     self.inner.event_consumer.lock().unwrap().clone()
-    // }
 
     pub async fn notify(&self, event: Events) -> Result<()> {
         self.multiplexer()
@@ -183,7 +160,6 @@ impl UtxoProcessor {
         Ok(())
     }
 
-    // pub async fn handle_pending(&self, current_daa_score: u64) -> Result<Vec<Arc<Account>>> {
     pub async fn handle_pending(&self, current_daa_score: u64) -> Result<()> {
         let mature_entries = {
             let mut mature_entries = vec![];
@@ -314,7 +290,6 @@ impl UtxoProcessor {
 
         self.inner.is_connected.store(true, Ordering::SeqCst);
         self.register_notification_listener().await?;
-        // self.start_task().await?;
         self.notify(Events::UtxoProcStart).await?;
         Ok(())
     }
@@ -331,7 +306,6 @@ impl UtxoProcessor {
         self.inner.is_connected.store(false, Ordering::SeqCst);
         self.notify(Events::UtxoProcStop).await?;
         self.unregister_notification_listener().await?;
-        // self.stop_task().await?;
         Ok(())
     }
 
@@ -350,7 +324,6 @@ impl UtxoProcessor {
         let listener_id = self.inner.listener_id.lock().unwrap().take();
         if let Some(id) = listener_id {
             // we do not need this as we are unregister the entire listener here...
-            // self.rpc.stop_notify(id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
             self.rpc().unregister_listener(id).await?;
         }
         Ok(())
@@ -367,8 +340,6 @@ impl UtxoProcessor {
             Notification::UtxosChanged(utxos_changed_notification) => {
                 if !self.is_synced() {
                     self.sync_proc().track(true).await?;
-                    // self.inner.is_synced.store(true, Ordering::SeqCst);
-                    // self.notify(Events::NodeSync { is_synced: true }).await?;
                 }
 
                 self.handle_utxo_changed(utxos_changed_notification).await?;
@@ -383,8 +354,6 @@ impl UtxoProcessor {
     }
 
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        // *self.inner.event_consumer.lock().unwrap() = event_consumer;
-
         let this = self.clone();
         let rpc_ctl_channel = this
             .rpc()
@@ -448,7 +417,7 @@ impl UtxoProcessor {
 
                 }
             }
-            // this.inner.event_consumer.lock().unwrap().take();
+
             task_ctl_sender.send(()).await.unwrap();
         });
         Ok(())
