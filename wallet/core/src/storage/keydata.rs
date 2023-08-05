@@ -1,7 +1,7 @@
 use crate::address::create_xpub_from_xprv;
+use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::imports::*;
 use faster_hex::{hex_decode, hex_string};
 use kaspa_bip32::{ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic};
 use secp256k1::SecretKey;

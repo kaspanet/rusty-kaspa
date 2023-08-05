@@ -1,10 +1,10 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
+use crate::storage::*;
 use async_trait::async_trait;
 use downcast::{downcast_sync, AnySync};
 use zeroize::Zeroize;
-use crate::storage::*;
 
 /// AccessContextT is a trait that wraps a wallet secret
 /// (or possibly other parameters in the future)

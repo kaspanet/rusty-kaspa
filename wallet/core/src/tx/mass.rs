@@ -1,15 +1,6 @@
-use kaspa_consensus_core::tx::{
-    Transaction,
-    TransactionInput,
-    TransactionOutput,
-    SCRIPT_VECTOR_SIZE,
-};
+use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, SCRIPT_VECTOR_SIZE};
 
-use kaspa_consensus_core::{
-    config::params::Params,
-    constants::*,
-    subnets::SUBNETWORK_ID_SIZE,
-};
+use kaspa_consensus_core::{config::params::Params, constants::*, subnets::SUBNETWORK_ID_SIZE};
 use kaspa_hashes::HASH_SIZE;
 
 // pub const ECDSA_SIGNATURE_SIZE: u64 = 64;
@@ -208,7 +199,6 @@ pub struct MassCalculator {
 }
 
 impl MassCalculator {
-
     pub fn new(params: Params) -> Self {
         Self {
             mass_per_tx_byte: params.mass_per_tx_byte,

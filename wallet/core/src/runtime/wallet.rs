@@ -746,9 +746,9 @@ mod test {
     use crate::utxo::{UtxoContext, UtxoContextBinding};
     use crate::wasm::tx::signer::sign_mutable_transaction;
     use crate::wasm::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutput};
-    use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
+    use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_rpc_core::api::rpc::RpcApi;
     use kaspa_txscript::pay_to_address_script;
     use workflow_rpc::client::ConnectOptions;
