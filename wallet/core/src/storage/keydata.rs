@@ -1,7 +1,6 @@
 use crate::address::create_xpub_from_xprv;
 use crate::result::Result;
 use crate::secret::Secret;
-// use crate::{encryption::sha256_hash, imports::*};
 use crate::imports::*;
 use faster_hex::{hex_decode, hex_string};
 use kaspa_bip32::{ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic};
@@ -379,7 +378,6 @@ impl PubKeyData {
         temp.sort();
         let str = String::from_iter(temp);
         let id = PubKeyDataId::new(xxh3_64(str.as_bytes()));
-        // let id = PubKeyDataId::new_from_slice(&sha256_hash(str.as_bytes()).unwrap().as_ref()[0..8]);
         Self { id, keys, cosigner_index, minimum_signatures }
     }
 }

@@ -256,8 +256,6 @@ impl StateObserver {
             //     state = Some(SyncState::UtxoResync);
         }
 
-        // log_info!("FOUND STATE: {state:?}");
-
         state
     }
 }

@@ -27,14 +27,6 @@ pub const DEFAULT_AMOUNT_PADDING: usize = 19;
 pub type GenerationNotifier = Arc<dyn Fn(&PendingTransaction) + Send + Sync>;
 pub type DeepScanNotifier = Arc<dyn Fn(usize, u64, Option<TransactionId>) + Send + Sync>;
 
-// #[derive(Default, Clone, Debug)]
-// pub struct Estimate {
-//     pub final_amount_including_fees: u64,
-//     pub aggregate_fees: u64,
-//     pub aggregate_utxos: usize,
-//     pub transactions: usize,
-// }
-
 u8_try_from! {
     #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
     #[serde(rename_all = "lowercase")]
@@ -89,7 +81,6 @@ impl AccountId {
 
     pub fn short(&self) -> String {
         let hex = self.to_hex();
-        // format!("{}..{}", &hex[0..4], &hex[hex.len() - 4..])
         format!("[{}]", &hex[0..4])
     }
 }
@@ -142,7 +133,6 @@ pub struct Account {
     inner: Arc<Mutex<Inner>>,
     wallet: Arc<Wallet>,
     utxo_context: UtxoContext,
-    // balance: Mutex<Option<Balance>>,
     is_connected: AtomicBool,
     pub account_kind: AccountKind,
     pub account_index: u64,
@@ -184,10 +174,9 @@ impl Account {
         let id = AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index);
         let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
         let account = Arc::new(Account {
-            id, //: AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index),
+            id,
             wallet: wallet.clone(),
             utxo_context: utxo_context.clone(),
-            // balance: Mutex::new(None), // Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind,
@@ -197,8 +186,6 @@ impl Account {
             ecdsa: false,
             derivation,
         });
-
-        // utxo_context.bind_to_account(&account);
 
         Ok(account)
     }
@@ -220,10 +207,9 @@ impl Account {
         let id = AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index);
         let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
         let account = Arc::new(Account {
-            id, //: AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index),
+            id,
             wallet: wallet.clone(),
             utxo_context: utxo_context.clone(),
-            // balance: Mutex::new(None), //Arc::new(AtomicU64::new(0)),
             is_connected: AtomicBool::new(false),
             inner: Arc::new(Mutex::new(inner)),
             account_kind: stored.account_kind,
@@ -233,8 +219,6 @@ impl Account {
             ecdsa: stored.ecdsa,
             derivation,
         });
-
-        // utxo_context.bind_to_account(&account);
 
         Ok(account)
     }
@@ -328,7 +312,7 @@ impl Account {
 
         let scans = vec![
             Scan::new_with_args(self.derivation.receive_address_manager(), window_size, extent, &balance, current_daa_score),
-            Scan::new_with_args(self.derivation.change_address_manager(), window_size, extent, &balance, current_daa_score), //.scan(self.utxo_context()),
+            Scan::new_with_args(self.derivation.change_address_manager(), window_size, extent, &balance, current_daa_score),
         ];
 
         let futures = scans.iter().map(|scan| scan.scan(self.utxo_context())).collect::<Vec<_>>();
@@ -526,67 +510,8 @@ impl Account {
     /// handle disconnection event
     pub async fn disconnect(&self) -> Result<()> {
         self.wallet.active_accounts().remove(&self.id);
-        // self.is_connected.store(false, Ordering::SeqCst);
-        // self.unregister_notification_listener().await?;
         Ok(())
     }
-
-    // pub async fn send_v1(
-    //     &self,
-    //     outputs: &PaymentOutputs,
-    //     priority_fee_sompi: Option<u64>,
-    //     _include_fees_in_amount: bool,
-    //     wallet_secret: Secret,
-    //     payment_secret: Option<Secret>,
-    //     abortable: &Abortable,
-    // ) -> Result<Vec<kaspa_hashes::Hash>> {
-    //     let mut ctx = self.utxo_context().create_selection_context();
-
-    //     let change_address = self.change_address().await?;
-    //     let payload = vec![];
-    //     let sig_op_count = self.inner().stored.pub_key_data.keys.len() as u8;
-    //     let minimum_signatures = self.inner().stored.minimum_signatures;
-    //     let vt = VirtualTransactionV1::try_new(
-    //         sig_op_count,
-    //         minimum_signatures,
-    //         &mut ctx,
-    //         outputs,
-    //         &change_address,
-    //         priority_fee_sompi,
-    //         payload,
-    //         LimitCalcStrategy::inputs(80),
-    //         abortable,
-    //     )
-    //     .await?;
-
-    //     let addresses = ctx.addresses();
-    //     let indexes = self.derivation.addresses_indexes(&addresses)?;
-    //     let receive_indexes = indexes.0;
-    //     let change_indexes = indexes.1;
-
-    //     let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
-    //     let keydata = self
-    //         .wallet
-    //         .store()
-    //         .as_prv_key_data_store()?
-    //         .load_key_data(&access_ctx, &self.prv_key_data_id)
-    //         .await?
-    //         .ok_or(Error::PrivateKeyNotFound(self.prv_key_data_id.to_hex()))?;
-
-    //     let private_keys = self.create_private_keys(keydata, payment_secret, receive_indexes, change_indexes)?;
-    //     let private_keys = &private_keys.iter().map(|k| k.to_bytes()).collect::<Vec<_>>();
-    //     let mut tx_ids = vec![];
-    //     for mtx in vt.transactions().clone() {
-    //         let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
-    //         let id = self.wallet.rpc().submit_transaction(mtx.try_into()?, false).await?;
-    //         //println!("id: {id}\r\n");
-    //         tx_ids.push(id);
-    //     }
-
-    //     ctx.commit()?;
-
-    //     Ok(tx_ids)
-    // }
 
     pub async fn sweep(
         self: &Arc<Self>,

@@ -95,7 +95,7 @@ impl AccountCreateArgs {
 }
 
 pub struct Inner {
-    active_accounts: ActiveAccountMap, //Arc<Mutex<HashMap<AccountId, Arc<Account>>>>,
+    active_accounts: ActiveAccountMap,
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
     selected_account: Mutex<Option<Arc<Account>>>,
@@ -140,11 +140,11 @@ impl Wallet {
                 rpc,
                 multiplexer,
                 store,
-                active_accounts: ActiveAccountMap::default(), //Arc::new(Mutex::new(HashMap::new())),
+                active_accounts: ActiveAccountMap::default(),
                 listener_id: Mutex::new(None),
                 task_ctl: DuplexChannel::oneshot(),
                 selected_account: Mutex::new(None),
-                settings: SettingsStore::new_with_storage(Storage::default_settings_store()), //::default(),
+                settings: SettingsStore::new_with_storage(Storage::default_settings_store()),
                 utxo_processor,
             }),
         };
@@ -177,8 +177,7 @@ impl Wallet {
 
         self.select(None).await?;
 
-        // let accounts = self.inner.active_accounts.cloned_flat_list();
-        let accounts = self.active_accounts().collect(); //self.active_accounts().values().collect::<Vec<_>>();
+        let accounts = self.active_accounts().collect();
         let futures = accounts.iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
 
@@ -293,7 +292,6 @@ impl Wallet {
 
     pub fn current_daa_score(&self) -> Option<u64> {
         self.utxo_processor().current_daa_score()
-        // self.is_connected().then_some(self.inner.virtual_daa_score.load(Ordering::SeqCst))
     }
 
     pub async fn load_settings(&self) -> Result<()> {
@@ -387,27 +385,21 @@ impl Wallet {
 
     // pub async fn create_private_key_impl(self: &Arc<Wallet>, wallet_secret: Secret, payment_secret: Option<Secret>, save : ) -> Result<Mnemonic> {
     //     let store = Store::new(storage::DEFAULT_WALLET_FILE)?;
-
     //     let mnemonic = Mnemonic::create_random()?;
     //     let wallet = storage::local::Wallet::try_load(&store).await?;
     //     let mut payload = wallet.payload.decrypt::<Payload>(wallet_secret).unwrap();
     //     payload.as_mut().add_prv_key_data(mnemonic.clone(), payment_secret)?;
-
     //     Ok(mnemonic)
     // }
 
     // pub async fn create_private_key(self: &Arc<Wallet>, wallet_secret: Secret, payment_secret: Option<Secret>) -> Result<Mnemonic> {
     //     let mnemonic = Mnemonic::create_random()?;
-
     //     self.store.as_prv_key_data_store().store_key_data(&self.
-
     //     // let store = Store::default();
-
     //     // let mnemonic = Mnemonic::create_random()?;
     //     // let wallet = storage::local::Wallet::try_load(&store).await?;
     //     // let mut payload = wallet.payload.decrypt::<Payload>(wallet_secret).unwrap();
     //     // payload.as_mut().add_prv_key_data(mnemonic.clone(), payment_secret)?;
-
     //     Ok(mnemonic)
     // }
 
@@ -488,7 +480,6 @@ impl Wallet {
 
         self.inner.store.create(&ctx, wallet_args.into()).await?;
         let descriptor = self.inner.store.descriptor()?;
-        // let prefix = self.address_prefix()?;
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
         let mnemonic = Mnemonic::create_random()?;
         let account_index = 0;
@@ -679,16 +670,16 @@ impl Wallet {
         }
 
         let stored_account = storage::Account::new(
-            None,                                // name
-            None,                                // title
-            storage::AccountKind::Legacy,        // kind
-            0,                                   // account index
-            false,                               // public visibility
-            PubKeyData::new(vec![], None, None), // TODO - pub keydata
-            prv_key_data.id,                     // privkey id
-            false,                               // ecdsa
-            1,                                   // min signatures
-            0,                                   // cosigner_index
+            None,
+            None,
+            storage::AccountKind::Legacy,
+            0,
+            false,
+            PubKeyData::new(vec![], None, None),
+            prv_key_data.id,
+            false,
+            1,
+            0,
         );
 
         let account = Account::try_new_arc_from_storage(self, &stored_account).await?;
@@ -697,7 +688,6 @@ impl Wallet {
         let account_store = self.inner.store.as_account_store()?;
         account_store.store(&[&stored_account]).await?;
         self.inner.store.commit(&ctx).await?;
-        // TODO - prevent multiple addition of the same private key
         account.start().await?;
         Ok(account)
     }
@@ -726,13 +716,13 @@ impl Wallet {
             None,
             None,
             account_kind,
-            0,                                            // account index
-            false,                                        // public visibility
-            storage::PubKeyData::new(vec![], None, None), // TODO - pub keydata
-            prv_key_data.id,                              // privkey id
-            false,                                        // ecdsa
-            1,                                            // min signatures
-            0,                                            // cosigner_index
+            0,
+            false,
+            storage::PubKeyData::new(vec![], None, None),
+            prv_key_data.id,
+            false,
+            1,
+            0,
         );
 
         let account = runtime::Account::try_new_arc_from_storage(self, &stored_account).await?;
@@ -757,15 +747,12 @@ mod test {
     use crate::wasm::tx::signer::sign_mutable_transaction;
     use crate::wasm::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutput};
     use kaspa_consensus_core::subnets::SubnetworkId;
-    //use kaspa_consensus_core::tx::ScriptPublicKey;
-    //use kaspa_consensus_core::tx::MutableTransaction;
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
     use kaspa_rpc_core::api::rpc::RpcApi;
     use kaspa_txscript::pay_to_address_script;
     use workflow_rpc::client::ConnectOptions;
 
-    // async fn get_utxos_set_by_addresses(rpc: Arc<KaspaRpcClient>, addresses: Vec<Address>) -> Result<UtxoSet> {
     async fn get_utxos_set_by_addresses(
         rpc: Arc<DynRpcApi>,
         addresses: Vec<Address>,
@@ -823,6 +810,8 @@ mod test {
 
         let mut ctx = utxo_set.create_selection_context();
         // let mut ctx = UtxoSelectionContext::new(utxo_set);
+
+        #[allow(deprecated)]
         let selected_entries = ctx.select(100_000)?;
 
         // let utxo_selection = utxo_set.select(100000, UtxoOrdering::AscendingAmount, true).await?;

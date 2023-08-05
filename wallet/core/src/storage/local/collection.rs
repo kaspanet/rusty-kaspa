@@ -63,15 +63,6 @@ where
         Ok(())
     }
 
-    // pub fn remove(&mut self, id: &Id) -> Option<Arc<Data>> {
-    //     if let Some(data) = self.map.remove(id) {
-    //         self.vec.retain(|d| d.id() != id);
-    //         Some(data)
-    //     } else {
-    //         None
-    //     }
-    // }
-
     pub fn remove(&mut self, ids: &[&Id]) -> Result<()> {
         self.vec.retain(|data| {
             let id = data.id();

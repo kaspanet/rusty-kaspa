@@ -19,12 +19,6 @@ impl Storage {
     }
 }
 
-// impl Default for Store {
-//     fn default() -> Self {
-//         Self::new(super::DEFAULT_WALLET_FOLDER, super::DEFAULT_WALLET_FILE).unwrap()
-//     }
-// }
-
 impl Storage {
     pub fn default_wallet_store() -> Self {
         Self::new(&format!("{}.wallet", super::DEFAULT_WALLET_FILE)).unwrap()
@@ -47,9 +41,8 @@ impl Storage {
 
     pub fn new_with_folder(folder: &str, name: &str) -> Result<Storage> {
         let filename = if runtime::is_web() {
-            PathBuf::from(name) //filename.file_name().ok_or(Error::InvalidFilename(format!("{}", filename.display())))?)
+            PathBuf::from(name)
         } else {
-            // let filename = Path::new(DEFAULT_WALLET_FOLDER).join(name);
             let filename = Path::new(folder).join(name);
             fs::resolve_path(filename.to_str().unwrap())?
         };

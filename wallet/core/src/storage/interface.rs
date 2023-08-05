@@ -4,7 +4,6 @@ use crate::secret::Secret;
 use async_trait::async_trait;
 use downcast::{downcast_sync, AnySync};
 use zeroize::Zeroize;
-
 use crate::storage::*;
 
 /// AccessContextT is a trait that wraps a wallet secret
@@ -163,7 +162,6 @@ pub trait Interface: Send + Sync + AnySync {
     async fn set_user_hint(&self, hint: Option<Hint>) -> Result<()>;
 
     // ~~~
-
     fn as_prv_key_data_store(&self) -> Result<Arc<dyn PrvKeyDataStore>>;
     fn as_account_store(&self) -> Result<Arc<dyn AccountStore>>;
     fn as_address_book_store(&self) -> Result<Arc<dyn AddressBookStore>>;

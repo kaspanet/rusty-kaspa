@@ -58,6 +58,5 @@ impl From<crate::runtime::Account> for Account {
 impl Zeroize for Account {
     fn zeroize(&mut self) {
         self.prv_key_data_id.zeroize();
-        // TODO
     }
 }

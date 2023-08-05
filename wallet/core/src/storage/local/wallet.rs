@@ -1,12 +1,10 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-use workflow_store::fs;
-
 use crate::storage::{Decrypted, Encrypted, Hint, Metadata, PrvKeyData, PrvKeyDataId};
-
 use crate::storage::local::Payload;
 use crate::storage::local::Storage;
+use workflow_store::fs;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Wallet {
@@ -36,20 +34,6 @@ impl Wallet {
             Err(Error::NoWalletInStorage)
         }
     }
-
-    // pub async fn try_store_payload(store: &Storage, secret: &Secret, payload: Payload) -> Result<()> {
-    //     let wallet = Wallet::try_new(secret, payload)?;
-    //     store.ensure_dir().await?;
-    //     fs::write_json(store.filename(), &wallet).await?;
-    //     Ok(())
-    // }
-
-    // pub async fn try_store_payload(store: &Storage, secret: &Secret, payload: Payload) -> Result<()> {
-    //     let wallet = Wallet::try_new(secret, payload)?;
-    //     store.ensure_dir().await?;
-    //     fs::write_json(store.filename(), &wallet).await?;
-    //     Ok(())
-    // }
 
     pub async fn try_store(&self, store: &Storage) -> Result<()> {
         store.ensure_dir().await?;
