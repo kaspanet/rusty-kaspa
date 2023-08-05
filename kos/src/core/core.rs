@@ -113,32 +113,6 @@ impl Core {
         self.metrics.lock().unwrap().clone()
     }
 
-    /// Create a test page window
-    fn _create_window(&self) -> Result<()> {
-        let options = nw_sys::window::Options::new().title("Test page").width(200).height(200).left(0);
-
-        self.inner.create_window_with_callback(
-            "/root/page2.html",
-            &options,
-            |win: nw_sys::window::Window| -> std::result::Result<(), JsValue> {
-                log_trace!("win: {:?}", win);
-                log_trace!("win.x: {:?}", win.x());
-                win.move_by(300, 0);
-                win.set_x(100);
-                win.set_y(100);
-
-                log_trace!("win.title: {}", win.title());
-                win.set_title("Another Window");
-                log_trace!("win.set_title(\"Another Window\")");
-                log_trace!("win.title: {}", win.title());
-
-                Ok(())
-            },
-        )?;
-
-        Ok(())
-    }
-
     /// Create application menu
     fn create_menu(self: &Arc<Self>) -> Result<()> {
         let modifier = if is_macos() { "command" } else { "ctrl" };
@@ -254,8 +228,6 @@ impl Core {
             .key("6")
             .modifiers("ctrl")
             .callback(move |_| -> std::result::Result<(), JsValue> {
-                // window().alert_with_message("hi")?;
-
                 let this = this.clone();
 
                 spawn(async move {
@@ -385,9 +357,6 @@ impl Core {
                             this.cpu_miner.configure(config)?;
                         }
                         CpuMinerOps::DaemonCtl(ctl) => match ctl {
-                            // DaemonCtl::Version => {
-                            //     this.cpu_miner.version().await?;
-                            // }
                             DaemonCtl::Start => {
                                 this.cpu_miner.start()?;
                             }
@@ -472,10 +441,7 @@ impl Core {
             Method::new(move |_op: ()| {
                 let this = this.clone();
                 Box::pin(async move {
-                    // log_info!("*** METRICS ACTIVATE -> TERMINAL ***");
                     this.terminal_ready_ctl.send(()).await.unwrap_or_else(|e| log_error!("Error signaling terminal init: {e}"));
-                    // this.terminal().ipc().metrics_ctl(MetricsSinkCtl::Activate).await.unwrap_or_else(|e| log_error!("{}", e));
-                    // log_info!("*** METRICS ACTIVATE -> TERMINAL DONE ***");
                     Ok(())
                 })
             }),
@@ -620,7 +586,6 @@ impl Core {
 
     pub async fn metrics_ctl(self: &Arc<Self>, _ctl: MetricsCtl) -> Result<()> {
         if let Some(_metrics) = self.metrics() {
-            // metrics.ipc.
             // metrics.ctl(ctl).await?;
         }
         Ok(())

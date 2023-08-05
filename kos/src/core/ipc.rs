@@ -152,7 +152,6 @@ impl KaspadCtl for CoreIpc {
 #[async_trait]
 impl CpuMinerCtl for CoreIpc {
     async fn configure(&self, config: CpuMinerConfig) -> DaemonResult<()> {
-        // self.target.call::<_, _, ()>(CoreOps::KaspadCtl, KaspadOps::Configure(config)).await?;
         self.target.call(CoreOps::CpuMinerCtl, CpuMinerOps::Configure(config)).await?;
 
         Ok(())

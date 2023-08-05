@@ -1,13 +1,9 @@
-mod imports;
-
-mod error;
-mod result;
-
-mod ipc;
-mod modules;
-
 mod core;
-mod metrics;
-mod terminal;
-
+mod error;
+mod imports;
+mod ipc;
 mod layout;
+mod metrics;
+mod modules;
+mod result;
+mod terminal;

@@ -1,3 +1,7 @@
+//! Link matchers for the terminal. Link matchers are used to match links in the terminal and perform
+//! actions on them. Specifically we use them to open links in the browser and copy addresses, transaction
+//! ids, and block hashes to the clipboard.
+
 use crate::{imports::*, notifier::Notification};
 use application_runtime::{is_nw, is_wasm};
 use workflow_core::task::dispatch;

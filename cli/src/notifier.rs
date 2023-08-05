@@ -1,3 +1,8 @@
+//! Notifier provides a lightweight icon-based notification system. Icons show
+//! up in the top right corner of the screen and disappear after a short delay.
+//! Notification icons indicate clipboard copy and processing that may take
+//! an extended period of time.
+
 use crate::imports::*;
 use application_runtime::{is_nw, is_web};
 use web_sys::Element;

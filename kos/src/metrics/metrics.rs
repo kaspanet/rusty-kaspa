@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use super::toolbar::*;
 use crate::imports::*;
 use kaspa_cli::metrics::{Metric, MetricsSnapshot};
-// use web_sys::HtmlSelectElement;
+use std::collections::HashMap;
 use workflow_core::time::{HOURS, MINUTES};
 use workflow_d3::container::*;
 use workflow_d3::graph::*;
@@ -17,7 +15,6 @@ pub struct Metrics {
     pub core: Arc<CoreIpc>,
     pub window: Arc<Window>,
     pub callbacks: CallbackMap,
-    // pub shutdown: Arc<AtomicBool>,
     pub settings: Arc<SettingsStore<MetricsSettings>>,
     pub layout: Arc<Layout<SettingsStore<MetricsSettings>>>,
     pub container: Arc<Mutex<Option<Arc<Container>>>>,
@@ -130,7 +127,7 @@ impl Metrics {
                     &container,
                     None,
                     "",
-                    Duration::from_millis(5 * MINUTES), //GraphDuration::parse("5m").unwrap(),
+                    Duration::from_millis(5 * MINUTES),
                     Duration::from_millis(48 * HOURS),
                     GraphTheme::Custom(Self::theme("light", metric.group())),
                     Margin::new(20.0, 20.0, 10.0, 30.0),
