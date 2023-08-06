@@ -546,8 +546,8 @@ impl KaspaCli {
         }
 
         let account = selection.unwrap();
-        let ident = account.name_with_id();
-        tprintln!(self, "\nselecting account: {ident}\n");
+        let ident = style(account.name_with_id()).blue();
+        tprintln!(self, "selecting account: {ident}");
 
         Ok(account)
     }
