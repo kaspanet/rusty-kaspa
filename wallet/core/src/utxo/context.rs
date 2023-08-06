@@ -3,6 +3,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{AccountId, Balance};
 use crate::storage::{TransactionRecord, TransactionType};
+use crate::tx::PendingTransaction;
 use crate::utxo::{
     PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext,
 };
@@ -217,16 +218,43 @@ impl UtxoContext {
         UtxoSelectionContext::new(self)
     }
 
+    /// Process pending transaction. Remove mature UTXO entries and add them to the consumed set.
+    /// Produces a notification on the even multiplexer.
+    pub(crate) async fn handle_outgoing_transaction(&self, pending_tx: &PendingTransaction) -> Result<()> {
+        {
+            let mut context = self.context();
+            let pending_utxo_entries = pending_tx.utxo_entries();
+            context.mature.retain(|entry| !pending_utxo_entries.contains(entry));
+            let now = Instant::now();
+            pending_utxo_entries.iter().for_each(|entry| {
+                context.consumed.insert(entry.id().clone(), (entry, &now).into());
+            });
+        }
+
+        let record = TransactionRecord::new_outgoing(self, pending_tx);
+        self.processor().notify(Events::Outgoing { record }).await?;
+
+        Ok(())
+    }
+
     /// Removes entries from mature utxo set and adds them to the consumed utxo set.
-    pub fn consume(&self, entries: &[UtxoEntryReference]) -> Result<()> {
+    /// NOTE: This method does not issue a notification on the event multiplexer.
+    #[allow(dead_code)]
+    pub(crate) async fn consume(&self, entries: &[UtxoEntryReference]) -> Result<()> {
         let mut context = self.context();
         context.mature.retain(|entry| !entries.contains(entry));
         let now = Instant::now();
         entries.iter().for_each(|entry| {
             context.consumed.insert(entry.id().clone(), (entry, &now).into());
         });
+
         Ok(())
     }
+
+    // pub(crate) fn notify_outgoing(&self, pending_transaction: &PendingTransaction) -> Result<()> {
+
+    //     Ok(())
+    // }
 
     /// Insert `utxo_entry` into the `UtxoSet`.
     /// NOTE: The insert will be ignored if already present in the inner map.
@@ -309,7 +337,7 @@ impl UtxoContext {
                 }
             }
 
-            let record = TransactionRecord::new(self, TransactionType::Credit, txid, utxos);
+            let record = TransactionRecord::new_incoming(self, TransactionType::Incoming, txid, utxos);
             self.processor().notify(Events::Maturity { record }).await?;
         }
 
@@ -384,7 +412,7 @@ impl UtxoContext {
 
         let pending = HashMap::group_from(utxos.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
         for (txid, utxos) in pending.into_iter() {
-            let record = TransactionRecord::new(self, TransactionType::Credit, txid, utxos);
+            let record = TransactionRecord::new_incoming(self, TransactionType::Incoming, txid, utxos);
             self.processor().notify(Events::Pending { record }).await?;
         }
 
@@ -414,21 +442,21 @@ impl UtxoContext {
         });
 
         let mature = HashMap::group_from(mature.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
-        let consumed = HashMap::group_from(consumed.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
+        // let consumed = HashMap::group_from(consumed.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
         let pending = HashMap::group_from(pending.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
 
         for (txid, utxos) in mature.into_iter() {
-            let record = TransactionRecord::new(self, TransactionType::Debit, txid, utxos);
+            let record = TransactionRecord::new_incoming(self, TransactionType::Outgoing, txid, utxos);
             self.processor().notify(Events::External { record }).await?;
         }
 
-        for (txid, utxos) in consumed.into_iter() {
-            let record = TransactionRecord::new(self, TransactionType::Debit, txid, utxos);
-            self.processor().notify(Events::Debit { record }).await?;
-        }
+        // for (txid, utxos) in consumed.into_iter() {
+        //     let record = TransactionRecord::new_incoming(self, TransactionType::Debit, txid, utxos);
+        //     self.processor().notify(Events::Debit { record }).await?;
+        // }
 
         for (txid, utxos) in pending.into_iter() {
-            let record = TransactionRecord::new(self, TransactionType::Reorg, txid, utxos);
+            let record = TransactionRecord::new_incoming(self, TransactionType::Reorg, txid, utxos);
             self.processor().notify(Events::Reorg { record }).await?;
         }
 

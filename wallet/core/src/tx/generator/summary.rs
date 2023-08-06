@@ -9,18 +9,38 @@ pub struct GeneratorSummary {
     pub aggregated_utxos: usize,
     pub aggregated_fees: u64,
     pub number_of_generated_transactions: usize,
+    pub final_transaction_amount: Option<u64>,
     pub final_transaction_id: Option<TransactionId>,
 }
 
 impl fmt::Display for GeneratorSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "UTXOs: {} Fees: {} Transactions: {}",
-            self.aggregated_utxos,
-            sompi_to_kaspa_string_with_suffix(self.aggregated_fees, &self.network_id.into()),
-            self.number_of_generated_transactions
-        )?;
+        let transactions = if self.number_of_generated_transactions == 1 {
+            "".to_string()
+        } else {
+            format!("Batch Transactions: {}", self.number_of_generated_transactions)
+        };
+
+        if let Some(final_transaction_amount) = self.final_transaction_amount {
+            let total = final_transaction_amount + self.aggregated_fees;
+            write!(
+                f,
+                "Amount: {}  Fees: {}  Total: {}  UTXOs: {}  {}",
+                sompi_to_kaspa_string_with_suffix(final_transaction_amount, &self.network_id.into()),
+                sompi_to_kaspa_string_with_suffix(self.aggregated_fees, &self.network_id.into()),
+                sompi_to_kaspa_string_with_suffix(total, &self.network_id.into()),
+                self.aggregated_utxos,
+                transactions
+            )?;
+        } else {
+            write!(
+                f,
+                "Fees: {}  UTXOs: {}  {}",
+                sompi_to_kaspa_string_with_suffix(self.aggregated_fees, &self.network_id.into()),
+                self.aggregated_utxos,
+                transactions
+            )?;
+        }
         Ok(())
     }
 }

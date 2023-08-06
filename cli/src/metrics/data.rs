@@ -1,8 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use separator::Separatable;
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::prelude::*;
-use workflow_core::{enums::Describe, sendable::Sendable};
+use workflow_core::enums::Describe;
 
 #[derive(Describe, Debug, Clone, Eq, PartialEq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum Metric {
@@ -135,36 +134,34 @@ pub struct MetricsSnapshot {
 }
 
 impl MetricsSnapshot {
-    pub fn get(&self, metric: &Metric) -> Sendable<JsValue> {
-        let v = match metric {
+    pub fn get(&self, metric: &Metric) -> f64 {
+        match metric {
             // CpuCores
-            Metric::CpuUsage => JsValue::from(self.cpu_usage / self.cpu_cores),
-            Metric::ResidentSetSizeBytes => JsValue::from(self.resident_set_size_bytes),
-            Metric::VirtualMemorySizeBytes => JsValue::from(self.virtual_memory_size_bytes),
-            Metric::FdNum => JsValue::from(self.fd_num),
-            Metric::DiskIoReadBytes => JsValue::from(self.disk_io_read_bytes),
-            Metric::DiskIoWriteBytes => JsValue::from(self.disk_io_write_bytes),
-            Metric::DiskIoReadPerSec => JsValue::from(self.disk_io_read_per_sec),
-            Metric::DiskIoWritePerSec => JsValue::from(self.disk_io_write_per_sec),
+            Metric::CpuUsage => self.cpu_usage / self.cpu_cores,
+            Metric::ResidentSetSizeBytes => self.resident_set_size_bytes,
+            Metric::VirtualMemorySizeBytes => self.virtual_memory_size_bytes,
+            Metric::FdNum => self.fd_num,
+            Metric::DiskIoReadBytes => self.disk_io_read_bytes,
+            Metric::DiskIoWriteBytes => self.disk_io_write_bytes,
+            Metric::DiskIoReadPerSec => self.disk_io_read_per_sec,
+            Metric::DiskIoWritePerSec => self.disk_io_write_per_sec,
 
             // ---
-            Metric::BlocksSubmitted => JsValue::from(self.blocks_submitted),
-            Metric::HeaderCount => JsValue::from(self.header_counts),
-            Metric::DepCounts => JsValue::from(self.dep_counts),
-            Metric::BodyCounts => JsValue::from(self.body_counts),
-            Metric::TxnCounts => JsValue::from(self.txs_counts),
-            Metric::Tps => JsValue::from(self.tps),
-            Metric::ChainBlockCounts => JsValue::from(self.chain_block_counts),
-            Metric::MassCounts => JsValue::from(self.mass_counts),
-            Metric::BlockCount => JsValue::from(self.block_count),
-            Metric::TipHashes => JsValue::from(self.tip_hashes),
-            Metric::Difficulty => JsValue::from(self.difficulty),
-            Metric::PastMedianTime => JsValue::from(self.past_median_time),
-            Metric::VirtualParentHashes => JsValue::from(self.virtual_parent_hashes),
-            Metric::VirtualDaaScore => JsValue::from(self.virtual_daa_score),
-        };
-
-        Sendable(v)
+            Metric::BlocksSubmitted => self.blocks_submitted,
+            Metric::HeaderCount => self.header_counts,
+            Metric::DepCounts => self.dep_counts,
+            Metric::BodyCounts => self.body_counts,
+            Metric::TxnCounts => self.txs_counts,
+            Metric::Tps => self.tps,
+            Metric::ChainBlockCounts => self.chain_block_counts,
+            Metric::MassCounts => self.mass_counts,
+            Metric::BlockCount => self.block_count,
+            Metric::TipHashes => self.tip_hashes,
+            Metric::Difficulty => self.difficulty,
+            Metric::PastMedianTime => self.past_median_time,
+            Metric::VirtualParentHashes => self.virtual_parent_hashes,
+            Metric::VirtualDaaScore => self.virtual_daa_score,
+        }
     }
 
     pub fn format(&self, metric: &Metric, si: bool) -> String {

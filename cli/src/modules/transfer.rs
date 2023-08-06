@@ -28,7 +28,7 @@ impl Transfer {
         let abortable = Abortable::default();
         let outputs = PaymentOutputs::try_from((target_address.clone(), amount_sompi))?;
 
-        let ctx_ = ctx.clone();
+        // let ctx_ = ctx.clone();
         let (summary, _ids) = account
             .send(
                 outputs.into(),
@@ -37,8 +37,8 @@ impl Transfer {
                 wallet_secret,
                 payment_secret,
                 &abortable,
-                Some(Arc::new(move |ptx| {
-                    tprintln!(ctx_, "Sending transaction: {}", ptx.id());
+                Some(Arc::new(move |_ptx| {
+                    // tprintln!(ctx_, "Sending transaction: {}", ptx.id());
                 })),
             )
             .await?;

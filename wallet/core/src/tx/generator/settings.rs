@@ -3,12 +3,16 @@ use crate::result::Result;
 use crate::runtime::Account;
 use crate::tx::{Fees, PaymentDestination};
 use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoSelectionContext};
+use crate::Events;
 use kaspa_addresses::Address;
 use std::sync::Arc;
+use workflow_core::channel::Multiplexer;
 
 pub struct GeneratorSettings {
     // Network type
     pub network_id: NetworkId,
+    // Event multiplexer
+    pub multiplexer: Option<Multiplexer<Events>>,
     // Utxo iterator
     pub utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
     // Utxo Context
@@ -36,6 +40,7 @@ impl GeneratorSettings {
     ) -> Result<Self> {
         let network_id = account.utxo_context().processor().network_id()?;
         let change_address = account.change_address().await?;
+        let multiplexer = account.wallet().multiplexer().clone();
         let inner = account.inner();
         let sig_op_count = inner.stored.pub_key_data.keys.len() as u8;
         let minimum_signatures = inner.stored.minimum_signatures;
@@ -44,6 +49,7 @@ impl GeneratorSettings {
 
         let settings = GeneratorSettings {
             network_id,
+            multiplexer: Some(multiplexer),
             sig_op_count,
             minimum_signatures,
             change_address,
@@ -61,6 +67,7 @@ impl GeneratorSettings {
         network_id: NetworkId,
         change_address: Address,
         utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
+        multiplexer: Option<Multiplexer<Events>>,
         final_transaction_destination: PaymentDestination,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
@@ -70,6 +77,7 @@ impl GeneratorSettings {
 
         let settings = GeneratorSettings {
             network_id,
+            multiplexer,
             sig_op_count,
             minimum_signatures,
             change_address,

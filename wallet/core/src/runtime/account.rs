@@ -227,6 +227,10 @@ impl Account {
         &self.id
     }
 
+    pub fn wallet(&self) -> &Arc<Wallet> {
+        &self.wallet
+    }
+
     pub fn utxo_context(&self) -> &UtxoContext {
         &self.utxo_context
     }
@@ -246,6 +250,19 @@ impl Account {
                 self.id.short()
             } else {
                 name
+            }
+        } else {
+            self.id.short()
+        }
+    }
+
+    pub fn name_with_id(&self) -> String {
+        if let Some(name) = self.name() {
+            // compensate for an empty name
+            if name.is_empty() {
+                self.id.short()
+            } else {
+                format!("{name} {}", self.id.short())
             }
         } else {
             self.id.short()
@@ -276,7 +293,7 @@ impl Account {
     }
 
     pub fn get_list_string(&self) -> Result<String> {
-        let name = style(self.name_or_id()).blue();
+        let name = style(self.name_with_id()).blue();
         let balance = self.balance_as_strings(None)?;
         let mature_utxo_size = self.utxo_context.mature_utxo_size();
         let pending_utxo_size = self.utxo_context.pending_utxo_size();
@@ -381,6 +398,7 @@ impl Account {
                         self.wallet.network_id()?,
                         change_address.clone(),
                         Box::new(utxos.into_iter()),
+                        None,
                         PaymentDestination::Change,
                         Fees::None,
                         None,

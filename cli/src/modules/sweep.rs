@@ -11,14 +11,14 @@ impl Sweep {
         let account = ctx.wallet().account()?;
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
         let abortable = Abortable::default();
-        let ctx_ = ctx.clone();
+        // let ctx_ = ctx.clone();
         let (summary, _ids) = account
             .sweep(
                 wallet_secret,
                 payment_secret,
                 &abortable,
-                Some(Arc::new(move |ptx| {
-                    tprintln!(ctx_, "Sending transaction: {}", ptx.id());
+                Some(Arc::new(move |_ptx| {
+                    // tprintln!(ctx_, "Sending transaction: {}", ptx.id());
                 })),
             )
             .await?;

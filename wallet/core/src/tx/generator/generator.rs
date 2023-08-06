@@ -42,6 +42,8 @@ struct Inner {
 
     // Utxo Context
     utxo_context: Option<UtxoContext>,
+    // Event multiplexer
+    multiplexer: Option<Multiplexer<Events>>,
     // typically a number of keys required to sign the transaction
     sig_op_count: u8,
     // number of minimum signatures required to sign the transaction
@@ -74,6 +76,7 @@ impl Generator {
     pub fn new(settings: GeneratorSettings, signer: Option<Arc<dyn SignerT>>, abortable: &Abortable) -> Self {
         let GeneratorSettings {
             network_id,
+            multiplexer,
             utxo_iterator,
             utxo_context,
             sig_op_count,
@@ -111,6 +114,7 @@ impl Generator {
 
         let inner = Inner {
             network_id,
+            multiplexer,
             context,
             signer,
             abortable: abortable.clone(),
@@ -129,9 +133,14 @@ impl Generator {
         Self { inner: Arc::new(inner) }
     }
 
-    /// The underlying UtxoContext (if available).
+    /// The underlying [`UtxoContext`] (if available).
     pub fn utxo_context(&self) -> &Option<UtxoContext> {
         &self.inner.utxo_context
+    }
+
+    /// Core [`Multiplexer<Events>`] (if available)
+    pub fn multiplexer(&self) -> &Option<Multiplexer<Events>> {
+        &self.inner.multiplexer
     }
 
     /// Mutable context used by the generator to track state
@@ -255,23 +264,14 @@ impl Generator {
             if let Some(final_transaction_amount) = self.inner.final_transaction_amount {
                 let final_tx_mass = mass_accumulator + final_outputs_mass + payload_mass;
                 let mut final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
-                // context.aggregate_fees += final_transaction_fees;
-                workflow_log::log_info!("final_transaction_fees A0: {final_transaction_fees:?}");
-
+                // log_info!("final_transaction_fees A0: {final_transaction_fees:?}");
                 if let Fees::Exclude(fees) = self.inner.final_transaction_priority_fee {
                     final_transaction_fees += fees;
-                    // context.aggregate_fees += fees;
                 }
-
-                // if !self.inner.final_transaction_include_fees_in_amount {
-                //     final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
-                // }
-                workflow_log::log_info!("final_transaction_fees A1: {final_transaction_fees:?}");
+                // log_info!("final_transaction_fees A1: {final_transaction_fees:?}");
 
                 let final_transaction_total = final_transaction_amount + final_transaction_fees;
                 if transaction_amount_accumulator > final_transaction_total {
-                    // ------------------------- WIP
-
                     change_amount = transaction_amount_accumulator - final_transaction_total;
 
                     if is_standard_output_amount_dust(change_amount) {
@@ -283,22 +283,13 @@ impl Generator {
                         //re-calculate fee with change outputs
                         let mut final_transaction_fees =
                             calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass + change_output_mass);
-                        workflow_log::log_info!("final_transaction_fees B0: {final_transaction_fees:?}");
-
+                        // workflow_log::log_info!("final_transaction_fees B0: {final_transaction_fees:?}");
                         if let Fees::Exclude(fees) = self.inner.final_transaction_priority_fee {
                             final_transaction_fees += fees;
                         }
-
-                        // if !self.inner.final_transaction_include_fees_in_amount {
-                        //     final_transaction_fees += self.inner.final_transaction_priority_fee.unwrap_or(0);
-                        // }
-                        workflow_log::log_info!("final_transaction_fees B1: {final_transaction_fees:?}");
-                        //final_transaction_fees = 10;
-
+                        // workflow_log::log_info!("final_transaction_fees B1: {final_transaction_fees:?}");
                         let final_transaction_total = final_transaction_amount + final_transaction_fees;
-
                         change_amount = transaction_amount_accumulator - final_transaction_total;
-
                         if is_standard_output_amount_dust(change_amount) {
                             // if we encounter dust output, we do not include it in the transaction
                             // instead, we remove it (adding it to the transaction fees)
@@ -311,8 +302,6 @@ impl Generator {
                         }
                     }
 
-                    // ------------------------- WIP
-
                     break;
                 }
             }
@@ -324,17 +313,19 @@ impl Generator {
             context.is_done = true;
 
             let mut final_outputs = self.inner.final_transaction_outputs.clone();
+            // let transaction_payment_value = final_outputs.iter().map(|output| output.value).sum::<u64>();
             if change_amount > 0 {
                 let output = TransactionOutput::new(change_amount, pay_to_address_script(&self.inner.change_address));
                 final_outputs.push(output);
             }
 
             // --- TODO gate checks
-            let input_aggregate = utxo_entry_references.iter().map(|entry| entry.amount()).sum::<u64>();
-            let output_aggregate = final_outputs.iter().map(|output| output.value).sum::<u64>();
-            let transaction_fees = input_aggregate - output_aggregate;
+            let aggregate_input_value = utxo_entry_references.iter().map(|entry| entry.amount()).sum::<u64>();
+            let aggregate_output_value = final_outputs.iter().map(|output| output.value).sum::<u64>();
+            let transaction_fees = aggregate_input_value - aggregate_output_value;
             context.aggregate_fees += transaction_fees;
-            assert_eq!(transaction_amount_accumulator, input_aggregate);
+            #[cfg(any(debug_assertions, test))]
+            assert_eq!(transaction_amount_accumulator, aggregate_input_value);
             // ---
 
             let mut tx = Transaction::new(
@@ -356,8 +347,10 @@ impl Generator {
                 tx,
                 utxo_entry_references,
                 addresses.into_iter().collect(),
-                input_aggregate,
-                output_aggregate,
+                self.inner.final_transaction_amount,
+                change_amount,
+                aggregate_input_value,
+                aggregate_output_value,
                 transaction_fees,
                 true,
             )?))
@@ -369,10 +362,11 @@ impl Generator {
             let output = TransactionOutput::new(amount, script_public_key.clone());
 
             // --- TODO gate checks
-            let input_aggregate = utxo_entry_references.iter().map(|entry| entry.amount()).sum::<u64>();
-            let output_aggregate = output.value;
+            let aggregate_input_value = utxo_entry_references.iter().map(|entry| entry.amount()).sum::<u64>();
+            let aggregate_output_value = output.value;
             context.aggregate_fees += transaction_fees;
-            assert_eq!(transaction_amount_accumulator, input_aggregate);
+            #[cfg(any(debug_assertions, test))]
+            assert_eq!(transaction_amount_accumulator, aggregate_input_value);
             // ---
 
             let mut tx = Transaction::new(
@@ -397,8 +391,10 @@ impl Generator {
                 tx,
                 utxo_entry_references,
                 addresses.into_iter().collect(),
-                input_aggregate,
-                output_aggregate,
+                self.inner.final_transaction_amount,
+                amount,
+                aggregate_input_value,
+                aggregate_output_value,
                 transaction_fees,
                 false,
             )?))
@@ -426,6 +422,7 @@ impl Generator {
             network_id: self.inner.network_id,
             aggregated_utxos: context.aggregated_utxos,
             aggregated_fees: context.aggregate_fees,
+            final_transaction_amount: self.inner.final_transaction_amount,
             final_transaction_id: context.final_transaction_id,
             number_of_generated_transactions: context.number_of_generated_transactions,
         }

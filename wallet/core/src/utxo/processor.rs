@@ -146,10 +146,14 @@ impl UtxoProcessor {
     }
 
     pub async fn notify(&self, event: Events) -> Result<()> {
+        self.multiplexer().try_broadcast(event).map_err(|_| Error::Custom("multiplexer channel error during notify".to_string()))?;
+        Ok(())
+    }
+
+    pub fn try_notify(&self, event: Events) -> Result<()> {
         self.multiplexer()
-            .broadcast(event)
-            .await
-            .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
+            .try_broadcast(event)
+            .map_err(|_| Error::Custom("multiplexer channel error during try_notify".to_string()))?;
         Ok(())
     }
 
@@ -378,17 +382,17 @@ impl UtxoProcessor {
                             Ok(msg) => {
                                 match msg {
                                     Ctl::Open => {
-                                        this.inner.multiplexer.broadcast(Events::Connect {
+                                        this.inner.multiplexer.try_broadcast(Events::Connect {
                                             network_id : this.network_id().expect("network id expected during connection"),
                                             url : this.rpc_client().url().to_string()
-                                        }).await.unwrap_or_else(|err| log_error!("{err}"));
+                                        }).unwrap_or_else(|err| log_error!("{err}"));
                                         this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
                                     },
                                     Ctl::Close => {
-                                        this.inner.multiplexer.broadcast(Events::Disconnect {
+                                        this.inner.multiplexer.try_broadcast(Events::Disconnect {
                                             network_id : this.network_id().expect("network id expected during connection"),
                                             url : this.rpc_client().url().to_string()
-                                        }).await.unwrap_or_else(|err| log_error!("{err}"));
+                                        }).unwrap_or_else(|err| log_error!("{err}"));
                                         this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
                                     }
                                 }

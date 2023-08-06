@@ -23,7 +23,7 @@ impl Send {
         let abortable = Abortable::default();
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
 
-        let ctx_ = ctx.clone();
+        // let ctx_ = ctx.clone();
         let (summary, _ids) = account
             .send(
                 outputs.into(),
@@ -32,8 +32,8 @@ impl Send {
                 wallet_secret,
                 payment_secret,
                 &abortable,
-                Some(Arc::new(move |ptx| {
-                    tprintln!(ctx_, "Sending transaction: {}", ptx.id());
+                Some(Arc::new(move |_ptx| {
+                    // tprintln!(ctx_, "Sending transaction: {}", ptx.id());
                 })),
             )
             .await?;

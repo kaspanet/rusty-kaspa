@@ -80,8 +80,7 @@ impl SyncMonitor {
 
     pub async fn notify(&self, event: Events) -> Result<()> {
         self.multiplexer()
-            .broadcast(event)
-            .await
+            .try_broadcast(event)
             .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
         Ok(())
     }

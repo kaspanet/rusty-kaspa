@@ -131,6 +131,8 @@ impl Toolbar {
             ("12H", "12 Hours"),
             ("24H", "24 Hours"),
             ("36H", "36 Hours"),
+            ("48H", "48 Hours"),
+            ("72H", "72 Hours"),
         ];
 
         for (html, tip) in durations {

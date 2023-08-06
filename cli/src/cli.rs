@@ -363,7 +363,8 @@ impl KaspaCli {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
-                                        let tx = record.format_with_state(&this.wallet,Some("pending")).await;
+                                        let include_utxos = this.flags.get(Track::Utxo);
+                                        let tx = record.format_with_state(&this.wallet,Some("pending"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -371,7 +372,8 @@ impl KaspaCli {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
-                                        let tx = record.format_with_state(&this.wallet,Some("reorg")).await;
+                                        let include_utxos = this.flags.get(Track::Utxo);
+                                        let tx = record.format_with_state(&this.wallet,Some("reorg"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -379,7 +381,8 @@ impl KaspaCli {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
-                                        let tx = record.format_with_state(&this.wallet,Some("external")).await;
+                                        let include_utxos = this.flags.get(Track::Utxo);
+                                        let tx = record.format_with_state(&this.wallet,Some("external"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -387,15 +390,17 @@ impl KaspaCli {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
-                                        let tx = record.format_with_state(&this.wallet,Some("confirmed")).await;
+                                        let include_utxos = this.flags.get(Track::Utxo);
+                                        let tx = record.format_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
-                                Events::Debit {
+                                Events::Outgoing {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
-                                        let tx = record.format_with_state(&this.wallet,Some("confirmed")).await;
+                                        let include_utxos = this.flags.get(Track::Utxo);
+                                        let tx = record.format_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -541,7 +546,7 @@ impl KaspaCli {
         }
 
         let account = selection.unwrap();
-        let ident = account.name_or_id();
+        let ident = account.name_with_id();
         tprintln!(self, "\nselecting account: {ident}\n");
 
         Ok(account)
@@ -762,7 +767,7 @@ impl Cli for KaspaCli {
             }
 
             if let Ok(account) = self.wallet.account() {
-                prompt.push(style(account.name_or_id()).blue().to_string());
+                prompt.push(style(account.name_with_id()).blue().to_string());
 
                 if let Ok(balance) = account.balance_as_strings(None) {
                     if let Some(pending) = balance.pending {

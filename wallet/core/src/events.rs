@@ -77,9 +77,12 @@ pub enum Events {
     Maturity {
         record: TransactionRecord,
     },
-    Debit {
+    Outgoing {
         record: TransactionRecord,
     },
+    // Debit {
+    //     record: TransactionRecord,
+    // },
     Balance {
         #[serde(rename = "matureUtxoSize")]
         mature_utxo_size: usize,

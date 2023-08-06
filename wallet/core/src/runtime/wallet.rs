@@ -534,8 +534,7 @@ impl Wallet {
 
     pub async fn notify(&self, event: Events) -> Result<()> {
         self.multiplexer()
-            .broadcast(event)
-            .await
+            .try_broadcast(event)
             .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
         Ok(())
     }
@@ -554,7 +553,7 @@ impl Wallet {
             | Events::Reorg { record }
             | Events::External { record }
             | Events::Maturity { record }
-            | Events::Debit { record } => {
+            | Events::Outgoing { record } => {
                 self.store().as_transaction_record_store()?.store(&[record]).await?;
             }
             Events::SyncState(state) => {
