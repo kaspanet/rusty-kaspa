@@ -359,15 +359,6 @@ impl KaspaCli {
                                         tprintln!(this, "{NOTIFY} DAA: {daa}");
                                     }
                                 },
-                                Events::Pending {
-                                    record
-                                } => {
-                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
-                                        let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("pending"),include_utxos).await;
-                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
-                                    }
-                                },
                                 Events::Reorg {
                                     record
                                 } => {
@@ -386,8 +377,17 @@ impl KaspaCli {
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
+                                Events::Pending {
+                                    record, is_outgoing : _
+                                } => {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
+                                        let include_utxos = this.flags.get(Track::Utxo);
+                                        let tx = record.format_with_state(&this.wallet,Some("pending"),include_utxos).await;
+                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
+                                    }
+                                },
                                 Events::Maturity {
-                                    record
+                                    record, is_outgoing : _
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
                                         let include_utxos = this.flags.get(Track::Utxo);

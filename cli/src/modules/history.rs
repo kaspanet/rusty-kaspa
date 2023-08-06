@@ -113,7 +113,7 @@ impl History {
                         lines.iter().for_each(|line| tprintln!(ctx, "{line}"));
                     }
                     Err(err) => {
-                        terrorln!(ctx, "{err}");
+                        terrorln!(ctx, "Unable to read transaction data: {err}");
                     }
                 }
             }

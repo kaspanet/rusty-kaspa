@@ -65,6 +65,7 @@ pub enum Events {
     // New pending transaction
     Pending {
         record: TransactionRecord,
+        is_outgoing: bool,
     },
     // Removal of a pending UTXO
     Reorg {
@@ -76,6 +77,7 @@ pub enum Events {
     },
     Maturity {
         record: TransactionRecord,
+        is_outgoing: bool,
     },
     Outgoing {
         record: TransactionRecord,

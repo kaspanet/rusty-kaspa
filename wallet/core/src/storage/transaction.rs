@@ -9,12 +9,20 @@ use separator::Separatable;
 use serde::{Deserialize, Serialize};
 use workflow_log::style;
 
+const TRANSACTION_VERSION: u16 = 1;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionType {
+    /// Incoming transaction
     Incoming,
+    /// Transaction created by the runtime
     Outgoing,
+    /// Outgoing transaction observed by the runtime
+    External,
+    /// Internal batch (sweep) transaction
     Batch,
+    /// Reorg transaction (caused by UTXO reorg during mining)
     Reorg,
 }
 
@@ -23,6 +31,7 @@ impl TransactionType {
         match self {
             TransactionType::Incoming => style(s).green().to_string(),
             TransactionType::Outgoing => style(s).red().to_string(),
+            TransactionType::External => style(s).red().to_string(),
             TransactionType::Batch => style(s).blue().to_string(),
             TransactionType::Reorg => style(s).blue().to_string(),
         }
@@ -31,6 +40,7 @@ impl TransactionType {
         match self {
             TransactionType::Incoming => style("+".to_string() + s).green().to_string(),
             TransactionType::Outgoing => style("-".to_string() + s).red().to_string(),
+            TransactionType::External => style("-".to_string() + s).red().to_string(),
             TransactionType::Batch => style("".to_string() + s).dim().to_string(),
             TransactionType::Reorg => {
                 if history {
@@ -49,6 +59,7 @@ impl TransactionType {
         match self {
             TransactionType::Incoming => "+",
             TransactionType::Outgoing => "-",
+            TransactionType::External => "-",
             TransactionType::Batch => "",
             TransactionType::Reorg => "-",
         }
@@ -61,6 +72,7 @@ impl std::fmt::Display for TransactionType {
         let s = match self {
             TransactionType::Incoming => "incoming",
             TransactionType::Outgoing => "outgoing",
+            TransactionType::External => "external",
             TransactionType::Batch => "batch",
             TransactionType::Reorg => "reorg",
         };
@@ -100,7 +112,8 @@ pub enum TransactionMetadata {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "data")]
+#[serde(tag = "type", content = "transaction")]
+#[serde(rename_all = "lowercase")]
 pub enum TransactionData {
     Reorg {
         #[serde(rename = "utxoEntries")]
@@ -109,6 +122,12 @@ pub enum TransactionData {
         aggregate_input_value: u64,
     },
     Incoming {
+        #[serde(rename = "utxoEntries")]
+        utxo_entries: Vec<UtxoRecord>,
+        #[serde(rename = "value")]
+        aggregate_input_value: u64,
+    },
+    External {
         #[serde(rename = "utxoEntries")]
         utxo_entries: Vec<UtxoRecord>,
         #[serde(rename = "value")]
@@ -135,6 +154,7 @@ impl TransactionData {
         match self {
             TransactionData::Reorg { .. } => TransactionType::Reorg,
             TransactionData::Incoming { .. } => TransactionType::Incoming,
+            TransactionData::External { .. } => TransactionType::External,
             TransactionData::Outgoing { is_final, .. } => {
                 if *is_final {
                     TransactionType::Outgoing
@@ -148,6 +168,7 @@ impl TransactionData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRecord {
+    version: u16,
     id: TransactionId,
     #[serde(skip_serializing_if = "Option::is_none")]
     unixtime: Option<u64>,
@@ -214,6 +235,27 @@ impl TransactionRecord {
         };
 
         TransactionRecord {
+            version: TRANSACTION_VERSION,
+            id,
+            unixtime: None,
+            binding,
+            transaction_data,
+            block_daa_score,
+            network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
+            metadata: None,
+        }
+    }
+
+    pub fn new_external(utxo_context: &UtxoContext, id: TransactionId, utxos: Vec<UtxoEntryReference>) -> Self {
+        let binding = Binding::from(utxo_context.binding());
+        let block_daa_score = utxos[0].utxo.entry.block_daa_score;
+        let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
+        let aggregate_input_value = utxo_entries.iter().map(|utxo| utxo.amount).sum::<u64>();
+
+        let transaction_data = TransactionData::External { utxo_entries, aggregate_input_value };
+
+        TransactionRecord {
+            version: TRANSACTION_VERSION,
             id,
             unixtime: None,
             binding,
@@ -254,6 +296,7 @@ impl TransactionRecord {
         };
 
         TransactionRecord {
+            version: TRANSACTION_VERSION,
             id,
             unixtime: None,
             binding,
@@ -328,7 +371,8 @@ impl TransactionRecord {
 
         match transaction_data {
             TransactionData::Reorg { utxo_entries, aggregate_input_value }
-            | TransactionData::Incoming { utxo_entries, aggregate_input_value } => {
+            | TransactionData::Incoming { utxo_entries, aggregate_input_value }
+            | TransactionData::External { utxo_entries, aggregate_input_value } => {
                 let aggregate_input_value =
                     transaction_type.style_with_sign(utils::sompi_to_kaspa_string(*aggregate_input_value).as_str(), history);
                 lines.push(format!("{:>4}UTXOs: {}  Total: {}", "", utxo_entries.len(), aggregate_input_value));

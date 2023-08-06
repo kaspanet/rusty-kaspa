@@ -84,6 +84,7 @@ pub struct Context {
     pub(crate) pending: HashMap<UtxoEntryId, UtxoEntryReference>,
     pub(crate) consumed: HashMap<UtxoEntryId, Consumed>,
     pub(crate) map: HashMap<UtxoEntryId, UtxoEntryReference>,
+    outgoing: HashMap<TransactionId, PendingTransaction>,
     balance: Option<Balance>,
     addresses: Arc<DashSet<Arc<Address>>>,
 }
@@ -98,6 +99,7 @@ impl Context {
         self.mature.clear();
         self.consumed.clear();
         self.pending.clear();
+        self.outgoing.clear();
         self.addresses.clear();
         self.balance = None;
     }
@@ -229,6 +231,8 @@ impl UtxoContext {
             pending_utxo_entries.iter().for_each(|entry| {
                 context.consumed.insert(entry.id().clone(), (entry, &now).into());
             });
+
+            context.outgoing.insert(pending_tx.id(), pending_tx.clone());
         }
 
         let record = TransactionRecord::new_outgoing(self, pending_tx);
@@ -250,11 +254,6 @@ impl UtxoContext {
 
         Ok(())
     }
-
-    // pub(crate) fn notify_outgoing(&self, pending_transaction: &PendingTransaction) -> Result<()> {
-
-    //     Ok(())
-    // }
 
     /// Insert `utxo_entry` into the `UtxoSet`.
     /// NOTE: The insert will be ignored if already present in the inner map.
@@ -337,11 +336,23 @@ impl UtxoContext {
                 }
             }
 
+            let is_outgoing = self.consume_outgoing_transaction(&txid);
+
             let record = TransactionRecord::new_incoming(self, TransactionType::Incoming, txid, utxos);
-            self.processor().notify(Events::Maturity { record }).await?;
+            self.processor().notify(Events::Maturity { record, is_outgoing }).await?;
         }
 
         Ok(())
+    }
+
+    fn is_outgoing_transaction(&self, txid: &TransactionId) -> bool {
+        let context = self.context();
+        context.outgoing.contains_key(txid)
+    }
+
+    fn consume_outgoing_transaction(&self, txid: &TransactionId) -> bool {
+        let mut context = self.context();
+        context.outgoing.remove(txid).is_some()
     }
 
     pub async fn extend(&self, utxo_entries: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
@@ -412,8 +423,9 @@ impl UtxoContext {
 
         let pending = HashMap::group_from(utxos.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
         for (txid, utxos) in pending.into_iter() {
+            let is_outgoing = self.is_outgoing_transaction(&txid);
             let record = TransactionRecord::new_incoming(self, TransactionType::Incoming, txid, utxos);
-            self.processor().notify(Events::Pending { record }).await?;
+            self.processor().notify(Events::Pending { record, is_outgoing }).await?;
         }
 
         self.update_balance().await?;
@@ -446,7 +458,7 @@ impl UtxoContext {
         let pending = HashMap::group_from(pending.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
 
         for (txid, utxos) in mature.into_iter() {
-            let record = TransactionRecord::new_incoming(self, TransactionType::Outgoing, txid, utxos);
+            let record = TransactionRecord::new_external(self, txid, utxos);
             self.processor().notify(Events::External { record }).await?;
         }
 

@@ -549,11 +549,15 @@ impl Wallet {
 
     async fn handle_event(self: &Arc<Self>, event: Events) -> Result<()> {
         match &event {
-            Events::Pending { record }
-            | Events::Reorg { record }
-            | Events::External { record }
-            | Events::Maturity { record }
-            | Events::Outgoing { record } => {
+            Events::Pending { record, is_outgoing } | Events::Maturity { record, is_outgoing } => {
+                // if `is_outgoint` is set, this means that this pending and maturity
+                // event is for the change UTXOs of the outgoing transaction.
+                if !is_outgoing {
+                    self.store().as_transaction_record_store()?.store(&[record]).await?;
+                }
+            }
+
+            Events::Reorg { record } | Events::External { record } | Events::Outgoing { record } => {
                 self.store().as_transaction_record_store()?.store(&[record]).await?;
             }
             Events::SyncState(state) => {
