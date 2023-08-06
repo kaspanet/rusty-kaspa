@@ -6,22 +6,24 @@ pub struct Details;
 
 impl Details {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, _argv: Vec<String>, _cmd: &str) -> Result<()> {
-        tprintln!(ctx, "Change addresses: 0..");
-
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
-        let wallet = ctx.wallet();
+        let account = ctx.select_account().await?;
 
-        let manager = wallet.account()?.receive_address_manager()?;
-        let index = manager.index()?;
+        let manager = account.receive_address_manager()?;
+        let index = manager.index()? + 1;
         let addresses = manager.get_range_with_args(0..index, false).await?;
-        tprintln!(ctx, "Receive addresses: 0..{index}");
-        tprintln!(ctx, "{}\n", addresses.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\n"));
+        tprintln!(ctx, "Receive addresses: {index}");
+        addresses.iter().for_each(|address| {
+            tprintln!(ctx.term(), "{:>4}{}", "", style(address.to_string()).blue());
+        });
 
-        let manager = wallet.account()?.change_address_manager()?;
-        let index = manager.index()?;
+        let manager = account.change_address_manager()?;
+        let index = manager.index()? + 1;
         let addresses = manager.get_range_with_args(0..index, false).await?;
-        tprintln!(ctx, "Change addresses: 0..{index}");
-        tprintln!(ctx.term(), "{}\n", addresses.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\n"));
+        tprintln!(ctx, "Change addresses: {index}");
+        addresses.iter().for_each(|address| {
+            tprintln!(ctx.term(), "{:>4}{}", "", style(address.to_string()).blue());
+        });
 
         Ok(())
     }
