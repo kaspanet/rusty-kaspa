@@ -25,9 +25,12 @@ used when running a local node or connecting to a remote node.
 ---
 
 You can use `node start` to start the node.  Type `node` to see an overview of commands.
-`node mute` toggles node log output.  `node select` allows you to choose between locally
-installed flavors (if running in the development environment).  You can also specify
-an absolute path by typing `node select <path to rusty kaspa binary>`.
+`node mute` toggles node log output (you can also use `node logs`).  `node select` allows 
+you to choose between locally installed flavors (if running in the development environment).
+You can also specify an absolute path by typing `node select <path to rusty kaspa binary>`.
+
+For developers: `node select` scans 'target' folder for the debug and release builds
+so you can switch between builds at runtime using the `node select` command.
 
 Once you node is running, you can connect to it using the `connect` command.
 
