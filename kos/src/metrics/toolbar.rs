@@ -202,7 +202,9 @@ impl Toolbar {
             Action::Duration(duration) => {
                 let graphs = self.inner.graphs.lock().unwrap();
                 for graph in (*graphs).values() {
-                    graph.set_duration(duration).expect("unable to set graph duration");
+                    graph.set_duration(duration).unwrap_or_else(|err| {
+                        log_error!("unable to set graph duration: {}", err);
+                    });
                 }
             }
             Action::Cols(cols) => {
