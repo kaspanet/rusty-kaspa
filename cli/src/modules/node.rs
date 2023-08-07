@@ -111,12 +111,26 @@ impl Node {
                 kaspad.start().await?;
 
                 // temporary setup for autoconnect
-                let url = ctx.wallet().rpc_client().url();
-                if url.contains("127.0.0.1") || url.contains("localhost") {
-                    spawn(async move {
-                        sleep(Duration::from_millis(1000)).await;
-                        ctx.term().exec("connect".to_string()).await.ok();
-                    });
+                let url = ctx.wallet().settings().get(WalletSettings::Server);
+                let network_type = ctx.wallet().network_id()?;
+                if let Some(url) = ctx.wallet().rpc_client().parse_url(url, network_type.into()).map_err(|e| e.to_string())? {
+                    // log_info!("connecting to url: {}", url);
+                    if url.contains("127.0.0.1") || url.contains("localhost") {
+                        spawn(async move {
+                            let options = ConnectOptions {
+                                block_async_connect: true,
+                                strategy: ConnectStrategy::Fallback,
+                                url: Some(url),
+                                timeout: None,
+                            };
+                            for _ in 0..5 {
+                                sleep(Duration::from_millis(1000)).await;
+                                if ctx.wallet().rpc_client().connect(options.clone()).await.is_ok() {
+                                    break;
+                                }
+                            }
+                        });
+                    }
                 }
             }
             "stop" => {

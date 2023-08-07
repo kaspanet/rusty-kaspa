@@ -9,7 +9,7 @@ impl Exit {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
         ctx.wallet().select(None).await?;
         // ctx.term().refresh_prompt();
-        tprintln!(ctx, "{}", style("System is going down ...").blue());
+        // tprintln!(ctx, "{}", style("System is going down ...").blue());
         ctx.shutdown().await?;
         tprintln!(ctx, "bye!");
 
