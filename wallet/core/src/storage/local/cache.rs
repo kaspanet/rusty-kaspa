@@ -2,6 +2,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::storage::local::wallet::Wallet;
+use crate::storage::local::wallet::WALLET_VERSION;
 use crate::storage::local::*;
 use crate::storage::*;
 use std::collections::HashMap;
@@ -63,6 +64,6 @@ impl TryFrom<(&Cache, &Secret)> for Wallet {
         let payload = Payload { prv_key_data, accounts, address_book };
         let payload = Decrypted::new(payload).encrypt(secret)?;
 
-        Ok(Wallet { payload, metadata, user_hint: cache.user_hint.clone() })
+        Ok(Wallet { version: WALLET_VERSION, payload, metadata, user_hint: cache.user_hint.clone() })
     }
 }

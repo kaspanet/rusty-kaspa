@@ -1,5 +1,3 @@
-// use std::collections::HashMap;
-
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;

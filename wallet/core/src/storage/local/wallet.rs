@@ -6,8 +6,12 @@ use crate::storage::local::Storage;
 use crate::storage::{Decrypted, Encrypted, Hint, Metadata, PrvKeyData, PrvKeyDataId};
 use workflow_store::fs;
 
+pub const WALLET_VERSION: [u16; 3] = [1, 0, 0];
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Wallet {
+    #[serde(default)]
+    pub version: [u16; 3],
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_hint: Option<Hint>,
     pub payload: Encrypted,
@@ -19,7 +23,7 @@ impl Wallet {
         let metadata =
             payload.accounts.iter().filter_map(|account| if account.is_visible { Some(account.clone()) } else { None }).collect();
         let payload = Decrypted::new(payload).encrypt(secret)?;
-        Ok(Self { payload, metadata, user_hint })
+        Ok(Self { version: WALLET_VERSION, payload, metadata, user_hint })
     }
 
     pub fn payload(&self, secret: &Secret) -> Result<Decrypted<Payload>> {

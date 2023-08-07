@@ -66,7 +66,7 @@ impl Settings {
                     ctx.wallet().settings().try_store().await?;
                 }
         */
-        
+
         Ok(())
     }
 }
