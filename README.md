@@ -158,20 +158,7 @@ wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
 
 ## wRPC to gRPC Proxy
 
-Proxy providing wRPC to gRPC relay is available in `rpc/wrpc/proxy`.
-By default, the proxy server will connect to *grpc://127.0.01:16110*
-while offering wRPC connections on *wrpc://127.0.0.1:17110*. Use `--help`
-to see configuration options.
-
-The Proxy server is currently used for testing with the Golang implementation
-of Kaspad. At the time of writing, the gRPC has only partial messsage translation
-implementation.
-
-To run the proxy:
-```bash
-cd rpc/wrpc/proxy
-cargo run
-```
+wRPC to gRPC Proxy is deprecated and no longer supported.
 
 ## Native JavaScript & TypeScript RPC clients for Browsers and Node.js environments
 
@@ -205,17 +192,14 @@ the browser provides the W3C WebSocket class natively.
 
 ## Wallet CLI
 
-The wallet CLI is under heavy development.  To test the environment you can do the following:
-
-- Start Golang Kaspad
-- Start wRPC proxy
-
-Native (OS command line):
+Wallet CLI is now available via the `/cli` or `/kos` projects.
 
 ```bash
-cd wallet/native
-cargo run
+cd cli
+cargo run --release
 ```
+
+For KOS, please see [`kos/README.md`](kos/README.md)
 
 Web Browser (WASM):
 
@@ -228,17 +212,3 @@ basic-http-server
 The *basic-http-server* will serve on port 4000 by default, so open your web browser and load http://localhost:4000
 
 The framework is compatible with all major desktop and mobile browsers.
-
-## Using Wallet CLI
-
-This project is under heavy development and currently demonstrates only the RPC data exchange and
-address generation using the native or WASM wallet library. 
-
-Here are the few commands that work:
-
-```
-get-info
-subscribe-daa-score
-new-address
-exit
-```
