@@ -197,7 +197,7 @@ impl Toolbar {
     }
 
     pub fn action(&self, _btn: &dyn Control, action: Action) {
-        log_info!("action: {:?}", action);
+        // log_info!("action: {:?}", action);
         match action {
             Action::Duration(duration) => {
                 let graphs = self.inner.graphs.lock().unwrap();
