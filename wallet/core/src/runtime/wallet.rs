@@ -805,8 +805,7 @@ mod test {
 
         let address = Address::try_from("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")?;
 
-        let utxo_set =
-            self::get_utxos_set_by_addresses(rpc.clone(), vec![address.clone()], current_daa_score, utxo_processor).await?;
+        let utxo_set = self::get_utxos_set_by_addresses(rpc.clone(), vec![address.clone()], current_daa_score, utxo_processor).await?;
 
         let utxo_set_balance = utxo_set.calculate_balance().await;
         println!("get_utxos_by_addresses: {utxo_set_balance:?}");
