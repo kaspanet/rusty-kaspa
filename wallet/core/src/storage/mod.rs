@@ -45,15 +45,16 @@ mod tests {
 
         let wallet_secret = Secret::from("ABC-L4LXw2F7HEK3wJU-Rk4stbPy6c");
         let payment_secret = Secret::from("test-123-# L4LXw2F7HEK3wJU Rk4stbPy6c");
-        let mnemonic1 = "caution guide valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light nut invite fiction visa hamster coyote".to_string();
-        let mnemonic2 = "nut invite fiction visa hamster coyote guide caution valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light".to_string();
+        let mnemonic1s = "caution guide valley easily latin already visual fancy fork car switch runway vicious polar surprise fence boil light nut invite fiction visa hamster coyote".to_string();
+        let mnemonic2s = "fiber boy desk trip pitch snake table awkward endorse car learn forest solid ticket enemy pink gesture wealth iron chaos clock gather honey farm".to_string();
 
-        let mnemonic1 = Mnemonic::new(mnemonic1, Language::English)?;
+        let mnemonic1 = Mnemonic::new(mnemonic1s.clone(), Language::English)?;
         let key_caps = KeyCaps::from_mnemonic_phrase(mnemonic1.phrase());
         let key_data_payload1 = PrvKeyDataPayload::try_new(mnemonic1.clone(), Some(&payment_secret))?;
         let prv_key_data1 = PrvKeyData::new(key_data_payload1.id(), None, key_caps, Encryptable::Plain(key_data_payload1));
 
-        let mnemonic2 = Mnemonic::new(mnemonic2, Language::English)?;
+        // let mnemonic2 = Mnemonic::new(mnemonic2, Language::English)?;
+        let mnemonic2 = Mnemonic::new(mnemonic2s, Language::English)?;
         let key_caps = KeyCaps::from_mnemonic_phrase(mnemonic2.phrase());
         let key_data_payload2 = PrvKeyDataPayload::try_new(mnemonic2.clone(), Some(&payment_secret))?;
         let prv_key_data2 = PrvKeyData::new(
