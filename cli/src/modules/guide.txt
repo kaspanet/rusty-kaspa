@@ -1,132 +1,86 @@
-#
-
 Please note - this is an alpha version of the softeware, not all features are currently functional.
-
-#
-
-TODO or REFACTORING tags indicate that the feature is not functional as it is actively being worked on.
-
-#
 
 If using a dekstop or a web version of this software, you can use Ctrl+'+' or Ctrl+'-' (Command on MacOS) to
 change the terminal font size.
 
-#
+If using a desktop version, you can use Ctrl+M (Command on MacOS) to bring up metrics.
+
+Type `help` to see the complete list of commands. `exit` to exit this application.
+On Windows you can use `Alt+F4` and on MacOS `Command+Q` to exit.
 
 ---
 
-# network <identifier>
+Before you start, you must configure the default network setting.  There are currently
+3 networks available.  `mainnet`, `testnet-10` and `testnet-11`.  While this software
+is in alpha stage, you should not use it on the mainnet.  If you wish to experiment,
+you should select `testnet-10` by entering `network testnet-10`
 
-Configures current network type.  The <identifier> is the name of the network.
-
-The <identifier> can be 'mainnet', 'testnet' (which defaults to 'testnet-10'), or 'testnet-11'.
-
-# server <address>
-
-Configures the target RPC server. If the <address> value is an IP of a fully-qualified domain
-name, the port will be configured based on the `network` setting.
-
-#
+The `server` command configures the target server.  You can connect to any Rusty Kaspa
+node that has User RPC enabled with `--rpclisten-borsh=public`. If you are running the node
+from within KOS, it is locked to listen to a local IP address.
 
 Both network and server values are stored in the application settings and are 
 used when running a local node or connecting to a remote node.
 
-#[desktop] node start
+---
 
-Starts the locak Kaspa node instance (available on desktop only)
+You can use `node start` to start the node.  Type `node` to see an overview of commands.
+`node mute` toggles node log output.  `node select` allows you to choose between locally
+installed flavors (if running in the development environment).  You can also specify
+an absolute path by typing `node select <path to rusty kaspa binary>`.
 
-#[desktop] node mute
+Once you node is running, you can connect to it using the `connect` command.
 
-Toggle mute of the local Kaspa logs
+When starting the node and the `server` setting is configured to your local host, 
+the `connect` action will occure automatically.
 
-#[desktop] node status
-
-Display current node status
-
-#[desktop] node select
-
-Allows you to select a different node binary (useful when you need to switch between 
-debug and release version of Kaspad)
-
-# connect <address>
-
-Connects the application RPC to the destination address. If the address is omitted, 
-the address pre-configured with the 'server' command is used.
-
-# create wallet [<name>]
-
-Creates a local encrypted wallet by generating a private key mnemonic for recovery at a later date.
-Once the wallet is created, a default HD Wallet account is created within this wallet.
-
-The <name> argument is optional (the default wallet name is "kaspa") and allows you to create multiple 
+`wallet create [<name>]` Use theis command to create a local wallet. The <name> argument 
+is optional (the default wallet name is "kaspa") and allows you to create multiple 
 named wallets.  Only one wallet can be opened at a time. Keep in mind that a wallet can have multiple
 accounts, as such you only need one wallet, unless, for example, you want to separate wallets for 
-personal and business needs.
+personal and business needs (but you can also create isolated accounts within a wallet).
 
-A wallet is encrypted but can also have a payment password. The payment password is also used as a 
-mnemonic keyphrase; If you choose to have the payment password, it is permanently bound to your 
-mnemonic and will be required if you are recovering you account from mnemonic.
+Make sure to record your mnemonic, even if working with a testnet, not to loose your
+testnet KAS.
 
-# open [<name>]
+`open <name>` - opens the wallet (the wallet is open automatically after creation).
 
-Opens an existing wallet. The <name> argument is optional. If the name is omitted, the default "kaspa" wallet is opened.
+`list` - Lists all wallet accounts and their balances.
 
-# create account [<account-type>]
+`select <account-name>` - Selects an active account. The <account-name> can be the first few letters of the name or id of the account.
 
-Allows creation of additional HD Wallet accounts within the currently opened wallet.
+`account create bip32 [<name>]` - Allows you to create additional HD wallet accounts linked to the default private key of your wallet.
 
-# delete account
+`address` - shows your selected account address
 
-TODO | Deletes an existing account from storage.
+Note - you can click on the address to copy it to the clipboard.  (When on mainnet, Ctrl+Click on addresses, transactions and 
+block hashes will open a new browser window with an explorer.)
 
-# delete wallet
+Before you transact: `mute` option (enabled by default) toggles mute on/off. Mute enables terminal
+output of internal framework events.  Rust and JavaScript/TypeScript applications integrating with this platform 
+are meant to update their state by monitoring event notifications. Mute allows you to see these events in
+the terminal.  When mute is off, all events are displayed in the terminal.  When mute is on, you can use 'track'
+command to enable specific event notification.
 
-TODO | Deletes the current wallet from the system.
+`transfer <account-name> <amount>` - Transfers from the active to a different account. For example 'transfer p 1' will transfer 1 KAS from
+the selected account to an account named 'pete' (starts with a 'p' letter)
 
-# list
+`send <address> <amount>` - Send funds to a destination address .
 
-Lists all accounts in the current wallet.
+`estimate <amount>` - Provides a fee and UTXO consumption estimate for a transaction of a given amount.
 
-# select
+`sweep` - Sweeps account UTXOs to reduce the UTXO size.
 
-Selects one of the accounts as "current".  When sending funds, the selected account will be used. If not current
-account is selected, you will be prompted to select an account.  If the wallet contains a single account, it is 
-automatically selected.
+`history list` - Shows previous account transactions.
 
-# send
+`history details` - Show previous account transactions with extended information.
 
-REFACTORING | Send funds to a destination Kaspa address.
+Once your node is synced, you can start the CPU miner.
 
-# history
+`miner start` - Starts the miner. The miner will mine to your currently selected account. (So you need to have a wallet open and an 
+account selected to start the miner)
 
-Display a list of previously received or issued transaction.
+`monitor` - A test screen environment that periodically updates account balances.
 
-# import <import-type>
-
-REFACTORING | Import an existing wallet mnemonic (a legacy 12 word mnemonic, or a core wallet 24 word mnemonic).
-
-# export <export-type>
-
-TODO | Export a wallet or an account.
-
-#[desktop] miner start
-
-Starts the local CPU miner instance (available on desktop only). Please note that in order to start the miner
-you need to have a Wallet open.  The miner will mine to your currently selected account.
-
-# miner mute
-
-Toggle mute of the CPU Miner logs.
-
-# mute
-
-General notifications mute (when the mute is on, you can enable/disable notifications using the 'track' command).
-
-# track
-
-Following events can be tracked: balance, utxo, transactions
-
-#[desktop] metrics open
-
-Open the metrics window
+`rpc` - Allows you to execute RPC methods against the node (not all methods are currently available)
 

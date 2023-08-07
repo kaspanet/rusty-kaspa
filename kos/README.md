@@ -109,14 +109,24 @@ Please note that redistributable installers
 
 Once you power up KOS you can do the following:
 
-- `network testnet-10` - specify that you want to interface with testnet-10
-- `node start` - start the kaspa node; you will need to wait for the node to sync
-- `node mute` - toggles node log output
-- `wallet create` - create a local wallet;  You can create multiple wallets by specifying a name after the create command. For example: `wallet create alpha` will create a wallet `alpha` which can later be opened with `open alpha`.  The default name for the wallet is `kaspa`.  Each named wallet is stored in a separate wallet file.  (you can not currently rename the wallet once created)
-- `account create` - creates a new account in the currently opened wallet.  You can give a name to the account by supplying it during creation as follows: `account create personal` or `account create business`.  This will create an account named `personal` or `business`.  Account names can be later used as shorthand when transferring funds between them.
-- Once you are synced and have the miner operational, make sure you have a wallet open with a sepected account and use `miner start`.  This will launch the miner and start mining to your selected account.  If your hashrate is in Kh/s, it may take a while to find a block.
-- Once you have received some TKAS, you can test sending it by doing `transfer p 10` `p` is for `personal` - when using account names you can use first set of letters of the account name.
-- You can type `list` to see your accounts.
-- Click on any address to copy it to the clipboard
-- Use `send <address> 10` to send funds to someone else.
-- Use `mute` to toggle visibility of internal events.
+`network testnet-10` - specify that you want to interface with testnet-10
+
+`node start` - start the kaspa node; you will need to wait for the node to sync
+
+`node mute` - toggles node log output
+
+`wallet create` - create a local wallet;  You can create multiple wallets by specifying a name after the create command. For example: `wallet create alpha` will create a wallet `alpha` which can later be opened with `open alpha`.  The default name for the wallet is `kaspa`.  Each named wallet is stored in a separate wallet file.  (you can not currently rename the wallet once created)
+
+`account create` - creates a new account in the currently opened wallet.  You can give a name to the account by supplying it during creation as follows: `account create personal` or `account create business`.  This will create an account named `personal` or `business`.  Account names can be later used as shorthand when transferring funds between them.
+
+Once you are synced and have the miner operational, make sure you have a wallet open with a sepected account and use `miner start`.  This will launch the miner and start mining to your selected account.  If your hashrate is in Kh/s, it may take a while to find a block.
+
+Once you have received some TKAS, you can test sending it by doing `transfer p 10`. The letter `p` is for `personal` - when using account names you can use first set of letters of the account name or it's id. If more than one account matches your supplied prefix, you will be asked to be more specific.
+
+You can type `list` to see your accounts.
+
+Click on any address to copy it to the clipboard
+
+Use `send <address> 10` to send funds to someone else.
+
+Use `mute` to toggle visibility of internal events.
