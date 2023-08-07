@@ -135,7 +135,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
         term.writeln(format!("Your wallet is stored in: {}", descriptor));
         term.writeln("");
     }
-    
+
     let receive_address = account.receive_address().await?;
     term.writeln("Your default account deposit address:");
     term.writeln(style(receive_address).blue().to_string());
