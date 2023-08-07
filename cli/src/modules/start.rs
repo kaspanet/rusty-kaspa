@@ -1,7 +1,7 @@
 use crate::imports::*;
 
 #[derive(Default, Handler)]
-#[help("Stop local node and close wallet")]
+#[help("Start local node and open wallet")]
 pub struct Start;
 
 impl Start {
