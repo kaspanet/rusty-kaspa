@@ -876,7 +876,7 @@ mod test {
         println!("mtx: {mtx:?}");
 
         //let signer = Signer::new(private_keys)?;
-        let mtx = sign_mutable_transaction(mtx, &private_keys, true)?;
+        let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
         //println!("mtx: {mtx:?}");
 
         let utxo_set =

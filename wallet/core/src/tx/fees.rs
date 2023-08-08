@@ -1,4 +1,7 @@
+use crate::error::Error;
 use crate::result::Result;
+use js_sys::BigInt;
+use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Clone)]
 pub enum Fees {
@@ -39,5 +42,18 @@ impl TryFrom<String> for Fees {
     type Error = crate::error::Error;
     fn try_from(fee: String) -> Result<Self> {
         Self::try_from(fee.as_str())
+    }
+}
+
+impl TryFrom<JsValue> for Fees {
+    type Error = crate::error::Error;
+    fn try_from(fee: JsValue) -> Result<Self> {
+        if fee.is_undefined() || fee.is_null() {
+            Ok(Fees::None)
+        } else if let Ok(fee) = fee.dyn_into::<BigInt>() {
+            Ok(Fees::Exclude(fee.try_into().map_err(|err| Error::custom(format!("invalid bigint value {err}")))?))
+        } else {
+            Err(crate::error::Error::custom("Invalid fee"))
+        }
     }
 }

@@ -1,16 +1,16 @@
-use crate::network::NetworkId;
 use crate::result::Result;
 use crate::runtime::Account;
 use crate::tx::{Fees, PaymentDestination};
 use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoSelectionContext};
 use crate::Events;
 use kaspa_addresses::Address;
+use kaspa_consensus_core::networktype::NetworkType;
 use std::sync::Arc;
 use workflow_core::channel::Multiplexer;
 
 pub struct GeneratorSettings {
     // Network type
-    pub network_id: NetworkId,
+    pub network_type: NetworkType,
     // Event multiplexer
     pub multiplexer: Option<Multiplexer<Events>>,
     // Utxo iterator
@@ -38,7 +38,7 @@ impl GeneratorSettings {
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
     ) -> Result<Self> {
-        let network_id = account.utxo_context().processor().network_id()?;
+        let network_type = account.utxo_context().processor().network_id()?.into();
         let change_address = account.change_address().await?;
         let multiplexer = account.wallet().multiplexer().clone();
         let inner = account.inner();
@@ -48,7 +48,7 @@ impl GeneratorSettings {
         let utxo_selector = Arc::new(UtxoSelectionContext::new(account.utxo_context()));
 
         let settings = GeneratorSettings {
-            network_id,
+            network_type,
             multiplexer: Some(multiplexer),
             sig_op_count,
             minimum_signatures,
@@ -63,20 +63,21 @@ impl GeneratorSettings {
 
         Ok(settings)
     }
-    pub async fn try_new_sweep_with_keydata_signer(
-        network_id: NetworkId,
-        change_address: Address,
+
+    pub fn try_new_with_iterator(
         utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
         multiplexer: Option<Multiplexer<Events>>,
+        sig_op_count: u8,
+        minimum_signatures: u16,
+        change_address: Address,
         final_transaction_destination: PaymentDestination,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
     ) -> Result<Self> {
-        let sig_op_count = 1;
-        let minimum_signatures = 1;
+        let network_type = NetworkType::try_from(change_address.prefix)?;
 
         let settings = GeneratorSettings {
-            network_id,
+            network_type,
             multiplexer,
             sig_op_count,
             minimum_signatures,

@@ -1,4 +1,5 @@
 pub mod consensus;
+pub mod generator;
 pub mod input;
 pub mod mass;
 pub mod mtx;
@@ -8,8 +9,10 @@ pub mod scriptpubkey;
 pub mod signer;
 pub mod transaction;
 pub mod txscript;
+pub mod utils;
 
 pub use consensus::*;
+pub use generator::*;
 pub use input::*;
 pub use mass::*;
 pub use mtx::*;
@@ -19,3 +22,4 @@ pub use scriptpubkey::*;
 pub use signer::*;
 pub use transaction::*;
 pub use txscript::*;
+pub use utils::*;

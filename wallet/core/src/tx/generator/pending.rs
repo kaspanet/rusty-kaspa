@@ -104,6 +104,14 @@ impl PendingTransaction {
         self.inner.aggregate_output_value
     }
 
+    pub fn payment_value(&self) -> Option<u64> {
+        self.inner.payment_value
+    }
+
+    pub fn change_value(&self) -> u64 {
+        self.inner.change_value
+    }
+
     pub fn is_final(&self) -> bool {
         self.inner.is_final
     }
@@ -133,20 +141,24 @@ impl PendingTransaction {
     //     Ok(())
     // }
 
-    pub fn rpc_transaction(&self) -> Result<RpcTransaction> {
-        Ok(self.inner.signable_tx.lock().unwrap().tx.as_ref().into())
+    pub fn transaction(&self) -> Transaction {
+        self.inner.signable_tx.lock().unwrap().tx.clone()
+    }
+
+    pub fn rpc_transaction(&self) -> RpcTransaction {
+        self.inner.signable_tx.lock().unwrap().tx.as_ref().into()
     }
 
     /// Submit the transaction on the supplied rpc
     pub async fn try_submit(&self, rpc: &Arc<DynRpcApi>) -> Result<RpcTransactionId> {
         // self.notify()?;
         self.commit().await?; // commit transactions only if we are submitting
-        let rpc_transaction: RpcTransaction = self.rpc_transaction()?;
+        let rpc_transaction: RpcTransaction = self.rpc_transaction();
         Ok(rpc.submit_transaction(rpc_transaction, true).await?)
     }
 
     pub async fn log(&self) -> Result<()> {
-        log_info!("pending transaction: {:?}", self.rpc_transaction()?);
+        log_info!("pending transaction: {:?}", self.rpc_transaction());
         Ok(())
     }
 

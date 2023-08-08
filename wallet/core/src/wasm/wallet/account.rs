@@ -143,6 +143,12 @@ impl Account {
     }
 }
 
+impl From<Account> for Arc<runtime::Account> {
+    fn from(account: Account) -> Self {
+        account.inner
+    }
+}
+
 impl Account {
     pub async fn update(&self) -> Result<()> {
         self.cache.update(&self.inner).await

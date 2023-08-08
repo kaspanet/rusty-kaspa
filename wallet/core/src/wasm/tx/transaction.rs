@@ -229,13 +229,12 @@ impl TryFrom<JsValue> for Transaction {
     }
 }
 
-impl TryFrom<cctx::Transaction> for Transaction {
-    type Error = Error;
-    fn try_from(tx: cctx::Transaction) -> std::result::Result<Self, Self::Error> {
+impl From<cctx::Transaction> for Transaction {
+    fn from(tx: cctx::Transaction) -> Self {
         let id = tx.id();
         let inputs: Vec<TransactionInput> = tx.inputs.into_iter().map(|input| input.into()).collect::<Vec<TransactionInput>>();
         let outputs: Vec<TransactionOutput> = tx.outputs.into_iter().map(|output| output.into()).collect::<Vec<TransactionOutput>>();
-        Ok(Self::new_with_inner(TransactionInner {
+        Self::new_with_inner(TransactionInner {
             version: tx.version,
             inputs,
             outputs,
@@ -244,7 +243,7 @@ impl TryFrom<cctx::Transaction> for Transaction {
             payload: tx.payload,
             subnetwork_id: tx.subnetwork_id,
             id,
-        }))
+        })
     }
 }
 

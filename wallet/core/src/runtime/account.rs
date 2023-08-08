@@ -394,16 +394,16 @@ impl Account {
                     let signer = Arc::new(KeydataSigner::new(keydata));
 
                     let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
-                    let settings = GeneratorSettings::try_new_sweep_with_keydata_signer(
-                        self.wallet.network_id()?,
-                        change_address.clone(),
+                    let settings = GeneratorSettings::try_new_with_iterator(
                         Box::new(utxos.into_iter()),
                         None,
+                        1,
+                        1,
+                        change_address.clone(),
                         PaymentDestination::Change,
                         Fees::None,
                         None,
-                    )
-                    .await?;
+                    )?;
 
                     let generator = Generator::new(settings, Some(signer), abortable);
 

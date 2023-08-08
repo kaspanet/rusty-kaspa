@@ -89,29 +89,29 @@ impl MassCalculator {
 
     #[wasm_bindgen(js_name=calcMassForOutputs)]
     pub fn calc_mass_for_outputs(&self, outputs: JsValue) -> Result<u32> {
-        let outputs =
-            outputs.dyn_into::<js_sys::Array>()?.iter().map(|output| self.calc_mass_for_output(output)).collect::<Result<Vec<_>>>()?;
+        let outputs = outputs.dyn_into::<js_sys::Array>()?.iter().map(TransactionOutput::try_from).collect::<Result<Vec<_>>>()?;
+        let outputs = outputs.iter().map(|output| self.calc_mass_for_output(output)).collect::<Result<Vec<_>>>()?;
         Ok(outputs.iter().sum())
     }
 
     #[wasm_bindgen(js_name=calcMassForInputs)]
     pub fn calc_mass_for_inputs(&self, inputs: JsValue) -> Result<u32> {
-        let inputs =
-            inputs.dyn_into::<js_sys::Array>()?.iter().map(|input| self.calc_mass_for_input(input)).collect::<Result<Vec<_>>>()?;
+        let inputs = inputs.dyn_into::<js_sys::Array>()?.iter().map(TransactionInput::try_from).collect::<Result<Vec<_>>>()?;
+        let inputs = inputs.iter().map(|input| self.calc_mass_for_input(input)).collect::<Result<Vec<_>>>()?;
         Ok(inputs.iter().sum())
     }
 
     #[wasm_bindgen(js_name=calcMassForOutput)]
-    pub fn calc_mass_for_output(&self, output: JsValue) -> Result<u32> {
-        let output = TransactionOutput::try_from(output)?;
-        let output = cctx::TransactionOutput::from(&output);
+    pub fn calc_mass_for_output(&self, output: &TransactionOutput) -> Result<u32> {
+        // let output = TransactionOutput::try_from(output)?;
+        let output = cctx::TransactionOutput::from(output);
         Ok(self.mc.calc_mass_for_output(&output) as u32)
     }
 
     #[wasm_bindgen(js_name=calcMassForInput)]
-    pub fn calc_mass_for_input(&self, input: JsValue) -> Result<u32> {
-        let input = TransactionInput::try_from(input)?;
-        let input = cctx::TransactionInput::from(&input);
+    pub fn calc_mass_for_input(&self, input: &TransactionInput) -> Result<u32> {
+        // let input = TransactionInput::try_from(input)?;
+        let input = cctx::TransactionInput::from(input);
         Ok(self.mc.calc_mass_for_input(&input) as u32)
     }
 
@@ -131,9 +131,9 @@ impl MassCalculator {
     }
 
     #[wasm_bindgen(js_name=calcMiniumTxRelayFee)]
-    pub fn calc_minium_tx_relay_fee(&self, tx: JsValue, minimum_signatures: u16) -> Result<u32> {
-        let tx = Transaction::try_from(tx)?;
-        let tx = cctx::Transaction::from(&tx);
-        Ok(self.mc.calc_minium_tx_relay_fee(&tx, minimum_signatures) as u32)
+    pub fn calc_minimum_transaction_relay_fee(&self, transaction: &Transaction, minimum_signatures: u16) -> Result<u32> {
+        // let transaction = Transaction::try_from(transaction)?;
+        let tx = cctx::Transaction::from(transaction);
+        Ok(self.mc.calc_minium_transaction_relay_fee(&tx, minimum_signatures) as u32)
     }
 }

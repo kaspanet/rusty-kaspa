@@ -1,5 +1,4 @@
 use crate::imports::*;
-use crate::network::NetworkId;
 use crate::result::Result;
 use crate::tx::{
     get_consensus_params_by_address, mass::*, Fees, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction,
@@ -38,7 +37,7 @@ struct Inner {
     abortable: Abortable,
     signer: Option<Arc<dyn SignerT>>,
     mass_calculator: MassCalculator,
-    network_id: NetworkId,
+    network_type: NetworkType,
 
     // Utxo Context
     utxo_context: Option<UtxoContext>,
@@ -75,7 +74,7 @@ pub struct Generator {
 impl Generator {
     pub fn new(settings: GeneratorSettings, signer: Option<Arc<dyn SignerT>>, abortable: &Abortable) -> Self {
         let GeneratorSettings {
-            network_id,
+            network_type,
             multiplexer,
             utxo_iterator,
             utxo_context,
@@ -113,7 +112,7 @@ impl Generator {
         let final_transaction_outputs_mass = mass_calculator.calc_mass_for_outputs(&final_transaction_outputs);
 
         let inner = Inner {
-            network_id,
+            network_type,
             multiplexer,
             context,
             signer,
@@ -419,7 +418,7 @@ impl Generator {
         let context = self.context();
 
         GeneratorSummary {
-            network_id: self.inner.network_id,
+            network_type: self.inner.network_type,
             aggregated_utxos: context.aggregated_utxos,
             aggregated_fees: context.aggregate_fees,
             final_transaction_amount: self.inner.final_transaction_amount,

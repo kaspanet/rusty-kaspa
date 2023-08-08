@@ -29,11 +29,12 @@ impl Wallet {
     #[wasm_bindgen(constructor)]
     // pub fn constructor(js_value: JsValue) -> std::result::Result<Wallet, JsError> {
     pub fn constructor(js_value: JsValue) -> Result<Wallet> {
-        let args = WalletCtorArgs::try_from(js_value)?;
+        let WalletCtorArgs { resident, network_id, encoding, url } = WalletCtorArgs::try_from(js_value)?;
 
-        let store = Arc::new(LocalStore::try_new(args.resident)?);
-        let rpc = RpcClient::new(WrpcEncoding::Borsh, "wrpc://127.0.0.1:17110");
-        let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc.client().clone()), store, args.network_id)?);
+        let store = Arc::new(LocalStore::try_new(resident)?);
+        let rpc =
+            RpcClient::new(encoding.unwrap_or(WrpcEncoding::Borsh), url.unwrap_or("wrpc://127.0.0.1:17110".to_string()).as_str());
+        let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc.client().clone()), store, network_id)?);
         let events = MultiplexerClient::default();
 
         Ok(Self { wallet, events, rpc })
@@ -200,6 +201,8 @@ impl Wallet {
 struct WalletCtorArgs {
     resident: bool,
     network_id: Option<NetworkId>,
+    encoding: Option<WrpcEncoding>,
+    url: Option<String>,
 }
 
 impl TryFrom<JsValue> for WalletCtorArgs {
@@ -208,7 +211,7 @@ impl TryFrom<JsValue> for WalletCtorArgs {
         if let Some(object) = Object::try_from(&js_value) {
             let resident = object.get("resident")?.as_bool().unwrap_or(false);
 
-            let network_id = object.get("networkType")?;
+            let network_id = object.get("networkId")?;
             let network_id = if let Some(network_id) = network_id.as_string() {
                 let network_id = NetworkId::from_str(network_id.as_str())?;
                 Some(network_id)
@@ -216,7 +219,17 @@ impl TryFrom<JsValue> for WalletCtorArgs {
                 None
             };
 
-            Ok(Self { resident, network_id })
+            let encoding = object.get("encoding")?;
+            let encoding = if let Some(encoding) = encoding.as_string() {
+                let encoding = WrpcEncoding::from_str(encoding.as_str())?;
+                Some(encoding)
+            } else {
+                None
+            };
+
+            let url = object.get("url")?.as_string();
+
+            Ok(Self { resident, network_id, encoding, url })
         } else {
             Ok(WalletCtorArgs::default())
         }
