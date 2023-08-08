@@ -72,7 +72,14 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
 $ (cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace) 2>&1 | tee ~/rusty-kaspa.log
 ```
 
+## Heap-profiling
+Heap-profiling in `kaspad` and `simpa` can be done by enabling `heap` feature and profile, ie.:
 
+```bash
+$ cargo run --bin kaspad --profile heap --features=heap
+```
+
+It will produce `{bin-name}-heap.json` file in the root of the workdir, that can be inspected by the [dhat-viewer](https://github.com/unofficial-mirror/valgrind/tree/master/dhat)
 
 ## Tests & Benchmarks
 

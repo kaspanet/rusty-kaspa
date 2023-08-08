@@ -180,3 +180,8 @@ workflow-terminal = { version = "0.3.10" }
 lto = "thin"
 strip = true
 overflow-checks = true
+
+[profile.heap]
+inherits = "release"
+debug = true
+strip = false

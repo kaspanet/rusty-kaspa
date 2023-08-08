@@ -109,7 +109,13 @@ struct Args {
     rocksdb_mem_budget: Option<usize>,
 }
 
+#[cfg(feature = "heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 fn main() {
+    #[cfg(feature = "heap")]
+    let _profiler = dhat::Profiler::builder().file_name("simpa-heap.json").build();
     // Get CLI arguments
     let mut args = Args::parse();
 
@@ -125,6 +131,8 @@ fn main() {
         let ts = Arc::new(TickService::new());
         let cb = move |counters| {
             trace!("metrics: {:?}", counters);
+            #[cfg(feature = "heap")]
+            trace!("heap stats: {:?}", dhat::HeapStats::get());
         };
         let m = Arc::new(
             Builder::new()
