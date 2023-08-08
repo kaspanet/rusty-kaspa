@@ -27,6 +27,14 @@ pub use hashers::*;
 #[wasm_bindgen]
 pub struct Hash([u8; HASH_SIZE]);
 
+impl TryFrom<&[u8]> for Hash {
+    type Error = TryFromSliceError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        Hash::try_from_slice(value)
+    }
+}
+
 impl Hash {
     #[inline(always)]
     pub const fn from_bytes(bytes: [u8; HASH_SIZE]) -> Self {

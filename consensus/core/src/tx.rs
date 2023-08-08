@@ -1,5 +1,7 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_utils::hex::*;
+use kaspa_utils::{hex::*, serde_bytes};
+// use kaspa_utils::hex::*;
+
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 use std::{
@@ -200,6 +202,7 @@ pub type TransactionIndexType = u32;
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
+    #[serde(with = "serde_bytes")]
     pub transaction_id: TransactionId,
     pub index: TransactionIndexType,
 }
@@ -255,6 +258,7 @@ pub struct Transaction {
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub lock_time: u64,
+    #[serde(with = "serde_bytes")]
     pub subnetwork_id: SubnetworkId,
     pub gas: u64,
     #[serde(with = "serde_bytes")]
@@ -262,6 +266,7 @@ pub struct Transaction {
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
+    #[serde(with = "serde_bytes")] // todo should it be in serde outcome?
     id: TransactionId,
 }
 
