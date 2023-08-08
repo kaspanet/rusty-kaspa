@@ -174,7 +174,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     }
 
     // DB used for addresses store and for multi-consensus management
-    let mut meta_db = kaspa_database::prelude::open_db(meta_db_dir.clone(), true, 1);
+    let mut meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir.clone()).build();
 
     // TEMP: upgrade from Alpha version or any version before this one
     if meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
@@ -195,7 +195,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
 
         // Reopen the DB
-        meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
+        meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir).build();
     }
 
     let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
@@ -245,7 +245,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
-        let utxoindex_db = kaspa_database::prelude::open_db(utxoindex_db_dir, true, 1);
+        let utxoindex_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(utxoindex_db_dir).build();
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
         let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
         Some(index_service)

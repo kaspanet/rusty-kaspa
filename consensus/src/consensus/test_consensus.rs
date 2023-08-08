@@ -8,10 +8,12 @@ use kaspa_consensus_core::{
 use kaspa_consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
 use kaspa_core::{core::Core, service::Service};
-use kaspa_database::utils::{create_temp_db, DbLifetime};
+use kaspa_database::utils::DbLifetime;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 
+use kaspa_database::create_temp_db;
+use kaspa_database::prelude::ConnBuilder;
 use std::future::Future;
 use std::{sync::Arc, thread::JoinHandle};
 
@@ -56,7 +58,7 @@ impl TestConsensus {
 
     /// Creates a test consensus instance based on `config` with a temp DB and the provided `notification_sender`
     pub fn with_notifier(config: &Config, notification_sender: Sender<Notification>) -> Self {
-        let (db_lifetime, db) = create_temp_db();
+        let (db_lifetime, db) = create_temp_db!(ConnBuilder::default());
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
         let consensus = Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters));
@@ -67,7 +69,7 @@ impl TestConsensus {
 
     /// Creates a test consensus instance based on `config` with a temp DB and no notifier
     pub fn new(config: &Config) -> Self {
-        let (db_lifetime, db) = create_temp_db();
+        let (db_lifetime, db) = create_temp_db!(ConnBuilder::default());
         let (dummy_notification_sender, _) = async_channel::unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
