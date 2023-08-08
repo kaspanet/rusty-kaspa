@@ -81,21 +81,49 @@ pub fn create_transaction_js(
 
 /// Creates a set of transactions using transaction [`Generator`].
 #[wasm_bindgen(js_name=createTransactions)]
-pub async fn create_transactions_js(settings: GeneratorSettingsObject) -> crate::Result<Array> {
+pub async fn create_transactions_js(settings: GeneratorSettingsObject) -> crate::Result<Object> {
     let generator = Generator::js_new(settings).await?;
     if is_web() {
-        // yield for each transaction if operating in the browser
+        // yield after each generated transaction if operating in the browser
         let mut stream = generator.stream();
         let mut transactions = vec![];
         while let Some(transaction) = stream.try_next().await? {
             transactions.push(PendingTransaction::from(transaction));
             yield_executor().await;
         }
-        Ok(transactions.into_iter().map(JsValue::from).collect::<Array>())
+        let transactions = transactions.into_iter().map(JsValue::from).collect::<Array>();
+        let summary = JsValue::from(generator.summary());
+        let object = Object::new();
+        object.set("transactions", &transactions)?;
+        object.set("summary", &summary)?;
+        Ok(object)
     } else {
         // use iterator to aggregate all transactions
         let transactions = generator.iter().map(|r| r.map(PendingTransaction::from)).collect::<Result<Vec<_>>>()?;
-        Ok(transactions.into_iter().map(JsValue::from).collect::<Array>())
+        let transactions = transactions.into_iter().map(JsValue::from).collect::<Array>();
+        let summary = JsValue::from(generator.summary());
+        let object = Object::new();
+        object.set("transactions", &transactions)?;
+        object.set("summary", &summary)?;
+        Ok(object)
+    }
+}
+
+/// Creates a set of transactions using transaction [`Generator`].
+#[wasm_bindgen(js_name=estimateTransactions)]
+pub async fn estimate_js(settings: GeneratorSettingsObject) -> crate::Result<GeneratorSummary> {
+    let generator = Generator::js_new(settings).await?;
+    if is_web() {
+        // yield after each generated transaction if operating in the browser
+        let mut stream = generator.stream();
+        while stream.try_next().await?.is_some() {
+            yield_executor().await;
+        }
+        Ok(generator.summary())
+    } else {
+        // use iterator to aggregate all transactions
+        generator.iter().collect::<Result<Vec<_>>>()?;
+        Ok(generator.summary())
     }
 }
 
