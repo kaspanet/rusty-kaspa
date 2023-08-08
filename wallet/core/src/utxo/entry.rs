@@ -361,3 +361,38 @@ impl TryFrom<JsValue> for UtxoEntries {
         Ok(Self(Arc::new(list)))
     }
 }
+
+impl TryFrom<JsValue> for UtxoEntryReference {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
+        if !js_value.is_object() {
+            return Err("UtxoEntryReference must be an object".into());
+        }
+
+        match ref_from_abi!(UtxoEntryReference, &js_value) {
+            Ok(value) => Ok(value),
+            Err(err) => {
+                if !js_value.is_object() {
+                    panic!("invalid UtxoEntry: {err}")
+                }
+                //log_trace!("entry: {:?}", entry);
+                let object = Object::from(js_value);
+                let amount = object.get_u64("amount")?;
+                let script_public_key = ScriptPublicKey::try_from_jsvalue(
+                    object.get("scriptPublicKey").map_err(|_| Error::Custom("missing `scriptPublicKey` property".into()))?,
+                )?;
+                let block_daa_score = object.get_u64("blockDaaScore")?;
+                let is_coinbase = object.get_bool("isCoinbase")?;
+                let address: Address = object.get_string("address")?.try_into()?;
+                let outpoint: TransactionOutpoint = object.get("outpoint")?.try_into()?;
+                let utxo_entry = UtxoEntry {
+                    address: address.into(),
+                    outpoint,
+                    entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
+                };
+
+                Ok(UtxoEntryReference::from(utxo_entry))
+            }
+        }
+    }
+}
