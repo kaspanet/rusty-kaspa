@@ -96,7 +96,13 @@ fn get_user_approval_or_exit(message: &str, approve: bool) {
     }
 }
 
+#[cfg(feature = "heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 pub fn main() {
+    #[cfg(feature = "heap")]
+    let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
     let args = Args::parse(&Defaults::default());
 
     // Configure the panic behavior
@@ -232,6 +238,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let perf_monitor = args.perf_metrics.then(|| {
         let cb = move |counters| {
             trace!("[{}] metrics: {:?}", kaspa_perf_monitor::SERVICE_NAME, counters);
+            #[cfg(feature = "heap")]
+            trace!("heap stats: {:?}", dhat::HeapStats::get());
         };
         Arc::new(
             PerfMonitorBuilder::new()
