@@ -17,6 +17,6 @@ pub mod prelude {
     pub use super::item::CachedDbItem;
     pub use super::key::DbKey;
     pub use super::writer::{BatchDbWriter, DbWriter, DirectDbWriter, DirectWriter, MemoryWriter};
-    pub use db::{delete_db, open_db, DB};
+    pub use db::{delete_db, ConnBuilder, DB};
     pub use errors::{StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions};
 }

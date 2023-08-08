@@ -221,7 +221,8 @@ mod tests {
     };
     use kaspa_consensusmanager::ConsensusManager;
     use kaspa_core::info;
-    use kaspa_database::utils::create_temp_db;
+    use kaspa_database::create_temp_db;
+    use kaspa_database::prelude::ConnBuilder;
     use std::{collections::HashSet, sync::Arc, time::Instant};
 
     /// TODO: use proper Simnet when implemented.
@@ -235,7 +236,7 @@ mod tests {
 
         // Initialize all components, and virtual change emulator proxy.
         let mut virtual_change_emulator = VirtualChangeEmulator::new();
-        let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
+        let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default());
         let config = Config::new(DEVNET_PARAMS);
         let tc = Arc::new(TestConsensus::new(&config));
         let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));

@@ -125,7 +125,9 @@ mod tests {
     use kaspa_consensus::{config::Config, consensus::test_consensus::TestConsensus, params::DEVNET_PARAMS, test_helpers::*};
     use kaspa_consensus_core::utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff};
     use kaspa_consensusmanager::ConsensusManager;
-    use kaspa_database::utils::{create_temp_db, DbLifetime};
+    use kaspa_database::create_temp_db;
+    use kaspa_database::prelude::ConnBuilder;
+    use kaspa_database::utils::DbLifetime;
     use kaspa_notify::notifier::test_helpers::NotifyMock;
     use kaspa_utxoindex::UtxoIndex;
     use rand::{rngs::SmallRng, SeedableRng};
@@ -145,7 +147,7 @@ mod tests {
     impl NotifyPipeline {
         fn new() -> Self {
             let (consensus_sender, consensus_receiver) = unbounded();
-            let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
+            let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default());
             let config = Arc::new(Config::new(DEVNET_PARAMS));
             let tc = TestConsensus::new(&config);
             tc.init();
