@@ -6,13 +6,17 @@ use crate::accounts::PubkeyDerivationManagerTrait;
 use crate::accounts::WalletDerivationManagerTrait;
 use crate::error::Error;
 use crate::runtime;
+use crate::runtime::account::create_private_keys;
 use crate::runtime::AccountKind;
+use crate::secret::Secret;
+use crate::storage::PrvKeyDataId;
 use crate::storage::PubKeyData;
 use crate::Result;
 use futures::future::join_all;
 use kaspa_addresses::{Address, Prefix};
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_utils::hex::ToHex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use wasm_bindgen::prelude::*;
@@ -145,6 +149,10 @@ impl AddressManager {
 }
 
 pub struct AddressDerivationManager {
+    pub account_kind: AccountKind,
+    pub account_index: u64,
+    pub cosigner_index: Option<u32>,
+    wallet: Arc<runtime::Wallet>,
     pub receive_address_manager: Arc<AddressManager>,
     pub change_address_manager: Arc<AddressManager>,
 }
@@ -154,6 +162,7 @@ impl AddressDerivationManager {
         wallet: &Arc<runtime::Wallet>,
         // prefix: Prefix,
         account_kind: AccountKind,
+        account_index: u64,
         pub_key_data: &PubKeyData,
         ecdsa: bool,
         minimum_signatures: usize,
@@ -173,6 +182,10 @@ impl AddressDerivationManager {
                 AccountKind::Legacy => {
                     // TODO! WalletAccountV0::from_extended_public_key is not yet implemented
                     Arc::new(WalletDerivationManagerV0::from_extended_public_key_str(xpub, cosigner_index).await?)
+                }
+                AccountKind::MultiSig => {
+                    let cosigner_index = cosigner_index.ok_or(Error::InvalidAccountKind)?;
+                    Arc::new(WalletDerivationManager::from_extended_public_key_str(xpub, Some(cosigner_index)).await?)
                 }
                 _ => Arc::new(WalletDerivationManager::from_extended_public_key_str(xpub, cosigner_index).await?),
             };
@@ -200,6 +213,10 @@ impl AddressDerivationManager {
         )?;
 
         let manager = Self {
+            account_kind,
+            account_index,
+            cosigner_index,
+            wallet: wallet.clone(),
             receive_address_manager: Arc::new(receive_address_manager),
             change_address_manager: Arc::new(change_address_manager),
         };
@@ -213,6 +230,68 @@ impl AddressDerivationManager {
 
     pub fn change_address_manager(&self) -> Arc<AddressManager> {
         self.change_address_manager.clone()
+    }
+
+    pub async fn get_receive_range_with_keys(
+        &self,
+        indexes: std::ops::Range<u32>,
+        update_indexes: bool,
+        wallet_secret: Secret,
+        payment_secret: &Option<Secret>,
+        id: &PrvKeyDataId,
+    ) -> Result<Vec<(Address, secp256k1::SecretKey)>> {
+        self.get_range_with_keys(false, indexes, update_indexes, wallet_secret, payment_secret, id).await
+    }
+
+    pub async fn get_change_range_with_keys(
+        &self,
+        indexes: std::ops::Range<u32>,
+        update_indexes: bool,
+        wallet_secret: Secret,
+        payment_secret: &Option<Secret>,
+        id: &PrvKeyDataId,
+    ) -> Result<Vec<(Address, secp256k1::SecretKey)>> {
+        self.get_range_with_keys(true, indexes, update_indexes, wallet_secret, payment_secret, id).await
+    }
+
+    async fn get_range_with_keys(
+        &self,
+        change_address: bool,
+        indexes: std::ops::Range<u32>,
+        update_indexes: bool,
+        wallet_secret: Secret,
+        payment_secret: &Option<Secret>,
+        id: &PrvKeyDataId,
+    ) -> Result<Vec<(Address, secp256k1::SecretKey)>> {
+        let addresses = if change_address {
+            self.change_address_manager.get_range_with_args(indexes, update_indexes).await?
+        } else {
+            self.receive_address_manager.get_range_with_args(indexes, update_indexes).await?
+        };
+
+        let addresses_list = &addresses.iter().collect::<Vec<&Address>>()[..];
+        let (receive, change) = self.addresses_indexes(addresses_list)?;
+        let keydata = match self.wallet.get_prv_key_data(wallet_secret, id).await? {
+            Some(keydata) => keydata,
+            None => return Err(Error::KeyId(id.to_hex())),
+        };
+
+        let private_keys = create_private_keys(
+            self.account_kind,
+            self.cosigner_index.unwrap_or(0),
+            self.account_index,
+            &keydata,
+            payment_secret,
+            &receive,
+            &change,
+        )?;
+
+        let mut result = vec![];
+        for (address, private_key) in private_keys {
+            result.push((address.clone(), private_key));
+        }
+
+        Ok(result)
     }
 
     // pub fn addresses_indexes(&self, addresses: &Vec<Address>) -> Result<(Vec<u32>, Vec<u32>)> {

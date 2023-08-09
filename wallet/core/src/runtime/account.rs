@@ -155,7 +155,8 @@ impl Account {
     ) -> Result<Arc<Self>> {
         let minimum_signatures = pub_key_data.minimum_signatures.unwrap_or(1) as usize;
         let derivation =
-            AddressDerivationManager::new(wallet, account_kind, &pub_key_data, ecdsa, minimum_signatures, None, None).await?;
+            AddressDerivationManager::new(wallet, account_kind, account_index, &pub_key_data, ecdsa, minimum_signatures, None, None)
+                .await?;
 
         let stored = storage::Account::new(
             name.map(String::from),
@@ -195,6 +196,7 @@ impl Account {
         let derivation = AddressDerivationManager::new(
             wallet,
             stored.account_kind,
+            stored.account_index,
             &stored.pub_key_data,
             stored.ecdsa,
             minimum_signatures,
@@ -443,23 +445,24 @@ impl Account {
         receive: &[(&'l Address, u32)],
         change: &[(&'l Address, u32)],
     ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
-        let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
-        let xkey = payload.get_xprv(payment_secret.as_ref())?;
+        // let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
+        // let xkey = payload.get_xprv(payment_secret.as_ref())?;
 
-        let cosigner_index = self.cosigner_index;
-        let paths = build_derivate_paths(self.account_kind, self.account_index, cosigner_index)?;
-        let receive_xkey = xkey.clone().derive_path(paths.0)?;
-        let change_xkey = xkey.derive_path(paths.1)?;
+        // let cosigner_index = self.cosigner_index;
+        // let paths = build_derivate_paths(self.account_kind, self.account_index, cosigner_index)?;
+        // let receive_xkey = xkey.clone().derive_path(paths.0)?;
+        // let change_xkey = xkey.derive_path(paths.1)?;
 
-        let mut private_keys = vec![];
-        for (address, index) in receive.iter() {
-            private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
-        }
-        for (address, index) in change.iter() {
-            private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
-        }
+        // let mut private_keys = vec![];
+        // for (address, index) in receive.iter() {
+        //     private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+        // }
+        // for (address, index) in change.iter() {
+        //     private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+        // }
 
-        Ok(private_keys)
+        // Ok(private_keys)
+        create_private_keys(self.account_kind, self.cosigner_index, self.account_index, keydata, payment_secret, receive, change)
     }
 
     pub async fn receive_address(&self) -> Result<Address> {
@@ -629,4 +632,31 @@ impl Account {
 
         Ok(generator.summary())
     }
+}
+
+pub(crate) fn create_private_keys<'l>(
+    account_kind: AccountKind,
+    cosigner_index: u32,
+    account_index: u64,
+    keydata: &PrvKeyData,
+    payment_secret: &Option<Secret>,
+    receive: &[(&'l Address, u32)],
+    change: &[(&'l Address, u32)],
+) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
+    let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
+    let xkey = payload.get_xprv(payment_secret.as_ref())?;
+
+    let paths = build_derivate_paths(account_kind, account_index, cosigner_index)?;
+    let receive_xkey = xkey.clone().derive_path(paths.0)?;
+    let change_xkey = xkey.derive_path(paths.1)?;
+
+    let mut private_keys = vec![];
+    for (address, index) in receive.iter() {
+        private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+    }
+    for (address, index) in change.iter() {
+        private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+    }
+
+    Ok(private_keys)
 }
