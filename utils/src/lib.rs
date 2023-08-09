@@ -9,6 +9,7 @@ pub mod networking;
 pub mod option;
 pub mod refs;
 pub mod serde_bytes;
+pub mod serde_bytes_fixed;
 pub mod sim;
 pub mod sync;
 pub mod triggers;

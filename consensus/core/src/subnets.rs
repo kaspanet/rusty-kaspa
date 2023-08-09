@@ -14,6 +14,12 @@ pub const SUBNETWORK_ID_SIZE: usize = 20;
 )]
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
 
+impl AsRef<[u8; 20]> for SubnetworkId {
+    fn as_ref(&self) -> &[u8; 20] {
+        &self.0
+    }
+}
+
 impl AsRef<[u8]> for SubnetworkId {
     fn as_ref(&self) -> &[u8] {
         &self.0
