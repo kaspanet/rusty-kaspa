@@ -1,8 +1,5 @@
 use crate::db::DB;
-use rlimit::Resource;
-use std::cmp::min;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{cmp::min, path::PathBuf, sync::Arc};
 
 #[derive(Debug, Copy, Clone)]
 pub struct Unspecified;
@@ -102,7 +99,7 @@ macro_rules! default_opts {
         #[cfg(target_os = "windows")]
         let files_limit = rlimit::getmaxstdio() as i32;
         #[cfg(any(target_os = "macos", target_os = "linux"))]
-        let files_limit = rlimit::getrlimit(Resource::NOFILE).unwrap().0 as i32;
+        let files_limit = rlimit::getrlimit(rlimit::Resource::NOFILE).unwrap().0 as i32;
         // In most linux environments the limit is set to 1024, so we use 500 to give sufficient slack.
         // TODO: fine-tune this parameter and additional parameters related to max file size
         opts.set_max_open_files(min(files_limit, $self.files_limit));
