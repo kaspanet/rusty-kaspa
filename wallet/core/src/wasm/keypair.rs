@@ -64,7 +64,7 @@ impl Keypair {
     /// Get the [`Address`] of this Keypair's [`PublicKey`].
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
-    #[wasm_bindgen(getter = toAddress)]
+    #[wasm_bindgen(js_name = toAddress)]
     pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
         let payload = &self.public_key.serialize()[1..];
         let address = Address::new(network_type.into(), AddressVersion::PubKey, payload);
