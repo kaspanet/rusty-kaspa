@@ -35,7 +35,8 @@ impl Wallet {
             let wallet = fs::read_json::<Wallet>(store.filename()).await?;
             Ok(wallet)
         } else {
-            Err(Error::NoWalletInStorage)
+            let name = store.filename().file_name().unwrap().to_str().unwrap();
+            Err(Error::NoWalletInStorage(name.to_string()))
         }
     }
 

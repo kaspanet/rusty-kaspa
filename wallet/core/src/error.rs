@@ -49,8 +49,8 @@ pub enum Error {
     #[error("SerdeJson -> {0}")]
     SerdeJson(#[from] serde_json::Error),
 
-    #[error("No wallet found")]
-    NoWalletInStorage,
+    #[error("No wallet named '{0}' found")]
+    NoWalletInStorage(String),
 
     #[error("Wallet already exists")]
     WalletAlreadyExists,
