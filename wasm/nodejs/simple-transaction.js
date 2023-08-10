@@ -26,7 +26,7 @@ async function runDemo() {
     console.log("using destination address:", destinationAddress);
 
     // From BIP0340
-    const sk = new PrivateKey('b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef');
+    const sk = new PrivateKey('b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f');
 
     const kaspaAddress = sk.toKeypair().toAddress(networkType).toString();
     // Full kaspa address: kaspa:qr0lr4ml9fn3chekrqmjdkergxl93l4wrk3dankcgvjq776s9wn9jkdskewva
@@ -54,11 +54,17 @@ async function runDemo() {
         // a very basic JS-driven utxo entry sort
         entries.sort((a, b) => a.utxoEntry.amount > b.utxoEntry.amount || -(a.utxoEntry.amount < b.utxoEntry.amount));
 
+        let total = entries.reduce((agg, curr) => {
+            return curr.utxoEntry.amount + agg;
+        }, 0n);
+
+        console.info('Amount sending', total - BigInt(entries.length) * 2000n)
+
         let { transactions, summary } = await createTransactions({
-            entries,
-            outputs : [[destination, kaspaToSompi(0.2)]],
+            entries, 
+            outputs : [[destinationAddress, total - BigInt(entries.length) * 2000n]],
             priorityFee: 0,
-            changeAddress: address,
+            changeAddress: destinationAddress,
         });
 
         console.log("summary:", summary);
