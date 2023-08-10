@@ -257,7 +257,6 @@ pub struct Transaction {
     pub inputs: Vec<TransactionInput>,
     pub outputs: Vec<TransactionOutput>,
     pub lock_time: u64,
-    #[serde(with = "serde_bytes_fixed")]
     pub subnetwork_id: SubnetworkId,
     pub gas: u64,
     #[serde(with = "serde_bytes")]
