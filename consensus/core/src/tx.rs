@@ -201,6 +201,7 @@ pub type TransactionIndexType = u32;
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
+    #[serde(with = "serde_bytes_fixed")]
     pub transaction_id: TransactionId,
     pub index: TransactionIndexType,
 }
@@ -264,6 +265,7 @@ pub struct Transaction {
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
+    #[serde(with = "serde_bytes_fixed")]
     id: TransactionId,
 }
 

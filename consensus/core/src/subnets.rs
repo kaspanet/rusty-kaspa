@@ -3,19 +3,16 @@ use std::str::{self, FromStr};
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_utils::hex::{FromHex, ToHex};
-use serde::{Deserialize, Serialize};
 
 /// The size of the array used to store subnetwork IDs.
 pub const SUBNETWORK_ID_SIZE: usize = 20;
 
 /// The domain representation of a Subnetwork ID
-#[derive(
-    Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
-)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
 
-impl AsRef<[u8; 20]> for SubnetworkId {
-    fn as_ref(&self) -> &[u8; 20] {
+impl AsRef<[u8; SUBNETWORK_ID_SIZE]> for SubnetworkId {
+    fn as_ref(&self) -> &[u8; SUBNETWORK_ID_SIZE] {
         &self.0
     }
 }
@@ -23,6 +20,12 @@ impl AsRef<[u8; 20]> for SubnetworkId {
 impl AsRef<[u8]> for SubnetworkId {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl From<[u8; SUBNETWORK_ID_SIZE]> for SubnetworkId {
+    fn from(value: [u8; SUBNETWORK_ID_SIZE]) -> Self {
+        Self::from_bytes(value)
     }
 }
 
