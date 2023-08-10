@@ -36,6 +36,8 @@ u8_try_from! {
         #[default]
         Bip32,
         MultiSig,
+        Secp256k1Keypair,
+        Secp256k1KeypairResident
     }
 }
 
