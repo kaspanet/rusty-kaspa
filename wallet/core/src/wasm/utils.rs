@@ -8,6 +8,11 @@ pub fn sompi_to_kaspa(sompi: JsValue) -> Result<f64> {
     Ok(crate::utils::sompi_to_kaspa(sompi))
 }
 
+#[wasm_bindgen(js_name = "kaspaToSompi")]
+pub fn kaspa_to_sompi(kaspa: f64) -> u64 {
+    crate::utils::kaspa_to_sompi(kaspa)
+}
+
 #[wasm_bindgen(js_name = "sompiToKaspaString")]
 pub fn sompi_to_kaspa_string(sompi: JsValue) -> Result<String> {
     let sompi = sompi.try_as_u64()?;

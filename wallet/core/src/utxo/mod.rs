@@ -8,7 +8,7 @@ pub mod stream;
 
 pub use binding::UtxoContextBinding;
 pub use context::{UtxoContext, UtxoContextId};
-pub use entry::{PendingUtxoEntryReference, UtxoEntries, UtxoEntry, UtxoEntryId, UtxoEntryReference};
+pub use entry::{PendingUtxoEntryReference, TryIntoUtxoEntryReferences, UtxoEntries, UtxoEntry, UtxoEntryId, UtxoEntryReference};
 pub use processor::UtxoProcessor;
 pub use scan::{Scan, ScanExtent};
 pub use selection::UtxoSelectionContext;

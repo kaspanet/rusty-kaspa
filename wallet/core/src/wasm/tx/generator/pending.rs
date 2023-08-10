@@ -1,17 +1,22 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::tx::generator as core;
+use crate::tx::generator as native;
 use crate::wasm::keypair::PrivateKey;
 use crate::wasm::tx::Transaction;
 use kaspa_wrpc_client::wasm::RpcClient;
 
 #[wasm_bindgen(inspectable)]
 pub struct PendingTransaction {
-    inner: core::PendingTransaction,
+    inner: native::PendingTransaction,
 }
 
 #[wasm_bindgen]
 impl PendingTransaction {
+    #[wasm_bindgen(getter)]
+    pub fn id(&self) -> String {
+        self.inner.id().to_string()
+    }
+
     #[wasm_bindgen(getter, js_name = paymentAmount)]
     pub fn payment_value(&self) -> JsValue {
         if let Some(payment_value) = self.inner.payment_value() {
@@ -72,19 +77,21 @@ impl PendingTransaction {
     }
 
     /// Submit transaction to the supplied [`RpcClient`]
-    pub async fn submit(&self, wasm_rpc_client: RpcClient) -> Result<TransactionId> {
+    pub async fn submit(&self, wasm_rpc_client: &RpcClient) -> Result<String> {
         let rpc: Arc<DynRpcApi> = wasm_rpc_client.client().clone();
-        self.inner.try_submit(&rpc).await
+        let txid = self.inner.try_submit(&rpc).await?;
+        Ok(txid.to_string())
     }
 
     /// Returns encapsulated network [`Transaction`]
-    pub async fn transaction(&self) -> Result<Transaction> {
+    #[wasm_bindgen(getter)]
+    pub fn transaction(&self) -> Result<Transaction> {
         Ok(Transaction::from(self.inner.transaction()))
     }
 }
 
-impl From<core::PendingTransaction> for PendingTransaction {
-    fn from(pending_transaction: core::PendingTransaction) -> Self {
+impl From<native::PendingTransaction> for PendingTransaction {
+    fn from(pending_transaction: native::PendingTransaction) -> Self {
         Self { inner: pending_transaction }
     }
 }

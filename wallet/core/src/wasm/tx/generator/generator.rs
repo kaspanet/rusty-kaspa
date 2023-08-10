@@ -2,7 +2,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::runtime;
 use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutputs};
-use crate::utxo::UtxoEntryReference;
+use crate::utxo::{TryIntoUtxoEntryReferences, UtxoEntryReference};
 use crate::wasm::tx::generator::*;
 use crate::wasm::wallet::Account;
 
@@ -160,15 +160,16 @@ impl TryFrom<GeneratorSettingsObject> for GeneratorSettings {
 
         let final_priority_fee = Fees::try_from(args.get("priorityFee")?)?;
 
-        let utxo_entries = args.get("utxoEntries")?;
-        let generator_source = if !utxo_entries.is_undefined() {
-            if let Some(utxo_entries) = utxo_entries.dyn_ref::<js_sys::Array>() {
-                GeneratorSource::UtxoEntries(
-                    utxo_entries.to_vec().iter().map(UtxoEntryReference::try_from).collect::<Result<Vec<_>, _>>()?,
-                )
+        let utxo_entries = {
+            let utxo_entries = args.get("utxoEntries")?;
+            if utxo_entries.is_falsy() {
+                args.get("entries")?
             } else {
-                return Err(Error::custom("utxo_entries must be an array"));
+                utxo_entries
             }
+        };
+        let generator_source = if !utxo_entries.is_undefined() {
+            GeneratorSource::UtxoEntries(utxo_entries.try_into_utxo_entry_references()?)
         } else {
             let account = args.get("account")?;
             if account.is_undefined() {

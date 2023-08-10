@@ -158,8 +158,7 @@ impl TryFrom<JsValue> for PrivateKey {
             let array = Uint8Array::new(&js_value);
             Self::try_from_slice(array.to_vec().as_slice())
         } else {
-            let key = ref_from_abi!(PrivateKey, &js_value)?;
-            Ok(key)
+            Ok(ref_from_abi!(PrivateKey, &js_value)?)
         }
     }
 }

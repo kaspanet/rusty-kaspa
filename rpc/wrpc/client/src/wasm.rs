@@ -1,10 +1,13 @@
-use super::result::Result;
+use crate::error::Error;
 use crate::imports::*;
+use crate::result::Result;
 use js_sys::Array;
-use kaspa_addresses::Address;
+use kaspa_addresses::{Address, AddressList};
+use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_notify::notification::Notification as NotificationT;
 pub use kaspa_rpc_macros::{build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions};
-pub use serde_wasm_bindgen::*;
+pub use serde_wasm_bindgen::from_value;
+pub use workflow_wasm::tovalue::to_value;
 
 struct NotificationSink(Function);
 unsafe impl Send for NotificationSink {}
@@ -33,15 +36,19 @@ pub struct RpcClient {
 impl RpcClient {
     /// Create a new RPC client with [`Encoding`] and a `url`.
     #[wasm_bindgen(constructor)]
-    pub fn new(encoding: Encoding, url: &str) -> RpcClient {
-        RpcClient {
-            client: Arc::new(KaspaRpcClient::new(encoding, url).unwrap_or_else(|err| panic!("{err}"))),
+    pub fn new(encoding: Encoding, url: &str, network_type: Option<NetworkType>) -> Result<RpcClient> {
+        let url = if let Some(network_type) = network_type { Self::parse_url(url, encoding, network_type)? } else { url.to_string() };
+
+        let rpc_client = RpcClient {
+            client: Arc::new(KaspaRpcClient::new(encoding, url.as_str()).unwrap_or_else(|err| panic!("{err}"))),
             inner: Arc::new(Inner {
                 notification_task: AtomicBool::new(false),
                 notification_ctl: DuplexChannel::oneshot(),
                 notification_callback: Arc::new(Mutex::new(None)),
             }),
-        }
+        };
+
+        Ok(rpc_client)
     }
 
     #[wasm_bindgen(getter)]
@@ -162,16 +169,41 @@ impl RpcClient {
 
 #[wasm_bindgen]
 impl RpcClient {
-    // experimental/test functions
+    #[wasm_bindgen(js_name = "defaultPort")]
+    pub fn default_port(encoding: WrpcEncoding, network_type: NetworkType) -> Result<u16> {
+        match encoding {
+            WrpcEncoding::Borsh => Ok(network_type.default_borsh_rpc_port()),
+            WrpcEncoding::SerdeJson => Ok(network_type.default_json_rpc_port()),
+        }
+    }
 
-    /// Subscription to DAA Score (test)
+    /// Constructs an WebSocket RPC URL given the partial URL or an IP, RPC encoding
+    /// and a network type.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - Partial URL or an IP address
+    /// * `encoding` - RPC encoding
+    /// * `network_type` - Network type
+    ///
+    #[wasm_bindgen(js_name = parseUrl)]
+    pub fn parse_url(url: &str, encoding: Encoding, network_type: NetworkType) -> Result<String> {
+        let url_ = KaspaRpcClient::parse_url(Some(url.to_string()), encoding, network_type)?;
+        let url_ = url_.ok_or(Error::custom(format!("received a malformed URL: {url}")))?;
+        Ok(url_)
+    }
+}
+
+#[wasm_bindgen]
+impl RpcClient {
+    /// Subscription to DAA Score
     #[wasm_bindgen(js_name = subscribeDaaScore)]
     pub async fn subscribe_daa_score(&self) -> Result<()> {
         self.client.start_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
 
-    /// Unsubscribe from DAA Score (test)
+    /// Unsubscribe from DAA Score
     #[wasm_bindgen(js_name = unsubscribeDaaScore)]
     pub async fn unsubscribe_daa_score(&self) -> Result<()> {
         self.client.stop_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
@@ -301,21 +333,31 @@ build_wrpc_wasm_bindgen_interface!(
 impl RpcClient {
     #[wasm_bindgen(js_name = submitTransaction)]
     pub async fn js_submit_transaction(&self, request: JsValue) -> Result<JsValue> {
-        log_info!("submit_transaction req: {:?}", request);
+        // log_info!("submit_transaction req: {:?}", request);
         let response =
             self.submit_transaction(from_value(request)?).await.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
         to_value(&response).map_err(|err| err.into())
     }
 
+    /// This call accepts an `Array` of `Address` or an Array of address strings.
     #[wasm_bindgen(js_name = getUtxosByAddresses)]
     pub async fn get_utxos_by_addresses(&self, request: JsValue) -> Result<JsValue> {
-        log_info!("get_utxos_by_addresses req: {:?}", request);
-        let request: GetUtxosByAddressesRequest = from_value(request)?;
-        //log_info!("get_utxos_by_addresses request: {:?}", request);
+        let request = if let Ok(addresses) = AddressList::try_from(&request) {
+            GetUtxosByAddressesRequest { addresses: addresses.into() }
+        } else {
+            from_value::<GetUtxosByAddressesRequest>(request)?
+        };
+
         let result: RpcResult<GetUtxosByAddressesResponse> = self.client.get_utxos_by_addresses_call(request).await;
-        //log_info!("get_utxos_by_addresses result: {:?}", result);
         let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
-        //log_info!("get_utxos_by_addresses resp: {:?}", response);
+        to_value(&response.entries).map_err(|err| err.into())
+    }
+
+    #[wasm_bindgen(js_name = getUtxosByAddressesCall)]
+    pub async fn get_utxos_by_addresses_call(&self, request: JsValue) -> Result<JsValue> {
+        let request = from_value::<GetUtxosByAddressesRequest>(request)?;
+        let result: RpcResult<GetUtxosByAddressesResponse> = self.client.get_utxos_by_addresses_call(request).await;
+        let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
         to_value(&response).map_err(|err| err.into())
     }
 }

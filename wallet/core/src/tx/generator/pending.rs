@@ -3,7 +3,7 @@ use crate::tx::Generator;
 use crate::utxo::UtxoEntryReference;
 use crate::DynRpcApi;
 use kaspa_addresses::Address;
-use kaspa_consensus_core::sign::sign_with_multiple;
+use kaspa_consensus_core::sign::sign_with_multiple_v2;
 use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionId};
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
 use std::sync::Mutex;
@@ -171,7 +171,8 @@ impl PendingTransaction {
 
     pub fn try_sign_with_keys(&self, privkeys: Vec<[u8; 32]>) -> Result<()> {
         let mutable_tx = self.inner.signable_tx.lock()?.clone();
-        let _signed = sign_with_multiple(mutable_tx, privkeys);
+        let signed_tx = sign_with_multiple_v2(mutable_tx, privkeys);
+        *self.inner.signable_tx.lock().unwrap() = signed_tx;
         Ok(())
     }
 }

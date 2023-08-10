@@ -32,8 +32,11 @@ impl Wallet {
         let WalletCtorArgs { resident, network_id, encoding, url } = WalletCtorArgs::try_from(js_value)?;
 
         let store = Arc::new(LocalStore::try_new(resident)?);
-        let rpc =
-            RpcClient::new(encoding.unwrap_or(WrpcEncoding::Borsh), url.unwrap_or("wrpc://127.0.0.1:17110".to_string()).as_str());
+        let rpc = RpcClient::new(
+            encoding.unwrap_or(WrpcEncoding::Borsh),
+            url.unwrap_or("wrpc://127.0.0.1:17110".to_string()).as_str(),
+            None,
+        )?;
         let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc.client().clone()), store, network_id)?);
         let events = MultiplexerClient::default();
 

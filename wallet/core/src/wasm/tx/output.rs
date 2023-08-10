@@ -1,7 +1,5 @@
 use crate::imports::*;
-use crate::wasm::tx::scriptpubkey::*;
 use kaspa_rpc_core::RpcTransactionOutput;
-// use crate::tx::limits::is_transaction_output_dust;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -110,9 +108,7 @@ impl TryFrom<JsValue> for TransactionOutput {
             let has_address = Object::has_own(object, &JsValue::from("address"));
             workflow_log::log_trace!("js_value->TransactionOutput: has_address:{has_address:?}");
             let value = object.get_u64("value")?;
-            let script_public_key = ScriptPublicKey::try_from_jsvalue(
-                object.get("scriptPublicKey").map_err(|_| Error::Custom("missing `script` property".into()))?,
-            )?;
+            let script_public_key = ScriptPublicKey::try_from(object.get("scriptPublicKey")?)?;
             Ok(TransactionOutput::new(value, &script_public_key))
         } else {
             Err("TransactionInput must be an object".into())

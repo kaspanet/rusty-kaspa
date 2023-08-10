@@ -34,8 +34,8 @@ impl GeneratorSummary {
     }
 
     #[wasm_bindgen(getter, js_name = finalTransactionId)]
-    pub fn final_transaction_id(&self) -> Option<TransactionId> {
-        self.inner.final_transaction_id().map(Into::into)
+    pub fn final_transaction_id(&self) -> Option<String> {
+        self.inner.final_transaction_id().map(|id| id.to_string())
     }
 }
 
