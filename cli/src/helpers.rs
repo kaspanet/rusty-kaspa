@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-// use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
+use std::fmt;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -38,14 +38,14 @@ impl FromStr for Track {
     }
 }
 
-impl ToString for Track {
-    fn to_string(&self) -> String {
+impl fmt::Display for Track {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Track::Daa => "daa".to_string(),
-            Track::Balance => "balance".to_string(),
-            Track::Pending => "pending".to_string(),
-            Track::Tx => "tx".to_string(),
-            Track::Utxo => "utxo".to_string(),
+            Track::Daa => write!(f, "daa"),
+            Track::Balance => write!(f, "balance"),
+            Track::Pending => write!(f, "pending"),
+            Track::Tx => write!(f, "tx"),
+            Track::Utxo => write!(f, "utxo"),
         }
     }
 }

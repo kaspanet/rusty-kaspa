@@ -151,14 +151,13 @@ impl TryFrom<u8> for Version {
     }
 }
 
-impl ToString for Version {
-    fn to_string(&self) -> String {
+impl Display for Version {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Version::PubKey => "PubKey",
-            Version::PubKeyECDSA => "PubKeyECDSA",
-            Version::ScriptHash => "ScriptHash",
+            Version::PubKey => write!(f, "PubKey"),
+            Version::PubKeyECDSA => write!(f, "PubKeyECDSA"),
+            Version::ScriptHash => write!(f, "ScriptHash"),
         }
-        .to_string()
     }
 }
 
@@ -205,12 +204,6 @@ impl Address {
         self.into()
     }
 
-    // /// Convert an address to a string.
-    // #[wasm_bindgen(js_name = toJSON1)]
-    // pub fn to_json(&self) -> String {
-    //     self.to_string()
-    // }
-
     #[wasm_bindgen(getter)]
     pub fn version(&self) -> String {
         self.version.to_string()
@@ -220,16 +213,6 @@ impl Address {
     pub fn prefix(&self) -> String {
         self.prefix.to_string()
     }
-
-    // #[wasm_bindgen(getter, js_name = "networkType")]
-    // pub fn network_type(&self) -> NetworkType {
-    //     self.prefix.into()
-    // }
-
-    // #[wasm_bindgen(setter, js_name = "networkType")]
-    // pub fn set_network_type(&mut self, network_type : NetworkType) {
-    //     self.prefix = network_type.into();
-    // }
 
     #[wasm_bindgen(setter)]
     pub fn set_prefix(&mut self, prefix: &str) {
