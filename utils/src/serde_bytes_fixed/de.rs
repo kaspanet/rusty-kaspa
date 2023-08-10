@@ -120,7 +120,8 @@ macro_rules! serde_impl_deser_fixed_bytes {
                     type Value = $t;
 
                     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                        write!(formatter, "an byte array of size {} to stringify!($i)", $size)
+                        write!(formatter, "an byte array of size {} to ", $size)?;
+                        write!(formatter, "{}", stringify!($t))
                     }
                     #[inline]
                     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
