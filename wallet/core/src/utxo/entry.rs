@@ -5,7 +5,7 @@ use crate::wasm::tx::{TransactionOutpoint, TransactionOutpointInner};
 use itertools::Itertools;
 use kaspa_rpc_core::RpcUtxosByAddressesEntry;
 use std::cmp::Ordering;
-use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
+use workflow_wasm::abi::ref_from_abi;
 
 use super::UtxoContext;
 
@@ -66,7 +66,7 @@ impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TryFromJsValue)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoEntryReference {
     #[wasm_bindgen(skip)]
@@ -368,16 +368,18 @@ impl TryFrom<JsValue> for UtxoEntries {
 impl TryFrom<JsValue> for UtxoEntryReference {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if !js_value.is_object() {
-            return Err("Data type supplied to UtxoEntryReference must be an object".into());
-        }
+        Self::try_from(&js_value)
+    }
+}
 
-        if let Ok(utxo_entry) = ref_from_abi!(UtxoEntry, &js_value) {
+impl TryFrom<&JsValue> for UtxoEntryReference {
+    type Error = Error;
+    fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
+        if let Ok(utxo_entry) = ref_from_abi!(UtxoEntry, js_value) {
             Ok(Self::from(utxo_entry))
-        } else if let Ok(utxo_entry_reference) = ref_from_abi!(UtxoEntryReference, &js_value) {
+        } else if let Ok(utxo_entry_reference) = ref_from_abi!(UtxoEntryReference, js_value) {
             Ok(utxo_entry_reference)
-        } else {
-            let object = Object::from(js_value);
+        } else if let Some(object) = Object::try_from(js_value) {
             let address = Address::try_from(object.get("address")?)?;
             let outpoint = TransactionOutpoint::try_from(object.get("outpoint")?)?;
             let utxo_entry = Object::from(object.get("utxoEntry")?);
@@ -393,6 +395,8 @@ impl TryFrom<JsValue> for UtxoEntryReference {
             };
 
             Ok(UtxoEntryReference::from(utxo_entry))
+        } else {
+            Err("Data type supplied to UtxoEntryReference must be an object".into())
         }
     }
 }
