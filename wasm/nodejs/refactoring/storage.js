@@ -1,40 +1,42 @@
 globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket module shim
 
-let kaspa = require('./kaspa/kaspa_wasm');
+const kaspa = require('../kaspa/kaspa_wasm');
+const {parseArgs} = require("../utils");
 kaspa.init_console_panic_hook();
 
-(async ()=>{
-    
-    let wallet = new kaspa.Wallet({ 
-        resident : true,
-        networkType : kaspa.NetworkType.Mainnet,
+(async () => {
+    const {} = parseArgs();
+
+    const wallet = new kaspa.Wallet({
+        resident: true,
+        networkType: kaspa.NetworkType.Mainnet,
     });
 
     wallet.events.setHandler((args) => {
-        console.log("multiplexer event: ",args);
+        console.log("multiplexer event: ", args);
     })
 
-    let walletSecret = "secret";
+    const walletSecret = "secret";
 
-    let descriptor = await wallet.createWallet({
+    const descriptor = await wallet.createWallet({
         walletSecret,
     });
 
-    console.log("descriptor:",descriptor);
+    console.log("descriptor:", descriptor);
 
-    let keydata = await wallet.createPrvKeyData({
-        mnemonic : "fade insect feature mobile impose dinosaur brisk congress soul civil spoil cute maximum resemble zoo tower joke era luxury file eager business empower giggle",
+    const keyData = await wallet.createPrvKeyData({
+        mnemonic: "fade insect feature mobile impose dinosaur brisk congress soul civil spoil cute maximum resemble zoo tower joke era luxury file eager business empower giggle",
         walletSecret
     });
 
-    console.log("keydata:",keydata);
+    console.log("keydata:", keyData);
 
-    let account = await wallet.createAccount(keydata.id, {
-        accountKind : kaspa.AccountKind.Bip32,
+    const account = await wallet.createAccount(keyData.id, {
+        accountKind: kaspa.AccountKind.Bip32,
         walletSecret
     });
 
-    console.log("account:",account);
+    console.log("account:", account);
 
     // await wallet.start();
 
@@ -67,30 +69,67 @@ kaspa.init_console_panic_hook();
 
 // WIP
 class Storage {
-    async exists(name) { }
-    async create(ctx,args) { }
-    async open(ctx,args) { }
-    async commit(ctx) {}
-    async close(ctx) {}
+    async exists(name) {
+    }
+
+    async create(ctx, args) {
+    }
+
+    async open(ctx, args) {
+    }
+
+    async commit(ctx) {
+    }
+
+    async close(ctx) {
+    }
+
     // isOpen() {}
     // descriptor() {}
 
-    async getKeyInfoRange(start, stop) {}
-    async loadKeyInfo(ids) {}
-    async loadKeyData(id) {}
-    async storeKeyInfo(data) {}
-    async storeKeyData(data) {}
-    async removeKeyData(ids) {}
+    async getKeyInfoRange(start, stop) {
+    }
 
-    async getAccountRange(start, stop) {}
-    async getAccountCount(id) {}
-    async loadAccounts(ids) {}
-    async storeAccounts(accounts) {}
-    async removeAccounts(ids) {}
+    async loadKeyInfo(ids) {
+    }
 
-    async getTransactonRecordRange(start, stop) {}
-    async loadTransactionRecords(ids) {}
-    async storeTransactionRecords(transaction_records) {}
-    async removeTransactionRecords(ids) {}
+    async loadKeyData(id) {
+    }
+
+    async storeKeyInfo(data) {
+    }
+
+    async storeKeyData(data) {
+    }
+
+    async removeKeyData(ids) {
+    }
+
+    async getAccountRange(start, stop) {
+    }
+
+    async getAccountCount(id) {
+    }
+
+    async loadAccounts(ids) {
+    }
+
+    async storeAccounts(accounts) {
+    }
+
+    async removeAccounts(ids) {
+    }
+
+    async getTransactonRecordRange(start, stop) {
+    }
+
+    async loadTransactionRecords(ids) {
+    }
+
+    async storeTransactionRecords(transaction_records) {
+    }
+
+    async removeTransactionRecords(ids) {
+    }
 
 }
