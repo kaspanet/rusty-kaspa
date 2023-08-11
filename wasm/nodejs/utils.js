@@ -30,7 +30,7 @@ function parseArgs(options = {}) {
     let networkType = NetworkType.Testnet;
     // if "mainnet" is specified or if address starts with "kaspa:" use mainnet
     if (networkArg !== undefined) {
-        if (networkArg === 'mainnet' || addressArg.startsWith('kaspa:')) {
+        if (networkArg === 'mainnet' || (addressArg !== undefined && addressArg.startsWith('kaspa:'))) {
             networkType = NetworkType.Mainnet;
         }
     }
