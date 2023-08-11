@@ -22,7 +22,9 @@ function parseArgs() {
         address = new Address(args.match(addressRegex)[0]);
     }
 
-    let networkType = NetworkType = NetworkType.Mainnet;
+    // by default, use testnet
+    let networkType = NetworkType = NetworkType.Testnet;
+    // if "mainnet" is specified or if address starts with "kaspa:" use mainnet
     if (args.match(/mainnet/i)) {
         networkType = NetworkType.Mainnet;
     } else if (address && address.startsWith("kaspa:")) {
