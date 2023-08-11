@@ -82,17 +82,11 @@ async function runDemo() {
             changeAddress: address,
         });
 
-        // transaction generator creates a 
-        // sequence of transactions
-        // for a requested amount of KAS.
-        // sign and submit these transactions
-        while(pending = await generator.next()) {
-            await pending.sign([sk]);
-            let txid = await pending.submit(rpc);
-            console.log("txid:", txid);
-        }
-
-        console.log("summary:", generator.summary());
+        // provides a generator summary by simulating
+        // transaction creation and returning the
+        // `GeneratorSummary` object
+        let estimate = generator.estimate();
+        console.log(estimate);
 
     }
 
