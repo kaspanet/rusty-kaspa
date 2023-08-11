@@ -5,11 +5,11 @@ const {parseArgs} = require("../utils");
 kaspa.init_console_panic_hook();
 
 (async () => {
-    const {} = parseArgs();
+    const {networkType} = parseArgs();
 
     const wallet = new kaspa.Wallet({
         resident: true,
-        networkType: kaspa.NetworkType.Mainnet,
+        networkType: networkType,
     });
 
     wallet.events.setHandler((args) => {
