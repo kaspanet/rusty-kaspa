@@ -1,4 +1,6 @@
 const path = require('path');
+const nodeUtil = require('node:util');
+const {parseArgs: nodeParseArgs} = nodeUtil;
 
 const {
     Address,
@@ -6,46 +8,56 @@ const {
     NetworkType,
 } = require('./kaspa/kaspa_wasm');
 
-function parseArgs(options = {}) {
+function parseArgs(options = {
+    additionalParseArgs: {},
+    additionalHelpOutput: '',
+}) {
     const script = path.basename(process.argv[1]);
-
     let args = process.argv.slice(2);
-    if (args.includes('--help')) {
-        console.log(`Usage: node ${script} [address] [mainnet|testnet] [--json] ${options.additionalHelpOutput}`);
+    const {
+        values,
+        positionals,
+        tokens,
+    } = nodeParseArgs({
+        args, options: {
+            ...options.additionalParseArgs,
+            help: {
+                type: 'boolean',
+            },
+            json: {
+                type: 'boolean',
+            },
+            address: {
+                type: 'string',
+            },
+            network: {
+                type: 'string',
+            },
+        }, tokens: true, allowPositionals: true
+    });
+    if (values.help) {
+        console.log(`Usage: node ${script} [address] [mainnet|testnet] [--address ADDRESS] [--network mainnet|testnet] [--json] ${options.additionalHelpOutput}`);
         process.exit(0);
     }
 
-    let addressRegex = new RegExp(/(kaspa|kaspatest):\S+/i);
-    const addressArg = args.find((arg, i) => i === 0 && addressRegex.test(arg));
-    const networkArg = args.find((arg, i) => (i === 0 || i === 1) && (arg === 'mainnet' || arg === 'testnet'));
+    const addressRegex = new RegExp(/(kaspa|kaspatest):\S+/i);
+    const addressArg = values.address ?? positionals.find((positional) => addressRegex.test(positional)) ?? null;
+    const address = addressArg === null ? null : new Address(addressArg);
 
-    let address = null;
-    if (addressArg !== undefined) {
-        if (addressRegex.test(addressArg)) {
-            address = new Address(addressArg);
-        }
+
+    let networkType = addressArg?.startsWith('kaspa:') ? NetworkType.Mainnet : NetworkType.Testnet;
+    const networkArg = values.network ?? positionals.find((positional) => positional === 'mainnet' || positional === 'testnet') ?? null;
+    if (networkArg !== null) {
+        networkType = networkArg === 'mainnet' ? NetworkType.Mainnet : NetworkType.Testnet;
     }
 
-    // by default, use testnet
-    let networkType = NetworkType.Testnet;
-    // if "mainnet" is specified or if address starts with "kaspa:" use mainnet
-    if (networkArg !== undefined) {
-        if (networkArg === 'mainnet' || (addressArg !== undefined && addressArg.startsWith('kaspa:'))) {
-            networkType = NetworkType.Mainnet;
-        }
-    }
-
-    let encoding = Encoding.Borsh;
-
-    const jsonArgIdx = args.findIndex((arg) => arg === '--json');
-    if (jsonArgIdx !== -1) {
-        encoding = Encoding.SerdeJson;
-    }
+    const encoding = values.json ? Encoding.SerdeJson : Encoding.Borsh;
 
     return {
         address,
         networkType,
         encoding,
+        tokens,
     };
 }
 
