@@ -2113,7 +2113,6 @@ dependencies = [
  "secp256k1",
  "serde",
  "serde-wasm-bindgen 0.4.5",
- "serde_bytes",
  "serde_json",
  "smallvec",
  "thiserror",
@@ -2750,6 +2749,7 @@ version = "0.1.6"
 dependencies = [
  "async-channel",
  "async-trait",
+ "bincode",
  "borsh",
  "criterion",
  "event-listener",
@@ -2759,7 +2759,9 @@ dependencies = [
  "itertools 0.10.5",
  "rand 0.8.5",
  "serde",
+ "serde_json",
  "smallvec",
+ "thiserror",
  "tokio",
  "triggered",
  "uuid 1.4.1",
@@ -4422,15 +4424,6 @@ dependencies = [
  "js-sys",
  "serde",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "serde_bytes"
-version = "0.11.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab33ec92f677585af6d88c65593ae2375adde54efdbf16d597f2cbc7a6d368ff"
-dependencies = [
- "serde",
 ]
 
 [[package]]

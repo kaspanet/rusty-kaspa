@@ -2,13 +2,10 @@ mod hashers;
 mod pow_hashers;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_utils::hex::{FromHex, ToHex};
-use serde::{
-    de::Error as DeserializeError,
-    de::{SeqAccess, Visitor},
-    Deserialize, Deserializer, Serialize, Serializer,
+use kaspa_utils::{
+    hex::{FromHex, ToHex},
+    serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref,
 };
-use std::marker::PhantomData;
 use std::{
     array::TryFromSliceError,
     fmt::{Debug, Display, Formatter},
@@ -26,6 +23,23 @@ pub use hashers::*;
 #[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[wasm_bindgen]
 pub struct Hash([u8; HASH_SIZE]);
+
+serde_impl_ser_fixed_bytes_ref!(Hash, HASH_SIZE);
+serde_impl_deser_fixed_bytes_ref!(Hash, HASH_SIZE);
+
+impl From<[u8; HASH_SIZE]> for Hash {
+    fn from(value: [u8; HASH_SIZE]) -> Self {
+        Hash(value)
+    }
+}
+
+impl TryFrom<&[u8]> for Hash {
+    type Error = TryFromSliceError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        Hash::try_from_slice(value)
+    }
+}
 
 impl Hash {
     #[inline(always)]
@@ -126,6 +140,13 @@ impl From<u64> for Hash {
     }
 }
 
+impl AsRef<[u8; HASH_SIZE]> for Hash {
+    #[inline(always)]
+    fn as_ref(&self) -> &[u8; HASH_SIZE] {
+        &self.0
+    }
+}
+
 impl AsRef<[u8]> for Hash {
     #[inline(always)]
     fn as_ref(&self) -> &[u8] {
@@ -143,99 +164,6 @@ impl FromHex for Hash {
     type Error = faster_hex::Error;
     fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
         Self::from_str(hex_str)
-    }
-}
-impl Serialize for Hash {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        if serializer.is_human_readable() {
-            let mut hex = [0u8; HASH_SIZE * 2];
-            faster_hex::hex_encode(&self.0, &mut hex).expect("The output is exactly twice the size of the input");
-            serializer.serialize_str(str::from_utf8(&hex).expect("hex is always valid UTF-8"))
-        } else {
-            serializer.serialize_newtype_struct("Hash", &self.0)
-        }
-    }
-}
-
-struct HashVisitor<'de> {
-    marker: PhantomData<Hash>,
-    lifetime: PhantomData<&'de ()>,
-}
-impl<'de> Visitor<'de> for HashVisitor<'de> {
-    type Value = Hash;
-
-    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-        formatter.write_str("tuple struct Hash")
-    }
-    #[inline]
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: DeserializeError,
-    {
-        Hash::try_from_slice(v.as_bytes()).map_err(serde::de::Error::custom)
-    }
-    #[inline]
-    fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
-    where
-        E: DeserializeError,
-    {
-        Hash::try_from_slice(v.as_bytes()).map_err(serde::de::Error::custom)
-    }
-    #[inline]
-    fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-    where
-        E: DeserializeError,
-    {
-        Hash::try_from_slice(v).map_err(serde::de::Error::custom)
-    }
-    #[inline]
-    fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
-    where
-        E: DeserializeError,
-    {
-        Hash::try_from_slice(v).map_err(serde::de::Error::custom)
-    }
-    #[inline]
-    fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
-    where
-        E: DeserializeError,
-    {
-        Hash::try_from_slice(&v).map_err(serde::de::Error::custom)
-    }
-    #[inline]
-    fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        <[u8; HASH_SIZE] as serde::Deserialize>::deserialize(deserializer).map(Hash)
-    }
-    #[inline]
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-    where
-        A: SeqAccess<'de>,
-    {
-        let Some(value) = seq.next_element()? else {
-            return Err(serde::de::Error::invalid_length(0usize, &"tuple struct Hash with 1 element"));
-        } ;
-        Ok(Hash(value))
-    }
-}
-// _serde::Deserializer::deserialize_newtype_struct(__deserializer, "Hash", __Visitor { marker: _serde::__private::PhantomData::<Hash>, lifetime: _serde::__private::PhantomData })
-
-impl<'de> Deserialize<'de> for Hash {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        if deserializer.is_human_readable() {
-            let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-            FromStr::from_str(&s).map_err(serde::de::Error::custom)
-        } else {
-            deserializer.deserialize_newtype_struct("Hash", HashVisitor { marker: Default::default(), lifetime: Default::default() })
-        }
     }
 }
 

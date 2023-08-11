@@ -1,5 +1,6 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_utils::hex::*;
+use kaspa_utils::{hex::*, serde_bytes, serde_bytes_fixed_ref};
+
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 use std::{
@@ -31,6 +32,7 @@ pub type ScriptVec = SmallVec<[u8; SCRIPT_VECTOR_SIZE]>;
 /// Represents the ScriptPublicKey Version
 pub type ScriptPublicKeyVersion = u16;
 
+use kaspa_utils::serde_bytes::FromHexVisitor;
 /// Alias the `smallvec!` macro to ease maintenance
 pub use smallvec::smallvec as scriptvec;
 
@@ -44,6 +46,14 @@ pub struct ScriptPublicKey {
     #[wasm_bindgen(skip)]
     pub version: ScriptPublicKeyVersion,
     script: ScriptVec, // Kept private to preserve read-only semantics
+}
+
+impl FromHex for ScriptPublicKey {
+    type Error = faster_hex::Error;
+
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
+        ScriptPublicKey::from_str(hex_str)
+    }
 }
 
 #[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
@@ -76,8 +86,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
         D: Deserializer<'de>,
     {
         if deserializer.is_human_readable() {
-            let s = <&str as Deserialize>::deserialize(deserializer)?;
-            FromStr::from_str(s).map_err(serde::de::Error::custom)
+            deserializer.deserialize_str(FromHexVisitor::default())
         } else {
             ScriptPublicKeyInternal::deserialize(deserializer)
                 .map(|ScriptPublicKeyInternal { script, version }| Self { version, script: SmallVec::from_slice(script) })
@@ -215,6 +224,7 @@ pub type TransactionIndexType = u32;
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
+    #[serde(with = "serde_bytes_fixed_ref")]
     pub transaction_id: TransactionId,
     pub index: TransactionIndexType,
 }
@@ -277,6 +287,7 @@ pub struct Transaction {
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
+    #[serde(with = "serde_bytes_fixed_ref")]
     id: TransactionId,
 }
 
@@ -535,7 +546,7 @@ pub type SignableTransaction = MutableTransaction<Transaction>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::subnets::SUBNETWORK_ID_COINBASE;
+    use consensus_core::subnets::SUBNETWORK_ID_COINBASE;
     use smallvec::smallvec;
 
     fn test_transaction() -> Transaction {
@@ -604,7 +615,7 @@ mod tests {
         let bts = bincode::serialize(&tx).unwrap();
 
         // standard, based on https://github.com/kaspanet/rusty-kaspa/commit/7e947a06d2434daf4bc7064d4cd87dc1984b56fe
-        let kos_bytes = vec![
+        let expected_bts = vec![
             1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 22, 94, 56, 232, 179, 145, 69, 149, 217, 198, 65, 243, 184, 238, 194, 243, 70, 17, 137, 107,
             130, 26, 104, 59, 122, 78, 222, 254, 44, 0, 0, 0, 250, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8,
             9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 2, 0, 0, 0, 0, 0, 0, 0, 3, 75,
@@ -622,15 +633,61 @@ mod tests {
             64, 98, 49, 45, 0, 77, 32, 25, 122, 77, 15, 211, 252, 61, 210, 82, 177, 39, 153, 127, 33, 188, 172, 138, 38, 67, 75, 241,
             176,
         ];
-        assert_eq!(kos_bytes, bts);
+        assert_eq!(expected_bts, bts);
         assert_eq!(tx, bincode::deserialize(&bts).unwrap());
+    }
+
+    #[test]
+    fn test_transaction_json() {
+        let tx = test_transaction();
+        let str = serde_json::to_string_pretty(&tx).unwrap();
+        let expected_str = r#"{
+  "version": 1,
+  "inputs": [
+    {
+      "previousOutpoint": {
+        "transactionId": "165e38e8b3914595d9c641f3b8eec2f34611896b821a683b7a4edefe2c000000",
+        "index": 4294967290
+      },
+      "signatureScript": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "sequence": 2,
+      "sigOpCount": 3
+    },
+    {
+      "previousOutpoint": {
+        "transactionId": "4bb07535dfd58e0b3cd64fd7155280872a0471bcf83095526ace0e38c6000000",
+        "index": 4294967291
+      },
+      "signatureScript": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      "sequence": 4,
+      "sigOpCount": 5
+    }
+  ],
+  "outputs": [
+    {
+      "value": 6,
+      "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e"
+    },
+    {
+      "value": 7,
+      "scriptPublicKey": "000076a921032f7e430aa4c9d159437e84b975dc76d9003bf0922cf3aa4528464bab780dba5e"
+    }
+  ],
+  "lockTime": 8,
+  "subnetworkId": "0100000000000000000000000000000000000000",
+  "gas": 9,
+  "payload": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263",
+  "id": "4592c14062312d004d20197a4d0fd3fc3dd252b127997f21bcac8a26434bf1b0"
+}"#;
+        assert_eq!(expected_str, str);
+        assert_eq!(tx, serde_json::from_str(&str).unwrap());
     }
 
     #[test]
     fn test_spk_serde_json() {
         let vec = (0..SCRIPT_VECTOR_SIZE as u8).collect::<Vec<_>>();
         let spk = ScriptPublicKey::from_vec(0xc0de, vec.clone());
-        let hex = serde_json::to_string(&spk).unwrap();
+        let hex: String = serde_json::to_string(&spk).unwrap();
         assert_eq!("\"c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223\"", hex);
         let spk = serde_json::from_str::<ScriptPublicKey>(&hex).unwrap();
         assert_eq!(spk.version, 0xc0de);
