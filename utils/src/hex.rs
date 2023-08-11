@@ -1,4 +1,5 @@
 use serde::{Deserialize, Deserializer, Serializer};
+use std::fmt::Debug;
 // use consensus_core::BlueWorkType;
 use smallvec::{smallvec, SmallVec};
 use std::str;
@@ -66,6 +67,30 @@ impl FromHex for Vec<u8> {
         }
 
         let mut bytes = vec![0u8; hex_str.len() / 2];
+        faster_hex::hex_decode(hex_str.as_bytes(), bytes.as_mut_slice())?;
+        Ok(bytes)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum FixedArrayError<const N: usize> {
+    #[error(transparent)]
+    Deserialize(#[from] faster_hex::Error),
+    #[error("unexpected length of hex string. actual: {0}")]
+    WrongLength(usize),
+}
+
+/// Little endian format of full content
+/// (so string lengths must be even).
+impl<const N: usize> FromHex for [u8; N] {
+    type Error = FixedArrayError<N>;
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
+        let len = hex_str.len();
+        if len != N * 2 {
+            return Err(Self::Error::WrongLength(len));
+        }
+
+        let mut bytes = [0u8; N];
         faster_hex::hex_decode(hex_str.as_bytes(), bytes.as_mut_slice())?;
         Ok(bytes)
     }
