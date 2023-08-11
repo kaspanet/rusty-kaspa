@@ -17,7 +17,6 @@ kaspa.init_console_panic_hook();
     const {
         encoding,
         address,
-        networkType,
     } = parseArgs();
 
     const URL = "ws://127.0.0.1:17110";
