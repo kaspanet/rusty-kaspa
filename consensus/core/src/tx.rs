@@ -520,6 +520,96 @@ pub type SignableTransaction = MutableTransaction<Transaction>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::subnets::SUBNETWORK_ID_COINBASE;
+    use smallvec::smallvec;
+
+    fn test_transaction() -> Transaction {
+        let script_public_key = ScriptPublicKey::new(
+            0,
+            smallvec![
+                0x76, 0xa9, 0x21, 0x03, 0x2f, 0x7e, 0x43, 0x0a, 0xa4, 0xc9, 0xd1, 0x59, 0x43, 0x7e, 0x84, 0xb9, 0x75, 0xdc, 0x76,
+                0xd9, 0x00, 0x3b, 0xf0, 0x92, 0x2c, 0xf3, 0xaa, 0x45, 0x28, 0x46, 0x4b, 0xab, 0x78, 0x0d, 0xba, 0x5e
+            ],
+        );
+        Transaction::new(
+            1,
+            vec![
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint {
+                        transaction_id: TransactionId::from_slice(&[
+                            0x16, 0x5e, 0x38, 0xe8, 0xb3, 0x91, 0x45, 0x95, 0xd9, 0xc6, 0x41, 0xf3, 0xb8, 0xee, 0xc2, 0xf3, 0x46,
+                            0x11, 0x89, 0x6b, 0x82, 0x1a, 0x68, 0x3b, 0x7a, 0x4e, 0xde, 0xfe, 0x2c, 0x00, 0x00, 0x00,
+                        ]),
+                        index: 0xfffffffa,
+                    },
+                    signature_script: vec![
+                        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11,
+                        0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+                    ],
+                    sequence: 2,
+                    sig_op_count: 3,
+                },
+                TransactionInput {
+                    previous_outpoint: TransactionOutpoint {
+                        transaction_id: TransactionId::from_slice(&[
+                            0x4b, 0xb0, 0x75, 0x35, 0xdf, 0xd5, 0x8e, 0x0b, 0x3c, 0xd6, 0x4f, 0xd7, 0x15, 0x52, 0x80, 0x87, 0x2a,
+                            0x04, 0x71, 0xbc, 0xf8, 0x30, 0x95, 0x52, 0x6a, 0xce, 0x0e, 0x38, 0xc6, 0x00, 0x00, 0x00,
+                        ]),
+                        index: 0xfffffffb,
+                    },
+                    signature_script: vec![
+                        0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31,
+                        0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
+                    ],
+                    sequence: 4,
+                    sig_op_count: 5,
+                },
+            ],
+            vec![
+                TransactionOutput { value: 6, script_public_key: script_public_key.clone() },
+                TransactionOutput { value: 7, script_public_key },
+            ],
+            8,
+            SUBNETWORK_ID_COINBASE,
+            9,
+            vec![
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12,
+                0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25,
+                0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+                0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b,
+                0x4c, 0x4d, 0x4e, 0x4f, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e,
+                0x5f, 0x60, 0x61, 0x62, 0x63,
+            ],
+        )
+    }
+
+    #[test]
+    fn test_transaction_bincode() {
+        let tx = test_transaction();
+        let bts = bincode::serialize(&tx).unwrap();
+
+        // standard, based on https://github.com/kaspanet/rusty-kaspa/commit/7e947a06d2434daf4bc7064d4cd87dc1984b56fe
+        let kos_bytes = vec![
+            1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 22, 94, 56, 232, 179, 145, 69, 149, 217, 198, 65, 243, 184, 238, 194, 243, 70, 17, 137, 107,
+            130, 26, 104, 59, 122, 78, 222, 254, 44, 0, 0, 0, 250, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8,
+            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 2, 0, 0, 0, 0, 0, 0, 0, 3, 75,
+            176, 117, 53, 223, 213, 142, 11, 60, 214, 79, 215, 21, 82, 128, 135, 42, 4, 113, 188, 248, 48, 149, 82, 106, 206, 14, 56,
+            198, 0, 0, 0, 251, 255, 255, 255, 32, 0, 0, 0, 0, 0, 0, 0, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+            48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 4, 0, 0, 0, 0, 0, 0, 0, 5, 2, 0, 0, 0, 0, 0, 0, 0, 6, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185,
+            117, 220, 118, 217, 0, 59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            36, 0, 0, 0, 0, 0, 0, 0, 118, 169, 33, 3, 47, 126, 67, 10, 164, 201, 209, 89, 67, 126, 132, 185, 117, 220, 118, 217, 0,
+            59, 240, 146, 44, 243, 170, 69, 40, 70, 75, 171, 120, 13, 186, 94, 8, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+            13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
+            43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
+            73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 69, 146, 193,
+            64, 98, 49, 45, 0, 77, 32, 25, 122, 77, 15, 211, 252, 61, 210, 82, 177, 39, 153, 127, 33, 188, 172, 138, 38, 67, 75, 241,
+            176,
+        ];
+        assert_eq!(kos_bytes, bts);
+        assert_eq!(tx, bincode::deserialize(&bts).unwrap());
+    }
 
     #[test]
     fn test_spk_serde_json() {

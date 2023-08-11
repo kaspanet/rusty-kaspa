@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Clone, Debug)]
 pub enum Modules {
     Core,
@@ -5,13 +7,12 @@ pub enum Modules {
     Metrics,
 }
 
-impl ToString for Modules {
-    fn to_string(&self) -> String {
+impl fmt::Display for Modules {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Modules::Core => "core",
-            Modules::Terminal => "terminal",
-            Modules::Metrics => "metrics",
+            Modules::Core => write!(f, "core"),
+            Modules::Terminal => write!(f, "terminal"),
+            Modules::Metrics => write!(f, "metrics"),
         }
-        .to_string()
     }
 }

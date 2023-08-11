@@ -39,12 +39,12 @@ u8_try_from! {
     }
 }
 
-impl ToString for AccountKind {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for AccountKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AccountKind::Legacy => "legacy".to_string(),
-            AccountKind::Bip32 => "bip32".to_string(),
-            AccountKind::MultiSig => "multisig".to_string(),
+            AccountKind::Legacy => write!(f, "legacy"),
+            AccountKind::Bip32 => write!(f, "bip32"),
+            AccountKind::MultiSig => write!(f, "multisig"),
         }
     }
 }

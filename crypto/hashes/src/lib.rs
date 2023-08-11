@@ -3,14 +3,20 @@ mod pow_hashers;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_utils::hex::{FromHex, ToHex};
-use serde::{de::Error as DeserializeError, Deserialize, Deserializer, Serialize, Serializer};
-use std::array::TryFromSliceError;
-use std::fmt::{Debug, Display, Formatter};
-use std::hash::{Hash as StdHash, Hasher as StdHasher};
-use std::str::{self, FromStr};
+use serde::{
+    de::Error as DeserializeError,
+    de::{SeqAccess, Visitor},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
+use std::marker::PhantomData;
+use std::{
+    array::TryFromSliceError,
+    fmt::{Debug, Display, Formatter},
+    hash::{Hash as StdHash, Hasher as StdHasher},
+    str::{self, FromStr},
+};
 use wasm_bindgen::prelude::*;
-use workflow_wasm::abi::ref_from_abi;
-use workflow_wasm::jsvalue::JsValueTrait;
+use workflow_wasm::{abi::ref_from_abi, jsvalue::JsValueTrait};
 
 pub const HASH_SIZE: usize = 32;
 
@@ -139,7 +145,6 @@ impl FromHex for Hash {
         Self::from_str(hex_str)
     }
 }
-
 impl Serialize for Hash {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -150,10 +155,75 @@ impl Serialize for Hash {
             faster_hex::hex_encode(&self.0, &mut hex).expect("The output is exactly twice the size of the input");
             serializer.serialize_str(str::from_utf8(&hex).expect("hex is always valid UTF-8"))
         } else {
-            serializer.serialize_bytes(&self.0)
+            serializer.serialize_newtype_struct("Hash", &self.0)
         }
     }
 }
+
+struct HashVisitor<'de> {
+    marker: PhantomData<Hash>,
+    lifetime: PhantomData<&'de ()>,
+}
+impl<'de> Visitor<'de> for HashVisitor<'de> {
+    type Value = Hash;
+
+    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        formatter.write_str("tuple struct Hash")
+    }
+    #[inline]
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: DeserializeError,
+    {
+        Hash::try_from_slice(v.as_bytes()).map_err(serde::de::Error::custom)
+    }
+    #[inline]
+    fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
+    where
+        E: DeserializeError,
+    {
+        Hash::try_from_slice(v.as_bytes()).map_err(serde::de::Error::custom)
+    }
+    #[inline]
+    fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+    where
+        E: DeserializeError,
+    {
+        Hash::try_from_slice(v).map_err(serde::de::Error::custom)
+    }
+    #[inline]
+    fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
+    where
+        E: DeserializeError,
+    {
+        Hash::try_from_slice(v).map_err(serde::de::Error::custom)
+    }
+    #[inline]
+    fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+    where
+        E: DeserializeError,
+    {
+        Hash::try_from_slice(&v).map_err(serde::de::Error::custom)
+    }
+    #[inline]
+    fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        <[u8; HASH_SIZE] as serde::Deserialize>::deserialize(deserializer).map(Hash)
+    }
+    #[inline]
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let Some(value) = seq.next_element()? else {
+            return Err(serde::de::Error::invalid_length(0usize, &"tuple struct Hash with 1 element"));
+        } ;
+        Ok(Hash(value))
+    }
+}
+// _serde::Deserializer::deserialize_newtype_struct(__deserializer, "Hash", __Visitor { marker: _serde::__private::PhantomData::<Hash>, lifetime: _serde::__private::PhantomData })
 
 impl<'de> Deserialize<'de> for Hash {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -164,8 +234,7 @@ impl<'de> Deserialize<'de> for Hash {
             let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
             FromStr::from_str(&s).map_err(serde::de::Error::custom)
         } else {
-            let s = <Vec<u8> as Deserialize>::deserialize(deserializer)?;
-            Ok(Self::try_from_slice(&s).map_err(D::Error::custom)?)
+            deserializer.deserialize_newtype_struct("Hash", HashVisitor { marker: Default::default(), lifetime: Default::default() })
         }
     }
 }
