@@ -227,3 +227,8 @@ nw-sys = "0.1.5"
 lto = "thin"
 strip = true
 overflow-checks = true
+
+[profile.heap]
+inherits = "release"
+debug = true
+strip = false
