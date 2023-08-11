@@ -2749,6 +2749,7 @@ version = "0.1.6"
 dependencies = [
  "async-channel",
  "async-trait",
+ "bincode",
  "borsh",
  "criterion",
  "event-listener",
@@ -2758,7 +2759,9 @@ dependencies = [
  "itertools 0.10.5",
  "rand 0.8.5",
  "serde",
+ "serde_json",
  "smallvec",
+ "thiserror",
  "tokio",
  "triggered",
  "uuid 1.4.1",

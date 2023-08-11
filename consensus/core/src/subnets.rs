@@ -3,7 +3,7 @@ use std::str::{self, FromStr};
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_utils::hex::{FromHex, ToHex};
-use kaspa_utils::{serde_impl_deser_fixed_bytes, serde_impl_ser_fixed_bytes};
+use kaspa_utils::{serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref};
 
 /// The size of the array used to store subnetwork IDs.
 pub const SUBNETWORK_ID_SIZE: usize = 20;
@@ -12,8 +12,8 @@ pub const SUBNETWORK_ID_SIZE: usize = 20;
 #[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
 
-serde_impl_ser_fixed_bytes!(SubnetworkId, SUBNETWORK_ID_SIZE);
-serde_impl_deser_fixed_bytes!(SubnetworkId, SUBNETWORK_ID_SIZE);
+serde_impl_ser_fixed_bytes_ref!(SubnetworkId, SUBNETWORK_ID_SIZE);
+serde_impl_deser_fixed_bytes_ref!(SubnetworkId, SUBNETWORK_ID_SIZE);
 
 impl AsRef<[u8; SUBNETWORK_ID_SIZE]> for SubnetworkId {
     fn as_ref(&self) -> &[u8; SUBNETWORK_ID_SIZE] {

@@ -4,7 +4,7 @@ mod pow_hashers;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_utils::{
     hex::{FromHex, ToHex},
-    serde_impl_deser_fixed_bytes, serde_impl_ser_fixed_bytes,
+    serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref,
 };
 use std::{
     array::TryFromSliceError,
@@ -24,8 +24,8 @@ pub use hashers::*;
 #[wasm_bindgen]
 pub struct Hash([u8; HASH_SIZE]);
 
-serde_impl_ser_fixed_bytes!(Hash, HASH_SIZE);
-serde_impl_deser_fixed_bytes!(Hash, HASH_SIZE);
+serde_impl_ser_fixed_bytes_ref!(Hash, HASH_SIZE);
+serde_impl_deser_fixed_bytes_ref!(Hash, HASH_SIZE);
 
 impl From<[u8; HASH_SIZE]> for Hash {
     fn from(value: [u8; HASH_SIZE]) -> Self {

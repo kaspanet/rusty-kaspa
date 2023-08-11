@@ -1,5 +1,5 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_utils::{hex::*, serde_bytes, serde_bytes_fixed};
+use kaspa_utils::{hex::*, serde_bytes, serde_bytes_fixed_ref};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
@@ -85,7 +85,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
         D: Deserializer<'de>,
     {
         if deserializer.is_human_readable() {
-            deserializer.deserialize_any(FromHexVisitor::default())
+            deserializer.deserialize_str(FromHexVisitor::default())
         } else {
             ScriptPublicKeyInternal::deserialize(deserializer)
                 .map(|ScriptPublicKeyInternal { script, version }| Self { version, script: SmallVec::from_slice(script) })
@@ -209,7 +209,7 @@ pub type TransactionIndexType = u32;
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
-    #[serde(with = "serde_bytes_fixed")]
+    #[serde(with = "serde_bytes_fixed_ref")]
     pub transaction_id: TransactionId,
     pub index: TransactionIndexType,
 }
@@ -272,7 +272,7 @@ pub struct Transaction {
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
-    #[serde(with = "serde_bytes_fixed")]
+    #[serde(with = "serde_bytes_fixed_ref")]
     id: TransactionId,
 }
 

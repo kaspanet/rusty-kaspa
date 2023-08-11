@@ -16,7 +16,7 @@ where
         D: serde::Deserializer<'de>,
     {
         if deserializer.is_human_readable() {
-            deserializer.deserialize_any(FromHexVisitor::default())
+            deserializer.deserialize_str(FromHexVisitor::default())
         } else {
             // serde::Deserialize for &[u8] is already optimized, so simply forward to that.
             serde::Deserialize::deserialize(deserializer).and_then(|bts| T::try_from(bts).map_err(serde::de::Error::custom))

@@ -1,34 +1,25 @@
-/// Trait for deserialization of fixed-size byte arrays, newtype structs,
-/// or any other custom types that can implement `From<[u8; N]>`.
-/// Implementers should also provide implementation for `crate::hex::FromHex`.
-/// N must be in range: (0..=32), this is serde limitation
-pub trait Deserialize<'de, const N: usize>: Sized + crate::hex::FromHex + From<[u8; N]> {
-    /// Deserialize given `deserializer` into `Self`.
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>;
-}
-
-/// Macro to generate impl of `Deserialize` for types `T`, which are
-/// capable of being constructed from byte arrays of fixed size,
-/// or newtype structs or other types based on [`From<[u8; $size]>`].
-macro_rules! deser_fixed_bytes {
-    ($size: expr) => {
-        impl<'de, T: $crate::hex::FromHex + From<[u8; $size]>> $crate::serde_bytes_fixed::Deserialize<'de, $size> for T {
-             /// Deserialization function for types `T`
+#[macro_export]
+/// Macro to provide serde::Deserialize implementations for types `$t`
+/// which can be constructed from byte arrays of fixed size.
+/// The resulting structure will support deserialization from human-readable
+/// formats using hex::FromHex, as well as binary formats.
+macro_rules! serde_impl_deser_fixed_bytes_ref {
+    ($t: ty, $size: expr) => {
+        impl<'de> serde::Deserialize<'de> for $t {
             fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
             where
                 D: serde::Deserializer<'de>,
             {
-                struct FixedBytesVisitor<'de> {
-                    marker: std::marker::PhantomData<[u8; $size]>,
+                struct MyVisitor<'de> {
+                    marker: std::marker::PhantomData<$t>,
                     lifetime: std::marker::PhantomData<&'de ()>,
                 }
-                impl<'de> serde::de::Visitor<'de> for FixedBytesVisitor<'de> {
-                    type Value = [u8; $size];
+                impl<'de> serde::de::Visitor<'de> for MyVisitor<'de> {
+                    type Value = $t;
 
                     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                        write!(formatter, "an byte array of size {}", $size)
+                        write!(formatter, "an byte array of size {} to ", $size)?;
+                        write!(formatter, "{}", stringify!($t))
                     }
                     #[inline]
                     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
@@ -81,23 +72,15 @@ macro_rules! deser_fixed_bytes {
                         Ok(Self::Value::from(value))
                     }
                 }
-
                 if deserializer.is_human_readable() {
                     deserializer.deserialize_str($crate::serde_bytes::FromHexVisitor::default())
                 } else {
-                    deserializer
-                        .deserialize_tuple($size, FixedBytesVisitor { marker: Default::default(), lifetime: Default::default() })
-                        .map(Into::into)
+                    deserializer.deserialize_newtype_struct(
+                        stringify!($i),
+                        MyVisitor { marker: Default::default(), lifetime: Default::default() },
+                    )
                 }
             }
         }
     };
 }
-
-macro_rules! apply_deser_fixed_bytes {
-    ($($x:expr),*) => ($(deser_fixed_bytes!($x);)*)
-}
-
-apply_deser_fixed_bytes!(
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
-);

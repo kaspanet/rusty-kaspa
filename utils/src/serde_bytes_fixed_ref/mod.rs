@@ -1,8 +1,8 @@
 mod de;
 mod ser;
 
-pub use crate::serde_bytes_fixed::de::Deserialize;
-pub use crate::serde_bytes_fixed::ser::Serialize;
+pub use crate::serde_bytes_fixed::Deserialize;
+pub use crate::serde_bytes_fixed_ref::ser::Serialize;
 
 pub fn serialize<T, S, const N: usize>(bytes: &T, serializer: S) -> Result<S::Ok, S::Error>
 where
