@@ -12,7 +12,7 @@ const {
     createTransactions,
     init_console_panic_hook
 } = require('./kaspa/kaspa_wasm');
-const {parseArgs} = require('./utils');
+const {parseArgs, guardRpcIsSynced} = require('./utils');
 
 init_console_panic_hook();
 
@@ -42,6 +42,7 @@ async function runDemo() {
     console.log(`Connecting to ${rpc.url}`);
 
     await rpc.connect();
+    await guardRpcIsSynced(rpc);
 
     let entries = await rpc.getUtxosByAddresses([skAddress]);
 
