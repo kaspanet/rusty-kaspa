@@ -1,5 +1,5 @@
-const kaspa = require('../kaspa/kaspa_wasm');
-const {parseArgs} = require("../utils");
+const kaspa = require('./kaspa/kaspa_wasm');
+const {parseArgs} = require("./utils");
 kaspa.init_console_panic_hook();
 
 (async () => {
