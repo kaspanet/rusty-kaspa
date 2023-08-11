@@ -466,7 +466,7 @@ pub fn build_derivate_path(
     address_type: AddressType,
 ) -> Result<DerivationPath> {
     match account_kind {
-        AccountKind::Legacy => WalletDerivationManagerV0::build_derivate_path(false, account_index, None, Some(address_type)),
+        AccountKind::Legacy => WalletDerivationManagerV0::build_derivate_path(account_index, None),
         AccountKind::Bip32 => WalletDerivationManager::build_derivate_path(false, account_index, None, Some(address_type)),
         AccountKind::MultiSig => {
             WalletDerivationManager::build_derivate_path(true, account_index, Some(cosigner_index), Some(address_type))

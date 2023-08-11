@@ -553,8 +553,8 @@ mod tests {
             .into_iter()
             .map(|k| PubkeyDerivationManager::create_address(&k, Prefix::Mainnet, false).unwrap().to_string())
             .collect::<Vec<String>>();
-        println!("receive pubkey: {addresses_receive:#?}");
-        println!("change pubkey: {addresses_change:#?}");
+        println!("receive addresses: {addresses_receive:#?}");
+        println!("change addresses: {addresses_change:#?}");
         let receive_addresses = gen1_receive_addresses();
         let change_addresses = gen1_change_addresses();
         for index in 0..20 {

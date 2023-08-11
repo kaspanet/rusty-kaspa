@@ -1,42 +1,59 @@
-use crate::{accounts::account::*, Result};
-use async_trait::async_trait;
 use futures::future::join_all;
 use hmac::Mac;
-use kaspa_addresses::{Address, Prefix as AddressPrefix, Version};
+use kaspa_addresses::{Address, Prefix as AddressPrefix, Version as AddressVersion};
+use ripemd::Ripemd160;
+use sha2::{Digest, Sha256};
+use std::{
+    fmt::Debug,
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
+use zeroize::Zeroizing;
+
 use kaspa_bip32::{
     types::*, AddressType, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix,
     PrivateKey, PublicKey, SecretKey, SecretKeyExt,
 };
-use ripemd::Ripemd160;
-use sha2::{Digest, Sha256};
-use std::{fmt::Debug, str::FromStr, sync::Arc};
+//use consensus_core::wasm::{GeneratorT, WalletAccountTrait};
 use wasm_bindgen::prelude::*;
-use zeroize::Zeroizing;
+//use workflow_wasm::jsvalue::*;
+use crate::{accounts::account::*, result::Result};
+use async_trait::async_trait;
+
+fn get_fingerprint<K>(private_key: &K) -> KeyFingerprint
+where
+    K: PrivateKey,
+{
+    let public_key_bytes = private_key.public_key().to_bytes();
+
+    let digest = Ripemd160::digest(Sha256::digest(public_key_bytes));
+    digest[..4].try_into().expect("digest truncated")
+}
 
 #[derive(Clone)]
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 pub struct PubkeyDerivationManagerV0 {
-    /// Derived private key
-    private_key: SecretKey,
-
+    /// Derived public key
+    public_key: secp256k1::PublicKey,
     /// Extended key attributes.
     attrs: ExtendedKeyAttrs,
-
     #[allow(dead_code)]
     fingerprint: KeyFingerprint,
-
     hmac: HmacSha512,
+    index: Arc<Mutex<u32>>,
 }
 
 impl PubkeyDerivationManagerV0 {
-    pub async fn derive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
-        let (private_key, _) =
-            WalletDerivationManagerV0::derive_private_key(&self.private_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
+    pub fn new(
+        public_key: secp256k1::PublicKey,
+        attrs: ExtendedKeyAttrs,
+        fingerprint: KeyFingerprint,
+        hmac: HmacSha512,
+        index: u32,
+    ) -> Result<Self> {
+        let wallet = Self { public_key, attrs, fingerprint, hmac, index: Arc::new(Mutex::new(index)) };
 
-        // let pubkey = &private_key.get_public_key().to_bytes()[1..];
-        // let address = Address::new(AddressPrefix::Mainnet, Version::PubKey, pubkey);
-
-        Ok(private_key.get_public_key())
+        Ok(wallet)
     }
 
     pub async fn derive_pubkey_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
@@ -45,30 +62,60 @@ impl PubkeyDerivationManagerV0 {
         Ok(keys)
     }
 
+    pub async fn derive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
+        let (key, _chain_code) =
+            WalletDerivationManagerV0::derive_public_key_child(&self.public_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
+
+        // let pubkey = &key.to_bytes()[1..];
+        // // - TODO - where should the address prefix come from?
+        // let address = Address::new(self.address_prefix, self.address_version, pubkey);
+
+        Ok(key)
+    }
+
     pub fn create_address(key: &secp256k1::PublicKey, prefix: AddressPrefix, _ecdsa: bool) -> Result<Address> {
         let payload = &key.to_bytes()[1..];
-        let address = Address::new(prefix, Version::PubKey, payload);
+        let address = Address::new(prefix, AddressVersion::PubKey, payload);
 
         Ok(address)
     }
 
-    #[allow(dead_code)]
-    pub fn public_key(&self) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
+    pub fn public_key(&self) -> ExtendedPublicKey<secp256k1::PublicKey> {
         self.into()
-    }
-
-    pub fn private_key(&self) -> &SecretKey {
-        &self.private_key
     }
 
     pub fn attrs(&self) -> &ExtendedKeyAttrs {
         &self.attrs
     }
+
+    /// Serialize the raw public key as a byte array.
+    pub fn to_bytes(&self) -> PublicKeyBytes {
+        self.public_key().to_bytes()
+    }
+
+    /// Serialize this key as an [`ExtendedKey`].
+    pub fn to_extended_key(&self, prefix: Prefix) -> ExtendedKey {
+        let mut key_bytes = [0u8; KEY_SIZE + 1];
+        key_bytes[..].copy_from_slice(&self.to_bytes());
+        ExtendedKey { prefix, attrs: self.attrs.clone(), key_bytes }
+    }
+
+    pub fn to_string(&self) -> Zeroizing<String> {
+        Zeroizing::new(self.to_extended_key(Prefix::XPUB).to_string())
+    }
 }
 
-impl From<&PubkeyDerivationManagerV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-    fn from(inner: &PubkeyDerivationManagerV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-        ExtendedPublicKey { public_key: inner.private_key().get_public_key(), attrs: inner.attrs().clone() }
+#[wasm_bindgen]
+impl PubkeyDerivationManagerV0 {
+    #[wasm_bindgen(getter, js_name = publicKey)]
+    pub fn get_public_key(&self) -> String {
+        self.public_key().to_string(None)
+    }
+}
+
+impl From<&PubkeyDerivationManagerV0> for ExtendedPublicKey<secp256k1::PublicKey> {
+    fn from(inner: &PubkeyDerivationManagerV0) -> ExtendedPublicKey<secp256k1::PublicKey> {
+        ExtendedPublicKey { public_key: inner.public_key, attrs: inner.attrs().clone() }
     }
 }
 
@@ -80,20 +127,19 @@ impl PubkeyDerivationManagerTrait for PubkeyDerivationManagerV0 {
     }
 
     fn index(&self) -> Result<u32> {
-        todo!() //Ok(*self.index.lock()?)
+        Ok(*self.index.lock()?)
     }
 
-    fn set_index(&self, _index: u32) -> Result<()> {
-        todo!() //*self.index.lock()? = index;
-                //Ok(())
+    fn set_index(&self, index: u32) -> Result<()> {
+        *self.index.lock()? = index;
+        Ok(())
     }
 
     async fn current_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        todo!()
-        // let index = self.index()?;
-        // let address = self.derive_address(index).await?;
+        let index = self.index()?;
+        let key = self.derive_pubkey(index).await?;
 
-        // Ok(address)
+        Ok(key)
     }
 
     async fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
@@ -102,13 +148,9 @@ impl PubkeyDerivationManagerTrait for PubkeyDerivationManagerV0 {
 }
 
 #[derive(Clone)]
-#[wasm_bindgen]
 pub struct WalletDerivationManagerV0 {
-    /// Derived private key
-    private_key: SecretKey,
-
-    /// Extended key attributes.
-    attrs: ExtendedKeyAttrs,
+    /// extended public key derived upto `m/<Purpose>'/972/<Account Index>'`
+    extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>,
 
     /// receive address wallet
     receive_pubkey_manager: Arc<PubkeyDerivationManagerV0>,
@@ -118,145 +160,161 @@ pub struct WalletDerivationManagerV0 {
 }
 
 impl WalletDerivationManagerV0 {
+    pub async fn create_extended_key_from_xprv(
+        xprv: &str,
+        is_multisig: bool,
+        account_index: u64,
+    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
+        let xprv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
+        Self::derive_extened_key_from_master_key(xprv_key, is_multisig, account_index).await
+    }
+
     pub async fn derive_extened_key_from_master_key(
         xprv_key: ExtendedPrivateKey<SecretKey>,
-        is_multisig: bool,
+        _is_multisig: bool,
         account_index: u64,
     ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
         let attrs = xprv_key.attrs();
 
-        let (extended_private_key, attrs) =
-            Self::create_extended_key(*xprv_key.private_key(), attrs.clone(), is_multisig, account_index).await?;
+        let (extended_private_key, attrs) = Self::create_extended_key(*xprv_key.private_key(), attrs.clone(), account_index).await?;
 
         Ok((extended_private_key, attrs))
     }
 
     async fn create_extended_key(
-        mut _private_key: SecretKey,
-        mut _attrs: ExtendedKeyAttrs,
-        _is_multisig: bool,
-        _account_index: u64,
-    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
-        // let purpose = if is_multisig { 45 } else { 44 };
-        // let address_path = format!("{purpose}'/972'/{account_index}'");
-        // let children = address_path.split('/');
-        // for child in children {
-        //     (private_key, attrs) = Self::derive_private_key(&private_key, &attrs, child.parse::<ChildNumber>()?).await?;
-        // }
-
-        // Ok((private_key, attrs))
-
-        todo!("WIP")
-    }
-
-    pub fn build_derivate_path(
-        _is_multisig: bool,
+        mut private_key: SecretKey,
+        mut attrs: ExtendedKeyAttrs,
         account_index: u64,
-        _cosigner_index: Option<u32>,
-        address_type: Option<AddressType>,
-    ) -> Result<DerivationPath> {
+    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
         // if is_multisig && cosigner_index.is_none() {
         //     return Err("cosigner_index is required for multisig path derivation".to_string().into());
         // }
         let purpose = 44; //if is_multisig { 45 } else { 44 };
-        let mut path = format!("m/{purpose}'/972'/{account_index}'");
+        let path = format!("{purpose}'/972/{account_index}'");
         // if let Some(cosigner_index) = cosigner_index {
         //     path = format!("{path}/{}", cosigner_index)
         // }
+        // if let Some(address_type) = address_type {
+        //     path = format!("{path}/{}", address_type.index());
+        // }
+        println!("path: {path}");
+        let children = path.split('/');
+        for child in children {
+            (private_key, attrs) = Self::derive_private_key(&private_key, &attrs, child.parse::<ChildNumber>()?).await?;
+            println!("ccc: {child}, public_key : {:?}, attrs: {:?}", private_key.get_public_key(), attrs);
+        }
+
+        Ok((private_key, attrs))
+    }
+
+    pub fn build_derivate_path(account_index: u64, address_type: Option<AddressType>) -> Result<DerivationPath> {
+        let purpose = 44;
+        let mut path = format!("m/{purpose}'/972/{account_index}'");
         if let Some(address_type) = address_type {
-            path = format!("{path}/{}", address_type.index());
+            path = format!("{path}/{}'", address_type.index());
         }
         let path = path.parse::<DerivationPath>()?;
         Ok(path)
     }
 
-    #[inline(always)]
-    pub async fn derive_receive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
-        let key = self.receive_pubkey_manager.derive_pubkey(index).await?;
-        Ok(key)
+    pub fn receive_pubkey_manager(&self) -> &PubkeyDerivationManagerV0 {
+        &self.receive_pubkey_manager
+    }
+    pub fn change_pubkey_manager(&self) -> &PubkeyDerivationManagerV0 {
+        &self.change_pubkey_manager
     }
 
-    #[inline(always)]
-    pub async fn derive_change_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
-        let key = self.change_pubkey_manager.derive_pubkey(index).await?;
-        Ok(key)
-    }
-
-    pub async fn derive_wallet(
-        mut private_key: SecretKey,
-        mut attrs: ExtendedKeyAttrs,
+    pub async fn create_pubkey_manager(
+        private_key: &secp256k1::SecretKey,
         address_type: AddressType,
+        attrs: &ExtendedKeyAttrs,
+        _cosigner_index: Option<u32>,
     ) -> Result<PubkeyDerivationManagerV0> {
-        let address_path = format!("44'/972/0'/{}'", address_type.index());
-        let children = address_path.split('/');
-        for child in children {
-            let c = child.parse::<ChildNumber>()?;
-            (private_key, attrs) = Self::derive_child(&private_key, &attrs, c).await?;
-        }
-
-        let public_key_bytes = &private_key.get_public_key().to_bytes()[1..];
-
-        let digest = Ripemd160::digest(Sha256::digest(public_key_bytes));
-        let fingerprint = digest[..4].try_into().expect("digest truncated");
-
+        // if let Some(cosigner_index) = cosigner_index {
+        //     public_key = public_key.derive_child(ChildNumber::new(cosigner_index, false)?)?;
+        // }
+        //let attrs = private_key.attrs().clone();
+        // let (public_key, attrs) =
+        //     Self::derive_public_key(&public_key.public_key, public_key.attrs(), ChildNumber::new(address_type.index(), true)?).await?; //public_key.derive_child(ChildNumber::new(address_type.index(), false)?)?;
+        let (private_key, attrs) = Self::derive_private_key(private_key, attrs, ChildNumber::new(address_type.index(), true)?).await?;
+        // let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(Error::Hmac)?;
+        // hmac.update(&[0]);
+        // hmac.update(&private_key.to_bytes());
         let hmac = Self::create_hmac(&private_key, &attrs, true)?;
 
-        Ok(PubkeyDerivationManagerV0 { private_key, attrs, fingerprint, hmac })
+        PubkeyDerivationManagerV0::new(
+            private_key.get_public_key(),
+            attrs.clone(),
+            private_key.get_public_key().fingerprint(),
+            hmac,
+            0,
+        )
     }
 
-    pub async fn derive_child(
-        private_key: &SecretKey,
+    pub async fn derive_public_key(
+        public_key: &secp256k1::PublicKey,
         attrs: &ExtendedKeyAttrs,
         child_number: ChildNumber,
-    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
-        let public_key_bytes = &private_key.get_public_key().to_bytes()[1..];
-
-        let digest = Ripemd160::digest(Sha256::digest(public_key_bytes));
+    ) -> Result<(secp256k1::PublicKey, ExtendedKeyAttrs)> {
+        //let fingerprint = public_key.fingerprint();
+        let digest = Ripemd160::digest(Sha256::digest(&public_key.to_bytes()[1..]));
         let fingerprint = digest[..4].try_into().expect("digest truncated");
 
-        let hmac = Self::create_hmac(private_key, attrs, child_number.is_hardened())?;
-
-        let res = Self::derive_child_with_fingerprint(private_key, attrs, child_number, fingerprint, hmac).await?;
-
-        Ok(res)
-    }
-
-    pub fn create_hmac(private_key: &SecretKey, attrs: &ExtendedKeyAttrs, hardened: bool) -> Result<HmacSha512> {
         let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(Error::Hmac)?;
-        if hardened {
-            hmac.update(&[0]);
-            hmac.update(&private_key.to_bytes());
-        } else {
-            let public_key_bytes = &private_key.get_public_key().to_bytes()[1..];
-            hmac.update(public_key_bytes);
-        }
+        hmac.update(&public_key.to_bytes());
 
-        Ok(hmac)
-    }
-
-    pub async fn derive_child_with_fingerprint(
-        private_key: &SecretKey,
-        attrs: &ExtendedKeyAttrs,
-        child_number: ChildNumber,
-        fingerprint: [u8; 4],
-        hmac: HmacSha512,
-    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
-        let (private_key, chain_code) = Self::derive_private_key(private_key, child_number, hmac)?;
+        let (key, chain_code) = Self::derive_public_key_child(public_key, child_number, hmac)?;
 
         let depth = attrs.depth.checked_add(1).ok_or(Error::Depth)?;
 
         let attrs = ExtendedKeyAttrs { parent_fingerprint: fingerprint, child_number, chain_code, depth };
 
-        let derived = (private_key, attrs);
-
-        Ok(derived)
+        Ok((key, attrs))
     }
 
-    pub fn derive_private_key(
-        private_key: &SecretKey,
+    fn derive_public_key_child(
+        key: &secp256k1::PublicKey,
         child_number: ChildNumber,
         mut hmac: HmacSha512,
-    ) -> Result<(SecretKey, ChainCode)> {
+    ) -> Result<(secp256k1::PublicKey, ChainCode)> {
+        hmac.update(&child_number.to_bytes());
+
+        let result = hmac.finalize().into_bytes();
+        let (child_key, chain_code) = result.split_at(KEY_SIZE);
+
+        // We should technically loop here if a `secret_key` is zero or overflows
+        // the order of the underlying elliptic curve group, incrementing the
+        // index, however per "Child key derivation (CKD) functions":
+        // https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki#child-key-derivation-ckd-functions
+        //
+        // > "Note: this has probability lower than 1 in 2^127."
+        //
+        // ...so instead, we simply return an error if this were ever to happen,
+        // as the chances of it happening are vanishingly small.
+        let key = key.derive_child(child_key.try_into()?)?;
+
+        Ok((key, chain_code.try_into()?))
+    }
+
+    pub async fn derive_private_key(
+        private_key: &SecretKey,
+        attrs: &ExtendedKeyAttrs,
+        child_number: ChildNumber,
+    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
+        let fingerprint = get_fingerprint(private_key);
+
+        let hmac = Self::create_hmac(private_key, attrs, child_number.is_hardened())?;
+
+        let (private_key, chain_code) = Self::derive_key(private_key, child_number, hmac)?;
+
+        let depth = attrs.depth.checked_add(1).ok_or(Error::Depth)?;
+
+        let attrs = ExtendedKeyAttrs { parent_fingerprint: fingerprint, child_number, chain_code, depth };
+
+        Ok((private_key, attrs))
+    }
+
+    fn derive_key(private_key: &SecretKey, child_number: ChildNumber, mut hmac: HmacSha512) -> Result<(SecretKey, ChainCode)> {
         hmac.update(&child_number.to_bytes());
 
         let result = hmac.finalize().into_bytes();
@@ -276,74 +334,92 @@ impl WalletDerivationManagerV0 {
         Ok((private_key, chain_code.try_into()?))
     }
 
-    /// Serialize the raw private key as a byte array.
-    pub fn to_bytes(&self) -> PrivateKeyBytes {
-        self.private_key().to_bytes()
+    pub fn create_hmac<K>(private_key: &K, attrs: &ExtendedKeyAttrs, hardened: bool) -> Result<HmacSha512>
+    where
+        K: PrivateKey<PublicKey = secp256k1::PublicKey>,
+    {
+        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(Error::Hmac)?;
+        if hardened {
+            hmac.update(&[0]);
+            hmac.update(&private_key.to_bytes());
+        } else {
+            hmac.update(&private_key.public_key().to_bytes()[1..]);
+        }
+
+        Ok(hmac)
     }
 
-    /// Serialize this key as an [`ExtendedKey`].
-    pub fn to_extended_key(&self, prefix: Prefix) -> ExtendedKey {
-        // Add leading `0` byte
-        let mut key_bytes = [0u8; KEY_SIZE + 1];
-        key_bytes[1..].copy_from_slice(&self.to_bytes());
+    /// Serialize the raw public key as a byte array.
+    pub fn to_bytes(&self) -> PublicKeyBytes {
+        self.extended_public_key.to_bytes()
+    }
 
-        ExtendedKey { prefix, attrs: self.attrs.clone(), key_bytes }
+    pub fn attrs(&self) -> &ExtendedKeyAttrs {
+        self.extended_public_key.attrs()
     }
 
     /// Serialize this key as a self-[`Zeroizing`] `String`.
     pub fn to_string(&self) -> Zeroizing<String> {
-        let key = self.to_extended_key(Prefix::XPRV);
-
-        Zeroizing::new(key.to_string())
+        let key = self.extended_public_key.to_string(Some(Prefix::KPUB));
+        Zeroizing::new(key)
     }
 
-    pub fn public_key(&self) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-        self.into()
-    }
+    async fn from_extended_private_key(
+        private_key: secp256k1::SecretKey,
+        cosigner_index: Option<u32>,
+        attrs: ExtendedKeyAttrs,
+    ) -> Result<Self> {
+        let receive_wallet = Self::create_pubkey_manager(&private_key, AddressType::Receive, &attrs, cosigner_index).await?;
 
-    pub fn private_key(&self) -> &SecretKey {
-        &self.private_key
-    }
-    pub fn attrs(&self) -> &ExtendedKeyAttrs {
-        &self.attrs
-    }
-}
+        println!("###: public_key {:?}", receive_wallet.public_key);
+        println!("###: attrs {:?}", receive_wallet.attrs());
+        println!("###: fingerprint {:?}", receive_wallet.fingerprint);
+        println!("###: hmac {:?}", receive_wallet.hmac);
 
-impl From<&WalletDerivationManagerV0> for ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-    fn from(hd_wallet: &WalletDerivationManagerV0) -> ExtendedPublicKey<<SecretKey as PrivateKey>::PublicKey> {
-        ExtendedPublicKey { public_key: hd_wallet.private_key().get_public_key(), attrs: hd_wallet.attrs().clone() }
+        let change_wallet = Self::create_pubkey_manager(&private_key, AddressType::Change, &attrs, cosigner_index).await?;
+
+        let extended_public_key = ExtendedPublicKey { public_key: private_key.get_public_key(), attrs };
+        let wallet = Self {
+            extended_public_key,
+            receive_pubkey_manager: Arc::new(receive_wallet),
+            change_pubkey_manager: Arc::new(change_wallet),
+        };
+
+        Ok(wallet)
     }
 }
 
 impl Debug for WalletDerivationManagerV0 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HDWallet")
-            .field("depth", &self.attrs.depth)
-            .field("child_number", &self.attrs.child_number)
-            .field("chain_code", &faster_hex::hex_string(&self.attrs.chain_code))
-            .field("private_key", &faster_hex::hex_string(&self.to_bytes()))
-            .field("parent_fingerprint", &self.attrs.parent_fingerprint)
+        f.debug_struct("WalletAccount")
+            .field("depth", &self.attrs().depth)
+            .field("child_number", &self.attrs().child_number)
+            .field("chain_code", &faster_hex::hex_string(&self.attrs().chain_code))
+            .field("public_key", &faster_hex::hex_string(&self.to_bytes()))
+            .field("parent_fingerprint", &self.attrs().parent_fingerprint)
             .finish()
     }
 }
 
 #[async_trait]
 impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
-    async fn from_master_xprv(xprv: &str, _is_multisig: bool, _account_index: u64, _cosigner_index: Option<u32>) -> Result<Self> {
-        let xpriv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
-        let attrs = xpriv_key.attrs();
+    /// build wallet from root/master private key
+    async fn from_master_xprv(xprv: &str, _is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<Self> {
+        let xprv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
+        let attrs = xprv_key.attrs();
 
-        let receive_pubkey_manager = Self::derive_wallet(*xpriv_key.private_key(), attrs.clone(), AddressType::Receive).await?.into();
+        let (extended_private_key, attrs) = Self::create_extended_key(*xprv_key.private_key(), attrs.clone(), account_index).await?;
 
-        let change_pubkey_manager = Self::derive_wallet(*xpriv_key.private_key(), attrs.clone(), AddressType::Change).await?.into();
-
-        let wallet =
-            Self { private_key: *xpriv_key.private_key(), attrs: attrs.clone(), receive_pubkey_manager, change_pubkey_manager };
+        //let extended_public_key = ExtendedPublicKey { public_key: extended_private_key.get_public_key(), attrs };
+        let wallet = Self::from_extended_private_key(extended_private_key, cosigner_index, attrs).await?;
 
         Ok(wallet)
     }
 
     async fn from_extended_public_key_str(_xpub: &str, _cosigner_index: Option<u32>) -> Result<Self> {
+        // let extended_public_key = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
+        // let wallet = Self::from_extended_public_key(extended_public_key, cosigner_index).await?;
+        // Ok(wallet)
         todo!()
     }
 
@@ -351,62 +427,80 @@ impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
         _extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>,
         _cosigner_index: Option<u32>,
     ) -> Result<Self> {
+        // let receive_wallet =
+        //     Self::derive_child_pubkey_manager(extended_public_key.clone(), AddressType::Receive, cosigner_index).await?;
+
+        // println!("###: public_key {:?}", receive_wallet.public_key);
+        // println!("###: attrs {:?}", receive_wallet.attrs());
+        // println!("###: fingerprint {:?}", receive_wallet.fingerprint);
+        // println!("###: hmac {:?}", receive_wallet.hmac);
+
+        // let change_wallet =
+        //     Self::derive_child_pubkey_manager(extended_public_key.clone(), AddressType::Change, cosigner_index).await?;
+
+        // let wallet = Self {
+        //     extended_public_key,
+        //     receive_pubkey_manager: Arc::new(receive_wallet),
+        //     change_pubkey_manager: Arc::new(change_wallet),
+        // };
+
+        // Ok(wallet)
+
         todo!()
     }
 
     fn receive_pubkey_manager(&self) -> Arc<dyn PubkeyDerivationManagerTrait> {
-        todo!()
+        self.receive_pubkey_manager.clone()
     }
+
     fn change_pubkey_manager(&self) -> Arc<dyn PubkeyDerivationManagerTrait> {
-        todo!()
-    }
-
-    #[inline(always)]
-    async fn derive_receive_pubkey(&self, _index: u32) -> Result<secp256k1::PublicKey> {
-        // let address = self.receive_wallet.derive_pubkey(index).await?;
-        // Ok(address)
-        todo!()
-    }
-
-    #[inline(always)]
-    async fn derive_change_pubkey(&self, _index: u32) -> Result<secp256k1::PublicKey> {
-        // let address = self.change_wallet.derive_pubkey(index).await?;
-        // Ok(address)
-        todo!()
-    }
-
-    #[inline(always)]
-    async fn receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        // let address = self.receive_wallet.new_pubkey().await?;
-        // Ok(address)
-        todo!()
-    }
-
-    #[inline(always)]
-    async fn change_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        // let address = self.change_wallet.new_pubkey().await?;
-        // Ok(address)
-        todo!()
+        self.change_pubkey_manager.clone()
     }
 
     #[inline(always)]
     async fn new_receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        // let address = self.receive_wallet.new_pubkey().await?;
-        // Ok(address)
-        todo!()
+        let key = self.receive_pubkey_manager.new_pubkey().await?;
+        Ok(key)
     }
 
     #[inline(always)]
     async fn new_change_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        // let address = self.change_wallet.new_pubkey().await?;
-        // Ok(address)
-        todo!()
+        let key = self.change_pubkey_manager.new_pubkey().await?;
+        Ok(key)
+    }
+
+    #[inline(always)]
+    async fn receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
+        let key = self.receive_pubkey_manager.current_pubkey().await?;
+        Ok(key)
+    }
+
+    #[inline(always)]
+    async fn change_pubkey(&self) -> Result<secp256k1::PublicKey> {
+        let key = self.change_pubkey_manager.current_pubkey().await?;
+        Ok(key)
+    }
+
+    #[inline(always)]
+    async fn derive_receive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
+        let key = self.receive_pubkey_manager.derive_pubkey(index).await?;
+        Ok(key)
+    }
+
+    #[inline(always)]
+    async fn derive_change_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
+        let key = self.change_pubkey_manager.derive_pubkey(index).await?;
+        Ok(key)
     }
 }
+
+// #[cfg(test)]
+// use super::hd_;
 
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
+    //use super::hd_;
     use super::{PubkeyDerivationManagerV0, WalletDerivationManagerTrait, WalletDerivationManagerV0};
     use kaspa_addresses::Prefix;
 
@@ -624,15 +718,29 @@ mod tests {
     async fn hd_wallet_gen0() {
         let master_xprv =
             "xprv9s21ZrQH143K3knsajkUfEx2ZVqX9iGm188iNqYL32yMVuMEFmNHudgmYmdU4NaNNKisDaGwV1kSGAagNyyGTTCpe1ysw6so31sx3PUCDCt";
-
+        //println!("################################################################# 1111");
         let hd_wallet = WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None).await;
         assert!(hd_wallet.is_ok(), "Could not parse key");
+
+        //println!("################################################################# 2222");
+        //let hd_wallet2 = hd_::WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None).await;
+        //assert!(hd_wallet2.is_ok(), "Could not parse key1");
+
         let hd_wallet = hd_wallet.unwrap();
+        //let hd_wallet2 = hd_wallet2.unwrap();
 
         let receive_addresses = gen0_receive_addresses();
         let change_addresses = gen0_change_addresses();
 
-        for index in 0..100 {
+        println!("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+        //println!("hd_wallet1: {:?}", hd_wallet.receive_pubkey_manager().public_key());
+        //println!("hd_wallet2: {:?}", hd_wallet2.receive_pubkey_manager.public_key());
+
+        // let pubkey = hd_wallet2.derive_receive_pubkey(0).await.unwrap();
+        // let address: String = hd_::PubkeyDerivationManagerV0::create_address(&pubkey, Prefix::Mainnet, false).unwrap().into();
+        // assert_eq!(receive_addresses[0], address, "receive address at 0 failed $$$$ ");
+
+        for index in 0..20 {
             let pubkey = hd_wallet.derive_receive_pubkey(index).await.unwrap();
             let address: String = PubkeyDerivationManagerV0::create_address(&pubkey, Prefix::Mainnet, false).unwrap().into();
             assert_eq!(receive_addresses[index as usize], address, "receive address at {index} failed");
@@ -641,4 +749,105 @@ mod tests {
             assert_eq!(change_addresses[index as usize], address, "change address at {index} failed");
         }
     }
+
+    #[tokio::test]
+    async fn generate_addresses_by_range() {
+        let master_xprv =
+            "xprv9s21ZrQH143K3knsajkUfEx2ZVqX9iGm188iNqYL32yMVuMEFmNHudgmYmdU4NaNNKisDaGwV1kSGAagNyyGTTCpe1ysw6so31sx3PUCDCt";
+
+        let hd_wallet = WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None).await;
+        assert!(hd_wallet.is_ok(), "Could not parse key");
+        let hd_wallet = hd_wallet.unwrap();
+        let pubkeys = hd_wallet.receive_pubkey_manager().derive_pubkey_range(0..20).await.unwrap();
+        let addresses_receive = pubkeys
+            .into_iter()
+            .map(|k| PubkeyDerivationManagerV0::create_address(&k, Prefix::Mainnet, false).unwrap().to_string())
+            .collect::<Vec<String>>();
+
+        let pubkeys = hd_wallet.change_pubkey_manager().derive_pubkey_range(0..20).await.unwrap();
+        let addresses_change = pubkeys
+            .into_iter()
+            .map(|k| PubkeyDerivationManagerV0::create_address(&k, Prefix::Mainnet, false).unwrap().to_string())
+            .collect::<Vec<String>>();
+        println!("receive addresses: {addresses_receive:#?}");
+        println!("change addresses: {addresses_change:#?}");
+        let receive_addresses = gen0_receive_addresses();
+        let change_addresses = gen0_change_addresses();
+        for index in 0..20 {
+            assert_eq!(receive_addresses[index], addresses_receive[index], "receive address at {index} failed");
+            assert_eq!(change_addresses[index], addresses_change[index], "change address at {index} failed");
+        }
+    }
+
+    // #[tokio::test]
+    // async fn generate_kaspatest_addresses() {
+    //     let receive_addresses = [
+    //         "kaspatest:qr4snlge8pc0ara2wsw0uphgqv2fs0c66as8d8p5e5du37cs4s62kzx8f7uwn",
+    //         "kaspatest:qpypt84qp0y2wx7kjdcjgxg8dy8gqnrdw8ehmyz93ywmvu8fjrzd2886t4ayt",
+    //         "kaspatest:qqsl3rvfluvxfr3ddkdhl8c6krzrmuaxcjvgujluw723slg7y9ukz47sf7jt0",
+    //         "kaspatest:qzwd654lq3gszvmss40sk5hhpuqgceueug5ewl33lrzmdlxv0hn6s8supxnc3",
+    //         "kaspatest:qz795crj5yt352jf202m56g4jpm4964tsx6tn803jqu9lhjle4p2zxt8k4jgs",
+    //         "kaspatest:qqde9kslm5yc3vjzuajeud42c6gtvpvzmkhzq8t420jjf0hefhqz5z74fngkv",
+    //         "kaspatest:qptse68t4v3sv82lw3zl96e05grqe8ekay8k29g5p5k4vmdxxkncx5u3vmkq2",
+    //         "kaspatest:qrgs0j7jnfdjc50u363hcsx6uaj2un2txzq0aa8kn2k6ruyjhp3kzevx9t27x",
+    //         "kaspatest:qqa08hmk87r6ez08xdfwzfp8w9nm2xwaft58cnq0amhvd65u07apycmyfqdle",
+    //         "kaspatest:qz43yh8uen9wacdjxmjyl9xkn68huapfgfh53qtn2v2m54zwwgy8khyg76h8y",
+    //         "kaspatest:qqshvw50xlnequ8ge2p7wxazke4urtd7s9xf6mk2uc9ylt206zkhxcyt3vpg3",
+    //         "kaspatest:qr0ra8qrkapqm9ffqkjwx2kg7hymyjp5tucutm7cx30ft8daqv9ds645zng7f",
+    //         "kaspatest:qpducvwwnefca9es64v3385qu0lthtk7wnl0l7sj8nkng23uj37pszgn28d20",
+    //         "kaspatest:qzs5lem8024vwzwrn439juf3uzur47hysy5lta79f9gnnwc952cvx0d5neaf5",
+    //         "kaspatest:qpw46gc8wxu3zr7t9j2aw8sjd2wtsfnjg37kfa3nmuupg4uarverjnxszmaf7",
+    //         "kaspatest:qz0utfwmh2ds3yrv7lxwwmuzrj2ppy80trz7g2zk0carzcadrkda6zf7278yj",
+    //         "kaspatest:qpauc2h03ae80yk3cu0xaly2fyamn84uvvkgk9w74ewymdj3yme9yzj4dwzlv",
+    //         "kaspatest:qpc00gcplw39647s3rctq8k9z3fz2e0mdzz050ysdtrejycnkwtaz3ajslz4r",
+    //         "kaspatest:qrqv00tkwkjkre9537pntvhhxledny9tay09hz8h9tw3sczweaxwg4klswkt5",
+    //         "kaspatest:qzwscz5ker9a4g0dnguu2jdm40tfaf8xzkzu37k99pk38q82pzlexwhalvpz2",
+    //     ];
+
+    //     let change_addresses = vec![
+    //         "kaspatest:qpws7ck36yfn3m5awhrvvg7yphy8uaqncqy2rnyg8z83mwlh88hvsy5g3vxar",
+    //         "kaspatest:qphdsuqm0wh9f8e6gdtw7ysr4krpt3snut3e62ejut2573rxavp9znh69tcvp",
+    //         "kaspatest:qpsl5uzeg5a2n5t0r07ylstuwa8ldnxvzfrl6ut0lf75w9eh74ezv0qdtpzsy",
+    //         "kaspatest:qr9sj7t6kwntkn585q37e0v7krw9yrq648f9tsxc0x3xrta35nwfsfmh3m44a",
+    //         "kaspatest:qpm8pdqae7x7daj0w7turrr5ej7j8cea8srerd8utr9c8nkn0a2t639m76f2e",
+    //         "kaspatest:qr44m9frv9jua7vnmcl7dxmtfgsskrshs3kss4lt7ph6z0syrav7gshpj3yax",
+    //         "kaspatest:qr5w2xc7skcruy9twftfvcdw0qukfqf99ythqax3vmslzvm05j6lc4cv8xemk",
+    //         "kaspatest:qzd0nspl0w2dd44mdr87gumd8ea29tg9ttvhl8a0tqt5hvp6pzq5vqyc2l9mq",
+    //         "kaspatest:qzw64clxfnj09xwqgdrjkcnjy9jp5y7t4pmuexce9q0crz3sxlwhsywzvrvnh",
+    //         "kaspatest:qznyr75mlqykpz80t876as4zhclsvejahkhv9yu4vgum725wf0swz3acfl09h",
+    //         "kaspatest:qqz5rnh6ej92vftjlwf5myv8wvzt47ajvnh5n26hsq2k68qcdgv6qqhy5jcd0",
+    //         "kaspatest:qr3e6rk8h0v2ypfwv7fpxacm908lesj60rnjyln3kps55avx7h49whh8c8pjl",
+    //         "kaspatest:qzc50enaugruh34wp3lvzjd043cct9nvvdtc0c4kx7rhcssjczfhy54rdlqly",
+    //         "kaspatest:qqv6mememyed62mwtx3cxfgssqvcx9ctkqplvc87wrlhz27zmugywz2yjh3rm",
+    //         "kaspatest:qpvgzp0kldv6m70lhfvre3hcz6m6d36auerl928gvvv3nh2wntpn7zd0cggh7",
+    //         "kaspatest:qp29gz4q2pt9cqe4mt7l6489hua8x3t3w89p7pu0apesqzr2lgvc5pknphvag",
+    //         "kaspatest:qq5nlpeepnr669l695peww9l5phl57y83fzwavhvddkzs0rvxmc7wmweveyuj",
+    //         "kaspatest:qq6gg2ve3h00psknyhz3huzgtqzyqxhga53adggwpeph3kxcvwrf27vx4vcg2",
+    //         "kaspatest:qqy8v27n6u86e389wjg4exkxf3xxhkgyv63eccknd7qa6w6atdkw6td2upcwq",
+    //         "kaspatest:qzs6mkq367c9l3war8ktu0tdpp0ftcyw7c9qfzv7tk9r9x05pkfwv7wzltuln",
+    //     ];
+
+    //     let master_xprv =
+    //         "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
+
+    //     let hd_wallet = WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None).await;
+    //     assert!(hd_wallet.is_ok(), "Could not parse key");
+    //     let hd_wallet = hd_wallet.unwrap();
+
+    //     //let mut receive_addresses = vec![]; //gen1_receive_addresses();
+    //     //let change_addresses = gen1_change_addresses();
+
+    //     for index in 0..20 {
+    //         let key = hd_wallet.derive_receive_pubkey(index).await.unwrap();
+    //         //let address = Address::new(Prefix::Testnet, kaspa_addresses::Version::PubKey, key.to_bytes());
+    //         let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap();
+    //         //receive_addresses.push(String::from(address));
+    //         assert_eq!(receive_addresses[index as usize], address.to_string(), "receive address at {index} failed");
+    //         let key = hd_wallet.derive_change_pubkey(index).await.unwrap();
+    //         let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap();
+    //         assert_eq!(change_addresses[index as usize], address.to_string(), "change address at {index} failed");
+    //     }
+
+    //     println!("receive_addresses: {receive_addresses:#?}");
+    // }
 }
