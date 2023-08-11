@@ -44,7 +44,6 @@ function parseArgs(options = {
     const addressArg = values.address ?? positionals.find((positional) => addressRegex.test(positional)) ?? null;
     const address = addressArg === null ? null : new Address(addressArg);
 
-
     let networkType = addressArg?.startsWith('kaspa:') ? NetworkType.Mainnet : NetworkType.Testnet;
     const networkArg = values.network ?? positionals.find((positional) => positional === 'mainnet' || positional === 'testnet') ?? null;
     if (networkArg !== null) {
