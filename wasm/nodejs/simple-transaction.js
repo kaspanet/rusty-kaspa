@@ -5,9 +5,6 @@ const {
     PrivateKey,
     Address,
     RpcClient,
-    Encoding,
-    NetworkType,
-    UtxoEntries,
     kaspaToSompi,
     createTransactions,
     init_console_panic_hook
@@ -54,17 +51,11 @@ async function runDemo() {
         // a very basic JS-driven utxo entry sort
         entries.sort((a, b) => a.utxoEntry.amount > b.utxoEntry.amount || -(a.utxoEntry.amount < b.utxoEntry.amount));
 
-        let total = entries.reduce((agg, curr) => {
-            return curr.utxoEntry.amount + agg;
-        }, 0n);
-
-        console.info('Amount sending', total - BigInt(entries.length) * 2000n)
-
         let { transactions, summary } = await createTransactions({
             entries, 
-            outputs : [[destinationAddress, total - BigInt(entries.length) * 2000n]],
+            outputs : [[destinationAddress, kaspaToSompi(0.00012)]],
             priorityFee: 0,
-            changeAddress: destinationAddress,
+            changeAddress: skAddress,
         });
 
         console.log("summary:", summary);
