@@ -22,7 +22,6 @@ kaspa.init_console_panic_hook();
         daaScore: 0n,
         blueScore: 0n,
         blueWork: "baadf00d",
-
     });
 
     console.log("initial header:", header);
