@@ -227,3 +227,8 @@ workflow-terminal = { path = "../workflow-rs/terminal" }
 lto = "thin"
 strip = true
 overflow-checks = true
+
+[profile.heap]
+inherits = "release"
+debug = true
+strip = false

@@ -41,3 +41,8 @@ workflow-log.workspace = true
 # num-format = "0.4"
 dirs = "4.0"
 num_cpus.workspace = true
+
+dhat = {version = "0.3.2", optional = true}
+
+[features]
+heap = ["dhat"]
