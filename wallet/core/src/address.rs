@@ -154,18 +154,20 @@ impl AddressDerivationManager {
         wallet: &Arc<runtime::Wallet>,
         // prefix: Prefix,
         account_kind: AccountKind,
-        pub_key_data: &PubKeyData,
+        keys : &Vec<String>,
+        // pub_key_data: &PubKeyData,
         ecdsa: bool,
-        minimum_signatures: usize,
+        cosigner_index : Option<u32>,
+        minimum_signatures: Option<u32>,
         receive_index: Option<u32>,
         change_index: Option<u32>,
     ) -> Result<Arc<AddressDerivationManager>> {
-        let keys = &pub_key_data.keys;
+        // let keys = &pub_key_data.keys;
         if keys.is_empty() {
             return Err("Invalid PubKeyData: no public keys".to_string().into());
         }
 
-        let cosigner_index = pub_key_data.cosigner_index;
+        // let cosigner_index = pub_key_data.cosigner_index;
         let mut receive_pubkey_managers = vec![];
         let mut change_pubkey_managers = vec![];
         for xpub in keys {
@@ -187,7 +189,7 @@ impl AddressDerivationManager {
             receive_pubkey_managers,
             ecdsa,
             receive_index.unwrap_or(0),
-            minimum_signatures,
+            minimum_signatures.unwrap_or(1) as usize,
         )?;
 
         let change_address_manager = AddressManager::new(
@@ -196,7 +198,7 @@ impl AddressDerivationManager {
             change_pubkey_managers,
             ecdsa,
             change_index.unwrap_or(0),
-            minimum_signatures,
+            minimum_signatures as usize,
         )?;
 
         let manager = Self {

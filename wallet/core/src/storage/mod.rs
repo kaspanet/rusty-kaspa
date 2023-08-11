@@ -12,7 +12,7 @@ pub mod metadata;
 pub mod transaction;
 
 pub use crate::runtime::{AccountId, AccountKind};
-pub use account::Account;
+pub use account::{Account,AccountData};
 pub use address::AddressBookEntry;
 pub use binding::Binding;
 pub use hint::Hint;

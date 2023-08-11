@@ -1,3 +1,11 @@
+pub mod data;
+pub mod kind;
+pub mod id;
+
+pub use data::*;
+pub use kind::*;
+pub use id::*;
+
 #[allow(unused_imports)]
 use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::address::{build_derivate_paths, AddressManager};
@@ -6,255 +14,196 @@ use crate::result::Result;
 use crate::runtime::{AtomicBalance, Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
 use crate::storage::interface::AccessContext;
-use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId, PubKeyData};
+use crate::storage::{self, AccessContextT, PrvKeyData};
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, KeydataSigner, PaymentDestination, PendingTransaction, Signer};
 use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoEntryReference};
-use crate::AddressDerivationManager;
-use faster_hex::hex_string;
+// use crate::AddressDerivationManager;
+// use faster_hex::hex_string;
 use futures::future::join_all;
 use kaspa_bip32::ChildNumber;
 use kaspa_notify::listener::ListenerId;
-use secp256k1::ONE_KEY;
+// use secp256k1::{ONE_KEY, PublicKey, SecretKey};
 use separator::Separatable;
-use serde::Serializer;
-use std::hash::Hash;
-use std::str::FromStr;
+// use serde::Serializer;
+// use std::hash::Hash;
+// use std::str::FromStr;
 use workflow_core::abortable::Abortable;
-use workflow_core::enums::u8_try_from;
+// use workflow_core::enums::u8_try_from;
+use kaspa_addresses::Version as AddressVersion;
 
 pub const DEFAULT_AMOUNT_PADDING: usize = 19;
 
 pub type GenerationNotifier = Arc<dyn Fn(&PendingTransaction) + Send + Sync>;
 pub type DeepScanNotifier = Arc<dyn Fn(usize, u64, Option<TransactionId>) + Send + Sync>;
 
-u8_try_from! {
-    #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
-    #[serde(rename_all = "lowercase")]
-    #[wasm_bindgen]
-    pub enum AccountKind {
-        Legacy,
-        #[default]
-        Bip32,
-        MultiSig,
-        Secp256k1Keypair,
-        Secp256k1KeypairResident
-    }
-}
 
-impl std::fmt::Display for AccountKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AccountKind::Legacy => write!(f, "legacy"),
-            AccountKind::Bip32 => write!(f, "bip32"),
-            AccountKind::MultiSig => write!(f, "multisig"),
-        }
-    }
-}
-
-impl FromStr for AccountKind {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self> {
-        match s.to_lowercase().as_str() {
-            "legacy" => Ok(AccountKind::Legacy),
-            "bip32" => Ok(AccountKind::Bip32),
-            "multisig" => Ok(AccountKind::MultiSig),
-            _ => Err(Error::InvalidAccountKind),
-        }
-    }
-}
-
-// #[derive(Hash)]
-#[derive(BorshSerialize)]
-struct AccountIdHashData {
-    prv_key_data_id: PrvKeyDataId,
-    ecdsa: bool,
-    account_kind: AccountKind,
-    account_index: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AccountId(pub(crate) u64);
-
-impl AccountId {
-    pub(crate) fn new(prv_key_data_id: &PrvKeyDataId, ecdsa: bool, account_kind: &AccountKind, account_index: u64) -> AccountId {
-        let data = AccountIdHashData { prv_key_data_id: *prv_key_data_id, ecdsa, account_kind: *account_kind, account_index };
-        AccountId(xxh3_64(data.try_to_vec().unwrap().as_slice()))
-    }
-
-    pub fn short(&self) -> String {
-        let hex = self.to_hex();
-        format!("[{}]", &hex[0..4])
-    }
-}
-
-impl ToHex for AccountId {
-    fn to_hex(&self) -> String {
-        format!("{:x}", self.0)
-    }
-}
-
-impl Serialize for AccountId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&hex_string(&self.0.to_be_bytes()))
-    }
-}
-
-impl<'de> Deserialize<'de> for AccountId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let hex_str = <std::string::String as Deserialize>::deserialize(deserializer)?;
-        let mut out = [0u8; 8];
-        let mut input = [b'0'; 16];
-        let start = input.len() - hex_str.len();
-        input[start..].copy_from_slice(hex_str.as_bytes());
-        faster_hex::hex_decode(&input, &mut out).map_err(serde::de::Error::custom)?;
-        Ok(AccountId(u64::from_be_bytes(out)))
-    }
-}
-
-impl std::fmt::Display for AccountId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", hex_string(&self.0.to_be_bytes()))
-    }
+pub struct Context {
+    pub listener_id: Option<ListenerId>,
+    pub stored: Option<storage::Account>,
 }
 
 pub struct Inner {
-    pub listener_id: Option<ListenerId>,
-    pub stored: storage::Account,
+    context: Mutex<Context>,
+    id: AccountId,
+    wallet: Arc<Wallet>,
+    utxo_context: UtxoContext,
+    is_connected: AtomicBool,
+    data : AccountData,
+
 }
 
 /// Wallet `Account` data structure. An account is typically a single
 /// HD-key derivation (derived from a wallet or from an an external secret)
 pub struct Account {
-    pub id: AccountId,
-    inner: Arc<Mutex<Inner>>,
-    wallet: Arc<Wallet>,
-    utxo_context: UtxoContext,
-    is_connected: AtomicBool,
-    pub account_kind: AccountKind,
-    pub account_index: u64,
-    pub cosigner_index: u32,
-    pub prv_key_data_id: PrvKeyDataId,
-    pub ecdsa: bool,
-    pub derivation: Arc<AddressDerivationManager>,
+    inner: Arc<Inner>,
+    // pub account_kind: AccountKind,
+    // pub account_index: u64,
+    // pub cosigner_index: u32,
+    // pub prv_key_data_id: PrvKeyDataId,
+    // pub ecdsa: bool,
+    // pub derivation: Arc<AddressDerivationManager>,
 }
 
 impl Account {
-    pub async fn try_new_arc_with_args(
+    pub async fn try_new_from_storage(
         wallet: &Arc<Wallet>,
         name: Option<&str>,
         title: Option<&str>,
-        account_kind: AccountKind,
-        account_index: u64,
-        prv_key_data_id: PrvKeyDataId,
-        pub_key_data: PubKeyData,
-        ecdsa: bool,
-    ) -> Result<Arc<Self>> {
-        let minimum_signatures = pub_key_data.minimum_signatures.unwrap_or(1) as usize;
-        let derivation =
-            AddressDerivationManager::new(wallet, account_kind, &pub_key_data, ecdsa, minimum_signatures, None, None).await?;
+        storage_account_data : storage::AccountData,
+        // account_kind: AccountKind,
+        // account_index: u64,
+        // prv_key_data_id: PrvKeyDataId,
+        // pub_key_data: PubKeyData,
+        // ecdsa: bool,
+    ) -> Result<Self> {
+        // let minimum_signatures = pub_key_data.minimum_signatures.unwrap_or(1) as usize;
+        // let derivation =
+        //     AddressDerivationManager::new(wallet, account_kind, &pub_key_data, ecdsa, minimum_signatures, None, None).await?;
 
+        let id = AccountId::from_storage_data(&storage_account_data);
+        let data = AccountData::new_from_storage_data(&storage_account_data, wallet).await?;
+
+        // let id = AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index);
+
+        // let id = data.id();
         let stored = storage::Account::new(
+            id,
             name.map(String::from),
             title.map(String::from),
-            account_kind,
-            account_index,
             false,
-            pub_key_data.clone(),
-            prv_key_data_id,
-            ecdsa,
-            pub_key_data.minimum_signatures.unwrap_or(1),
-            pub_key_data.cosigner_index.unwrap_or(0),
+            storage_account_data,
+            // account_kind,
+            // account_index,
+            // false,
+            // pub_key_data.clone(),
+            // prv_key_data_id,
+            // ecdsa,
+            // pub_key_data.minimum_signatures.unwrap_or(1),
+            // pub_key_data.cosigner_index.unwrap_or(0),
         );
 
-        let inner = Inner { listener_id: None, stored };
-        let id = AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index);
         let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
-        let account = Arc::new(Account {
+
+        let context = Context { listener_id: None, stored : Some(stored) };
+        let inner = Inner { context : Mutex::new(context),
             id,
             wallet: wallet.clone(),
             utxo_context: utxo_context.clone(),
             is_connected: AtomicBool::new(false),
-            inner: Arc::new(Mutex::new(inner)),
-            account_kind,
-            account_index,
-            cosigner_index: pub_key_data.cosigner_index.unwrap_or(0),
-            prv_key_data_id,
-            ecdsa: false,
-            derivation,
-        });
+            // inner: Arc::new(Mutex::new(inner)),
+            data,
+        };
+        // let id = data.id();
+        // let id = AccountId::new(&prv_key_data_id, ecdsa, &account_kind, account_index);
+        let account = Account {
+            inner : Arc::new(inner),
+            // account_kind,
+            // account_index,
+            // cosigner_index: pub_key_data.cosigner_index.unwrap_or(0),
+            // prv_key_data_id,
+            // ecdsa: false,
+            // derivation,
+        };
 
         Ok(account)
     }
 
-    pub async fn try_new_arc_from_storage(wallet: &Arc<Wallet>, stored: &storage::Account) -> Result<Arc<Self>> {
-        let minimum_signatures = stored.pub_key_data.minimum_signatures.unwrap_or(1) as usize;
-        let derivation = AddressDerivationManager::new(
-            wallet,
-            stored.account_kind,
-            &stored.pub_key_data,
-            stored.ecdsa,
-            minimum_signatures,
-            None,
-            None,
-        )
-        .await?;
+    // pub async fn try_new_arc_from_storage(wallet: &Arc<Wallet>, stored: &storage::Account) -> Result<Arc<Self>> {
+    //     // let minimum_signatures = stored.pub_key_data.minimum_signatures.unwrap_or(1) as usize;
+    //     // let derivation = AddressDerivationManager::new(
+    //     //     wallet,
+    //     //     stored.account_kind,
+    //     //     &stored.pub_key_data,
+    //     //     stored.ecdsa,
+    //     //     minimum_signatures,
+    //     //     None,
+    //     //     None,
+    //     // )
+    //     // .await?;
 
-        let inner = Inner { listener_id: None, stored: stored.clone() };
-        let id = AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index);
-        let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
-        let account = Arc::new(Account {
-            id,
-            wallet: wallet.clone(),
-            utxo_context: utxo_context.clone(),
-            is_connected: AtomicBool::new(false),
-            inner: Arc::new(Mutex::new(inner)),
-            account_kind: stored.account_kind,
-            account_index: stored.account_index,
-            cosigner_index: stored.cosigner_index,
-            prv_key_data_id: stored.prv_key_data_id,
-            ecdsa: stored.ecdsa,
-            derivation,
-        });
+    //     let inner = Inner { listener_id: None, stored: stored.clone() };
+    //     let id = AccountId::new(&stored.prv_key_data_id, stored.ecdsa, &stored.account_kind, stored.account_index);
+    //     let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
+    //     let account = Arc::new(Account {
+    //         id,
+    //         wallet: wallet.clone(),
+    //         utxo_context: utxo_context.clone(),
+    //         is_connected: AtomicBool::new(false),
+    //         inner: Arc::new(Mutex::new(inner)),
+    //         account_kind: stored.account_kind,
+    //         account_index: stored.account_index,
+    //         cosigner_index: stored.cosigner_index,
+    //         prv_key_data_id: stored.prv_key_data_id,
+    //         ecdsa: stored.ecdsa,
+    //         derivation,
+    //     });
 
-        Ok(account)
+    //     Ok(account)
+    // }
+
+    pub fn inner(&self) -> &Inner {
+        &self.inner
     }
+
+    pub fn context(&self) -> MutexGuard<Context> {
+        self.inner.context.lock().unwrap()
+    }
+
 
     pub fn id(&self) -> &AccountId {
-        &self.id
+        &self.inner.id
     }
 
     pub fn wallet(&self) -> &Arc<Wallet> {
-        &self.wallet
+        &self.inner.wallet
     }
 
     pub fn utxo_context(&self) -> &UtxoContext {
-        &self.utxo_context
+        &self.inner.utxo_context
     }
 
     pub fn is_connected(&self) -> bool {
-        self.is_connected.load(std::sync::atomic::Ordering::SeqCst)
+        self.inner.is_connected.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn name(&self) -> Option<String> {
-        self.inner.lock().unwrap().stored.name.clone()
+        self.inner.context.lock().unwrap().stored.and_then(|stored|stored.name.clone())
+    }
+
+    pub fn title(&self) -> Option<String> {
+        self.inner.context.lock().unwrap().stored.and_then(|stored|stored.title.clone())
     }
 
     pub fn name_or_id(&self) -> String {
         if let Some(name) = self.name() {
             // compensate for an empty name
             if name.is_empty() {
-                self.id.short()
+                self.inner.id.short()
             } else {
                 name
             }
         } else {
-            self.id.short()
+            self.inner.id.short()
         }
     }
 
@@ -262,27 +211,27 @@ impl Account {
         if let Some(name) = self.name() {
             // compensate for an empty name
             if name.is_empty() {
-                self.id.short()
+                self.inner.id.short()
             } else {
-                format!("{name} {}", self.id.short())
+                format!("{name} {}", self.id().short())
             }
         } else {
-            self.id.short()
+            self.inner.id.short()
         }
     }
 
     pub async fn rename(&self, secret: Secret, name: Option<&str>) -> Result<()> {
         let stored = {
-            let inner = self.inner();
-            let mut stored = inner.stored.clone();
+            let context = self.context();
+            let mut stored = context.stored.clone().ok_or(Error::ResidentAccount)?;
             stored.name = name.map(String::from);
             stored
         };
 
-        self.wallet.store().as_account_store()?.store(&[&stored]).await?;
+        self.wallet().store().as_account_store()?.store(&[&stored]).await?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
-        self.wallet.store().commit(&ctx).await?;
+        self.wallet().store().commit(&ctx).await?;
         Ok(())
     }
 
@@ -291,14 +240,14 @@ impl Account {
     }
 
     pub fn balance_as_strings(&self, padding: Option<usize>) -> Result<BalanceStrings> {
-        Ok(BalanceStrings::from((&self.balance(), &self.wallet.network_id()?.into(), padding)))
+        Ok(BalanceStrings::from((&self.balance(), &self.wallet().network_id()?.into(), padding)))
     }
 
     pub fn get_list_string(&self) -> Result<String> {
         let name = style(self.name_with_id()).blue();
         let balance = self.balance_as_strings(None)?;
-        let mature_utxo_size = self.utxo_context.mature_utxo_size();
-        let pending_utxo_size = self.utxo_context.pending_utxo_size();
+        let mature_utxo_size = self.utxo_context().mature_utxo_size();
+        let pending_utxo_size = self.utxo_context().pending_utxo_size();
         let info = match (mature_utxo_size, pending_utxo_size) {
             (0, 0) => "".to_string(),
             (_, 0) => {
@@ -314,29 +263,46 @@ impl Account {
         Ok(format!("{name}: {balance}   {}", style(info).dim()))
     }
 
-    pub fn inner(&self) -> MutexGuard<Inner> {
-        self.inner.lock().unwrap()
+    pub fn data(&self) -> &AccountData {
+        &self.inner.data
     }
 
     pub async fn scan(self: &Arc<Self>, window_size: Option<usize>, extent: Option<u32>) -> Result<()> {
         self.utxo_context().clear().await?;
 
-        let current_daa_score = self.wallet.current_daa_score().ok_or(Error::NotConnected)?;
-        let balance = Arc::new(AtomicBalance::default());
+        match self.data() {
+            AccountData::Legacy { derivation, .. }
+            | AccountData::Bip32 { derivation, .. }
+            | AccountData::MultiSig { derivation, .. } => {
+                let current_daa_score = self.wallet().current_daa_score().ok_or(Error::NotConnected)?;
+                let balance = Arc::new(AtomicBalance::default());
+        
+                let extent = match extent {
+                    Some(depth) => ScanExtent::Depth(depth),
+                    None => ScanExtent::EmptyWindow,
+                };
+        
+                let scans = vec![
+                    Scan::new_with_args(derivation.receive_address_manager(), window_size, extent, &balance, current_daa_score),
+                    Scan::new_with_args(derivation.change_address_manager(), window_size, extent, &balance, current_daa_score),
+                ];
+        
+                let futures = scans.iter().map(|scan| scan.scan(self.utxo_context())).collect::<Vec<_>>();
+        
+                join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
+        
+            }
+            AccountData::ResidentSecp256k1Keypair { public_key, .. } => {
+                let payload = &public_key.serialize()[1..];
+                let address = Address::new(self.wallet().network_id()?.network_type.into(), AddressVersion::PubKey, payload);
+        
+            },
 
-        let extent = match extent {
-            Some(depth) => ScanExtent::Depth(depth),
-            None => ScanExtent::EmptyWindow,
-        };
+            AccountData::Secp256k1Keypair { public_key, .. } => {
 
-        let scans = vec![
-            Scan::new_with_args(self.derivation.receive_address_manager(), window_size, extent, &balance, current_daa_score),
-            Scan::new_with_args(self.derivation.change_address_manager(), window_size, extent, &balance, current_daa_score),
-        ];
+            }
+        }
 
-        let futures = scans.iter().map(|scan| scan.scan(self.utxo_context())).collect::<Vec<_>>();
-
-        join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
 
         self.utxo_context().update_balance().await?;
 
@@ -356,7 +322,7 @@ impl Account {
     ) -> Result<()> {
         let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         let _keydata = self
-            .wallet
+            .wallet()
             .store()
             .as_prv_key_data_store()?
             .load_key_data(&access_ctx, &self.prv_key_data_id)
@@ -412,7 +378,7 @@ impl Account {
                     let mut stream = generator.stream();
                     while let Some(transaction) = stream.try_next().await? {
                         transaction.try_sign()?;
-                        let id = transaction.try_submit(self.wallet.rpc()).await?;
+                        let id = transaction.try_submit(self.wallet().rpc()).await?;
                         if let Some(notifier) = notifier.as_ref() {
                             notifier(index, balance, Some(id));
                         }
