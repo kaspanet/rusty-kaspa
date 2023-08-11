@@ -32,6 +32,7 @@ pub type ScriptVec = SmallVec<[u8; SCRIPT_VECTOR_SIZE]>;
 /// Represents the ScriptPublicKey Version
 pub type ScriptPublicKeyVersion = u16;
 
+use kaspa_utils::serde_bytes::FromHexVisitor;
 /// Alias the `smallvec!` macro to ease maintenance
 pub use smallvec::smallvec as scriptvec;
 
@@ -44,6 +45,14 @@ pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 pub struct ScriptPublicKey {
     pub version: ScriptPublicKeyVersion,
     script: ScriptVec, // Kept private to preserve read-only semantics
+}
+
+impl FromHex for ScriptPublicKey {
+    type Error = faster_hex::Error;
+
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
+        ScriptPublicKey::from_str(hex_str)
+    }
 }
 
 #[derive(Default, Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Hash)]
@@ -76,8 +85,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
         D: Deserializer<'de>,
     {
         if deserializer.is_human_readable() {
-            let s = <&str as Deserialize>::deserialize(deserializer)?;
-            FromStr::from_str(s).map_err(serde::de::Error::custom)
+            deserializer.deserialize_any(FromHexVisitor::default())
         } else {
             ScriptPublicKeyInternal::deserialize(deserializer)
                 .map(|ScriptPublicKeyInternal { script, version }| Self { version, script: SmallVec::from_slice(script) })
@@ -664,7 +672,7 @@ mod tests {
     fn test_spk_serde_json() {
         let vec = (0..SCRIPT_VECTOR_SIZE as u8).collect::<Vec<_>>();
         let spk = ScriptPublicKey::from_vec(0xc0de, vec.clone());
-        let hex = serde_json::to_string(&spk).unwrap();
+        let hex: String = serde_json::to_string(&spk).unwrap();
         assert_eq!("\"c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223\"", hex);
         let spk = serde_json::from_str::<ScriptPublicKey>(&hex).unwrap();
         assert_eq!(spk.version, 0xc0de);

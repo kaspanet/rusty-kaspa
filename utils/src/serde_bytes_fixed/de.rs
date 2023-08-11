@@ -83,8 +83,7 @@ macro_rules! deser_fixed_bytes {
                 }
 
                 if deserializer.is_human_readable() {
-                    let s: &str = serde::Deserialize::deserialize(deserializer)?;
-                    Ok(T::from_hex(s).map_err(serde::de::Error::custom)?)
+                    deserializer.deserialize_any($crate::serde_bytes::FromHexVisitor::default())
                 } else {
                     deserializer
                         .deserialize_tuple($size, FixedBytesVisitor { marker: Default::default(), lifetime: Default::default() })
@@ -175,8 +174,7 @@ macro_rules! serde_impl_deser_fixed_bytes {
                     }
                 }
                 if deserializer.is_human_readable() {
-                    let s: &str = serde::Deserialize::deserialize(deserializer)?;
-                    Ok($crate::hex::FromHex::from_hex(s).map_err(serde::de::Error::custom)?)
+                    deserializer.deserialize_any($crate::serde_bytes::FromHexVisitor::default())
                 } else {
                     deserializer.deserialize_newtype_struct(stringify!($i), MyVisitor { marker: Default::default(), lifetime: Default::default() })
                 }

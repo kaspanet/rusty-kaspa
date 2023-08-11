@@ -1,7 +1,7 @@
 mod de;
 mod ser;
 
-pub use crate::serde_bytes::de::Deserialize;
+pub use crate::serde_bytes::de::{Deserialize, FromHexVisitor};
 pub use crate::serde_bytes::ser::Serialize;
 
 pub fn serialize<T, S>(bytes: &T, serializer: S) -> Result<S::Ok, S::Error>
