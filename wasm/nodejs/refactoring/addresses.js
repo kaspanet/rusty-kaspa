@@ -1,7 +1,7 @@
 globalThis.WebSocket = require('websocket').w3cwebsocket;
 
-let kaspa = require('./kaspa/kaspa_wasm');
-let {
+const kaspa = require('../kaspa/kaspa_wasm');
+const {
     RpcClient,
     Encoding,
     XPublicKey,
@@ -11,7 +11,9 @@ let {
 kaspa.init_console_panic_hook();
 
 (async ()=>{
-    
+
+
+
     let xpub = await XPublicKey.fromMasterXPrv(
         "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ",
         false,

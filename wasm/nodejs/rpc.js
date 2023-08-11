@@ -1,20 +1,24 @@
 globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket module shim
 
-let kaspa = require('./kaspa/kaspa_wasm');
-let { RpcClient, 
-    Encoding, NetworkType
+const kaspa = require('./kaspa/kaspa_wasm');
+const {parseArgs} = require("./utils");
+const {
+    RpcClient
 } = kaspa;
 kaspa.init_console_panic_hook();
 
-(async ()=>{
-    
-    let rpc = new RpcClient(Encoding.Borsh,"127.0.0.1", NetworkType.Testnet);
+(async () => {
+    const {
+        networkType,
+        encoding,
+    } = parseArgs();
+
+    const rpc = new RpcClient(encoding, "127.0.0.1", networkType);
     console.log(`# connecting to ${rpc.url}`)
     await rpc.connect();
 
-    let info = await rpc.getBlockDagInfo();
+    const info = await rpc.getBlockDagInfo();
     console.log("info:", info);
-    
-    await rpc.disconnect();
 
+    await rpc.disconnect();
 })();
