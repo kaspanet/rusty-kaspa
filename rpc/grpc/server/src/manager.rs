@@ -1,8 +1,12 @@
 use crate::connection::Connection;
-use kaspa_core::debug;
+use kaspa_core::{debug, info, warn};
 use kaspa_notify::connection::Connection as ConnectionT;
 use parking_lot::RwLock;
-use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use std::{
+    collections::{hash_map::Entry::Occupied, HashMap},
+    net::SocketAddr,
+    sync::Arc,
+};
 
 #[derive(Clone, Debug)]
 pub struct Manager {
@@ -16,17 +20,32 @@ impl Manager {
     }
 
     pub fn register(&self, connection: Connection) {
-        debug!("gRPC: Register a new connection from {connection}");
-        self.connections.write().insert(connection.identity(), connection).map(|x| x.close());
+        debug!("gRPC: registering a new connection from {connection}");
+        let mut connections_write = self.connections.write();
+        let previous_connection = connections_write.insert(connection.identity(), connection.clone());
+        info!("gRPC: new incoming connection {} #{}", connection, connections_write.len());
+
+        // Release the write lock to prevent a deadlock if a previous connection exists and must be closed
+        drop(connections_write);
+
+        if let Some(previous_connection) = previous_connection {
+            previous_connection.close();
+            warn!("gRPC: removing connection with duplicate identity: {}", previous_connection.identity());
+        }
     }
 
     pub fn is_full(&self) -> bool {
         self.connections.read().len() >= self.max_connections
     }
 
-    pub fn unregister(&self, net_address: SocketAddr) {
-        if let Some(connection) = self.connections.write().remove(&net_address) {
-            debug!("gRPC: Unregister the gRPC connection from {connection}");
+    pub fn unregister(&self, connection: Connection) {
+        if let Occupied(entry) = self.connections.write().entry(connection.identity()) {
+            // We search for the connection by identity, but make sure to delete it only if it's actually the same object.
+            // This is extremely important in cases of duplicate connection rejection etc.
+            if Connection::ptr_eq(entry.get(), &connection) {
+                entry.remove_entry();
+                debug!("gRPC: unregistering connection from {connection}");
+            }
         }
     }
 

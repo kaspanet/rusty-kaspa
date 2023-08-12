@@ -142,6 +142,10 @@ impl Connection {
         connection_clone
     }
 
+    pub fn ptr_eq(this: &Self, other: &Self) -> bool {
+        Arc::ptr_eq(&this.inner, &other.inner)
+    }
+
     pub fn net_address(&self) -> SocketAddr {
         self.inner.net_address
     }
@@ -565,7 +569,7 @@ impl ConnectionT for Connection {
             // The typical case is the manager terminating all connections.
             return false;
         }
-        self.inner.manager.unregister(self.net_address());
+        self.inner.manager.unregister(self.clone());
         true
     }
 
