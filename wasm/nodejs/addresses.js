@@ -3,6 +3,8 @@ globalThis.WebSocket = require('websocket').w3cwebsocket;
 let kaspa = require('./kaspa/kaspa_wasm');
 let {
     PrivateKey,
+    // FIXME: Make sure we're binding `PublicKey` not `JSPublicKey`
+    JSPublicKey: PublicKey,
     XPublicKey,
     createAddress,
     NetworkType,
@@ -48,6 +50,9 @@ function demoGenerateAddressFromPrivateKeyHexString() {
 function demoGenerateAddressFromPublicKeyHexString() {
     // Given compressed public key: '02dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659'
     // CURRENTLY UNSUPPORTED
+    const publicKey = new PublicKey('02dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659');
+    console.info("Given compressed public key: '02dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659'");
+    console.info(publicKey);
 
     // Given x-only public key: 'dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659'
     // CURRENTLY UNSUPPORTED
