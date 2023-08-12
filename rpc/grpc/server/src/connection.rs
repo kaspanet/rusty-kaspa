@@ -72,7 +72,7 @@ impl Connection {
         let connection_clone = connection.clone();
         let outgoing_route = connection.inner.outgoing_route.clone();
         // Start the connection receive loop
-        debug!("gRPC: Connection receive loop - starting for client {}", connection);
+        debug!("GRPC: Connection receive loop - starting for client {}", connection);
         tokio::spawn(async move {
             let listener_id: Lazy<ListenerId, _> = Lazy::new(|| notifier.clone().register_new_listener(connection.clone()));
             loop {
@@ -80,13 +80,13 @@ impl Connection {
                     biased; // We use biased polling so that the shutdown signal is always checked first
 
                     _ = &mut shutdown_receiver => {
-                        debug!("gRPC: Connection receive loop - shutdown signal received, exiting connection receive loop, client-id: {}", connection.identity());
+                        debug!("GRPC: Connection receive loop - shutdown signal received, exiting connection receive loop, client-id: {}", connection.identity());
                         break;
                     }
 
                     res = incoming_stream.message() => match res {
                         Ok(Some(request)) => {
-                            //trace!("gRPC: request: {:?}, client-id: {}", request, connection.identity());
+                            //trace!("GRPC: request: {:?}, client-id: {}", request, connection.identity());
 
                             let response = match request.is_subscription() {
                                 true => {
@@ -101,38 +101,38 @@ impl Connection {
                                     match outgoing_route.send(Ok(response)).await {
                                         Ok(()) => {},
                                         Err(e) => {
-                                            debug!("gRPC: Connection receive loop - send error {} for client: {}", e, connection);
+                                            debug!("GRPC: Connection receive loop - send error {} for client: {}", e, connection);
                                             break;
                                         },
                                     }
                                 }
                                 Err(e) => {
-                                    debug!("gRPC: Connection receive loop - request handling error {} for client: {}", e, connection);
+                                    debug!("GRPC: Connection receive loop - request handling error {} for client: {}", e, connection);
                                     break;
                                 }
                             }
 
                         }
                         Ok(None) => {
-                            debug!("gRPC: Connection receive loop - incoming stream ended from client {}", connection);
+                            debug!("GRPC: Connection receive loop - incoming stream ended from client {}", connection);
                             break;
                         }
                         Err(err) => {
                             {
                                 if let Some(io_err) = match_for_io_error(&err) {
                                     if io_err.kind() == ErrorKind::BrokenPipe {
-                                        debug!("gRPC: Connection receive loop - client {} disconnected, broken pipe", connection);
+                                        debug!("GRPC: Connection receive loop - client {} disconnected, broken pipe", connection);
                                         break;
                                     }
                                 }
-                                debug!("gRPC: Connection receive loop - network error: {} from client {}", err, connection);
+                                debug!("GRPC: Connection receive loop - network error: {} from client {}", err, connection);
                             }
                             break;
                         }
                     }
                 }
             }
-            debug!("gRPC: Connection receive loop - terminated for client {}", connection);
+            debug!("GRPC: Connection receive loop - terminated for client {}", connection);
             if let Ok(listener_id) = Lazy::into_value(listener_id) {
                 let _ = notifier.unregister_listener(listener_id);
             }
