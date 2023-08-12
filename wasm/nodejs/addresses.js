@@ -49,11 +49,14 @@ function demoGenerateAddressFromPrivateKeyHexString() {
 
 function demoGenerateAddressFromPublicKeyHexString() {
     // Given compressed public key: '02dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659'
-    // CURRENTLY UNSUPPORTED
     const publicKey = new PublicKey('02dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659');
     console.info("Given compressed public key: '02dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659'");
-    console.info(publicKey);
+    console.info(publicKey.toString());
+    console.info(publicKey.toAddress(NetworkType.Mainnet).toString());
 
     // Given x-only public key: 'dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659'
-    // CURRENTLY UNSUPPORTED
+    // const xOnlyPublicKey = new PublicKey('dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659');
+    // console.info("Given x-only public key: 'dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659'");
+    // console.info(xOnlyPublicKey.toString());
+    // console.info(xOnlyPublicKey.toAddress(NetworkType.Mainnet).toString());
 }

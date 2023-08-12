@@ -66,8 +66,8 @@ impl Keypair {
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
     pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
-        let payload = &self.public_key.serialize()[1..];
-        let address = Address::new(network_type.into(), AddressVersion::PubKey, payload);
+        let pk = JSPublicKey{ inner: self.public_key };
+        let address = pk.to_address(network_type).unwrap();
         Ok(address)
     }
 
@@ -163,6 +163,7 @@ impl TryFrom<JsValue> for PrivateKey {
     }
 }
 
+// Data structure that envelopes a PublicKey
 #[derive(Clone, Debug)]
 #[wasm_bindgen()]
 pub struct JSPublicKey {
@@ -181,6 +182,16 @@ impl JSPublicKey {
     #[wasm_bindgen(js_name = toString)]
     pub fn to_string(&self) -> String {
         self.inner.to_string()
+    }
+
+    /// Get the [`Address`] of this PublicKey.
+    /// Receives a [`NetworkType`] to determine the prefix of the address.
+    /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
+    #[wasm_bindgen(js_name = toAddress)]
+    pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
+        let payload = &self.inner.serialize()[1..];
+        let address = Address::new(network_type.into(), AddressVersion::PubKey, payload);
+        Ok(address)
     }
 }
 
