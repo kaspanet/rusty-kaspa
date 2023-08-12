@@ -371,10 +371,10 @@ impl WalletDerivationManagerV0 {
     ) -> Result<Self> {
         let receive_wallet = Self::create_pubkey_manager(&private_key, AddressType::Receive, &attrs, cosigner_index).await?;
 
-        println!("###: public_key {:?}", receive_wallet.public_key);
-        println!("###: attrs {:?}", receive_wallet.attrs());
-        println!("###: fingerprint {:?}", receive_wallet.fingerprint);
-        println!("###: hmac {:?}", receive_wallet.hmac);
+        // println!("###: public_key {:?}", receive_wallet.public_key);
+        // println!("###: attrs {:?}", receive_wallet.attrs());
+        // println!("###: fingerprint {:?}", receive_wallet.fingerprint);
+        // println!("###: hmac {:?}", receive_wallet.hmac);
 
         let change_wallet = Self::create_pubkey_manager(&private_key, AddressType::Change, &attrs, cosigner_index).await?;
 
@@ -779,75 +779,72 @@ mod tests {
         }
     }
 
-    // #[tokio::test]
-    // async fn generate_kaspatest_addresses() {
-    //     let receive_addresses = [
-    //         "kaspatest:qr4snlge8pc0ara2wsw0uphgqv2fs0c66as8d8p5e5du37cs4s62kzx8f7uwn",
-    //         "kaspatest:qpypt84qp0y2wx7kjdcjgxg8dy8gqnrdw8ehmyz93ywmvu8fjrzd2886t4ayt",
-    //         "kaspatest:qqsl3rvfluvxfr3ddkdhl8c6krzrmuaxcjvgujluw723slg7y9ukz47sf7jt0",
-    //         "kaspatest:qzwd654lq3gszvmss40sk5hhpuqgceueug5ewl33lrzmdlxv0hn6s8supxnc3",
-    //         "kaspatest:qz795crj5yt352jf202m56g4jpm4964tsx6tn803jqu9lhjle4p2zxt8k4jgs",
-    //         "kaspatest:qqde9kslm5yc3vjzuajeud42c6gtvpvzmkhzq8t420jjf0hefhqz5z74fngkv",
-    //         "kaspatest:qptse68t4v3sv82lw3zl96e05grqe8ekay8k29g5p5k4vmdxxkncx5u3vmkq2",
-    //         "kaspatest:qrgs0j7jnfdjc50u363hcsx6uaj2un2txzq0aa8kn2k6ruyjhp3kzevx9t27x",
-    //         "kaspatest:qqa08hmk87r6ez08xdfwzfp8w9nm2xwaft58cnq0amhvd65u07apycmyfqdle",
-    //         "kaspatest:qz43yh8uen9wacdjxmjyl9xkn68huapfgfh53qtn2v2m54zwwgy8khyg76h8y",
-    //         "kaspatest:qqshvw50xlnequ8ge2p7wxazke4urtd7s9xf6mk2uc9ylt206zkhxcyt3vpg3",
-    //         "kaspatest:qr0ra8qrkapqm9ffqkjwx2kg7hymyjp5tucutm7cx30ft8daqv9ds645zng7f",
-    //         "kaspatest:qpducvwwnefca9es64v3385qu0lthtk7wnl0l7sj8nkng23uj37pszgn28d20",
-    //         "kaspatest:qzs5lem8024vwzwrn439juf3uzur47hysy5lta79f9gnnwc952cvx0d5neaf5",
-    //         "kaspatest:qpw46gc8wxu3zr7t9j2aw8sjd2wtsfnjg37kfa3nmuupg4uarverjnxszmaf7",
-    //         "kaspatest:qz0utfwmh2ds3yrv7lxwwmuzrj2ppy80trz7g2zk0carzcadrkda6zf7278yj",
-    //         "kaspatest:qpauc2h03ae80yk3cu0xaly2fyamn84uvvkgk9w74ewymdj3yme9yzj4dwzlv",
-    //         "kaspatest:qpc00gcplw39647s3rctq8k9z3fz2e0mdzz050ysdtrejycnkwtaz3ajslz4r",
-    //         "kaspatest:qrqv00tkwkjkre9537pntvhhxledny9tay09hz8h9tw3sczweaxwg4klswkt5",
-    //         "kaspatest:qzwscz5ker9a4g0dnguu2jdm40tfaf8xzkzu37k99pk38q82pzlexwhalvpz2",
-    //     ];
+    #[tokio::test]
+    async fn generate_kaspatest_addresses() {
+        let receive_addresses = [
+            "kaspatest:qqz22l98sf8jun72rwh5rqe2tm8lhwtdxdmynrz4ypwak427qed5juktjt7ju",
+            "kaspatest:qz880h6s4fwyumlslklt4jjwm7y5lcqyy8v5jc88gsncpuza0y76xuktmrx75",
+            "kaspatest:qrxa994gjclvhnluxfet3056wwhrs02ptaj7gx04jlknjmlkmp9dx0tdchl42",
+            "kaspatest:qpqecy54rahaj4xadjm6my2a20fqmjysgrva3ya0nk2azhr90yrzyce6mpfps",
+            "kaspatest:qzq3sc6jkr946fh3ycs0zg0vfz2jts54aa27rwy4ncqz9tm9ytnxsyns7ad6e",
+            "kaspatest:qq4vl7f82y2snr9warpy85f46sde0m0s8874p2rsq6p77fzccyflyuvcez6mr",
+            "kaspatest:qq5kqzu76363zptuwt7kysqq9rmslcfypnyckqr4zjxfljx7p8mlwthe5q26v",
+            "kaspatest:qqad0qrj6y032jqxuygcyayvu2z8cza9hlvn8m89z3u6s6s8hg3dyav40hczu",
+            "kaspatest:qpwkdpyf766ny56zuj47ax63l689wgg27rv90xr2pruk5px8sstcg9g7hkdsf",
+            "kaspatest:qpn0vug0j36xfdycq7nl6wczvqnhc22d6ayvhs646h76rv3pdpa87vj9rycuc",
+            "kaspatest:qz4c7eg9uernmsqmt429lvj5f85qsqzt6dgy8r53aefz39m77w2mgm3najzyr",
+            "kaspatest:qqzfgqmmxrznec9hl35xwa8h6hs5mcr7lt7ep6j6373lxfq9jpj464sazd05p",
+            "kaspatest:qr9033gap4pscrhkwyp0cpmpy62a9pmcpqm2y4k29qqlktceulm7y4dru7f0h",
+            "kaspatest:qq3ktnql8uxwyj0kq6gq4vp8gm5ftnlvq0aphr55hl6u0u8dp49mqul4l4zc4",
+            "kaspatest:qqrewmx4gpuekvk8grenkvj2hp7xt0c35rxgq383f6gy223c4ud5s58ptm6er",
+            "kaspatest:qrhck7qaem2g2wtpqvjxtkpf87vd0ul8d8x70tu2zes3amcz70reghy0tlheh",
+            "kaspatest:qq4lnkxy9cdylkwnkhmz9z0cctfcqx8rzd4agdhzdvkmllrvc34nw0feewtj2",
+            "kaspatest:qzdt4wh0k63ndsv3m7t4n7flxu28qh3zdgh6ag684teervsfzzkcu32fmyva4",
+            "kaspatest:qqqng97tn6lfex3je7n0tr64e36zmzfyhpck2jeqts2ruatz3r5aswcy4yuxu",
+            "kaspatest:qq2je8w0ltztef0ygljpcqx055kcxgxtsffwu7ujxzjfhk5p5rqlwxearwav4",
+        ];
 
-    //     let change_addresses = vec![
-    //         "kaspatest:qpws7ck36yfn3m5awhrvvg7yphy8uaqncqy2rnyg8z83mwlh88hvsy5g3vxar",
-    //         "kaspatest:qphdsuqm0wh9f8e6gdtw7ysr4krpt3snut3e62ejut2573rxavp9znh69tcvp",
-    //         "kaspatest:qpsl5uzeg5a2n5t0r07ylstuwa8ldnxvzfrl6ut0lf75w9eh74ezv0qdtpzsy",
-    //         "kaspatest:qr9sj7t6kwntkn585q37e0v7krw9yrq648f9tsxc0x3xrta35nwfsfmh3m44a",
-    //         "kaspatest:qpm8pdqae7x7daj0w7turrr5ej7j8cea8srerd8utr9c8nkn0a2t639m76f2e",
-    //         "kaspatest:qr44m9frv9jua7vnmcl7dxmtfgsskrshs3kss4lt7ph6z0syrav7gshpj3yax",
-    //         "kaspatest:qr5w2xc7skcruy9twftfvcdw0qukfqf99ythqax3vmslzvm05j6lc4cv8xemk",
-    //         "kaspatest:qzd0nspl0w2dd44mdr87gumd8ea29tg9ttvhl8a0tqt5hvp6pzq5vqyc2l9mq",
-    //         "kaspatest:qzw64clxfnj09xwqgdrjkcnjy9jp5y7t4pmuexce9q0crz3sxlwhsywzvrvnh",
-    //         "kaspatest:qznyr75mlqykpz80t876as4zhclsvejahkhv9yu4vgum725wf0swz3acfl09h",
-    //         "kaspatest:qqz5rnh6ej92vftjlwf5myv8wvzt47ajvnh5n26hsq2k68qcdgv6qqhy5jcd0",
-    //         "kaspatest:qr3e6rk8h0v2ypfwv7fpxacm908lesj60rnjyln3kps55avx7h49whh8c8pjl",
-    //         "kaspatest:qzc50enaugruh34wp3lvzjd043cct9nvvdtc0c4kx7rhcssjczfhy54rdlqly",
-    //         "kaspatest:qqv6mememyed62mwtx3cxfgssqvcx9ctkqplvc87wrlhz27zmugywz2yjh3rm",
-    //         "kaspatest:qpvgzp0kldv6m70lhfvre3hcz6m6d36auerl928gvvv3nh2wntpn7zd0cggh7",
-    //         "kaspatest:qp29gz4q2pt9cqe4mt7l6489hua8x3t3w89p7pu0apesqzr2lgvc5pknphvag",
-    //         "kaspatest:qq5nlpeepnr669l695peww9l5phl57y83fzwavhvddkzs0rvxmc7wmweveyuj",
-    //         "kaspatest:qq6gg2ve3h00psknyhz3huzgtqzyqxhga53adggwpeph3kxcvwrf27vx4vcg2",
-    //         "kaspatest:qqy8v27n6u86e389wjg4exkxf3xxhkgyv63eccknd7qa6w6atdkw6td2upcwq",
-    //         "kaspatest:qzs6mkq367c9l3war8ktu0tdpp0ftcyw7c9qfzv7tk9r9x05pkfwv7wzltuln",
-    //     ];
+        let change_addresses = vec![
+            "kaspatest:qq3p8lvqyhzh37qgh2vf9u79l7h85pnmypg8z0tmp0tfl70zjm2cv2hgkfmnl",
+            "kaspatest:qpl00d5thmm3c5w3lj9cwx94dejjjx667rh3ey4sp0tkrmhsyd7rg9p27me7m",
+            "kaspatest:qq407023vckl5u85u6w698fqu3ungs598z3xucc2mhr9vy0hug5vvxuyqvcnq",
+            "kaspatest:qzl0qcvjfuwrrgzz83fuu272j7n9g03xfzp0g0f9jq5kll4rjfct536mv55uq",
+            "kaspatest:qp6l8n5meyut2yvpyw2dqrrcgc3t6jxflheh9j8s2f75quepdl4qvg4hnfexd",
+            "kaspatest:qqw0uhr54kpyna0zrya6q7w2kya84ydgcvsdwaehayk8pn40d4y6sxpp3g3hh",
+            "kaspatest:qr5kjerrvnru7w49umrc0jtws6hpf7s22ur9nav0fsazs8kyy8ydwgrafxpw9",
+            "kaspatest:qqd8lyeya58hjym2xlw7th2wuenlptydmvzrzu53gxft0e2d844sv8cu3ymac",
+            "kaspatest:qr0cs9lrdwjesuw5vf0x5rj78ecayphu60vt29smjerusqmec9w96acyggwv0",
+            "kaspatest:qq089gr7p4rggwjqwh34mmdlsa357vprzl4q0dzn9c92egfs5aj5xc8h3j7rg",
+            "kaspatest:qzs6m6nmkqczmxtjzptzzyl46nwwgq6hymk8jz3csg2h0lh0rpqjk28hxgr9t",
+            "kaspatest:qr4k0fs6z47chukqv82walvyjmztd6czaqlk0kfdwr90rv3zwu5hjnlcldh2e",
+            "kaspatest:qpgcua8savrpy7ggdxm0cq2uqgcd4a9skc39fld5avy3dvdcdsjssh3g72sun",
+            "kaspatest:qq2hllm2ff2rwgq3cyaczvusw5tr5ugfz2dtaedqxhuktz6sywves25p4nkn7",
+            "kaspatest:qrr2a2lttpx8uaj0qtd80cl90h5qx7c9xgsdqzcfm2rntme9vuxpzjc5zwl3z",
+            "kaspatest:qqa8tjjr9ngudgh2gxyjevjazmgpx3v6zc3zn3aka38gm3erl6xx59pmcm6l8",
+            "kaspatest:qqllkscqj7jd8tugj3rsl9r67evgandgnznekwl48cwp80jx6cut2e3aht768",
+            "kaspatest:qq83n9wrk2ujn2hayyt74qfrctjp803csz5lsdzp0dslu7wue2ps5d5dd6aj2",
+            "kaspatest:qz5qk6nvffsgdcujma3gq5rr2lr2q6yjw87n3w6asc0uj3rr8z8pk7sl927wk",
+            "kaspatest:qr55n5vkaq6lxcwzl6522nz86dj7ntl76nergy0u2j99v8w8lhyv6gshlq3wz",
+        ];
 
-    //     let master_xprv =
-    //         "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
+        let master_xprv =
+            "xprv9s21ZrQH143K2rS8XAhiRk3NmkNRriFDrywGNQsWQqq8byBgBUt6A5uwTqYdZ3o5oDtKx7FuvNC1H1zPo7D5PXhszZTVgAvs79ehfTGESBh";
 
-    //     let hd_wallet = WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None).await;
-    //     assert!(hd_wallet.is_ok(), "Could not parse key");
-    //     let hd_wallet = hd_wallet.unwrap();
+        let hd_wallet = WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None).await;
+        assert!(hd_wallet.is_ok(), "Could not parse key");
+        let hd_wallet = hd_wallet.unwrap();
 
-    //     //let mut receive_addresses = vec![]; //gen1_receive_addresses();
-    //     //let change_addresses = gen1_change_addresses();
+        for index in 0..20 {
+            let key = hd_wallet.derive_receive_pubkey(index).await.unwrap();
+            //let address = Address::new(Prefix::Testnet, kaspa_addresses::Version::PubKey, key.to_bytes());
+            let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap();
+            //receive_addresses.push(String::from(address));
+            assert_eq!(receive_addresses[index as usize], address.to_string(), "receive address at {index} failed");
+            let key = hd_wallet.derive_change_pubkey(index).await.unwrap();
+            let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap();
+            assert_eq!(change_addresses[index as usize], address.to_string(), "change address at {index} failed");
+        }
 
-    //     for index in 0..20 {
-    //         let key = hd_wallet.derive_receive_pubkey(index).await.unwrap();
-    //         //let address = Address::new(Prefix::Testnet, kaspa_addresses::Version::PubKey, key.to_bytes());
-    //         let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap();
-    //         //receive_addresses.push(String::from(address));
-    //         assert_eq!(receive_addresses[index as usize], address.to_string(), "receive address at {index} failed");
-    //         let key = hd_wallet.derive_change_pubkey(index).await.unwrap();
-    //         let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap();
-    //         assert_eq!(change_addresses[index as usize], address.to_string(), "change address at {index} failed");
-    //     }
-
-    //     println!("receive_addresses: {receive_addresses:#?}");
-    // }
+        println!("receive_addresses: {receive_addresses:#?}");
+    }
 }
