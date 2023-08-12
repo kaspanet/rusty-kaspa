@@ -25,6 +25,7 @@ use crate::{
             pruning_utxoset::PruningUtxosetStores,
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
+            selected_chain::{DbSelectedChainStore, SelectedChainStore, SelectedChainStoreReader},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
@@ -58,7 +59,7 @@ use kaspa_consensus_core::{
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
     },
-    BlockHashSet,
+    BlockHashSet, ChainPath,
 };
 use kaspa_consensus_notify::{
     notification::{
@@ -121,6 +122,7 @@ pub struct VirtualStateProcessor {
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
     pub(super) depth_store: Arc<DbDepthStore>,
+    pub(super) selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
     // Utxo-related stores
     pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -187,6 +189,7 @@ impl VirtualStateProcessor {
             past_pruning_points_store: storage.past_pruning_points_store.clone(),
             body_tips_store: storage.body_tips_store.clone(),
             depth_store: storage.depth_store.clone(),
+            selected_chain_store: storage.selected_chain_store.clone(),
             utxo_diffs_store: storage.utxo_diffs_store.clone(),
             utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: storage.acceptance_data_store.clone(),
@@ -211,6 +214,22 @@ impl VirtualStateProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
+        // TEMP: upgrade from prev DB version where the chain was the headers selected chain
+        if let Some(virtual_state) = self.virtual_stores.read().state.get().unwrap_option() {
+            let sink = virtual_state.ghostdag_data.selected_parent;
+            let mut selected_chain_write = self.selected_chain_store.write();
+            if let Some((_, tip)) = selected_chain_write.get_tip().unwrap_option() {
+                // This means we are upgrading from the previous version
+                if sink != tip {
+                    let chain_path = self.dag_traversal_manager.calculate_chain_path(tip, sink);
+                    info!("Upgrading the DB from HSC storage to VSC storage: {:?}", chain_path);
+                    let mut batch = WriteBatch::default();
+                    selected_chain_write.apply_changes(&mut batch, &chain_path).unwrap();
+                    self.db.write(batch).unwrap();
+                }
+            }
+        }
+
         'outer: while let Ok(msg) = self.receiver.recv() {
             if msg.is_exit_message() {
                 break;
@@ -257,6 +276,7 @@ impl VirtualStateProcessor {
         assert_eq!(virtual_ghostdag_data.selected_parent, new_sink);
 
         let sink_multiset = self.utxo_multisets_store.get(new_sink).unwrap();
+        let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink);
         let new_virtual_state = self
             .calculate_and_commit_virtual_state(
                 virtual_read,
@@ -264,6 +284,7 @@ impl VirtualStateProcessor {
                 virtual_ghostdag_data,
                 sink_multiset,
                 &mut accumulated_diff,
+                &chain_path,
             )
             .expect("all possible rule errors are unexpected here");
 
@@ -286,7 +307,6 @@ impl VirtualStateProcessor {
         self.notification_root
             .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
             .expect("expecting an open unbounded channel");
-        let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink);
         // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
         let added_chain_blocks_acceptance_data =
             chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
@@ -299,7 +319,7 @@ impl VirtualStateProcessor {
             .expect("expecting an open unbounded channel");
     }
 
-    fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
+    pub(super) fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
         let finality_point = self.depth_manager.calc_finality_point(virtual_ghostdag_data, pruning_point);
         if self.reachability_service.is_chain_ancestor_of(pruning_point, finality_point) {
             finality_point
@@ -417,8 +437,28 @@ impl VirtualStateProcessor {
         virtual_ghostdag_data: GhostdagData,
         selected_parent_multiset: MuHash,
         accumulated_diff: &mut UtxoDiff,
+        chain_path: &ChainPath,
     ) -> Result<Arc<VirtualState>, RuleError> {
-        let selected_parent_utxo_view = (&virtual_read.utxo_set).compose(&*accumulated_diff);
+        let new_virtual_state = self.calculate_virtual_state(
+            &virtual_read,
+            virtual_parents,
+            virtual_ghostdag_data,
+            selected_parent_multiset,
+            accumulated_diff,
+        )?;
+        self.commit_virtual_state(virtual_read, new_virtual_state.clone(), accumulated_diff, chain_path);
+        Ok(new_virtual_state)
+    }
+
+    pub(super) fn calculate_virtual_state(
+        &self,
+        virtual_stores: &VirtualStores,
+        virtual_parents: Vec<Hash>,
+        virtual_ghostdag_data: GhostdagData,
+        selected_parent_multiset: MuHash,
+        accumulated_diff: &mut UtxoDiff,
+    ) -> Result<Arc<VirtualState>, RuleError> {
+        let selected_parent_utxo_view = (&virtual_stores.utxo_set).compose(&*accumulated_diff);
         let mut ctx = UtxoProcessingContext::new((&virtual_ghostdag_data).into(), selected_parent_multiset);
 
         // Calc virtual DAA score, difficulty bits and past median time
@@ -433,7 +473,7 @@ impl VirtualStateProcessor {
         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
         // Build the new virtual state
-        let new_virtual_state = Arc::new(VirtualState::new(
+        Ok(Arc::new(VirtualState::new(
             virtual_parents,
             virtual_daa_window.daa_score,
             virtual_bits,
@@ -444,24 +484,35 @@ impl VirtualStateProcessor {
             ctx.mergeset_rewards,
             virtual_daa_window.mergeset_non_daa,
             virtual_ghostdag_data,
-        ));
+        )))
+    }
 
+    fn commit_virtual_state(
+        &self,
+        virtual_read: RwLockUpgradableReadGuard<'_, VirtualStores>,
+        new_virtual_state: Arc<VirtualState>,
+        accumulated_diff: &UtxoDiff,
+        chain_path: &ChainPath,
+    ) {
         let mut batch = WriteBatch::default();
         let mut virtual_write = RwLockUpgradableReadGuard::upgrade(virtual_read);
+        let mut selected_chain_write = self.selected_chain_store.write();
 
         // Apply the accumulated diff to the virtual UTXO set
         virtual_write.utxo_set.write_diff_batch(&mut batch, accumulated_diff).unwrap();
 
         // Update virtual state
-        virtual_write.state.set_batch(&mut batch, new_virtual_state.clone()).unwrap();
+        virtual_write.state.set_batch(&mut batch, new_virtual_state).unwrap();
+
+        // Update the virtual selected chain
+        selected_chain_write.apply_changes(&mut batch, chain_path).unwrap();
 
         // Flush the batch changes
         self.db.write(batch).unwrap();
 
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
         drop(virtual_write);
-
-        Ok(new_virtual_state)
+        drop(selected_chain_write);
     }
 
     /// Returns the max number of tips to consider as virtual parents in a single virtual resolve operation
@@ -478,7 +529,7 @@ impl VirtualStateProcessor {
     /// The function returns with `diff` being the diff of the new sink from previous virtual.
     /// In addition to the found sink the function also returns a queue of additional virtual
     /// parent candidates ordered in descending blue work order.
-    fn sink_search_algorithm(
+    pub(super) fn sink_search_algorithm(
         &self,
         stores: &VirtualStores,
         diff: &mut UtxoDiff,
@@ -542,7 +593,7 @@ impl VirtualStateProcessor {
     ///     1. `selected_parent` is a UTXO-valid block
     ///     2. `candidates` are an antichain ordered in descending blue work order
     ///     3. `candidates` do not contain `selected_parent` and `selected_parent.blue work > max(candidates.blue_work)`  
-    fn pick_virtual_parents(
+    pub(super) fn pick_virtual_parents(
         &self,
         selected_parent: Hash,
         mut candidates: VecDeque<Hash>,
@@ -719,25 +770,48 @@ impl VirtualStateProcessor {
         Ok(())
     }
 
-    pub fn build_block_template(&self, miner_data: MinerData, mut txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+    pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
         // TODO: tests
         let virtual_read = self.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
 
+        // Validate the transactions in virtual's utxo context
+        self.validate_block_template_transactions(&txs, &virtual_state, virtual_utxo_view)?;
+
+        // At this point we can safely drop the read lock
+        drop(virtual_read);
+
+        // Build the template
+        self.build_block_template_from_virtual_state(virtual_state, miner_data, txs)
+    }
+
+    pub fn validate_block_template_transactions(
+        &self,
+        txs: &[Transaction],
+        virtual_state: &VirtualState,
+        utxo_view: &impl UtxoView,
+    ) -> Result<(), RuleError> {
         // Search for invalid transactions. This can happen since the mining manager calling this function is not atomically in sync with virtual state
         let mut invalid_transactions = Vec::new();
         for tx in txs.iter() {
-            if let Err(e) = self.validate_block_template_transaction(tx, &virtual_state, virtual_utxo_view) {
+            if let Err(e) = self.validate_block_template_transaction(tx, virtual_state, utxo_view) {
                 invalid_transactions.push((tx.id(), e))
             }
         }
         if !invalid_transactions.is_empty() {
-            return Err(RuleError::InvalidTransactionsInNewBlock(invalid_transactions));
+            Err(RuleError::InvalidTransactionsInNewBlock(invalid_transactions))
+        } else {
+            Ok(())
         }
-        // At this point we can safely drop the read lock
-        drop(virtual_read);
+    }
 
+    pub(crate) fn build_block_template_from_virtual_state(
+        &self,
+        virtual_state: Arc<VirtualState>,
+        miner_data: MinerData,
+        mut txs: Vec<Transaction>,
+    ) -> Result<BlockTemplate, RuleError> {
         let pruning_info = self.pruning_point_store.read().get().unwrap();
         let header_pruning_point =
             self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);
@@ -812,6 +886,12 @@ impl VirtualStateProcessor {
             .state
             .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
             .unwrap();
+        // Init the virtual selected chain store
+        let mut batch = WriteBatch::default();
+        let mut selected_chain_write = self.selected_chain_store.write();
+        selected_chain_write.init_with_pruning_point(&mut batch, self.genesis.hash).unwrap();
+        self.db.write(batch).unwrap();
+        drop(selected_chain_write);
     }
 
     // TODO: rename to reflect finalizing pruning point utxoset state and importing *to* virtual utxoset
@@ -884,6 +964,7 @@ impl VirtualStateProcessor {
             virtual_ghostdag_data,
             imported_utxo_multiset.clone(),
             &mut UtxoDiff::default(),
+            &ChainPath::default(),
         )?;
 
         Ok(())

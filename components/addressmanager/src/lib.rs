@@ -48,7 +48,7 @@ impl AddressManager {
                     info!("External ip {} added to store", local_net_address);
                     self.local_net_addresses.push(NetAddress { ip: local_net_address, port: self.config.default_p2p_port() });
                 } else {
-                    info!("Non-publicly routable external ip {} not added to store", local_net_address);
+                    debug!("Non-publicly routable external ip {} not added to store", local_net_address);
                 }
             }
             None => {
@@ -68,7 +68,7 @@ impl AddressManager {
                                 info!("Publicly routable local address {} added to store", curr_ip);
                                 self.local_net_addresses.push(NetAddress { ip: curr_ip, port: self.config.default_p2p_port() });
                             } else {
-                                info!("Non-publicly routable interface address {} not added to store", curr_ip);
+                                debug!("Non-publicly routable interface address {} not added to store", curr_ip);
                             }
                         }
                     } else {
@@ -78,7 +78,7 @@ impl AddressManager {
                     info!("Publicly routable P2P listen address {} added to store", listen_address.ip);
                     self.local_net_addresses.push(listen_address);
                 } else {
-                    info!("Non-publicly routable listen address {} not added to store.", listen_address.ip);
+                    debug!("Non-publicly routable listen address {} not added to store.", listen_address.ip);
                 }
             }
         }
@@ -358,7 +358,8 @@ mod address_store_with_cache {
         use super::*;
         use address_manager::AddressManager;
         use kaspa_consensus_core::config::{params::SIMNET_PARAMS, Config};
-        use kaspa_database::utils::create_temp_db;
+        use kaspa_database::create_temp_db;
+        use kaspa_database::prelude::ConnBuilder;
         use kaspa_utils::networking::IpAddress;
         use statest::ks::KSTest;
         use statrs::distribution::Uniform;
@@ -387,7 +388,7 @@ mod address_store_with_cache {
             // Assert that initial distribution is skewed, and hence not uniform from the outset.
             assert!(bucket_reduction_ratio >= 1.25);
 
-            let db = create_temp_db();
+            let db = create_temp_db!(ConnBuilder::default());
             let config = Config::new(SIMNET_PARAMS);
             let am = AddressManager::new(Arc::new(config), db.1);
 

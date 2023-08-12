@@ -26,15 +26,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::exit;
 use std::sync::Arc;
+use std::time::Duration;
 
-// ~~~
-// TODO - discuss handling
 use args::{Args, Defaults};
-// use clap::Parser;
-// ~~~
-
-// TODO: testnet 11 tasks:
-// coinbase rewards
 
 use kaspa_consensus::config::ConfigBuilder;
 use kaspa_utxoindex::UtxoIndex;
@@ -43,6 +37,7 @@ use async_channel::unbounded;
 use kaspa_core::{info, trace};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_p2p_flows::service::P2pService;
+use kaspa_perf_monitor::builder::Builder as PerfMonitorBuilder;
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 
 mod args;
@@ -101,7 +96,13 @@ fn get_user_approval_or_exit(message: &str, approve: bool) {
     }
 }
 
+#[cfg(feature = "heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 pub fn main() {
+    #[cfg(feature = "heap")]
+    let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
     let args = Args::parse(&Defaults::default());
 
     // Configure the panic behavior
@@ -179,7 +180,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     }
 
     // DB used for addresses store and for multi-consensus management
-    let mut meta_db = kaspa_database::prelude::open_db(meta_db_dir.clone(), true, 1);
+    let mut meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir.clone()).build();
 
     // TEMP: upgrade from Alpha version or any version before this one
     if meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
@@ -200,7 +201,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
 
         // Reopen the DB
-        meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
+        meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir).build();
     }
 
     let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
@@ -232,12 +233,27 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         counters.clone(),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
-    let monitor = Arc::new(ConsensusMonitor::new(counters, tick_service.clone()));
+    let consensus_monitor = Arc::new(ConsensusMonitor::new(counters, tick_service.clone()));
+
+    let perf_monitor = args.perf_metrics.then(|| {
+        let cb = move |counters| {
+            trace!("[{}] metrics: {:?}", kaspa_perf_monitor::SERVICE_NAME, counters);
+            #[cfg(feature = "heap")]
+            trace!("heap stats: {:?}", dhat::HeapStats::get());
+        };
+        Arc::new(
+            PerfMonitorBuilder::new()
+                .with_fetch_interval(Duration::from_secs(args.perf_metrics_interval_sec))
+                .with_fetch_cb(cb)
+                .with_tick_service(tick_service.clone())
+                .build(),
+        )
+    });
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
-        let utxoindex_db = kaspa_database::prelude::open_db(utxoindex_db_dir, true, 1);
+        let utxoindex_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(utxoindex_db_dir).build();
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
         let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
         Some(index_service)
@@ -290,8 +306,10 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     async_runtime.register(rpc_core_service.clone());
     async_runtime.register(grpc_service);
     async_runtime.register(p2p_service);
-    async_runtime.register(monitor);
-
+    async_runtime.register(consensus_monitor);
+    if let Some(perf_monitor) = perf_monitor {
+        async_runtime.register(perf_monitor);
+    }
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments
     [(args.rpclisten_borsh, WrpcEncoding::Borsh), (args.rpclisten_json, WrpcEncoding::SerdeJson)]

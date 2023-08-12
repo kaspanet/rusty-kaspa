@@ -19,11 +19,13 @@ use kaspa_consensus_core::{
     BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_core::{info, warn};
-use kaspa_database::utils::{create_temp_db_with_parallelism, load_existing_db};
+use kaspa_core::{info, task::service::AsyncService, task::tick::TickService, trace, warn};
+use kaspa_database::prelude::ConnBuilder;
+use kaspa_database::{create_temp_db, load_existing_db};
 use kaspa_hashes::Hash;
+use kaspa_perf_monitor::builder::Builder;
 use simulator::network::KaspaNetworkSimulator;
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 pub mod simulator;
 
@@ -90,9 +92,30 @@ struct Args {
     /// Use testnet-11 consensus params
     #[arg(long, default_value_t = false)]
     testnet11: bool,
+    /// Enable performance metrics: cpu, memory, disk io usage
+    #[arg(long, default_value_t = false)]
+    perf_metrics: bool,
+    #[arg(long, default_value_t = 10)]
+    perf_metrics_interval_sec: u64,
+
+    /// Enable rocksdb statistics
+    #[arg(long, default_value_t = false)]
+    rocksdb_stats: bool,
+    #[arg(long)]
+    rocksdb_stats_period_sec: Option<u32>,
+    #[arg(long)]
+    rocksdb_files_limit: Option<i32>,
+    #[arg(long)]
+    rocksdb_mem_budget: Option<usize>,
 }
 
+#[cfg(feature = "heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 fn main() {
+    #[cfg(feature = "heap")]
+    let _profiler = dhat::Profiler::builder().file_name("simpa-heap.json").build();
     // Get CLI arguments
     let mut args = Args::parse();
 
@@ -101,6 +124,27 @@ fn main() {
 
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let stop_perf_monitor = args.perf_metrics.then(|| {
+        let ts = Arc::new(TickService::new());
+        let cb = move |counters| {
+            trace!("metrics: {:?}", counters);
+            #[cfg(feature = "heap")]
+            trace!("heap stats: {:?}", dhat::HeapStats::get());
+        };
+        let m = Arc::new(
+            Builder::new()
+                .with_fetch_interval(Duration::from_secs(args.perf_metrics_interval_sec))
+                .with_fetch_cb(cb)
+                .with_tick_service(ts.clone())
+                .build(),
+        );
+        let monitor = m.clone();
+        rt.spawn(async move { monitor.start().await });
+        m.stop()
+    });
 
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
@@ -125,10 +169,22 @@ fn main() {
         builder = builder.set_archival();
     }
     let config = Arc::new(builder.build());
-
+    let mut conn_builder = ConnBuilder::default().with_parallelism(num_cpus::get());
+    if let Some(rocksdb_files_limit) = args.rocksdb_files_limit {
+        conn_builder = conn_builder.with_files_limit(rocksdb_files_limit);
+    }
+    if let Some(rocksdb_mem_budget) = args.rocksdb_mem_budget {
+        conn_builder = conn_builder.with_mem_budget(rocksdb_mem_budget);
+    }
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
-        let (lifetime, db) = load_existing_db(input_dir, num_cpus::get());
+        let (lifetime, db) = match (args.rocksdb_stats, args.rocksdb_stats_period_sec) {
+            (true, Some(rocksdb_stats_period_sec)) => {
+                load_existing_db!(input_dir, conn_builder.enable_stats().with_stats_period(rocksdb_stats_period_sec))
+            }
+            (true, None) => load_existing_db!(input_dir, conn_builder.enable_stats()),
+            (false, _) => load_existing_db!(input_dir, conn_builder),
+        };
         let (dummy_notification_sender, _) = unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
         let consensus = Arc::new(Consensus::new(db, config.clone(), Default::default(), notification_root, Default::default()));
@@ -136,7 +192,16 @@ fn main() {
     } else {
         let until = if args.target_blocks.is_none() { config.genesis.timestamp + args.sim_time * 1000 } else { u64::MAX }; // milliseconds
         let mut sim = KaspaNetworkSimulator::new(args.delay, args.bps, args.target_blocks, config.clone(), args.output_dir);
-        let (consensus, handles, lifetime) = sim.init(args.miners, args.tpb).run(until);
+        let (consensus, handles, lifetime) = sim
+            .init(
+                args.miners,
+                args.tpb,
+                args.rocksdb_stats,
+                args.rocksdb_stats_period_sec,
+                args.rocksdb_files_limit,
+                args.rocksdb_mem_budget,
+            )
+            .run(until);
         consensus.shutdown(handles);
         (consensus, lifetime)
     };
@@ -147,13 +212,16 @@ fn main() {
     }
 
     // Benchmark the DAG validation time
-    let (_lifetime2, db2) = create_temp_db_with_parallelism(num_cpus::get());
+    let (_lifetime2, db2) = create_temp_db!(ConnBuilder::default().with_parallelism(num_cpus::get()));
     let (dummy_notification_sender, _) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
     let consensus2 = Arc::new(Consensus::new(db2, config.clone(), Default::default(), notification_root, Default::default()));
     let handles2 = consensus2.run_processors();
-    validate(&consensus, &consensus2, &config, args.delay, args.bps);
+    rt.block_on(validate(&consensus, &consensus2, &config, args.delay, args.bps));
     consensus2.shutdown(handles2);
+    if let Some(stop_perf_monitor) = stop_perf_monitor {
+        _ = rt.block_on(stop_perf_monitor);
+    }
     drop(consensus);
 }
 
@@ -220,7 +288,6 @@ fn apply_args_to_perf_params(args: &Args, perf_params: &mut PerfParams) {
     }
 }
 
-#[tokio::main]
 async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params, delay: f64, bps: f64) {
     let hashes = topologically_ordered_hashes(src_consensus, params.genesis.hash);
     let num_blocks = hashes.len();
