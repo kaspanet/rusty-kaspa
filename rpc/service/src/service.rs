@@ -634,6 +634,18 @@ impl RpcApi for RpcCoreService {
 
     /// Start sending notifications of some type to a listener.
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
+        if let Scope::UtxosChanged(ref utxos_changed_scope) = scope {
+            if !self.config.unsafe_rpc && utxos_changed_scope.addresses.is_empty() {
+                // The subscription to blanket UtxosChanged notifications is restricted to unsafe mode only
+                // since the notifications yielded are highly resource intensive.
+                //
+                // Please note that unsubscribing to blanket UtxosChanged is always allowed and cancels
+                // the whole subscription no matter if blanket or targeting specified addresses.
+
+                warn!("RPC subscription to blanket UtxosChanged called while node in safe RPC mode -- ignoring.");
+                return Err(RpcError::UnavailableInSafeMode);
+            }
+        }
         self.notifier.clone().start_notify(id, scope).await?;
         Ok(())
     }
