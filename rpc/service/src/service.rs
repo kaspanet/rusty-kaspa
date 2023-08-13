@@ -645,7 +645,10 @@ impl RpcApi for RpcCoreService {
                 warn!("RPC subscription to blanket UtxosChanged called while node in safe RPC mode -- ignoring.");
                 Err(RpcError::UnavailableInSafeMode)
             }
-            _ => self.notifier.clone().start_notify(id, scope).await,
+            _ => {
+                self.notifier.clone().start_notify(id, scope).await?;
+                Ok(())
+            }
         }
     }
 
