@@ -78,7 +78,7 @@ impl ConnectionHandler {
 
             match serve_result {
                 Ok(_) => info!("GRPC Server stopped on: {}", serve_address),
-                Err(err) => panic!("gRPC Server {serve_address} stopped with error: {err:?}"),
+                Err(err) => panic!("GRPC Server {serve_address} stopped with error: {err:?}"),
             }
         });
         termination_sender
@@ -90,7 +90,7 @@ impl ConnectionHandler {
     }
 
     pub fn start(&self) {
-        debug!("gRPC: Starting the connection handler");
+        debug!("GRPC: Starting the connection handler");
 
         // Start the internal notifier
         self.notifier().start();
@@ -100,7 +100,7 @@ impl ConnectionHandler {
     }
 
     pub async fn stop(&self) -> RpcResult<()> {
-        debug!("gRPC: Stopping the connection handler");
+        debug!("GRPC: Stopping the connection handler");
 
         // Refuse new incoming connections
         self.running.store(false, Ordering::SeqCst);
@@ -143,7 +143,7 @@ impl Rpc for ConnectionHandler {
             ));
         }
 
-        debug!("gRPC: incoming message stream from {:?}", remote_address);
+        debug!("GRPC: incoming message stream from {:?}", remote_address);
 
         // Build the in/out pipes
         let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_route_channel_size());
