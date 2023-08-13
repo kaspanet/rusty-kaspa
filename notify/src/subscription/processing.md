@@ -39,10 +39,10 @@ The possible mutations are:
 
 |**Mutation**|**Process pseudo-code**|**Return pseudo-code**|
 | :- | :- | :- |
-|**Add(All)**|<pre>Increment the `All` counter</pre>|<pre>If All == 1<br/>   Some(SubscribeMessage::StartEvent( NotificationType::UtxosChanged(empty))<br>Else<br/>   None</pre>|
-|**Add(A)**|<pre>For each `a` in `A`<br/>   inc counter of `a`<br/>   If counter == 1 add `a` to `B`</pre>|<pre>If B is not empty and All == 0<br/>   Some(SubscribeMessage::StartEvent( NotificationType::UtxosChanged(B))<br/>Else<br/>   None</pre>|
-|**Remove(R)**|<pre>For each `r` in `R`<br/>   dec counter of r<br/>   If counter == 0 add `r` to `S`</pre>|<pre>If `S` is not empty and `All` == 0<br/>   Some(SubscribeMessage::StopEvent( NotificationType::UtxosChanged(S))</br>Else<br/>   None</pre>|
-|**Remove(All)**|<pre>Decrement the `All` counter</pre>|<pre>If `All` == 0<br/>   Build `S` with every `a` in addresses having counter > 0</br>   If `S` is not empty<br/>      Some(SubscribeMessage::StartEvent( NotificationType::UtxosChanged(S))</br>   Else<br/>      Some(SubscribeMessage::StopEvent( NotificationType::UtxosChanged(empty)</br>Else<br/>   None</pre>|
+|**Add(All)**|<pre>Increment the `All` counter</pre>|<pre>If All == 1<br/>   Some(SubscribeMessage::StartEvent(NotificationType::UtxosChanged(empty)))<br>Else<br/>   None</pre>|
+|**Add(A)**|<pre>For each `a` in `A`<br/>   inc counter of `a`<br/>   If counter == 1 add `a` to `B`</pre>|<pre>If B is not empty and All == 0<br/>   Some(SubscribeMessage::StartEvent(NotificationType::UtxosChanged(B)))<br/>Else<br/>   None</pre>|
+|**Remove(R)**|<pre>For each `r` in `R`<br/>   dec counter of r<br/>   If counter == 0 add `r` to `S`</pre>|<pre>If `S` is not empty and `All` == 0<br/>   Some(SubscribeMessage::StopEvent(NotificationType::UtxosChanged(S)))</br>Else<br/>   None</pre>|
+|**Remove(All)**|<pre>Decrement the `All` counter</pre>|<pre>If `All` == 0<br/>   Build `S` with every `a` in addresses having counter > 0</br>   If `S` is not empty<br/>      Some(SubscribeMessage::StartEvent(NotificationType::UtxosChanged(S)))</br>   Else<br/>      Some(SubscribeMessage::StopEvent(NotificationType::UtxosChanged(empty)))</br>Else<br/>   None</pre>|
 
 It is advised to clean the address set of the Compounded Subscription, removing the addresses which counter reaches 0.
 
@@ -74,7 +74,7 @@ The possible mutations are:
 
 |**Mutation**|**Process pseudo-code**|**Return pseudo-code**|
 | :- | :- | :- |
-|**Add `All`**|<pre>Increment `All`</pre>|<pre>If `All` == 1<br/>   Some(SubscribeMessage::StartEvent( NotificationType::VirtualSelectedParentChainChanged(true))<br/>Else</br>   None</pre>|
-|**Add `Reduced`**|<pre>Increment `Reduced`</pre>|<pre>If `Reduced` == 1 and `All` == 0<br/>   Some(SubscribeMessage::StartEvent( NotificationType::VirtualSelectedParentChainChanged(false))<br/>Else</br>   None</pre>|
-|**Remove `Reduced`**|<pre>Decrement `Reduced`</pre>|<pre>If `Reduced` == 0 and `All` == 0<br/>   Some(SubscribeMessage::StopEvent( NotificationType::VirtualSelectedParentChainChanged(false))<br/>Else</br>   None</pre>|
-|**Remove `All`**|<pre>Decrement `All`</pre>|<pre>If `All` == 0<br/>   If `Reduced` > 0</br>      Some(SubscribeMessage::StartEvent( NotificationType::VirtualSelectedParentChainChanged(false))<br/>   Else<br/>      Some(SubscribeMessage::StopEvent( NotificationType::VirtualSelectedParentChainChanged(true)</br>Else<br/>   None</pre>|
+|**Add `All`**|<pre>Increment `All`</pre>|<pre>If `All` == 1<br/>   Some(SubscribeMessage::StartEvent(NotificationType::VirtualSelectedParentChainChanged(true)))<br/>Else</br>   None</pre>|
+|**Add `Reduced`**|<pre>Increment `Reduced`</pre>|<pre>If `Reduced` == 1 and `All` == 0<br/>   Some(SubscribeMessage::StartEvent(NotificationType::VirtualSelectedParentChainChanged(false)))<br/>Else</br>   None</pre>|
+|**Remove `Reduced`**|<pre>Decrement `Reduced`</pre>|<pre>If `Reduced` == 0 and `All` == 0<br/>   Some(SubscribeMessage::StopEvent(NotificationType::VirtualSelectedParentChainChanged(false)))<br/>Else</br>   None</pre>|
+|**Remove `All`**|<pre>Decrement `All`</pre>|<pre>If `All` == 0<br/>   If `Reduced` > 0</br>      Some(SubscribeMessage::StartEvent(NotificationType::VirtualSelectedParentChainChanged(false)))<br/>   Else<br/>      Some(SubscribeMessage::StopEvent(NotificationType::VirtualSelectedParentChainChanged(true)))</br>Else<br/>   None</pre>|
