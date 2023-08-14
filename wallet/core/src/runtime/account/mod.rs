@@ -18,7 +18,7 @@ use crate::result::Result;
 use crate::runtime::{Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
 use crate::storage::interface::AccessContext;
-use crate::storage::{self, AccessContextT, PrvKeyData, PrvKeyDataId};
+use crate::storage::{self, AccountData, AccessContextT, PrvKeyData, PrvKeyDataId};
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, KeydataSigner, PaymentDestination, PendingTransaction, Signer};
 use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoEntryReference};
 use kaspa_notify::listener::ListenerId;
@@ -56,10 +56,18 @@ impl Inner {
 
 pub async fn try_from_storage(wallet: &Arc<Wallet>, stored_account: &Arc<storage::Account>) -> Result<Arc<dyn Account>> {
     match &stored_account.data {
-        storage::AccountData::Bip32(bip32) => {
+        AccountData::Bip32(bip32) => {
             Ok(Arc::new(Bip32::try_new(wallet, &stored_account.prv_key_data_id, &stored_account.settings, bip32).await?))
         }
-        _ => unimplemented!(),
+        AccountData::Legacy(legacy) => {
+            Ok(Arc::new(Legacy::try_new(wallet, &stored_account.prv_key_data_id, &stored_account.settings, legacy).await?))
+        },
+        AccountData::MultiSig(multisig) => {
+            Ok(Arc::new(MultiSig::try_new(wallet, &stored_account.prv_key_data_id, &stored_account.settings, multisig).await?))
+        },
+        AccountData::Keypair(keypair) => {
+            Ok(Arc::new(Keypair::try_new(wallet, &stored_account.prv_key_data_id, &stored_account.settings, keypair).await?))
+        }
     }
 }
 

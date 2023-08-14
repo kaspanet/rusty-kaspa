@@ -1,30 +1,31 @@
-// use crate::imports::*;
-// use crate::storage::{Account, AccountId, AccountKind, PubKeyData};
-use crate::storage::Account;
+use crate::imports::*;
+use crate::storage::AccountId;
+use crate::storage::IdT;
 
-pub type Metadata = Account;
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Meta {
+    Derivation([u32; 2])
+}
 
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub struct Metadata {
-//     pub id: AccountId,
-//     pub name: String,
-//     pub title: String,
-//     pub account_kind: AccountKind,
-//     pub pub_key_data: PubKeyData,
-//     pub ecdsa: bool,
-//     pub account_index: u64,
-// }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Metadata {
+    id : AccountId,
+    meta : Meta,
+}
 
-// impl From<Account> for Metadata {
-//     fn from(account: Account) -> Self {
-//         Self {
-//             id: account.id,
-//             name: account.name,
-//             title: account.title,
-//             account_kind: account.account_kind,
-//             pub_key_data: account.pub_key_data,
-//             ecdsa: account.ecdsa,
-//             account_index: account.account_index,
-//         }
-//     }
-// }
+impl Metadata {
+    pub fn new(id : AccountId, meta : Meta) -> Self {
+        Self {
+            id,
+            meta,
+        }
+    }
+}
+
+impl IdT for Metadata {
+    type Id = AccountId;
+    fn id(&self) -> &AccountId {
+        &self.id
+    }
+}
+

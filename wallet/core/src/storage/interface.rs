@@ -80,7 +80,7 @@ pub trait AddressBookStore: Send + Sync {
 
 #[async_trait]
 pub trait MetadataStore: Send + Sync {
-    async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>>;
+    // async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>>;
     async fn load(&self, id: &[AccountId]) -> Result<Vec<Arc<Metadata>>>;
 }
 

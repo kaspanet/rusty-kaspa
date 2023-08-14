@@ -5,8 +5,6 @@ use crate::runtime::account::Inner;
 use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount};
 use crate::runtime::Wallet;
 use crate::storage::{self, PrvKeyDataId};
-// use kaspa_addresses::Version as AddressVersion;
-// use secp256k1::{PublicKey, SecretKey};
 
 pub struct Bip32 {
     inner: Arc<Inner>,
@@ -28,7 +26,6 @@ impl Bip32 {
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
         let storage::account::Bip32 {
-            // prv_key_data_id,
             account_index,
             xpub_keys,
             ecdsa,
@@ -38,7 +35,7 @@ impl Bip32 {
 
         Ok(Self {
             inner,
-            prv_key_data_id: prv_key_data_id.clone(), //*prv_key_data_id,
+            prv_key_data_id: prv_key_data_id.clone(),
             account_index: *account_index,
             xpub_keys: data.xpub_keys.clone(),
             ecdsa: *ecdsa,
@@ -65,10 +62,6 @@ impl Account for Bip32 {
         self
     }
 
-    // fn test(self: &Arc<Self>) -> Arc<dyn Account> {
-    //     self.clone()
-    // }
-
     async fn receive_address(&self) -> Result<Address> {
         self.derivation.receive_address_manager().current_address().await
     }
@@ -76,18 +69,10 @@ impl Account for Bip32 {
         self.derivation.change_address_manager().current_address().await
     }
 
-    // async fn new_receive_address(self: Arc<Self>) -> Result<String> {
-    //     todo!()
-    // }
-    // async fn new_change_address(self: Arc<Self>) -> Result<String> {
-    //     todo!()
-    // }
-
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
 
         let bip32 = storage::Bip32 {
-            // prv_key_data_id: self.prv_key_data_id,
             account_index: self.account_index,
             xpub_keys: self.xpub_keys.clone(),
             ecdsa: self.ecdsa,
@@ -96,13 +81,6 @@ impl Account for Bip32 {
         let account = storage::Account::new(self.id_ref().clone(), self.prv_key_data_id, settings, storage::AccountData::Bip32(bip32));
 
         Ok(account)
-
-        // Ok(storage::account::Account::Bip32(storage::account::Bip32 {
-        //     prv_key_data_id: self.prv_key_data_id,
-        //     account_index: self.account_index,
-        //     xpub_keys: self.xpub_keys.clone(),
-        //     ecdsa: self.ecdsa,
-        // }))
     }
 
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {

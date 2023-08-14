@@ -4,8 +4,6 @@ use crate::runtime::account::{Account, AccountId, AccountKind, Inner};
 use crate::runtime::Wallet;
 use crate::storage::{self, PrvKeyDataId};
 use kaspa_addresses::Version;
-// use crate::AddressDerivationManager;
-// use kaspa_addresses::Version as AddressVersion;
 use secp256k1::PublicKey;
 
 pub struct Keypair {
@@ -26,7 +24,6 @@ impl Keypair {
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
         let storage::account::Keypair {
-            // prv_key_data_id,
             public_key,
             ecdsa,
         } = data;
@@ -53,23 +50,13 @@ impl Account for Keypair {
         self
     }
 
-    // fn test(self: &Arc<Self>) -> Arc<dyn Account> {
-    //     self.clone()
-    // }
-
     async fn receive_address(&self) -> Result<Address> {
         Ok(Address::new(self.inner().wallet.network_id()?.into(), Version::PubKey, &self.public_key.serialize()[1..]))
     }
+
     async fn change_address(&self) -> Result<Address> {
         Ok(Address::new(self.inner().wallet.network_id()?.into(), Version::PubKey, &self.public_key.serialize()[1..]))
     }
-
-    // async fn new_receive_address(self: Arc<Self>) -> Result<String> {
-    //     todo!()
-    // }
-    // async fn new_change_address(self: Arc<Self>) -> Result<String> {
-    //     todo!()
-    // }
 
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
@@ -80,16 +67,5 @@ impl Account for Keypair {
             storage::Account::new(self.id_ref().clone(), self.prv_key_data_id, settings, storage::AccountData::Keypair(keypair));
 
         Ok(account)
-
-        // Ok(storage::account::Account::Bip32(storage::account::Bip32 {
-        //     prv_key_data_id: self.prv_key_data_id,
-        //     account_index: self.account_index,
-        //     xpub_keys: self.xpub_keys.clone(),
-        //     ecdsa: self.ecdsa,
-        // }))
     }
-
-    // fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {
-    //     Ok(self.clone())
-    // }
 }
