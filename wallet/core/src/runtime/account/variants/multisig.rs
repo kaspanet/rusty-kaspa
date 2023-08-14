@@ -46,6 +46,7 @@ impl MultiSig {
             AccountKind::Legacy,
             xpub_keys,
             false,
+            0,
             Some(*cosigner_index as u32),
             Some(*minimum_signatures as u32),
             None,

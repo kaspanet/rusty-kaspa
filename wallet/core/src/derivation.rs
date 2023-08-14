@@ -9,6 +9,8 @@ use crate::runtime;
 use crate::runtime::account::create_private_keys;
 use crate::runtime::AccountKind;
 // use crate::storage::PubKeyData;
+use crate::secret::Secret;
+use crate::storage::PrvKeyDataId;
 use crate::Result;
 use futures::future::join_all;
 use kaspa_addresses::{Address, Prefix};
@@ -163,6 +165,7 @@ impl AddressDerivationManager {
         keys: &Vec<String>,
         // pub_key_data: &PubKeyData,
         ecdsa: bool,
+        account_index: u64,
         cosigner_index: Option<u32>,
         minimum_signatures: Option<u32>,
         receive_index: Option<u32>,

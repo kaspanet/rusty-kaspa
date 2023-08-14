@@ -34,7 +34,8 @@ impl Bip32 {
             ecdsa,
         } = data;
 
-        let derivation = AddressDerivationManager::new(wallet, AccountKind::Bip32, xpub_keys, *ecdsa, None, None, None, None).await?;
+        let derivation =
+            AddressDerivationManager::new(wallet, AccountKind::Bip32, xpub_keys, *ecdsa, 0, None, None, None, None).await?;
 
         Ok(Self {
             inner,
