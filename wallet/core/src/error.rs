@@ -1,4 +1,5 @@
 use base64::DecodeError;
+use downcast::DowncastError;
 use faster_hex::Error as FasterHexError;
 use kaspa_bip32::Error as BIP32Error;
 use kaspa_consensus_core::sign::Error as CoreSignError;
@@ -186,6 +187,15 @@ pub enum Error {
 
     #[error("Not allowed on a resident account")]
     ResidentAccount,
+
+    #[error("This feature is not supported by this account type")]
+    AccountKindFeature,
+
+    #[error("Address derivation processing is not supported by this account type")]
+    AccountAddressDerivationCaps,
+
+    #[error("{0}")]
+    DowncastError(String),
 }
 
 impl From<Aborted> for Error {
@@ -266,5 +276,11 @@ impl From<argon2::password_hash::Error> for Error {
 impl From<workflow_wasm::tovalue::Error> for Error {
     fn from(err: workflow_wasm::tovalue::Error) -> Self {
         Self::ToValue(err.to_string())
+    }
+}
+
+impl<T> From<DowncastError<T>> for Error {
+    fn from(e: DowncastError<T>) -> Self {
+        Error::DowncastError(e.to_string())
     }
 }

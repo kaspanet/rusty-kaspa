@@ -1,4 +1,4 @@
-use crate::address::create_xpub_from_xprv;
+use crate::derivation::create_xpub_from_xprv;
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
@@ -77,7 +77,7 @@ impl Zeroize for KeyDataId {
 }
 
 pub type PrvKeyDataId = KeyDataId;
-pub type PubKeyDataId = KeyDataId;
+// pub type PubKeyDataId = KeyDataId;
 pub type PrvKeyDataMap = HashMap<PrvKeyDataId, PrvKeyData>;
 
 /// Indicates key capabilities in the context of Kaspa
@@ -346,38 +346,38 @@ impl Display for PrvKeyDataInfo {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PubKeyData {
-    pub id: PubKeyDataId,
-    pub keys: Vec<String>,
-    pub cosigner_index: Option<u32>,
-    pub minimum_signatures: Option<u16>,
-}
+// #[derive(Clone, Debug, Serialize, Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// pub struct PubKeyData {
+//     pub id: PubKeyDataId,
+//     pub keys: Vec<String>,
+//     pub cosigner_index: Option<u32>,
+//     pub minimum_signatures: Option<u16>,
+// }
 
-impl Zeroize for PubKeyData {
-    fn zeroize(&mut self) {
-        self.id.zeroize();
-        self.keys.zeroize();
-        self.cosigner_index.zeroize();
-        self.minimum_signatures.zeroize();
-    }
-}
+// impl Zeroize for PubKeyData {
+//     fn zeroize(&mut self) {
+//         self.id.zeroize();
+//         self.keys.zeroize();
+//         self.cosigner_index.zeroize();
+//         self.minimum_signatures.zeroize();
+//     }
+// }
 
-impl Drop for PubKeyData {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
-}
+// impl Drop for PubKeyData {
+//     fn drop(&mut self) {
+//         self.zeroize();
+//     }
+// }
 
-impl ZeroizeOnDrop for PubKeyData {}
+// impl ZeroizeOnDrop for PubKeyData {}
 
-impl PubKeyData {
-    pub fn new(keys: Vec<String>, cosigner_index: Option<u32>, minimum_signatures: Option<u16>) -> Self {
-        let mut temp = keys.clone();
-        temp.sort();
-        let str = String::from_iter(temp);
-        let id = PubKeyDataId::new(xxh3_64(str.as_bytes()));
-        Self { id, keys, cosigner_index, minimum_signatures }
-    }
-}
+// impl PubKeyData {
+//     pub fn new(keys: Vec<String>, cosigner_index: Option<u32>, minimum_signatures: Option<u16>) -> Self {
+//         let mut temp = keys.clone();
+//         temp.sort();
+//         let str = String::from_iter(temp);
+//         let id = PubKeyDataId::new(xxh3_64(str.as_bytes()));
+//         Self { id, keys, cosigner_index, minimum_signatures }
+//     }
+// }

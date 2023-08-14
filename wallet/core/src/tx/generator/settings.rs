@@ -33,7 +33,7 @@ pub struct GeneratorSettings {
 
 impl GeneratorSettings {
     pub async fn try_new_with_account(
-        account: &Account,
+        account: Arc<dyn Account>,
         final_transaction_destination: PaymentDestination,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
@@ -41,9 +41,8 @@ impl GeneratorSettings {
         let network_type = account.utxo_context().processor().network_id()?.into();
         let change_address = account.change_address().await?;
         let multiplexer = account.wallet().multiplexer().clone();
-        let inner = account.inner();
-        let sig_op_count = inner.stored.pub_key_data.keys.len() as u8;
-        let minimum_signatures = inner.stored.minimum_signatures;
+        let sig_op_count = account.sig_op_count();
+        let minimum_signatures = account.minimum_signatures();
 
         let utxo_selector = Arc::new(UtxoSelectionContext::new(account.utxo_context()));
 

@@ -322,7 +322,7 @@ impl TransactionRecord {
         current_daa_score: Option<u64>,
         include_utxos: bool,
         history: bool,
-        account: Option<Arc<runtime::Account>>,
+        account: Option<Arc<dyn runtime::Account>>,
     ) -> Vec<String> {
         let TransactionRecord { id, binding, block_daa_score, transaction_data, .. } = self;
 

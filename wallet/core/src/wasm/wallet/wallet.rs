@@ -158,19 +158,21 @@ impl Wallet {
 
     #[wasm_bindgen(js_name = "createAccount")]
     pub async fn create_account(&self, prv_key_data_id: String, account_args: &JsValue) -> Result<JsValue> {
-        let account_args: AccountCreateArgs = account_args.try_into()?;
-        let prv_key_data_id =
+        let _account_args: AccountCreateArgs = account_args.try_into()?;
+        let _prv_key_data_id =
             PrvKeyDataId::from_hex(&prv_key_data_id).map_err(|err| Error::KeyId(format!("{} : {err}", prv_key_data_id)))?;
 
-        match account_args.account_kind {
-            AccountKind::Bip32 | AccountKind::Legacy => {
-                let account = self.wallet.create_bip32_account(prv_key_data_id, account_args.into()).await?;
-                Ok(Account::try_new(account).await?.into())
-            }
-            AccountKind::MultiSig => {
-                todo!()
-            }
-        }
+        todo!()
+
+        // match account_args.account_kind {
+        //     AccountKind::Bip32 | AccountKind::Legacy => {
+        //         let account = self.wallet.create_bip32_account(prv_key_data_id, account_args.into()).await?;
+        //         Ok(Account::try_new(account).await?.into())
+        //     }
+        //     AccountKind::MultiSig => {
+        //         todo!()
+        //     }
+        // }
     }
 
     pub async fn ping(&self) -> bool {

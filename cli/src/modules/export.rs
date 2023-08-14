@@ -17,7 +17,7 @@ impl Export {
         match what.as_str() {
             "mnemonic" => {
                 let account = ctx.account().await?;
-                let prv_key_data_id = account.prv_key_data_id;
+                let prv_key_data_id = account.prv_key_data_id()?;
 
                 let wallet_secret = Secret::new(ctx.term().ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
                 if wallet_secret.as_ref().is_empty() {

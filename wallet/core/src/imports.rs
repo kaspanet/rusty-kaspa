@@ -35,3 +35,5 @@ pub use workflow_wasm::jsvalue::*;
 pub use workflow_wasm::object::*;
 pub use workflow_wasm::stream::AsyncStream;
 pub use xxhash_rust::xxh3::xxh3_64;
+// pub use downcast_rs::{impl_downcast, DowncastSync};
+pub use downcast::{downcast_sync, AnySync};

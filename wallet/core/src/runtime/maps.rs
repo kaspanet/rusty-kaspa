@@ -2,10 +2,10 @@ use crate::imports::*;
 use crate::runtime::{Account, AccountId};
 
 #[derive(Default, Clone)]
-pub struct ActiveAccountMap(Arc<Mutex<HashMap<AccountId, Arc<Account>>>>);
+pub struct ActiveAccountMap(Arc<Mutex<HashMap<AccountId, Arc<dyn Account>>>>);
 
 impl ActiveAccountMap {
-    pub fn inner(&self) -> MutexGuard<HashMap<AccountId, Arc<Account>>> {
+    pub fn inner(&self) -> MutexGuard<HashMap<AccountId, Arc<dyn Account>>> {
         self.0.lock().unwrap()
     }
 
@@ -21,29 +21,29 @@ impl ActiveAccountMap {
         self.inner().is_empty()
     }
 
-    pub fn first(&self) -> Option<Arc<Account>> {
+    pub fn first(&self) -> Option<Arc<dyn Account>> {
         self.inner().values().next().cloned()
     }
 
-    pub fn get(&self, account_id: &AccountId) -> Option<Arc<Account>> {
+    pub fn get(&self, account_id: &AccountId) -> Option<Arc<dyn Account>> {
         self.inner().get(account_id).cloned()
     }
 
-    pub fn extend(&self, accounts: Vec<Arc<Account>>) {
+    pub fn extend(&self, accounts: Vec<Arc<dyn Account>>) {
         let mut map = self.inner();
-        let accounts = accounts.into_iter().map(|a| (a.id, a)); //.collect::<Vec<_>>();
+        let accounts = accounts.into_iter().map(|a| (a.id_ref().clone(), a)); //.collect::<Vec<_>>();
         map.extend(accounts);
     }
 
-    pub fn insert(&self, account: Arc<Account>) -> Option<Arc<Account>> {
-        self.inner().insert(account.id, account)
+    pub fn insert(&self, account: Arc<dyn Account>) -> Option<Arc<dyn Account>> {
+        self.inner().insert(account.id_ref().clone(), account)
     }
 
     pub fn remove(&self, id: &AccountId) {
         self.inner().remove(id);
     }
 
-    pub fn collect(&self) -> Vec<Arc<Account>> {
+    pub fn collect(&self) -> Vec<Arc<dyn Account>> {
         self.inner().values().cloned().collect()
     }
 }

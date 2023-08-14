@@ -20,8 +20,11 @@ pub struct Wallet {
 
 impl Wallet {
     pub fn try_new(user_hint: Option<Hint>, secret: &Secret, payload: Payload) -> Result<Self> {
-        let metadata =
-            payload.accounts.iter().filter_map(|account| if account.is_visible { Some(account.clone()) } else { None }).collect();
+        let metadata = payload
+            .accounts
+            .iter()
+            .filter_map(|account| if account.settings.is_visible { Some(account.clone()) } else { None })
+            .collect();
         let payload = Decrypted::new(payload).encrypt(secret)?;
         Ok(Self { version: WALLET_VERSION, payload, metadata, user_hint })
     }

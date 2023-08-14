@@ -239,8 +239,8 @@ impl PendingUtxoEntryReference {
     }
 }
 
-impl From<(&Arc<Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
-    fn from((account, entry): (&Arc<Account>, UtxoEntryReference)) -> Self {
+impl From<(&Arc<dyn Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
+    fn from((account, entry): (&Arc<dyn Account>, UtxoEntryReference)) -> Self {
         Self::new(entry, (*account.utxo_context()).clone())
     }
 }

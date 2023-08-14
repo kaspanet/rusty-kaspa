@@ -2,7 +2,7 @@ extern crate alloc;
 extern crate self as kaspa_wallet_core;
 
 pub mod accounts;
-pub mod address;
+pub mod derivation;
 pub mod encryption;
 pub mod error;
 pub mod events;
@@ -19,7 +19,7 @@ pub mod utxo;
 pub mod wasm;
 
 pub use accounts::dummy_address;
-pub use address::AddressDerivationManager;
+pub use derivation::AddressDerivationManager;
 pub use events::{Events, SyncState};
 pub use kaspa_addresses::{Address, Prefix as AddressPrefix};
 pub use kaspa_wrpc_client::client::{ConnectOptions, ConnectStrategy};

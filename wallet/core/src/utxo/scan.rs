@@ -1,4 +1,4 @@
-use crate::address::AddressManager;
+use crate::derivation::AddressManager;
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{AtomicBalance, Balance};

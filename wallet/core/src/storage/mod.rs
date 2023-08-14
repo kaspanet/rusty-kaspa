@@ -12,13 +12,13 @@ pub mod metadata;
 pub mod transaction;
 
 pub use crate::runtime::{AccountId, AccountKind};
-pub use account::{Account,AccountData};
+pub use account::{Account, AccountData, Bip32, Keypair, Legacy, MultiSig, Settings};
 pub use address::AddressBookEntry;
 pub use binding::Binding;
 pub use hint::Hint;
 pub use id::IdT;
 pub use interface::{AccessContextT, AccountStore, Interface, MetadataStore, PrvKeyDataStore, TransactionRecordStore};
-pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload, PubKeyData, PubKeyDataId};
+pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
 pub use metadata::Metadata;
 pub use transaction::{TransactionMetadata, TransactionRecord, TransactionType};
 
@@ -31,6 +31,7 @@ mod tests {
     use crate::storage::local::Payload;
     use crate::storage::local::Wallet;
     use kaspa_bip32::{Language, Mnemonic};
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_wallet_store_wallet_store_load() -> Result<()> {
@@ -64,41 +65,76 @@ mod tests {
             Encryptable::Plain(key_data_payload2).into_encrypted(&payment_secret)?,
         );
 
-        let pub_key_data1 = PubKeyData::new(vec!["abc".to_string()], None, None);
-        let pub_key_data2 = PubKeyData::new(vec!["xyz".to_string()], None, None);
+        let pub_key_data1 = Arc::new(vec!["abc".to_string()]);
+        let pub_key_data2 = Arc::new(vec!["xyz".to_string()]);
         println!("keydata1 id: {:?}", prv_key_data1.id);
         //assert_eq!(prv_key_data.id.0, [79, 36, 5, 159, 220, 113, 179, 22]);
         payload.prv_key_data.push(prv_key_data1.clone());
         payload.prv_key_data.push(prv_key_data2.clone());
 
+        let settings = Settings { name: Some("Wallet-A".to_string()), title: Some("Wallet A".to_string()), is_visible: false };
+
+        let bip32 = Bip32 { account_index: 0, xpub_keys: pub_key_data1.clone(), ecdsa: false };
+
+        let id = AccountId::from_bip32(&prv_key_data1.id, &bip32);
+
         let account1 = Account::new(
-            Some("Wallet-A".to_string()),
-            Some("Wallet A".to_string()),
-            AccountKind::Bip32,
-            0,
-            true,
-            pub_key_data1.clone(),
+            id,
             prv_key_data1.id,
-            false,
-            1,
-            0,
+            settings,
+            AccountData::Bip32(bip32),
+            // Some("Wallet-A".to_string()),
+            // Some("Wallet A".to_string()),
+            // AccountKind::Bip32,
+            // 0,
+            // true,
+            // pub_key_data1.clone(),
+            // prv_key_data1.id,
+            // false,
+            // 1,
+            // 0,
         );
-        //let account_id = account1.id.clone();
+
         payload.accounts.push(account1);
 
+        let settings = Settings { name: Some("Wallet-B".to_string()), title: Some("Wallet B".to_string()), is_visible: false };
+
+        let bip32 = Bip32 { account_index: 0, xpub_keys: pub_key_data2.clone(), ecdsa: false };
+
+        let id = AccountId::from_bip32(&prv_key_data2.id, &bip32);
+
         let account2 = Account::new(
-            Some("Wallet-B".to_string()),
-            Some("Wallet B".to_string()),
-            AccountKind::Bip32,
-            0,
-            true,
-            pub_key_data2.clone(),
+            id,
             prv_key_data2.id,
-            false,
-            1,
-            0,
+            settings,
+            AccountData::Bip32(bip32),
+            // Some("Wallet-A".to_string()),
+            // Some("Wallet A".to_string()),
+            // AccountKind::Bip32,
+            // 0,
+            // true,
+            // pub_key_data1.clone(),
+            // prv_key_data1.id,
+            // false,
+            // 1,
+            // 0,
         );
+        //let account_id = account1.id.clone();
         payload.accounts.push(account2);
+
+        // let account2 = Account::new(
+        //     Some("Wallet-B".to_string()),
+        //     Some("Wallet B".to_string()),
+        //     AccountKind::Bip32,
+        //     0,
+        //     true,
+        //     pub_key_data2.clone(),
+        //     prv_key_data2.id,
+        //     false,
+        //     1,
+        //     0,
+        // );
+        // payload.accounts.push(account2);
 
         let payload_json = serde_json::to_string(&payload).unwrap();
         // let settings = WalletSettings::new(account_id);

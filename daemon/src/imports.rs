@@ -3,7 +3,7 @@ pub use crate::result::Result;
 pub use crate::DaemonStatus;
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSerialize};
-pub use downcast::{downcast_sync, AnySync};
+pub use downcast_rs::{impl_downcast, DowncastSync};
 pub use kaspa_addresses::Address;
 pub use kaspa_wallet_core::network::{NetworkId, NetworkType};
 pub use serde::{Deserialize, Serialize};

@@ -7,7 +7,7 @@ use crate::accounts::WalletDerivationManagerTrait;
 use crate::error::Error;
 use crate::runtime;
 use crate::runtime::AccountKind;
-use crate::storage::PubKeyData;
+// use crate::storage::PubKeyData;
 use crate::Result;
 use futures::future::join_all;
 use kaspa_addresses::{Address, Prefix};
@@ -154,10 +154,10 @@ impl AddressDerivationManager {
         wallet: &Arc<runtime::Wallet>,
         // prefix: Prefix,
         account_kind: AccountKind,
-        keys : &Vec<String>,
+        keys: &Vec<String>,
         // pub_key_data: &PubKeyData,
         ecdsa: bool,
-        cosigner_index : Option<u32>,
+        cosigner_index: Option<u32>,
         minimum_signatures: Option<u32>,
         receive_index: Option<u32>,
         change_index: Option<u32>,
@@ -198,7 +198,7 @@ impl AddressDerivationManager {
             change_pubkey_managers,
             ecdsa,
             change_index.unwrap_or(0),
-            minimum_signatures as usize,
+            minimum_signatures.unwrap_or(1) as usize,
         )?;
 
         let manager = Self {
@@ -374,7 +374,8 @@ pub async fn create_xpub_from_xprv(
     let (secret_key, attrs) = match account_kind {
         AccountKind::Legacy => WalletDerivationManagerV0::derive_extened_key_from_master_key(xprv, true, account_index).await?,
         AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xprv, true, account_index).await?,
-        _ => WalletDerivationManager::derive_extened_key_from_master_key(xprv, false, account_index).await?,
+        AccountKind::Bip32 => WalletDerivationManager::derive_extened_key_from_master_key(xprv, false, account_index).await?,
+        _ => panic!("create_xpub_from_xprv not supported for account kind: {:?}", account_kind),
     };
 
     let xkey = ExtendedPublicKey { public_key: secret_key.get_public_key(), attrs };
@@ -393,6 +394,9 @@ pub fn build_derivate_path(
         AccountKind::Bip32 => WalletDerivationManager::build_derivate_path(false, account_index, None, Some(address_type)),
         AccountKind::MultiSig => {
             WalletDerivationManager::build_derivate_path(true, account_index, Some(cosigner_index), Some(address_type))
+        }
+        _ => {
+            panic!("build derivate path not supported for account kind: {:?}", account_kind);
         }
     }
 }

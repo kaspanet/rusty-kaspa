@@ -84,8 +84,8 @@ impl Generator {
                 payload,
             )?,
             GeneratorSource::Account(account) => {
-                let account: Arc<runtime::Account> = account.into();
-                native::GeneratorSettings::try_new_with_account(&account, final_transaction_destination, final_priority_fee, None)
+                let account: Arc<dyn runtime::Account> = account.into();
+                native::GeneratorSettings::try_new_with_account(account, final_transaction_destination, final_priority_fee, None)
                     .await?
             }
         };

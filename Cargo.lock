@@ -2185,7 +2185,7 @@ dependencies = [
  "async-trait",
  "borsh",
  "cfg-if 1.0.0",
- "downcast",
+ "downcast-rs",
  "futures",
  "kaspa-addresses",
  "kaspa-consensus-core",

@@ -7,7 +7,7 @@ use crate::modules::node::Node;
 use crate::notifier::{Notification, Notifier};
 use crate::result::Result;
 use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
-use kaspa_wallet_core::runtime::{self, BalanceStrings};
+use kaspa_wallet_core::runtime::{Account, BalanceStrings};
 use kaspa_wallet_core::storage::{IdT, PrvKeyDataInfo};
 use kaspa_wallet_core::DynRpcApi;
 use kaspa_wallet_core::{runtime::Wallet, Events};
@@ -446,7 +446,7 @@ impl KaspaCli {
 
     /// Asks uses for a wallet secret, checks the supplied account's private key info
     /// and if it requires a payment secret, asks for it as well.
-    pub(crate) async fn ask_wallet_secret(&self, account: Option<&Arc<runtime::Account>>) -> Result<(Secret, Option<Secret>)> {
+    pub(crate) async fn ask_wallet_secret(&self, account: Option<&Arc<dyn Account>>) -> Result<(Secret, Option<Secret>)> {
         let wallet_secret = Secret::new(self.term().ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
 
         let payment_secret = if let Some(account) = account {
@@ -462,7 +462,7 @@ impl KaspaCli {
         Ok((wallet_secret, payment_secret))
     }
 
-    pub async fn account(&self) -> Result<Arc<runtime::Account>> {
+    pub async fn account(&self) -> Result<Arc<dyn Account>> {
         if let Ok(account) = self.wallet.account() {
             Ok(account)
         } else {
@@ -472,7 +472,7 @@ impl KaspaCli {
         }
     }
 
-    pub async fn find_accounts_by_name_or_id(&self, pat: &str) -> Result<Arc<runtime::Account>> {
+    pub async fn find_accounts_by_name_or_id(&self, pat: &str) -> Result<Arc<dyn Account>> {
         let matches = self.wallet().find_accounts_by_name_or_id(pat).await?;
         if matches.is_empty() {
             Err(Error::AccountNotFound(pat.to_string()))
@@ -483,19 +483,19 @@ impl KaspaCli {
         }
     }
 
-    pub async fn prompt_account(&self) -> Result<Arc<runtime::Account>> {
+    pub async fn prompt_account(&self) -> Result<Arc<dyn Account>> {
         self.select_account_with_args(false).await
     }
 
-    pub async fn select_account(&self) -> Result<Arc<runtime::Account>> {
+    pub async fn select_account(&self) -> Result<Arc<dyn Account>> {
         self.select_account_with_args(true).await
     }
 
-    async fn select_account_with_args(&self, autoselect: bool) -> Result<Arc<runtime::Account>> {
+    async fn select_account_with_args(&self, autoselect: bool) -> Result<Arc<dyn Account>> {
         let mut selection = None;
 
-        let mut list_by_key = Vec::<(Arc<PrvKeyDataInfo>, Vec<(usize, Arc<runtime::Account>)>)>::new();
-        let mut flat_list = Vec::<Arc<runtime::Account>>::new();
+        let mut list_by_key = Vec::<(Arc<PrvKeyDataInfo>, Vec<(usize, Arc<dyn Account>)>)>::new();
+        let mut flat_list = Vec::<Arc<dyn Account>>::new();
 
         let mut keys = self.wallet.keys().await?;
         while let Some(key) = keys.try_next().await? {
@@ -559,7 +559,7 @@ impl KaspaCli {
     pub async fn select_private_key_with_args(&self, autoselect: bool) -> Result<Arc<PrvKeyDataInfo>> {
         let mut selection = None;
 
-        // let mut list_by_key = Vec::<(Arc<PrvKeyDataInfo>, Vec<(usize, Arc<runtime::Account>)>)>::new();
+        // let mut list_by_key = Vec::<(Arc<PrvKeyDataInfo>, Vec<(usize, Arc<dyn Account>)>)>::new();
         let mut flat_list = Vec::<Arc<PrvKeyDataInfo>>::new();
 
         let mut keys = self.wallet.keys().await?;
