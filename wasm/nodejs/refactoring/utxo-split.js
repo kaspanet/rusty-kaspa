@@ -33,7 +33,7 @@ kaspa.init_console_panic_hook();
         },
         additionalHelpOutput: '[--address2 <address>]'
     });
-    const address2Arg = args.tokens.find((token) => token.name === 'address2')?.value ?? null;
+    const address2Arg = args.tokens.find((token) => token.name === 'address2')?.value;
 
     // Either NetworkType.Mainnet or NetworkType.Testnet
     const networkType = args.networkType;
