@@ -25,8 +25,9 @@ kaspa.init_console_panic_hook();
         networkType,
     } = parseArgs();
 
-    const URL = "ws://127.0.0.1:17110";
-    const rpc = new RpcClient(encoding, URL);
+    const rpcHost = "127.0.0.1";
+    const rpcUrl = RpcClient.parseUrl(rpcHost, encoding, networkType);
+    const rpc = new RpcClient(encoding, rpcUrl, networkType);
 
     console.log(`# connecting to ${URL}`)
     await rpc.connect();
@@ -43,7 +44,7 @@ kaspa.init_console_panic_hook();
     const info = await rpc.getInfo();
     console.log("info", info);
 
-    const addr = new Address(address ?? "kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd");
+    const addr = address ?? "kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd";
 
     const addresses = [
         addr,
@@ -51,24 +52,19 @@ kaspa.init_console_panic_hook();
     ];
 
     console.log("\ngetting UTXOs...", addresses);
-    const utxosByAddress = await rpc.getUtxosByAddresses({addresses});
-    //console.log("utxos_by_address", utxos_by_address.entries.slice(0, 2))
-    const utxoSet = UtxoSet.from(utxosByAddress);
+    // const utxosByAddress = await rpc.getUtxosByAddresses({addresses});
+
+    const utxos = await rpc.getUtxosByAddresses({ addresses });
 
     const amount = 1000n;
-    const utxoSelection = await utxoSet.select(amount + 100n, UtxoOrdering.AscendingAmount);
-
-    console.log("utxo_selection.amount", utxoSelection.amount)
-    console.log("utxo_selection.totalAmount", utxoSelection.totalAmount)
-    const utxos = utxoSelection.utxos;
-    console.log("utxos[0].data.outpoint", utxos[0]?.data.outpoint)
-    console.log("utxos.*.data.outpoint", utxos.map(a => a.data.outpoint))
-    console.log("utxos.*.data.entry", utxos.map(a => a.data.entry))
-
-    const outputItems = [new PaymentOutput(
-        addr,
-        amount
-    )];
+    // const utxoSelection = await utxoSet.select(amount + 100n, UtxoOrdering.AscendingAmount);
+    //
+    // console.log("utxo_selection.amount", utxoSelection.amount)
+    // console.log("utxo_selection.totalAmount", utxoSelection.totalAmount)
+    // // const utxos = utxoSelection.utxos;
+    // console.log("utxos[0].data.outpoint", utxos[0]?.data.outpoint)
+    // console.log("utxos.*.data.outpoint", utxos.map(a => a.data.outpoint))
+    // console.log("utxos.*.data.entry", utxos.map(a => a.data.entry))
 
     const priorityFee = 0n;
     const changeAddress = addr;
@@ -80,7 +76,12 @@ kaspa.init_console_panic_hook();
     //     ))
     // }
 
-    const outputs = new PaymentOutputs(outputItems)
+    const outputs = [
+        [
+            addr,
+            amount
+        ]
+    ];
 
     const utxoEntryList = [];
     const inputs = utxos.map((utxo, sequence) => {
