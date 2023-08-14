@@ -111,7 +111,8 @@ fn get_v0_string(data: &str, phrase: &Secret) -> Result<String> {
 fn aes_decrypt_v0(key: &[u8], iv: &[u8], content: &mut [u8]) -> Result<String> {
     Aes256CfbDec::new(key.into(), iv.into()).decrypt(content);
     let last = content.len() - *content.last().unwrap() as usize;
-    let json = String::from_utf8(content[0..last].to_vec()).unwrap();
+    let json = String::from_utf8(content[0..last].to_vec())
+        .or_else(|_| Err(Error::Custom("Unable to decrypt wallet - invalid password".into())))?;
     Ok(json)
 }
 
