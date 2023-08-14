@@ -5,8 +5,8 @@ use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
 use crate::storage::local::interface::LocalStore;
-use crate::storage::local::Storage;
 use crate::storage::{self, AccessContextT, AccountKind, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
+use crate::storage::{local::Storage, AccountData};
 use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
 use crate::{accounts::gen0, accounts::gen0::import::*, accounts::gen1, accounts::gen1::import::*};
@@ -691,40 +691,33 @@ impl Wallet {
     }
 
     pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<Arc<dyn Account>> {
-        todo!()
+        let keydata = load_v0_keydata(&import_secret).await?;
 
-        // let keydata = load_v0_keydata(&import_secret).await?;
+        //workflow_log::log_info!("keydata: {:?}", keydata);
 
-        // let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
 
-        // let mnemonic = Mnemonic::new(keydata.mnemonic.trim(), Language::English)?;
-        // let prv_key_data = PrvKeyData::try_new_from_mnemonic(mnemonic, None)?;
-        // let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
-        // if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
-        //     return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
-        // }
+        let mnemonic = Mnemonic::new(keydata.mnemonic.trim(), Language::English)?;
+        let prv_key_data = PrvKeyData::try_new_from_mnemonic(mnemonic, None)?;
+        let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
+        if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
+            return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
+        }
 
-        // let stored_account = storage::Account::new(
-        //     None,
-        //     None,
-        //     storage::AccountKind::Legacy,
-        //     0,
-        //     false,
-        //     PubKeyData::new(vec![], None, None),
-        //     prv_key_data.id,
-        //     false,
-        //     1,
-        //     0,
-        // );
+        let prv_key_data_id = prv_key_data.id;
 
-        // let account = dyn Account::try_new_arc_from_storage(self, &stored_account).await?;
+        let data = storage::Legacy { prv_key_data_id };
+        let settings = storage::Settings { is_visible: true, name: None, title: None };
+        let account = runtime::account::Legacy::try_new(self, &prv_key_data_id, &settings, &data).await?;
+        let account_id = AccountId::from_legacy(&prv_key_data_id, &data);
+        prv_key_data_store.store(&ctx, prv_key_data).await?;
+        let account_store = self.inner.store.as_account_store()?;
 
-        // prv_key_data_store.store(&ctx, prv_key_data).await?;
-        // let account_store = self.inner.store.as_account_store()?;
-        // account_store.store(&[&stored_account]).await?;
-        // self.inner.store.commit(&ctx).await?;
-        // account.start().await?;
-        // Ok(account)
+        let stored_account = storage::Account::new(account_id, prv_key_data_id, settings, AccountData::Legacy(data.clone()));
+
+        account_store.store(&[&stored_account]).await?;
+        self.inner.store.commit(&ctx).await?;
+        Ok(Arc::new(account))
     }
 
     pub async fn import_gen1_keydata(self: &Arc<Wallet>, secret: Secret) -> Result<()> {

@@ -10,7 +10,6 @@ use crate::AddressDerivationManager;
 pub struct Legacy {
     inner: Arc<Inner>,
     prv_key_data_id: PrvKeyDataId,
-    xpub_keys: Arc<Vec<String>>,
     derivation: Arc<AddressDerivationManager>,
 }
 
@@ -25,16 +24,9 @@ impl Legacy {
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
         let derivation =
-            AddressDerivationManager::new(wallet, AccountKind::Legacy, &data.xpub_keys, false, None, None, None, None).await?;
+            AddressDerivationManager::new(wallet, AccountKind::Legacy, &data.xpub_keys, false, 0, None, None, None, None).await?;
 
-        Ok(Self {
-            inner,
-            prv_key_data_id: prv_key_data_id.clone(),
-            // account_index : data.account_index,
-            xpub_keys: data.xpub_keys.clone(),
-            // ecdsa: data.ecdsa,
-            derivation,
-        })
+        Ok(Self { inner, prv_key_data_id: prv_key_data_id.clone(), derivation })
     }
 }
 
@@ -78,12 +70,7 @@ impl Account for Legacy {
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
 
-        let legacy = storage::Legacy {
-            // prv_key_data_id: self.prv_key_data_id,
-            // account_index: self.account_index,
-            xpub_keys: self.xpub_keys.clone(),
-            // ecdsa: self.ecdsa,
-        };
+        let legacy = storage::Legacy { prv_key_data_id: self.prv_key_data_id };
 
         let account =
             storage::Account::new(self.id_ref().clone(), self.prv_key_data_id, settings, storage::AccountData::Legacy(legacy));

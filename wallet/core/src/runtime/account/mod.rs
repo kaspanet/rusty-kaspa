@@ -13,6 +13,7 @@ pub use variants::*;
 #[allow(unused_imports)]
 use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::derivation::build_derivate_paths;
+use crate::derivation::AddressDerivationManager;
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Balance, BalanceStrings, Wallet};
@@ -24,7 +25,6 @@ use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoEntryReference};
 use kaspa_notify::listener::ListenerId;
 use separator::Separatable;
 use workflow_core::abortable::Abortable;
-use crate::derivation::AddressDerivationManager;
 
 use super::AtomicBalance;
 
@@ -223,7 +223,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
                 // - TODO - Handle Keypair & Resident accounts
                 // - TODO - Handle Keypair & Resident accounts
                 // - TODO - Handle Keypair & Resident accounts
-
             }
         }
 
@@ -298,7 +297,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
         abortable: &Abortable,
         notifier: Option<GenerationNotifier>,
     ) -> Result<(GeneratorSummary, Vec<kaspa_hashes::Hash>)> {
-
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
         let settings =
@@ -332,7 +330,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
         abortable: &Abortable,
         notifier: Option<GenerationNotifier>,
     ) -> Result<(GeneratorSummary, Vec<kaspa_hashes::Hash>)> {
-
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
 
@@ -531,10 +528,35 @@ pub trait DerivationCapableAccount: Account {
             private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
         }
 
-        Ok(private_keys)
+        create_private_keys(self.account_kind(), self.cosigner_index(), self.account_index(), keydata, payment_secret, receive, change)
     }
 }
 
 downcast_sync!(dyn DerivationCapableAccount);
 
+pub fn create_private_keys<'l>(
+    account_kind: AccountKind,
+    cosigner_index: u32,
+    account_index: u64,
+    keydata: &PrvKeyData,
+    payment_secret: &Option<Secret>,
+    receive: &[(&'l Address, u32)],
+    change: &[(&'l Address, u32)],
+) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
+    let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
+    let xkey = payload.get_xprv(payment_secret.as_ref())?;
 
+    let paths = build_derivate_paths(account_kind, account_index, cosigner_index)?;
+    let receive_xkey = xkey.clone().derive_path(paths.0)?;
+    let change_xkey = xkey.derive_path(paths.1)?;
+
+    let mut private_keys = vec![];
+    for (address, index) in receive.iter() {
+        private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+    }
+    for (address, index) in change.iter() {
+        private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+    }
+
+    Ok(private_keys)
+}

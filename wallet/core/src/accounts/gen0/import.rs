@@ -9,6 +9,7 @@ use cfb_mode::cipher::AsyncStreamCipher;
 use cfb_mode::cipher::KeyIvInit;
 use evpkdf::evpkdf;
 use faster_hex::{hex_decode, hex_string};
+use kaspa_bip32::{ExtendedPrivateKey, Language, Mnemonic, Prefix, SecretKey};
 use md5::Md5;
 use pbkdf2::{hmac::Hmac, pbkdf2};
 use serde::{Deserialize, Serialize};
@@ -39,15 +40,29 @@ impl Drop for PrivateKeyDataImplV0 {
     }
 }
 
+pub fn create_master_key_from_mnemonics(seed_words: &str) -> Result<ExtendedPrivateKey<SecretKey>> {
+    let mnemonic = Mnemonic::new(seed_words, Language::English)?;
+    let seed = mnemonic.to_seed("");
+    let xprv = ExtendedPrivateKey::<SecretKey>::new(seed).unwrap();
+    Ok(xprv)
+}
+
 #[derive(Debug)]
 pub struct PrivateKeyDataV0 {
-    key: String, // TODO - use XPrv
     pub mnemonic: String,
+}
+
+impl PrivateKeyDataV0 {
+    pub fn key(&self) -> Result<ExtendedPrivateKey<SecretKey>> {
+        create_master_key_from_mnemonics(&self.mnemonic)
+    }
+    pub fn xprv(&self) -> Result<String> {
+        Ok(self.key()?.to_string(Prefix::XPRV).to_string())
+    }
 }
 
 impl Drop for PrivateKeyDataV0 {
     fn drop(&mut self) {
-        self.key.zeroize();
         self.mnemonic.zeroize();
     }
 }
@@ -55,7 +70,12 @@ impl Drop for PrivateKeyDataV0 {
 impl TryFrom<PrivateKeyDataImplV0> for PrivateKeyDataV0 {
     type Error = Error;
     fn try_from(value: PrivateKeyDataImplV0) -> Result<Self, Self::Error> {
-        Ok(PrivateKeyDataV0 { key: value.privKey.clone(), mnemonic: value.seedPhrase.clone() })
+        let key = create_master_key_from_mnemonics(&value.seedPhrase)?.to_string(Prefix::XPRV).to_string();
+        if !key.eq(&value.privKey) {
+            return Err(Error::Custom("privKey dose not matches with drived xprv from given seeds".into()));
+        }
+
+        Ok(PrivateKeyDataV0 { mnemonic: value.seedPhrase.clone() })
     }
 }
 
@@ -111,7 +131,8 @@ fn get_v0_string(data: &str, phrase: &Secret) -> Result<String> {
 fn aes_decrypt_v0(key: &[u8], iv: &[u8], content: &mut [u8]) -> Result<String> {
     Aes256CfbDec::new(key.into(), iv.into()).decrypt(content);
     let last = content.len() - *content.last().unwrap() as usize;
-    let json = String::from_utf8(content[0..last].to_vec()).unwrap();
+    let json = String::from_utf8(content[0..last].to_vec())
+        .or_else(|_| Err(Error::Custom("Unable to decrypt wallet - invalid password".into())))?;
     Ok(json)
 }
 
@@ -174,7 +195,7 @@ fn test_v0_keydata() {
     let secret = Secret::new(b"Hunter44!".to_vec());
     let keydata = get_v0_keydata(data, &secret).unwrap();
     assert_eq!(
-        keydata.key,
+        keydata.xprv().unwrap(),
         "xprv9s21ZrQH143K4QGJm8SHAMTuw8ca8Hk4DdG31eNcMARmkcg4tojEmeYx6dtqXAJbodJJ6FvJLKtBygB7hYiDXNhn21CQ1j5aJmfahJfwN8f"
     );
     assert_eq!(keydata.mnemonic, "interest denial place quick stay suit token shadow side ski knife entire");
