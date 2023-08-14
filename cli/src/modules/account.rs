@@ -119,6 +119,9 @@ impl Account {
         let _ = ctx.notifier().show(Notification::Processing).await;
         let abortable = Abortable::new();
         let ctx_ = ctx.clone();
+
+        let account = account.as_derivation_capable()?;
+
         account
             .derivation_scan(
                 wallet_secret,

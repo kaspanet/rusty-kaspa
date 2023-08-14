@@ -2,6 +2,7 @@ use crate::imports::*;
 use kaspa_cli::metrics::MetricsSnapshot;
 
 static mut TERMINAL: Option<Arc<Terminal>> = None;
+static mut SHUTDOWN_ATTEMPTS: usize = 0;
 
 #[derive(Clone)]
 pub struct Terminal {
@@ -190,6 +191,13 @@ impl Terminal {
     fn register_window_handlers(self: &Arc<Self>) -> Result<()> {
         let this = self.clone();
         let close = callback!(move || {
+            unsafe {
+                SHUTDOWN_ATTEMPTS += 1;
+                if SHUTDOWN_ATTEMPTS >= 3 {
+                    nw_sys::app::quit();
+                }
+            }
+
             let this = this.clone();
             spawn(async move {
                 this.cli.shutdown().await.unwrap_or_else(|err| log_error!("Error during shutdown: `{err}`"));

@@ -13,7 +13,7 @@ pub mod estimate;
 pub mod exit;
 pub mod export;
 pub mod guide;
-// pub mod halt;
+pub mod halt;
 pub mod help;
 pub mod history;
 pub mod import;
@@ -54,6 +54,7 @@ pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
             account, address, close, connect, details, disconnect, estimate, exit, export, guide, help, history, import, rpc, list,
             miner, monitor, mute, network, node, open, ping, reload, select, send, server, settings, sweep, track, transfer,
             wallet,
+            // halt,
             // theme,  start, stop
         ]
     );

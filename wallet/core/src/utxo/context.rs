@@ -1,3 +1,4 @@
+use crate::encryption::sha256_hash;
 use crate::events::Events;
 use crate::imports::*;
 use crate::result::Result;
@@ -7,18 +8,20 @@ use crate::tx::PendingTransaction;
 use crate::utxo::{
     PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext,
 };
+use kaspa_hashes::Hash;
 use kaspa_rpc_core::GetUtxosByAddressesResponse;
 use serde_wasm_bindgen::from_value;
 use sorted_insert::SortedInsertBinaryByKey;
 use workflow_wasm::abi::ref_from_abi;
 
 static PROCESSOR_ID_SEQUENCER: AtomicU64 = AtomicU64::new(0);
-fn next_processor_id() -> u64 {
-    PROCESSOR_ID_SEQUENCER.fetch_add(1, Ordering::SeqCst)
+fn next_processor_id() -> Hash {
+    let id = PROCESSOR_ID_SEQUENCER.fetch_add(1, Ordering::SeqCst);
+    Hash::from_slice(sha256_hash(id.to_le_bytes().as_slice()).as_ref())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct UtxoContextId(pub(crate) u64);
+pub struct UtxoContextId(pub(crate) Hash);
 
 impl Default for UtxoContextId {
     fn default() -> Self {
@@ -39,7 +42,7 @@ impl From<&AccountId> for UtxoContextId {
 }
 
 impl UtxoContextId {
-    pub fn new(id: u64) -> Self {
+    pub fn new(id: Hash) -> Self {
         UtxoContextId(id)
     }
 
@@ -51,7 +54,8 @@ impl UtxoContextId {
 
 impl ToHex for UtxoContextId {
     fn to_hex(&self) -> String {
-        format!("{:x}", self.0)
+        self.0.to_hex()
+        // format!("{}", self.0)
     }
 }
 
@@ -538,12 +542,12 @@ impl UtxoContext {
 
     // #[wasm_bindgen(constructor)]
     // pub fn constructor(core: &JsValue, id_or_account : &JsValue, utxo_by_address_response: JsValue) -> Result<UtxoProcessor> {
-    pub fn from(processor: &JsValue, id: u32, utxo_by_address_response: JsValue) -> Result<UtxoContext> {
+    pub fn from(processor: &JsValue, id: Hash, utxo_by_address_response: JsValue) -> Result<UtxoContext> {
         let processor = ref_from_abi!(UtxoProcessor, processor)?;
         let r: GetUtxosByAddressesResponse = from_value(utxo_by_address_response)?;
         let mut entries = r.entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
         entries.sort_by_key(|e| e.amount());
-        let binding = UtxoContextBinding::Id(UtxoContextId::new(id as u64));
+        let binding = UtxoContextBinding::Id(UtxoContextId::new(id));
         let utxo_context = UtxoContext::new_with_mature_entries(&processor, binding, entries);
         Ok(utxo_context)
     }

@@ -15,7 +15,7 @@ impl Address {
             let op = argv.first().unwrap();
             match op.as_str() {
                 "new" => {
-                    let account = ctx.wallet().account()?;
+                    let account = ctx.wallet().account()?.as_derivation_capable()?;
                     let ident = account.name_with_id();
                     let new_address = account.new_receive_address().await?;
                     tprintln!(ctx, "Generating new address for account {}", style(ident).cyan());

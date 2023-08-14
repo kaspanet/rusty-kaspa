@@ -49,6 +49,11 @@ pub fn sompi_to_kaspa(sompi: u64) -> f64 {
 }
 
 #[inline]
+pub fn kaspa_to_sompi(kaspa: f64) -> u64 {
+    (kaspa * SOMPI_PER_KASPA as f64) as u64
+}
+
+#[inline]
 pub fn sompi_to_kaspa_string(sompi: u64) -> String {
     sompi_to_kaspa(sompi).separated_string()
 }

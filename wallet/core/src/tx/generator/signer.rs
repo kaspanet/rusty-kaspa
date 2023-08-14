@@ -16,7 +16,7 @@ pub trait SignerT: Send + Sync + 'static {
 
 struct Inner {
     keydata: PrvKeyData,
-    account: Arc<Account>,
+    account: Arc<dyn Account>,
     payment_secret: Option<Secret>,
     // keys : Mutex<HashMap<Address, secp256k1::SecretKey>>,
     keys: Mutex<HashMap<Address, [u8; 32]>>,
@@ -27,17 +27,25 @@ pub struct Signer {
 }
 
 impl Signer {
-    pub fn new(account: &Arc<Account>, keydata: PrvKeyData, payment_secret: Option<Secret>) -> Self {
-        Self { inner: Arc::new(Inner { keydata, account: account.clone(), payment_secret, keys: Mutex::new(HashMap::new()) }) }
+    pub fn new(account: Arc<dyn Account>, keydata: PrvKeyData, payment_secret: Option<Secret>) -> Self {
+        Self { inner: Arc::new(Inner { keydata, account, payment_secret, keys: Mutex::new(HashMap::new()) }) }
     }
 
     fn ingest(&self, addresses: &[Address]) -> Result<()> {
         let mut keys = self.inner.keys.lock().unwrap();
         let addresses = addresses.iter().filter(|a| !keys.contains_key(a)).collect::<Vec<_>>();
         if !addresses.is_empty() {
-            let (receive, change) = self.inner.account.derivation.addresses_indexes(&addresses)?;
-            let private_keys =
-                self.inner.account.create_private_keys(&self.inner.keydata, &self.inner.payment_secret, &receive, &change)?;
+            // -------  TODO  -------
+            // -------  TODO  -------
+            // -------  TODO  -------
+            let account = self.inner.account.clone().as_derivation_capable().expect("expecting derivation capable");
+            // -------  TODO  -------
+            // -------  TODO  -------
+            // -------  TODO  -------
+            //downcast_arc::<Arc<DerivationCapableAccount>>()?;
+
+            let (receive, change) = account.derivation().addresses_indexes(&addresses)?;
+            let private_keys = account.create_private_keys(&self.inner.keydata, &self.inner.payment_secret, &receive, &change)?;
             for (address, private_key) in private_keys {
                 keys.insert(address.clone(), private_key.to_bytes());
             }

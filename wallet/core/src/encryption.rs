@@ -179,7 +179,7 @@ impl<'de> Deserialize<'de> for Encrypted {
 #[wasm_bindgen(js_name = "sha256")]
 pub fn js_sha256_hash(data: JsValue) -> Result<String> {
     let data = data.try_as_vec_u8()?;
-    let hash = sha256_hash(&data)?;
+    let hash = sha256_hash(&data);
     Ok(hash.as_ref().to_hex())
 }
 
@@ -190,20 +190,20 @@ pub fn js_argon2_sha256iv_phash(data: JsValue, byte_length: usize) -> Result<Str
     Ok(hash.as_ref().to_hex())
 }
 
-pub fn sha256_hash(data: &[u8]) -> Result<Secret> {
+pub fn sha256_hash(data: &[u8]) -> Secret {
     let mut sha256 = Sha256::new();
     sha256.update(data);
-    Ok(Secret::new(sha256.finalize().to_vec()))
+    Secret::new(sha256.finalize().to_vec())
 }
 
-pub fn sha256d_hash(data: &[u8]) -> Result<Secret> {
+pub fn sha256d_hash(data: &[u8]) -> Secret {
     let mut sha256 = Sha256::new();
     sha256.update(data);
     sha256_hash(sha256.finalize().as_slice())
 }
 
 pub fn argon2_sha256iv_hash(data: &[u8], byte_length: usize) -> Result<Secret> {
-    let salt = sha256_hash(data)?;
+    let salt = sha256_hash(data);
     let mut key = vec![0u8; byte_length];
     Argon2::default().hash_password_into(data, salt.as_ref(), &mut key)?;
     Ok(key.into())
@@ -211,7 +211,7 @@ pub fn argon2_sha256iv_hash(data: &[u8], byte_length: usize) -> Result<Secret> {
 
 #[wasm_bindgen(js_name = "encryptXChaCha20Poly1305")]
 pub fn js_encrypt_xchacha20poly1305(text: String, password: String) -> Result<String> {
-    let secret = sha256_hash(password.as_bytes())?;
+    let secret = sha256_hash(password.as_bytes());
     let encrypted = encrypt_xchacha20poly1305(text.as_bytes(), &secret)?;
     Ok(general_purpose::STANDARD.encode(encrypted))
 }
@@ -230,7 +230,7 @@ pub fn encrypt_xchacha20poly1305(data: &[u8], secret: &Secret) -> Result<Vec<u8>
 
 #[wasm_bindgen(js_name = "decryptXChaCha20Poly1305")]
 pub fn js_decrypt_xchacha20poly1305(text: String, password: String) -> Result<String> {
-    let secret = sha256_hash(password.as_bytes())?;
+    let secret = sha256_hash(password.as_bytes());
     let encrypted = decrypt_xchacha20poly1305(text.as_bytes(), &secret)?;
     let decoded = general_purpose::STANDARD.decode(encrypted)?;
     Ok(String::from_utf8(decoded)?)

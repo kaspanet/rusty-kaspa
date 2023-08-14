@@ -9,7 +9,7 @@ use std::{
     str::{self, FromStr},
 };
 use wasm_bindgen::prelude::*;
-use workflow_wasm::jsvalue::JsValueTrait;
+use workflow_wasm::{abi::ref_from_abi, jsvalue::JsValueTrait};
 
 use crate::{
     hashing,
@@ -41,6 +41,7 @@ pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 #[derive(Default, Debug, PartialEq, Eq, Clone, Hash)]
 #[wasm_bindgen(inspectable)]
 pub struct ScriptPublicKey {
+    #[wasm_bindgen(skip)]
     pub version: ScriptPublicKeyVersion,
     script: ScriptVec, // Kept private to preserve read-only semantics
 }
@@ -168,6 +169,20 @@ impl BorshSchema for ScriptPublicKey {
 
     fn declaration() -> borsh::schema::Declaration {
         "ScriptPublicKey".to_string()
+    }
+}
+
+impl TryFrom<JsValue> for ScriptPublicKey {
+    type Error = JsValue;
+
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        if let Ok(script_public_key) = ref_from_abi!(ScriptPublicKey, &js_value) {
+            Ok(script_public_key)
+        } else if let Some(hex_str) = js_value.as_string() {
+            Self::from_str(&hex_str).map_err(|e| JsValue::from_str(&format!("{}", e)))
+        } else {
+            Err(JsValue::from_str(&format!("Unable to convert ScriptPublicKey from: {js_value:?}")))
+        }
     }
 }
 

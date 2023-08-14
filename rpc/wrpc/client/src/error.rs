@@ -9,6 +9,9 @@ use workflow_wasm::printable::*;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("{0}")]
+    Custom(String),
+
     #[error("wRPC address error -> {0}")]
     AddressError(String),
 
@@ -35,6 +38,15 @@ pub enum Error {
 
     #[error("{0}")]
     ToValue(String),
+
+    #[error("invalid network type: {0}")]
+    NetworkType(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
+}
+
+impl Error {
+    pub fn custom<T: std::fmt::Display>(msg: T) -> Self {
+        Error::Custom(msg.to_string())
+    }
 }
 
 impl<T> From<ChannelError<T>> for Error {

@@ -29,11 +29,15 @@ impl Wallet {
     #[wasm_bindgen(constructor)]
     // pub fn constructor(js_value: JsValue) -> std::result::Result<Wallet, JsError> {
     pub fn constructor(js_value: JsValue) -> Result<Wallet> {
-        let args = WalletCtorArgs::try_from(js_value)?;
+        let WalletCtorArgs { resident, network_id, encoding, url } = WalletCtorArgs::try_from(js_value)?;
 
-        let store = Arc::new(LocalStore::try_new(args.resident)?);
-        let rpc = RpcClient::new(WrpcEncoding::Borsh, "wrpc://127.0.0.1:17110");
-        let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc.client().clone()), store, args.network_id)?);
+        let store = Arc::new(LocalStore::try_new(resident)?);
+        let rpc = RpcClient::new(
+            encoding.unwrap_or(WrpcEncoding::Borsh),
+            url.unwrap_or("wrpc://127.0.0.1:17110".to_string()).as_str(),
+            None,
+        )?;
+        let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc.client().clone()), store, network_id)?);
         let events = MultiplexerClient::default();
 
         Ok(Self { wallet, events, rpc })
@@ -154,19 +158,21 @@ impl Wallet {
 
     #[wasm_bindgen(js_name = "createAccount")]
     pub async fn create_account(&self, prv_key_data_id: String, account_args: &JsValue) -> Result<JsValue> {
-        let account_args: AccountCreateArgs = account_args.try_into()?;
-        let prv_key_data_id =
+        let _account_args: AccountCreateArgs = account_args.try_into()?;
+        let _prv_key_data_id =
             PrvKeyDataId::from_hex(&prv_key_data_id).map_err(|err| Error::KeyId(format!("{} : {err}", prv_key_data_id)))?;
 
-        match account_args.account_kind {
-            AccountKind::Bip32 | AccountKind::Legacy => {
-                let account = self.wallet.create_bip32_account(prv_key_data_id, account_args.into()).await?;
-                Ok(Account::try_new(account).await?.into())
-            }
-            AccountKind::MultiSig => {
-                todo!()
-            }
-        }
+        todo!()
+
+        // match account_args.account_kind {
+        //     AccountKind::Bip32 | AccountKind::Legacy => {
+        //         let account = self.wallet.create_bip32_account(prv_key_data_id, account_args.into()).await?;
+        //         Ok(Account::try_new(account).await?.into())
+        //     }
+        //     AccountKind::MultiSig => {
+        //         todo!()
+        //     }
+        // }
     }
 
     pub async fn ping(&self) -> bool {
@@ -200,6 +206,8 @@ impl Wallet {
 struct WalletCtorArgs {
     resident: bool,
     network_id: Option<NetworkId>,
+    encoding: Option<WrpcEncoding>,
+    url: Option<String>,
 }
 
 impl TryFrom<JsValue> for WalletCtorArgs {
@@ -208,7 +216,7 @@ impl TryFrom<JsValue> for WalletCtorArgs {
         if let Some(object) = Object::try_from(&js_value) {
             let resident = object.get("resident")?.as_bool().unwrap_or(false);
 
-            let network_id = object.get("networkType")?;
+            let network_id = object.get("networkId")?;
             let network_id = if let Some(network_id) = network_id.as_string() {
                 let network_id = NetworkId::from_str(network_id.as_str())?;
                 Some(network_id)
@@ -216,7 +224,17 @@ impl TryFrom<JsValue> for WalletCtorArgs {
                 None
             };
 
-            Ok(Self { resident, network_id })
+            let encoding = object.get("encoding")?;
+            let encoding = if let Some(encoding) = encoding.as_string() {
+                let encoding = WrpcEncoding::from_str(encoding.as_str())?;
+                Some(encoding)
+            } else {
+                None
+            };
+
+            let url = object.get("url")?.as_string();
+
+            Ok(Self { resident, network_id, encoding, url })
         } else {
             Ok(WalletCtorArgs::default())
         }

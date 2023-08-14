@@ -2,20 +2,17 @@ use crate::imports::*;
 use crate::wasm::keypair::PrivateKey;
 use crate::wasm::tx::MutableTransaction;
 use crate::Result;
-use itertools::Itertools;
+// use itertools::Itertools;
 use js_sys::Array;
 use kaspa_consensus_core::{
-    hashing::{
-        sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
-        sighash_type::SIG_HASH_ALL,
-    },
-    sign::verify,
+    hashing::sighash_type::SIG_HASH_ALL,
+    sign::{sign_with_multiple_v2, verify},
     tx::SignableTransaction,
 };
 use kaspa_hashes::Hash;
 use serde_wasm_bindgen::from_value;
-use std::collections::BTreeMap;
-use std::iter::once;
+// use std::collections::BTreeMap;
+// use std::iter::once;
 use workflow_log::log_trace;
 use workflow_wasm::abi::TryFromJsValue;
 
@@ -49,13 +46,13 @@ impl Signer {
 
     #[wasm_bindgen(js_name = "signTransaction")]
     pub fn sign_transaction(&self, mtx: MutableTransaction, verify_sig: bool) -> Result<MutableTransaction> {
-        sign_mutable_transaction(mtx, &self.private_keys(), verify_sig).map_err(|err| Error::Custom(err.to_string()))
+        sign_mutable_transaction(mtx, self.private_keys(), verify_sig).map_err(|err| Error::Custom(err.to_string()))
     }
 }
 
 impl SignerTrait for Signer {
     fn sign(&self, mtx: SignableTransaction) -> Result<SignableTransaction> {
-        let mtx = sign_transaction(mtx, &self.private_keys(), self.verify).map_err(|err| Error::Custom(err.to_string()))?;
+        let mtx = sign_transaction(mtx, self.private_keys(), self.verify).map_err(|err| Error::Custom(err.to_string()))?;
 
         Ok(mtx)
     }
@@ -77,7 +74,7 @@ impl TryFrom<PrivateKeyArray> for Vec<PrivateKey> {
     fn try_from(keys: PrivateKeyArray) -> std::result::Result<Self, Self::Error> {
         let mut private_keys: Vec<PrivateKey> = vec![];
         for key in keys.iter() {
-            private_keys.push(PrivateKey::try_from(&key).map_err(|_| Self::Error::Custom("Unable to cast PrivateKey".to_string()))?);
+            private_keys.push(PrivateKey::try_from(key).map_err(|_| Self::Error::Custom("Unable to cast PrivateKey".to_string()))?);
         }
 
         Ok(private_keys)
@@ -90,32 +87,28 @@ pub fn js_sign_transaction(mtx: MutableTransaction, signer: PrivateKeyArrayOrSig
     if signer.is_array() {
         let mut private_keys: Vec<[u8; 32]> = vec![];
         for key in Array::from(&signer).iter() {
-            let key = PrivateKey::try_from(&key).map_err(|_| Error::Custom("Unable to cast PrivateKey".to_string()))?;
+            let key = PrivateKey::try_from(key).map_err(|_| Error::Custom("Unable to cast PrivateKey".to_string()))?;
             private_keys.push(key.secret_bytes());
         }
 
-        let mtx = sign_mutable_transaction(mtx, &private_keys, verify_sig)
+        let mtx = sign_mutable_transaction(mtx, private_keys, verify_sig)
             .map_err(|err| Error::Custom(format!("Unable to sign: {err:?}")))?;
-        return Ok(mtx);
+        Ok(mtx)
+    } else {
+        let signer = Signer::try_from(&JsValue::from(signer)).map_err(|_| Error::Custom("Unable to cast Signer".to_string()))?;
+        // log_trace!("\nSigning via Signer: {signer:?}....\n");
+        signer.sign_transaction(mtx, verify_sig)
     }
-
-    let signer = Signer::try_from(&JsValue::from(signer)).map_err(|_| Error::Custom("Unable to cast Signer".to_string()))?;
-    log_trace!("\nSigning via Signer: {signer:?}....\n");
-    signer.sign_transaction(mtx, verify_sig)
 }
 
-pub fn sign_mutable_transaction(
-    mtx: MutableTransaction,
-    private_keys: &Vec<[u8; 32]>,
-    verify_sig: bool,
-) -> Result<MutableTransaction> {
+pub fn sign_mutable_transaction(mtx: MutableTransaction, private_keys: Vec<[u8; 32]>, verify_sig: bool) -> Result<MutableTransaction> {
     let entries = mtx.entries.clone();
     let mtx = sign_transaction(mtx.try_into()?, private_keys, verify_sig)?;
     let mtx = MutableTransaction::try_from((mtx, entries))?;
     Ok(mtx)
 }
 
-pub fn sign_transaction(mtx: SignableTransaction, private_keys: &Vec<[u8; 32]>, verify_sig: bool) -> Result<SignableTransaction> {
+pub fn sign_transaction(mtx: SignableTransaction, private_keys: Vec<[u8; 32]>, verify_sig: bool) -> Result<SignableTransaction> {
     let mtx = sign(mtx, private_keys)?;
     if verify_sig {
         // let mtx_clone = mtx.clone();
@@ -128,33 +121,35 @@ pub fn sign_transaction(mtx: SignableTransaction, private_keys: &Vec<[u8; 32]>, 
     Ok(mtx)
 }
 
-/// Sign a transaction using schnorr
-pub fn sign(mut mutable_tx: SignableTransaction, privkeys: &Vec<[u8; 32]>) -> Result<SignableTransaction> {
-    let mut map = BTreeMap::new();
-    for privkey in privkeys {
-        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
-        let schnorr_public_key = schnorr_key.public_key().x_only_public_key().0;
-        let script_pub_key_script = once(0x20).chain(schnorr_public_key.serialize().into_iter()).chain(once(0xac)).collect_vec(); // TODO: Use script builder when available to create p2pk properly
-                                                                                                                                  //map.insert(schnorr_public_key.serialize(), schnorr_key);
-        map.insert(script_pub_key_script.to_hex(), schnorr_key);
-        //println!("schnorr_key.public_key().serialize(): {:x?}", schnorr_public_key.serialize())
-    }
-    // for i in 0..mutable_tx.tx.inputs.len() {
-    //     mutable_tx.tx.inputs[i].sig_op_count = 1;
-    // }
+/// Sign a transaction using schnorr, returns a new transaction with the signatures added.
+pub fn sign(mutable_tx: SignableTransaction, privkeys: Vec<[u8; 32]>) -> Result<SignableTransaction> {
+    Ok(sign_with_multiple_v2(mutable_tx, privkeys))
 
-    let mut reused_values = SigHashReusedValues::new();
-    for i in 0..mutable_tx.tx.inputs.len() {
-        let script = mutable_tx.entries[i].as_ref().unwrap().script_public_key.script().to_hex();
-        if let Some(schnorr_key) = map.get(&script) {
-            let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
-            let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
-            let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
-            // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
-            mutable_tx.tx.inputs[i].signature_script = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
-        }
-    }
-    Ok(mutable_tx)
+    // let mut map = BTreeMap::new();
+    // for privkey in privkeys {
+    //     let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
+    //     let schnorr_public_key = schnorr_key.public_key().x_only_public_key().0;
+    //     let script_pub_key_script = once(0x20).chain(schnorr_public_key.serialize().into_iter()).chain(once(0xac)).collect_vec(); // TODO: Use script builder when available to create p2pk properly
+    //                                                                                                                               //map.insert(schnorr_public_key.serialize(), schnorr_key);
+    //     map.insert(script_pub_key_script.to_hex(), schnorr_key);
+    //     //println!("schnorr_key.public_key().serialize(): {:x?}", schnorr_public_key.serialize())
+    // }
+    // // for i in 0..mutable_tx.tx.inputs.len() {
+    // //     mutable_tx.tx.inputs[i].sig_op_count = 1;
+    // // }
+
+    // let mut reused_values = SigHashReusedValues::new();
+    // for i in 0..mutable_tx.tx.inputs.len() {
+    //     let script = mutable_tx.entries[i].as_ref().unwrap().script_public_key.script().to_hex();
+    //     if let Some(schnorr_key) = map.get(&script) {
+    //         let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
+    //         let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+    //         let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
+    //         // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
+    //         mutable_tx.tx.inputs[i].signature_script = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
+    //     }
+    // }
+    // Ok(mutable_tx)
 }
 
 #[wasm_bindgen(js_name=signScriptHash)]

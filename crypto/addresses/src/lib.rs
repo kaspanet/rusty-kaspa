@@ -1,11 +1,9 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use js_sys::{Array, Object};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
-// use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
-// use wasm_bindgen::convert::FromWasmAbi;
-use js_sys::Object;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::object::*;
 
@@ -343,6 +341,26 @@ impl TryFrom<JsValue> for Address {
             let prefix: Prefix = object.get_string("prefix")?.as_str().try_into()?;
             let payload = object.get_string("payload")?; //.as_str();
             Self::decode_payload(prefix, &payload)
+        } else {
+            Err(AddressError::InvalidAddress)
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub struct AddressList(Vec<Address>);
+
+impl From<AddressList> for Vec<Address> {
+    fn from(address_list: AddressList) -> Self {
+        address_list.0
+    }
+}
+
+impl TryFrom<&JsValue> for AddressList {
+    type Error = AddressError;
+    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
+        if let Ok(array) = js_value.clone().dyn_into::<Array>() {
+            Ok(Self(array.iter().map(|v| v.try_into()).collect::<Result<Vec<Address>, AddressError>>()?))
         } else {
             Err(AddressError::InvalidAddress)
         }

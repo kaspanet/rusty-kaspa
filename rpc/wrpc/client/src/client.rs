@@ -278,9 +278,11 @@ impl KaspaRpcClient {
         &self.inner.ctl_multiplexer
     }
 
-    pub fn parse_url(&self, url: Option<String>, network_type: NetworkType) -> Result<Option<String>> {
-        // let url = url.unwrap_or("ws://127.0.0.1".to_string());
+    pub fn parse_url_with_network_type(&self, url: Option<String>, network_type: NetworkType) -> Result<Option<String>> {
+        Self::parse_url(url, self.inner.encoding, network_type)
+    }
 
+    pub fn parse_url(url: Option<String>, encoding: Encoding, network_type: NetworkType) -> Result<Option<String>> {
         let url = if let Some(url) = url {
             if url.starts_with("ws://") || url.starts_with("wss://") || url.starts_with("wrpc://") || url.starts_with("wrpcs://") {
                 Some(url)
@@ -300,7 +302,7 @@ impl KaspaRpcClient {
 
         let url = url.map(|url| {
             if url.split(':').collect::<Vec<_>>().len() < 3 {
-                let port = match self.inner.encoding {
+                let port = match encoding {
                     WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
                     WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
                 };

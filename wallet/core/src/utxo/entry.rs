@@ -1,11 +1,11 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Account, Balance};
-use crate::wasm::tx::{ScriptPublicKeyTrait, TransactionOutpoint, TransactionOutpointInner};
+use crate::wasm::tx::{TransactionOutpoint, TransactionOutpointInner};
 use itertools::Itertools;
 use kaspa_rpc_core::RpcUtxosByAddressesEntry;
 use std::cmp::Ordering;
-use workflow_wasm::abi::{ref_from_abi, TryFromJsValue};
+use workflow_wasm::abi::ref_from_abi;
 
 use super::UtxoContext;
 
@@ -66,7 +66,7 @@ impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TryFromJsValue)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoEntryReference {
     #[wasm_bindgen(skip)]
@@ -82,7 +82,7 @@ impl UtxoEntryReference {
 #[wasm_bindgen]
 impl UtxoEntryReference {
     #[wasm_bindgen(getter)]
-    pub fn data(&self) -> UtxoEntry {
+    pub fn entry(&self) -> UtxoEntry {
         self.as_ref().clone()
     }
 
@@ -96,19 +96,17 @@ impl UtxoEntryReference {
         self.utxo.outpoint.id_string()
     }
 
-    #[inline(always)]
+    #[wasm_bindgen(getter)]
     pub fn amount(&self) -> u64 {
         self.utxo.amount()
     }
 
-    #[inline(always)]
-    #[wasm_bindgen(js_name = "isCoinbase")]
+    #[wasm_bindgen(getter, js_name = "isCoinbase")]
     pub fn is_coinbase(&self) -> bool {
         self.utxo.entry.is_coinbase
     }
 
-    #[inline(always)]
-    #[wasm_bindgen(js_name = "blockDaaScore")]
+    #[wasm_bindgen(getter, js_name = "blockDaaScore")]
     pub fn block_daa_score(&self) -> u64 {
         self.utxo.entry.block_daa_score
     }
@@ -185,6 +183,16 @@ impl PartialOrd for UtxoEntryReference {
     }
 }
 
+pub trait TryIntoUtxoEntryReferences {
+    fn try_into_utxo_entry_references(&self) -> Result<Vec<UtxoEntryReference>>;
+}
+
+impl TryIntoUtxoEntryReferences for JsValue {
+    fn try_into_utxo_entry_references(&self) -> Result<Vec<UtxoEntryReference>> {
+        Array::from(self).iter().map(UtxoEntryReference::try_from).collect()
+    }
+}
+
 pub struct PendingUtxoEntryReferenceInner {
     pub entry: UtxoEntryReference,
     pub utxo_context: UtxoContext,
@@ -231,8 +239,8 @@ impl PendingUtxoEntryReference {
     }
 }
 
-impl From<(&Arc<Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
-    fn from((account, entry): (&Arc<Account>, UtxoEntryReference)) -> Self {
+impl From<(&Arc<dyn Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
+    fn from((account, entry): (&Arc<dyn Account>, UtxoEntryReference)) -> Self {
         Self::new(entry, (*account.utxo_context()).clone())
     }
 }
@@ -245,8 +253,14 @@ impl From<PendingUtxoEntryReference> for UtxoEntryReference {
 
 // ---
 
+/// A simple collection of UTXO entries. This struct is used to
+/// retain a set of UTXO entries in the WASM memory for faster
+/// processing. This struct keeps a list of entries represented
+/// by `UtxoEntryReference` struct. This data structure is used
+/// internally by the framework, but is exposed for convenience.
+/// Please consider using `UtxoContect` instead.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 pub struct UtxoEntries(Arc<Vec<UtxoEntryReference>>);
 
 impl UtxoEntries {
@@ -261,10 +275,12 @@ impl UtxoEntries {
 
 #[wasm_bindgen]
 impl UtxoEntries {
+    /// Create a new `UtxoEntries` struct with a set of entries.
     #[wasm_bindgen(constructor)]
     pub fn js_ctor(js_value: JsValue) -> Result<UtxoEntries> {
         js_value.try_into()
     }
+
     #[wasm_bindgen(getter = items)]
     pub fn get_items_as_js_array(&self) -> JsValue {
         let items = self.0.as_ref().clone().into_iter().map(<UtxoEntryReference as Into<JsValue>>::into);
@@ -281,7 +297,21 @@ impl UtxoEntries {
             .collect::<Vec<_>>();
         self.0 = Arc::new(items);
     }
+
+    /// Sort the contained entries by amount. Please note that
+    /// this function is not intended for use with large UTXO sets
+    /// as it duplicates the whole contained UTXO set while sorting.
+    pub fn sort(&mut self) {
+        let mut items = (*self.0).clone();
+        items.sort_by_key(|e| e.amount());
+        self.0 = Arc::new(items);
+    }
+
+    pub fn amount(&self) -> u64 {
+        self.0.iter().map(|e| e.amount()).sum()
+    }
 }
+
 impl UtxoEntries {
     pub fn items(&self) -> Arc<Vec<UtxoEntryReference>> {
         self.0.clone()
@@ -328,36 +358,45 @@ impl TryFrom<JsValue> for UtxoEntries {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
         if !js_value.is_array() {
-            return Err("UtxoEntries must be an array".into());
+            return Err("Data type spplied to UtxoEntries must be an Array".into());
         }
 
-        let mut list = vec![];
-        for entry in Array::from(&js_value).iter() {
-            list.push(match ref_from_abi!(UtxoEntryReference, &entry) {
-                Ok(value) => value,
-                Err(err) => {
-                    if !entry.is_object() {
-                        panic!("invalid UTXOEntry: {err}")
-                    }
-                    //log_trace!("entry: {:?}", entry);
-                    let object = Object::from(entry);
-                    let amount = object.get_u64("amount")?;
-                    let script_public_key = ScriptPublicKey::try_from_jsvalue(
-                        object.get("scriptPublicKey").map_err(|_| Error::Custom("missing `scriptPublicKey` property".into()))?,
-                    )?;
-                    let block_daa_score = object.get_u64("blockDaaScore")?;
-                    let is_coinbase = object.get_bool("isCoinbase")?;
-                    let address: Address = object.get_string("address")?.try_into()?;
-                    let outpoint: TransactionOutpoint = object.get("outpoint")?.try_into()?;
-                    UtxoEntry {
-                        address: address.into(),
-                        outpoint,
-                        entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
-                    }
-                    .into()
-                }
-            })
+        Ok(Self(Arc::new(js_value.try_into_utxo_entry_references()?)))
+    }
+}
+
+impl TryFrom<JsValue> for UtxoEntryReference {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
+        Self::try_from(&js_value)
+    }
+}
+
+impl TryFrom<&JsValue> for UtxoEntryReference {
+    type Error = Error;
+    fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
+        if let Ok(utxo_entry) = ref_from_abi!(UtxoEntry, js_value) {
+            Ok(Self::from(utxo_entry))
+        } else if let Ok(utxo_entry_reference) = ref_from_abi!(UtxoEntryReference, js_value) {
+            Ok(utxo_entry_reference)
+        } else if let Some(object) = Object::try_from(js_value) {
+            let address = Address::try_from(object.get("address")?)?;
+            let outpoint = TransactionOutpoint::try_from(object.get("outpoint")?)?;
+            let utxo_entry = Object::from(object.get("utxoEntry")?);
+            let amount = utxo_entry.get_u64("amount")?;
+            let script_public_key = ScriptPublicKey::try_from(utxo_entry.get("scriptPublicKey")?)?;
+            let block_daa_score = utxo_entry.get_u64("blockDaaScore")?;
+            let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
+
+            let utxo_entry = UtxoEntry {
+                address: Some(address),
+                outpoint,
+                entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
+            };
+
+            Ok(UtxoEntryReference::from(utxo_entry))
+        } else {
+            Err("Data type supplied to UtxoEntryReference must be an object".into())
         }
-        Ok(Self(Arc::new(list)))
     }
 }

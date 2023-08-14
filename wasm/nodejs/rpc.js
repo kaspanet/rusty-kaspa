@@ -2,16 +2,14 @@ globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket modul
 
 let kaspa = require('./kaspa/kaspa_wasm');
 let { RpcClient, 
-    Encoding, 
+    Encoding, NetworkType
 } = kaspa;
 kaspa.init_console_panic_hook();
 
 (async ()=>{
     
-    let URL = "ws://127.0.0.1:17110";
-    let rpc = new RpcClient(Encoding.Borsh,URL);
-    
-    console.log(`# connecting to ${URL}`)
+    let rpc = new RpcClient(Encoding.Borsh,"127.0.0.1", NetworkType.Testnet);
+    console.log(`# connecting to ${rpc.url}`)
     await rpc.connect();
 
     let info = await rpc.getBlockDagInfo();

@@ -123,6 +123,19 @@ impl Display for NetworkType {
     }
 }
 
+impl TryFrom<JsValue> for NetworkType {
+    type Error = NetworkTypeError;
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        if let Some(network_type) = js_value.as_string() {
+            Self::from_str(&network_type)
+        } else if let Some(v) = js_value.as_f64() {
+            Self::try_from(v as u8).map_err(|_| NetworkTypeError::InvalidNetworkType(format!("{js_value:?}")))
+        } else {
+            Err(NetworkTypeError::InvalidNetworkType(format!("{js_value:?}")))
+        }
+    }
+}
+
 #[derive(thiserror::Error, PartialEq, Eq, Debug, Clone)]
 pub enum NetworkIdError {
     #[error("Invalid network name prefix: {0}. The expected prefix is 'kaspa'.")]

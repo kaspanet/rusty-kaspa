@@ -341,7 +341,7 @@ impl AccountStore for LocalStoreInner {
         cache.accounts.store(accounts)?;
 
         let (extend, remove) = accounts.iter().fold((vec![], vec![]), |mut acc, account| {
-            if account.is_visible {
+            if account.settings.is_visible {
                 acc.0.push((account.id, (**account).clone()));
             } else {
                 acc.1.push(&account.id);

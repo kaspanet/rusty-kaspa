@@ -20,7 +20,9 @@ impl Wallet {
                 } else {
                     let name = argv.remove(0);
                     let name = name.trim().to_string();
-
+                    if name.as_str() == "wallet" {
+                        return Err(Error::custom("Wallet name cannot be 'wallet'"));
+                    }
                     Some(name)
                 };
 
@@ -29,6 +31,11 @@ impl Wallet {
             }
             "open" => {
                 let name = if let Some(name) = argv.first().cloned() {
+                    if name.as_str() == "wallet" {
+                        tprintln!(ctx, "you can not have a wallet named 'wallet'...");
+                        tprintln!(ctx, "perhaps you are looking to use 'open <name>'");
+                        return Ok(());
+                    }
                     Some(name)
                 } else {
                     ctx.wallet().settings().get(WalletSettings::Wallet).clone()

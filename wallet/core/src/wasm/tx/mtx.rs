@@ -1,7 +1,7 @@
 use crate::imports::*;
 use crate::utxo::UtxoEntries;
+use crate::wasm::tx::utils::script_hashes;
 use crate::wasm::tx::{Transaction, TransactionInput, TransactionOutput};
-use crate::wasm::utils::script_hashes;
 use kaspa_consensus_core::tx;
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
 use serde_wasm_bindgen::to_value;
@@ -139,7 +139,7 @@ impl TryFrom<MutableTransaction> for tx::MutableTransaction<tx::Transaction> {
 impl TryFrom<(tx::MutableTransaction<tx::Transaction>, UtxoEntries)> for MutableTransaction {
     type Error = Error;
     fn try_from(value: (tx::MutableTransaction<tx::Transaction>, UtxoEntries)) -> Result<Self, Self::Error> {
-        Ok(Self { tx: Arc::new(Mutex::new(value.0.tx.try_into()?)), entries: value.1 })
+        Ok(Self { tx: Arc::new(Mutex::new(value.0.tx.into())), entries: value.1 })
     }
 }
 
