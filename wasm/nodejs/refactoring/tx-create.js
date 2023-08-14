@@ -26,6 +26,7 @@ kaspa.init_console_panic_hook();
     } = parseArgs();
 
     const rpcHost = "127.0.0.1";
+    // Parse the url to automatically determine the port for the given host
     const rpcUrl = RpcClient.parseUrl(rpcHost, encoding, networkType);
     const rpc = new RpcClient(encoding, rpcUrl, networkType);
 

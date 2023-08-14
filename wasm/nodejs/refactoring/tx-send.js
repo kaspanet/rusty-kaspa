@@ -16,13 +16,19 @@ const {
 kaspa.init_console_panic_hook();
 
 (async () => {
-    const {
-        encoding,
-        address,
-    } = parseArgs();
+    const args = parseArgs({});
 
-    const URL = "ws://127.0.0.1:17110";
-    const rpc = new RpcClient(encoding, URL);
+    // Either NetworkType.Mainnet or NetworkType.Testnet
+    const networkType = args.networkType;
+    // Either Encoding.Borsh or Encoding.SerdeJson
+    const encoding = args.encoding;
+    // The kaspa address that was passed as an argument or a default one
+    const address = args.address ?? "kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd";
+
+    const rpcHost = "127.0.0.1";
+    // Parse the url to automatically determine the port for the given host
+    const rpcUrl = RpcClient.parseUrl(rpcHost, encoding, networkType);
+    const rpc = new RpcClient(encoding, rpcUrl, networkType);
 
     console.log(`# connecting to ${URL}`)
     await rpc.connect();
@@ -31,9 +37,8 @@ kaspa.init_console_panic_hook();
     const info = await rpc.getInfo();
     console.log("info", info);
 
-    const addr = new Address(address ?? "kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd");
     const addresses = [
-        addr,
+        address,
         //new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")
     ];
 
@@ -62,16 +67,16 @@ kaspa.init_console_panic_hook();
     console.log("utxos.*.data.entry", utxos.map(a => a.data.entry))
 
 
-    const output = new PaymentOutput(
-        addr,
-        amount
-    );
-    //console.log("output", output)
-    const outputs = new PaymentOutputs([output])
+    const outputs = [
+        [
+            address,
+            amount,
+        ]
+    ];
 
     console.log("outputs", outputs)
 
-    const changeAddress = addr;
+    const changeAddress = address;
 
     const priorityFee = 0;
     const tx = createTransaction(utxoSelection, outputs, changeAddress, priorityFee);
