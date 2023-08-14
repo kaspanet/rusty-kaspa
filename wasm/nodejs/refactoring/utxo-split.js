@@ -77,14 +77,9 @@ kaspa.init_console_panic_hook();
 
     let outputs = [];
     for (let i = 0; i < count; i++) {
-        const output = new PaymentOutput(
-            addr1,
-            amount
-        );
-        outputs.push(output)
+        outputs.push([addr1, amount]);
     }
     const priorityFee = 0n;
-    outputs = new PaymentOutputs(outputs)
 
     //console.log("outputs", outputs)
 
