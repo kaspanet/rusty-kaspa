@@ -1,11 +1,25 @@
+use std::fmt::Display;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::num::ParseIntError;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParseHostOutput<'a> {
-    scheme: Option<&'a str>,
-    host: Host<'a>,
-    port: Option<u16>,
+    pub scheme: Option<&'a str>,
+    pub host: Host<'a>,
+    pub port: Option<u16>,
+}
+
+impl Display for ParseHostOutput<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(scheme) = self.scheme {
+            write!(f, "{}://", scheme)?;
+        }
+        write!(f, "{}", self.host.to_string())?;
+        if let Some(port) = self.port {
+            write!(f, ":{}", port)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -14,6 +28,17 @@ pub enum Host<'a> {
     Hostname(&'a str),
     Ipv4(Ipv4Addr),
     Ipv6(Ipv6Addr),
+}
+
+impl ToString for Host<'_> {
+    fn to_string(&self) -> String {
+        match self {
+            Host::Domain(domain) => domain.to_string(),
+            Host::Hostname(hostname) => hostname.to_string(),
+            Host::Ipv4(ipv4) => ipv4.to_string(),
+            Host::Ipv6(ipv6) => ipv6.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
