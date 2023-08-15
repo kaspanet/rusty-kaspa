@@ -528,13 +528,13 @@ mod tests {
     use wasm_bindgen_test::wasm_bindgen_test;
     use workflow_wasm::{prelude::ObjectTrait, tovalue::from_value, tovalue::to_value};
 
-    wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_constructor() {
         let str = "kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j";
         let a = Address::constructor(str);
         let value = to_value(&a).unwrap();
+
+        assert_eq!(JsValue::from_str("string"), value.js_typeof());
         assert_eq!(value, JsValue::from_str(str));
         assert_eq!(a, from_value(value).unwrap());
     }
