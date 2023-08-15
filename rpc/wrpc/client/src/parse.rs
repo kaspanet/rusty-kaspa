@@ -36,7 +36,7 @@ impl ToString for Host<'_> {
             Host::Domain(domain) => domain.to_string(),
             Host::Hostname(hostname) => hostname.to_string(),
             Host::Ipv4(ipv4) => ipv4.to_string(),
-            Host::Ipv6(ipv6) => ipv6.to_string(),
+            Host::Ipv6(ipv6) => format!("[{}]", ipv6),
         }
     }
 }

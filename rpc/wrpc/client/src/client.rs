@@ -310,37 +310,6 @@ impl KaspaRpcClient {
         });
 
         Ok(Some(format!("{}://{}:{}", scheme, parse_output.host.to_string(), port)))
-        //
-        // let url = if let Some(url) = url {
-        //     if url.starts_with("ws://") || url.starts_with("wss://") || url.starts_with("wrpc://") || url.starts_with("wrpcs://") {
-        //         Some(url)
-        //     } else if application_runtime::is_web() {
-        //         let location = window().location();
-        //         let protocol = location
-        //             .protocol()
-        //             .map_err(|_| Error::AddressError("Unable to obtain window location protocol".to_string()))?
-        //             .replace("http", "ws");
-        //         Some(format!("{protocol}//{url}"))
-        //     } else {
-        //         Some(format!("ws://{url}"))
-        //     }
-        // } else {
-        //     None
-        // };
-        //
-        // let url = url.map(|url| {
-        //     if url.split(':').collect::<Vec<_>>().len() < 3 {
-        //         let port = match encoding {
-        //             WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
-        //             WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
-        //         };
-        //         format!("{url}:{port}")
-        //     } else {
-        //         url
-        //     }
-        // });
-        //
-        // Ok(url)
     }
 }
 
