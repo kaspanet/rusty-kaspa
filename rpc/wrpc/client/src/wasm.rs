@@ -327,38 +327,3 @@ impl RpcClient {
         Ok(response)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use js_sys::Object;
-    use kaspa_addresses::Address;
-    use wasm_bindgen::{JsValue, __rt::IntoJsResult};
-    use wasm_bindgen_test::wasm_bindgen_test;
-    use workflow_wasm::{prelude::ObjectTrait, tovalue::from_value, tovalue::to_value};
-
-    #[wasm_bindgen_test]
-    pub fn test_wasm_serde_constructor() {
-        let str = "kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j";
-        let a = Address::constructor(str);
-        let value = to_value(&a).unwrap();
-        assert_eq!(value, JsValue::from_str(str));
-        assert_eq!(a, from_value(value).unwrap());
-    }
-
-    #[wasm_bindgen_test]
-    pub fn test_wasm_serde_object() {
-        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
-
-        use web_sys::console;
-        console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
-
-        let obj = Object::new();
-        obj.set("version", &JsValue::from_str("PubKey")).unwrap();
-        obj.set("prefix", &JsValue::from_str("kaspa")).unwrap();
-        obj.set("payload", &JsValue::from_str("qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j")).unwrap();
-        let obj_js = obj.into_js_result().unwrap();
-        let actual = from_value(obj_js).unwrap();
-
-        assert_eq!(expected, actual);
-    }
-}
