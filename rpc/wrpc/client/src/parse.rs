@@ -108,17 +108,12 @@ pub fn parse_host(input: &str) -> Result<ParseHostOutput, ParseHostError> {
     });
     let does_not_start_with_hyphen = !host.starts_with('-');
     let does_not_end_with_hyphen = !host.ends_with('-');
-    let has_atleast_one_hyphen = host.contains('-');
+    let has_at_least_one_hyphen = host.contains('-');
     let hyphens_are_separated_by_valid_chars =
-        has_atleast_one_hyphen.then(|| host.split('-').all(|part| part.chars().all(|c| c.is_ascii_alphanumeric())));
+        has_at_least_one_hyphen.then(|| host.split('-').all(|part| part.chars().all(|c| c.is_ascii_alphanumeric())));
     let tld = host.split('.').last();
     // Prevents e.g. numbers being used as TLDs (which in turn prevents e.g. mistakes in IPv4 addresses as being detected as a domain).
-    let tld_exists_and_is_not_number = tld
-        .map(|tld| {
-            let tld_is_not_number = tld.parse::<i32>().is_err();
-            tld_is_not_number
-        })
-        .unwrap_or(false);
+    let tld_exists_and_is_not_number = tld.map(|tld| tld.parse::<i32>().is_err()).unwrap_or(false);
 
     if does_not_start_with_dot
         && does_not_end_with_dot
