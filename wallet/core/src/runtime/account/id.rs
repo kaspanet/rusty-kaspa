@@ -46,7 +46,7 @@ impl AccountId {
     pub(crate) fn from_bip32(prv_key_data_id: &PrvKeyDataId, data: &storage::account::Bip32) -> AccountId {
         let hashable = AccountIdHashData {
             account_kind: AccountKind::Bip32,
-            prv_key_data_id: Some(prv_key_data_id.clone()),
+            prv_key_data_id: Some(*prv_key_data_id),
             ecdsa: Some(data.ecdsa),
             account_index: Some(data.account_index),
             secp256k1_public_key: None,
@@ -58,7 +58,7 @@ impl AccountId {
     pub(crate) fn from_legacy(prv_key_data_id: &PrvKeyDataId, _data: &storage::account::Legacy) -> AccountId {
         let hashable = AccountIdHashData {
             account_kind: AccountKind::Legacy,
-            prv_key_data_id: Some(prv_key_data_id.clone()),
+            prv_key_data_id: Some(*prv_key_data_id),
             ecdsa: Some(false),
             account_index: Some(0),
             secp256k1_public_key: None,
@@ -70,7 +70,7 @@ impl AccountId {
     pub(crate) fn from_multisig(prv_key_data_id: &PrvKeyDataId, data: &storage::account::MultiSig) -> AccountId {
         let hashable = AccountIdHashData {
             account_kind: AccountKind::MultiSig,
-            prv_key_data_id: Some(prv_key_data_id.clone()),
+            prv_key_data_id: Some(*prv_key_data_id),
             ecdsa: Some(data.ecdsa),
             account_index: Some(0),
             secp256k1_public_key: None,
@@ -82,7 +82,7 @@ impl AccountId {
     pub(crate) fn from_keypair(prv_key_data_id: &PrvKeyDataId, data: &storage::account::Keypair) -> AccountId {
         let hashable = AccountIdHashData {
             account_kind: AccountKind::Keypair,
-            prv_key_data_id: Some(prv_key_data_id.clone()),
+            prv_key_data_id: Some(*prv_key_data_id),
             ecdsa: Some(data.ecdsa),
             account_index: None,
             secp256k1_public_key: Some(data.public_key.serialize().to_vec()),
@@ -90,61 +90,6 @@ impl AccountId {
         };
         AccountId(Hash::from_slice(sha256_hash(&hashable.try_to_vec().unwrap()).as_ref()))
     }
-
-    // pub(crate) fn from_storage_data(data : &storage::AccountData) -> AccountId {
-
-    //     let hashable = match data {
-    //         storage::AccountData::Legacy { prv_key_data_id,  .. } => {
-    //             AccountIdHashData {
-    //                 account_kind: AccountKind::Legacy,
-    //                 prv_key_data_id: Some(*prv_key_data_id), ecdsa : Some(false),
-    //                 account_index: Some(0),
-    //                 secp256k1_public_key: None,
-    //                 resident_data : None,
-    //             }
-    //         },
-    //         storage::AccountData::Bip32 { prv_key_data_id, ecdsa, account_index, .. } => {
-    //             AccountIdHashData {
-    //                 account_kind: AccountKind::Bip32,
-    //                 prv_key_data_id: Some(*prv_key_data_id),
-    //                 ecdsa: Some(*ecdsa),
-    //                 account_index: Some(*account_index),
-    //                 secp256k1_public_key: None,
-    //                 resident_data : None,
-    //             }
-    //         },
-    //         storage::AccountData::MultiSig { prv_key_data_id, ecdsa, account_index, .. } => {
-    //             AccountIdHashData {
-    //                 account_kind: AccountKind::MultiSig,
-    //                 prv_key_data_id: Some(*prv_key_data_id),
-    //                 ecdsa: Some(*ecdsa),
-    //                 account_index: Some(*account_index),
-    //                 secp256k1_public_key : None,
-    //                 resident_data : None,
-    //             }
-    //         },
-    //         storage::AccountData::Secp256k1Keypair { prv_key_data_id, public_key, ecdsa } => {
-    //             AccountIdHashData {
-    //                 account_kind: AccountKind::Secp256k1Keypair,
-    //                 prv_key_data_id: None,
-    //                 ecdsa: Some(*ecdsa),
-    //                 account_index: None,
-    //                 secp256k1_public_key: Some(public_key.serialize().to_vec()),
-    //                 resident_data : None,
-    //             }
-    //         },
-    //         // storage::AccountData::Resident { prv_key_data_id, ecdsa, account_index, .. } => {
-    //         //     AccountIdHashData { prv_key_data_id: *prv_key_data_id, ecdsa: *ecdsa,
-    //         //         account_kind: AccountKind::Resident, account_index: *account_index,
-    //         //     secp256k1_public_key: None }
-    //         // },
-    //     };
-
-    //     // let data = AccountIdHashData { prv_key_data_id: *prv_key_data_id, ecdsa, account_kind: *account_kind, account_index };
-    //     let hash = sha256_hash(hashable.try_to_vec().unwrap().as_slice());
-    //     AccountId(Hash::from_slice(hash.as_ref()))
-    //     // AccountId(xxh3_64(hashable.try_to_vec().unwrap().as_slice()))
-    // }
 
     pub fn from_public_key(account_kind: AccountKind, public_key: &PublicKey) -> Self {
         let hashable = AccountIdHashData {
@@ -169,10 +114,6 @@ impl AccountId {
         };
         AccountId(Hash::from_slice(sha256_hash(&hashable.try_to_vec().unwrap()).as_ref()))
     }
-    // pub(crate) fn new(prv_key_data_id: &PrvKeyDataId, ecdsa: bool, account_kind: &AccountKind, account_index: u64) -> AccountId {
-    //     let data = AccountIdHashData { prv_key_data_id: *prv_key_data_id, ecdsa, account_kind: *account_kind, account_index };
-    //     AccountId(xxh3_64(data.try_to_vec().unwrap().as_slice()))
-    // }
 
     pub fn short(&self) -> String {
         let hex = self.to_hex();

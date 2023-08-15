@@ -67,7 +67,7 @@ impl TransactionStore {
 
 #[async_trait]
 impl TransactionRecordStore for TransactionStore {
-    async fn transaction_id_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionId>> {
+    async fn transaction_id_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<Arc<TransactionId>>> {
         Ok(Box::pin(TransactionIdStream::try_new(self, binding, network_id).await?))
     }
 

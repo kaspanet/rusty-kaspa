@@ -4,14 +4,12 @@ use crate::runtime::{Account, Balance};
 use crate::wasm::tx::{TransactionOutpoint, TransactionOutpointInner};
 use itertools::Itertools;
 use kaspa_rpc_core::RpcUtxosByAddressesEntry;
-use std::cmp::Ordering;
 use workflow_wasm::abi::ref_from_abi;
 
 use super::UtxoContext;
 
 // thresholds for 1 BPS network
-pub const MATURITY_PERIOD_COINBASE_TRANSACTION: u64 = 128;
-pub const MATURITY_PERIOD_USER_TRANSACTION: u64 = 16;
+use crate::utxo::{UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION, UTXO_MATURITY_PERIOD_USER_TRANSACTION};
 
 pub type UtxoEntryId = TransactionOutpointInner;
 
@@ -45,9 +43,9 @@ impl UtxoEntry {
     #[inline(always)]
     pub fn is_mature(&self, current_daa_score: u64) -> bool {
         if self.is_coinbase() {
-            self.block_daa_score() + MATURITY_PERIOD_COINBASE_TRANSACTION < current_daa_score
+            self.block_daa_score() + UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION.load(Ordering::SeqCst) < current_daa_score
         } else {
-            self.block_daa_score() + MATURITY_PERIOD_USER_TRANSACTION < current_daa_score
+            self.block_daa_score() + UTXO_MATURITY_PERIOD_USER_TRANSACTION.load(Ordering::SeqCst) < current_daa_score
         }
     }
 
@@ -172,13 +170,13 @@ impl PartialEq for UtxoEntryReference {
 }
 
 impl Ord for UtxoEntryReference {
-    fn cmp(&self, other: &Self) -> Ordering {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.id().cmp(&other.id())
     }
 }
 
 impl PartialOrd for UtxoEntryReference {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.id().cmp(&other.id()))
     }
 }

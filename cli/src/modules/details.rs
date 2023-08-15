@@ -12,7 +12,7 @@ impl Details {
         let derivation = account.derivation();
 
         let manager = derivation.receive_address_manager();
-        let index = manager.index()? + 1;
+        let index = manager.index() + 1;
         let addresses = manager.get_range_with_args(0..index, false).await?;
         tprintln!(ctx, "Receive addresses: {index}");
         addresses.iter().for_each(|address| {
@@ -20,7 +20,7 @@ impl Details {
         });
 
         let manager = derivation.change_address_manager();
-        let index = manager.index()? + 1;
+        let index = manager.index() + 1;
         let addresses = manager.get_range_with_args(0..index, false).await?;
         tprintln!(ctx, "Change addresses: {index}");
         addresses.iter().for_each(|address| {

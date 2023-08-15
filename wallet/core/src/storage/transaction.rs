@@ -350,9 +350,9 @@ impl TransactionRecord {
             .map(|score| {
                 // TODO - refactor @ high BPS processing
                 let maturity = if self.is_coinbase() {
-                    crate::utxo::entry::MATURITY_PERIOD_COINBASE_TRANSACTION
+                    crate::utxo::UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION.load(Ordering::SeqCst)
                 } else {
-                    crate::utxo::entry::MATURITY_PERIOD_USER_TRANSACTION
+                    crate::utxo::UTXO_MATURITY_PERIOD_USER_TRANSACTION.load(Ordering::SeqCst)
                 };
 
                 if score < self.block_daa_score() + maturity {

@@ -50,7 +50,7 @@ impl Scan {
         let window_size = self.window_size.unwrap_or(DEFAULT_WINDOW_SIZE) as u32;
 
         let mut cursor: u32 = 0;
-        let mut last_address_index = self.address_manager.index()?;
+        let mut last_address_index = self.address_manager.index();
 
         'scan: loop {
             // scan first up to address index, then in window chunks

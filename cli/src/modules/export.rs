@@ -25,7 +25,7 @@ impl Export {
                 }
 
                 let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
-                let prv_key_data = ctx.store().as_prv_key_data_store()?.load_key_data(&access_ctx, &prv_key_data_id).await?;
+                let prv_key_data = ctx.store().as_prv_key_data_store()?.load_key_data(&access_ctx, prv_key_data_id).await?;
                 if let Some(keydata) = prv_key_data {
                     let payment_secret = if keydata.payload.is_encrypted() {
                         let payment_secret =

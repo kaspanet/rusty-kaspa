@@ -47,11 +47,12 @@ impl Drop for AccessContext {
     }
 }
 
-pub type StorageStream<T> = Pin<Box<dyn Stream<Item = Result<Arc<T>>> + Send>>;
+// pub type StorageStream<T> = Pin<Box<dyn Stream<Item = Result<Arc<T>>> + Send>>;
+pub type StorageStream<T> = Pin<Box<dyn Stream<Item = Result<T>> + Send>>;
 
 #[async_trait]
 pub trait PrvKeyDataStore: Send + Sync {
-    async fn iter(&self) -> Result<StorageStream<PrvKeyDataInfo>>;
+    async fn iter(&self) -> Result<StorageStream<Arc<PrvKeyDataInfo>>>;
     async fn load_key_info(&self, id: &PrvKeyDataId) -> Result<Option<Arc<PrvKeyDataInfo>>>;
     async fn load_key_data(&self, ctx: &Arc<dyn AccessContextT>, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>>;
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: PrvKeyData) -> Result<()>;
@@ -60,17 +61,19 @@ pub trait PrvKeyDataStore: Send + Sync {
 
 #[async_trait]
 pub trait AccountStore: Send + Sync {
-    async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Account>>;
+    async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>)
+        -> Result<StorageStream<(Arc<Account>, Option<Arc<Metadata>>)>>;
     async fn len(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize>;
-    async fn load_single(&self, ids: &AccountId) -> Result<Option<Arc<Account>>>;
-    async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<Arc<Account>>>;
-    async fn store(&self, data: &[&Account]) -> Result<()>;
+    async fn load_single(&self, ids: &AccountId) -> Result<Option<(Arc<Account>, Option<Arc<Metadata>>)>>;
+    // async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<(Arc<Account>,Option<Arc<Metadata>>)>>;
+    async fn store_single(&self, account: &Account, metadata: Option<&Metadata>) -> Result<()>;
+    async fn store_multiple(&self, data: &[(&Account, Option<&Metadata>)]) -> Result<()>;
     async fn remove(&self, id: &[&AccountId]) -> Result<()>;
 }
 
 #[async_trait]
 pub trait AddressBookStore: Send + Sync {
-    async fn iter(&self) -> Result<StorageStream<AddressBookEntry>> {
+    async fn iter(&self) -> Result<StorageStream<Arc<AddressBookEntry>>> {
         Err(Error::NotImplemented)
     }
     async fn search(&self, _search: &str) -> Result<Vec<Arc<AddressBookEntry>>> {
@@ -78,15 +81,18 @@ pub trait AddressBookStore: Send + Sync {
     }
 }
 
-#[async_trait]
-pub trait MetadataStore: Send + Sync {
-    // async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>>;
-    async fn load(&self, id: &[AccountId]) -> Result<Vec<Arc<Metadata>>>;
-}
+// #[async_trait]
+// pub trait MetadataStore: Send + Sync {
+//     // async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>>;
+//     async fn load_single(&self, id: &AccountId) -> Result<Option<Arc<Metadata>>>;
+//     // async fn load(&self, id: &[AccountId]) -> Result<Vec<Arc<Metadata>>>;
+//     async fn store(&self, accounts: &[&Metadata]) -> Result<()>;
+
+// }
 
 #[async_trait]
 pub trait TransactionRecordStore: Send + Sync {
-    async fn transaction_id_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionId>>;
+    async fn transaction_id_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<Arc<TransactionId>>>;
     // async fn transaction_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionRecord>>;
     async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>>;
     async fn load_multiple(
@@ -166,7 +172,7 @@ pub trait Interface: Send + Sync + AnySync {
     fn as_prv_key_data_store(&self) -> Result<Arc<dyn PrvKeyDataStore>>;
     fn as_account_store(&self) -> Result<Arc<dyn AccountStore>>;
     fn as_address_book_store(&self) -> Result<Arc<dyn AddressBookStore>>;
-    fn as_metadata_store(&self) -> Result<Arc<dyn MetadataStore>>;
+    // fn as_metadata_store(&self) -> Result<Arc<dyn MetadataStore>>;
     fn as_transaction_record_store(&self) -> Result<Arc<dyn TransactionRecordStore>>;
 }
 

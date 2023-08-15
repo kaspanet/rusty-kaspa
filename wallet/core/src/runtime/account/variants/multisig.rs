@@ -3,9 +3,9 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::account::Inner;
-use crate::runtime::account::{Account, DerivationCapableAccount, AccountId, AccountKind};
+use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount};
 use crate::runtime::Wallet;
-use crate::storage::{self, PrvKeyDataId};
+use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
 use crate::AddressDerivationManager;
 
 pub struct MultiSig {
@@ -23,47 +23,33 @@ pub struct MultiSig {
 impl MultiSig {
     pub async fn try_new(
         wallet: &Arc<Wallet>,
-        prv_key_data_id: &PrvKeyDataId,
-        settings: &storage::account::Settings,
-        data: &storage::account::MultiSig,
+        prv_key_data_id: PrvKeyDataId,
+        settings: Settings,
+        data: storage::account::MultiSig,
+        meta: Option<Arc<Metadata>>,
     ) -> Result<Self> {
-        let id = AccountId::from_multisig(prv_key_data_id, data);
+        let id = AccountId::from_multisig(&prv_key_data_id, &data);
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
-        let storage::account::MultiSig {
-            account_index,
-            xpub_keys,
-            cosigner_index,
-            minimum_signatures,
-            ecdsa,
-        } = data;
+        let storage::account::MultiSig { account_index, xpub_keys, cosigner_index, minimum_signatures, ecdsa } = data;
+
+        let address_derivation_indexes = meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or_default();
 
         let derivation = AddressDerivationManager::new(
             wallet,
             AccountKind::Legacy,
-            xpub_keys,
+            &xpub_keys,
             false,
             0,
-            Some(*cosigner_index as u32),
-            Some(*minimum_signatures as u32),
-            None,
-            None,
+            Some(cosigner_index as u32),
+            minimum_signatures,
+            address_derivation_indexes,
         )
         .await?;
 
-        Ok(Self {
-            inner,
-            prv_key_data_id: prv_key_data_id.clone(),
-            account_index: *account_index,
-            xpub_keys: xpub_keys.clone(),
-            cosigner_index: *cosigner_index,
-            minimum_signatures: *minimum_signatures,
-            ecdsa: *ecdsa,
-            derivation,
-        })
+        Ok(Self { inner, prv_key_data_id, account_index, xpub_keys, cosigner_index, minimum_signatures, ecdsa, derivation })
     }
 }
-
 
 #[async_trait]
 impl Account for MultiSig {
@@ -101,9 +87,14 @@ impl Account for MultiSig {
             minimum_signatures: self.minimum_signatures,
         };
 
-        let account = storage::Account::new(self.id_ref().clone(), self.prv_key_data_id, settings, storage::AccountData::MultiSig(multisig));
+        let account = storage::Account::new(*self.id(), self.prv_key_data_id, settings, storage::AccountData::MultiSig(multisig));
 
         Ok(account)
+    }
+
+    fn metadata(&self) -> Result<Option<Metadata>> {
+        let metadata = Metadata::new(self.inner.id, self.derivation.address_derivation_meta());
+        Ok(Some(metadata))
     }
 
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {

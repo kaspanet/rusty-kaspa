@@ -10,5 +10,4 @@ pub use legacy::*;
 pub use multisig::*;
 pub use resident::*;
 
-
-// pub fn 
+// pub fn

@@ -22,7 +22,7 @@ impl From<UtxoProcessorBinding> for Binding {
 
 impl From<&Arc<dyn Account>> for Binding {
     fn from(account: &Arc<dyn Account>) -> Self {
-        Binding::Account(*account.id_ref())
+        Binding::Account(*account.id())
     }
 }
 

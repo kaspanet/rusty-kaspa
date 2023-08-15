@@ -17,7 +17,7 @@ impl Transfer {
 
         let target_account = argv.get(0).unwrap();
         let target_account = ctx.find_accounts_by_name_or_id(target_account).await?;
-        if target_account.id_ref() == account.id_ref() {
+        if target_account.id() == account.id() {
             return Err("Cannot transfer to the same account".into());
         }
         let amount_sompi = try_parse_required_nonzero_kaspa_as_sompi_u64(argv.get(1))?;

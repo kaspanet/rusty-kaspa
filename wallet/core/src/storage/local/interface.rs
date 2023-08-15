@@ -184,9 +184,9 @@ impl Interface for LocalStore {
         Ok(self.inner()?)
     }
 
-    fn as_metadata_store(&self) -> Result<Arc<dyn MetadataStore>> {
-        Ok(self.inner()?)
-    }
+    // fn as_metadata_store(&self) -> Result<Arc<dyn MetadataStore>> {
+    //     Ok(self.inner()?)
+    // }
 
     fn as_transaction_record_store(&self) -> Result<Arc<dyn TransactionRecordStore>> {
         Ok(self.inner()?.transactions.clone())
@@ -279,7 +279,7 @@ impl Interface for LocalStore {
 
 #[async_trait]
 impl PrvKeyDataStore for LocalStoreInner {
-    async fn iter(&self) -> Result<StorageStream<PrvKeyDataInfo>> {
+    async fn iter(&self) -> Result<StorageStream<Arc<PrvKeyDataInfo>>> {
         Ok(Box::pin(PrvKeyDataInfoStream::new(self.cache.clone())))
     }
 
@@ -315,7 +315,10 @@ impl PrvKeyDataStore for LocalStoreInner {
 
 #[async_trait]
 impl AccountStore for LocalStoreInner {
-    async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Account>> {
+    async fn iter(
+        &self,
+        prv_key_data_id_filter: Option<PrvKeyDataId>,
+    ) -> Result<StorageStream<(Arc<Account>, Option<Arc<Metadata>>)>> {
         Ok(Box::pin(AccountStream::new(self.cache.clone(), prv_key_data_id_filter)))
     }
 
@@ -328,38 +331,42 @@ impl AccountStore for LocalStoreInner {
         Ok(len)
     }
 
-    async fn load_single(&self, ids: &AccountId) -> Result<Option<Arc<Account>>> {
-        self.cache().accounts.load_single(ids)
+    async fn load_single(&self, ids: &AccountId) -> Result<Option<(Arc<Account>, Option<Arc<Metadata>>)>> {
+        if let Some(account) = self.cache().accounts.load_single(ids)? {
+            Ok(Some((account, self.cache().metadata.load_single(ids)?)))
+        } else {
+            Ok(None)
+        }
     }
 
-    async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<Arc<Account>>> {
-        self.cache().accounts.load_multiple(ids)
-    }
+    // async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<Arc<Account>>> {
+    //     self.cache().accounts.load_multiple(ids)
+    // }
 
-    async fn store(&self, accounts: &[&Account]) -> Result<()> {
+    async fn store_single(&self, account: &Account, metadata: Option<&Metadata>) -> Result<()> {
         let mut cache = self.cache();
-        cache.accounts.store(accounts)?;
-
-        // let (extend, remove) = accounts.iter().fold((vec![], vec![]), |mut acc, account| {
-        //     if account.settings.is_visible {
-        //         acc.0.push((account.id, (**account).clone()));
-        //     } else {
-        //         acc.1.push(&account.id);
-        //     }
-
-        //     acc
-        // });
-
-        // cache.metadata.remove(&remove)?;
-        // cache.metadata.extend(&extend)?;
-
+        cache.accounts.store_single(account)?;
+        if let Some(metadata) = metadata {
+            cache.metadata.store_single(metadata)?;
+        }
         self.set_modified(true);
+        Ok(())
+    }
 
+    async fn store_multiple(&self, data: &[(&Account, Option<&Metadata>)]) -> Result<()> {
+        let mut cache = self.cache();
+        let accounts = data.iter().map(|(account, _)| *account).collect::<Vec<_>>();
+        let metadata = data.iter().filter_map(|(_, metadata)| *metadata).collect::<Vec<_>>();
+        cache.accounts.store_multiple(&accounts)?;
+        cache.metadata.store_multiple(&metadata)?;
+        self.set_modified(true);
         Ok(())
     }
 
     async fn remove(&self, ids: &[&AccountId]) -> Result<()> {
-        self.cache().accounts.remove(ids)?;
+        let mut cache = self.cache();
+        cache.accounts.remove(ids)?;
+        cache.metadata.remove(ids)?;
 
         self.set_modified(true);
 
@@ -369,7 +376,7 @@ impl AccountStore for LocalStoreInner {
 
 #[async_trait]
 impl AddressBookStore for LocalStoreInner {
-    async fn iter(&self) -> Result<StorageStream<AddressBookEntry>> {
+    async fn iter(&self) -> Result<StorageStream<Arc<AddressBookEntry>>> {
         Ok(Box::pin(AddressBookEntryStream::new(self.cache.clone())))
     }
 
@@ -385,13 +392,22 @@ impl AddressBookStore for LocalStoreInner {
     }
 }
 
-#[async_trait]
-impl MetadataStore for LocalStoreInner {
-    // async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>> {
-    //     Ok(Box::pin(MetadataStream::new(self.cache.clone(), prv_key_data_id_filter)))
-    // }
+// #[async_trait]
+// impl MetadataStore for LocalStoreInner {
+//     // async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>> {
+//     //     Ok(Box::pin(MetadataStream::new(self.cache.clone(), prv_key_data_id_filter)))
+//     // }
 
-    async fn load(&self, ids: &[AccountId]) -> Result<Vec<Arc<Metadata>>> {
-        Ok(self.cache().metadata.load_multiple(ids)?)
-    }
-}
+//     // async fn load(&self, ids: &[AccountId]) -> Result<Vec<Arc<Metadata>>> {
+//     async fn load_single(&self, ids: &AccountId) -> Result<Option<Arc<Metadata>>> {
+//         Ok(self.cache().metadata.load_single(ids)?)
+//     }
+
+//     async fn store(&self, accounts: &[&Metadata]) -> Result<()> {
+//         let mut cache = self.cache();
+//         cache.metadata.store(accounts)?;
+//         self.set_modified(true);
+//         Ok(())
+//     }
+
+// }

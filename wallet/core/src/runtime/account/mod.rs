@@ -19,7 +19,8 @@ use crate::result::Result;
 use crate::runtime::{Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
 use crate::storage::interface::AccessContext;
-use crate::storage::{self, AccountData, AccessContextT, PrvKeyData, PrvKeyDataId};
+use crate::storage::Metadata;
+use crate::storage::{self, AccessContextT, AccountData, PrvKeyData, PrvKeyDataId};
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, KeydataSigner, PaymentDestination, PendingTransaction, Signer};
 use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoEntryReference};
 use kaspa_notify::listener::ListenerId;
@@ -46,27 +47,33 @@ pub struct Inner {
 }
 
 impl Inner {
-    pub fn new(wallet: &Arc<Wallet>, id: AccountId, settings: Option<&storage::account::Settings>) -> Self {
+    pub fn new(wallet: &Arc<Wallet>, id: AccountId, settings: Option<storage::account::Settings>) -> Self {
         let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
 
-        let context = Context { listener_id: None, settings: settings.cloned() };
+        let context = Context { listener_id: None, settings };
         Inner { context: Mutex::new(context), id, wallet: wallet.clone(), utxo_context: utxo_context.clone() }
     }
 }
 
-pub async fn try_from_storage(wallet: &Arc<Wallet>, stored_account: &Arc<storage::Account>) -> Result<Arc<dyn Account>> {
-    match &stored_account.data {
+pub async fn try_from_storage(
+    wallet: &Arc<Wallet>,
+    stored_account: Arc<storage::Account>,
+    meta: Option<Arc<storage::Metadata>>,
+) -> Result<Arc<dyn Account>> {
+    let stored_account = (*stored_account).clone();
+
+    match stored_account.data {
         AccountData::Bip32(bip32) => {
-            Ok(Arc::new(Bip32::try_new(wallet, &stored_account.prv_key_data_id, &stored_account.settings, bip32).await?))
+            Ok(Arc::new(Bip32::try_new(wallet, stored_account.prv_key_data_id, stored_account.settings, bip32, meta).await?))
         }
         AccountData::Legacy(legacy) => {
-            Ok(Arc::new(Legacy::try_new(wallet, &stored_account.prv_key_data_id, &stored_account.settings, legacy).await?))
-        },
+            Ok(Arc::new(Legacy::try_new(wallet, stored_account.prv_key_data_id, stored_account.settings, legacy, meta).await?))
+        }
         AccountData::MultiSig(multisig) => {
-            Ok(Arc::new(MultiSig::try_new(wallet, &stored_account.prv_key_data_id, &stored_account.settings, multisig).await?))
-        },
+            Ok(Arc::new(MultiSig::try_new(wallet, stored_account.prv_key_data_id, stored_account.settings, multisig, meta).await?))
+        }
         AccountData::Keypair(keypair) => {
-            Ok(Arc::new(Keypair::try_new(wallet, &stored_account.prv_key_data_id, &stored_account.settings, keypair).await?))
+            Ok(Arc::new(Keypair::try_new(wallet, stored_account.prv_key_data_id, stored_account.settings, keypair, meta).await?))
         }
     }
 }
@@ -79,7 +86,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         self.inner().context.lock().unwrap()
     }
 
-    fn id_ref(&self) -> &AccountId {
+    fn id(&self) -> &AccountId {
         &self.inner().id
     }
 
@@ -113,12 +120,12 @@ pub trait Account: AnySync + Send + Sync + 'static {
         if let Some(name) = self.name() {
             // compensate for an empty name
             if name.is_empty() {
-                self.id_ref().short()
+                self.id().short()
             } else {
                 name
             }
         } else {
-            self.id_ref().short()
+            self.id().short()
         }
     }
 
@@ -126,12 +133,12 @@ pub trait Account: AnySync + Send + Sync + 'static {
         if let Some(name) = self.name() {
             // compensate for an empty name
             if name.is_empty() {
-                self.id_ref().short()
+                self.id().short()
             } else {
-                format!("{name} {}", self.id_ref().short())
+                format!("{name} {}", self.id().short())
             }
         } else {
-            self.id_ref().short()
+            self.id().short()
         }
     }
 
@@ -145,8 +152,8 @@ pub trait Account: AnySync + Send + Sync + 'static {
             }
         }
 
-        let stored_account = self.as_storable()?;
-        self.wallet().store().as_account_store()?.store(&[&stored_account]).await?;
+        let account = self.as_storable()?;
+        self.wallet().store().as_account_store()?.store_single(&account, None).await?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
         self.wallet().store().commit(&ctx).await?;
@@ -193,6 +200,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
     }
 
     fn as_storable(&self) -> Result<storage::Account>;
+    fn metadata(&self) -> Result<Option<Metadata>>;
 
     async fn scan(self: Arc<Self>, window_size: Option<usize>, extent: Option<u32>) -> Result<()> {
         self.utxo_context().clear().await?;
@@ -219,7 +227,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
                 join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
             }
             Err(_) => {
-
+                todo!()
                 // - TODO - Handle Keypair & Resident accounts
                 // - TODO - Handle Keypair & Resident accounts
                 // - TODO - Handle Keypair & Resident accounts
@@ -284,7 +292,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
     /// handle disconnection event
     async fn disconnect(&self) -> Result<()> {
-        self.wallet().active_accounts().remove(self.id_ref());
+        self.wallet().active_accounts().remove(self.id());
         Ok(())
     }
 

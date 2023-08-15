@@ -5,6 +5,7 @@ use crate::accounts::gen1::WalletDerivationManager;
 use crate::accounts::PubkeyDerivationManagerTrait;
 use crate::accounts::WalletDerivationManagerTrait;
 use crate::error::Error;
+use crate::imports::*;
 use crate::runtime;
 use crate::runtime::account::create_private_keys;
 use crate::runtime::AccountKind;
@@ -21,6 +22,29 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::tovalue::from_value;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AddressDerivationMeta([u32; 2]);
+
+impl Default for AddressDerivationMeta {
+    fn default() -> Self {
+        Self([1, 1])
+    }
+}
+
+impl AddressDerivationMeta {
+    pub fn new(receive: u32, change: u32) -> Self {
+        Self([receive, change])
+    }
+
+    pub fn receive(&self) -> u32 {
+        self.0[0]
+    }
+
+    pub fn change(&self) -> u32 {
+        self.0[1]
+    }
+}
 
 pub struct Inner {
     pub index: u32,
@@ -66,7 +90,7 @@ impl AddressManager {
     }
 
     pub async fn new_address(&self) -> Result<Address> {
-        self.set_index(self.index()? + 1)?;
+        self.set_index(self.index() + 1)?;
         self.current_address().await
     }
 
@@ -76,7 +100,7 @@ impl AddressManager {
         let keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
         let address = self.create_address(keys)?;
 
-        self.update_address_to_index_map(self.index()?, &[address.clone()])?;
+        self.update_address_to_index_map(self.index(), &[address.clone()])?;
 
         Ok(address)
     }
@@ -86,8 +110,8 @@ impl AddressManager {
         create_address(self.minimum_signatures, keys, address_prefix, self.ecdsa, Some(self.account_kind))
     }
 
-    pub fn index(&self) -> Result<u32> {
-        Ok(self.inner().index)
+    pub fn index(&self) -> u32 {
+        self.inner().index
     }
     pub fn set_index(&self, index: u32) -> Result<()> {
         self.inner().index = index;
@@ -167,9 +191,10 @@ impl AddressDerivationManager {
         ecdsa: bool,
         account_index: u64,
         cosigner_index: Option<u32>,
-        minimum_signatures: Option<u32>,
-        receive_index: Option<u32>,
-        change_index: Option<u32>,
+        minimum_signatures: u16,
+        address_derivation_indexes: AddressDerivationMeta,
+        // receive_index: Option<u32>,
+        // change_index: Option<u32>,
     ) -> Result<Arc<AddressDerivationManager>> {
         // let keys = &pub_key_data.keys;
         if keys.is_empty() {
@@ -201,8 +226,8 @@ impl AddressDerivationManager {
             account_kind,
             receive_pubkey_managers,
             ecdsa,
-            receive_index.unwrap_or(0),
-            minimum_signatures.unwrap_or(1) as usize,
+            address_derivation_indexes.receive(),
+            minimum_signatures as usize, //.unwrap_or(1) as usize,
         )?;
 
         let change_address_manager = AddressManager::new(
@@ -210,8 +235,8 @@ impl AddressDerivationManager {
             account_kind,
             change_pubkey_managers,
             ecdsa,
-            change_index.unwrap_or(0),
-            minimum_signatures.unwrap_or(1) as usize,
+            address_derivation_indexes.change(),
+            minimum_signatures as usize, //.unwrap_or(1) as usize,
         )?;
 
         let manager = Self {
@@ -366,6 +391,10 @@ impl AddressDerivationManager {
             indexes.push(*index);
         }
         Ok(indexes)
+    }
+
+    pub fn address_derivation_meta(&self) -> AddressDerivationMeta {
+        AddressDerivationMeta::new(self.receive_address_manager.index(), self.change_address_manager.index())
     }
 }
 

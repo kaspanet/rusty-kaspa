@@ -60,26 +60,30 @@ impl AccountStream {
 }
 
 impl Stream for AccountStream {
-    type Item = Result<Arc<Account>>;
+    type Item = Result<(Arc<Account>, Option<Arc<Metadata>>)>;
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let cache = self.inner.cache.clone();
         let cache = cache.lock().unwrap();
-        let vec = &cache.accounts.vec;
+        let accounts = &cache.accounts.vec;
+        let metadata = &cache.metadata.map;
 
         if let Some(filter) = self.filter {
-            while self.inner.cursor < vec.len() {
-                let account = vec[self.inner.cursor].clone();
+            while self.inner.cursor < accounts.len() {
+                let account = accounts[self.inner.cursor].clone();
                 self.inner.cursor += 1;
                 if account.prv_key_data_id == filter {
-                    return Poll::Ready(Some(Ok(account)));
+                    let meta = metadata.get(&account.id).cloned();
+
+                    return Poll::Ready(Some(Ok((account, meta))));
                 }
             }
             Poll::Ready(None)
-        } else if self.inner.cursor < vec.len() {
-            let account = vec[self.inner.cursor].clone();
+        } else if self.inner.cursor < accounts.len() {
+            let account = accounts[self.inner.cursor].clone();
             self.inner.cursor += 1;
-            Poll::Ready(Some(Ok(account)))
+            let meta = metadata.get(&account.id).cloned();
+            return Poll::Ready(Some(Ok((account, meta))));
         } else {
             Poll::Ready(None)
         }

@@ -31,12 +31,12 @@ impl ActiveAccountMap {
 
     pub fn extend(&self, accounts: Vec<Arc<dyn Account>>) {
         let mut map = self.inner();
-        let accounts = accounts.into_iter().map(|a| (a.id_ref().clone(), a)); //.collect::<Vec<_>>();
+        let accounts = accounts.into_iter().map(|a| (*a.id(), a)); //.collect::<Vec<_>>();
         map.extend(accounts);
     }
 
     pub fn insert(&self, account: Arc<dyn Account>) -> Option<Arc<dyn Account>> {
-        self.inner().insert(account.id_ref().clone(), account)
+        self.inner().insert(*account.id(), account)
     }
 
     pub fn remove(&self, id: &AccountId) {

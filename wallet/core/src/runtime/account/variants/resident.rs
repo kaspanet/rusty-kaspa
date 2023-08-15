@@ -2,7 +2,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::account::{Account, AccountId, AccountKind, Inner};
 use crate::runtime::Wallet;
-use crate::storage::{self, PrvKeyDataId};
+use crate::storage::{self, Metadata, PrvKeyDataId};
 use kaspa_addresses::Version;
 use secp256k1::{PublicKey, SecretKey};
 
@@ -50,6 +50,10 @@ impl Account for Resident {
     }
 
     fn as_storable(&self) -> Result<storage::account::Account> {
+        Err(Error::ResidentAccount)
+    }
+
+    fn metadata(&self) -> Result<Option<Metadata>> {
         Err(Error::ResidentAccount)
     }
 }

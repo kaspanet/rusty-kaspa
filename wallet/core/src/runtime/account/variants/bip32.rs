@@ -4,7 +4,7 @@ use crate::result::Result;
 use crate::runtime::account::Inner;
 use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount};
 use crate::runtime::Wallet;
-use crate::storage::{self, PrvKeyDataId};
+use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
 
 pub struct Bip32 {
     inner: Arc<Inner>,
@@ -18,28 +18,28 @@ pub struct Bip32 {
 impl Bip32 {
     pub async fn try_new(
         wallet: &Arc<Wallet>,
-        prv_key_data_id: &PrvKeyDataId,
-        settings: &storage::account::Settings,
-        data: &storage::account::Bip32,
+        prv_key_data_id: PrvKeyDataId,
+        settings: Settings,
+        data: storage::account::Bip32,
+        meta: Option<Arc<Metadata>>,
     ) -> Result<Self> {
-        let id = AccountId::from_bip32(prv_key_data_id, data);
+        let id = AccountId::from_bip32(&prv_key_data_id, &data);
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
-        let storage::account::Bip32 {
-            account_index,
-            xpub_keys,
-            ecdsa,
-        } = data;
+        let storage::account::Bip32 { account_index, xpub_keys, ecdsa } = data;
+
+        let address_derivation_indexes = meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or_default();
 
         let derivation =
-            AddressDerivationManager::new(wallet, AccountKind::Bip32, xpub_keys, *ecdsa, 0, None, None, None, None).await?;
+            AddressDerivationManager::new(wallet, AccountKind::Bip32, &xpub_keys, ecdsa, 0, None, 1, address_derivation_indexes)
+                .await?;
 
         Ok(Self {
             inner,
-            prv_key_data_id: prv_key_data_id.clone(),
-            account_index: *account_index,
-            xpub_keys: data.xpub_keys.clone(),
-            ecdsa: *ecdsa,
+            prv_key_data_id, //: prv_key_data_id.clone(),
+            account_index,   //: account_index,
+            xpub_keys,       //: data.xpub_keys.clone(),
+            ecdsa,
             derivation,
         })
     }
@@ -73,15 +73,16 @@ impl Account for Bip32 {
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
 
-        let bip32 = storage::Bip32 {
-            account_index: self.account_index,
-            xpub_keys: self.xpub_keys.clone(),
-            ecdsa: self.ecdsa,
-        };
+        let bip32 = storage::Bip32 { account_index: self.account_index, xpub_keys: self.xpub_keys.clone(), ecdsa: self.ecdsa };
 
-        let account = storage::Account::new(self.id_ref().clone(), self.prv_key_data_id, settings, storage::AccountData::Bip32(bip32));
+        let account = storage::Account::new(*self.id(), self.prv_key_data_id, settings, storage::AccountData::Bip32(bip32));
 
         Ok(account)
+    }
+
+    fn metadata(&self) -> Result<Option<Metadata>> {
+        let metadata = Metadata::new(self.inner.id, self.derivation.address_derivation_meta());
+        Ok(Some(metadata))
     }
 
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {

@@ -1,24 +1,22 @@
+use crate::derivation::AddressDerivationMeta;
 use crate::imports::*;
 use crate::storage::AccountId;
 use crate::storage::IdT;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Meta {
-    Derivation([u32; 2])
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Metadata {
-    id : AccountId,
-    meta : Meta,
+    pub id: AccountId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub indexes: Option<AddressDerivationMeta>,
 }
 
 impl Metadata {
-    pub fn new(id : AccountId, meta : Meta) -> Self {
-        Self {
-            id,
-            meta,
-        }
+    pub fn new(id: AccountId, indexes: AddressDerivationMeta) -> Self {
+        Self { id, indexes: Some(indexes) }
+    }
+
+    pub fn address_derivation_indexes(&self) -> Option<AddressDerivationMeta> {
+        self.indexes.clone()
     }
 }
 
@@ -28,4 +26,3 @@ impl IdT for Metadata {
         &self.id
     }
 }
-
