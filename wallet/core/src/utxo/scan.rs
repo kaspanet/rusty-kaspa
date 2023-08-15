@@ -16,41 +16,58 @@ pub enum ScanExtent {
     Depth(u32),
 }
 
+enum Provider {
+    AddressManager(Arc<AddressManager>),
+    AddressSet(HashSet<Address>),
+}
+
 pub struct Scan {
-    pub address_manager: Arc<AddressManager>,
-    pub window_size: Option<usize>,
-    pub extent: ScanExtent,
-    pub balance: Arc<AtomicBalance>,
-    pub current_daa_score: u64,
+    provider: Provider, //Arc<AddressManager>,
+    window_size: Option<usize>,
+    extent: Option<ScanExtent>,
+    balance: Arc<AtomicBalance>,
+    current_daa_score: u64,
 }
 
 impl Scan {
-    pub fn new(address_manager: Arc<AddressManager>, balance: &Arc<AtomicBalance>, current_daa_score: u64) -> Scan {
+    pub fn new_with_address_manager(
+        address_manager: Arc<AddressManager>,
+        balance: &Arc<AtomicBalance>,
+        current_daa_score: u64,
+        window_size: Option<usize>,
+        extent: Option<ScanExtent>,
+    ) -> Scan {
         Scan {
-            address_manager,
-            window_size: Some(DEFAULT_WINDOW_SIZE),
-            extent: ScanExtent::EmptyWindow,
+            provider: Provider::AddressManager(address_manager),
+            window_size, //: Some(DEFAULT_WINDOW_SIZE),
+            extent,      //: Some(ScanExtent::EmptyWindow),
             balance: balance.clone(),
             current_daa_score,
         }
     }
-    pub fn new_with_args(
-        address_manager: Arc<AddressManager>,
-        window_size: Option<usize>,
-        extent: ScanExtent,
-        balance: &Arc<AtomicBalance>,
-        current_daa_score: u64,
-    ) -> Scan {
-        // let window_size = window_size.unwrap_or(DEFAULT_WINDOW_SIZE);
-        Scan { address_manager, window_size, extent, balance: balance.clone(), current_daa_score }
+    pub fn new_with_address_set(addresses: HashSet<Address>, balance: &Arc<AtomicBalance>, current_daa_score: u64) -> Scan {
+        Scan {
+            provider: Provider::AddressSet(addresses),
+            window_size: None,
+            extent: None,
+            balance: balance.clone(),
+            current_daa_score,
+        }
     }
 
-    // pub async fn scan(self: &Arc<Self>, utxo_context: &Arc<UtxoContext>) -> Result<()> {
     pub async fn scan(&self, utxo_context: &UtxoContext) -> Result<()> {
+        match &self.provider {
+            Provider::AddressManager(address_manager) => self.scan_with_address_manager(address_manager, utxo_context).await,
+            Provider::AddressSet(addresses) => self.scan_with_address_set(addresses, utxo_context).await,
+        }
+    }
+
+    pub async fn scan_with_address_manager(&self, address_manager: &Arc<AddressManager>, utxo_context: &UtxoContext) -> Result<()> {
         let window_size = self.window_size.unwrap_or(DEFAULT_WINDOW_SIZE) as u32;
+        let extent = self.extent.expect("address manager requires an extent");
 
         let mut cursor: u32 = 0;
-        let mut last_address_index = self.address_manager.index();
+        let mut last_address_index = address_manager.index();
 
         'scan: loop {
             // scan first up to address index, then in window chunks
@@ -60,7 +77,7 @@ impl Scan {
             // log_info!("first: {}, last: {}", first, last);
 
             // generate address derivations
-            let addresses = self.address_manager.get_range(first..last).await?;
+            let addresses = address_manager.get_range(first..last).await?;
             // register address in the utxo context; NOTE:  during the scan,
             // before `get_utxos_by_addresses()` is complete we may receive
             // new transactions  as such utxo context should be aware of the
@@ -78,7 +95,7 @@ impl Scan {
             let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
             for utxo_ref in refs.iter() {
                 if let Some(address) = utxo_ref.utxo.address.as_ref() {
-                    if let Some(utxo_address_index) = self.address_manager.inner().address_to_index_map.get(address) {
+                    if let Some(utxo_address_index) = address_manager.inner().address_to_index_map.get(address) {
                         if last_address_index < *utxo_address_index {
                             last_address_index = *utxo_address_index;
                         }
@@ -102,7 +119,7 @@ impl Scan {
             if !balance.is_empty() {
                 self.balance.add(balance);
             } else {
-                match &self.extent {
+                match &extent {
                     ScanExtent::EmptyWindow => {
                         if cursor > last_address_index + window_size {
                             break 'scan;
@@ -119,7 +136,31 @@ impl Scan {
         }
 
         // update address manager with the last used index
-        self.address_manager.set_index(last_address_index)?;
+        address_manager.set_index(last_address_index)?;
+
+        Ok(())
+    }
+
+    pub async fn scan_with_address_set(&self, address_set: &HashSet<Address>, utxo_context: &UtxoContext) -> Result<()> {
+        let address_vec = address_set.iter().cloned().collect::<Vec<_>>();
+
+        utxo_context.register_addresses(&address_vec).await?;
+        let resp = utxo_context.processor().rpc().get_utxos_by_addresses(address_vec).await?;
+        let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
+
+        let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
+            let entry_balance = r.as_ref().balance(self.current_daa_score);
+            balance.mature += entry_balance.mature;
+            balance.pending += entry_balance.pending;
+            balance
+        });
+        yield_executor().await;
+
+        utxo_context.extend(refs, self.current_daa_score).await?;
+
+        if !balance.is_empty() {
+            self.balance.add(balance);
+        }
 
         Ok(())
     }

@@ -205,12 +205,12 @@ pub trait Account: AnySync + Send + Sync + 'static {
     async fn scan(self: Arc<Self>, window_size: Option<usize>, extent: Option<u32>) -> Result<()> {
         self.utxo_context().clear().await?;
 
+        let current_daa_score = self.wallet().current_daa_score().ok_or(Error::NotConnected)?;
+        let balance = Arc::new(AtomicBalance::default());
+
         match self.clone().as_derivation_capable() {
             Ok(account) => {
                 let derivation = account.derivation();
-
-                let current_daa_score = self.wallet().current_daa_score().ok_or(Error::NotConnected)?;
-                let balance = Arc::new(AtomicBalance::default());
 
                 let extent = match extent {
                     Some(depth) => ScanExtent::Depth(depth),
@@ -218,8 +218,20 @@ pub trait Account: AnySync + Send + Sync + 'static {
                 };
 
                 let scans = vec![
-                    Scan::new_with_args(derivation.receive_address_manager(), window_size, extent, &balance, current_daa_score),
-                    Scan::new_with_args(derivation.change_address_manager(), window_size, extent, &balance, current_daa_score),
+                    Scan::new_with_address_manager(
+                        derivation.receive_address_manager(),
+                        &balance,
+                        current_daa_score,
+                        window_size,
+                        Some(extent),
+                    ),
+                    Scan::new_with_address_manager(
+                        derivation.change_address_manager(),
+                        &balance,
+                        current_daa_score,
+                        window_size,
+                        Some(extent),
+                    ),
                 ];
 
                 let futures = scans.iter().map(|scan| scan.scan(self.utxo_context())).collect::<Vec<_>>();
@@ -227,29 +239,14 @@ pub trait Account: AnySync + Send + Sync + 'static {
                 join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
             }
             Err(_) => {
-                todo!()
-                // - TODO - Handle Keypair & Resident accounts
-                // - TODO - Handle Keypair & Resident accounts
-                // - TODO - Handle Keypair & Resident accounts
+                let mut address_set = HashSet::<Address>::new();
+                address_set.insert(self.receive_address().await?);
+                address_set.insert(self.change_address().await?);
+
+                let scan = Scan::new_with_address_set(address_set, &balance, current_daa_score);
+                scan.scan(self.utxo_context()).await?;
             }
         }
-
-        // match self.data() {
-        //     AccountData::Legacy { derivation, .. }
-        //     | AccountData::Bip32 { derivation, .. }
-        //     | AccountData::MultiSig { derivation, .. } => {
-
-        //     }
-        //     AccountData::ResidentSecp256k1Keypair { public_key, .. } => {
-        //         let payload = &public_key.serialize()[1..];
-        //         let address = Address::new(self.wallet().network_id()?.network_type.into(), AddressVersion::PubKey, payload);
-
-        //     },
-
-        //     AccountData::Secp256k1Keypair { public_key, .. } => {
-
-        //     }
-        // }
 
         self.utxo_context().update_balance().await?;
 
