@@ -341,14 +341,10 @@ impl<'de> Deserialize<'de> for Address {
     where
         D: Deserializer<'de>,
     {
+        #[derive(Default)]
         pub struct AddressVisitor<'de> {
             marker: std::marker::PhantomData<Address>,
             lifetime: std::marker::PhantomData<&'de ()>,
-        }
-        impl<'de> Default for AddressVisitor<'de> {
-            fn default() -> Self {
-                Self { marker: Default::default(), lifetime: Default::default() }
-            }
         }
         impl<'de> serde::de::Visitor<'de> for AddressVisitor<'de> {
             type Value = Address;
