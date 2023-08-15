@@ -289,7 +289,7 @@ impl KaspaRpcClient {
         };
 
         let parse_output = parse_host(&url).map_err(|err| Error::Custom(err.to_string()))?;
-        let scheme = parse_output.scheme.ok_or_else(|| {
+        let scheme = parse_output.scheme.map(Ok).unwrap_or_else(|| {
             if !application_runtime::is_web() {
                 return Ok("ws");
             }
