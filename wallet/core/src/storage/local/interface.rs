@@ -80,7 +80,7 @@ impl LocalStoreInner {
             Store::Resident => Ok(()),
             Store::Storage(ref storage) => {
                 let metadata: Vec<Metadata> = (&self.cache().metadata).try_into()?;
-                let mut wallet = Wallet::try_load(&storage).await?;
+                let mut wallet = Wallet::try_load(storage).await?;
                 wallet.replace_metadata(metadata);
                 wallet.try_store(storage).await?;
                 Ok(())

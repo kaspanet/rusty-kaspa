@@ -60,5 +60,4 @@ impl Wallet {
     pub fn replace_metadata(&mut self, metadata: Vec<Metadata>) {
         self.metadata = metadata;
     }
-    
 }
