@@ -123,7 +123,7 @@ impl From<&PubkeyDerivationManagerV0> for ExtendedPublicKey<secp256k1::PublicKey
 impl PubkeyDerivationManagerTrait for PubkeyDerivationManagerV0 {
     async fn new_pubkey(&self) -> Result<secp256k1::PublicKey> {
         self.set_index(self.index()? + 1)?;
-        self.current_pubkey().await
+        self.current_pubkey()
     }
 
     fn index(&self) -> Result<u32> {

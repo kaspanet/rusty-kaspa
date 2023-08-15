@@ -48,11 +48,11 @@ impl Account for Keypair {
         self
     }
 
-    async fn receive_address(&self) -> Result<Address> {
+    fn receive_address(&self) -> Result<Address> {
         Ok(Address::new(self.inner().wallet.network_id()?.into(), Version::PubKey, &self.public_key.serialize()[1..]))
     }
 
-    async fn change_address(&self) -> Result<Address> {
+    fn change_address(&self) -> Result<Address> {
         Ok(Address::new(self.inner().wallet.network_id()?.into(), Version::PubKey, &self.public_key.serialize()[1..]))
     }
 

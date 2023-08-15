@@ -261,9 +261,9 @@ pub trait Account: AnySync + Send + Sync + 'static {
         1
     }
 
-    async fn receive_address(&self) -> Result<Address>;
+    fn receive_address(&self) -> Result<Address>;
 
-    async fn change_address(&self) -> Result<Address>;
+    fn change_address(&self) -> Result<Address>;
 
     /// Start Account service task
     async fn start(self: Arc<Self>) -> Result<()> {

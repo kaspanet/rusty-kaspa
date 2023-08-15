@@ -63,11 +63,11 @@ impl Account for Bip32 {
     fn as_dyn_arc(self: Arc<Self>) -> Arc<dyn Account> {
         self
     }
-
-    async fn receive_address(&self) -> Result<Address> {
+    
+    fn receive_address(&self) -> Result<Address> {
         self.derivation.receive_address_manager().current_address()
     }
-    async fn change_address(&self) -> Result<Address> {
+    fn change_address(&self) -> Result<Address> {
         self.derivation.change_address_manager().current_address()
     }
 
