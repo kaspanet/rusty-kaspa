@@ -9,7 +9,7 @@ use workflow_wasm::abi::ref_from_abi;
 use super::UtxoContext;
 
 // thresholds for 1 BPS network
-use crate::utxo::{UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION, UTXO_MATURITY_PERIOD_USER_TRANSACTION};
+use crate::utxo::{UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA, UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA};
 
 pub type UtxoEntryId = TransactionOutpointInner;
 
@@ -43,9 +43,9 @@ impl UtxoEntry {
     #[inline(always)]
     pub fn is_mature(&self, current_daa_score: u64) -> bool {
         if self.is_coinbase() {
-            self.block_daa_score() + UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION.load(Ordering::SeqCst) < current_daa_score
+            self.block_daa_score() + UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score
         } else {
-            self.block_daa_score() + UTXO_MATURITY_PERIOD_USER_TRANSACTION.load(Ordering::SeqCst) < current_daa_score
+            self.block_daa_score() + UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score
         }
     }
 
