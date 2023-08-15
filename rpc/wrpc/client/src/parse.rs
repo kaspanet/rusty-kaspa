@@ -70,14 +70,14 @@ pub fn parse_host(input: &str) -> Result<ParseHostOutput, ParseHostError> {
     }
 
     // Attempt to parse the host as an IPv6 address enclosed in square brackets.
-    if input.starts_with('[') && input.ends_with(']') {
-        let ipv6 = &input[1..input.len() - 1];
+    if host.starts_with('[') && host.ends_with(']') {
+        let ipv6 = &host[1..host.len() - 1];
         if let Ok(ipv6) = ipv6.parse::<Ipv6Addr>() {
             return Ok(ParseHostOutput { scheme, host: Host::Ipv6(ipv6), port });
         }
     }
     // Attempt to parse the host as an IPv6 address.
-    if let Ok(ipv6) = input.parse::<Ipv6Addr>() {
+    if let Ok(ipv6) = host.parse::<Ipv6Addr>() {
         return Ok(ParseHostOutput { scheme, host: Host::Ipv6(ipv6), port });
     }
 
@@ -129,7 +129,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_host_ip_v4_only_loopback() {
+    fn parse_host_ip_v4_loopback() {
         let input = "127.0.0.1";
         let output = parse_host(input).unwrap();
         assert_eq!(output.scheme, None);
@@ -138,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_host_ip_v4_only_invalid() {
+    fn parse_host_ip_v4_invalid() {
         let input = "127.0.0.256";
         let output = parse_host(input);
         assert!(output.is_err());
@@ -165,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_host_ip_v6_only_loopback() {
+    fn parse_host_ip_v6_loopback() {
         let input = "::1";
         let output = parse_host(input).unwrap();
         assert_eq!(output.scheme, None);
@@ -174,11 +174,119 @@ mod tests {
     }
 
     #[test]
-    fn parse_host_ip_v6_only_loopback_brackets() {
+    fn parse_host_ip_v6_loopback_brackets() {
         let input = "[::1]";
         let output = parse_host(input).unwrap();
         assert_eq!(output.scheme, None);
         assert_eq!(output.host, Host::Ipv6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)));
         assert_eq!(output.port, None);
+    }
+
+    #[test]
+    fn parse_host_ip_v6_invalid() {
+        let input = "::g";
+        let output = parse_host(input);
+        assert!(output.is_err());
+        let err = output.unwrap_err();
+        assert_eq!(err, ParseHostError::InvalidInput);
+    }
+
+    #[test]
+    fn parse_host_ip_v6_loopback_with_port() {
+        let input = "[::1]:8080";
+        let output = parse_host(input).unwrap();
+        assert_eq!(output.scheme, None);
+        assert_eq!(output.host, Host::Ipv6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)));
+        assert_eq!(output.port, Some(8080));
+    }
+
+    #[test]
+    fn parse_host_ip_v6_loopback_with_port_and_scheme() {
+        let input = "ws://[::1]:8080";
+        let output = parse_host(input).unwrap();
+        assert_eq!(output.scheme, Some("ws"));
+        assert_eq!(output.host, Host::Ipv6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)));
+        assert_eq!(output.port, Some(8080));
+    }
+
+    #[test]
+    fn parse_host_domain() {
+        let input = "example.com";
+        let output = parse_host(input).unwrap();
+        assert_eq!(output.scheme, None);
+        assert_eq!(output.host, Host::Domain("example.com"));
+        assert_eq!(output.port, None);
+    }
+
+    #[test]
+    fn parse_host_domain_with_port() {
+        let input = "example.com:8080";
+        let output = parse_host(input).unwrap();
+        assert_eq!(output.scheme, None);
+        assert_eq!(output.host, Host::Domain("example.com"));
+        assert_eq!(output.port, Some(8080));
+    }
+
+    #[test]
+    fn parse_host_domain_with_port_and_scheme() {
+        let input = "ws://example.com:8080";
+        let output = parse_host(input).unwrap();
+        assert_eq!(output.scheme, Some("ws"));
+        assert_eq!(output.host, Host::Domain("example.com"));
+        assert_eq!(output.port, Some(8080));
+    }
+
+    #[test]
+    fn parse_host_hostname() {
+        let input = "example";
+        let output = parse_host(input).unwrap();
+        assert_eq!(output.scheme, None);
+        assert_eq!(output.host, Host::Hostname("example"));
+        assert_eq!(output.port, None);
+    }
+
+    #[test]
+    fn parse_host_hostname_with_port() {
+        let input = "example:8080";
+        let output = parse_host(input).unwrap();
+        assert_eq!(output.scheme, None);
+        assert_eq!(output.host, Host::Hostname("example"));
+        assert_eq!(output.port, Some(8080));
+    }
+
+    #[test]
+    fn parse_host_hostname_with_port_and_scheme() {
+        let input = "ws://example:8080";
+        let output = parse_host(input).unwrap();
+        assert_eq!(output.scheme, Some("ws"));
+        assert_eq!(output.host, Host::Hostname("example"));
+        assert_eq!(output.port, Some(8080));
+    }
+
+    #[test]
+    fn should_fail_empty() {
+        let input = "";
+        let output = parse_host(input);
+        assert!(output.is_err());
+        let err = output.unwrap_err();
+        assert_eq!(err, ParseHostError::InvalidInput);
+    }
+
+    #[test]
+    fn should_fail_only_scheme() {
+        let input = "ws://";
+        let output = parse_host(input);
+        assert!(output.is_err());
+        let err = output.unwrap_err();
+        assert_eq!(err, ParseHostError::InvalidInput);
+    }
+
+    #[test]
+    fn should_fail_invalid_port() {
+        let input = "example.com:808080";
+        let output = parse_host(input);
+        assert!(output.is_err());
+        let err = output.unwrap_err();
+        assert!(matches!(err, ParseHostError::ParsePortError(_)));
     }
 }
