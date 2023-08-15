@@ -39,7 +39,7 @@ pub trait WalletDerivationManagerTrait: Send + Sync {
 #[async_trait]
 pub trait PubkeyDerivationManagerTrait: Send + Sync {
     async fn new_pubkey(&self) -> Result<secp256k1::PublicKey>;
-    async fn current_pubkey(&self) -> Result<secp256k1::PublicKey>;
+    fn current_pubkey(&self) -> Result<secp256k1::PublicKey>;
     fn index(&self) -> Result<u32>;
     fn set_index(&self, index: u32) -> Result<()>;
     async fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>>;

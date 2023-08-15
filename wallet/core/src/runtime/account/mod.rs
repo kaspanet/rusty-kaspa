@@ -13,7 +13,7 @@ pub use variants::*;
 #[allow(unused_imports)]
 use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::derivation::build_derivate_paths;
-use crate::derivation::AddressDerivationManager;
+use crate::derivation::AddressDerivationManagerTrait;
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Balance, BalanceStrings, Wallet};
@@ -397,7 +397,7 @@ downcast_sync!(dyn Account);
 
 #[async_trait]
 pub trait DerivationCapableAccount: Account {
-    fn derivation(&self) -> &Arc<AddressDerivationManager>;
+    fn derivation(&self) -> Arc<dyn AddressDerivationManagerTrait>;
 
     fn account_index(&self) -> u64 {
         0

@@ -5,6 +5,7 @@ use crate::runtime::account::Inner;
 use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount};
 use crate::runtime::Wallet;
 use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
+use crate::AddressDerivationManagerTrait;
 
 pub struct Bip32 {
     inner: Arc<Inner>,
@@ -64,10 +65,10 @@ impl Account for Bip32 {
     }
 
     async fn receive_address(&self) -> Result<Address> {
-        self.derivation.receive_address_manager().current_address().await
+        self.derivation.receive_address_manager().current_address()
     }
     async fn change_address(&self) -> Result<Address> {
-        self.derivation.change_address_manager().current_address().await
+        self.derivation.change_address_manager().current_address()
     }
 
     fn as_storable(&self) -> Result<storage::account::Account> {
@@ -91,7 +92,7 @@ impl Account for Bip32 {
 }
 
 impl DerivationCapableAccount for Bip32 {
-    fn derivation(&self) -> &Arc<AddressDerivationManager> {
-        &self.derivation
+    fn derivation(&self) -> Arc<dyn AddressDerivationManagerTrait> {
+        self.derivation.clone()
     }
 }

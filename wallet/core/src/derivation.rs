@@ -91,13 +91,13 @@ impl AddressManager {
 
     pub async fn new_address(&self) -> Result<Address> {
         self.set_index(self.index() + 1)?;
-        self.current_address().await
+        self.current_address()
     }
 
-    pub async fn current_address(&self) -> Result<Address> {
+    pub fn current_address(&self) -> Result<Address> {
         let list = self.pubkey_managers.iter().map(|m| m.current_pubkey());
 
-        let keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
+        let keys = list.into_iter().collect::<Result<Vec<_>>>()?;
         let address = self.create_address(keys)?;
 
         self.update_address_to_index_map(self.index(), &[address.clone()])?;
@@ -198,7 +198,7 @@ impl AddressDerivationManager {
     ) -> Result<Arc<AddressDerivationManager>> {
         // let keys = &pub_key_data.keys;
         if keys.is_empty() {
-            return Err("Invalid PubKeyData: no public keys".to_string().into());
+            return Err("Invalid keys: keys are required for address derivation".to_string().into());
         }
 
         // let cosigner_index = pub_key_data.cosigner_index;
@@ -341,7 +341,7 @@ impl AddressDerivationManager {
     // }
 
     #[allow(clippy::type_complexity)]
-    pub fn addresses_indexes<'l>(&self, addresses: &[&'l Address]) -> Result<(Vec<(&'l Address, u32)>, Vec<(&'l Address, u32)>)> {
+    pub fn get_addresses_indexes<'l>(&self, addresses: &[&'l Address]) -> Result<(Vec<(&'l Address, u32)>, Vec<(&'l Address, u32)>)> {
         let mut receive_indexes = vec![];
         let mut change_indexes = vec![];
         let receive_map = &self.receive_address_manager.inner().address_to_index_map;
@@ -396,6 +396,28 @@ impl AddressDerivationManager {
     pub fn address_derivation_meta(&self) -> AddressDerivationMeta {
         AddressDerivationMeta::new(self.receive_address_manager.index(), self.change_address_manager.index())
     }
+}
+
+impl AddressDerivationManagerTrait for AddressDerivationManager {
+    fn receive_address_manager(&self) -> Arc<AddressManager> {
+        self.receive_address_manager.clone()
+    }
+
+    fn change_address_manager(&self) -> Arc<AddressManager> {
+        self.change_address_manager.clone()
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn addresses_indexes<'l>(&self, addresses: &[&'l Address]) -> Result<(Vec<(&'l Address, u32)>, Vec<(&'l Address, u32)>)> {
+        self.get_addresses_indexes(addresses)
+    }
+}
+
+pub trait AddressDerivationManagerTrait: AnySync + Send + Sync + 'static {
+    fn receive_address_manager(&self) -> Arc<AddressManager>;
+    fn change_address_manager(&self) -> Arc<AddressManager>;
+    #[allow(clippy::type_complexity)]
+    fn addresses_indexes<'l>(&self, addresses: &[&'l Address]) -> Result<(Vec<(&'l Address, u32)>, Vec<(&'l Address, u32)>)>;
 }
 
 pub fn create_multisig_address(_keys: Vec<secp256k1::PublicKey>) -> Result<Address> {

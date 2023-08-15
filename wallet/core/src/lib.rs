@@ -20,6 +20,7 @@ pub mod wasm;
 
 pub use accounts::dummy_address;
 pub use derivation::AddressDerivationManager;
+pub use derivation::AddressDerivationManagerTrait;
 pub use events::{Events, SyncState};
 pub use kaspa_addresses::{Address, Prefix as AddressPrefix};
 pub use kaspa_wrpc_client::client::{ConnectOptions, ConnectStrategy};
