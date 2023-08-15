@@ -25,13 +25,25 @@ const {
 kaspa.init_console_panic_hook();
 
 (async () => {
-    const {
-        encoding,
-        address,
-    } = parseArgs();
+    const args = parseArgs({
+        additionalParseArgs: {
+            address2: {
+                type: 'string',
+            },
+        },
+        additionalHelpOutput: '[--address2 <address>]'
+    });
+    const address2Arg = args.tokens.find((token) => token.name === 'address2')?.value;
 
-    const URL = "ws://127.0.0.1:17110";
-    const rpc = new RpcClient(encoding, URL);
+    // Either NetworkType.Mainnet or NetworkType.Testnet
+    const networkType = args.networkType;
+    // Either Encoding.Borsh or Encoding.SerdeJson
+    const encoding = args.encoding;
+
+    const rpcHost = "127.0.0.1";
+    // Parse the url to automatically determine the port for the given host
+    const rpcUrl = RpcClient.parseUrl(rpcHost, encoding, networkType);
+    const rpc = new RpcClient(encoding, rpcUrl, networkType);
 
     console.log(`# connecting to ${URL}`)
     await rpc.connect();
@@ -40,8 +52,8 @@ kaspa.init_console_panic_hook();
     const info = await rpc.getInfo();
     console.log("info", info);
 
-    const addr1 = new Address(address ?? "kaspa:qq5dawejjdzp22jsgtn2mdr3lg45j7pq0yaq8he8t8269lvg87cuwl7ze7djh");
-    const addr2 = new Address("kaspa:qzewpzt0rx6jmvy0eea82lpnf0t7f7frmqavqcaawmt4wk70puazcp8zljgx5");
+    const addr1 = args.address ?? "kaspa:qq5dawejjdzp22jsgtn2mdr3lg45j7pq0yaq8he8t8269lvg87cuwl7ze7djh";
+    const addr2 = address2Arg ?? "kaspa:qzewpzt0rx6jmvy0eea82lpnf0t7f7frmqavqcaawmt4wk70puazcp8zljgx5";
     const addresses = [
         addr1,
         addr2,
@@ -65,14 +77,9 @@ kaspa.init_console_panic_hook();
 
     let outputs = [];
     for (let i = 0; i < count; i++) {
-        const output = new PaymentOutput(
-            addr1,
-            amount
-        );
-        outputs.push(output)
+        outputs.push([addr1, amount]);
     }
     const priorityFee = 0n;
-    outputs = new PaymentOutputs(outputs)
 
     //console.log("outputs", outputs)
 

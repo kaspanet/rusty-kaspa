@@ -8,6 +8,11 @@ const {
     NetworkType,
 } = require('./kaspa/kaspa_wasm');
 
+/**
+ * Helper function to parse command line arguments for running the scripts
+ * @param options Additional options to configure the parsing, such as additional arguments for the script and additional help output to go with it
+ * @returns {{address: Address, tokens: NodeUtilParseArgsToken[], networkType: (NetworkType), encoding: (Encoding)}}
+ */
 function parseArgs(options = {
     additionalParseArgs: {},
     additionalHelpOutput: '',
@@ -36,7 +41,7 @@ function parseArgs(options = {
         }, tokens: true, allowPositionals: true
     });
     if (values.help) {
-        console.log(`Usage: node ${script} [address] [mainnet|testnet] [--address ADDRESS] [--network mainnet|testnet] [--json] ${options.additionalHelpOutput}`);
+        console.log(`Usage: node ${script} [address] [mainnet|testnet] [--address <address>] [--network <mainnet|testnet>] [--json] ${options.additionalHelpOutput}`);
         process.exit(0);
     }
 
