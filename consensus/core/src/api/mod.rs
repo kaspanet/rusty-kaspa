@@ -256,6 +256,14 @@ pub trait ConsensusApi: Send + Sync {
     fn estimate_network_hashes_per_second(&self, start_hash: Option<Hash>, window_size: usize) -> ConsensusResult<u64> {
         unimplemented!()
     }
+
+    fn validate_pruning_points(&self) -> ConsensusResult<()> {
+        unimplemented!()
+    }
+
+    fn are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
+        unimplemented!()
+    }
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

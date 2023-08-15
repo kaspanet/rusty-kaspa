@@ -169,12 +169,13 @@ impl IbdFlow {
     ) -> Result<(), ProtocolError> {
         info!("Starting IBD with headers proof with peer {}", self.router);
 
-        let session = staging.session().await;
+        let staging_session = staging.session().await;
 
-        let pruning_point = self.sync_and_validate_pruning_proof(&session).await?;
-        self.sync_headers(&session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
-        self.validate_staging_timestamps(&self.ctx.consensus().session().await, &session).await?;
-        self.sync_pruning_point_utxoset(&session, pruning_point).await?;
+        let pruning_point = self.sync_and_validate_pruning_proof(&staging_session).await?;
+        self.sync_headers(&staging_session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
+        staging_session.async_validate_pruning_points().await?;
+        self.validate_staging_timestamps(&self.ctx.consensus().session().await, &staging_session).await?;
+        self.sync_pruning_point_utxoset(&staging_session, pruning_point).await?;
         Ok(())
     }
 
@@ -205,6 +206,11 @@ impl IbdFlow {
 
         if pruning_points.first().unwrap().hash != self.ctx.config.genesis.hash {
             return Err(ProtocolError::Other("the first pruning point in the list is expected to be genesis"));
+        }
+
+        if consensus.async_are_pruning_points_violating_finality(pruning_points).await {
+            // TODO: Find a better way to deal with finality conflicts
+            return Err(ProtocolError::Other("pruning points are violating finality"));
         }
 
         // TODO: validate pruning points before importing

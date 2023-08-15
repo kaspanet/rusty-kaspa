@@ -508,6 +508,19 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
+    fn validate_pruning_points(&self) -> ConsensusResult<()> {
+        let pp_info = self.pruning_point_store.read().get().unwrap();
+        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point) {
+            return Err(ConsensusError::General("invalid pruning point candidate"));
+        }
+
+        if !self.services.pruning_point_manager.are_pruning_points_in_valid_chain(pp_info) {
+            return Err(ConsensusError::General("past pruning points do not form a valid chain"));
+        }
+
+        Ok(())
+    }
+
     fn header_exists(&self, hash: Hash) -> bool {
         match self.statuses_store.read().get(hash).unwrap_option() {
             Some(status) => status.has_block_header(),
@@ -711,5 +724,9 @@ impl ConsensusApi for Consensus {
                 self.estimate_network_hashes_per_second_impl(&virtual_state.ghostdag_data, window_size)
             }
         }
+    }
+
+    fn are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
+        self.virtual_processor.are_pruning_points_violating_finality(pp_list)
     }
 }

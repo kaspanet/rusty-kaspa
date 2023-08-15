@@ -54,6 +54,7 @@ use kaspa_consensus_core::{
     config::genesis::GenesisBlock,
     header::Header,
     merkle::calc_hash_merkle_root,
+    pruning::PruningPointsList,
     tx::{MutableTransaction, Transaction},
     utxo::{
         utxo_diff::UtxoDiff,
@@ -931,6 +932,32 @@ impl VirtualStateProcessor {
         )?;
 
         Ok(())
+    }
+
+    pub fn are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
+        // Ideally we would want to check if the last known pruning point has the finality point
+        // in its chain, but in some cases it's impossible: let `lkp` be the last known pruning
+        // point from the list, and `fup` be the first unknown pruning point (the one following `lkp`).
+        // fup.blue_score - lkp.blue_score ∈ [finality_depth, finality_depth + k], so it's possible for
+        // `lkp` not to have the finality point in its past (if `fup` is close to the sink). So we have
+        // no choice but to check if `lkp` has `finality_point.finality_point` in its chain, meaning
+        // this function can only detect finality violations in depth of 2*finality_depth.
+        let current_pp = self.pruning_point_store.read().pruning_point().unwrap();
+        let vf = self.virtual_finality_point(&self.virtual_stores.read().state.get().unwrap().ghostdag_data, current_pp);
+        let vff = self.depth_manager.calc_finality_point(&self.ghostdag_primary_store.get_data(vf).unwrap(), current_pp);
+
+        let last_knonwn_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).unwrap_option() {
+            Some(status) => status.is_valid(),
+            None => false,
+        });
+
+        if let Some(last_knonwn_pp) = last_knonwn_pp {
+            !self.reachability_service.is_chain_ancestor_of(vff, last_knonwn_pp.hash)
+        } else {
+            // If no pruning point is known, there's definitely a finality violation
+            // (normally at least genesis should be known).
+            true
+        }
     }
 }
 
