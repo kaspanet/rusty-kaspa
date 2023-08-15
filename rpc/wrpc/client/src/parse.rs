@@ -43,7 +43,11 @@ pub fn parse_host(input: &str) -> Result<ParseHostOutput, ParseHostError> {
         Some(pos) => {
             // Check if char before ':' is also ':'.
             // As that would mean that the ':' is part of an IPv6 address.
-            if input.chars().nth(pos - 1) == Some(':') {
+            // Needs to be checked in case ':' is the first character in the input.
+            let Some(prev_pos) = pos.checked_sub(1) else {
+                return Err(ParseHostError::InvalidInput);
+            };
+            if input.chars().nth(prev_pos) == Some(':') {
                 (input, None)
             } else {
                 let (host, port_str) = input.split_at(pos);
@@ -288,5 +292,32 @@ mod tests {
         assert!(output.is_err());
         let err = output.unwrap_err();
         assert!(matches!(err, ParseHostError::ParsePortError(_)));
+    }
+
+    #[test]
+    fn should_fail_only_port() {
+        let input = ":8080";
+        let output = parse_host(input);
+        assert!(output.is_err());
+        let err = output.unwrap_err();
+        assert_eq!(err, ParseHostError::InvalidInput);
+    }
+
+    #[test]
+    fn should_fail_only_numbers_domain() {
+        let input = "123.123";
+        let output = parse_host(input);
+        assert!(output.is_err());
+        let err = output.unwrap_err();
+        assert_eq!(err, ParseHostError::InvalidInput);
+    }
+
+    #[test]
+    fn numbers_domain() {
+        let input = "123.com";
+        let output = parse_host(input).unwrap();
+        assert_eq!(output.scheme, None);
+        assert_eq!(output.host, Host::Domain("123.com"));
+        assert_eq!(output.port, None);
     }
 }
