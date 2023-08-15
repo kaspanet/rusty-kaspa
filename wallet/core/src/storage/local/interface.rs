@@ -75,6 +75,19 @@ impl LocalStoreInner {
         Ok(Self { cache, store: Store::Storage(storage), is_modified: modified, name, transactions })
     }
 
+    pub async fn update_stored_metadata(&self) -> Result<()> {
+        match self.store {
+            Store::Resident => Ok(()),
+            Store::Storage(ref storage) => {
+                let metadata: Vec<Metadata> = (&self.cache().metadata).try_into()?;
+                let mut wallet = Wallet::try_load(&storage).await?;
+                wallet.replace_metadata(metadata);
+                wallet.try_store(storage).await?;
+                Ok(())
+            }
+        }
+    }
+
     pub fn cache(&self) -> MutexGuard<Cache> {
         self.cache.lock().unwrap()
     }
@@ -370,6 +383,12 @@ impl AccountStore for LocalStoreInner {
 
         self.set_modified(true);
 
+        Ok(())
+    }
+
+    async fn update_metadata(&self, metadata: &[&Metadata]) -> Result<()> {
+        self.cache().metadata.store_multiple(metadata)?;
+        self.update_stored_metadata().await?;
         Ok(())
     }
 }

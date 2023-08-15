@@ -56,4 +56,9 @@ impl Wallet {
         let keydata = idx.map(|idx| payload.as_ref().prv_key_data.get(idx).unwrap().clone());
         Ok(keydata)
     }
+
+    pub fn replace_metadata(&mut self, metadata: Vec<Metadata>) {
+        self.metadata = metadata;
+    }
+    
 }

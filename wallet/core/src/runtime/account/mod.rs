@@ -498,12 +498,22 @@ pub trait DerivationCapableAccount: Account {
     async fn new_receive_address(self: Arc<Self>) -> Result<Address> {
         let address = self.derivation().receive_address_manager().new_address().await?;
         self.utxo_context().register_addresses(&[address.clone()]).await?;
+
+        let metadata = self.metadata()?.expect("derivation accounds must provide metadata");
+        let store = self.wallet().store().as_account_store()?;
+        store.update_metadata(&[&metadata]).await?;
+
         Ok(address)
     }
 
     async fn new_change_address(self: Arc<Self>) -> Result<Address> {
         let address = self.derivation().change_address_manager().new_address().await?;
         self.utxo_context().register_addresses(&[address.clone()]).await?;
+
+        let metadata = self.metadata()?.expect("derivation accounds must provide metadata");
+        let store = self.wallet().store().as_account_store()?;
+        store.update_metadata(&[&metadata]).await?;
+
         Ok(address)
     }
 

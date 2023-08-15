@@ -69,6 +69,7 @@ pub trait AccountStore: Send + Sync {
     async fn store_single(&self, account: &Account, metadata: Option<&Metadata>) -> Result<()>;
     async fn store_multiple(&self, data: &[(&Account, Option<&Metadata>)]) -> Result<()>;
     async fn remove(&self, id: &[&AccountId]) -> Result<()>;
+    async fn update_metadata(&self, metadata: &[&Metadata]) -> Result<()>;
 }
 
 #[async_trait]
