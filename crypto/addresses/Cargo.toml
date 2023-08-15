@@ -18,6 +18,7 @@ workflow-wasm.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+web-sys = "0.3.64"
 
 [[bench]]
 name = "bench"

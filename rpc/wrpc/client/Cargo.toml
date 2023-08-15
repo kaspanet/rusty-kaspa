@@ -34,3 +34,7 @@ workflow-log.workspace = true
 workflow-rpc.workspace = true
 workflow-wasm.workspace = true
 workflow-dom.workspace = true
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.37"
+web-sys = "0.3.64"
