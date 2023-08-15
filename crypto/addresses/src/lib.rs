@@ -550,9 +550,11 @@ mod tests {
         obj.set("version", &JsValue::from_str("PubKey")).unwrap();
         obj.set("prefix", &JsValue::from_str("kaspa")).unwrap();
         obj.set("payload", &JsValue::from_str("qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j")).unwrap();
+
+        assert_eq!(JsValue::from_str("object"), obj.js_typeof());
+
         let obj_js = obj.into_js_result().unwrap();
         let actual = from_value(obj_js).unwrap();
-
         assert_eq!(expected, actual);
     }
 }
