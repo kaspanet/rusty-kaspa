@@ -1,4 +1,4 @@
-use futures::future::join_all;
+// use futures::future::join_all;
 use hmac::Mac;
 use kaspa_addresses::{Address, Prefix as AddressPrefix, Version as AddressVersion};
 use ripemd::Ripemd160;
@@ -56,13 +56,14 @@ impl PubkeyDerivationManagerV0 {
         Ok(wallet)
     }
 
-    pub async fn derive_pubkey_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
+    pub fn derive_pubkey_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
         let list = indexes.map(|index| self.derive_pubkey(index)).collect::<Vec<_>>();
-        let keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
+        let keys = list.into_iter().collect::<Result<Vec<_>>>()?;
+        // let keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
         Ok(keys)
     }
 
-    pub async fn derive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
+    pub fn derive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
         let (key, _chain_code) =
             WalletDerivationManagerV0::derive_public_key_child(&self.public_key, ChildNumber::new(index, true)?, self.hmac.clone())?;
 
@@ -121,7 +122,7 @@ impl From<&PubkeyDerivationManagerV0> for ExtendedPublicKey<secp256k1::PublicKey
 
 #[async_trait]
 impl PubkeyDerivationManagerTrait for PubkeyDerivationManagerV0 {
-    async fn new_pubkey(&self) -> Result<secp256k1::PublicKey> {
+    fn new_pubkey(&self) -> Result<secp256k1::PublicKey> {
         self.set_index(self.index()? + 1)?;
         self.current_pubkey()
     }
@@ -135,15 +136,15 @@ impl PubkeyDerivationManagerTrait for PubkeyDerivationManagerV0 {
         Ok(())
     }
 
-    async fn current_pubkey(&self) -> Result<secp256k1::PublicKey> {
+    fn current_pubkey(&self) -> Result<secp256k1::PublicKey> {
         let index = self.index()?;
-        let key = self.derive_pubkey(index).await?;
+        let key = self.derive_pubkey(index)?;
 
         Ok(key)
     }
 
-    async fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
-        self.derive_pubkey_range(range).await
+    fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
+        self.derive_pubkey_range(range)
     }
 }
 
@@ -160,28 +161,24 @@ pub struct WalletDerivationManagerV0 {
 }
 
 impl WalletDerivationManagerV0 {
-    pub async fn create_extended_key_from_xprv(
-        xprv: &str,
-        is_multisig: bool,
-        account_index: u64,
-    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
+    pub fn create_extended_key_from_xprv(xprv: &str, is_multisig: bool, account_index: u64) -> Result<(SecretKey, ExtendedKeyAttrs)> {
         let xprv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
-        Self::derive_extened_key_from_master_key(xprv_key, is_multisig, account_index).await
+        Self::derive_extened_key_from_master_key(xprv_key, is_multisig, account_index)
     }
 
-    pub async fn derive_extened_key_from_master_key(
+    pub fn derive_extened_key_from_master_key(
         xprv_key: ExtendedPrivateKey<SecretKey>,
         _is_multisig: bool,
         account_index: u64,
     ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
         let attrs = xprv_key.attrs();
 
-        let (extended_private_key, attrs) = Self::create_extended_key(*xprv_key.private_key(), attrs.clone(), account_index).await?;
+        let (extended_private_key, attrs) = Self::create_extended_key(*xprv_key.private_key(), attrs.clone(), account_index)?;
 
         Ok((extended_private_key, attrs))
     }
 
-    async fn create_extended_key(
+    fn create_extended_key(
         mut private_key: SecretKey,
         mut attrs: ExtendedKeyAttrs,
         account_index: u64,
@@ -200,7 +197,7 @@ impl WalletDerivationManagerV0 {
         println!("path: {path}");
         let children = path.split('/');
         for child in children {
-            (private_key, attrs) = Self::derive_private_key(&private_key, &attrs, child.parse::<ChildNumber>()?).await?;
+            (private_key, attrs) = Self::derive_private_key(&private_key, &attrs, child.parse::<ChildNumber>()?)?;
             println!("ccc: {child}, public_key : {:?}, attrs: {:?}", private_key.get_public_key(), attrs);
         }
 
@@ -224,7 +221,7 @@ impl WalletDerivationManagerV0 {
         &self.change_pubkey_manager
     }
 
-    pub async fn create_pubkey_manager(
+    pub fn create_pubkey_manager(
         private_key: &secp256k1::SecretKey,
         address_type: AddressType,
         attrs: &ExtendedKeyAttrs,
@@ -236,7 +233,7 @@ impl WalletDerivationManagerV0 {
         //let attrs = private_key.attrs().clone();
         // let (public_key, attrs) =
         //     Self::derive_public_key(&public_key.public_key, public_key.attrs(), ChildNumber::new(address_type.index(), true)?).await?; //public_key.derive_child(ChildNumber::new(address_type.index(), false)?)?;
-        let (private_key, attrs) = Self::derive_private_key(private_key, attrs, ChildNumber::new(address_type.index(), true)?).await?;
+        let (private_key, attrs) = Self::derive_private_key(private_key, attrs, ChildNumber::new(address_type.index(), true)?)?;
         // let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(Error::Hmac)?;
         // hmac.update(&[0]);
         // hmac.update(&private_key.to_bytes());
@@ -251,7 +248,7 @@ impl WalletDerivationManagerV0 {
         )
     }
 
-    pub async fn derive_public_key(
+    pub fn derive_public_key(
         public_key: &secp256k1::PublicKey,
         attrs: &ExtendedKeyAttrs,
         child_number: ChildNumber,
@@ -296,7 +293,7 @@ impl WalletDerivationManagerV0 {
         Ok((key, chain_code.try_into()?))
     }
 
-    pub async fn derive_private_key(
+    pub fn derive_private_key(
         private_key: &SecretKey,
         attrs: &ExtendedKeyAttrs,
         child_number: ChildNumber,
@@ -364,19 +361,19 @@ impl WalletDerivationManagerV0 {
         Zeroizing::new(key)
     }
 
-    async fn from_extended_private_key(
+    fn from_extended_private_key(
         private_key: secp256k1::SecretKey,
         cosigner_index: Option<u32>,
         attrs: ExtendedKeyAttrs,
     ) -> Result<Self> {
-        let receive_wallet = Self::create_pubkey_manager(&private_key, AddressType::Receive, &attrs, cosigner_index).await?;
+        let receive_wallet = Self::create_pubkey_manager(&private_key, AddressType::Receive, &attrs, cosigner_index)?;
 
         // println!("###: public_key {:?}", receive_wallet.public_key);
         // println!("###: attrs {:?}", receive_wallet.attrs());
         // println!("###: fingerprint {:?}", receive_wallet.fingerprint);
         // println!("###: hmac {:?}", receive_wallet.hmac);
 
-        let change_wallet = Self::create_pubkey_manager(&private_key, AddressType::Change, &attrs, cosigner_index).await?;
+        let change_wallet = Self::create_pubkey_manager(&private_key, AddressType::Change, &attrs, cosigner_index)?;
 
         let extended_public_key = ExtendedPublicKey { public_key: private_key.get_public_key(), attrs };
         let wallet = Self {
@@ -404,26 +401,26 @@ impl Debug for WalletDerivationManagerV0 {
 #[async_trait]
 impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
     /// build wallet from root/master private key
-    async fn from_master_xprv(xprv: &str, _is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<Self> {
+    fn from_master_xprv(xprv: &str, _is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<Self> {
         let xprv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
         let attrs = xprv_key.attrs();
 
-        let (extended_private_key, attrs) = Self::create_extended_key(*xprv_key.private_key(), attrs.clone(), account_index).await?;
+        let (extended_private_key, attrs) = Self::create_extended_key(*xprv_key.private_key(), attrs.clone(), account_index)?;
 
         //let extended_public_key = ExtendedPublicKey { public_key: extended_private_key.get_public_key(), attrs };
-        let wallet = Self::from_extended_private_key(extended_private_key, cosigner_index, attrs).await?;
+        let wallet = Self::from_extended_private_key(extended_private_key, cosigner_index, attrs)?;
 
         Ok(wallet)
     }
 
-    async fn from_extended_public_key_str(_xpub: &str, _cosigner_index: Option<u32>) -> Result<Self> {
+    fn from_extended_public_key_str(_xpub: &str, _cosigner_index: Option<u32>) -> Result<Self> {
         // let extended_public_key = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
         // let wallet = Self::from_extended_public_key(extended_public_key, cosigner_index).await?;
         // Ok(wallet)
         todo!()
     }
 
-    async fn from_extended_public_key(
+    fn from_extended_public_key(
         _extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>,
         _cosigner_index: Option<u32>,
     ) -> Result<Self> {
@@ -458,38 +455,38 @@ impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
     }
 
     #[inline(always)]
-    async fn new_receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        let key = self.receive_pubkey_manager.new_pubkey().await?;
+    fn new_receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
+        let key = self.receive_pubkey_manager.new_pubkey()?;
         Ok(key)
     }
 
     #[inline(always)]
-    async fn new_change_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        let key = self.change_pubkey_manager.new_pubkey().await?;
+    fn new_change_pubkey(&self) -> Result<secp256k1::PublicKey> {
+        let key = self.change_pubkey_manager.new_pubkey()?;
         Ok(key)
     }
 
     #[inline(always)]
-    async fn receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        let key = self.receive_pubkey_manager.current_pubkey().await?;
+    fn receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
+        let key = self.receive_pubkey_manager.current_pubkey()?;
         Ok(key)
     }
 
     #[inline(always)]
-    async fn change_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        let key = self.change_pubkey_manager.current_pubkey().await?;
+    fn change_pubkey(&self) -> Result<secp256k1::PublicKey> {
+        let key = self.change_pubkey_manager.current_pubkey()?;
         Ok(key)
     }
 
     #[inline(always)]
-    async fn derive_receive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
-        let key = self.receive_pubkey_manager.derive_pubkey(index).await?;
+    fn derive_receive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
+        let key = self.receive_pubkey_manager.derive_pubkey(index)?;
         Ok(key)
     }
 
     #[inline(always)]
-    async fn derive_change_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
-        let key = self.change_pubkey_manager.derive_pubkey(index).await?;
+    fn derive_change_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
+        let key = self.change_pubkey_manager.derive_pubkey(index)?;
         Ok(key)
     }
 }
@@ -719,7 +716,7 @@ mod tests {
         let master_xprv =
             "xprv9s21ZrQH143K3knsajkUfEx2ZVqX9iGm188iNqYL32yMVuMEFmNHudgmYmdU4NaNNKisDaGwV1kSGAagNyyGTTCpe1ysw6so31sx3PUCDCt";
         //println!("################################################################# 1111");
-        let hd_wallet = WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None).await;
+        let hd_wallet = WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None);
         assert!(hd_wallet.is_ok(), "Could not parse key");
 
         //println!("################################################################# 2222");
@@ -741,10 +738,10 @@ mod tests {
         // assert_eq!(receive_addresses[0], address, "receive address at 0 failed $$$$ ");
 
         for index in 0..20 {
-            let pubkey = hd_wallet.derive_receive_pubkey(index).await.unwrap();
+            let pubkey = hd_wallet.derive_receive_pubkey(index).unwrap();
             let address: String = PubkeyDerivationManagerV0::create_address(&pubkey, Prefix::Mainnet, false).unwrap().into();
             assert_eq!(receive_addresses[index as usize], address, "receive address at {index} failed");
-            let pubkey = hd_wallet.derive_change_pubkey(index).await.unwrap();
+            let pubkey = hd_wallet.derive_change_pubkey(index).unwrap();
             let address: String = PubkeyDerivationManagerV0::create_address(&pubkey, Prefix::Mainnet, false).unwrap().into();
             assert_eq!(change_addresses[index as usize], address, "change address at {index} failed");
         }
@@ -755,16 +752,16 @@ mod tests {
         let master_xprv =
             "xprv9s21ZrQH143K3knsajkUfEx2ZVqX9iGm188iNqYL32yMVuMEFmNHudgmYmdU4NaNNKisDaGwV1kSGAagNyyGTTCpe1ysw6so31sx3PUCDCt";
 
-        let hd_wallet = WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None).await;
+        let hd_wallet = WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None);
         assert!(hd_wallet.is_ok(), "Could not parse key");
         let hd_wallet = hd_wallet.unwrap();
-        let pubkeys = hd_wallet.receive_pubkey_manager().derive_pubkey_range(0..20).await.unwrap();
+        let pubkeys = hd_wallet.receive_pubkey_manager().derive_pubkey_range(0..20).unwrap();
         let addresses_receive = pubkeys
             .into_iter()
             .map(|k| PubkeyDerivationManagerV0::create_address(&k, Prefix::Mainnet, false).unwrap().to_string())
             .collect::<Vec<String>>();
 
-        let pubkeys = hd_wallet.change_pubkey_manager().derive_pubkey_range(0..20).await.unwrap();
+        let pubkeys = hd_wallet.change_pubkey_manager().derive_pubkey_range(0..20).unwrap();
         let addresses_change = pubkeys
             .into_iter()
             .map(|k| PubkeyDerivationManagerV0::create_address(&k, Prefix::Mainnet, false).unwrap().to_string())
@@ -830,17 +827,17 @@ mod tests {
         let master_xprv =
             "xprv9s21ZrQH143K2rS8XAhiRk3NmkNRriFDrywGNQsWQqq8byBgBUt6A5uwTqYdZ3o5oDtKx7FuvNC1H1zPo7D5PXhszZTVgAvs79ehfTGESBh";
 
-        let hd_wallet = WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None).await;
+        let hd_wallet = WalletDerivationManagerV0::from_master_xprv(master_xprv, false, 0, None);
         assert!(hd_wallet.is_ok(), "Could not parse key");
         let hd_wallet = hd_wallet.unwrap();
 
         for index in 0..20 {
-            let key = hd_wallet.derive_receive_pubkey(index).await.unwrap();
+            let key = hd_wallet.derive_receive_pubkey(index).unwrap();
             //let address = Address::new(Prefix::Testnet, kaspa_addresses::Version::PubKey, key.to_bytes());
             let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap();
             //receive_addresses.push(String::from(address));
             assert_eq!(receive_addresses[index as usize], address.to_string(), "receive address at {index} failed");
-            let key = hd_wallet.derive_change_pubkey(index).await.unwrap();
+            let key = hd_wallet.derive_change_pubkey(index).unwrap();
             let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap();
             assert_eq!(change_addresses[index as usize], address.to_string(), "change address at {index} failed");
         }

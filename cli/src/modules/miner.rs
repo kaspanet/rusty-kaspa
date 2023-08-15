@@ -87,7 +87,7 @@ impl Miner {
             .get(MinerSettings::Location)
             .ok_or_else(|| Error::Custom("No miner binary specified, please use `miner select` to select a binary.".into()))?;
         let network_id = ctx.wallet().network_id()?;
-        let address = ctx.account().await?.receive_address().await?;
+        let address = ctx.account().await?.receive_address()?;
         let server: String = self.settings.get(MinerSettings::Server).unwrap_or("127.0.0.1".to_string());
         let throttle: usize = self.settings.get(MinerSettings::Throttle).unwrap_or(5_000);
         let mute = self.mute.load(Ordering::SeqCst);

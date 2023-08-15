@@ -39,7 +39,7 @@ impl GeneratorSettings {
         final_transaction_payload: Option<Vec<u8>>,
     ) -> Result<Self> {
         let network_type = account.utxo_context().processor().network_id()?.into();
-        let change_address = account.change_address().await?;
+        let change_address = account.change_address()?;
         let multiplexer = account.wallet().multiplexer().clone();
         let sig_op_count = account.sig_op_count();
         let minimum_signatures = account.minimum_signatures();

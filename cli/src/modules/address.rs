@@ -9,7 +9,7 @@ impl Address {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         if argv.is_empty() {
-            let address = ctx.account().await?.receive_address().await?.to_string();
+            let address = ctx.account().await?.receive_address()?.to_string();
             tprintln!(ctx, "\n{address}\n");
         } else {
             let op = argv.first().unwrap();

@@ -72,7 +72,7 @@ impl Account for MultiSig {
     fn receive_address(&self) -> Result<Address> {
         self.derivation.receive_address_manager().current_address()
     }
-    
+
     fn change_address(&self) -> Result<Address> {
         self.derivation.change_address_manager().current_address()
     }

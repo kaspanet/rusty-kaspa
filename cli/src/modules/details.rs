@@ -13,7 +13,7 @@ impl Details {
 
         let manager = derivation.receive_address_manager();
         let index = manager.index() + 1;
-        let addresses = manager.get_range_with_args(0..index, false).await?;
+        let addresses = manager.get_range_with_args(0..index, false)?;
         tprintln!(ctx, "Receive addresses: {index}");
         addresses.iter().for_each(|address| {
             tprintln!(ctx.term(), "{:>4}{}", "", style(address.to_string()).blue());
@@ -21,7 +21,7 @@ impl Details {
 
         let manager = derivation.change_address_manager();
         let index = manager.index() + 1;
-        let addresses = manager.get_range_with_args(0..index, false).await?;
+        let addresses = manager.get_range_with_args(0..index, false)?;
         tprintln!(ctx, "Change addresses: {index}");
         addresses.iter().for_each(|address| {
             tprintln!(ctx.term(), "{:>4}{}", "", style(address.to_string()).blue());

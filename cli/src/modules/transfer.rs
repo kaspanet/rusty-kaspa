@@ -22,7 +22,7 @@ impl Transfer {
         }
         let amount_sompi = try_parse_required_nonzero_kaspa_as_sompi_u64(argv.get(1))?;
         let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.get(2))?.unwrap_or(0);
-        let target_address = target_account.receive_address().await?;
+        let target_address = target_account.receive_address()?;
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
 
         let abortable = Abortable::default();

@@ -240,8 +240,8 @@ pub trait Account: AnySync + Send + Sync + 'static {
             }
             Err(_) => {
                 let mut address_set = HashSet::<Address>::new();
-                address_set.insert(self.receive_address().await?);
-                address_set.insert(self.change_address().await?);
+                address_set.insert(self.receive_address()?);
+                address_set.insert(self.change_address()?);
 
                 let scan = Scan::new_with_address_set(address_set, &balance, current_daa_score);
                 scan.scan(self.utxo_context()).await?;
@@ -416,7 +416,7 @@ pub trait DerivationCapableAccount: Account {
         let derivation = self.derivation();
 
         let _prv_key_data = self.prv_key_data(wallet_secret).await?;
-        let change_address = derivation.change_address_manager().current_address().await?;
+        let change_address = derivation.change_address_manager().current_address()?;
 
         let mut index: usize = 0;
         let mut last_notification = 0;
@@ -430,8 +430,8 @@ pub trait DerivationCapableAccount: Account {
             // ----
             // - _keydata is initialized above ^
             // - TODO - generate pairs of private keys and addresses as a (Address, secp256k1::Secret) tuple without updating address indexes
-            let mut keypairs = derivation.receive_address_manager().get_range(first..last).await?;
-            let change_keypairs = derivation.change_address_manager().get_range(first..last).await?;
+            let mut keypairs = derivation.receive_address_manager().get_range(first..last)?;
+            let change_keypairs = derivation.change_address_manager().get_range(first..last)?;
             keypairs.extend(change_keypairs);
             let keypairs: Vec<(Address, secp256k1::SecretKey)> =
                 keypairs.into_iter().map(|address| (address.clone(), ONE_KEY)).collect();
@@ -493,7 +493,7 @@ pub trait DerivationCapableAccount: Account {
     }
 
     async fn new_receive_address(self: Arc<Self>) -> Result<Address> {
-        let address = self.derivation().receive_address_manager().new_address().await?;
+        let address = self.derivation().receive_address_manager().new_address()?;
         self.utxo_context().register_addresses(&[address.clone()]).await?;
 
         let metadata = self.metadata()?.expect("derivation accounds must provide metadata");
@@ -504,7 +504,7 @@ pub trait DerivationCapableAccount: Account {
     }
 
     async fn new_change_address(self: Arc<Self>) -> Result<Address> {
-        let address = self.derivation().change_address_manager().new_address().await?;
+        let address = self.derivation().change_address_manager().new_address()?;
         self.utxo_context().register_addresses(&[address.clone()]).await?;
 
         let metadata = self.metadata()?.expect("derivation accounds must provide metadata");

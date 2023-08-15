@@ -610,7 +610,7 @@ impl KaspaCli {
             tprintln!(self, "• {}", style(&key).dim());
             let mut accounts = self.wallet.accounts(Some(key.id)).await?;
             while let Some(account) = accounts.try_next().await? {
-                let receive_address = account.receive_address().await?;
+                let receive_address = account.receive_address()?;
                 tprintln!(self, "    • {}", account.get_list_string()?);
                 tprintln!(self, "      {}", style(receive_address.to_string()).blue());
             }

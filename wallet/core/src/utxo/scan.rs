@@ -77,7 +77,7 @@ impl Scan {
             // log_info!("first: {}, last: {}", first, last);
 
             // generate address derivations
-            let addresses = address_manager.get_range(first..last).await?;
+            let addresses = address_manager.get_range(first..last)?;
             // register address in the utxo context; NOTE:  during the scan,
             // before `get_utxos_by_addresses()` is complete we may receive
             // new transactions  as such utxo context should be aware of the

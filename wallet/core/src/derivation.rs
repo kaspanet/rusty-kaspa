@@ -13,7 +13,7 @@ use crate::runtime::AccountKind;
 use crate::secret::Secret;
 use crate::storage::PrvKeyDataId;
 use crate::Result;
-use futures::future::join_all;
+// use futures::future::join_all;
 use kaspa_addresses::{Address, Prefix};
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use kaspa_consensus_core::networktype::NetworkType;
@@ -89,7 +89,7 @@ impl AddressManager {
         self.inner.lock().unwrap()
     }
 
-    pub async fn new_address(&self) -> Result<Address> {
+    pub fn new_address(&self) -> Result<Address> {
         self.set_index(self.index() + 1)?;
         self.current_address()
     }
@@ -97,6 +97,7 @@ impl AddressManager {
     pub fn current_address(&self) -> Result<Address> {
         let list = self.pubkey_managers.iter().map(|m| m.current_pubkey());
 
+        // let keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
         let keys = list.into_iter().collect::<Result<Vec<_>>>()?;
         let address = self.create_address(keys)?;
 
@@ -121,16 +122,17 @@ impl AddressManager {
         Ok(())
     }
 
-    pub async fn get_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<Address>> {
-        self.get_range_with_args(indexes, true).await
+    pub fn get_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<Address>> {
+        self.get_range_with_args(indexes, true)
     }
 
-    pub async fn get_range_with_args(&self, indexes: std::ops::Range<u32>, update_indexes: bool) -> Result<Vec<Address>> {
+    pub fn get_range_with_args(&self, indexes: std::ops::Range<u32>, update_indexes: bool) -> Result<Vec<Address>> {
         let manager_length = self.pubkey_managers.len();
 
         let list = self.pubkey_managers.iter().map(|m| m.get_range(indexes.clone()));
 
-        let manager_keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
+        // let manager_keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
+        let manager_keys = list.into_iter().collect::<Result<Vec<_>>>()?;
 
         let is_multisig = manager_length > 1;
 
@@ -208,13 +210,13 @@ impl AddressDerivationManager {
             let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind {
                 AccountKind::Legacy => {
                     // TODO! WalletAccountV0::from_extended_public_key is not yet implemented
-                    Arc::new(WalletDerivationManagerV0::from_extended_public_key_str(xpub, cosigner_index).await?)
+                    Arc::new(WalletDerivationManagerV0::from_extended_public_key_str(xpub, cosigner_index)?)
                 }
                 AccountKind::MultiSig => {
                     let cosigner_index = cosigner_index.ok_or(Error::InvalidAccountKind)?;
-                    Arc::new(WalletDerivationManager::from_extended_public_key_str(xpub, Some(cosigner_index)).await?)
+                    Arc::new(WalletDerivationManager::from_extended_public_key_str(xpub, Some(cosigner_index))?)
                 }
-                _ => Arc::new(WalletDerivationManager::from_extended_public_key_str(xpub, cosigner_index).await?),
+                _ => Arc::new(WalletDerivationManager::from_extended_public_key_str(xpub, cosigner_index)?),
             };
 
             receive_pubkey_managers.push(derivator.receive_pubkey_manager());
@@ -291,9 +293,9 @@ impl AddressDerivationManager {
         id: &PrvKeyDataId,
     ) -> Result<Vec<(Address, secp256k1::SecretKey)>> {
         let addresses = if change_address {
-            self.change_address_manager.get_range_with_args(indexes, update_indexes).await?
+            self.change_address_manager.get_range_with_args(indexes, update_indexes)?
         } else {
-            self.receive_address_manager.get_range_with_args(indexes, update_indexes).await?
+            self.receive_address_manager.get_range_with_args(indexes, update_indexes)?
         };
 
         let addresses_list = &addresses.iter().collect::<Vec<&Address>>()[..];
@@ -486,9 +488,9 @@ pub async fn create_xpub_from_mnemonic(
     let xkey = ExtendedPrivateKey::<secp256k1::SecretKey>::new(seed)?;
 
     let (secret_key, attrs) = match account_kind {
-        AccountKind::Legacy => WalletDerivationManagerV0::derive_extened_key_from_master_key(xkey, true, account_index).await?,
-        AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xkey, true, account_index).await?,
-        _ => WalletDerivationManager::derive_extened_key_from_master_key(xkey, false, account_index).await?,
+        AccountKind::Legacy => WalletDerivationManagerV0::derive_extened_key_from_master_key(xkey, true, account_index)?,
+        AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xkey, true, account_index)?,
+        _ => WalletDerivationManager::derive_extened_key_from_master_key(xkey, false, account_index)?,
     };
 
     let xkey = ExtendedPublicKey { public_key: secret_key.get_public_key(), attrs };
@@ -502,9 +504,9 @@ pub async fn create_xpub_from_xprv(
     account_index: u64,
 ) -> Result<ExtendedPublicKey<secp256k1::PublicKey>> {
     let (secret_key, attrs) = match account_kind {
-        AccountKind::Legacy => WalletDerivationManagerV0::derive_extened_key_from_master_key(xprv, true, account_index).await?,
-        AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xprv, true, account_index).await?,
-        AccountKind::Bip32 => WalletDerivationManager::derive_extened_key_from_master_key(xprv, false, account_index).await?,
+        AccountKind::Legacy => WalletDerivationManagerV0::derive_extened_key_from_master_key(xprv, true, account_index)?,
+        AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xprv, true, account_index)?,
+        AccountKind::Bip32 => WalletDerivationManager::derive_extened_key_from_master_key(xprv, false, account_index)?,
         _ => panic!("create_xpub_from_xprv not supported for account kind: {:?}", account_kind),
     };
 

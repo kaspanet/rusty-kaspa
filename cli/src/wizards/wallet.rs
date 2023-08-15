@@ -136,7 +136,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
         term.writeln("");
     }
 
-    let receive_address = account.receive_address().await?;
+    let receive_address = account.receive_address()?;
     term.writeln("Your default account deposit address:");
     term.writeln(style(receive_address).blue().to_string());
     term.writeln("");

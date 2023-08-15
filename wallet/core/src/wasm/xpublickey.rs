@@ -17,7 +17,7 @@ impl XPublicKey {
     #[wasm_bindgen(js_name=fromXPub)]
     pub async fn from_xpub(kpub: &str, cosigner_index: Option<u32>) -> Result<XPublicKey> {
         let xpub = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(kpub)?;
-        let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub, cosigner_index).await?;
+        let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub, cosigner_index)?;
         Ok(Self { hd_wallet })
     }
 
@@ -32,7 +32,7 @@ impl XPublicKey {
         let path = WalletDerivationManager::build_derivate_path(is_multisig, account_index, None, None)?;
         let xprv = xprv.derive_path(path)?;
         let xpub = xprv.public_key();
-        let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub, cosigner_index).await?;
+        let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub, cosigner_index)?;
         Ok(Self { hd_wallet })
     }
 
@@ -41,7 +41,7 @@ impl XPublicKey {
         if start > end {
             (start, end) = (end, start);
         }
-        let pubkeys = self.hd_wallet.receive_pubkey_manager().derive_pubkey_range(start..end).await?;
+        let pubkeys = self.hd_wallet.receive_pubkey_manager().derive_pubkey_range(start..end)?;
         let pubkeys = to_value(&pubkeys)?;
         Ok(pubkeys)
     }
@@ -51,7 +51,7 @@ impl XPublicKey {
         if start > end {
             (start, end) = (end, start);
         }
-        let pubkeys = self.hd_wallet.change_pubkey_manager().derive_pubkey_range(start..end).await?;
+        let pubkeys = self.hd_wallet.change_pubkey_manager().derive_pubkey_range(start..end)?;
         let pubkeys = to_value(&pubkeys)?;
 
         Ok(pubkeys)

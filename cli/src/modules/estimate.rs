@@ -21,7 +21,7 @@ impl Estimate {
         let abortable = Abortable::default();
 
         // just use any address for an estimate (change address)
-        let change_address = account.change_address().await?;
+        let change_address = account.change_address()?;
         let destination = PaymentDestination::PaymentOutputs(PaymentOutputs::try_from((change_address.clone(), amount_sompi))?);
         let estimate = account.estimate(destination, priority_fee_sompi.into(), None, &abortable).await?;
 
