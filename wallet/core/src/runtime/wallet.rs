@@ -446,7 +446,6 @@ impl Wallet {
 
     pub async fn create_wallet(self: &Arc<Wallet>, args: WalletCreateArgs) -> Result<Option<String>> {
         self.reset().await?;
-        log_info!("XXXX-YYYY WALLET NAME: {:?}", args.name);
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
         self.inner.store.create(&ctx, args.into()).await?;
         let descriptor = self.inner.store.descriptor()?;

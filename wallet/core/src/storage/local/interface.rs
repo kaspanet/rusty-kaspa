@@ -218,7 +218,6 @@ impl Interface for LocalStore {
     async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()> {
         let location = self.location.lock().unwrap().clone().unwrap();
 
-        log_info!("WALLET CREATE INTERFACE: {:?}", args);
         let inner = Arc::new(LocalStoreInner::try_create(ctx, &location.folder, args, self.is_resident).await?);
         self.inner.lock().unwrap().replace(inner);
 

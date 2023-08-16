@@ -59,25 +59,3 @@ impl From<PendingUtxoEntryReference> for UtxoEntryReference {
         pending.inner().entry.clone()
     }
 }
-
-// ---
-
-/// A simple collection of UTXO entries. This struct is used to
-/// retain a set of UTXO entries in the WASM memory for faster
-/// processing. This struct keeps a list of entries represented
-/// by `UtxoEntryReference` struct. This data structure is used
-/// internally by the framework, but is exposed for convenience.
-/// Please consider using `UtxoContect` instead.
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-#[wasm_bindgen(inspectable)]
-pub struct UtxoEntries(Arc<Vec<UtxoEntryReference>>);
-
-impl UtxoEntries {
-    pub fn contains(&self, entry: &UtxoEntryReference) -> bool {
-        self.0.contains(entry)
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &UtxoEntryReference> {
-        self.0.iter()
-    }
-}
