@@ -5,7 +5,6 @@ use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
 // use wasm_bindgen::convert::FromWasmAbi;
-use js_sys::Object;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::object::*;
 
@@ -126,6 +125,19 @@ pub enum Version {
     PubKeyECDSA = 1,
     /// ScriptHash addresses always have the version byte set to 8
     ScriptHash = 8,
+}
+
+impl TryFrom<&str> for Version {
+    type Error = AddressError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "PubKey" => Ok(Version::PubKey),
+            "PubKeyECDSA" => Ok(Version::PubKeyECDSA),
+            "ScriptHash" => Ok(Version::ScriptHash),
+            _ => Err(AddressError::InvalidVersionString(value.to_owned())),
+        }
+    }
 }
 
 impl Version {
@@ -329,8 +341,154 @@ impl<'de> Deserialize<'de> for Address {
     where
         D: Deserializer<'de>,
     {
-        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-        s.try_into().map_err(serde::de::Error::custom)
+        #[derive(Default)]
+        pub struct AddressVisitor<'de> {
+            marker: std::marker::PhantomData<Address>,
+            lifetime: std::marker::PhantomData<&'de ()>,
+        }
+        impl<'de> serde::de::Visitor<'de> for AddressVisitor<'de> {
+            type Value = Address;
+
+            fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map; number-type - pointer")
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map")
+                }
+            }
+
+            #[cfg(target_arch = "wasm32")]
+            fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+
+            #[cfg(target_arch = "wasm32")]
+            fn visit_f32<E>(self, v: f32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                use wasm_bindgen::convert::RefFromWasmAbi;
+                let instance_ref = unsafe { Self::Value::ref_from_abi(v) }; // todo add checks for safecast
+                Ok(instance_ref.clone())
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Address::try_from(v).map_err(serde::de::Error::custom)
+            }
+
+            fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Address::try_from(v).map_err(serde::de::Error::custom)
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Address::try_from(v).map_err(serde::de::Error::custom)
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let str = std::str::from_utf8(v).map_err(serde::de::Error::custom)?;
+                Address::try_from(str).map_err(serde::de::Error::custom)
+            }
+
+            fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let str = std::str::from_utf8(v).map_err(serde::de::Error::custom)?;
+                Address::try_from(str).map_err(serde::de::Error::custom)
+            }
+
+            fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let str = std::str::from_utf8(&v).map_err(serde::de::Error::custom)?;
+                Address::try_from(str).map_err(serde::de::Error::custom)
+            }
+
+            fn visit_map<A>(self, mut access: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut prefix: Option<String> = None;
+                let mut payload: Option<String> = None;
+
+                while let Some((key, value)) = access.next_entry::<String, String>()? {
+                    #[cfg(test)]
+                    web_sys::console::log_3(&"key value: ".into(), &key.clone().into(), &value.clone().into());
+
+                    match key.as_ref() {
+                        "prefix" => {
+                            prefix = Some(value.to_string());
+                        }
+                        "payload" => {
+                            payload = Some(value.to_string());
+                        }
+                        "version" => continue,
+                        unknown_field => {
+                            return Err(serde::de::Error::unknown_field(unknown_field, &["prefix", "payload", "version"]))
+                        }
+                    }
+                    if prefix.is_some() && payload.is_some() {
+                        break;
+                    }
+                }
+                let (prefix, payload) = match (prefix, payload) {
+                    (Some(prefix), Some(payload)) => (prefix, payload),
+                    (None, _) => return Err(serde::de::Error::missing_field("prefix")),
+                    (_, None) => return Err(serde::de::Error::missing_field("payload")),
+                };
+                Address::decode_payload(prefix.as_str().try_into().map_err(serde::de::Error::custom)?, &payload)
+                    .map_err(serde::de::Error::custom)
+            }
+        }
+
+        deserializer.deserialize_any(AddressVisitor::default())
     }
 }
 
@@ -339,7 +497,7 @@ impl TryFrom<JsValue> for Address {
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
         if let Some(string) = js_value.as_string() {
             Address::try_from(string)
-        } else if let Some(object) = Object::try_from(&js_value) {
+        } else if let Some(object) = js_sys::Object::try_from(&js_value) {
             let prefix: Prefix = object.get_string("prefix")?.as_str().try_into()?;
             let payload = object.get_string("payload")?; //.as_str();
             Self::decode_payload(prefix, &payload)
@@ -416,5 +574,54 @@ mod tests {
         let address: Result<Address, AddressError> = address_str.try_into();
         assert_eq!(Err(AddressError::BadChecksum), address);
         // cspell:enable
+    }
+
+    use js_sys::Object;
+    use wasm_bindgen::{JsValue, __rt::IntoJsResult};
+    use wasm_bindgen_test::wasm_bindgen_test;
+    use workflow_wasm::{prelude::ObjectTrait, tovalue::from_value, tovalue::to_value};
+
+    #[wasm_bindgen_test]
+    pub fn test_wasm_serde_constructor() {
+        let str = "kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j";
+        let a = Address::constructor(str);
+        let value = to_value(&a).unwrap();
+
+        assert_eq!(JsValue::from_str("string"), value.js_typeof());
+        assert_eq!(value, JsValue::from_str(str));
+        assert_eq!(a, from_value(value).unwrap());
+    }
+
+    #[wasm_bindgen_test]
+    pub fn test_wasm_js_serde_object() {
+        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
+
+        use web_sys::console;
+        console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
+
+        let obj = Object::new();
+        obj.set("version", &JsValue::from_str("PubKey")).unwrap();
+        obj.set("prefix", &JsValue::from_str("kaspa")).unwrap();
+        obj.set("payload", &JsValue::from_str("qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j")).unwrap();
+
+        assert_eq!(JsValue::from_str("object"), obj.js_typeof());
+
+        let obj_js = obj.into_js_result().unwrap();
+        let actual = from_value(obj_js).unwrap();
+        assert_eq!(expected, actual);
+    }
+
+    #[wasm_bindgen_test]
+    pub fn test_wasm_serde_object() {
+        use wasm_bindgen::convert::IntoWasmAbi;
+
+        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
+        let wasm_js_value: JsValue = expected.clone().into_abi().into();
+
+        // use web_sys::console;
+        // console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
+
+        let actual = from_value(wasm_js_value).unwrap();
+        assert_eq!(expected, actual);
     }
 }
