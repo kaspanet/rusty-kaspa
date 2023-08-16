@@ -18,8 +18,8 @@ workflow-wasm.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
-wasm-bindgen-test = "0.3.37"
-web-sys = "0.3.64"
+wasm-bindgen-test.workspace = true
+web-sys.workspace = true
 
 [[bench]]
 name = "bench"
