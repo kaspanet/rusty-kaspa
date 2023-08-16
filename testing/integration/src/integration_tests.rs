@@ -70,6 +70,7 @@ use std::{
     io::{BufRead, BufReader},
     str::{from_utf8, FromStr},
 };
+use tempfile::tempdir;
 
 use crate::common;
 
@@ -1710,26 +1711,22 @@ async fn staging_consensus_test() {
 
 #[tokio::test]
 async fn sanity_integration_test() {
-    let core = DaemonWithRpc::new_random();
-    let (workers, rpc_client) = core.start().await;
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    rpc_client.disconnect().await.unwrap();
-    drop(rpc_client);
-    core.core.shutdown();
-    core.core.join(workers);
-    // let core = create_daemon(Default::default());
-    // let workers = core.start();
-    // tokio::time::sleep(Duration::from_secs(1)).await;
-    // core.shutdown();
-    // core.join(workers);
-}
+    let core1 = DaemonWithRpc::new_random(true);
+    let (workers1, rpc_client1) = core1.start().await;
 
-async fn mining_integration_test() {
-    let core = create_daemon(Default::default());
-    let workers = core.start();
+    let core2 = DaemonWithRpc::new_random(false);
+    let (workers2, rpc_client2) = core2.start().await;
+
     tokio::time::sleep(Duration::from_secs(1)).await;
-    core.shutdown();
-    core.join(workers);
+    rpc_client1.disconnect().await.unwrap();
+    drop(rpc_client1);
+    core1.core.shutdown();
+    core1.core.join(workers1);
+
+    rpc_client2.disconnect().await.unwrap();
+    drop(rpc_client2);
+    core2.core.shutdown();
+    core2.core.join(workers2);
 }
 
 struct DaemonWithRpc {
@@ -1738,7 +1735,7 @@ struct DaemonWithRpc {
 }
 
 impl DaemonWithRpc {
-    fn new_random() -> DaemonWithRpc {
+    fn new_random(with_logs: bool) -> DaemonWithRpc {
         let mut args: Args = Default::default();
         args.devnet = true;
 
@@ -1749,14 +1746,24 @@ impl DaemonWithRpc {
         let socket2 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let p2p_port = socket2.local_addr().unwrap().port();
 
+        let socket3 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let rpc_json_port = socket3.local_addr().unwrap().port();
+
+        let socket4 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let rpc_borsh_port = socket4.local_addr().unwrap().port();
+
         drop(socket1);
         drop(socket2);
+        drop(socket3);
+        drop(socket4);
 
         args.rpclisten = Some(format!("0.0.0.0:{rpc_port}").try_into().unwrap());
         args.listen = Some(format!("0.0.0.0:{p2p_port}").try_into().unwrap());
-        args.appdir = Some(std::env::temp_dir().to_str().unwrap().into());
+        args.rpclisten_json = Some(format!("0.0.0.0:{rpc_json_port}").try_into().unwrap());
+        args.rpclisten_borsh = Some(format!("0.0.0.0:{rpc_borsh_port}").try_into().unwrap());
+        args.appdir = Some(tempdir().unwrap().path().to_str().unwrap().to_owned());
 
-        let core = create_daemon(args);
+        let core = create_daemon(args, with_logs, false);
         DaemonWithRpc { core, rpc_port }
     }
 

@@ -168,7 +168,7 @@ fn get_user_approval_or_exit(message: &str, approve: bool) {
     }
 }
 
-pub fn create_daemon(args: Args) -> Arc<Core> {
+pub fn create_daemon(args: Args, with_logs: bool, bind_signals: bool) -> Arc<Core> {
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
 
@@ -201,13 +201,20 @@ pub fn create_daemon(args: Args) -> Arc<Core> {
     let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
     let db_dir = app_dir.join(config.network_name()).join(DEFAULT_DATA_DIR);
 
-    // Logs directory is usually under the application directory, unless otherwise specified
-    let log_dir = args.logdir.unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
-    let log_dir = if log_dir.is_empty() { app_dir.join(config.network_name()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
-    let log_dir = if args.no_log_files { None } else { log_dir.to_str() };
+    // TODO: Find a better way to deal with the fact that we can't init the logger twice.
+    let log_dir = if with_logs {
+        // Logs directory is usually under the application directory, unless otherwise specified
+        let log_dir = args.logdir.unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
+        let log_dir =
+            if log_dir.is_empty() { app_dir.join(config.network_name()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
+        let log_dir = if args.no_log_files { None } else { log_dir.to_str() };
 
-    // Initialize the logger
-    kaspa_core::log::init_logger(log_dir, &args.log_level);
+        // Initialize the logger
+        kaspa_core::log::init_logger(log_dir, &args.log_level);
+        log_dir.map(|log_dir| log_dir.to_owned())
+    } else {
+        None
+    };
 
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), version());
@@ -394,8 +401,10 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         })
         .for_each(|server| async_runtime.register(server));
 
-    // Bind the keyboard signal to the core
-    Arc::new(Signals::new(&core)).init();
+    if bind_signals {
+        // Bind the keyboard signal to the core
+        Arc::new(Signals::new(&core)).init();
+    }
 
     // Consensus must start first in order to init genesis in stores
     core.bind(consensus_manager);

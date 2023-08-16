@@ -17,6 +17,6 @@ pub fn main() {
     let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
 
     let args = parse_args();
-    create_daemon(args).run();
+    create_daemon(args, true, true).run();
     trace!("Kaspad is finished...");
 }
