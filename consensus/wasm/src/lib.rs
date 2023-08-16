@@ -1,10 +1,10 @@
-mod imports;
 pub mod error;
-pub mod result;
+mod imports;
 pub mod input;
 pub mod keypair;
 pub mod outpoint;
 pub mod output;
+pub mod result;
 pub mod signable;
 pub mod signer;
 pub mod transaction;

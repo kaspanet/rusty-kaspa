@@ -1,7 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
-use kaspa_addresses::Address;
 use crate::{TransactionOutpoint, TransactionOutpointInner};
+use kaspa_addresses::Address;
 use workflow_wasm::abi::ref_from_abi;
 
 pub type UtxoEntryId = TransactionOutpointInner;
@@ -32,7 +32,6 @@ impl UtxoEntry {
     pub fn is_coinbase(&self) -> bool {
         self.entry.is_coinbase
     }
-
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

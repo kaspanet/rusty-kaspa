@@ -6,8 +6,8 @@ use kaspa_hashes::PowHash;
 use kaspa_math::Uint256;
 use kaspa_utils::hex::ToHex;
 use wasm_bindgen::prelude::*;
-use workflow_wasm::prelude::*;
 use workflow_wasm::error::Error;
+use workflow_wasm::prelude::*;
 use workflow_wasm::result::Result;
 
 #[wasm_bindgen(inspectable)]
