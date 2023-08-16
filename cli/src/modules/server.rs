@@ -1,4 +1,5 @@
 use crate::imports::*;
+use kaspa_wrpc_client::parse::parse_host;
 
 #[derive(Default, Handler)]
 #[help("Set RPC server address")]
@@ -9,6 +10,11 @@ impl Server {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         if let Some(url) = argv.first() {
+            let Ok(_) = parse_host(url) else {
+                tprintln!(ctx, "Invalid host: {url}");
+                return Ok(());
+            };
+
             ctx.wallet().settings().set(WalletSettings::Server, url).await?;
             tprintln!(ctx, "Setting RPC server to: {url}");
         } else {
