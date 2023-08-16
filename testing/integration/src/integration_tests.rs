@@ -1739,7 +1739,7 @@ impl DaemonWithRpc {
         let mut args: Args = Default::default();
         args.devnet = true;
 
-        // This should ask the OS to allocate free port for `socket1` and `socket2`.
+        // This should ask the OS to allocate free port for socket 1 to 4.
         let socket1 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let rpc_port = socket1.local_addr().unwrap().port();
 
