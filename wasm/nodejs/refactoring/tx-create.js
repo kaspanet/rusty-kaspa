@@ -1,8 +1,10 @@
 globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket module shim
 
-let kaspa = require('./kaspa/kaspa_wasm');
-let { RpcClient, UtxoSet, Address, Encoding, UtxoOrdering, 
-    PaymentOutputs, PaymentOutput, 
+const kaspa = require('../kaspa/kaspa_wasm');
+const {parseArgs, guardRpcIsSynced} = require("../utils");
+const {
+    RpcClient, UtxoSet, Address, Encoding, UtxoOrdering,
+    PaymentOutputs, PaymentOutput,
     XPrivateKey,
     TransactionInput,
     Transaction,
@@ -16,13 +18,21 @@ let { RpcClient, UtxoSet, Address, Encoding, UtxoOrdering,
 } = kaspa;
 kaspa.init_console_panic_hook();
 
-(async ()=>{
-    
-    let URL = "ws://127.0.0.1:17110";
-    let rpc = new RpcClient(Encoding.Borsh,URL);
-    
+(async () => {
+    const {
+        encoding,
+        address,
+        networkType,
+    } = parseArgs();
+
+    const rpcHost = "127.0.0.1";
+    // Parse the url to automatically determine the port for the given host
+    const rpcUrl = RpcClient.parseUrl(rpcHost, encoding, networkType);
+    const rpc = new RpcClient(encoding, rpcUrl, networkType);
+
     console.log(`# connecting to ${URL}`)
     await rpc.connect();
+    await guardRpcIsSynced(rpc);
 
     // let res = await rpc.getBlockTemplate({
     //     extraData:[],
@@ -31,37 +41,34 @@ kaspa.init_console_panic_hook();
     // console.log("res", res.block.header.blueWork);
 
     // return
-    
-    let info = await rpc.getInfo();
+
+    const info = await rpc.getInfo();
     console.log("info", info);
-    
-    let addresses = [
-        new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"),
+
+    const addr = address ?? "kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd";
+
+    const addresses = [
+        addr,
         //new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")
     ];
 
     console.log("\ngetting UTXOs...", addresses);
-    let utxos_by_address = await rpc.getUtxosByAddresses({ addresses });
-    //console.log("utxos_by_address", utxos_by_address.entries.slice(0, 2))
-    let utxoSet = UtxoSet.from(utxos_by_address);
+    // const utxosByAddress = await rpc.getUtxosByAddresses({addresses});
 
-    let amount = 1000n;
-    let utxo_selection = await utxoSet.select(amount+100n, UtxoOrdering.AscendingAmount);
+    const utxos = await rpc.getUtxosByAddresses({ addresses });
 
-    console.log("utxo_selection.amount", utxo_selection.amount)
-    console.log("utxo_selection.totalAmount", utxo_selection.totalAmount)
-    let utxos = utxo_selection.utxos;
-    console.log("utxos[0].data.outpoint", utxos[0]?.data.outpoint)
-    console.log("utxos.*.data.outpoint", utxos.map(a=>a.data.outpoint))
-    console.log("utxos.*.data.entry", utxos.map(a=>a.data.entry))
+    const amount = 1000n;
+    // const utxoSelection = await utxoSet.select(amount + 100n, UtxoOrdering.AscendingAmount);
+    //
+    // console.log("utxo_selection.amount", utxoSelection.amount)
+    // console.log("utxo_selection.totalAmount", utxoSelection.totalAmount)
+    // // const utxos = utxoSelection.utxos;
+    // console.log("utxos[0].data.outpoint", utxos[0]?.data.outpoint)
+    // console.log("utxos.*.data.outpoint", utxos.map(a => a.data.outpoint))
+    // console.log("utxos.*.data.entry", utxos.map(a => a.data.entry))
 
-    let outputItems = [new PaymentOutput(
-        new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"),
-        amount
-    )];
-
-    let priorityFee = 0n;
-    let change_address = new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd");
+    const priorityFee = 0n;
+    const changeAddress = addr;
     // let change = utxo_selection.totalAmount - amount - priorityFee;
     // if (change > 500){
     //     outputItems.push(new Output(
@@ -70,21 +77,26 @@ kaspa.init_console_panic_hook();
     //     ))
     // }
 
-    let outputs = new PaymentOutputs(outputItems)
-    
-    let utxoEntryList = [];
-    let inputs = utxos.map((utxo, sequence)=>{
+    const outputs = [
+        [
+            addr,
+            amount
+        ]
+    ];
+
+    const utxoEntryList = [];
+    const inputs = utxos.map((utxo, sequence) => {
         utxoEntryList.push(utxo.data);
-        
+
         return new TransactionInput({
             previousOutpoint: utxo.data.outpoint,
-            signatureScript:[],
+            signatureScript: [],
             sequence,
-            sigOpCount:0
+            sigOpCount: 0
         });
     });
 
-    let utxoEntries = new UtxoEntries(utxoEntryList);
+    const utxoEntries = new UtxoEntries(utxoEntryList);
 
     console.log("inputs", inputs);
     console.log("outputs", outputs);
@@ -110,29 +122,28 @@ kaspa.init_console_panic_hook();
 
     console.log("transaction", transaction)
 
-    let minimumFee = minimumTransactionFee(transaction, NetworkType.Testnet);
+    const minimumFee = minimumTransactionFee(transaction, networkType);
 
     console.log("minimumFee:", minimumFee);
 
-    let xkey = new XPrivateKey(
+    const xKey = new XPrivateKey(
         "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ",
         false,
         0n
     );
 
-    let private_key = xkey.receiveKey(0);
-    
+    const private_key = xKey.receiveKey(0);
+
     let mtx = new MutableTransaction(transaction, utxoEntries);
-    let adjustTransactionResult = adjustTransactionForFee(mtx, change_address, priorityFee);
+    const adjustTransactionResult = adjustTransactionForFee(mtx, changeAddress, priorityFee);
     console.log("adjustTransactionResult", adjustTransactionResult)
     mtx = signTransaction(mtx, [private_key], true);
     console.log("before submit mtx.id", mtx.id)
     transaction = mtx.toRpcTransaction();
-    
-    let result = await rpc.submitTransaction({transaction, allowOrphan:false});
+
+    let result = await rpc.submitTransaction({transaction, allowOrphan: false});
 
     console.log("result", result)
 
     await rpc.disconnect();
-
 })();

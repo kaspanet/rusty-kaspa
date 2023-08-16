@@ -1,23 +1,18 @@
-let kaspa = require('./kaspa/kaspa_wasm');
+const kaspa = require('./kaspa/kaspa_wasm');
+const {parseArgs} = require("./utils");
 kaspa.init_console_panic_hook();
 
-// let v = 0n.toString();
-// console.log("v=",v);
-
-const {
-    Header, State, Hash
-} = kaspa;
-
-(async ()=>{
+(async () => {
+    const {} = parseArgs();
 
     console.log("creating header");
 
-    let blueWork = BigInt("0x"+"a000000000000001" + 
-                                "b000000000000002" + 
-                                "c000000000000003");
-    console.log("blueWork:",blueWork);
-    let header = new Header({
-        version : 0,
+    const blueWork = BigInt("0x" + "a000000000000001" +
+        "b000000000000002" +
+        "c000000000000003");
+    console.log("blueWork:", blueWork);
+    const header = new kaspa.Header({
+        version: 0,
         parentsByLevel: [["0000000000000000000000000000000000000000000000000000000000000000"]],
         hashMerkleRoot: "5510d0c31d6ae3491d6ce8af8e1048c3f287d9c47e4361bd21a9a5fb033a0c1a",
         acceptedIdMerkleRoot: "0000000000000000000000000000000000000000000000000000000000000000",
@@ -31,20 +26,19 @@ const {
         pruningPoint: "0000000000000000000000000000000000000000000000000000000000000000",
     });
 
-    let header_hash = header.finalize();
+    const header_hash = header.finalize();
     console.log("header:", header);
     console.log("header_hash:", header_hash);
     console.log("header.blueWork:", header.blueWork);
     console.log("header.blueWork.toString(16):", header.blueWork.toString(16));
 
     console.log("creating state");
-    let state = new State(header);
-    let nonce = BigInt("0xffffffffffffffff");
+    const state = new kaspa.State(header);
+    const nonce = BigInt("0xffffffffffffffff");
     console.log("nonce:", nonce);
-    let [a, v] = state.checkPow(nonce);
+    const [a, v] = state.checkPow(nonce);
     console.log("state:", state);
     console.log("[a,v]:", a, v);
     console.log("v.toString(16):", v.toString(16));
-
 })();
 

@@ -193,7 +193,7 @@ impl ConsensusFactory for Factory {
             }
         };
         let dir = self.db_root_dir.join(entry.directory_name.clone());
-        let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
+        let db = kaspa_database::prelude::ConnBuilder::default().with_db_path(dir).with_parallelism(self.db_parallelism).build();
 
         let session_lock = SessionLock::new();
         let consensus = Arc::new(Consensus::new(
@@ -218,7 +218,7 @@ impl ConsensusFactory for Factory {
 
         let entry = self.management_store.write().new_staging_consensus_entry().unwrap();
         let dir = self.db_root_dir.join(entry.directory_name);
-        let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
+        let db = kaspa_database::prelude::ConnBuilder::default().with_db_path(dir).with_parallelism(self.db_parallelism).build();
 
         let session_lock = SessionLock::new();
         let consensus = Arc::new(Consensus::new(

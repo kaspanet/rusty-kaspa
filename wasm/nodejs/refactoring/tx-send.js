@@ -1,9 +1,10 @@
 globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket module shim
 
-// let {RpcClient,Encoding,init_console_panic_hook,defer} = require('./kaspa');
-let kaspa = require('./kaspa/kaspa_wasm');
-let { RpcClient, UtxoSet, Address, Encoding, UtxoOrdering, 
-    PaymentOutputs, PaymentOutput, 
+const kaspa = require('../kaspa/kaspa_wasm');
+const {parseArgs, guardRpcIsSynced} = require("../utils");
+const {
+    RpcClient, UtxoSet, Address, Encoding, UtxoOrdering,
+    PaymentOutputs, PaymentOutput,
     XPrivateKey,
     VirtualTransaction,
     createTransaction,
@@ -14,19 +15,30 @@ let { RpcClient, UtxoSet, Address, Encoding, UtxoOrdering,
 } = kaspa;
 kaspa.init_console_panic_hook();
 
-(async ()=>{
-    
-    let URL = "ws://127.0.0.1:17110";
-    let rpc = new RpcClient(Encoding.Borsh,URL);
-    
+(async () => {
+    const args = parseArgs({});
+
+    // Either NetworkType.Mainnet or NetworkType.Testnet
+    const networkType = args.networkType;
+    // Either Encoding.Borsh or Encoding.SerdeJson
+    const encoding = args.encoding;
+    // The kaspa address that was passed as an argument or a default one
+    const address = args.address ?? "kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd";
+
+    const rpcHost = "127.0.0.1";
+    // Parse the url to automatically determine the port for the given host
+    const rpcUrl = RpcClient.parseUrl(rpcHost, encoding, networkType);
+    const rpc = new RpcClient(encoding, rpcUrl, networkType);
+
     console.log(`# connecting to ${URL}`)
     await rpc.connect();
-    
-    let info = await rpc.getInfo();
+    await guardRpcIsSynced(rpc);
+
+    const info = await rpc.getInfo();
     console.log("info", info);
-    
-    let addresses = [
-        new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"),
+
+    const addresses = [
+        address,
         //new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")
     ];
 
@@ -37,55 +49,54 @@ kaspa.init_console_panic_hook();
     // console.log(addresses.toString());
 
     console.log("\ngetting UTXOs...");
-    let utxos_by_address = await rpc.getUtxosByAddresses({ addresses });
+    const utxosByAddress = await rpc.getUtxosByAddresses({addresses});
     console.log("Creating UtxoSet...");
     //console.log("utxos_by_address", utxos_by_address)
-    let utxoSet = UtxoSet.from(utxos_by_address);
+    const utxoSet = UtxoSet.from(utxosByAddress);
 
     //console.log("utxos_by_address", utxos_by_address)
 
-    let amount = 1000n;
+    const amount = 1000n;
 
-    let utxo_selection = await utxoSet.select(amount+100n, UtxoOrdering.AscendingAmount);
+    const utxoSelection = await utxoSet.select(amount + 100n, UtxoOrdering.AscendingAmount);
 
-    console.log("utxo_selection.amount", utxo_selection.amount)
-    console.log("utxo_selection.totalAmount", utxo_selection.totalAmount)
-    let utxos = utxo_selection.utxos;
+    console.log("utxo_selection.amount", utxoSelection.amount)
+    console.log("utxo_selection.totalAmount", utxoSelection.totalAmount)
+    const utxos = utxoSelection.utxos;
     console.log("utxos", utxos)
-    console.log("utxos.*.data.entry", utxos.map(a=>a.data.entry))
+    console.log("utxos.*.data.entry", utxos.map(a => a.data.entry))
 
 
-    let output = new PaymentOutput(
-        new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd"),
-        amount
-    );
-    //console.log("output", output)
-    let outputs = new PaymentOutputs([output])
+    const outputs = [
+        [
+            address,
+            amount,
+        ]
+    ];
 
     console.log("outputs", outputs)
 
-    let change_address = new Address("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd");
+    const changeAddress = address;
 
-    let priorityFee = 0;
-    let tx = createTransaction(utxo_selection, outputs, change_address, priorityFee);
+    const priorityFee = 0;
+    const tx = createTransaction(utxoSelection, outputs, changeAddress, priorityFee);
     console.log("tx", tx)
 
-    let xkey = new XPrivateKey(
+    const xKey = new XPrivateKey(
         "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ",
         false,
         0n
     );
 
-    let private_key = xkey.receiveKey(0);
+    const private_key = xKey.receiveKey(0);
 
     console.log("tx.inputs", tx.inputs)
 
     let transaction = signTransaction(tx, [private_key], true);
     transaction = transaction.toRpcTransaction();
-    let result = await rpc.submitTransaction({transaction, allowOrphan:false});
+    const result = await rpc.submitTransaction({transaction, allowOrphan: false});
 
     console.log("result", result)
 
     await rpc.disconnect();
-
 })();

@@ -23,7 +23,7 @@ use kaspa_notify::{
     subscription::{array::ArrayBuilder, Command, Mutation, SingleSubscription},
 };
 use kaspa_rpc_core::{
-    api::ops::RpcApiOps,
+    api::ops::{RpcApiOps, RPC_API_VERSION},
     api::rpc::RpcApi,
     error::RpcError,
     error::RpcResult,
@@ -181,10 +181,22 @@ impl RpcApi for GrpcClient {
     // }
 
     async fn get_server_info_call(&self, _request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse> {
-        todo!()
+        let GetInfoResponse { server_version, is_synced, is_utxo_indexed: has_utxo_index, .. } = self.get_info().await?;
+        let GetBlockDagInfoResponse { virtual_daa_score, network: network_id, .. } = self.get_block_dag_info().await?;
+
+        Ok(GetServerInfoResponse {
+            rpc_api_version: RPC_API_VERSION,
+            server_version,
+            network_id,
+            has_utxo_index,
+            is_synced,
+            virtual_daa_score,
+        })
     }
+
     async fn get_sync_status_call(&self, _request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse> {
-        todo!()
+        let GetInfoResponse { is_synced, .. } = self.get_info().await?;
+        Ok(GetSyncStatusResponse { is_synced })
     }
 
     route!(ping_call, Ping);

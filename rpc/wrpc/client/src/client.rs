@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::imports::*;
+use crate::parse::parse_host;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_rpc_core::notify::collector::{RpcCoreCollector, RpcCoreConverter};
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
@@ -283,36 +284,32 @@ impl KaspaRpcClient {
     }
 
     pub fn parse_url(url: Option<String>, encoding: Encoding, network_type: NetworkType) -> Result<Option<String>> {
-        let url = if let Some(url) = url {
-            if url.starts_with("ws://") || url.starts_with("wss://") || url.starts_with("wrpc://") || url.starts_with("wrpcs://") {
-                Some(url)
-            } else if application_runtime::is_web() {
-                let location = window().location();
-                let protocol = location
-                    .protocol()
-                    .map_err(|_| Error::AddressError("Unable to obtain window location protocol".to_string()))?
-                    .replace("http", "ws");
-                Some(format!("{protocol}//{url}"))
-            } else {
-                Some(format!("ws://{url}"))
-            }
-        } else {
-            None
+        let Some(url) = url else {
+            return Ok(None);
         };
 
-        let url = url.map(|url| {
-            if url.split(':').collect::<Vec<_>>().len() < 3 {
-                let port = match encoding {
-                    WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
-                    WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
-                };
-                format!("{url}:{port}")
-            } else {
-                url
+        let parse_output = parse_host(&url).map_err(|err| Error::Custom(err.to_string()))?;
+        let scheme = parse_output.scheme.map(Ok).unwrap_or_else(|| {
+            if !application_runtime::is_web() {
+                return Ok("ws");
             }
+            let location = window().location();
+            let protocol =
+                location.protocol().map_err(|_| Error::AddressError("Unable to obtain window location protocol".to_string()))?;
+            if protocol == "http:" {
+                Ok("ws")
+            } else if protocol == "https:" {
+                Ok("wss")
+            } else {
+                Err(Error::Custom(format!("Unsupported protocol: {}", protocol)))
+            }
+        })?;
+        let port = parse_output.port.unwrap_or_else(|| match encoding {
+            WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
+            WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
         });
 
-        Ok(url)
+        Ok(Some(format!("{}://{}:{}", scheme, parse_output.host.to_string(), port)))
     }
 }
 
