@@ -10,15 +10,14 @@ use std::{
 };
 use zeroize::Zeroizing;
 
+use crate::derivation::traits::*;
+use crate::result::Result;
+use async_trait::async_trait;
 use kaspa_bip32::{
     types::*, AddressType, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix,
     PrivateKey, PublicKey, SecretKey, SecretKeyExt,
 };
-//use consensus_core::wasm::{GeneratorT, WalletAccountTrait};
 use wasm_bindgen::prelude::*;
-//use workflow_wasm::jsvalue::*;
-use crate::{accounts::account::*, result::Result};
-use async_trait::async_trait;
 
 fn get_fingerprint<K>(private_key: &K) -> KeyFingerprint
 where

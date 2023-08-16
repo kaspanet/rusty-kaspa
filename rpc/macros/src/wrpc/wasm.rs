@@ -56,7 +56,7 @@ impl ToTokens for RpcHandlers {
 
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
                     //log_info!("response: {:#?}",response);
-                    workflow_wasm::tovalue::to_value(&response).map_err(|err|err.into())
+                    workflow_wasm::serde::to_value(&response).map_err(|err|err.into())
                 }
 
             });
@@ -72,7 +72,7 @@ impl ToTokens for RpcHandlers {
                     let request: #request_type = from_value(request)?;
                     let result: RpcResult<#response_type> = self.client.#fn_call(request).await;
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
-                    workflow_wasm::tovalue::to_value(&response).map_err(|err|err.into())
+                    workflow_wasm::serde::to_value(&response).map_err(|err|err.into())
                 }
 
             });

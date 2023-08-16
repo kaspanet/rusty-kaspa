@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
+use crate::derivation::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 // use crate::address::{build_derivate_paths, AddressManager};
 use crate::imports::*;
 // use crate::result::Result;

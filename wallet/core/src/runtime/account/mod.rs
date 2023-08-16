@@ -10,10 +10,10 @@ pub use kind::*;
 use secp256k1::ONE_KEY;
 pub use variants::*;
 
-#[allow(unused_imports)]
-use crate::accounts::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::derivation::build_derivate_paths;
 use crate::derivation::AddressDerivationManagerTrait;
+#[allow(unused_imports)]
+use crate::derivation::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Balance, BalanceStrings, Wallet};

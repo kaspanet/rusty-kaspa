@@ -282,8 +282,8 @@ impl From<argon2::password_hash::Error> for Error {
     }
 }
 
-impl From<workflow_wasm::tovalue::Error> for Error {
-    fn from(err: workflow_wasm::tovalue::Error) -> Self {
+impl From<workflow_wasm::serde::Error> for Error {
+    fn from(err: workflow_wasm::serde::Error) -> Self {
         Self::ToValue(err.to_string())
     }
 }

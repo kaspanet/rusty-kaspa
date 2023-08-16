@@ -8,7 +8,7 @@ use kaspa_consensus_wasm::Transaction;
 use kaspa_notify::notification::Notification as NotificationT;
 pub use kaspa_rpc_macros::{build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions};
 pub use serde_wasm_bindgen::from_value;
-pub use workflow_wasm::tovalue::to_value;
+pub use workflow_wasm::serde::to_value;
 // use kaspa_rpc_core::wasm::*;
 
 struct NotificationSink(Function);

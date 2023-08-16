@@ -1,12 +1,11 @@
-use crate::accounts::account::WalletDerivationManagerTrait;
-use crate::accounts::gen1::WalletDerivationManager;
+use crate::derivation::gen1::WalletDerivationManager;
+use crate::derivation::traits::WalletDerivationManagerTrait;
 use crate::Result;
-use kaspa_bip32::{ExtendedPrivateKey, SecretKey};
-//use serde_wasm_bindgen::to_value;
 use kaspa_bip32::ExtendedPublicKey;
+use kaspa_bip32::{ExtendedPrivateKey, SecretKey};
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
-use workflow_wasm::tovalue::to_value;
+use workflow_wasm::serde::to_value;
 
 #[wasm_bindgen]
 pub struct XPublicKey {

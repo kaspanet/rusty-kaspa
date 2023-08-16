@@ -1,9 +1,11 @@
-use crate::accounts::gen0::PubkeyDerivationManagerV0;
-use crate::accounts::gen0::WalletDerivationManagerV0;
-use crate::accounts::gen1::PubkeyDerivationManager;
-use crate::accounts::gen1::WalletDerivationManager;
-use crate::accounts::PubkeyDerivationManagerTrait;
-use crate::accounts::WalletDerivationManagerTrait;
+pub mod gen0;
+pub mod gen1;
+pub mod traits;
+
+pub use traits::*;
+
+use crate::derivation::gen0::{PubkeyDerivationManagerV0, WalletDerivationManagerV0};
+use crate::derivation::gen1::{PubkeyDerivationManager, WalletDerivationManager};
 use crate::error::Error;
 use crate::imports::*;
 use crate::runtime;
@@ -12,14 +14,13 @@ use crate::runtime::AccountKind;
 use crate::secret::Secret;
 use crate::storage::PrvKeyDataId;
 use crate::Result;
-use kaspa_addresses::{Address, Prefix};
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_utils::hex::ToHex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use wasm_bindgen::prelude::*;
-use workflow_wasm::tovalue::from_value;
+use workflow_wasm::serde::from_value;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AddressDerivationMeta([u32; 2]);
@@ -208,13 +209,13 @@ impl AddressDerivationManager {
             let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind {
                 AccountKind::Legacy => {
                     // TODO! WalletAccountV0::from_extended_public_key is not yet implemented
-                    Arc::new(WalletDerivationManagerV0::from_extended_public_key_str(xpub, cosigner_index)?)
+                    Arc::new(gen0::WalletDerivationManagerV0::from_extended_public_key_str(xpub, cosigner_index)?)
                 }
                 AccountKind::MultiSig => {
                     let cosigner_index = cosigner_index.ok_or(Error::InvalidAccountKind)?;
-                    Arc::new(WalletDerivationManager::from_extended_public_key_str(xpub, Some(cosigner_index))?)
+                    Arc::new(gen1::WalletDerivationManager::from_extended_public_key_str(xpub, Some(cosigner_index))?)
                 }
-                _ => Arc::new(WalletDerivationManager::from_extended_public_key_str(xpub, cosigner_index)?),
+                _ => Arc::new(gen1::WalletDerivationManager::from_extended_public_key_str(xpub, cosigner_index)?),
             };
 
             receive_pubkey_managers.push(derivator.receive_pubkey_manager());
@@ -488,7 +489,7 @@ pub async fn create_xpub_from_mnemonic(
     let (secret_key, attrs) = match account_kind {
         AccountKind::Legacy => WalletDerivationManagerV0::derive_extened_key_from_master_key(xkey, true, account_index)?,
         AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xkey, true, account_index)?,
-        _ => WalletDerivationManager::derive_extened_key_from_master_key(xkey, false, account_index)?,
+        _ => gen1::WalletDerivationManager::derive_extened_key_from_master_key(xkey, false, account_index)?,
     };
 
     let xkey = ExtendedPublicKey { public_key: secret_key.get_public_key(), attrs };
