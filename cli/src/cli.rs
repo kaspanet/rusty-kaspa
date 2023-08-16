@@ -740,6 +740,10 @@ impl Cli for KaspaCli {
     }
 
     fn prompt(&self) -> Option<String> {
+        if self.shutdown.load(Ordering::SeqCst) {
+            return Some("halt $ ".to_string());
+        }
+
         let mut prompt = vec![];
 
         let node_running = if let Some(node) = self.node.lock().unwrap().as_ref() { node.is_running() } else { false };
