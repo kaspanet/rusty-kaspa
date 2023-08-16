@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     blockhash::{BlockHashIteratorExtensions, BlockHashes, ORIGIN},
     BlockHashSet,
 };
-use kaspa_database::prelude::{BatchDbWriter, DbWriter, StoreError};
+use kaspa_database::prelude::{BatchDbWriter, DbWriter, DirectWriter, StoreError};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
@@ -21,9 +21,12 @@ pub fn init<S: RelationsStore + ?Sized>(relations: &mut S) {
 /// kept topologically continuous. If any child of this `hash` will remain with no parent, we make
 /// sure to connect it to `origin`. Note that apart from the special case of `origin`, these relations
 /// are always a subset of the original header relations for this level.
+///
+/// NOTE: this algorithm does not support a batch writer bcs it might write to the same entry multiple times
+/// (and writes will not accumulate if the entry gets out of the cache in between the calls)
 pub fn delete_level_relations<W, S>(mut writer: W, relations: &mut S, hash: Hash) -> Result<(), StoreError>
 where
-    W: DbWriter,
+    W: DirectWriter,
     S: RelationsStore + ?Sized,
 {
     let children = relations.get_children(hash)?; // if the first entry was found, we expect all others as well, hence we unwrap below
@@ -46,12 +49,10 @@ where
 /// (and writes will not accumulate if the entry gets out of the cache in between the calls)
 pub fn delete_reachability_relations<W, S, U>(mut writer: W, relations: &mut S, reachability: &U, hash: Hash) -> BlockHashSet
 where
-    W: DbWriter,
+    W: DirectWriter,
     S: RelationsStore + ?Sized,
     U: ReachabilityService + ?Sized,
 {
-    assert!(!W::IS_BATCH, "batch writes are not supported for this algo, see doc.");
-
     let selected_parent = reachability.get_chain_parent(hash);
     let parents = relations.get_parents(hash).unwrap();
     let children = relations.get_children(hash).unwrap();
@@ -157,3 +158,56 @@ pub trait RelationsStoreExtensions: RelationsStore {
 }
 
 impl<S: RelationsStore + ?Sized> RelationsStoreExtensions for S {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::stores::relations::{DbRelationsStore, RelationsStoreReader, StagingRelationsStore};
+    use kaspa_core::assert_match;
+    use kaspa_database::prelude::ConnBuilder;
+    use kaspa_database::{create_temp_db, prelude::MemoryWriter};
+    use std::sync::Arc;
+
+    #[test]
+    fn test_delete_level_relations_zero_cache() {
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default());
+        let cache_size = 0;
+        let mut relations = DbRelationsStore::new(db.clone(), 0, cache_size);
+        relations.insert(ORIGIN, Default::default()).unwrap();
+        relations.insert(1.into(), Arc::new(vec![ORIGIN])).unwrap();
+        relations.insert(2.into(), Arc::new(vec![1.into()])).unwrap();
+
+        assert_eq!(relations.get_parents(ORIGIN).unwrap().as_slice(), []);
+        assert_eq!(relations.get_children(ORIGIN).unwrap().as_slice(), [1.into()]);
+        assert_eq!(relations.get_parents(1.into()).unwrap().as_slice(), [ORIGIN]);
+        assert_eq!(relations.get_children(1.into()).unwrap().as_slice(), [2.into()]);
+        assert_eq!(relations.get_parents(2.into()).unwrap().as_slice(), [1.into()]);
+        assert_eq!(relations.get_children(2.into()).unwrap().as_slice(), []);
+
+        let mut batch = WriteBatch::default();
+        let mut staging_relations = StagingRelationsStore::new(&mut relations);
+        delete_level_relations(MemoryWriter, &mut staging_relations, 1.into()).unwrap();
+        staging_relations.commit(&mut batch).unwrap();
+        db.write(batch).unwrap();
+
+        assert_match!(relations.get_parents(1.into()), Err(StoreError::KeyNotFound(_)));
+        assert_match!(relations.get_children(1.into()), Err(StoreError::KeyNotFound(_)));
+
+        assert_eq!(relations.get_parents(ORIGIN).unwrap().as_slice(), []);
+        assert_eq!(relations.get_children(ORIGIN).unwrap().as_slice(), [2.into()]);
+        assert_eq!(relations.get_parents(2.into()).unwrap().as_slice(), [ORIGIN]);
+        assert_eq!(relations.get_children(2.into()).unwrap().as_slice(), []);
+
+        let mut batch = WriteBatch::default();
+        let mut staging_relations = StagingRelationsStore::new(&mut relations);
+        delete_level_relations(MemoryWriter, &mut staging_relations, 2.into()).unwrap();
+        staging_relations.commit(&mut batch).unwrap();
+        db.write(batch).unwrap();
+
+        assert_match!(relations.get_parents(2.into()), Err(StoreError::KeyNotFound(_)));
+        assert_match!(relations.get_children(2.into()), Err(StoreError::KeyNotFound(_)));
+
+        assert_eq!(relations.get_parents(ORIGIN).unwrap().as_slice(), []);
+        assert_eq!(relations.get_children(ORIGIN).unwrap().as_slice(), []);
+    }
+}

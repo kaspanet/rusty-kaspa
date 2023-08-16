@@ -1,6 +1,6 @@
 use crate::{convert::error::ConversionError, core::peer::PeerKey, KaspadMessagePayloadType};
 use kaspa_consensus_core::errors::{block::RuleError, consensus::ConsensusError, pruning::PruningImportError};
-use kaspa_mining::errors::MiningManagerError;
+use kaspa_mining_errors::manager::MiningManagerError;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -52,7 +52,7 @@ pub enum ProtocolError {
     #[error("peer connection is closed")]
     ConnectionClosed,
 
-    #[error("incoming route capacity of flow {0:?} has been reached (peer: {1})")]
+    #[error("incoming route capacity for message type {0:?} has been reached (peer: {1})")]
     IncomingRouteCapacityReached(KaspadMessagePayloadType, String),
 
     #[error("outgoing route capacity has been reached (peer: {0})")]
@@ -63,11 +63,46 @@ pub enum ProtocolError {
 
     #[error("peer {0} already exists")]
     PeerAlreadyExists(PeerKey),
+
+    #[error("loopback connection - node is connecting to itself")]
+    LoopbackConnection(PeerKey),
+
+    #[error("got reject message: {0}")]
+    Rejected(String),
+
+    #[error("got reject message: {0}")]
+    IgnorableReject(String),
 }
+
+/// String used as a P2P convention to signal connection is rejected because we are connecting to ourselves
+const LOOPBACK_CONNECTION_MESSAGE: &str = "LOOPBACK_CONNECTION";
+
+/// String used as a P2P convention to signal connection is rejected because the peer already exists
+const DUPLICATE_CONNECTION_MESSAGE: &str = "DUPLICATE_CONNECTION";
 
 impl ProtocolError {
     pub fn is_connection_closed_error(&self) -> bool {
         matches!(self, Self::ConnectionClosed)
+    }
+
+    pub fn can_send_outgoing_message(&self) -> bool {
+        !matches!(self, Self::ConnectionClosed | Self::OutgoingRouteCapacityReached(_))
+    }
+
+    pub fn to_reject_message(&self) -> String {
+        match self {
+            Self::LoopbackConnection(_) => LOOPBACK_CONNECTION_MESSAGE.to_owned(),
+            Self::PeerAlreadyExists(_) => DUPLICATE_CONNECTION_MESSAGE.to_owned(),
+            err => err.to_string(),
+        }
+    }
+
+    pub fn from_reject_message(reason: String) -> Self {
+        if reason == LOOPBACK_CONNECTION_MESSAGE || reason == DUPLICATE_CONNECTION_MESSAGE {
+            ProtocolError::IgnorableReject(reason)
+        } else {
+            ProtocolError::Rejected(reason)
+        }
     }
 }
 

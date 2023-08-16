@@ -53,7 +53,7 @@ impl UtxoIndexApi for UtxoIndex {
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         trace!("[{0}] retrieving utxos from {1} script public keys", IDENT, script_public_keys.len());
 
-        self.store.get_utxos_by_script_public_key(&script_public_keys)
+        self.store.get_utxos_by_script_public_key(script_public_keys)
     }
 
     /// Retrieve the stored tips of the utxoindex.
@@ -100,7 +100,7 @@ impl UtxoIndexApi for UtxoIndex {
         trace!("[{0}] checking sync status...", IDENT);
 
         let consensus = self.consensus_manager.consensus();
-        let session = futures::executor::block_on(consensus.session());
+        let session = futures::executor::block_on(consensus.session_blocking());
 
         let utxoindex_tips = self.store.get_tips();
         match utxoindex_tips {
@@ -130,7 +130,7 @@ impl UtxoIndexApi for UtxoIndex {
 
         self.store.delete_all()?;
         let consensus = self.consensus_manager.consensus();
-        let session = futures::executor::block_on(consensus.session());
+        let session = futures::executor::block_on(consensus.session_blocking());
 
         let consensus_tips = session.get_virtual_parents();
         let mut circulating_supply: CirculatingSupply = 0;
@@ -221,7 +221,8 @@ mod tests {
     };
     use kaspa_consensusmanager::ConsensusManager;
     use kaspa_core::info;
-    use kaspa_database::utils::create_temp_db;
+    use kaspa_database::create_temp_db;
+    use kaspa_database::prelude::ConnBuilder;
     use std::{collections::HashSet, sync::Arc, time::Instant};
 
     /// TODO: use proper Simnet when implemented.
@@ -235,7 +236,7 @@ mod tests {
 
         // Initialize all components, and virtual change emulator proxy.
         let mut virtual_change_emulator = VirtualChangeEmulator::new();
-        let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
+        let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default());
         let config = Config::new(DEVNET_PARAMS);
         let tc = Arc::new(TestConsensus::new(&config));
         let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));

@@ -4,6 +4,7 @@ use kaspa_consensus_core::BlockHasher;
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -18,8 +19,6 @@ pub trait DepthStore: DepthStoreReader {
     fn insert(&self, hash: Hash, merge_depth_root: Hash, finality_point: Hash) -> Result<(), StoreError>;
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
-
-const STORE_PREFIX: &[u8] = b"block-at-depth";
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 struct BlockDepthInfo {
@@ -36,7 +35,7 @@ pub struct DbDepthStore {
 
 impl DbDepthStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::BlockDepth.into()) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {

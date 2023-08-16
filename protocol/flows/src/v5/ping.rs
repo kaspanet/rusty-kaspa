@@ -1,5 +1,5 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
-use kaspa_core::debug;
+use kaspa_core::{debug, task::tick::TickReason};
 use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
@@ -21,10 +21,6 @@ pub struct ReceivePingsFlow {
 
 #[async_trait::async_trait]
 impl Flow for ReceivePingsFlow {
-    fn name(&self) -> &'static str {
-        "Receive pings"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
@@ -54,7 +50,7 @@ pub const PING_INTERVAL: Duration = Duration::from_secs(120); // 2 minutes
 
 /// Flow for managing a loop sending pings and waiting for pongs
 pub struct SendPingsFlow {
-    _ctx: FlowContext,
+    ctx: FlowContext,
 
     // We use a weak reference to avoid this flow from holding the router during timer waiting if the connection was closed
     router: Weak<Router>,
@@ -64,10 +60,6 @@ pub struct SendPingsFlow {
 
 #[async_trait::async_trait]
 impl Flow for SendPingsFlow {
-    fn name(&self) -> &'static str {
-        "Send pings"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         self.router.upgrade()
     }
@@ -80,15 +72,15 @@ impl Flow for SendPingsFlow {
 impl SendPingsFlow {
     pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
         let peer = router.to_string();
-        Self { _ctx: ctx, router: Arc::downgrade(&router), peer, incoming_route }
+        Self { ctx, router: Arc::downgrade(&router), peer, incoming_route }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
-            // TODO: handle application shutdown signal
-
             // Wait `PING_INTERVAL` between pings
-            tokio::time::sleep(PING_INTERVAL).await;
+            if let TickReason::Shutdown = self.ctx.tick_service.tick(PING_INTERVAL).await {
+                return Ok(());
+            }
 
             // Create a fresh random nonce for each ping
             let nonce = rand::thread_rng().gen::<u64>();

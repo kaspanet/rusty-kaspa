@@ -12,6 +12,7 @@ kaspa-muhash.workspace = true
 kaspa-merkle.workspace = true
 kaspa-math.workspace = true
 kaspa-addresses.workspace = true
+kaspa-utils.workspace = true
 kaspa-txscript-errors.workspace = true
 
 thiserror.workspace = true
@@ -23,5 +24,16 @@ futures-util.workspace = true
 itertools.workspace = true
 cfg-if.workspace = true
 getrandom.workspace = true
+serde_bytes.workspace = true
+serde_json.workspace = true
 
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+
+[dev-dependencies]
+criterion.workspace = true
+bincode.workspace = true
+
+[[bench]]
+name = "serde_benchmark"
+harness = false
+

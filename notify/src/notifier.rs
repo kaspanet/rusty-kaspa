@@ -16,7 +16,7 @@ use async_channel::Sender;
 use async_trait::async_trait;
 use core::fmt::Debug;
 use futures::future::join_all;
-use kaspa_core::trace;
+use kaspa_core::{debug, trace};
 use parking_lot::Mutex;
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -75,11 +75,11 @@ where
     C: Connection<Notification = N>,
 {
     pub fn new(
+        name: &'static str,
         enabled_events: EventSwitches,
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
         broadcasters: usize,
-        name: &'static str,
     ) -> Self {
         Self { inner: Arc::new(Inner::new(enabled_events, collectors, subscribers, broadcasters, name)) }
     }
@@ -127,8 +127,8 @@ where
         self.inner.unregister_listener(id)
     }
 
-    pub async fn stop(&self) -> Result<()> {
-        self.inner.clone().stop().await
+    pub async fn join(&self) -> Result<()> {
+        self.inner.clone().join().await
     }
 }
 
@@ -149,13 +149,13 @@ where
     C: Connection<Notification = N>,
 {
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
-        trace!("[Notifier-{}] start sending to listener {} notifications of scope {:?}", self.inner.name, id, scope);
+        trace!("[Notifier {}] start sending to listener {} notifications of scope {:?}", self.inner.name, id, scope);
         self.inner.start_notify(id, scope)?;
         Ok(())
     }
 
     async fn stop_notify(&self, id: ListenerId, scope: Scope) -> Result<()> {
-        trace!("[Notifier-{}] stop sending to listener {} notifications of scope {:?}", self.inner.name, id, scope);
+        trace!("[Notifier {}] stop sending to listener {} notifications of scope {:?}", self.inner.name, id, scope);
         self.inner.stop_notify(id, scope)?;
         Ok(())
     }
@@ -258,12 +258,13 @@ where
 
     fn start(&self, notifier: Arc<Notifier<N, C>>) {
         if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+            trace!("[Notifier {}] starting", self.name);
             self.subscribers.iter().for_each(|x| x.start());
             self.collectors.iter().for_each(|x| x.clone().start(notifier.clone()));
             self.broadcasters.iter().for_each(|x| x.start());
-            trace!("[Notifier-{}] started", self.name);
+            trace!("[Notifier {}] started", self.name);
         } else {
-            trace!("[Notifier-{}] start ignored since already started", self.name);
+            trace!("[Notifier {}] start ignored since already started", self.name);
         }
     }
 
@@ -274,6 +275,7 @@ where
 
             // This is very unlikely to happen but still, check for duplicates
             if let Entry::Vacant(e) = listeners.entry(id) {
+                trace!("[Notifier {}] registering listener {id}", self.name);
                 let listener = Listener::new(connection);
                 e.insert(listener);
                 return id;
@@ -285,6 +287,7 @@ where
         // Cancel all remaining subscriptions
         let mut subscriptions = vec![];
         if let Some(listener) = self.listeners.lock().get(&id) {
+            trace!("[Notifier {}] unregistering listener {id}", self.name);
             subscriptions.extend(listener.subscriptions.iter().filter_map(|subscription| {
                 if subscription.active() {
                     Some(subscription.scope())
@@ -292,13 +295,18 @@ where
                     None
                 }
             }));
-            listener.close();
+        } else {
+            trace!("[Notifier {}] unregistering listener {id} error: unknown listener id", self.name);
         }
         subscriptions.drain(..).for_each(|scope| {
             let _ = self.clone().stop_notify(id, scope);
         });
-        // Remove listener
-        self.listeners.lock().remove(&id);
+
+        // Remove & close listener
+        if let Some(listener) = self.listeners.lock().remove(&id) {
+            trace!("[Notifier {}] closing listener {id}", self.name);
+            listener.close();
+        }
         Ok(())
     }
 
@@ -308,8 +316,9 @@ where
             let mut listeners = self.listeners.lock();
             if let Some(listener) = listeners.get_mut(&id) {
                 let mut subscriptions = self.subscriptions.lock();
-                trace!("[Notifier-{}] {command} notifying to {id} about {scope:?}", self.name);
-                if let Some(mutations) = listener.mutate(Mutation::new(command, scope)) {
+                trace!("[Notifier {}] {command} notifying to {id} about {scope:?}", self.name);
+                if let Some(mutations) = listener.mutate(Mutation::new(command, scope.clone())) {
+                    trace!("[Notifier {}] {command} notifying to {id} about {scope:?} involves mutations {mutations:?}", self.name);
                     // Update broadcasters
                     let subscription = listener.subscriptions[event].clone_arc();
                     self.broadcasters
@@ -325,6 +334,7 @@ where
                         self.subscribers.iter().try_for_each(|x| x.mutate(mutation.clone()))?;
                     }
                 } else {
+                    trace!("[Notifier {}] {command} notifying to {id} about {scope:?} is ignored (no mutation)", self.name);
                     // In case we have a sync channel, report that the command was processed.
                     // This is for test only.
                     #[cfg(test)]
@@ -332,8 +342,11 @@ where
                         let _ = sync.try_send(());
                     }
                 }
+            } else {
+                trace!("[Notifier {}] {command} notifying to {id} about {scope:?} error: listener id not found", self.name);
             }
         } else {
+            trace!("[Notifier {}] {command} notifying to {id} about {scope:?} error: event type {event:?} is disabled", self.name);
             return Err(Error::EventTypeDisabled);
         }
         Ok(())
@@ -363,22 +376,37 @@ where
         })
     }
 
-    async fn stop(self: Arc<Self>) -> Result<()> {
-        if self.started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            trace!("[Notifier-{}] stopping collectors", self.name);
-            join_all(self.collectors.iter().map(|x| x.clone().stop()))
+    async fn join(self: Arc<Self>) -> Result<()> {
+        trace!("[Notifier {}] joining", self.name);
+        if self.started.load(Ordering::SeqCst) {
+            debug!("[Notifier {}] stopping collectors", self.name);
+            join_all(self.collectors.iter().map(|x| x.clone().join()))
                 .await
                 .into_iter()
                 .collect::<std::result::Result<Vec<()>, _>>()?;
-            trace!("[Notifier-{}] stopping broadcasters", self.name);
-            join_all(self.broadcasters.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
-            trace!("[Notifier-{}] stopping subscribers", self.name);
-            join_all(self.subscribers.iter().map(|x| x.stop())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+            debug!("[Notifier {}] stopped collectors", self.name);
+
+            // Once collectors exit, we can signal broadcasters
+            self.notification_channel.sender.close();
+
+            debug!("[Notifier {}] stopping broadcasters", self.name);
+            join_all(self.broadcasters.iter().map(|x| x.join())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+
+            // Once broadcasters exit, we can close the subscribers
+            self.subscribers.iter().for_each(|s| s.close());
+
+            debug!("[Notifier {}] stopping subscribers", self.name);
+            join_all(self.subscribers.iter().map(|x| x.join())).await.into_iter().collect::<std::result::Result<Vec<()>, _>>()?;
+
+            // Finally, we close all listeners, propagating shutdown by closing their channel when they have one
+            // Note that unregistering listeners is no longer meaningful since both broadcasters and subscribers were stopped
+            debug!("[Notifier {}] closing listeners", self.name);
+            self.listeners.lock().values().for_each(|x| x.close());
         } else {
-            trace!("[Notifier-{}] stop ignored since already stopped", self.name);
+            trace!("[Notifier {}] join ignored since it was never started", self.name);
             return Err(Error::AlreadyStoppedError);
         }
-        trace!("[Notifier-{}] stopped", self.name);
+        debug!("[Notifier {}] terminated", self.name);
         Ok(())
     }
 }
@@ -675,6 +703,7 @@ mod tests {
     use super::{test_helpers::*, *};
     use crate::{
         collector::CollectorFrom,
+        connection::ChannelType,
         converter::ConverterFrom,
         events::EVENT_TYPE_ARRAY,
         notification::test_helpers::*,
@@ -703,9 +732,10 @@ mod tests {
             let (sync_sender, sync_receiver) = unbounded();
             let (notification_sender, notification_receiver) = unbounded();
             let (subscription_sender, subscription_receiver) = unbounded();
-            let collector = Arc::new(TestCollector::new(notification_receiver, Arc::new(TestConverter::new())));
+            let collector = Arc::new(TestCollector::new("test", notification_receiver, Arc::new(TestConverter::new())));
             let subscription_manager = Arc::new(SubscriptionManagerMock::new(subscription_sender));
-            let subscriber = Arc::new(Subscriber::new(EVENT_TYPE_ARRAY[..].into(), subscription_manager, SUBSCRIPTION_MANAGER_ID));
+            let subscriber =
+                Arc::new(Subscriber::new("test", EVENT_TYPE_ARRAY[..].into(), subscription_manager, SUBSCRIPTION_MANAGER_ID));
             let notifier = Arc::new(TestNotifier::with_sync(
                 EVENT_TYPE_ARRAY[..].into(),
                 vec![collector],
@@ -719,7 +749,7 @@ mod tests {
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for _ in 0..listener_count {
                 let (sender, receiver) = unbounded();
-                let connection = TestConnection::new(sender);
+                let connection = TestConnection::new(sender, ChannelType::Closable);
                 listeners.push(notifier.register_new_listener(connection));
                 notification_receivers.push(receiver);
             }
@@ -811,7 +841,8 @@ mod tests {
                     }
                 }
             }
-            assert!(self.notifier.stop().await.is_ok(), "notifier failed to stop");
+            self.notification_sender.close();
+            assert!(self.notifier.join().await.is_ok(), "notifier failed to stop");
         }
     }
 

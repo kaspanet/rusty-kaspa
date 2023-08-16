@@ -26,6 +26,7 @@ kaspa-mining.workspace = true
 kaspa-addressmanager.workspace = true
 kaspa-consensusmanager.workspace = true
 daemon.workspace = true
+kaspa-perf-monitor.workspace = true
 
 async-channel.workspace = true
 thiserror.workspace = true
@@ -41,3 +42,8 @@ workflow-log.workspace = true
 # num-format = "0.4"
 dirs = "4.0"
 num_cpus.workspace = true
+
+dhat = { version = "0.3.2", optional = true }
+
+[features]
+heap = ["dhat"]

@@ -2,7 +2,6 @@ use indexmap::IndexSet;
 use itertools::Itertools;
 use kaspa_consensus_core::{blockhash::ORIGIN, header::Header, BlockHashMap, BlockHasher, BlockLevel};
 use kaspa_hashes::Hash;
-use kaspa_utils::option::OptionExtensions;
 use smallvec::{smallvec, SmallVec};
 use std::sync::Arc;
 
@@ -102,7 +101,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     .reachability_service
                     .is_any_dag_ancestor_result(&mut origin_children.iter().copied(), parent)
                     .unwrap_option()
-                    .has_value_and(|&r| r);
+                    .is_some_and(|r| r);
 
                 // Reference blocks are the blocks that are used in reachability queries to check if
                 // a candidate is in the future of another candidate. In most cases this is just the

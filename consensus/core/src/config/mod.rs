@@ -1,8 +1,11 @@
+pub mod bps;
 pub mod constants;
 pub mod genesis;
 pub mod params;
 
 use std::ops::Deref;
+
+use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 
 use {
     constants::perf::{PerfParams, PERF_PARAMS},
@@ -41,21 +44,36 @@ pub struct Config {
     /// (required when initiating a new network from genesis)
     pub enable_unsynced_mining: bool,
 
+    /// Allow mainnet mining. Until a stable Beta version we keep this option off by default
+    pub enable_mainnet_mining: bool,
+
     pub user_agent_comments: Vec<String>,
+
+    // If undefined, sets it to 0.0.0.0
+    pub p2p_listen_address: ContextualNetAddress,
+
+    pub externalip: Option<IpAddress>,
 }
 
 impl Config {
     pub fn new(params: Params) -> Self {
+        Self::with_perf(params, PERF_PARAMS)
+    }
+
+    pub fn with_perf(params: Params, perf: PerfParams) -> Self {
         Self {
             params,
-            perf: PERF_PARAMS,
+            perf,
             process_genesis: true,
             is_archival: false,
             enable_sanity_checks: false,
             utxoindex: false,
             unsafe_rpc: false,
             enable_unsynced_mining: false,
+            enable_mainnet_mining: false,
             user_agent_comments: Default::default(),
+            externalip: None,
+            p2p_listen_address: ContextualNetAddress::unspecified(),
         }
     }
 
@@ -89,6 +107,11 @@ impl ConfigBuilder {
 
     pub fn set_perf_params(mut self, perf: PerfParams) -> Self {
         self.config.perf = perf;
+        self
+    }
+
+    pub fn adjust_perf_params_to_consensus_params(mut self) -> Self {
+        self.config.perf.adjust_to_consensus_params(&self.config.params);
         self
     }
 

@@ -1,19 +1,10 @@
-use super::{
-    error::{Error, Result},
-    notification::Notification,
-};
+use super::{error::Result, notification::Notification};
 use crate::{converter::Converter, notifier::DynNotify};
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use core::fmt::Debug;
-use futures::{
-    future::FutureExt, // for `.fuse()`
-    pin_mut,
-    select,
-};
-use futures_util::stream::StreamExt;
-use kaspa_core::trace;
-use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
+use kaspa_core::{debug, trace};
+use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -36,8 +27,9 @@ where
 {
     /// Start collecting notifications for `notifier`
     fn start(self: Arc<Self>, notifier: DynNotify<N>);
-    /// Stop collecting notifications
-    async fn stop(self: Arc<Self>) -> Result<()>;
+    /// Join notification collecting tasks. Assumes that the notification system is already
+    /// folding up by propagating channel closing from the notification root
+    async fn join(self: Arc<Self>) -> Result<()>;
 }
 
 pub type DynCollector<N> = Arc<dyn Collector<N>>;
@@ -49,25 +41,27 @@ pub struct CollectorFrom<C>
 where
     C: Converter,
 {
+    name: &'static str,
     recv_channel: CollectorNotificationReceiver<C::Incoming>,
-
     converter: Arc<C>,
 
     /// Has this collector been started?
     is_started: Arc<AtomicBool>,
 
-    collect_shutdown: Arc<DuplexTrigger>,
+    /// Triggers when the collecting task exits
+    collect_shutdown: Arc<SingleTrigger>,
 }
 
 impl<C> CollectorFrom<C>
 where
     C: Converter + 'static,
 {
-    pub fn new(recv_channel: CollectorNotificationReceiver<C::Incoming>, converter: Arc<C>) -> Self {
+    pub fn new(name: &'static str, recv_channel: CollectorNotificationReceiver<C::Incoming>, converter: Arc<C>) -> Self {
         Self {
+            name,
             recv_channel,
             converter,
-            collect_shutdown: Arc::new(DuplexTrigger::new()),
+            collect_shutdown: Arc::new(SingleTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -86,45 +80,27 @@ where
         let converter = self.converter.clone();
 
         workflow_core::task::spawn(async move {
-            trace!("[Collector] collecting_task start");
+            trace!("[Collector {}] collecting task starting", self.name);
 
-            let shutdown = collect_shutdown.request.listener.clone().fuse();
-            pin_mut!(shutdown);
-
-            let notifications = recv_channel.fuse();
-            pin_mut!(notifications);
-
-            loop {
-                select! {
-                    _ = shutdown => { break; }
-                    notification = notifications.next().fuse() => {
-                        match notification {
-                            Some(notification) => {
-                                match notifier.notify(converter.convert(notification).await) {
-                                    Ok(_) => (),
-                                    Err(err) => {
-                                        trace!("[Collector] notification sender error: {:?}", err);
-                                    },
-                                }
-                            },
-                            None => {
-                                trace!("[Collector] notifications returned None. This should never happen");
-                            }
-                        }
+            while let Ok(notification) = recv_channel.recv().await {
+                match notifier.notify(converter.convert(notification).await) {
+                    Ok(_) => (),
+                    Err(err) => {
+                        trace!("[Collector {}] notification sender error: {}", self.name, err);
                     }
                 }
             }
-            collect_shutdown.response.trigger.trigger();
-            trace!("[Collector] collecting_task end");
+
+            debug!("[Collector {}] notification stream ended", self.name);
+            collect_shutdown.trigger.trigger();
+            trace!("[Collector {}] collecting task ended", self.name);
         });
     }
 
-    async fn stop_collecting_task(self: &Arc<Self>) -> Result<()> {
-        if self.is_started.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-            return Err(Error::AlreadyStoppedError);
-        }
-        self.collect_shutdown.request.trigger.trigger();
-        self.collect_shutdown.response.listener.clone().await;
+    async fn join_collecting_task(self: &Arc<Self>) -> Result<()> {
+        trace!("[Collector {}] joining", self.name);
+        self.collect_shutdown.listener.clone().await;
+        debug!("[Collector {}] terminated", self.name);
         Ok(())
     }
 }
@@ -139,8 +115,8 @@ where
         self.spawn_collecting_task(notifier);
     }
 
-    async fn stop(self: Arc<Self>) -> Result<()> {
-        self.stop_collecting_task().await
+    async fn join(self: Arc<Self>) -> Result<()> {
+        self.join_collecting_task().await
     }
 }
 
@@ -199,7 +175,7 @@ mod tests {
         type TestConverter = ConverterFrom<IncomingNotification, OutgoingNotification>;
         let incoming = Channel::default();
         let collector: Arc<CollectorFrom<TestConverter>> =
-            Arc::new(CollectorFrom::new(incoming.receiver(), Arc::new(TestConverter::new())));
+            Arc::new(CollectorFrom::new("test", incoming.receiver(), Arc::new(TestConverter::new())));
         let outgoing = Channel::default();
         let notifier = Arc::new(NotifyMock::new(outgoing.sender()));
         collector.clone().start(notifier);
@@ -212,6 +188,7 @@ mod tests {
         assert_eq!(outgoing.recv().await.unwrap(), OutgoingNotification::B);
         assert_eq!(outgoing.recv().await.unwrap(), OutgoingNotification::A);
 
-        assert!(collector.stop().await.is_ok());
+        incoming.close();
+        assert!(collector.join().await.is_ok());
     }
 }

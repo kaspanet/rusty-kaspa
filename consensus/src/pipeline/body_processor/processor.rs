@@ -1,5 +1,5 @@
 use crate::{
-    consensus::services::DbPastMedianTimeManager,
+    consensus::services::DbWindowManager,
     errors::{BlockProcessResult, RuleError},
     model::{
         services::reachability::MTReachabilityService,
@@ -65,7 +65,7 @@ pub struct BlockBodyProcessor {
     pub(super) coinbase_manager: CoinbaseManager,
     pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
-    pub(super) past_median_time_manager: DbPastMedianTimeManager,
+    pub(super) window_manager: DbWindowManager,
 
     // Pruning lock
     pruning_lock: SessionLock,
@@ -98,8 +98,7 @@ impl BlockBodyProcessor {
         coinbase_manager: CoinbaseManager,
         mass_calculator: MassCalculator,
         transaction_validator: TransactionValidator,
-        past_median_time_manager: DbPastMedianTimeManager,
-
+        window_manager: DbWindowManager,
         max_block_mass: u64,
         genesis: GenesisBlock,
         pruning_lock: SessionLock,
@@ -120,7 +119,7 @@ impl BlockBodyProcessor {
             coinbase_manager,
             mass_calculator,
             transaction_validator,
-            past_median_time_manager,
+            window_manager,
             max_block_mass,
             genesis,
             pruning_lock,
@@ -206,8 +205,9 @@ impl BlockBodyProcessor {
         self.commit_body(block.hash(), block.header.direct_parents(), block.transactions.clone());
 
         // Send a BlockAdded notification
-        // TODO: handle notify errors
-        let _ = self.notification_root.notify(Notification::BlockAdded(BlockAddedNotification::new(block.to_owned())));
+        self.notification_root
+            .notify(Notification::BlockAdded(BlockAddedNotification::new(block.to_owned())))
+            .expect("expecting an open unbounded channel");
 
         // Report counters
         self.counters.body_counts.fetch_add(1, Ordering::Relaxed);

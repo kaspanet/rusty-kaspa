@@ -11,9 +11,9 @@ use parking_lot::RwLock;
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{
-        block_window_cache::BlockWindowCacheReader, ghostdag::GhostdagStoreReader,
-        headers_selected_tip::HeadersSelectedTipStoreReader, pruning::PruningStoreReader, reachability::ReachabilityStoreReader,
-        relations::RelationsStoreReader, selected_chain::SelectedChainStoreReader, statuses::StatusesStoreReader,
+        ghostdag::GhostdagStoreReader, headers_selected_tip::HeadersSelectedTipStoreReader, pruning::PruningStoreReader,
+        reachability::ReachabilityStoreReader, relations::RelationsStoreReader, selected_chain::SelectedChainStoreReader,
+        statuses::StatusesStoreReader,
     },
 };
 
@@ -28,11 +28,10 @@ pub struct SyncManager<
     W: HeadersSelectedTipStoreReader,
     X: PruningStoreReader,
     Y: StatusesStoreReader,
-    Z: BlockWindowCacheReader,
 > {
     mergeset_size_limit: usize,
     reachability_service: MTReachabilityService<T>,
-    traversal_manager: DagTraversalManager<U, Z, T, S>,
+    traversal_manager: DagTraversalManager<U, T, S>,
     ghostdag_store: Arc<U>,
     selected_chain_store: Arc<RwLock<V>>,
     header_selected_tip_store: Arc<RwLock<W>>,
@@ -48,13 +47,12 @@ impl<
         W: HeadersSelectedTipStoreReader,
         X: PruningStoreReader,
         Y: StatusesStoreReader,
-        Z: BlockWindowCacheReader,
-    > SyncManager<S, T, U, V, W, X, Y, Z>
+    > SyncManager<S, T, U, V, W, X, Y>
 {
     pub fn new(
         mergeset_size_limit: usize,
         reachability_service: MTReachabilityService<T>,
-        traversal_manager: DagTraversalManager<U, Z, T, S>,
+        traversal_manager: DagTraversalManager<U, T, S>,
         ghostdag_store: Arc<U>,
         selected_chain_store: Arc<RwLock<V>>,
         header_selected_tip_store: Arc<RwLock<W>>,
@@ -120,24 +118,22 @@ impl<
             .expect("because of the pruning rules such block has to exist")
     }
 
-    pub fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> SyncManagerResult<Vec<Hash>> {
-        let sc_read_guard = self.selected_chain_store.read();
-        let hst_read_guard = self.header_selected_tip_store.read();
-        let pp_read_guard = self.pruning_point_store.read();
-
-        let low = low.unwrap_or_else(|| pp_read_guard.get().unwrap().pruning_point);
-        let high = high.unwrap_or_else(|| hst_read_guard.get().unwrap().hash);
-
+    /// Returns a logarithmic amount of blocks sampled from the virtual selected chain between `low` and `high`.
+    /// Expects both blocks to be on the virtual selected chain, otherwise an error is returned
+    pub fn create_virtual_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> SyncManagerResult<Vec<Hash>> {
+        let low = low.unwrap_or_else(|| self.pruning_point_store.read().get().unwrap().pruning_point);
+        let sc_read = self.selected_chain_store.read();
+        let high = high.unwrap_or_else(|| sc_read.get_tip().unwrap().1);
         if low == high {
             return Ok(vec![low]);
         }
 
-        let low_index = match sc_read_guard.get_by_hash(low).unwrap_option() {
+        let low_index = match sc_read.get_by_hash(low).unwrap_option() {
             Some(index) => index,
             None => return Err(SyncManagerError::BlockNotInSelectedParentChain(low)),
         };
 
-        let high_index = match sc_read_guard.get_by_hash(high).unwrap_option() {
+        let high_index = match sc_read.get_by_hash(high).unwrap_option() {
             Some(index) => index,
             None => return Err(SyncManagerError::BlockNotInSelectedParentChain(high)),
         };
@@ -150,7 +146,7 @@ impl<
         let mut step = 1;
         let mut current_index = high_index;
         while current_index > low_index {
-            locator.push(sc_read_guard.get_by_index(current_index).unwrap());
+            locator.push(sc_read.get_by_index(current_index).unwrap());
             if current_index < step {
                 break;
             }
@@ -218,10 +214,8 @@ impl<
         let mut locator = Vec::new();
         loop {
             locator.push(current);
-            if let Some(limit) = limit {
-                if locator.len() == limit {
-                    break;
-                }
+            if limit == Some(locator.len()) {
+                break;
             }
 
             let current_gd = self.ghostdag_store.get_compact_data(current).unwrap();
@@ -239,7 +233,7 @@ impl<
                 current_gd.blue_score - step
             };
 
-            // Walk down currentHash's selected parent chain to the appropriate ancestor
+            // Walk down current's selected parent chain to the appropriate ancestor
             current = self.traversal_manager.lowest_chain_block_above_or_equal_to_blue_score(current, next_bs);
 
             // Double the distance between included hashes

@@ -7,7 +7,7 @@ use daemon::{create_daemon, Args};
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
-use kaspa_consensus::consensus::test_consensus::TestConsensus;
+use kaspa_consensus::consensus::test_consensus::{TestConsensus, TestConsensusFactory};
 use kaspa_consensus::model::stores::block_transactions::{
     BlockTransactionsStore, BlockTransactionsStoreReader, DbBlockTransactionsStore,
 };
@@ -16,10 +16,11 @@ use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{Params, DEVNET_PARAMS, DIFFICULTY_MAX, DIFFICULTY_MAX_AS_F64, MAINNET_PARAMS};
+use kaspa_consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
+use kaspa_consensus::processes::window::{WindowManager, WindowType};
 use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
@@ -27,7 +28,7 @@ use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::constants::BLOCK_VERSION;
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
-use kaspa_consensus_core::networktype::NetworkType::Mainnet;
+use kaspa_consensus_core::networktype::{NetworkId, NetworkType::Mainnet};
 use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry};
@@ -35,8 +36,9 @@ use kaspa_consensus_core::{blockhash, hashing, BlockHashMap, BlueWorkType};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
+use kaspa_core::task::tick::TickService;
 use kaspa_core::time::unix_now;
-use kaspa_database::utils::{create_temp_db, get_kaspa_tempdir};
+use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_hashes::Hash;
 
@@ -47,14 +49,16 @@ use kaspa_core::core::Core;
 use kaspa_core::info;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
+use kaspa_database::create_temp_db;
+use kaspa_database::prelude::ConnBuilder;
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
 use kaspa_rpc_core::notify::mode::NotificationMode;
-use kaspa_utxoindex::api::UtxoIndexApi;
+use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
+use std::cmp::{max, Ordering};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
@@ -112,7 +116,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
     map.get_mut(&blocks[0]).unwrap().parents.push(root);
 
     // Act
-    let (_temp_db_lifetime, db) = create_temp_db();
+    let (_temp_db_lifetime, db) = create_temp_db!(ConnBuilder::default());
     let mut store = DbReachabilityStore::new(db.clone(), 100000);
     let mut relations = DbRelationsStore::new(db, 0, 100000); // TODO: remove level
     let mut builder = DagBuilder::new(&mut store, &mut relations);
@@ -245,6 +249,7 @@ async fn ghostdag_test() {
             .edit_consensus_params(|p| {
                 p.genesis.hash = string_to_hash(&test.genesis_id);
                 p.ghostdag_k = test.k;
+                p.min_difficulty_window_len = p.legacy_difficulty_window_size;
             })
             .build();
         let consensus = TestConsensus::new(&config);
@@ -357,8 +362,12 @@ async fn block_window_test() {
         // Submit to consensus
         consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
 
-        let window =
-            consensus.dag_traversal_manager().block_window(&consensus.ghostdag_store().get_data(block_id).unwrap(), 10).unwrap();
+        let window = consensus
+            .window_manager()
+            .block_window(&consensus.ghostdag_store().get_data(block_id).unwrap(), WindowType::VaryingWindow(10))
+            .unwrap()
+            .blocks
+            .clone();
 
         let window_hashes: Vec<String> = window
             .into_sorted_vec()
@@ -402,7 +411,7 @@ async fn header_in_isolation_validation_test() {
         block.header.hash = 2.into();
 
         let now = unix_now();
-        let block_ts = now + config.timestamp_deviation_tolerance * config.target_time_per_block + 2000;
+        let block_ts = now + config.legacy_timestamp_deviation_tolerance * config.target_time_per_block + 2000;
         block.header.timestamp = block_ts;
         match consensus.validate_and_insert_block(block.to_immutable()).await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
@@ -515,44 +524,75 @@ async fn known_invalid_test() {
 
 #[tokio::test]
 async fn median_time_test() {
-    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::new(&config);
-    let wait_handles = consensus.init();
+    struct Test {
+        name: &'static str,
+        config: Config,
+    }
 
-    let num_blocks = 2 * config.timestamp_deviation_tolerance - 1;
-    for i in 1..(num_blocks + 1) {
-        let parent = if i == 1 { config.genesis.hash } else { (i - 1).into() };
-        let mut block = consensus.build_block_with_parents(i.into(), vec![parent]);
-        block.header.timestamp = config.genesis.timestamp + i;
+    let tests = vec![
+        Test {
+            name: "MAINNET with full window",
+            config: ConfigBuilder::new(MAINNET_PARAMS)
+                .skip_proof_of_work()
+                .edit_consensus_params(|p| {
+                    p.sampling_activation_daa_score = u64::MAX;
+                })
+                .build(),
+        },
+        Test {
+            name: "MAINNET with sampled window",
+            config: ConfigBuilder::new(MAINNET_PARAMS)
+                .skip_proof_of_work()
+                .edit_consensus_params(|p| {
+                    p.sampling_activation_daa_score = 0;
+                    p.new_timestamp_deviation_tolerance = 120;
+                    p.past_median_time_sample_rate = 3;
+                    p.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
+                })
+                .build(),
+        },
+    ];
+
+    for test in tests {
+        let consensus = TestConsensus::new(&test.config);
+        let wait_handles = consensus.init();
+
+        let num_blocks = test.config.past_median_time_window_size(0) as u64 * test.config.past_median_time_sample_rate(0);
+        let timestamp_deviation_tolerance = test.config.timestamp_deviation_tolerance(0);
+        for i in 1..(num_blocks + 1) {
+            let parent = if i == 1 { test.config.genesis.hash } else { (i - 1).into() };
+            let mut block = consensus.build_block_with_parents(i.into(), vec![parent]);
+            block.header.timestamp = test.config.genesis.timestamp + i;
+            consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
+        }
+
+        let mut block = consensus.build_block_with_parents((num_blocks + 2).into(), vec![num_blocks.into()]);
+        // We set the timestamp to be less than the median time and expect the block to be rejected
+        block.header.timestamp = test.config.genesis.timestamp + num_blocks - timestamp_deviation_tolerance - 1;
+        match consensus.validate_and_insert_block(block.to_immutable()).await {
+            Err(RuleError::TimeTooOld(_, _)) => {}
+            res => {
+                panic!("{}: Unexpected result: {:?}", test.name, res)
+            }
+        }
+
+        let mut block = consensus.build_block_with_parents((num_blocks + 3).into(), vec![num_blocks.into()]);
+        // We set the timestamp to be the exact median time and expect the block to be rejected
+        block.header.timestamp = test.config.genesis.timestamp + num_blocks - timestamp_deviation_tolerance;
+        match consensus.validate_and_insert_block(block.to_immutable()).await {
+            Err(RuleError::TimeTooOld(_, _)) => {}
+            res => {
+                panic!("{}: Unexpected result: {:?}", test.name, res)
+            }
+        }
+
+        let mut block = consensus.build_block_with_parents((num_blocks + 4).into(), vec![(num_blocks).into()]);
+        // We set the timestamp to be bigger than the median time and expect the block to be inserted successfully.
+        block.header.timestamp = test.config.genesis.timestamp + timestamp_deviation_tolerance + 1;
         consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
+
+        consensus.shutdown(wait_handles);
     }
-
-    let mut block = consensus.build_block_with_parents((num_blocks + 2).into(), vec![num_blocks.into()]);
-    // We set the timestamp to be less than the median time and expect the block to be rejected
-    block.header.timestamp = config.genesis.timestamp + num_blocks - config.timestamp_deviation_tolerance - 1;
-    match consensus.validate_and_insert_block(block.to_immutable()).await {
-        Err(RuleError::TimeTooOld(_, _)) => {}
-        res => {
-            panic!("Unexpected result: {res:?}")
-        }
-    }
-
-    let mut block = consensus.build_block_with_parents((num_blocks + 3).into(), vec![num_blocks.into()]);
-    // We set the timestamp to be the exact median time and expect the block to be rejected
-    block.header.timestamp = config.genesis.timestamp + num_blocks - config.timestamp_deviation_tolerance;
-    match consensus.validate_and_insert_block(block.to_immutable()).await {
-        Err(RuleError::TimeTooOld(_, _)) => {}
-        res => {
-            panic!("Unexpected result: {res:?}")
-        }
-    }
-
-    let mut block = consensus.build_block_with_parents((num_blocks + 4).into(), vec![(num_blocks).into()]);
-    // We set the timestamp to be bigger than the median time and expect the block to be inserted successfully.
-    block.header.timestamp = config.genesis.timestamp + config.timestamp_deviation_tolerance + 1;
-    consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
-
-    consensus.shutdown(wait_handles);
 }
 
 #[tokio::test]
@@ -740,16 +780,22 @@ impl KaspadGoParams {
         let finality_depth = self.FinalityDuration / self.TargetTimePerBlock;
         Params {
             dns_seeders: &[],
-            net: Mainnet,
-            net_suffix: None,
+            net: NetworkId { network_type: Mainnet, suffix: None },
             genesis: GENESIS,
             ghostdag_k: self.K,
-            timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
+            legacy_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
+            new_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
+            past_median_time_sample_rate: 1,
+            past_median_time_sampled_window_size: 2 * self.TimestampDeviationTolerance - 1,
             target_time_per_block: self.TargetTimePerBlock / 1_000_000,
+            sampling_activation_daa_score: u64::MAX,
             max_block_parents: self.MaxBlockParents,
-            max_difficulty: DIFFICULTY_MAX,
-            max_difficulty_f64: DIFFICULTY_MAX_AS_F64,
-            difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+            max_difficulty_target: MAX_DIFFICULTY_TARGET,
+            max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
+            difficulty_sample_rate: 1,
+            sampled_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+            legacy_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+            min_difficulty_window_len: self.DifficultyAdjustmentWindowSize,
             mergeset_size_limit: self.MergeSetSizeLimit,
             merge_depth: self.MergeDepth,
             finality_depth,
@@ -848,11 +894,13 @@ async fn json_test(file_path: &str, concurrency: bool) {
             let genesis_block = json_line_to_block(second_line);
             params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
         }
+        params.min_difficulty_window_len = params.legacy_difficulty_window_size;
         params
     } else {
         let genesis_block = json_line_to_block(first_line);
         let mut params = DEVNET_PARAMS;
         params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
+        params.min_difficulty_window_len = params.legacy_difficulty_window_size;
         params
     };
 
@@ -862,26 +910,27 @@ async fn json_test(file_path: &str, concurrency: bool) {
     }
     let config = Arc::new(config);
 
+    let tick_service = Arc::new(TickService::default());
     let (notification_send, notification_recv) = unbounded();
     let tc = Arc::new(TestConsensus::with_notifier(&config, notification_send));
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv));
 
     // External storage for storing block bodies. This allows separating header and body processing phases
-    let (_external_db_lifetime, external_storage) = create_temp_db();
+    let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default());
     let external_block_store = DbBlockTransactionsStore::new(external_storage, config.perf.block_data_cache_size);
-
-    let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
-    let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
-    let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
-    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex.clone())));
+    let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default());
+    let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
+    let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
+    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(UtxoIndexProxy::new(utxoindex.clone()))));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
+    async_runtime.register(tick_service.clone());
     async_runtime.register(notify_service.clone());
     async_runtime.register(index_service.clone());
-    async_runtime.register(Arc::new(ConsensusMonitor::new(tc.processing_counters().clone())));
+    async_runtime.register(Arc::new(ConsensusMonitor::new(tc.processing_counters().clone(), tick_service)));
 
     let core = Arc::new(Core::new());
-    core.bind(tc.clone());
+    core.bind(consensus_manager);
     core.bind(async_runtime);
     let joins = core.start();
 
@@ -951,7 +1000,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
             tc.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
         }
 
-        tc.import_pruning_point_utxo_set(pruning_point.unwrap(), &mut multiset).unwrap();
+        tc.import_pruning_point_utxo_set(pruning_point.unwrap(), multiset).unwrap();
         utxoindex.write().resync().unwrap();
         // TODO: Add consensus validation that the pruning point is actually the right block according to the rules (in pruning depth etc).
     }
@@ -988,6 +1037,9 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(tc.body_tips().iter().copied().any(|h| tc.block_status(h) == BlockStatus::StatusUTXOValid));
+    // Assert that the indexed selected chain store matches the virtual chain obtained
+    // through the reachability iterator
+    assert_selected_chain_store_matches_virtual_chain(&tc);
     let virtual_utxos: HashSet<TransactionOutpoint> =
         HashSet::from_iter(tc.get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
     let utxoindex_utxos = utxoindex.read().get_all_outpoints().unwrap();
@@ -1246,7 +1298,7 @@ async fn difficulty_test() {
     async fn add_block(consensus: &TestConsensus, block_time: Option<u64>, parents: Vec<Hash>) -> Header {
         let selected_parent = consensus.ghostdag_manager().find_selected_parent(parents.iter().copied());
         let block_time = block_time.unwrap_or_else(|| {
-            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().target_time_per_block
+            consensus.headers_store().get_timestamp(selected_parent).unwrap() + consensus.params().target_time_per_block(0)
         });
         let mut header = consensus.build_header_with_parents(new_unique(), parents);
         header.timestamp = block_time;
@@ -1254,9 +1306,13 @@ async fn difficulty_test() {
         header
     }
 
+    fn past_median_time(consensus: &TestConsensus, parents: &[Hash]) -> u64 {
+        let ghostdag_data = consensus.ghostdag_manager().ghostdag(parents);
+        consensus.window_manager().calc_past_median_time(&ghostdag_data).unwrap().0
+    }
+
     async fn add_block_with_min_time(consensus: &TestConsensus, parents: Vec<Hash>) -> Header {
-        let ghostdag_data = consensus.ghostdag_manager().ghostdag(&parents[..]);
-        let (pmt, _) = consensus.past_median_time_manager().calc_past_median_time(&ghostdag_data).unwrap();
+        let pmt = past_median_time(consensus, &parents[..]);
         add_block(consensus, Some(pmt + 1), parents).await
     }
 
@@ -1264,148 +1320,316 @@ async fn difficulty_test() {
         Uint256::from_compact_target_bits(a).cmp(&Uint256::from_compact_target_bits(b))
     }
 
+    fn full_window_bits(consensus: &TestConsensus, hash: Hash) -> u32 {
+        let window_size = consensus.params().difficulty_window_size(0) * consensus.params().difficulty_sample_rate(0) as usize;
+        let ghostdag_data = &consensus.ghostdag_store().get_data(hash).unwrap();
+        let window = consensus.window_manager().block_window(ghostdag_data, WindowType::FullDifficultyWindow).unwrap();
+        assert_eq!(window.blocks.len(), window_size);
+        let daa_window = consensus.window_manager().calc_daa_window(ghostdag_data, window);
+        consensus.window_manager().calculate_difficulty_bits(ghostdag_data, &daa_window)
+    }
+
+    struct Test {
+        name: &'static str,
+        enabled: bool,
+        config: Config,
+    }
+
+    const FULL_WINDOW_SIZE: usize = 90;
+    const SAMPLED_WINDOW_SIZE: usize = 11;
+    const SAMPLE_RATE: u64 = 6;
+    const PMT_DEVIATION_TOLERANCE: u64 = 20;
+    const PMT_SAMPLE_RATE: u64 = 3;
+    const PMT_SAMPLED_WINDOW_SIZE: u64 = 13;
+    const HIGH_BPS_SAMPLED_WINDOW_SIZE: usize = 12;
+    const HIGH_BPS: u64 = 4;
+    let tests = vec![
+        Test {
+            name: "MAINNET with full window",
+            enabled: true,
+            config: ConfigBuilder::new(MAINNET_PARAMS)
+                .skip_proof_of_work()
+                .edit_consensus_params(|p| {
+                    p.ghostdag_k = 1;
+                    p.legacy_difficulty_window_size = FULL_WINDOW_SIZE;
+                    p.sampling_activation_daa_score = u64::MAX;
+                    // Define past median time so that calls to add_block_with_min_time create blocks
+                    // which timestamps fit within the min-max timestamps found in the difficulty window
+                    p.legacy_timestamp_deviation_tolerance = 60;
+                })
+                .build(),
+        },
+        Test {
+            name: "MAINNET with sampled window",
+            enabled: true,
+            config: ConfigBuilder::new(MAINNET_PARAMS)
+                .skip_proof_of_work()
+                .edit_consensus_params(|p| {
+                    p.ghostdag_k = 1;
+                    p.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
+                    p.difficulty_sample_rate = SAMPLE_RATE;
+                    p.sampling_activation_daa_score = 0;
+                    // Define past median time so that calls to add_block_with_min_time create blocks
+                    // which timestamps fit within the min-max timestamps found in the difficulty window
+                    p.past_median_time_sample_rate = PMT_SAMPLE_RATE;
+                    p.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.new_timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
+                })
+                .build(),
+        },
+        Test {
+            name: "MAINNET with sampled window & high BPS",
+            enabled: false,
+            config: ConfigBuilder::new(MAINNET_PARAMS)
+                .skip_proof_of_work()
+                .edit_consensus_params(|p| {
+                    p.ghostdag_k = 1;
+                    p.target_time_per_block /= HIGH_BPS;
+                    p.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
+                    p.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
+                    p.sampling_activation_daa_score = 0;
+                    // Define past median time so that calls to add_block_with_min_time create blocks
+                    // which timestamps fit within the min-max timestamps found in the difficulty window
+                    p.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
+                    p.past_median_time_sampled_window_size = PMT_SAMPLED_WINDOW_SIZE;
+                    p.new_timestamp_deviation_tolerance = PMT_DEVIATION_TOLERANCE;
+                })
+                .build(),
+        },
+    ];
+
+    kaspa_core::log::try_init_logger("info");
+    for test in tests.iter().filter(|x| x.enabled) {
+        let consensus = TestConsensus::new(&test.config);
+        let wait_handles = consensus.init();
+
+        let sample_rate = test.config.difficulty_sample_rate(0);
+        let expanded_window_size = test.config.difficulty_window_size(0) * sample_rate as usize;
+
+        let fake_genesis = Header {
+            hash: test.config.genesis.hash,
+            version: 0,
+            parents_by_level: vec![],
+            hash_merkle_root: 0.into(),
+            accepted_id_merkle_root: 0.into(),
+            utxo_commitment: 0.into(),
+            timestamp: 0,
+            bits: 0,
+            nonce: 0,
+            daa_score: 0,
+            blue_work: 0.into(),
+            blue_score: 0,
+            pruning_point: 0.into(),
+        };
+
+        // Stage 0
+        info!("{} - Stage 0", test.name);
+        let mut tip = fake_genesis;
+        for i in 0..expanded_window_size {
+            tip = add_block(&consensus, None, vec![tip.hash]).await;
+            assert_eq!(
+                tip.bits, test.config.genesis.bits,
+                "{}: {} until first DAA window is created difficulty should remain unchanged",
+                test.name, i
+            );
+        }
+
+        // Stage 1
+        info!("{} - Stage 1", test.name);
+        for _ in 0..expanded_window_size + 10 {
+            tip = add_block(&consensus, None, vec![tip.hash]).await;
+            assert_eq!(
+                tip.bits, test.config.genesis.bits,
+                "{}: block rate wasn't changed so difficulty is not expected to change",
+                test.name
+            );
+        }
+        let stage_1_bits = full_window_bits(&consensus, tip.hash);
+
+        // Stage 2
+        // Add exactly one block in the past to the window
+        info!("{} - Stage 2", test.name);
+        for _ in 0..sample_rate {
+            if (tip.daa_score + 1) % sample_rate == 0 {
+                // This block should be part of the sampled window
+                let block_in_the_past = add_block_with_min_time(&consensus, vec![tip.hash]).await;
+                tip = block_in_the_past;
+                break;
+            } else {
+                tip = add_block(&consensus, None, vec![tip.hash]).await;
+            }
+        }
+        [(tip.bits, test.config.genesis.bits), (full_window_bits(&consensus, tip.hash), stage_1_bits)].iter().for_each(|(a, b)| {
+            assert_eq!(*a, *b, "{}: block_in_the_past shouldn't affect its own difficulty, but only its future", test.name);
+        });
+        for _ in 0..sample_rate {
+            tip = add_block(&consensus, None, vec![tip.hash]).await;
+        }
+        let stage_2_bits = full_window_bits(&consensus, tip.hash);
+        [(tip.bits, test.config.genesis.bits), (stage_2_bits, stage_1_bits)].iter().for_each(|(a, b)| {
+            assert_eq!(
+                compare_bits(*a, *b),
+                Ordering::Less,
+                "{}: block_in_the_past should affect the difficulty of its future",
+                test.name
+            );
+        });
+        let one_block_in_the_past_bits = tip.bits;
+
+        // Stage 3
+        // Increase block rate to increase difficulty
+        info!("{} - Stage 3", test.name);
+        for _ in 0..expanded_window_size {
+            let prev_bits = tip.bits;
+            tip = add_block_with_min_time(&consensus, vec![tip.hash]).await;
+            assert!(
+                compare_bits(tip.bits, prev_bits) != Ordering::Greater,
+                "{}: because we're increasing the block rate, the difficulty can't decrease",
+                test.name
+            );
+        }
+        let stage_3_bits = full_window_bits(&consensus, tip.hash);
+        [(tip.bits, one_block_in_the_past_bits), (stage_3_bits, stage_2_bits)].iter().for_each(|(a, b)| {
+            assert_eq!(
+                compare_bits(*a, *b),
+                Ordering::Less,
+                "{}: since we increased the block rate in the whole window, we expect the difficulty to be increased",
+                test.name
+            );
+        });
+
+        // Stage 4
+        // Add blocks until difficulty stabilizes
+        info!("{} - Stage 4", test.name);
+        let mut same_bits_count = 0;
+        while same_bits_count < expanded_window_size + 1 {
+            let prev_bits = tip.bits;
+            tip = add_block(&consensus, None, vec![tip.hash]).await;
+            if tip.bits == prev_bits {
+                same_bits_count += 1;
+            } else {
+                same_bits_count = 0;
+            }
+        }
+        let stage_4_bits = full_window_bits(&consensus, tip.hash);
+
+        // Stage 5
+        // Add a slow block
+        info!("{} - Stage 5", test.name);
+        let pre_slow_block_bits = tip.bits;
+        for _ in 0..sample_rate {
+            if (tip.daa_score + 1) % sample_rate == 0 {
+                // This block should be part of the sampled window
+                let slow_block_time = tip.timestamp + test.config.target_time_per_block * 3;
+                let slow_block = add_block(&consensus, Some(slow_block_time), vec![tip.hash]).await;
+                tip = slow_block;
+                break;
+            } else {
+                tip = add_block(&consensus, None, vec![tip.hash]).await;
+            }
+        }
+        [(tip.bits, pre_slow_block_bits), (full_window_bits(&consensus, tip.hash), stage_4_bits)].iter().for_each(|(a, b)| {
+            assert_eq!(*a, *b, "{}: the difficulty should change only when slow_block is in the past", test.name);
+        });
+
+        for _ in 0..sample_rate {
+            tip = add_block(&consensus, None, vec![tip.hash]).await;
+        }
+        let stage_5_bits = full_window_bits(&consensus, tip.hash);
+        [(tip.bits, pre_slow_block_bits), (stage_5_bits, stage_4_bits)].iter().for_each(|(a, b)| {
+            assert_eq!(
+                compare_bits(*a, *b),
+                Ordering::Greater,
+                "{}: block rate was decreased due to slow_block, so we expected difficulty to be reduced",
+                test.name
+            );
+        });
+
+        // Stage 6
+        // Here we create two chains: a chain of blue blocks, and a chain of red blocks with
+        // very low timestamps. Because the red blocks should be part of the difficulty
+        // window, their low timestamps should lower the difficulty, and we check it by
+        // comparing the bits of two blocks with the same blue score, one with the red
+        // blocks in its past and one without.
+        info!("{} - Stage 6", test.name);
+        let split_hash = tip.hash;
+        let mut blue_tip_hash = split_hash;
+        for _ in 0..expanded_window_size {
+            blue_tip_hash = add_block(&consensus, None, vec![blue_tip_hash]).await.hash;
+        }
+
+        let split_hash = tip.hash;
+        let mut red_tip_hash = split_hash;
+        let red_chain_len = max(sample_rate as usize * 2, 10);
+        for _ in 0..red_chain_len {
+            red_tip_hash = add_block(&consensus, None, vec![red_tip_hash]).await.hash;
+        }
+
+        let tip_with_red_past = add_block(&consensus, None, vec![red_tip_hash, blue_tip_hash]).await;
+        let tip_without_red_past = add_block(&consensus, None, vec![blue_tip_hash]).await;
+        [
+            (tip_with_red_past.bits, tip_without_red_past.bits),
+            (full_window_bits(&consensus, tip_with_red_past.hash), full_window_bits(&consensus, tip_without_red_past.hash)),
+        ]
+        .iter()
+        .for_each(|(a, b)| {
+            assert_eq!(
+                compare_bits(*a, *b),
+                Ordering::Less,
+                "{}: we expect the red blocks to increase the difficulty of tip_with_red_past",
+                test.name
+            );
+        });
+
+        // Stage 7
+        // We repeat the test, but now we make the blue chain longer in order to filter
+        // out the red blocks from the window, and check that the red blocks don't
+        // affect the difficulty.
+        info!("{} - Stage 7", test.name);
+        blue_tip_hash = split_hash;
+        for _ in 0..expanded_window_size + red_chain_len + sample_rate as usize {
+            blue_tip_hash = add_block(&consensus, None, vec![blue_tip_hash]).await.hash;
+        }
+
+        red_tip_hash = split_hash;
+        for _ in 0..red_chain_len {
+            red_tip_hash = add_block(&consensus, None, vec![red_tip_hash]).await.hash;
+        }
+
+        let tip_with_red_past = add_block(&consensus, None, vec![red_tip_hash, blue_tip_hash]).await;
+        let tip_without_red_past = add_block(&consensus, None, vec![blue_tip_hash]).await;
+        [
+            (tip_with_red_past.bits, tip_without_red_past.bits),
+            (full_window_bits(&consensus, tip_with_red_past.hash), full_window_bits(&consensus, tip_without_red_past.hash)),
+        ]
+        .iter()
+        .for_each(|(a, b)| {
+            assert_eq!(*a, *b, "{}: we expect the red blocks to not affect the difficulty of tip_with_red_past", test.name);
+        });
+
+        consensus.shutdown(wait_handles);
+    }
+}
+
+#[tokio::test]
+async fn selected_chain_test() {
+    kaspa_core::log::try_init_logger("info");
+
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.ghostdag_k = 1;
-            p.difficulty_window_size = 140;
+            p.min_difficulty_window_len = p.legacy_difficulty_window_size;
         })
         .build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
-    let fake_genesis = Header {
-        hash: config.genesis.hash,
-        version: 0,
-        parents_by_level: vec![],
-        hash_merkle_root: 0.into(),
-        accepted_id_merkle_root: 0.into(),
-        utxo_commitment: 0.into(),
-        timestamp: 0,
-        bits: 0,
-        nonce: 0,
-        daa_score: 0,
-        blue_work: 0.into(),
-        blue_score: 0,
-        pruning_point: 0.into(),
-    };
-
-    let mut tip = fake_genesis;
-    for _ in 0..config.difficulty_window_size {
-        tip = add_block(&consensus, None, vec![tip.hash]).await;
-        assert_eq!(tip.bits, config.genesis.bits, "until first DAA window is created difficulty should remains unchanged");
-    }
-
-    for _ in 0..config.difficulty_window_size + 10 {
-        tip = add_block(&consensus, None, vec![tip.hash]).await;
-        assert_eq!(tip.bits, config.genesis.bits, "block rate wasn't changed so difficulty is not expected to change");
-    }
-
-    let block_in_the_past = add_block_with_min_time(&consensus, vec![tip.hash]).await;
-    assert_eq!(
-        block_in_the_past.bits, config.genesis.bits,
-        "block_in_the_past shouldn't affect its own difficulty, but only its future"
-    );
-    tip = block_in_the_past;
-    tip = add_block(&consensus, None, vec![tip.hash]).await;
-    assert_eq!(tip.bits, 0x1d02c50f); // TODO: Check that it makes sense
-
-    // Increase block rate to increase difficulty
-    for _ in 0..config.difficulty_window_size {
-        let prev_bits = tip.bits;
-        tip = add_block_with_min_time(&consensus, vec![tip.hash]).await;
-        assert!(
-            compare_bits(tip.bits, prev_bits) != Ordering::Greater,
-            "Because we're increasing the block rate, the difficulty can't decrease"
-        );
-    }
-
-    // Add blocks until difficulty stabilizes
-    let mut same_bits_count = 0;
-    while same_bits_count < config.difficulty_window_size + 1 {
-        let prev_bits = tip.bits;
-        tip = add_block(&consensus, None, vec![tip.hash]).await;
-        if tip.bits == prev_bits {
-            same_bits_count += 1;
-        } else {
-            same_bits_count = 0;
-        }
-    }
-
-    let slow_block_time = tip.timestamp + config.target_time_per_block + 1000;
-    let slow_block = add_block(&consensus, Some(slow_block_time), vec![tip.hash]).await;
-    let slow_block_bits = slow_block.bits;
-    assert_eq!(slow_block.bits, tip.bits, "The difficulty should change only when slow_block is in the past");
-
-    tip = slow_block;
-    tip = add_block(&consensus, None, vec![tip.hash]).await;
-    assert_eq!(
-        compare_bits(tip.bits, slow_block_bits),
-        Ordering::Greater,
-        "block rate was decreased due to slow_block, so we expected difficulty to be reduced"
-    );
-
-    // Here we create two chains: a chain of blue blocks, and a chain of red blocks with
-    // very low timestamps. Because the red blocks should be part of the difficulty
-    // window, their low timestamps should lower the difficulty, and we check it by
-    // comparing the bits of two blocks with the same blue score, one with the red
-    // blocks in its past and one without.
-    let split_hash = tip.hash;
-    let mut blue_tip_hash = split_hash;
-    for _ in 0..config.difficulty_window_size {
-        blue_tip_hash = add_block(&consensus, None, vec![blue_tip_hash]).await.hash;
-    }
-
-    let split_hash = tip.hash;
-    let mut red_tip_hash = split_hash;
-    const RED_CHAIN_LEN: usize = 10;
-    for _ in 0..RED_CHAIN_LEN {
-        red_tip_hash = add_block(&consensus, None, vec![red_tip_hash]).await.hash;
-    }
-
-    let tip_with_red_past = add_block(&consensus, None, vec![red_tip_hash, blue_tip_hash]).await;
-    let tip_without_red_past = add_block(&consensus, None, vec![blue_tip_hash]).await;
-    assert_eq!(
-        compare_bits(tip_with_red_past.bits, tip_without_red_past.bits),
-        Ordering::Less,
-        "we expect the red blocks to increase the difficulty of tip_with_red_past"
-    );
-
-    // We repeat the test, but now we make the blue chain longer in order to filter
-    // out the red blocks from the window, and check that the red blocks don't
-    // affect the difficulty.
-    blue_tip_hash = split_hash;
-    for _ in 0..config.difficulty_window_size + RED_CHAIN_LEN + 1 {
-        blue_tip_hash = add_block(&consensus, None, vec![blue_tip_hash]).await.hash;
-    }
-
-    red_tip_hash = split_hash;
-    for _ in 0..RED_CHAIN_LEN {
-        red_tip_hash = add_block(&consensus, None, vec![red_tip_hash]).await.hash;
-    }
-
-    let tip_with_red_past = add_block(&consensus, None, vec![red_tip_hash, blue_tip_hash]).await;
-    let tip_without_red_past = add_block(&consensus, None, vec![blue_tip_hash]).await;
-    assert_eq!(
-        tip_with_red_past.bits, tip_without_red_past.bits,
-        "we expect the red blocks to not affect the difficulty of tip_with_red_past"
-    );
-
-    consensus.shutdown(wait_handles);
-}
-
-#[tokio::test]
-async fn selected_chain_test() {
-    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
-    let consensus = TestConsensus::new(&config);
-    let wait_handles = consensus.init();
-
-    consensus.add_block_with_parents(1.into(), vec![config.genesis.hash]).await.unwrap();
+    consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![]).await.unwrap();
     for i in 2..7 {
         let hash = i.into();
-        consensus.add_block_with_parents(hash, vec![(i - 1).into()]).await.unwrap();
+        consensus.add_utxo_valid_block_with_parents(hash, vec![(i - 1).into()], vec![]).await.unwrap();
     }
-    consensus.add_block_with_parents(7.into(), vec![1.into()]).await.unwrap(); // Adding a non chain block shouldn't affect the selected chain store.
+    consensus.add_utxo_valid_block_with_parents(7.into(), vec![1.into()], vec![]).await.unwrap(); // Adding a non chain block shouldn't affect the selected chain store.
 
     assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
     for i in 1..7 {
@@ -1413,10 +1637,10 @@ async fn selected_chain_test() {
     }
     assert!(consensus.selected_chain_store.read().get_by_index(7).is_err());
 
-    consensus.add_block_with_parents(8.into(), vec![config.genesis.hash]).await.unwrap();
+    consensus.add_utxo_valid_block_with_parents(8.into(), vec![config.genesis.hash], vec![]).await.unwrap();
     for i in 9..15 {
         let hash = i.into();
-        consensus.add_block_with_parents(hash, vec![(i - 1).into()]).await.unwrap();
+        consensus.add_utxo_valid_block_with_parents(hash, vec![(i - 1).into()], vec![]).await.unwrap();
     }
 
     assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
@@ -1427,16 +1651,32 @@ async fn selected_chain_test() {
 
     // We now check a situation where there's a shorter selected chain (3 blocks) with more blue work
     for i in 15..23 {
-        consensus.add_block_with_parents(i.into(), vec![config.genesis.hash]).await.unwrap();
+        consensus.add_utxo_valid_block_with_parents(i.into(), vec![config.genesis.hash], vec![]).await.unwrap();
     }
-    consensus.add_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec()).await.unwrap();
+    consensus.add_utxo_valid_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec(), vec![]).await.unwrap();
 
     assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
-    assert_eq!(consensus.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie breaer rules.
+    assert_eq!(consensus.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie-breaking rules.
     assert_eq!(consensus.selected_chain_store.read().get_by_index(2).unwrap(), 23.into());
     assert!(consensus.selected_chain_store.read().get_by_index(3).is_err());
+    assert_selected_chain_store_matches_virtual_chain(&consensus);
 
     consensus.shutdown(wait_handles);
+}
+
+fn assert_selected_chain_store_matches_virtual_chain(consensus: &TestConsensus) {
+    let pruning_point = consensus.pruning_point();
+    let iter1 = selected_chain_store_iterator(consensus, pruning_point);
+    let iter2 = consensus.reachability_service().backward_chain_iterator(consensus.get_sink(), pruning_point, false);
+    itertools::assert_equal(iter1, iter2);
+}
+
+fn selected_chain_store_iterator(consensus: &TestConsensus, pruning_point: Hash) -> impl Iterator<Item = Hash> + '_ {
+    let selected_chain_read = consensus.selected_chain_store.read();
+    let (idx, current) = selected_chain_read.get_tip().unwrap();
+    std::iter::once(current)
+        .chain((0..idx).rev().map(move |i| selected_chain_read.get_by_index(i).unwrap()))
+        .take_while(move |&h| h != pruning_point)
 }
 
 #[tokio::test]
@@ -1448,7 +1688,7 @@ async fn staging_consensus_test() {
     let consensus_db_dir = db_path.join("consensus");
     let meta_db_dir = db_path.join("meta");
 
-    let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
+    let meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir).build();
 
     let (notification_send, _notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));

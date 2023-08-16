@@ -26,10 +26,6 @@ pub struct ReceiveAddressesFlow {
 
 #[async_trait::async_trait]
 impl Flow for ReceiveAddressesFlow {
-    fn name(&self) -> &'static str {
-        "Receive addresses"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
@@ -74,10 +70,6 @@ pub struct SendAddressesFlow {
 
 #[async_trait::async_trait]
 impl Flow for SendAddressesFlow {
-    fn name(&self) -> &'static str {
-        "Send addresses"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }

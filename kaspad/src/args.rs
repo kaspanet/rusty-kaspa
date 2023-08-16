@@ -4,7 +4,7 @@ use clap::{arg, command, Arg, Command};
 use daemon::Args;
 
 use kaspa_core::kaspad_env::version;
-use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 
 pub fn cli() -> Command {
     let defaults: Args = Default::default();
@@ -104,14 +104,38 @@ pub fn cli() -> Command {
                 .value_parser(clap::value_parser!(usize))
                 .help("Max number of inbound peers (default: 128)."),
         )
+        .arg(
+            Arg::new("rpcmaxclients")
+                .long("rpcmaxclients")
+                .value_name("rpcmaxclients")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
+                .help("Max number of RPC clients for standard connections (default: 128)."),
+        )
         .arg(arg!(--"reset-db" "Reset database before starting node. It's needed when switching between subnetworks."))
         .arg(arg!(--"enable-unsynced-mining" "Allow the node to accept blocks from RPC while not synced (this flag is mainly used for testing)"))
+        .arg(
+            Arg::new("enable-mainnet-mining")
+                .long("enable-mainnet-mining")
+                .action(ArgAction::SetTrue)
+                .hide(true)
+                .help("Allow mainnet mining (do not use unless you know what you are doing)"),
+        )
         .arg(arg!(--utxoindex "Enable the UTXO index"))
         .arg(arg!(--testnet "Use the test network"))
+        .arg(
+            Arg::new("netsuffix")
+                .long("netsuffix")
+                .value_name("netsuffix")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u32))
+                .help("Testnet network suffix number"),
+        )
         .arg(arg!(--devnet "Use the development test network"))
         .arg(arg!(--simnet "Use the simulation test network"))
         .arg(arg!(--archival "Run as an archival node: avoids deleting old block data when moving the pruning point (Warning: heavy disk usage)"))
         .arg(arg!(--sanity "Enable various sanity checks which might be compute-intensive (mostly performed during pruning)"))
+        .arg(arg!(--yes "Answer yes to all interactive console questions"))
         .arg(
             Arg::new("user_agent_comments")
                 .long("uacomment")
@@ -119,6 +143,23 @@ pub fn cli() -> Command {
                 .require_equals(true)
                 .help("Comment to add to the user agent -- See BIP 14 for more information."),
         )
+        .arg(
+            Arg::new("externalip")
+                .long("externalip")
+                .value_name("externalip")
+                .require_equals(true)
+                .default_missing_value(None)
+                .value_parser(clap::value_parser!(IpAddress))
+                .help("Add an ip to the list of local addresses we claim to listen on to peers"),
+        )
+    .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
+    .arg(
+        Arg::new("perf-metrics-interval-sec")
+            .long("perf-metrics-interval-sec")
+            .require_equals(true)
+            .value_parser(clap::value_parser!(u64))
+            .help("Interval in seconds for performance metrics collection."),
+    )
 }
 
 pub fn parse_args() -> Args {
@@ -141,15 +182,25 @@ pub fn parse_args() -> Args {
         listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
         outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
         inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
+        rpc_max_clients: m.get_one::<usize>("rpcmaxclients").cloned().unwrap_or(defaults.rpc_max_clients),
         reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
         enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
+        enable_mainnet_mining: m.get_one::<bool>("enable-mainnet-mining").cloned().unwrap_or(defaults.enable_mainnet_mining),
         utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
         testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
+        testnet_suffix: m.get_one::<u32>("netsuffix").cloned().unwrap_or(defaults.testnet_suffix),
         devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
         simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
         archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
         sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
+        yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
         user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
+        externalip: m.get_one::<IpAddress>("externalip").cloned(),
+        perf_metrics: m.get_one::<bool>("perf-metrics").cloned().unwrap_or(defaults.perf_metrics),
+        perf_metrics_interval_sec: m
+            .get_one::<u64>("perf-metrics-interval-sec")
+            .cloned()
+            .unwrap_or(defaults.perf_metrics_interval_sec),
     }
 }
 
@@ -234,6 +285,5 @@ pub fn parse_args() -> Args {
       --devnet                              Use the development test network
       --override-dag-params-file=           Overrides DAG params (allowed only on devnet)
   -s, --service=                            Service command {install, remove, start, stop}
-
 
 */

@@ -11,10 +11,6 @@ pub struct HandleIbdBlockRequests {
 
 #[async_trait::async_trait]
 impl Flow for HandleIbdBlockRequests {
-    fn name(&self) -> &'static str {
-        "HANDLE_IBD_BLOCK_REQUESTS"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
@@ -39,7 +35,7 @@ impl HandleIbdBlockRequests {
             let session = consensus.session().await;
 
             for hash in hashes {
-                let block = session.get_block(hash)?;
+                let block = session.async_get_block(hash).await?;
                 self.router.enqueue(make_message!(Payload::IbdBlock, (&block).into())).await?;
             }
         }

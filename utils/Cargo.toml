@@ -15,6 +15,7 @@ itertools.workspace = true
 
 triggered = "0.1"
 event-listener = "2.5.3"
+ipnet = "2.8.0"
 
 [dev-dependencies]
 async-trait.workspace = true

@@ -17,10 +17,6 @@ pub struct RequestBlockLocatorFlow {
 
 #[async_trait::async_trait]
 impl Flow for RequestBlockLocatorFlow {
-    fn name(&self) -> &'static str {
-        "BLOCK_LOCATOR"
-    }
-
     fn router(&self) -> Option<Arc<Router>> {
         Some(self.router.clone())
     }
@@ -40,7 +36,8 @@ impl RequestBlockLocatorFlow {
             let msg = dequeue!(self.incoming_route, Payload::RequestBlockLocator)?;
             let (high, limit) = msg.try_into()?;
 
-            let locator = self.ctx.consensus().session().await.create_block_locator_from_pruning_point(high, limit as usize)?;
+            let locator =
+                self.ctx.consensus().session().await.async_create_block_locator_from_pruning_point(high, limit as usize).await?;
 
             self.router
                 .enqueue(make_message!(

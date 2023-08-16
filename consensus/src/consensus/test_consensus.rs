@@ -1,17 +1,24 @@
 use async_channel::Sender;
+use kaspa_consensus_core::coinbase::MinerData;
+use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_consensus_core::{
     api::ConsensusApi, block::MutableBlock, blockstatus::BlockStatus, header::Header, merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE, tx::Transaction,
 };
 use kaspa_consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
+use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
 use kaspa_core::{core::Core, service::Service};
-use kaspa_database::utils::{create_temp_db, DbLifetime};
+use kaspa_database::utils::DbLifetime;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 
+use kaspa_database::create_temp_db;
+use kaspa_database::prelude::ConnBuilder;
 use std::future::Future;
 use std::{sync::Arc, thread::JoinHandle};
 
+use crate::pipeline::virtual_processor::test_block_builder::TestBlockBuilder;
+use crate::processes::window::WindowManager;
 use crate::{
     config::Config,
     constants::TX_VERSION,
@@ -28,12 +35,13 @@ use crate::{
     test_helpers::header_from_precomputed_hash,
 };
 
-use super::services::{DbDagTraversalManager, DbGhostdagManager, DbPastMedianTimeManager};
+use super::services::{DbDagTraversalManager, DbGhostdagManager, DbWindowManager};
 use super::Consensus;
 
 pub struct TestConsensus {
-    consensus: Arc<Consensus>,
     params: Params,
+    consensus: Arc<Consensus>,
+    block_builder: TestBlockBuilder,
     db_lifetime: DbLifetime,
 }
 
@@ -42,36 +50,33 @@ impl TestConsensus {
     pub fn with_db(db: Arc<DB>, config: &Config, notification_sender: Sender<Notification>) -> Self {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
-        Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
-            params: config.params.clone(),
-            db_lifetime: Default::default(),
-        }
+        let consensus = Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters));
+        let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
+
+        Self { params: config.params.clone(), consensus, block_builder, db_lifetime: Default::default() }
     }
 
     /// Creates a test consensus instance based on `config` with a temp DB and the provided `notification_sender`
     pub fn with_notifier(config: &Config, notification_sender: Sender<Notification>) -> Self {
-        let (db_lifetime, db) = create_temp_db();
+        let (db_lifetime, db) = create_temp_db!(ConnBuilder::default());
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
-        Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
-            params: config.params.clone(),
-            db_lifetime,
-        }
+        let consensus = Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters));
+        let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
+
+        Self { consensus, block_builder, params: config.params.clone(), db_lifetime }
     }
 
     /// Creates a test consensus instance based on `config` with a temp DB and no notifier
     pub fn new(config: &Config) -> Self {
-        let (db_lifetime, db) = create_temp_db();
+        let (db_lifetime, db) = create_temp_db!(ConnBuilder::default());
         let (dummy_notification_sender, _) = async_channel::unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
         let counters = Arc::new(ProcessingCounters::default());
-        Self {
-            consensus: Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters)),
-            params: config.params.clone(),
-            db_lifetime,
-        }
+        let consensus = Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters));
+        let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
+
+        Self { consensus, block_builder, params: config.params.clone(), db_lifetime }
     }
 
     /// Clone the inner consensus Arc. For general usage of the underlying consensus simply deref
@@ -91,16 +96,10 @@ impl TestConsensus {
             .services
             .pruning_point_manager
             .expected_header_pruning_point(ghostdag_data.to_compact(), self.consensus.pruning_point_store.read().get().unwrap());
-        let window =
-            self.consensus.services.dag_traversal_manager.block_window(&ghostdag_data, self.params.difficulty_window_size).unwrap();
-        let (daa_score, _) = self
-            .consensus
-            .services
-            .difficulty_manager
-            .calc_daa_score_and_non_daa_mergeset_blocks(&mut window.iter().map(|item| item.0.hash), &ghostdag_data);
-        header.bits = self.consensus.services.difficulty_manager.calculate_difficulty_bits(&window);
-        header.daa_score = daa_score;
-        header.timestamp = self.consensus.services.past_median_time_manager.calc_past_median_time(&ghostdag_data).unwrap().0 + 1;
+        let daa_window = self.consensus.services.window_manager.block_daa_window(&ghostdag_data).unwrap();
+        header.bits = self.consensus.services.window_manager.calculate_difficulty_bits(&ghostdag_data, &daa_window);
+        header.daa_score = daa_window.daa_score;
+        header.timestamp = self.consensus.services.window_manager.calc_past_median_time(&ghostdag_data).unwrap().0 + 1;
         header.blue_score = ghostdag_data.blue_score;
         header.blue_work = ghostdag_data.blue_work;
 
@@ -109,6 +108,28 @@ impl TestConsensus {
 
     pub fn add_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         self.validate_and_insert_block(self.build_block_with_parents(hash, parents).to_immutable())
+    }
+
+    pub fn add_utxo_valid_block_with_parents(
+        &self,
+        hash: Hash,
+        parents: Vec<Hash>,
+        txs: Vec<Transaction>,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
+        self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable())
+    }
+
+    pub fn build_utxo_valid_block_with_parents(
+        &self,
+        hash: Hash,
+        parents: Vec<Hash>,
+        miner_data: MinerData,
+        txs: Vec<Transaction>,
+    ) -> MutableBlock {
+        let mut template = self.block_builder.build_block_template_with_parents(parents, miner_data, txs).unwrap();
+        template.block.header.hash = hash;
+        template.block
     }
 
     pub fn build_block_with_parents_and_transactions(
@@ -140,6 +161,10 @@ impl TestConsensus {
 
     pub fn shutdown(&self, wait_handles: Vec<JoinHandle<()>>) {
         self.consensus.shutdown(wait_handles)
+    }
+
+    pub fn window_manager(&self) -> &DbWindowManager {
+        &self.consensus.services.window_manager
     }
 
     pub fn dag_traversal_manager(&self) -> &DbDagTraversalManager {
@@ -178,10 +203,6 @@ impl TestConsensus {
         &self.consensus.virtual_processor
     }
 
-    pub fn past_median_time_manager(&self) -> &DbPastMedianTimeManager {
-        &self.consensus.services.past_median_time_manager
-    }
-
     pub fn ghostdag_manager(&self) -> &DbGhostdagManager {
         &self.consensus.services.ghostdag_primary_manager
     }
@@ -206,5 +227,31 @@ impl Service for TestConsensus {
 
     fn stop(self: Arc<TestConsensus>) {
         self.consensus.signal_exit()
+    }
+}
+
+/// A factory which always returns the same consensus instance. Does not support the staging API.
+pub struct TestConsensusFactory {
+    tc: Arc<TestConsensus>,
+}
+
+impl TestConsensusFactory {
+    pub fn new(tc: Arc<TestConsensus>) -> Self {
+        Self { tc }
+    }
+}
+
+impl ConsensusFactory for TestConsensusFactory {
+    fn new_active_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
+        let ci = ConsensusInstance::new(self.tc.session_lock(), self.tc.consensus_clone());
+        (ci, self.tc.consensus_clone() as DynConsensusCtl)
+    }
+
+    fn new_staging_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
+        unimplemented!()
+    }
+
+    fn close(&self) {
+        self.tc.notification_root().close();
     }
 }

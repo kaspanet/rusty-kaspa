@@ -70,8 +70,8 @@ pub fn delete_block(store: &mut (impl ReachabilityStore + ?Sized), block: Hash, 
         1. Find child index of block at parent
         2. Replace child with its children
         3. Update parent as new parent of children
-        4. Extend interval of first and last children as much as possible
-        5. For each block in the mergeset, find index of `block` in the future-covering-set and replace it with its children
+        4. For each block in the mergeset, find index of `block` in the future-covering-set and replace it with its children
+        5. Extend interval of first and last children as much as possible
         6. Delete block
     */
 
@@ -87,6 +87,16 @@ pub fn delete_block(store: &mut (impl ReachabilityStore + ?Sized), block: Hash, 
 
     for child in children.iter().copied() {
         store.set_parent(child, parent)?;
+    }
+
+    for merged_block in mergeset_iterator {
+        match binary_search_descendant(store, store.get_future_covering_set(merged_block)?.as_slice(), block)? {
+            SearchOutput::NotFound(_) => return Err(ReachabilityError::DataInconsistency),
+            SearchOutput::Found(hash, i) => {
+                debug_assert_eq!(hash, block);
+                store.replace_future_covering_item(merged_block, i, &children)?;
+            }
+        }
     }
 
     match children.len() {
@@ -111,16 +121,6 @@ pub fn delete_block(store: &mut (impl ReachabilityStore + ?Sized), block: Hash, 
             let last_child = children.last().copied().expect("len > 1");
             let last_interval = store.get_interval(last_child)?;
             store.set_interval(last_child, Interval::new(last_interval.start, interval.end))?;
-        }
-    }
-
-    for merged_block in mergeset_iterator {
-        match binary_search_descendant(store, store.get_future_covering_set(merged_block)?.as_slice(), block)? {
-            SearchOutput::NotFound(_) => return Err(ReachabilityError::DataInconsistency),
-            SearchOutput::Found(hash, i) => {
-                debug_assert_eq!(hash, block);
-                store.replace_future_covering_item(merged_block, i, &children)?;
-            }
         }
     }
 
@@ -266,7 +266,8 @@ mod tests {
     };
     use itertools::Itertools;
     use kaspa_consensus_core::blockhash::ORIGIN;
-    use kaspa_database::utils::create_temp_db;
+    use kaspa_database::create_temp_db;
+    use kaspa_database::prelude::ConnBuilder;
     use parking_lot::RwLock;
     use rand::seq::IteratorRandom;
     use rocksdb::WriteBatch;
@@ -384,15 +385,16 @@ mod tests {
     /// Runs a DAG test-case with full verification using the staging store mechanism.
     /// Note: runtime is quadratic in the number of blocks so should be used with mildly small DAGs (~50)
     fn run_dag_test_case_with_staging(test: &DagTestCase) {
-        let (_lifetime, db) = create_temp_db();
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default());
         let cache_size = test.blocks.len() as u64 / 3;
         let reachability = RwLock::new(DbReachabilityStore::new(db.clone(), cache_size));
         let relations = RwLock::new(DbRelationsStore::with_prefix(db.clone(), &[], 0));
 
         // Add blocks via a staging store
         {
+            let mut relations_write = relations.write();
             let mut staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
-            let mut staging_relations = StagingRelationsStore::new(relations.upgradable_read());
+            let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
             let mut builder = DagBuilder::new(&mut staging_reachability, &mut staging_relations);
             builder.init();
             builder.add_block(DagBlock::new(test.genesis.into(), vec![ORIGIN]));
@@ -404,7 +406,7 @@ mod tests {
             {
                 let mut batch = WriteBatch::default();
                 let reachability_write = staging_reachability.commit(&mut batch).unwrap();
-                let relations_write = staging_relations.commit(&mut batch).unwrap();
+                staging_relations.commit(&mut batch).unwrap();
                 db.write(batch).unwrap();
                 drop(reachability_write);
                 drop(relations_write);
@@ -443,8 +445,9 @@ mod tests {
         drop(relations_read);
 
         let mut batch = WriteBatch::default();
+        let mut relations_write = relations.write();
         let mut staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
-        let mut staging_relations = StagingRelationsStore::new(relations.upgradable_read());
+        let mut staging_relations = StagingRelationsStore::new(&mut relations_write);
 
         for (i, block) in
             test.ids().choose_multiple(&mut rand::thread_rng(), test.blocks.len()).into_iter().chain(once(test.genesis)).enumerate()
@@ -460,7 +463,7 @@ mod tests {
                 // Commit the staging changes
                 {
                     let reachability_write = staging_reachability.commit(&mut batch).unwrap();
-                    let relations_write = staging_relations.commit(&mut batch).unwrap();
+                    staging_relations.commit(&mut batch).unwrap();
                     db.write(batch).unwrap();
                     drop(reachability_write);
                     drop(relations_write);
@@ -483,8 +486,9 @@ mod tests {
 
                 // Recapture staging stores
                 batch = WriteBatch::default();
+                relations_write = relations.write();
                 staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
-                staging_relations = StagingRelationsStore::new(relations.upgradable_read());
+                staging_relations = StagingRelationsStore::new(&mut relations_write);
             }
         }
     }
@@ -529,7 +533,7 @@ mod tests {
             run_dag_test_case(&mut relations, &mut reachability, &test);
 
             // Run with direct DB stores
-            let (_lifetime, db) = create_temp_db();
+            let (_lifetime, db) = create_temp_db!(ConnBuilder::default());
             let cache_size = test.blocks.len() as u64 / 3;
             let mut reachability = DbReachabilityStore::new(db.clone(), cache_size);
             let mut relations = DbRelationsStore::new(db, 0, cache_size);

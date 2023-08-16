@@ -1,7 +1,10 @@
 [package]
 name = "kaspa-wrpc-server"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -18,6 +21,8 @@ kaspa-rpc-service.workspace = true
 kaspa-rpc-macros.workspace = true
 kaspa-grpc-client.workspace = true
 kaspa-utils.workspace = true
+
+log.workspace = true
 paste.workspace = true
 serde = { workspace = true, features = ["rc"] }
 thiserror.workspace = true

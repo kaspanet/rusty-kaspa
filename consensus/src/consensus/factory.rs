@@ -3,14 +3,15 @@ use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
-use kaspa_core::time::unix_now;
-use kaspa_database::prelude::{
-    BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB,
+use kaspa_core::{debug, time::unix_now};
+use kaspa_database::{
+    prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB},
+    registry::DatabaseStorePrefixes,
 };
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ConsensusEntry {
@@ -38,13 +39,15 @@ pub enum ConsensusEntryType {
 pub struct MultiConsensusMetadata {
     current_consensus_key: Option<u64>,
     staging_consensus_key: Option<u64>,
+    /// Max key used for a consensus entry
     max_key_used: u64,
-    /// Memorize whether this node was recently an archive node
+    /// Memorizes whether this node was recently an archive node
     is_archival_node: bool,
+    /// General serialized properties to be used cross DB versions
+    props: HashMap<Vec<u8>, Vec<u8>>,
+    /// The DB scheme version
+    version: u32,
 }
-
-const CONSENSUS_ENTRIES_PREFIX: &[u8] = b"consensus-entries-prefix";
-const MULTI_CONSENSUS_METADATA_KEY: &[u8] = b"multi-consensus-metadata-key";
 
 #[derive(Clone)]
 pub struct MultiConsensusManagementStore {
@@ -57,8 +60,8 @@ impl MultiConsensusManagementStore {
     pub fn new(db: Arc<DB>) -> Self {
         let mut store = Self {
             db: db.clone(),
-            entries: CachedDbAccess::new(db.clone(), 16, CONSENSUS_ENTRIES_PREFIX.to_vec()),
-            metadata: CachedDbItem::new(db, MULTI_CONSENSUS_METADATA_KEY.to_vec()),
+            entries: CachedDbAccess::new(db.clone(), 16, DatabaseStorePrefixes::ConsensusEntries.into()),
+            metadata: CachedDbItem::new(db, DatabaseStorePrefixes::MultiConsensusMetadata.into()),
         };
         store.init();
         store
@@ -173,6 +176,8 @@ impl Factory {
 
 impl ConsensusFactory for Factory {
     fn new_active_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
+        assert!(!self.notification_root.is_closed());
+
         let mut config = self.config.clone();
         let mut is_new_consensus = false;
         let entry = match self.management_store.write().active_consensus_entry().unwrap() {
@@ -188,7 +193,7 @@ impl ConsensusFactory for Factory {
             }
         };
         let dir = self.db_root_dir.join(entry.directory_name.clone());
-        let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
+        let db = kaspa_database::prelude::ConnBuilder::default().with_db_path(dir).with_parallelism(self.db_parallelism).build();
 
         let session_lock = SessionLock::new();
         let consensus = Arc::new(Consensus::new(
@@ -209,9 +214,11 @@ impl ConsensusFactory for Factory {
     }
 
     fn new_staging_consensus(&self) -> (ConsensusInstance, DynConsensusCtl) {
+        assert!(!self.notification_root.is_closed());
+
         let entry = self.management_store.write().new_staging_consensus_entry().unwrap();
         let dir = self.db_root_dir.join(entry.directory_name);
-        let db = kaspa_database::prelude::open_db(dir, true, self.db_parallelism);
+        let db = kaspa_database::prelude::ConnBuilder::default().with_db_path(dir).with_parallelism(self.db_parallelism).build();
 
         let session_lock = SessionLock::new();
         let consensus = Arc::new(Consensus::new(
@@ -223,5 +230,10 @@ impl ConsensusFactory for Factory {
         ));
 
         (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))
+    }
+
+    fn close(&self) {
+        debug!("Consensus factory: closing");
+        self.notification_root.close();
     }
 }

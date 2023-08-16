@@ -5,11 +5,11 @@ use crate::{
     service::Options,
 };
 use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{events::EVENT_TYPE_ARRAY, listener::ListenerId, notifier::Notifier, subscriber::Subscriber};
+use kaspa_notify::{connection::ChannelType, events::EVENT_TYPE_ARRAY, notifier::Notifier, scope::Scope, subscriber::Subscriber};
 use kaspa_rpc_core::{
-    api::rpc::DynRpcService,
+    api::rpc::{DynRpcService, RpcApi},
     notify::{channel::NotificationChannel, connection::ChannelConnection, mode::NotificationMode},
-    Notification,
+    Notification, RpcResult,
 };
 use kaspa_rpc_service::service::RpcCoreService;
 use std::{
@@ -26,8 +26,6 @@ pub type WrpcNotifier = Notifier<Notification, Connection>;
 
 struct RpcCore {
     pub service: Arc<RpcCoreService>,
-    pub notification_channel: NotificationChannel,
-    pub listener_id: ListenerId,
     pub wrpc_notifier: Arc<WrpcNotifier>,
 }
 
@@ -58,15 +56,16 @@ impl Server {
         let rpc_core = if let Some(service) = core_service {
             // Prepare rpc service objects
             let notification_channel = NotificationChannel::default();
-            let listener_id = service.notifier().register_new_listener(ChannelConnection::new(notification_channel.sender()));
+            let listener_id =
+                service.notifier().register_new_listener(ChannelConnection::new(notification_channel.sender(), ChannelType::Closable));
 
             // Prepare notification internals
             let enabled_events = EVENT_TYPE_ARRAY[..].into();
             let converter = Arc::new(WrpcServiceConverter::new());
-            let collector = Arc::new(WrpcServiceCollector::new(notification_channel.receiver(), converter));
-            let subscriber = Arc::new(Subscriber::new(enabled_events, service.notifier(), listener_id));
-            let wrpc_notifier = Arc::new(Notifier::new(enabled_events, vec![collector], vec![subscriber], tasks, WRPC_SERVER));
-            Some(RpcCore { service, notification_channel, listener_id, wrpc_notifier })
+            let collector = Arc::new(WrpcServiceCollector::new(WRPC_SERVER, notification_channel.receiver(), converter));
+            let subscriber = Arc::new(Subscriber::new(WRPC_SERVER, enabled_events, service.notifier(), listener_id));
+            let wrpc_notifier = Arc::new(Notifier::new(WRPC_SERVER, enabled_events, vec![collector], vec![subscriber], tasks));
+            Some(RpcCore { service, wrpc_notifier })
         } else {
             None
         };
@@ -126,8 +125,8 @@ impl Server {
                 });
             }
         } else {
-            let _ = connection.grpc_client().stop().await;
             let _ = connection.grpc_client().disconnect().await;
+            let _ = connection.grpc_client().join().await;
         }
 
         self.inner.sockets.lock().unwrap().remove(&connection.id());
@@ -149,18 +148,50 @@ impl Server {
         }
     }
 
+    pub async fn start_notify(&self, connection: &Connection, scope: Scope) -> RpcResult<()> {
+        let listener_id = if let Some(listener_id) = connection.listener_id() {
+            listener_id
+        } else {
+            // The only possible case here is a server connected to rpc core.
+            // If the proxy is used, the connection has a gRPC client and the listener id
+            // is always set to Some(ListenerId::default()) by the connection ctor.
+            let notifier =
+                self.notifier().unwrap_or_else(|| panic!("Incorrect use: `server::Server` does not carry an internal notifier"));
+            let listener_id = notifier.register_new_listener(connection.clone());
+            connection.register_notification_listener(listener_id);
+            listener_id
+        };
+        workflow_log::log_trace!("notification subscribe[0x{listener_id:x}] {scope:?}");
+        if let Some(rpc_core) = &self.inner.rpc_core {
+            rpc_core.wrpc_notifier.clone().try_start_notify(listener_id, scope)?;
+        } else {
+            connection.grpc_client().start_notify(listener_id, scope).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn stop_notify(&self, connection: &Connection, scope: Scope) -> RpcResult<()> {
+        if let Some(listener_id) = connection.listener_id() {
+            workflow_log::log_trace!("notification unsubscribe[0x{listener_id:x}] {scope:?}");
+            if let Some(rpc_core) = &self.inner.rpc_core {
+                rpc_core.wrpc_notifier.clone().try_stop_notify(listener_id, scope)?;
+            } else {
+                connection.grpc_client().stop_notify(listener_id, scope).await?;
+            }
+        } else {
+            workflow_log::log_trace!("notification unsubscribe[N/A] {scope:?}");
+        }
+        Ok(())
+    }
+
     pub fn verbose(&self) -> bool {
         self.inner.options.verbose
     }
 
-    pub async fn stop(&self) -> Result<()> {
+    pub async fn join(&self) -> Result<()> {
         if let Some(rpc_core) = &self.inner.rpc_core {
-            // Unregister the listener into RPC service & close the channel
-            rpc_core.wrpc_notifier.unregister_listener(rpc_core.listener_id)?;
-            rpc_core.notification_channel.close();
-
-            // Stop the internal notifier
-            rpc_core.wrpc_notifier.stop().await?;
+            // Wait for the internal notifier to stop
+            rpc_core.wrpc_notifier.join().await?;
         } else {
             // FIXME: check if all existing connections are actually getting a call to self.disconnect(connection)
             //        else do it here

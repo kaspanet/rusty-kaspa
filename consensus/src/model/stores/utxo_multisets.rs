@@ -2,6 +2,7 @@ use kaspa_consensus_core::BlockHasher;
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use kaspa_math::Uint3072;
 use kaspa_muhash::MuHash;
@@ -17,8 +18,6 @@ pub trait UtxoMultisetsStore: UtxoMultisetsStoreReader {
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
-const STORE_PREFIX: &[u8] = b"utxo-multisets";
-
 /// A DB + cache implementation of `DbUtxoMultisetsStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbUtxoMultisetsStore {
@@ -28,7 +27,7 @@ pub struct DbUtxoMultisetsStore {
 
 impl DbUtxoMultisetsStore {
     pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(Arc::clone(&db), cache_size, STORE_PREFIX.to_vec()) }
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::UtxoMultisets.into()) }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {

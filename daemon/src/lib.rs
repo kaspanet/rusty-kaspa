@@ -1,15 +1,17 @@
-use std::{fs, path::PathBuf, process::exit, str::FromStr, sync::Arc};
+use std::{fs, path::PathBuf, process::exit, str::FromStr, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
 use kaspa_consensus_core::{
     config::{Config, ConfigBuilder},
     errors::config::{ConfigError, ConfigResult},
-    networktype::NetworkType,
+    networktype::{NetworkId, NetworkType},
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_core::kaspad_env::version;
-use kaspa_core::{core::Core, info};
-use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_core::{core::Core, info, trace};
+use kaspa_core::{kaspad_env::version, task::tick::TickService};
+use kaspa_grpc_server::service::GrpcService;
+use kaspa_rpc_service::service::RpcCoreService;
+use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
@@ -19,13 +21,11 @@ use kaspa_consensus_notify::service::NotifyService;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{signals::Signals, task::runtime::AsyncRuntime};
 use kaspa_index_processor::service::IndexService;
-use kaspa_mining::manager::MiningManager;
-use kaspa_p2p_flows::flow_context::FlowContext;
-use kaspa_rpc_service::RpcCoreServer;
+use kaspa_mining::manager::{MiningManager, MiningManagerProxy};
+use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
-use kaspa_grpc_server::GrpcServer;
-use kaspa_p2p_flows::service::P2pService;
-use kaspa_utxoindex::UtxoIndex;
+use kaspa_perf_monitor::builder::Builder as PerfMonitorBuilder;
+use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WrpcEncoding, WrpcService};
 
 const DEFAULT_DATA_DIR: &str = "datadir";
@@ -69,12 +69,19 @@ pub struct Args {
     pub reset_db: bool,
     pub outbound_target: usize,
     pub inbound_limit: usize,
+    pub rpc_max_clients: usize,
     pub enable_unsynced_mining: bool,
+    pub enable_mainnet_mining: bool,
     pub testnet: bool,
+    pub testnet_suffix: u32,
     pub devnet: bool,
     pub simnet: bool,
     pub archival: bool,
     pub sanity: bool,
+    pub yes: bool,
+    pub externalip: Option<IpAddress>,
+    pub perf_metrics: bool,
+    pub perf_metrics_interval_sec: u64,
 }
 
 impl Default for Args {
@@ -90,8 +97,11 @@ impl Default for Args {
             reset_db: false,
             outbound_target: 8,
             inbound_limit: 128,
+            rpc_max_clients: 128,
             enable_unsynced_mining: false,
+            enable_mainnet_mining: false,
             testnet: false,
+            testnet_suffix: 10,
             devnet: false,
             simnet: false,
             archival: false,
@@ -104,6 +114,10 @@ impl Default for Args {
             add_peers: vec![],
             listen: None,
             user_agent_comments: vec![],
+            yes: false,
+            perf_metrics: false,
+            perf_metrics_interval_sec: 1,
+            externalip: None,
         }
     }
 }
@@ -130,19 +144,48 @@ fn validate_config_and_args(_config: &Arc<Config>, args: &Args) -> ConfigResult<
     Ok(())
 }
 
+fn get_user_approval_or_exit(message: &str, approve: bool) {
+    if approve {
+        return;
+    }
+    println!("{}", message);
+    let mut input = String::new();
+    match std::io::stdin().read_line(&mut input) {
+        Ok(_) => {
+            let lower = input.to_lowercase();
+            let answer = lower.as_str().strip_suffix("\r\n").or(lower.as_str().strip_suffix('\n')).unwrap_or(lower.as_str());
+            if answer == "y" || answer == "yes" {
+                // return
+            } else {
+                println!("Operation was rejected ({}), exiting..", answer);
+                exit(1);
+            }
+        }
+        Err(error) => {
+            println!("Error reading from console: {error}, exiting..");
+            exit(1);
+        }
+    }
+}
+
 pub fn create_daemon(args: Args) -> Arc<Core> {
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
 
-    let network_type = match (args.testnet, args.devnet, args.simnet) {
-        (false, false, false) => NetworkType::Mainnet,
-        (true, false, false) => NetworkType::Testnet,
-        (false, true, false) => NetworkType::Devnet,
-        (false, false, true) => NetworkType::Simnet,
+    let network = match (args.testnet, args.devnet, args.simnet) {
+        (false, false, false) => NetworkType::Mainnet.into(),
+        (true, false, false) => NetworkId::with_suffix(NetworkType::Testnet, args.testnet_suffix),
+        (false, true, false) => NetworkType::Devnet.into(),
+        (false, false, true) => NetworkType::Simnet.into(),
         _ => panic!("only a single net should be activated"),
     };
 
-    let config = Arc::new(ConfigBuilder::new(network_type.into()).apply_args(|config| args.apply_to_config(config)).build());
+    let config = Arc::new(
+        ConfigBuilder::new(network.into())
+            .adjust_perf_params_to_consensus_params()
+            .apply_args(|config| args.apply_to_config(config))
+            .build(),
+    );
 
     // Make sure config and args form a valid set of properties
     if let Err(err) = validate_config_and_args(&config, &args) {
@@ -186,9 +229,11 @@ pub fn create_daemon(args: Args) -> Arc<Core> {
     let meta_db_dir = db_dir.join(META_DB);
 
     if args.reset_db && db_dir.exists() {
-        // TODO: add prompt that validates the choice (unless you pass -y)
+        let msg = "Reset DB was requested -- this means the current databases will be fully deleted, 
+do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm all interactive questions)";
+        get_user_approval_or_exit(msg, args.yes);
         info!("Deleting databases");
-        fs::remove_dir_all(db_dir).unwrap();
+        fs::remove_dir_all(&db_dir).unwrap();
     }
 
     fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
@@ -199,7 +244,29 @@ pub fn create_daemon(args: Args) -> Arc<Core> {
     }
 
     // DB used for addresses store and for multi-consensus management
-    let meta_db = kaspa_database::prelude::open_db(meta_db_dir, true, 1);
+    let mut meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir.clone()).build();
+
+    // TEMP: upgrade from Alpha version or any version before this one
+    if meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
+        let msg = "Node database is from an older Kaspad version and needs to be fully deleted, do you confirm the delete? (y/n)";
+        get_user_approval_or_exit(msg, args.yes);
+
+        info!("Deleting databases from previous Kaspad version");
+
+        // Drop so that deletion works
+        drop(meta_db);
+
+        // Delete
+        fs::remove_dir_all(db_dir).unwrap();
+
+        // Recreate the empty folders
+        fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
+        fs::create_dir_all(meta_db_dir.as_path()).unwrap();
+        fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+
+        // Reopen the DB
+        meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir).build();
+    }
 
     let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
     let add_peers = args.add_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect();
@@ -214,6 +281,7 @@ pub fn create_daemon(args: Args) -> Arc<Core> {
 
     // ---
 
+    let tick_service = Arc::new(TickService::new());
     let (notification_send, notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
     let counters = Arc::new(ProcessingCounters::default());
@@ -229,27 +297,44 @@ pub fn create_daemon(args: Args) -> Arc<Core> {
         counters.clone(),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
-    let monitor = Arc::new(ConsensusMonitor::new(counters));
+    let consensus_monitor = Arc::new(ConsensusMonitor::new(counters, tick_service.clone()));
+
+    let perf_monitor = args.perf_metrics.then(|| {
+        let cb = move |counters| {
+            trace!("[{}] metrics: {:?}", kaspa_perf_monitor::SERVICE_NAME, counters);
+            #[cfg(feature = "heap")]
+            trace!("heap stats: {:?}", dhat::HeapStats::get());
+        };
+        Arc::new(
+            PerfMonitorBuilder::new()
+                .with_fetch_interval(Duration::from_secs(args.perf_metrics_interval_sec))
+                .with_fetch_cb(cb)
+                .with_tick_service(tick_service.clone())
+                .build(),
+        )
+    });
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
-        let utxoindex_db = kaspa_database::prelude::open_db(utxoindex_db_dir, true, 1);
-        let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
+        let utxoindex_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(utxoindex_db_dir).build();
+        let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
         let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
         Some(index_service)
     } else {
         None
     };
 
-    let address_manager = AddressManager::new(meta_db);
-    let mining_manager = Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None));
+    let address_manager = AddressManager::new(config.clone(), meta_db);
+    let mining_manager =
+        MiningManagerProxy::new(Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None)));
 
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
         address_manager,
         config.clone(),
         mining_manager.clone(),
+        tick_service.clone(),
         notification_root,
     ));
     let p2p_service = Arc::new(P2pService::new(
@@ -263,7 +348,7 @@ pub fn create_daemon(args: Args) -> Arc<Core> {
         config.default_p2p_port(),
     ));
 
-    let rpc_core_server = Arc::new(RpcCoreServer::new(
+    let rpc_core_service = Arc::new(RpcCoreService::new(
         consensus_manager.clone(),
         notify_service.notifier(),
         index_service.as_ref().map(|x| x.notifier()),
@@ -273,19 +358,22 @@ pub fn create_daemon(args: Args) -> Arc<Core> {
         config,
         core.clone(),
     ));
-    let grpc_server = Arc::new(GrpcServer::new(grpc_server_addr, rpc_core_server.service()));
+    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
+    async_runtime.register(tick_service);
     async_runtime.register(notify_service);
     if let Some(index_service) = index_service {
         async_runtime.register(index_service)
     };
-    async_runtime.register(rpc_core_server.clone());
-    async_runtime.register(grpc_server);
+    async_runtime.register(rpc_core_service.clone());
+    async_runtime.register(grpc_service);
     async_runtime.register(p2p_service);
-    async_runtime.register(monitor);
-
+    async_runtime.register(consensus_monitor);
+    if let Some(perf_monitor) = perf_monitor {
+        async_runtime.register(perf_monitor);
+    }
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments
     [(args.rpclisten_borsh, WrpcEncoding::Borsh), (args.rpclisten_json, WrpcEncoding::SerdeJson)]
@@ -294,7 +382,7 @@ pub fn create_daemon(args: Args) -> Arc<Core> {
             listen_address.as_ref().map(|listen_address| {
                 Arc::new(WrpcService::new(
                     wrpc_service_tasks,
-                    Some(rpc_core_server.service()),
+                    Some(rpc_core_service.clone()),
                     encoding,
                     WrpcServerOptions {
                         listen_address: listen_address.to_string(), // TODO: use a normalized ContextualNetAddress instead of a String

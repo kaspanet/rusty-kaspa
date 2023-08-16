@@ -257,7 +257,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetBlockCountResponse>, protowire::GetBlo
 from!(&kaspa_rpc_core::GetBlockDagInfoRequest, protowire::GetBlockDagInfoRequestMessage);
 from!(item: RpcResult<&kaspa_rpc_core::GetBlockDagInfoResponse>, protowire::GetBlockDagInfoResponseMessage, {
     Self {
-        network_name: item.network_type.to_string(),
+        network_name: item.network.to_string(),
         block_count: item.block_count,
         header_count: item.header_count,
         tip_hashes: item.tip_hashes.iter().map(|x| x.to_string()).collect(),
@@ -474,7 +474,10 @@ try_from!(&protowire::NotifyNewBlockTemplateResponseMessage, RpcResult<kaspa_rpc
 
 try_from!(&protowire::GetCurrentNetworkRequestMessage, kaspa_rpc_core::GetCurrentNetworkRequest);
 try_from!(item: &protowire::GetCurrentNetworkResponseMessage, RpcResult<kaspa_rpc_core::GetCurrentNetworkResponse>, {
-    Self { network: RpcNetworkType::from_str(&item.current_network)? }
+    // Note that current_network is first converted to lowercase because the golang implementation
+    // returns a "human readable" version with a capital first letter while the rusty version
+    // is fully lowercase.
+    Self { network: RpcNetworkType::from_str(&item.current_network.to_lowercase())? }
 });
 
 try_from!(&protowire::GetPeerAddressesRequestMessage, kaspa_rpc_core::GetPeerAddressesRequest);
@@ -582,7 +585,7 @@ try_from!(item: &protowire::GetBlockCountResponseMessage, RpcResult<kaspa_rpc_co
 try_from!(&protowire::GetBlockDagInfoRequestMessage, kaspa_rpc_core::GetBlockDagInfoRequest);
 try_from!(item: &protowire::GetBlockDagInfoResponseMessage, RpcResult<kaspa_rpc_core::GetBlockDagInfoResponse>, {
     Self {
-        network_type: kaspa_rpc_core::RpcNetworkType::from_str(&item.network_name)?,
+        network: kaspa_rpc_core::RpcNetworkId::from_str(&item.network_name)?,
         block_count: item.block_count,
         header_count: item.header_count,
         tip_hashes: item.tip_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,

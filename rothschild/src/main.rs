@@ -4,6 +4,7 @@ use clap::{Arg, Command};
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
+    config::params::{TESTNET11_PARAMS, TESTNET_PARAMS},
     constants::TX_VERSION,
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
@@ -105,10 +106,30 @@ async fn main() {
     );
 
     info!("Using Rothschild with private key {} and address {}", schnorr_key.display_secret(), String::from(&kaspa_addr));
+    let info = rpc_client.get_block_dag_info().await.unwrap();
+    let coinbase_maturity = match info.network.suffix {
+        Some(11) => TESTNET11_PARAMS.coinbase_maturity,
+        None | Some(_) => TESTNET_PARAMS.coinbase_maturity,
+    };
+    info!(
+        "Node block-DAG info: \n\tNetwork: {}, \n\tBlock count: {}, \n\tHeader count: {}, \n\tDifficulty: {}, 
+\tMedian time: {}, \n\tDAA score: {}, \n\tPruning point: {}, \n\tTips: {}, \n\t{} virtual parents: ...{}, \n\tCoinbase maturity: {}",
+        info.network,
+        info.block_count,
+        info.header_count,
+        info.difficulty,
+        info.past_median_time,
+        info.virtual_daa_score,
+        info.pruning_point_hash,
+        info.tip_hashes.len(),
+        info.virtual_parent_hashes.len(),
+        info.virtual_parent_hashes.last().unwrap(),
+        coinbase_maturity,
+    );
 
-    let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending).await;
-    let mut ticker = interval(Duration::from_secs_f64(1.0 / (args.tps as f64)));
-    ticker.set_missed_tick_behavior(MissedTickBehavior::Burst);
+    let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending, coinbase_maturity).await;
+    let mut ticker = interval(Duration::from_secs_f64(1.0 / (args.tps.min(100) as f64)));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     let mut maximize_inputs = false;
     let mut last_refresh = unix_now();
@@ -124,7 +145,7 @@ async fn main() {
         if !has_funds || now - last_refresh > 60_000 {
             info!("Refetching UTXO set");
             tokio::time::sleep(Duration::from_millis(100)).await; // We don't want this operation to be too frequent since its heavy on the node, so we wait some time before executing it.
-            utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending).await;
+            utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending, coinbase_maturity).await;
             last_refresh = unix_now();
             pause_if_mempool_is_full(&rpc_client).await;
         }
@@ -152,7 +173,7 @@ fn should_maximize_inputs(
 async fn pause_if_mempool_is_full(rpc_client: &GrpcClient) {
     loop {
         let mempool_size = rpc_client.get_info().await.unwrap().mempool_size;
-        if mempool_size < 100_000 {
+        if mempool_size < 10_000 {
             break;
         }
 
@@ -166,9 +187,10 @@ async fn refresh_utxos(
     rpc_client: &GrpcClient,
     kaspa_addr: Address,
     pending: &mut HashMap<TransactionOutpoint, u64>,
+    coinbase_maturity: u64,
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
     populate_pending_outpoints_from_mempool(rpc_client, kaspa_addr.clone(), pending).await;
-    fetch_spendable_utxos(rpc_client, kaspa_addr).await
+    fetch_spendable_utxos(rpc_client, kaspa_addr, coinbase_maturity).await
 }
 
 async fn populate_pending_outpoints_from_mempool(
@@ -187,23 +209,28 @@ async fn populate_pending_outpoints_from_mempool(
     }
 }
 
-async fn fetch_spendable_utxos(rpc_client: &GrpcClient, kaspa_addr: Address) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+async fn fetch_spendable_utxos(
+    rpc_client: &GrpcClient,
+    kaspa_addr: Address,
+    coinbase_maturity: u64,
+) -> Vec<(TransactionOutpoint, UtxoEntry)> {
     let resp = rpc_client.get_utxos_by_addresses(vec![kaspa_addr]).await.unwrap();
     let dag_info = rpc_client.get_block_dag_info().await.unwrap();
     let mut utxos = Vec::with_capacity(resp.len());
-    for resp_entry in resp.into_iter().filter(|resp_entry| is_utxo_spendable(&resp_entry.utxo_entry, dag_info.virtual_daa_score)) {
+    for resp_entry in
+        resp.into_iter().filter(|resp_entry| is_utxo_spendable(&resp_entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity))
+    {
         utxos.push((resp_entry.outpoint, resp_entry.utxo_entry));
     }
     utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
     utxos
 }
 
-fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64) -> bool {
+fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
     let needed_confs = if !entry.is_coinbase {
         10
     } else {
-        const COINBASE_MATURITY: u64 = 100; // TODO: Take from Params.
-        COINBASE_MATURITY * 2 // TODO: We should compare with sink blue score in the case of coinbase
+        coinbase_maturity * 2 // TODO: We should compare with sink blue score in the case of coinbase
     };
     entry.block_daa_score + needed_confs < virtual_daa_score
 }

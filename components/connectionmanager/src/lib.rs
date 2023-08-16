@@ -11,7 +11,8 @@ use futures_util::future::join_all;
 use itertools::Itertools;
 use kaspa_addressmanager::{AddressManager, NetAddress};
 use kaspa_core::{debug, info, warn};
-use kaspa_p2p_lib::Peer;
+use kaspa_p2p_lib::{common::ProtocolError, ConnectionError, Peer};
+use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::Mutex as ParkingLotMutex;
 use rand::{seq::SliceRandom, thread_rng};
 use tokio::{
@@ -32,7 +33,7 @@ pub struct ConnectionManager {
     address_manager: Arc<ParkingLotMutex<AddressManager>>,
     connection_requests: TokioMutex<HashMap<SocketAddr, ConnectionRequest>>,
     force_next_iteration: UnboundedSender<()>,
-    shutdown_signal: UnboundedSender<()>,
+    shutdown_signal: SingleTrigger,
 }
 
 #[derive(Clone, Debug)]
@@ -58,7 +59,6 @@ impl ConnectionManager {
         address_manager: Arc<ParkingLotMutex<AddressManager>>,
     ) -> Arc<Self> {
         let (tx, rx) = unbounded_channel::<()>();
-        let (shutdown_signal_tx, shutdown_signal_rx) = unbounded_channel();
         let manager = Arc::new(Self {
             p2p_adaptor,
             outbound_target,
@@ -66,47 +66,41 @@ impl ConnectionManager {
             address_manager,
             connection_requests: Default::default(),
             force_next_iteration: tx,
-            shutdown_signal: shutdown_signal_tx,
+            shutdown_signal: SingleTrigger::new(),
             dns_seeders,
             default_port,
         });
-        manager.clone().start_event_loop(rx, shutdown_signal_rx);
+        manager.clone().start_event_loop(rx);
         manager.force_next_iteration.send(()).unwrap();
         manager
     }
 
-    fn start_event_loop(self: Arc<Self>, mut rx: UnboundedReceiver<()>, mut shutdown_signal_rx: UnboundedReceiver<()>) {
+    fn start_event_loop(self: Arc<Self>, mut rx: UnboundedReceiver<()>) {
         let mut ticker = interval(Duration::from_secs(30));
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         tokio::spawn(async move {
             loop {
-                if !select! {
-                    _ = rx.recv() => self.clone().handle_event(&mut shutdown_signal_rx).await,
-                    _ = ticker.tick() => self.clone().handle_event(&mut shutdown_signal_rx).await,
-                    _ = shutdown_signal_rx.recv() => {
-                        info!("!!!!!! GOT SHUTDOWN CMGR");
-                        false
-                    },
-                } {
-                    info!("!!!!!! EXITING CMGR");
+                if self.shutdown_signal.trigger.is_triggered() {
                     break;
+                }
+                select! {
+                    _ = rx.recv() => self.clone().handle_event().await,
+                    _ = ticker.tick() => self.clone().handle_event().await,
+                    _ = self.shutdown_signal.listener.clone() => break,
                 }
             }
             debug!("Connection manager event loop exiting");
         });
     }
 
-    async fn handle_event(self: Arc<Self>, shutdown_signal_rx: &mut UnboundedReceiver<()>) -> bool {
+    async fn handle_event(self: Arc<Self>) {
         debug!("Starting connection loop iteration");
         let peers = self.p2p_adaptor.active_peers();
         let peer_by_address: HashMap<SocketAddr, Peer> = peers.into_iter().map(|peer| (peer.net_address(), peer)).collect();
 
         self.handle_connection_requests(&peer_by_address).await;
-        if !self.handle_outbound_connections(&peer_by_address, shutdown_signal_rx).await {
-            return false;
-        }
+        self.handle_outbound_connections(&peer_by_address).await;
         self.handle_inbound_connections(&peer_by_address).await;
-        true
     }
 
     pub async fn add_connection_request(&self, address: SocketAddr, is_permanent: bool) {
@@ -116,7 +110,7 @@ impl ConnectionManager {
     }
 
     pub async fn stop(&self) {
-        self.shutdown_signal.send(()).unwrap();
+        self.shutdown_signal.trigger.trigger()
     }
 
     async fn handle_connection_requests(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
@@ -133,7 +127,7 @@ impl ConnectionManager {
 
             if !is_connected && request.next_attempt <= SystemTime::now() {
                 debug!("Connecting to peer request {}", address);
-                if self.p2p_adaptor.connect_peer(address.to_string()).await.is_none() {
+                if self.p2p_adaptor.connect_peer(address.to_string()).await.is_err() {
                     debug!("Failed connecting to peer request {}", address);
                     if request.is_permanent {
                         const MAX_ACCOUNTABLE_ATTEMPTS: u32 = 4;
@@ -160,15 +154,11 @@ impl ConnectionManager {
         *requests = new_requests;
     }
 
-    async fn handle_outbound_connections(
-        self: &Arc<Self>,
-        peer_by_address: &HashMap<SocketAddr, Peer>,
-        shutdown_signal_rx: &mut UnboundedReceiver<()>,
-    ) -> bool {
+    async fn handle_outbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
         let active_outbound: HashSet<kaspa_addressmanager::NetAddress> =
             peer_by_address.values().filter(|peer| peer.is_outbound()).map(|peer| peer.net_address().into()).collect();
         if active_outbound.len() >= self.outbound_target {
-            return true;
+            return;
         }
 
         let mut missing_connections = self.outbound_target - active_outbound.len();
@@ -177,8 +167,8 @@ impl ConnectionManager {
         let mut progressing = true;
         let mut connecting = true;
         while connecting && missing_connections > 0 {
-            if shutdown_signal_rx.try_recv().is_ok() {
-                return false;
+            if self.shutdown_signal.trigger.is_triggered() {
+                return;
             }
             let mut addrs_to_connect = Vec::with_capacity(missing_connections);
             let mut jobs = Vec::with_capacity(missing_connections);
@@ -213,13 +203,20 @@ impl ConnectionManager {
             }
 
             for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addrs_to_connect) {
-                if res.is_none() {
-                    debug!("Failed connecting to {:?}", net_addr);
-                    self.address_manager.lock().mark_connection_failure(net_addr);
-                } else {
-                    self.address_manager.lock().mark_connection_success(net_addr);
-                    missing_connections -= 1;
-                    progressing = true;
+                match res {
+                    Ok(_) => {
+                        self.address_manager.lock().mark_connection_success(net_addr);
+                        missing_connections -= 1;
+                        progressing = true;
+                    }
+                    Err(ConnectionError::ProtocolError(ProtocolError::PeerAlreadyExists(_))) => {
+                        // We avoid marking the existing connection as connection failure
+                        debug!("Failed connecting to {:?}, peer already exists", net_addr);
+                    }
+                    Err(err) => {
+                        debug!("Failed connecting to {:?}, err: {}", net_addr, err);
+                        self.address_manager.lock().mark_connection_failure(net_addr);
+                    }
                 }
             }
         }
@@ -232,8 +229,6 @@ impl ConnectionManager {
             })
             .await;
         }
-
-        true
     }
 
     async fn handle_inbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {

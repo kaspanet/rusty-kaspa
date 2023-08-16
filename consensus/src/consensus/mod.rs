@@ -33,11 +33,13 @@ use crate::{
         virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
         ProcessingCounters,
     },
+    processes::window::{WindowManager, WindowType},
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{BlockValidationFuture, ConsensusApi},
     block::{Block, BlockTemplate},
+    block_count::BlockCount,
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -50,7 +52,6 @@ use kaspa_consensus_core::{
     header::Header,
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
-    sync_info::SyncInfo,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
@@ -208,7 +209,7 @@ impl Consensus {
             services.coinbase_manager.clone(),
             services.mass_calculator.clone(),
             services.transaction_validator.clone(),
-            services.past_median_time_manager.clone(),
+            services.window_manager.clone(),
             params.max_block_mass,
             params.genesis.clone(),
             pruning_lock.clone(),
@@ -296,6 +297,10 @@ impl Consensus {
         self.statuses_store.read().get(hash).unwrap()
     }
 
+    pub fn session_lock(&self) -> SessionLock {
+        self.pruning_lock.clone()
+    }
+
     pub fn notification_root(&self) -> Arc<ConsensusNotificationRoot> {
         self.notification_root.clone()
     }
@@ -316,6 +321,7 @@ impl Consensus {
         }
     }
 
+    /// Validates that a valid block *header* exists for `hash`
     fn validate_block_exists(&self, hash: Hash) -> Result<(), ConsensusError> {
         if match self.statuses_store.read().get(hash).unwrap_option() {
             Some(status) => status.is_valid(),
@@ -323,17 +329,17 @@ impl Consensus {
         } {
             Ok(())
         } else {
-            Err(ConsensusError::BlockNotFound(hash))
+            Err(ConsensusError::HeaderNotFound(hash))
         }
     }
 
     fn estimate_network_hashes_per_second_impl(&self, ghostdag_data: &GhostdagData, window_size: usize) -> ConsensusResult<u64> {
-        let window = match self.services.dag_traversal_manager.block_window(ghostdag_data, window_size) {
+        let window = match self.services.window_manager.block_window(ghostdag_data, WindowType::VaryingWindow(window_size)) {
             Ok(w) => w,
             Err(RuleError::InsufficientDaaWindowSize(s)) => return Err(DifficultyError::InsufficientWindowData(s).into()),
             Err(e) => panic!("unexpected error: {e}"),
         };
-        Ok(self.services.difficulty_manager.estimate_network_hashes_per_second(&window)?)
+        Ok(self.services.window_manager.estimate_network_hashes_per_second(window)?)
     }
 }
 
@@ -344,12 +350,12 @@ impl ConsensusApi for Consensus {
 
     fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
         let result = self.validate_and_insert_block_impl(BlockTask::Ordinary { block });
-        Box::pin(async move { result.await })
+        Box::pin(result)
     }
 
     fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
         let result = self.validate_and_insert_block_impl(BlockTask::Trusted { block: tb.block });
-        Box::pin(async move { result.await })
+        Box::pin(result)
     }
 
     fn validate_mempool_transaction_and_populate(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
@@ -395,14 +401,28 @@ impl ConsensusApi for Consensus {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
     }
 
-    fn get_sync_info(&self) -> SyncInfo {
-        // TODO: actually get those numbers
-        SyncInfo::default()
+    fn get_source(&self) -> Hash {
+        if self.config.is_archival {
+            // we use the history root in archival cases.
+            return self.pruning_point_store.read().history_root().unwrap();
+        }
+        self.pruning_point_store.read().pruning_point().unwrap()
+    }
+
+    /// Estimates number of blocks and headers stored in the node
+    ///
+    /// This is an estimation based on the daa score difference between the node's `source` and `sink`'s daa score,
+    /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
+    fn estimate_block_count(&self) -> BlockCount {
+        let count = self.get_virtual_daa_score() - self.get_header(self.get_source()).unwrap().daa_score;
+        BlockCount { header_count: count, block_count: count }
     }
 
     fn is_nearly_synced(&self) -> bool {
         // See comment within `config.is_nearly_synced`
-        self.config.is_nearly_synced(self.get_sink_timestamp())
+        let sink = self.get_sink();
+        let compact = self.headers_store.get_compact_header_data(sink).unwrap();
+        self.config.is_nearly_synced(compact.timestamp, compact.daa_score)
     }
 
     fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
@@ -484,7 +504,7 @@ impl ConsensusApi for Consensus {
         }
     }
 
-    fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: &mut MuHash) -> PruningImportResult<()> {
+    fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: MuHash) -> PruningImportResult<()> {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
@@ -537,7 +557,7 @@ impl ConsensusApi for Consensus {
         self.services.pruning_proof_manager.get_pruning_point_proof()
     }
 
-    fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>> {
+    fn create_virtual_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>> {
         if let Some(low) = low {
             self.validate_block_exists(low)?;
         }
@@ -546,7 +566,7 @@ impl ConsensusApi for Consensus {
             self.validate_block_exists(high)?;
         }
 
-        Ok(self.services.sync_manager.create_headers_selected_chain_block_locator(low, high)?)
+        Ok(self.services.sync_manager.create_virtual_selected_chain_block_locator(low, high)?)
     }
 
     fn pruning_point_headers(&self) -> Vec<Arc<Header>> {
@@ -578,7 +598,7 @@ impl ConsensusApi for Consensus {
 
     fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
         let Some(status) = self.statuses_store.read().get(hash).unwrap_option().filter(|&status| status.has_block_header()) else {
-            return Err(ConsensusError::BlockNotFound(hash));
+            return Err(ConsensusError::HeaderNotFound(hash));
         };
         Ok(Block {
             header: self.headers_store.get_header(hash).unwrap(),
@@ -588,7 +608,7 @@ impl ConsensusApi for Consensus {
 
     fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
         match self.get_block_status(hash) {
-            None => return Err(ConsensusError::BlockNotFound(hash)),
+            None => return Err(ConsensusError::HeaderNotFound(hash)),
             Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
             _ => {}
         };
@@ -632,18 +652,19 @@ impl ConsensusApi for Consensus {
         Ok(self.services.sync_manager.get_missing_block_body_hashes(high)?)
     }
 
-    fn pruning_point(&self) -> Option<Hash> {
-        self.pruning_point_store.read().pruning_point().unwrap_option()
+    fn pruning_point(&self) -> Hash {
+        self.pruning_point_store.read().pruning_point().unwrap()
     }
 
     fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(hash)?;
         Ok(self
             .services
-            .dag_traversal_manager
-            .block_window(&self.ghostdag_primary_store.get_data(hash).unwrap(), self.config.difficulty_window_size)
+            .window_manager
+            .block_window(&self.ghostdag_primary_store.get_data(hash).unwrap(), WindowType::SampledDifficultyWindow)
             .unwrap()
-            .into_iter()
+            .deref()
+            .iter()
             .map(|block| block.0.hash)
             .collect())
     }
@@ -652,27 +673,30 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(hash)?;
 
         // In order to guarantee the chain height is at least k, we check that the pruning point is not genesis.
-        if self.pruning_point().unwrap() == self.config.genesis.hash {
+        if self.pruning_point() == self.config.genesis.hash {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
 
         let mut hashes = Vec::with_capacity(self.config.params.ghostdag_k as usize);
         let mut current = hash;
-        // TODO: This will crash if we don't have the data for k blocks in the past of
-        // current. The syncee should validate it got all of the associated data.
         for _ in 0..=self.config.params.ghostdag_k {
             hashes.push(current);
-            current = self.ghostdag_primary_store.get_selected_parent(current).unwrap();
+            // TODO: ideally the syncee should validate it got all of the associated data up
+            // to k blocks back and then we would be able to safely unwrap here. For now we
+            // just break the loop, since if the data was truly missing we wouldn't accept
+            // the staging consensus in the first place
+            let Some(parent) = self.ghostdag_primary_store.get_selected_parent(current).unwrap_option() else { break; };
+            current = parent;
         }
         Ok(hashes)
     }
 
     fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
         self.validate_block_exists(high)?;
-
-        let pp_read_guard = self.pruning_point_store.read();
-        let pp = pp_read_guard.pruning_point().unwrap();
-        Ok(self.services.sync_manager.create_block_locator_from_pruning_point(high, pp, Some(limit))?)
+        // Keep the pruning point read guard throughout building the locator
+        let pruning_point_read = self.pruning_point_store.read();
+        let pruning_point = pruning_point_read.pruning_point().unwrap();
+        Ok(self.services.sync_manager.create_block_locator_from_pruning_point(high, pruning_point, Some(limit))?)
     }
 
     fn estimate_network_hashes_per_second(&self, start_hash: Option<Hash>, window_size: usize) -> ConsensusResult<u64> {

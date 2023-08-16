@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::{
     acceptance_data::AcceptanceData,
     block::{Block, BlockTemplate},
+    block_count::BlockCount,
     blockstatus::BlockStatus,
     coinbase::MinerData,
     errors::{
@@ -16,7 +17,6 @@ use crate::{
     },
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
-    sync_info::SyncInfo,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath,
@@ -73,7 +73,12 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_sync_info(&self) -> SyncInfo {
+    /// source refers to the earliest block from which the current node has full header & block data  
+    fn get_source(&self) -> Hash {
+        unimplemented!()
+    }
+
+    fn estimate_block_count(&self) -> BlockCount {
         unimplemented!()
     }
 
@@ -125,7 +130,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: &mut MuHash) -> PruningImportResult<()> {
+    fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: MuHash) -> PruningImportResult<()> {
         unimplemented!()
     }
 
@@ -164,7 +169,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>> {
+    fn create_virtual_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
 
@@ -233,7 +238,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn pruning_point(&self) -> Option<Hash> {
+    fn pruning_point(&self) -> Hash {
         unimplemented!()
     }
 

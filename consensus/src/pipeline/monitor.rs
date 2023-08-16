@@ -1,26 +1,30 @@
 use super::ProcessingCounters;
 use kaspa_core::{
     info,
-    task::service::{AsyncService, AsyncServiceFuture},
+    task::{
+        service::{AsyncService, AsyncServiceFuture},
+        tick::{TickReason, TickService},
+    },
     trace,
 };
 use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::Arc,
     time::{Duration, Instant},
 };
 
+const MONITOR: &str = "consensus-monitor";
+
 pub struct ConsensusMonitor {
-    terminate: AtomicBool,
     // Counters
     counters: Arc<ProcessingCounters>,
+
+    // Tick service
+    tick_service: Arc<TickService>,
 }
 
 impl ConsensusMonitor {
-    pub fn new(counters: Arc<ProcessingCounters>) -> ConsensusMonitor {
-        ConsensusMonitor { terminate: AtomicBool::new(false), counters }
+    pub fn new(counters: Arc<ProcessingCounters>, tick_service: Arc<TickService>) -> ConsensusMonitor {
+        ConsensusMonitor { counters, tick_service }
     }
 
     pub async fn worker(self: &Arc<ConsensusMonitor>) {
@@ -28,9 +32,9 @@ impl ConsensusMonitor {
         let mut last_log_time = Instant::now();
         let snapshot_interval = 10;
         loop {
-            tokio::time::sleep(Duration::from_secs(snapshot_interval)).await;
-
-            if self.terminate.load(Ordering::SeqCst) {
+            if let TickReason::Shutdown = self.tick_service.tick(Duration::from_secs(snapshot_interval)).await {
+                // Let the system print final logs before exiting
+                tokio::time::sleep(Duration::from_millis(500)).await;
                 break;
             }
 
@@ -68,22 +72,24 @@ impl ConsensusMonitor {
 // service trait implementation for Monitor
 impl AsyncService for ConsensusMonitor {
     fn ident(self: Arc<Self>) -> &'static str {
-        "consensus-monitor"
+        MONITOR
     }
 
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
             self.worker().await;
-            println!("!!!!!!!! MONITOR STOP DONE");
             Ok(())
         })
     }
 
     fn signal_exit(self: Arc<Self>) {
-        self.terminate.store(true, Ordering::SeqCst);
+        trace!("sending an exit signal to {}", MONITOR);
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        Box::pin(async move { Ok(()) })
+        Box::pin(async move {
+            trace!("{} stopped", MONITOR);
+            Ok(())
+        })
     }
 }

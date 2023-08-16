@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use super::IbdFlow;
-use kaspa_consensus_core::{api::ConsensusApi, blockstatus::BlockStatus};
+use kaspa_consensus_core::blockstatus::BlockStatus;
+use kaspa_consensusmanager::ConsensusProxy;
 use kaspa_core::{debug, warn};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
@@ -11,14 +12,17 @@ use kaspa_p2p_lib::{
 };
 
 pub struct ChainNegotiationOutput {
-    pub syncer_header_selected_tip: Hash,
+    // Note: previous version peers (especially golang nodes) might return the headers selected tip here. Nonetheless
+    // we name here following the currently implemented logic by which the syncer returns the virtual selected parent
+    // chain on block locator queries
+    pub syncer_virtual_selected_parent: Hash,
     pub highest_known_syncer_chain_hash: Option<Hash>,
 }
 
 impl IbdFlow {
     pub(super) async fn negotiate_missing_syncer_chain_segment(
         &mut self,
-        consensus: &dyn ConsensusApi,
+        consensus: &ConsensusProxy,
     ) -> Result<ChainNegotiationOutput, ProtocolError> {
         /*
             Algorithm:
@@ -41,7 +45,7 @@ impl IbdFlow {
             locator_hashes.last().unwrap()
         );
 
-        let mut syncer_header_selected_tip = locator_hashes[0]; // Syncer header selected tip hash
+        let mut syncer_virtual_selected_parent = locator_hashes[0]; // Syncer sink (virtual selected parent)
         let highest_known_syncer_chain_hash: Option<Hash>;
         let mut negotiation_restart_counter = 0;
         let mut negotiation_zoom_counts = 0;
@@ -50,7 +54,7 @@ impl IbdFlow {
             let mut lowest_unknown_syncer_chain_hash: Option<Hash> = None;
             let mut current_highest_known_syncer_chain_hash: Option<Hash> = None;
             for &syncer_chain_hash in locator_hashes.iter() {
-                match consensus.get_block_status(syncer_chain_hash) {
+                match consensus.async_get_block_status(syncer_chain_hash).await {
                     None => {
                         // Log the unknown block and continue to the next iteration
                         lowest_unknown_syncer_chain_hash = Some(syncer_chain_hash);
@@ -127,7 +131,12 @@ impl IbdFlow {
                         self.router, negotiation_restart_counter
                     )));
                 }
-                warn!("IBD chain negotiation with syncer {} restarted {} times", self.router, negotiation_restart_counter);
+                if negotiation_restart_counter > self.ctx.config.bps() {
+                    // bps is just an intuitive threshold here
+                    warn!("IBD chain negotiation with syncer {} restarted {} times", self.router, negotiation_restart_counter);
+                } else {
+                    debug!("IBD chain negotiation with syncer {} restarted {} times", self.router, negotiation_restart_counter);
+                }
 
                 // An empty locator signals that the syncer chain was modified and no longer contains one of
                 // the queried hashes, so we restart the search. We use a shorter timeout here to avoid a timeout attack
@@ -146,13 +155,13 @@ impl IbdFlow {
                 );
 
                 initial_locator_len = locator_hashes.len();
-                // Reset syncer's header selected tip
-                syncer_header_selected_tip = locator_hashes[0];
+                // Reset syncer's virtual selected parent
+                syncer_virtual_selected_parent = locator_hashes[0];
             }
         }
 
         debug!("Found highest known syncer chain block {:?} from peer {}", highest_known_syncer_chain_hash, self.router);
-        Ok(ChainNegotiationOutput { syncer_header_selected_tip, highest_known_syncer_chain_hash })
+        Ok(ChainNegotiationOutput { syncer_virtual_selected_parent, highest_known_syncer_chain_hash })
     }
 
     async fn get_syncer_chain_block_locator(

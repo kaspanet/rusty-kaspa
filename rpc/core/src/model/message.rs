@@ -1,6 +1,6 @@
 use crate::model::*;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use kaspa_consensus_core::sync_info::SyncInfo;
+use kaspa_consensus_core::block_count::BlockCount;
 use kaspa_notify::subscription::{single::UtxosChangedSubscription, Command};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -380,7 +380,7 @@ impl GetBlocksResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockCountRequest {}
 
-pub type GetBlockCountResponse = SyncInfo;
+pub type GetBlockCountResponse = BlockCount;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -389,7 +389,7 @@ pub struct GetBlockDagInfoRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockDagInfoResponse {
-    pub network_type: RpcNetworkType,
+    pub network: RpcNetworkId,
     pub block_count: u64,
     pub header_count: u64,
     pub tip_hashes: Vec<RpcHash>,
@@ -402,7 +402,7 @@ pub struct GetBlockDagInfoResponse {
 
 impl GetBlockDagInfoResponse {
     pub fn new(
-        network_type: RpcNetworkType,
+        network: RpcNetworkId,
         block_count: u64,
         header_count: u64,
         tip_hashes: Vec<RpcHash>,
@@ -413,7 +413,7 @@ impl GetBlockDagInfoResponse {
         virtual_daa_score: u64,
     ) -> Self {
         Self {
-            network_type,
+            network,
             block_count,
             header_count,
             tip_hashes,

@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasher, Hasher};
 
-use kaspa_hashes::Hash;
+pub use kaspa_hashes::Hash;
 
 pub mod acceptance_data;
 pub mod api;
 pub mod block;
+pub mod block_count;
 pub mod blockhash;
 pub mod blockstatus;
 pub mod coinbase;
@@ -21,7 +22,6 @@ pub mod networktype;
 pub mod pruning;
 pub mod sign;
 pub mod subnets;
-pub mod sync_info;
 pub mod trusted;
 pub mod tx;
 pub mod utxo;
@@ -74,6 +74,7 @@ impl HashMapCustomHasher for BlockHashSet {
     }
 }
 
+#[derive(Default, Debug)]
 pub struct ChainPath {
     pub added: Vec<Hash>,
     pub removed: Vec<Hash>,

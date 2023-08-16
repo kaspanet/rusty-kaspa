@@ -4,17 +4,16 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            block_window_cache::BlockWindowCacheStore, depth::DbDepthStore, ghostdag::DbGhostdagStore, headers::DbHeadersStore,
-            headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore, pruning::DbPruningStore,
-            reachability::DbReachabilityStore, relations::DbRelationsStore, selected_chain::DbSelectedChainStore,
-            statuses::DbStatusesStore, DB,
+            block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
+            headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
+            pruning::DbPruningStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
+            selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
         },
     },
     processes::{
-        block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::DifficultyManager, ghostdag::protocol::GhostdagManager,
-        mass::MassCalculator, parents_builder::ParentsManager, past_median_time::PastMedianTimeManager, pruning::PruningPointManager,
-        pruning_proof::PruningProofManager, sync::SyncManager, transaction_validator::TransactionValidator,
-        traversal_manager::DagTraversalManager,
+        block_depth::BlockDepthManager, coinbase::CoinbaseManager, ghostdag::protocol::GhostdagManager, mass::MassCalculator,
+        parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager, sync::SyncManager,
+        transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager, window::DualWindowManager,
     },
 };
 
@@ -24,16 +23,9 @@ use std::sync::Arc;
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
 
-pub type DbDagTraversalManager =
-    DagTraversalManager<DbGhostdagStore, BlockWindowCacheStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
+pub type DbDagTraversalManager = DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 
-pub type DbPastMedianTimeManager = PastMedianTimeManager<
-    DbHeadersStore,
-    DbGhostdagStore,
-    BlockWindowCacheStore,
-    DbReachabilityStore,
-    MTRelationsService<DbRelationsStore>,
->;
+pub type DbWindowManager = DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>;
 
 pub type DbSyncManager = SyncManager<
     MTRelationsService<DbRelationsStore>,
@@ -43,10 +35,8 @@ pub type DbSyncManager = SyncManager<
     DbHeadersSelectedTipStore,
     DbPruningStore,
     DbStatusesStore,
-    BlockWindowCacheStore,
 >;
 
-pub type DbDifficultyManager = DifficultyManager<DbHeadersStore>;
 pub type DbPruningPointManager = PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
@@ -59,11 +49,10 @@ pub struct ConsensusServices {
     pub statuses_service: MTStatusesService<DbStatusesStore>,
     pub relations_service: MTRelationsService<DbRelationsStore>,
     pub reachability_service: MTReachabilityService<DbReachabilityStore>,
-    pub difficulty_manager: DbDifficultyManager,
+    pub window_manager: DbWindowManager,
     pub dag_traversal_manager: DbDagTraversalManager,
     pub ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     pub ghostdag_primary_manager: DbGhostdagManager,
-    pub past_median_time_manager: DbPastMedianTimeManager,
     pub coinbase_manager: CoinbaseManager,
     pub pruning_point_manager: DbPruningPointManager,
     pub pruning_proof_manager: Arc<PruningProofManager>,
@@ -87,23 +76,25 @@ impl ConsensusServices {
             params.genesis.hash,
             storage.ghostdag_primary_store.clone(),
             relations_service.clone(),
-            storage.block_window_cache_for_difficulty.clone(),
-            storage.block_window_cache_for_past_median_time.clone(),
-            params.difficulty_window_size,
-            (2 * params.timestamp_deviation_tolerance - 1) as usize, // TODO: incorporate target_time_per_block to this calculation
             reachability_service.clone(),
         );
-        let past_median_time_manager = PastMedianTimeManager::new(
+        let window_manager = DualWindowManager::new(
+            &params.genesis,
+            storage.ghostdag_primary_store.clone(),
             storage.headers_store.clone(),
-            dag_traversal_manager.clone(),
-            params.timestamp_deviation_tolerance as usize,
-            params.genesis.timestamp,
-        );
-        let difficulty_manager = DifficultyManager::new(
-            storage.headers_store.clone(),
-            params.genesis.bits,
-            params.difficulty_window_size,
+            storage.daa_excluded_store.clone(),
+            storage.block_window_cache_for_difficulty.clone(),
+            storage.block_window_cache_for_past_median_time.clone(),
+            params.max_difficulty_target,
             params.target_time_per_block,
+            params.sampling_activation_daa_score,
+            params.legacy_difficulty_window_size,
+            params.sampled_difficulty_window_size,
+            params.min_difficulty_window_len,
+            params.difficulty_sample_rate,
+            params.legacy_past_median_time_window_size(),
+            params.sampled_past_median_time_window_size(),
+            params.past_median_time_sample_rate,
         );
         let depth_manager = BlockDepthManager::new(
             params.merge_depth,
@@ -138,6 +129,7 @@ impl ConsensusServices {
             params.max_coinbase_payload_len,
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
+            params.target_time_per_block,
         );
 
         let mass_calculator =
@@ -178,11 +170,11 @@ impl ConsensusServices {
             reachability_service.clone(),
             ghostdag_managers.clone(),
             dag_traversal_manager.clone(),
+            window_manager.clone(),
             params.max_block_level,
             params.genesis.hash,
             params.pruning_proof_m,
             params.anticone_finalization_depth(),
-            params.difficulty_window_size,
             params.ghostdag_k,
         ));
 
@@ -202,11 +194,10 @@ impl ConsensusServices {
             statuses_service,
             relations_service,
             reachability_service,
-            difficulty_manager,
+            window_manager,
             dag_traversal_manager,
             ghostdag_managers,
             ghostdag_primary_manager,
-            past_median_time_manager,
             coinbase_manager,
             pruning_point_manager,
             pruning_proof_manager,

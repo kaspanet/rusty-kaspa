@@ -175,7 +175,7 @@ impl PruningProcessor {
             drop(pruning_point_write);
 
             // Inform the user
-            info!("Daily pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
+            info!("Periodic pruning point movement: advancing from {} to {}", current_pruning_info.pruning_point, new_pruning_point);
 
             // Advance the pruning point utxoset to the state of the new pruning point using chain-block UTXO diffs
             self.advance_pruning_utxoset(current_pruning_info.pruning_point, new_pruning_point);
@@ -219,6 +219,8 @@ impl PruningProcessor {
             warn!("The node is configured as an archival node -- avoiding data pruning. Note this might lead to heavy disk usage.");
             return;
         }
+
+        info!("Header and Block pruning: preparing proof and anticone data...");
 
         let proof = self.pruning_proof_manager.get_pruning_point_proof();
         let data = self
@@ -290,7 +292,12 @@ impl PruningProcessor {
                 .collect_vec();
             tips_write.prune_tips_with_writer(BatchDbWriter::new(&mut batch), &pruned_tips).unwrap();
             if !pruned_tips.is_empty() {
-                info!("Header and Block pruning: pruned {} tips: {:?}", pruned_tips.len(), pruned_tips)
+                info!(
+                    "Header and Block pruning: pruned {} tips: {}...{}",
+                    pruned_tips.len(),
+                    pruned_tips.iter().take(5.min((pruned_tips.len() + 1) / 2)).reusable_format(", "),
+                    pruned_tips.iter().rev().take(5.min(pruned_tips.len() / 2)).reusable_format(", ")
+                )
             }
 
             // Prune the selected chain index below the pruning point
@@ -337,7 +344,8 @@ impl PruningProcessor {
             if !keep_blocks.contains(&current) {
                 let mut batch = WriteBatch::default();
                 let mut level_relations_write = self.relations_stores.write();
-                let mut staging_relations = StagingRelationsStore::new(self.reachability_relations_store.upgradable_read());
+                let mut reachability_relations_write = self.reachability_relations_store.write();
+                let mut staging_relations = StagingRelationsStore::new(&mut reachability_relations_write);
                 let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
 
@@ -346,7 +354,6 @@ impl PruningProcessor {
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
                 self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
-                self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
 
                 if keep_relations.contains(&current) {
                     statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
@@ -355,7 +362,7 @@ impl PruningProcessor {
                     counter += 1;
                     // Prune data related to headers: relations, reachability, ghostdag
                     let mergeset = relations::delete_reachability_relations(
-                        MemoryWriter::default(), // Both stores are staging so we just pass a dummy writer
+                        MemoryWriter, // Both stores are staging so we just pass a dummy writer
                         &mut staging_relations,
                         &staging_reachability,
                         current,
@@ -364,22 +371,26 @@ impl PruningProcessor {
                     // TODO: consider adding block level to compact header data
                     let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
                     (0..=block_level as usize).for_each(|level| {
-                        relations::delete_level_relations(BatchDbWriter::new(&mut batch), &mut level_relations_write[level], current)
-                            .unwrap_option();
+                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
+                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
+                        staging_level_relations.commit(&mut batch).unwrap();
                         self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap_option();
                     });
 
+                    // Remove additional header related data
+                    self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
+                    self.depth_store.delete_batch(&mut batch, current).unwrap();
                     // Remove status completely
                     statuses_write.delete_batch(&mut batch, current).unwrap();
 
                     if !keep_headers.contains(&current) {
-                        // Prune headers
+                        // Prune the actual headers
                         self.headers_store.delete_batch(&mut batch, current).unwrap();
                     }
                 }
 
                 let reachability_write = staging_reachability.commit(&mut batch).unwrap();
-                let reachability_relations_write = staging_relations.commit(&mut batch).unwrap();
+                staging_relations.commit(&mut batch).unwrap();
 
                 // Flush the batch to the DB
                 self.db.write(batch).unwrap();

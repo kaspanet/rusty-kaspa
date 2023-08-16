@@ -1,23 +1,14 @@
 use futures::future::join_all;
 use indexmap::{map::Entry::Occupied, IndexMap};
-use kaspa_consensus_core::{api::ConsensusApi, block::Block};
-use kaspa_core::{debug, info, warn};
+use kaspa_consensus_core::block::Block;
+use kaspa_consensusmanager::ConsensusProxy;
+use kaspa_core::{debug, warn};
 use kaspa_hashes::Hash;
-use kaspa_utils::{iter::IterExtensions, option::OptionExtensions};
+use kaspa_utils::option::OptionExtensions;
 use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::process_queue::ProcessQueue;
-
-/// The maximum amount of blockLocator hashes to search for known
-/// blocks. See check_orphan_resolution_range for further details
-pub const ORPHAN_RESOLUTION_RANGE: u32 = 5;
-
-/// The maximum amount of orphans allowed in the orphans pool. This number is an
-/// approximation of how many orphans there can possibly be on average. It is based on:
-/// 2^ORPHAN_RESOLUTION_RANGE * Ghostdag K.
-/// TODO (HF): revisit when block rate changes
-pub const MAX_ORPHANS: usize = 600;
 
 pub struct OrphanBlocksPool {
     /// NOTES:
@@ -42,7 +33,6 @@ impl OrphanBlocksPool {
                 debug!("Evicted {} from the orphan blocks pool", evicted);
             }
         }
-        info!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
         self.orphans.insert(orphan_block.hash(), orphan_block);
     }
 
@@ -54,7 +44,7 @@ impl OrphanBlocksPool {
     /// Returns the orphan roots of the provided orphan. Orphan roots are ancestors of this orphan which are
     /// not in the orphan pool AND do not exist consensus-wise or are header-only. Given an orphan relayed by
     /// a peer, these blocks should be the next-in-line to be requested from that peer.
-    pub fn get_orphan_roots(&self, consensus: &dyn ConsensusApi, orphan: Hash) -> Option<Vec<Hash>> {
+    pub async fn get_orphan_roots(&self, consensus: &ConsensusProxy, orphan: Hash) -> Option<Vec<Hash>> {
         if !self.orphans.contains_key(&orphan) {
             return None;
         }
@@ -70,7 +60,7 @@ impl OrphanBlocksPool {
                     }
                 }
             } else {
-                let status = consensus.get_block_status(current);
+                let status = consensus.async_get_block_status(current).await;
                 if status.is_none_or(|s| s.is_header_only()) {
                     // Block is not in the orphan pool nor does its body exist consensus-wise, so it is a root
                     roots.push(current);
@@ -80,7 +70,7 @@ impl OrphanBlocksPool {
         Some(roots)
     }
 
-    pub async fn unorphan_blocks(&mut self, consensus: &dyn ConsensusApi, root: Hash) -> Vec<Block> {
+    pub async fn unorphan_blocks(&mut self, consensus: &ConsensusProxy, root: Hash) -> Vec<Block> {
         self.orphans.remove(&root); // Try removing the root, just in case it was previously an orphan
 
         let mut process_queue = ProcessQueue::from(self.iterate_child_orphans(root).collect());
@@ -88,13 +78,13 @@ impl OrphanBlocksPool {
         while let Some(orphan_hash) = process_queue.dequeue() {
             // If the entry does not exist it means it was processed on a previous iteration
             if let Occupied(entry) = self.orphans.entry(orphan_hash) {
-                let processable = entry
-                    .get()
-                    .header
-                    .direct_parents()
-                    .iter()
-                    .copied()
-                    .all(|p| processing.contains_key(&p) || consensus.get_block_status(p).has_value_and(|s| !s.is_header_only()));
+                let mut processable = true;
+                for p in entry.get().header.direct_parents().iter().copied() {
+                    if !processing.contains_key(&p) && consensus.async_get_block_status(p).await.is_none_or(|s| s.is_header_only()) {
+                        processable = false;
+                        break;
+                    }
+                }
                 if processable {
                     let orphan_block = entry.remove();
                     processing.insert(orphan_hash, (orphan_block.clone(), consensus.validate_and_insert_block(orphan_block)));
@@ -110,11 +100,6 @@ impl OrphanBlocksPool {
                 Ok(_) => unorphaned_blocks.push(block),
                 Err(e) => warn!("Validation failed for orphan block {}: {}", block.hash(), e),
             }
-        }
-        match unorphaned_blocks.len() {
-            0 => {}
-            1 => info!("Unorphaned block {}", unorphaned_blocks[0].hash()),
-            n => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).reusable_format(", ")),
         }
         unorphaned_blocks
     }
@@ -141,6 +126,7 @@ mod tests {
         blockstatus::BlockStatus,
         errors::block::BlockProcessResult,
     };
+    use kaspa_consensusmanager::{ConsensusInstance, SessionLock};
     use parking_lot::RwLock;
     use std::sync::Arc;
 
@@ -167,7 +153,8 @@ mod tests {
     #[tokio::test]
     async fn test_orphan_pool_basics() {
         let max_orphans = 10;
-        let consensus = Arc::new(MockProcessor::default());
+        let ci = ConsensusInstance::new(SessionLock::new(), Arc::new(MockProcessor::default()));
+        let consensus = ci.session().await;
         let mut pool = OrphanBlocksPool::new(max_orphans);
 
         let roots = vec![8.into(), 9.into()];
@@ -179,13 +166,13 @@ mod tests {
         pool.add_orphan(c.clone());
         pool.add_orphan(d.clone());
 
-        assert_eq!(pool.get_orphan_roots(consensus.as_ref(), d.hash()).unwrap(), roots);
+        assert_eq!(pool.get_orphan_roots(&consensus, d.hash()).await.unwrap(), roots);
 
         consensus.validate_and_insert_block(a.clone()).await.unwrap();
         consensus.validate_and_insert_block(b.clone()).await.unwrap();
 
         assert_eq!(
-            pool.unorphan_blocks(consensus.as_ref(), 8.into()).await.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(),
+            pool.unorphan_blocks(&consensus, 8.into()).await.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(),
             HashSet::from([10.into(), 11.into()])
         );
         assert!(pool.orphans.is_empty());

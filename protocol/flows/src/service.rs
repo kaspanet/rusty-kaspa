@@ -72,6 +72,7 @@ impl AsyncService for P2pService {
         );
 
         self.flow_context.set_connection_manager(connection_manager.clone());
+        self.flow_context.start_async_services();
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
@@ -81,9 +82,11 @@ impl AsyncService for P2pService {
 
             // Keep the P2P server running until a service shutdown signal is received
             shutdown_signal.await;
+            // Important for cleanup of the P2P adaptor since we have a reference cycle:
+            // flow ctx -> conn manager -> p2p adaptor -> flow ctx (as ConnectionInitializer)
+            self.flow_context.drop_connection_manager();
             p2p_adaptor.terminate_all_peers().await;
             connection_manager.stop().await;
-            println!("!!!!!!!! P2P STOP DONE");
             Ok(())
         })
     }
@@ -94,9 +97,8 @@ impl AsyncService for P2pService {
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} stopping", P2P_CORE_SERVICE);
         Box::pin(async move {
-            trace!("{} exiting", P2P_CORE_SERVICE);
+            trace!("{} stopped", P2P_CORE_SERVICE);
             Ok(())
         })
     }

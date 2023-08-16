@@ -2,7 +2,7 @@ use std::{
     cmp::{max, Reverse},
     collections::hash_map::Entry::Vacant,
     collections::BinaryHeap,
-    ops::DerefMut,
+    ops::{Deref, DerefMut},
     sync::Arc,
 };
 
@@ -22,20 +22,19 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::{debug, info, trace};
-use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::{ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
 
 use crate::{
     consensus::{
-        services::{DbDagTraversalManager, DbGhostdagManager, DbParentsManager},
+        services::{DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbWindowManager},
         storage::ConsensusStorage,
     },
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            block_window_cache::BlockWindowHeap,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
@@ -50,10 +49,16 @@ use crate::{
             DB,
         },
     },
-    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations::RelationsStoreExtensions},
+    processes::{
+        ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations::RelationsStoreExtensions,
+        window::WindowType,
+    },
 };
 
-use super::ghostdag::{mergeset::unordered_mergeset_without_selected_parent, protocol::GhostdagManager};
+use super::{
+    ghostdag::{mergeset::unordered_mergeset_without_selected_parent, protocol::GhostdagManager},
+    window::WindowManager,
+};
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -85,6 +90,7 @@ pub struct PruningProofManager {
 
     ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     traversal_manager: DbDagTraversalManager,
+    window_manager: DbWindowManager,
     parents_manager: DbParentsManager,
 
     cached_proof: RwLock<Option<CachedPruningPointData<PruningPointProof>>>,
@@ -94,7 +100,6 @@ pub struct PruningProofManager {
     genesis_hash: Hash,
     pruning_proof_m: u64,
     anticone_finalization_depth: u64,
-    difficulty_adjustment_window_size: usize,
     ghostdag_k: KType,
 }
 
@@ -107,11 +112,11 @@ impl PruningProofManager {
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
         traversal_manager: DbDagTraversalManager,
+        window_manager: DbWindowManager,
         max_block_level: BlockLevel,
         genesis_hash: Hash,
         pruning_proof_m: u64,
         anticone_finalization_depth: u64,
-        difficulty_adjustment_window_size: usize,
         ghostdag_k: KType,
     ) -> Self {
         Self {
@@ -132,6 +137,7 @@ impl PruningProofManager {
 
             ghostdag_managers,
             traversal_manager,
+            window_manager,
             parents_manager,
 
             cached_proof: RwLock::new(None),
@@ -141,7 +147,6 @@ impl PruningProofManager {
             genesis_hash,
             pruning_proof_m,
             anticone_finalization_depth,
-            difficulty_adjustment_window_size,
             ghostdag_k,
         }
     }
@@ -320,8 +325,9 @@ impl PruningProofManager {
 
             // Prepare batch
             let mut batch = WriteBatch::default();
+            let mut reachability_relations_write = self.reachability_relations_store.write();
             let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
-            let mut staging_reachability_relations = StagingRelationsStore::new(self.reachability_relations_store.upgradable_read());
+            let mut staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
 
             // Stage
             staging_reachability_relations.insert(hash, reachability_parents_hashes.clone()).unwrap();
@@ -335,7 +341,7 @@ impl PruningProofManager {
 
             // Commit
             let reachability_write = staging_reachability.commit(&mut batch).unwrap();
-            let reachability_relations_write = staging_reachability_relations.commit(&mut batch).unwrap();
+            staging_reachability_relations.commit(&mut batch).unwrap();
 
             // Write
             self.db.write(batch).unwrap();
@@ -354,8 +360,7 @@ impl PruningProofManager {
         let proof_pp_header = proof[0].last().expect("checked if empty");
         let proof_pp = proof_pp_header.hash;
         let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
-
-        let (db_lifetime, db) = kaspa_database::utils::create_temp_db();
+        let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default());
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 2 * self.pruning_proof_m)); // TODO: Think about cache size
         let ghostdag_stores = (0..=self.max_block_level)
             .map(|level| Arc::new(DbGhostdagStore::new(db.clone(), level, 2 * self.pruning_proof_m)))
@@ -363,13 +368,7 @@ impl PruningProofManager {
         let mut relations_stores =
             (0..=self.max_block_level).map(|level| DbRelationsStore::new(db.clone(), level, 2 * self.pruning_proof_m)).collect_vec();
         let reachability_stores = (0..=self.max_block_level)
-            .map(|level| {
-                Arc::new(RwLock::new(DbReachabilityStore::new_with_alternative_prefix_end(
-                    db.clone(),
-                    2 * self.pruning_proof_m,
-                    level,
-                )))
-            })
+            .map(|level| Arc::new(RwLock::new(DbReachabilityStore::with_block_level(db.clone(), 2 * self.pruning_proof_m, level))))
             .collect_vec();
 
         let reachability_services = (0..=self.max_block_level)
@@ -609,7 +608,7 @@ impl PruningProofManager {
                 };
 
                 let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
-                let mut queue = BlockWindowHeap::new();
+                let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
                 let mut visited = BlockHashSet::new();
                 queue.push(Reverse(SortableBlock::new(root, self.ghostdag_stores[level].get_blue_work(root).unwrap())));
                 while let Some(current) = queue.pop() {
@@ -679,11 +678,11 @@ impl PruningProofManager {
 
         for anticone_block in anticone.iter().copied() {
             let window = self
-                .traversal_manager
-                .block_window(&self.ghostdag_stores[0].get_data(anticone_block).unwrap(), self.difficulty_adjustment_window_size)
+                .window_manager
+                .block_window(&self.ghostdag_stores[0].get_data(anticone_block).unwrap(), WindowType::FullDifficultyWindow)
                 .unwrap();
 
-            for hash in window.into_iter().map(|block| block.0.hash) {
+            for hash in window.deref().iter().map(|block| block.0.hash) {
                 if daa_window_blocks.contains_key(&hash) {
                     continue;
                 }
