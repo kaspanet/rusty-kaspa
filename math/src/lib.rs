@@ -4,7 +4,6 @@ use workflow_core::sendable::Sendable;
 
 pub mod int;
 pub mod uint;
-//#[cfg(target_arch="wasm32")]
 pub mod wasm;
 
 construct_uint!(Uint192, 3, BorshSerialize, BorshDeserialize, BorshSchema);

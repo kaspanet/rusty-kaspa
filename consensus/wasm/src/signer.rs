@@ -2,19 +2,15 @@ use crate::imports::*;
 use crate::keypair::PrivateKey;
 use crate::result::Result;
 use crate::signable::*;
-// use itertools::Itertools;
 use js_sys::Array;
 use kaspa_consensus_core::{
     hashing::sighash_type::SIG_HASH_ALL,
     sign::{sign_with_multiple_v2, verify},
-    tx, // tx::SignableTransaction,
+    tx,
 };
 use kaspa_hashes::Hash;
 use serde_wasm_bindgen::from_value;
-// use std::collections::BTreeMap;
-// use std::iter::once;
 use workflow_log::log_trace;
-// use workflow_wasm::abi::TryFromJsValue;
 
 // pub trait SignerTrait {
 //     fn sign(&self, _mtx: SignableTransaction) -> Result<SignableTransaction>;

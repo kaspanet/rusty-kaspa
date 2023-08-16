@@ -3,7 +3,7 @@ use js_sys::Object;
 use std::str::FromStr;
 use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::prelude::*;
-use workflow_wasm::prelude::ObjectTrait;
+use workflow_wasm::prelude::*;
 
 #[wasm_bindgen]
 pub struct DerivationPath {

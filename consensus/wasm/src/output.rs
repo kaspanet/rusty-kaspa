@@ -1,5 +1,4 @@
 use crate::imports::*;
-// use kaspa_rpc_core::RpcTransactionOutput;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

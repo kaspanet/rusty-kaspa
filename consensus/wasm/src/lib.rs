@@ -1,9 +1,7 @@
-pub mod error;
 mod imports;
+pub mod error;
 pub mod result;
-// pub mod consensus;
 pub mod input;
-// pub mod mass;
 pub mod keypair;
 pub mod outpoint;
 pub mod output;
@@ -14,9 +12,7 @@ pub mod txscript;
 pub mod utils;
 pub mod utxo;
 
-// pub use consensus::*;
 pub use input::*;
-// pub use mass::*;
 pub use keypair::*;
 pub use outpoint::*;
 pub use output::*;

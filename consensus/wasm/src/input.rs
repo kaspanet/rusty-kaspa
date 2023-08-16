@@ -1,5 +1,3 @@
-// use kaspa_rpc_core::RpcTransactionInput;
-
 use super::TransactionOutpoint;
 use crate::imports::*;
 
@@ -7,7 +5,7 @@ use crate::imports::*;
 #[serde(rename_all = "camelCase")]
 pub struct TransactionInputInner {
     pub previous_outpoint: TransactionOutpoint,
-    pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
+    pub signature_script: Vec<u8>,
     pub sequence: u64,
     pub sig_op_count: u8,
 }

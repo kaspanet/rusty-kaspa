@@ -1,6 +1,6 @@
 use crate::result::Result;
 use wasm_bindgen::prelude::*;
-use workflow_wasm::jsvalue::*;
+use workflow_wasm::prelude::*;
 
 #[wasm_bindgen(js_name = "sompiToKaspa")]
 pub fn sompi_to_kaspa(sompi: JsValue) -> Result<f64> {

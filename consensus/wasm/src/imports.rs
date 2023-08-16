@@ -6,5 +6,4 @@ pub use kaspa_utils::hex::*;
 pub use serde::{Deserialize, Serialize};
 pub use std::sync::{Arc, Mutex, MutexGuard};
 pub use wasm_bindgen::prelude::*;
-pub use workflow_wasm::jsvalue::*;
-pub use workflow_wasm::object::*;
+pub use workflow_wasm::prelude::*;

@@ -10,7 +10,7 @@ use std::{
     str::{self, FromStr},
 };
 use wasm_bindgen::prelude::*;
-use workflow_wasm::{abi::ref_from_abi, jsvalue::JsValueTrait};
+use workflow_wasm::prelude::*;
 
 use crate::{
     hashing,

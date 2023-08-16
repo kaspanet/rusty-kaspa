@@ -1,6 +1,6 @@
 use crate::result::Result;
 use wasm_bindgen::prelude::*;
-use workflow_wasm::jsvalue::JsValueTrait;
+use workflow_wasm::prelude::*;
 
 #[derive(Debug, Clone)]
 pub enum Fees {

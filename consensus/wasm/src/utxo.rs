@@ -1,16 +1,8 @@
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_addresses::Address;
-// use crate::runtime::{Account, Balance};
 use crate::{TransactionOutpoint, TransactionOutpointInner};
-// use itertools::Itertools;
-// use kaspa_rpc_core::RpcUtxosByAddressesEntry;
 use workflow_wasm::abi::ref_from_abi;
-
-// use super::UtxoContext;
-
-// thresholds for 1 BPS network
-// use crate::utxo::{UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA, UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA};
 
 pub type UtxoEntryId = TransactionOutpointInner;
 
@@ -41,22 +33,6 @@ impl UtxoEntry {
         self.entry.is_coinbase
     }
 
-    // #[inline(always)]
-    // pub fn is_mature(&self, current_daa_score: u64) -> bool {
-    //     if self.is_coinbase() {
-    //         self.block_daa_score() + UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score
-    //     } else {
-    //         self.block_daa_score() + UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score
-    //     }
-    // }
-
-    // pub fn balance(&self, current_daa_score: u64) -> Balance {
-    //     if self.is_mature(current_daa_score) {
-    //         Balance::new(self.amount(), 0)
-    //     } else {
-    //         Balance::new(0, self.amount())
-    //     }
-    // }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,12 +41,6 @@ pub struct UtxoEntryReference {
     #[wasm_bindgen(skip)]
     pub utxo: Arc<UtxoEntry>,
 }
-
-// impl UtxoEntryReference {
-//     pub fn is_mature(&self, current_daa_score: u64) -> bool {
-//         self.utxo.is_mature(current_daa_score)
-//     }
-// }
 
 #[wasm_bindgen]
 impl UtxoEntryReference {
@@ -179,66 +149,6 @@ impl TryIntoUtxoEntryReferences for JsValue {
         Array::from(self).iter().map(UtxoEntryReference::try_from).collect()
     }
 }
-
-// pub struct PendingUtxoEntryReferenceInner {
-//     pub entry: UtxoEntryReference,
-//     pub utxo_context: UtxoContext,
-// }
-
-// #[derive(Clone)]
-// pub struct PendingUtxoEntryReference {
-//     pub inner: Arc<PendingUtxoEntryReferenceInner>,
-// }
-
-// impl PendingUtxoEntryReference {
-//     pub fn new(entry: UtxoEntryReference, utxo_context: UtxoContext) -> Self {
-//         Self { inner: Arc::new(PendingUtxoEntryReferenceInner { entry, utxo_context }) }
-//     }
-
-//     #[inline(always)]
-//     pub fn inner(&self) -> &PendingUtxoEntryReferenceInner {
-//         &self.inner
-//     }
-
-//     #[inline(always)]
-//     pub fn entry(&self) -> &UtxoEntryReference {
-//         &self.inner().entry
-//     }
-
-//     #[inline(always)]
-//     pub fn utxo_context(&self) -> &UtxoContext {
-//         &self.inner().utxo_context
-//     }
-
-//     #[inline(always)]
-//     pub fn id(&self) -> UtxoEntryId {
-//         self.inner().entry.id()
-//     }
-
-//     #[inline(always)]
-//     pub fn transaction_id(&self) -> TransactionId {
-//         self.inner().entry.transaction_id()
-//     }
-
-//     #[inline(always)]
-//     pub fn is_mature(&self, current_daa_score: u64) -> bool {
-//         self.inner().entry.is_mature(current_daa_score)
-//     }
-// }
-
-// impl From<(&Arc<dyn Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
-//     fn from((account, entry): (&Arc<dyn Account>, UtxoEntryReference)) -> Self {
-//         Self::new(entry, (*account.utxo_context()).clone())
-//     }
-// }
-
-// impl From<PendingUtxoEntryReference> for UtxoEntryReference {
-//     fn from(pending: PendingUtxoEntryReference) -> Self {
-//         pending.inner().entry.clone()
-//     }
-// }
-
-// ---
 
 /// A simple collection of UTXO entries. This struct is used to
 /// retain a set of UTXO entries in the WASM memory for faster

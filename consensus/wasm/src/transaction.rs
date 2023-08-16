@@ -1,15 +1,8 @@
 use crate::imports::*;
-// use crate::tx::payment::PaymentOutputs;
 use crate::input::TransactionInput;
 use crate::output::TransactionOutput;
 use crate::result::Result;
 use kaspa_consensus_core::subnets::{self, SubnetworkId};
-// use kaspa_rpc_core::RpcTransaction;
-// use kaspa_rpc_core::RpcTransactionInput;
-// use kaspa_rpc_core::RpcTransactionOutput;
-use workflow_wasm::abi::ref_from_abi;
-use workflow_wasm::jsvalue::JsValueTrait;
-use workflow_wasm::object::ObjectTrait;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

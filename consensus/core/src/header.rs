@@ -6,7 +6,7 @@ use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::*;
 use wasm_bindgen::prelude::*;
-use workflow_wasm::{jsvalue::*, prelude::ObjectTrait};
+use workflow_wasm::prelude::*;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]

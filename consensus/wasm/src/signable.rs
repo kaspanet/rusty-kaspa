@@ -3,10 +3,8 @@ use crate::utils::script_hashes;
 use crate::utxo::UtxoEntries;
 use crate::{Transaction, TransactionInput, TransactionOutput};
 use kaspa_consensus_core::tx;
-// use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
 use serde_wasm_bindgen::to_value;
 use std::str::FromStr;
-use workflow_wasm::jsvalue::JsValueTrait;
 
 /// Represents a generic mutable transaction
 #[derive(Clone, Debug, Serialize, Deserialize)]

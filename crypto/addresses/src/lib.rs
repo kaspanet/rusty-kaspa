@@ -5,7 +5,7 @@ use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
-use workflow_wasm::object::*;
+use workflow_wasm::extensions::object::*;
 
 mod bech32;
 
