@@ -9,12 +9,13 @@ use futures::future::try_join_all;
 use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
+    errors::consensus::ConsensusError,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
     BlockHashSet,
 };
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy, StagingConsensus};
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{debug, info, time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
@@ -107,6 +108,16 @@ impl IbdFlow {
                 .await?;
             }
             IbdType::DownloadHeadersProof => {
+                if unix_now() - session.async_creation_timestamp().await > self.ctx.config.finality_duration() {
+                    let f = session.async_finality_point().await;
+                    let f_ts = session.async_get_header(f).await?.timestamp;
+                    if unix_now() - f_ts < self.ctx.config.finality_duration() * 3 / 2 {
+                        return Err(ProtocolError::Other(
+                            "This consensus instance is already synced and cannot be replaced via pruning point proof",
+                        ));
+                    }
+                }
+                
                 drop(session); // Avoid holding the previous consensus throughout the staging IBD
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {
@@ -208,7 +219,7 @@ impl IbdFlow {
             return Err(ProtocolError::Other("the first pruning point in the list is expected to be genesis"));
         }
 
-        if consensus.async_are_pruning_points_violating_finality(pruning_points).await {
+        if consensus.async_are_pruning_points_violating_finality(pruning_points.clone()).await {
             // TODO: Find a better way to deal with finality conflicts
             return Err(ProtocolError::Other("pruning points are violating finality"));
         }

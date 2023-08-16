@@ -317,7 +317,7 @@ impl VirtualStateProcessor {
             .expect("expecting an open unbounded channel");
     }
 
-    pub(super) fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
+    pub(crate) fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
         let finality_point = self.depth_manager.calc_finality_point(virtual_ghostdag_data, pruning_point);
         if self.reachability_service.is_chain_ancestor_of(pruning_point, finality_point) {
             finality_point

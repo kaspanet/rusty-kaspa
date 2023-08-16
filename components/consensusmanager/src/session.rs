@@ -358,6 +358,14 @@ impl ConsensusSessionOwned {
     pub async fn async_are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
         self.clone().spawn_blocking(move |c| c.are_pruning_points_violating_finality(pp_list)).await
     }
+
+    pub async fn async_creation_timestamp(&self) -> u64 {
+        self.clone().spawn_blocking(move |c| c.creation_timestamp()).await
+    }
+
+    pub async fn async_finality_point(&self) -> Hash {
+        self.clone().spawn_blocking(move |c| c.finality_point()).await
+    }
 }
 
 pub type ConsensusProxy = ConsensusSessionOwned;

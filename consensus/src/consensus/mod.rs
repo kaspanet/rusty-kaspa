@@ -63,6 +63,7 @@ use crossbeam_channel::{
 };
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
+use kaspa_core::time::unix_now;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -108,6 +109,9 @@ pub struct Consensus {
 
     // Config
     config: Arc<Config>,
+
+    // Other
+    creation_timestamp: u64,
 }
 
 impl Deref for Consensus {
@@ -125,6 +129,7 @@ impl Consensus {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        creation_timestamp: u64,
     ) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
@@ -259,6 +264,7 @@ impl Consensus {
             notification_root,
             counters,
             config,
+            creation_timestamp,
         }
     }
 
@@ -728,5 +734,13 @@ impl ConsensusApi for Consensus {
 
     fn are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
         self.virtual_processor.are_pruning_points_violating_finality(pp_list)
+    }
+
+    fn creation_timestamp(&self) -> u64 {
+        self.creation_timestamp
+    }
+
+    fn finality_point(&self) -> Hash {
+        self.virtual_processor.virtual_finality_point(&self.virtual_stores.read().state.get().unwrap().ghostdag_data, self.pruning_point())
     }
 }

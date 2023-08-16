@@ -264,6 +264,14 @@ pub trait ConsensusApi: Send + Sync {
     fn are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
         unimplemented!()
     }
+
+    fn creation_timestamp(&self) -> u64 {
+        unimplemented!()
+    }
+
+    fn finality_point(&self) -> Hash {
+        unimplemented!()
+    }
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

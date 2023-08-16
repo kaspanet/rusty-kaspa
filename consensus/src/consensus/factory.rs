@@ -202,6 +202,7 @@ impl ConsensusFactory for Factory {
             session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
+            entry.creation_timestamp,
         ));
 
         // We write the new active entry only once the instance was created successfully.
@@ -227,6 +228,7 @@ impl ConsensusFactory for Factory {
             session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
+            entry.creation_timestamp,
         ));
 
         (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))
