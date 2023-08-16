@@ -1,6 +1,6 @@
 [package]
-name = "daemon"
-description = "Kaspa full node daemon"
+name = "kaspa-component-manager"
+description = "Kaspa component manager"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

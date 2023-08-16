@@ -1,7 +1,7 @@
 use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
-use daemon::Args;
+use kaspa_component_manager::Args;
 
 use kaspa_core::kaspad_env::version;
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};

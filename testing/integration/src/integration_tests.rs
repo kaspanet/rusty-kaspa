@@ -3,7 +3,7 @@
 //!
 
 use async_channel::unbounded;
-use daemon::{create_daemon, Args};
+use kaspa_component_manager::{create_core, Args};
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
@@ -1763,7 +1763,7 @@ impl DaemonWithRpc {
         args.rpclisten_borsh = Some(format!("0.0.0.0:{rpc_borsh_port}").try_into().unwrap());
         args.appdir = Some(tempdir().unwrap().path().to_str().unwrap().to_owned());
 
-        let core = create_daemon(args, with_logs, false);
+        let core = create_core(args, with_logs, false);
         DaemonWithRpc { core, rpc_port }
     }
 

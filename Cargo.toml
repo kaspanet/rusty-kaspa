@@ -11,7 +11,7 @@ members = [
     "consensus/notify",
     "consensus/pow",
     "kaspad",
-    "daemon",
+    "kaspa_component_manager",
     "simpa",
     "wasm",
     "math",
@@ -45,7 +45,7 @@ members = [
     "crypto/txscript/errors",
     "testing/integration",
     "rothschild",
-    "metrics/perf_monitor"
+    "metrics/perf_monitor",
 ]
 
 [workspace.package]
@@ -105,7 +105,7 @@ kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
 kaspa-wrpc-proxy = { path = "rpc/wrpc/proxy" }
 kaspa-wrpc-server = { path = "rpc/wrpc/server" }
 kaspad = { path = "kaspad" }
-daemon = { path = "daemon" }
+kaspa-component-manager = { path = "kaspa_component_manager" }
 kaspa-perf-monitor = { path = "metrics/perf_monitor" }
 
 # external

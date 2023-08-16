@@ -17,7 +17,7 @@ kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus.workspace = true
 kaspa-consensusmanager.workspace = true
-daemon.workspace = true
+kaspa-component-manager.workspace = true
 kaspa-grpc-client.workspace = true
 kaspa-rpc-core.workspace = true
 

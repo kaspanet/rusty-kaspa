@@ -168,7 +168,7 @@ fn get_user_approval_or_exit(message: &str, approve: bool) {
     }
 }
 
-pub fn create_daemon(args: Args, with_logs: bool, bind_signals: bool) -> Arc<Core> {
+pub fn create_core(args: Args, with_logs: bool, bind_signals: bool) -> Arc<Core> {
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
 

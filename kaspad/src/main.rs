@@ -2,7 +2,7 @@ extern crate kaspa_consensus;
 extern crate kaspa_core;
 extern crate kaspa_hashes;
 
-use daemon::create_daemon;
+use kaspa_component_manager::create_core;
 
 use kaspa_core::trace;
 
@@ -17,6 +17,6 @@ pub fn main() {
     let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
 
     let args = parse_args();
-    create_daemon(args, true, true).run();
+    create_core(args, true, true).run();
     trace!("Kaspad is finished...");
 }
