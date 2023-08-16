@@ -376,7 +376,6 @@ impl<'de> Deserialize<'de> for Address {
             }
 
             #[cfg(target_arch = "wasm32")]
-
             fn visit_f32<E>(self, v: f32) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
