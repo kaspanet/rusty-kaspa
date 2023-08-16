@@ -1,4 +1,5 @@
 extern crate alloc;
+extern crate core;
 extern crate self as consensus_core;
 
 use std::collections::{HashMap, HashSet};

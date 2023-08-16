@@ -1,9 +1,14 @@
+use alloc::borrow::Cow;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use core::fmt::Formatter;
 use kaspa_utils::{
     hex::{FromHex, ToHex},
     serde_bytes::FromHexVisitor,
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{
+    de::{Error, Visitor},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 use smallvec::SmallVec;
 use std::{
     collections::HashSet,
@@ -73,8 +78,191 @@ impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
     where
         D: Deserializer<'de>,
     {
+        #[derive(Default)]
+        pub struct ScriptPublicKeyVisitor<'de> {
+            from_hex_visitor: FromHexVisitor<'de, ScriptPublicKey>,
+            marker: std::marker::PhantomData<ScriptPublicKey>,
+            lifetime: std::marker::PhantomData<&'de ()>,
+        }
+        impl<'de> Visitor<'de> for ScriptPublicKeyVisitor<'de> {
+            type Value = ScriptPublicKey;
+
+            fn expecting(&self, formatter: &mut Formatter) -> core::fmt::Result {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map; number-type - pointer")
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map")
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+
+            #[cfg(target_arch = "wasm32")]
+            fn visit_f32<E>(self, v: f32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                use wasm_bindgen::convert::RefFromWasmAbi;
+                let instance_ref = unsafe { Self::Value::ref_from_abi(v) }; // todo add checks for safecast
+                Ok(instance_ref.clone())
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+
+            #[inline]
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                self.from_hex_visitor.visit_str(v)
+            }
+
+            #[inline]
+            fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                self.from_hex_visitor.visit_borrowed_str(v)
+            }
+
+            #[inline]
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                self.from_hex_visitor.visit_string(v)
+            }
+
+            #[inline]
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                self.from_hex_visitor.visit_bytes(v)
+            }
+
+            #[inline]
+            fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                self.from_hex_visitor.visit_borrowed_bytes(v)
+            }
+
+            #[inline]
+            fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                self.from_hex_visitor.visit_byte_buf(v)
+            }
+
+            #[inline]
+            fn visit_map<A>(self, mut access: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                #[derive(Deserialize, Copy, Clone)]
+                #[serde(field_identifier, rename_all = "lowercase")]
+                enum Field {
+                    Version,
+                    Script,
+                }
+
+                #[derive(Debug, Clone, Deserialize)]
+                #[serde(untagged)]
+                pub enum Value<'a> {
+                    U16(u16),
+                    #[serde(borrow)]
+                    String(Cow<'a, String>),
+                }
+                impl From<Value<'_>> for u16 {
+                    fn from(value: Value<'_>) -> Self {
+                        let Value::U16(v) = value else {
+                            panic!("unexpected conversion: {value:?}")
+                        };
+                        v
+                    }
+                }
+
+                impl TryFrom<Value<'_>> for Vec<u8> {
+                    type Error = faster_hex::Error;
+
+                    fn try_from(value: Value) -> Result<Self, Self::Error> {
+                        match value {
+                            Value::U16(_) => {
+                                panic!("unexpected conversion: {value:?}")
+                            }
+                            Value::String(script) => {
+                                let mut script_bytes = vec![0u8; script.len() / 2];
+                                faster_hex::hex_decode(script.as_bytes(), script_bytes.as_mut_slice())?;
+
+                                Ok(script_bytes)
+                            }
+                        }
+                    }
+                }
+
+                let mut version: Option<u16> = None;
+                let mut script: Option<Vec<u8>> = None;
+
+                while let Some((key, value)) = access.next_entry::<Field, Value>()? {
+                    match key {
+                        Field::Version => {
+                            version = Some(value.into());
+                        }
+                        Field::Script => script = Some(value.try_into().map_err(Error::custom)?),
+                    }
+                    if version.is_some() && script.is_some() {
+                        break;
+                    }
+                }
+                let (version, script) = match (version, script) {
+                    (Some(version), Some(script)) => Ok((version, script)),
+                    (None, _) => Err(serde::de::Error::missing_field("version")),
+                    (_, None) => Err(serde::de::Error::missing_field("script")),
+                }?;
+
+                Ok(ScriptPublicKey::from_vec(version, script))
+            }
+        }
+
         if deserializer.is_human_readable() {
-            deserializer.deserialize_str(FromHexVisitor::default())
+            deserializer.deserialize_any(ScriptPublicKeyVisitor::default())
         } else {
             ScriptPublicKeyInternal::deserialize(deserializer)
                 .map(|ScriptPublicKeyInternal { script, version }| Self { version, script: SmallVec::from_slice(script) })
@@ -172,11 +360,13 @@ impl BorshSchema for ScriptPublicKey {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use js_sys::Object;
+    use wasm_bindgen::__rt::IntoJsResult;
 
     #[test]
     fn test_spk_serde_json() {
         let vec = (0..SCRIPT_VECTOR_SIZE as u8).collect::<Vec<_>>();
-        let spk = ScriptPublicKey::from_vec(0xc0de, vec.clone());
+        let spk = ScriptPublicKey::from_vec(0xc0de, vec.clone()); // 0xc0de == 49374,
         let hex: String = serde_json::to_string(&spk).unwrap();
         assert_eq!("\"c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223\"", hex);
         let spk = serde_json::from_str::<ScriptPublicKey>(&hex).unwrap();
@@ -203,48 +393,76 @@ mod tests {
         assert_eq!(spk, spk2);
     }
 
-    // use wasm_bindgen_test::wasm_bindgen_test;
-    // #[wasm_bindgen_test]
-    // pub fn test_wasm_serde_spk_constructor() {
-    //     let str = "kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j";
-    //     let a = Address::constructor(str);
-    //     let value = to_value(&a).unwrap();
-    //
-    //     assert_eq!(JsValue::from_str("string"), value.js_typeof());
-    //     assert_eq!(value, JsValue::from_str(str));
-    //     assert_eq!(a, from_value(value).unwrap());
-    // }
-    //
-    // #[wasm_bindgen_test]
-    // pub fn test_wasm_js_serde_spk_object() {
-    //     let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
-    //
-    //     use web_sys::console;
-    //     console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
-    //
-    //     let obj = Object::new();
-    //     obj.set("version", &JsValue::from_str("PubKey")).unwrap();
-    //     obj.set("prefix", &JsValue::from_str("kaspa")).unwrap();
-    //     obj.set("payload", &JsValue::from_str("qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j")).unwrap();
-    //
-    //     assert_eq!(JsValue::from_str("object"), obj.js_typeof());
-    //
-    //     let obj_js = obj.into_js_result().unwrap();
-    //     let actual = from_value(obj_js).unwrap();
-    //     assert_eq!(expected, actual);
-    // }
-    //
-    // #[wasm_bindgen_test]
-    // pub fn test_wasm_serde_spk_object() {
-    //     use wasm_bindgen::convert::IntoWasmAbi;
-    //
-    //     let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
-    //     let wasm_js_value: JsValue = expected.clone().into_abi().into();
-    //
-    //     // use web_sys::console;
-    //     // console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
-    //
-    //     let actual = from_value(wasm_js_value).unwrap();
-    //     assert_eq!(expected, actual);
-    // }
+    use wasm_bindgen_test::wasm_bindgen_test;
+    use workflow_wasm::prelude::*;
+    use workflow_wasm::tovalue::from_value;
+    use workflow_wasm::tovalue::to_value;
+    #[wasm_bindgen_test]
+    pub fn test_wasm_serde_constructor() {
+        let version = 0xc0de;
+        let vec: Vec<u8> = (0..SCRIPT_VECTOR_SIZE as u8).collect();
+        let spk = ScriptPublicKey::from_vec(version, vec.clone());
+        let str = "c0de000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223";
+        let js = to_value(&spk).unwrap();
+        assert_eq!(js.as_string().unwrap(), str);
+        let script_hex = spk.script_as_hex();
+        let script_hex_js: JsValue = JsValue::from_str(&script_hex);
+
+        let spk_js = to_value(&ScriptPublicKey::constructor(version, script_hex_js).map_err(|_| ()).unwrap()).unwrap();
+        assert_eq!(JsValue::from_str(str), spk_js.clone());
+        assert_eq!(spk, from_value(spk_js.clone()).map_err(|_| ()).unwrap());
+        assert_eq!(JsValue::from_str("string"), spk_js.js_typeof());
+    }
+    #[wasm_bindgen_test]
+    pub fn test_wasm_serde_js_spk_object() {
+        let version = 0xc0de;
+        let vec: Vec<u8> = (0..SCRIPT_VECTOR_SIZE as u8).collect();
+        let spk = ScriptPublicKey::from_vec(version, vec.clone());
+
+        let script_hex = spk.script_as_hex();
+
+        let version_js: JsValue = version.into();
+        let script_hex_js: JsValue = JsValue::from_str(&script_hex);
+
+        let obj_hex = Object::new();
+        obj_hex.set("version", &version_js).unwrap();
+        obj_hex.set("script", &script_hex_js).unwrap();
+
+        let actual: ScriptPublicKey = from_value(obj_hex.into_js_result().unwrap()).unwrap();
+        assert_eq!(spk, actual);
+
+        // // fixme:  Error: invalid type: byte array, expected any value,
+        // // I tried all possible
+        // // types to deser it from uint8array
+
+        // let script_u8 = spk.script();
+        // let script_u8_js = js_sys::Uint8Array::try_from(script_u8).unwrap();
+        // let obj_u8 = Object::new();
+        // obj_u8.set("version", &version_js).unwrap();
+        // obj_u8.set("script", &script_u8_js).unwrap();
+        //
+        // let actual: ScriptPublicKey = from_value(obj_u8.into_js_result().unwrap()).unwrap();
+        // assert_eq!(spk, actual);
+    }
+
+    #[wasm_bindgen_test]
+    pub fn test_wasm_serde_spk_object() {
+        use wasm_bindgen::convert::IntoWasmAbi;
+
+        let version = 0xc0de;
+        let vec: Vec<u8> = (0..SCRIPT_VECTOR_SIZE as u8).collect();
+        let spk = ScriptPublicKey::from_vec(version, vec.clone());
+
+        let script_hex = spk.script_as_hex();
+        let script_hex_js: JsValue = JsValue::from_str(&script_hex);
+
+        let expected = ScriptPublicKey::constructor(version, script_hex_js).map_err(|_| ()).unwrap();
+        let wasm_js_value: JsValue = expected.clone().into_abi().into();
+
+        // use web_sys::console;
+        // console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
+
+        let actual = from_value(wasm_js_value).unwrap();
+        assert_eq!(expected, actual);
+    }
 }
