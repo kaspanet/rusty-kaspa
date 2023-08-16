@@ -1,0 +1,5 @@
+pushd
+cd wasm
+./build-node
+popd
+cargo nextest run --release
