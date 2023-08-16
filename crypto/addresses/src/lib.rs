@@ -597,7 +597,7 @@ mod tests {
     use js_sys::Object;
     use wasm_bindgen::{JsValue, __rt::IntoJsResult};
     use wasm_bindgen_test::wasm_bindgen_test;
-    use workflow_wasm::{extensions::ObjectTrait, serde::from_value, serde::to_value};
+    use workflow_wasm::{extensions::ObjectExtension, serde::from_value, serde::to_value};
 
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_constructor() {
