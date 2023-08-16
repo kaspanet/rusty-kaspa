@@ -350,7 +350,61 @@ impl<'de> Deserialize<'de> for Address {
             type Value = Address;
 
             fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-                write!(formatter, "string, str, slice of bytes, vec of bytes, map")
+                #[cfg(target_arch = "wasm32")]
+                {
+                    write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map; number-type - pointer")
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map")
+                }
+            }
+
+            #[cfg(target_arch = "wasm32")]
+            fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+
+            #[cfg(target_arch = "wasm32")]
+
+            fn visit_f32<E>(self, v: f32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                use wasm_bindgen::convert::RefFromWasmAbi;
+                let instance_ref = unsafe { Self::Value::ref_from_abi(v) }; // todo add checks for safecast
+                Ok(instance_ref.clone())
+            }
+            #[cfg(target_arch = "wasm32")]
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_u32(v as u32)
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
@@ -540,7 +594,7 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    pub fn test_wasm_serde_object() {
+    pub fn test_wasm_js_serde_object() {
         let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
 
         use web_sys::console;
@@ -555,6 +609,20 @@ mod tests {
 
         let obj_js = obj.into_js_result().unwrap();
         let actual = from_value(obj_js).unwrap();
+        assert_eq!(expected, actual);
+    }
+
+    #[wasm_bindgen_test]
+    pub fn test_wasm_serde_object() {
+        use wasm_bindgen::convert::IntoWasmAbi;
+
+        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
+        let wasm_js_value: JsValue = expected.clone().into_abi().into();
+
+        // use web_sys::console;
+        // console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
+
+        let actual = from_value(wasm_js_value).unwrap();
         assert_eq!(expected, actual);
     }
 }
