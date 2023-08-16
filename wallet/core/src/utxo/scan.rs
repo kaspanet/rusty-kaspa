@@ -2,7 +2,7 @@ use crate::derivation::AddressManager;
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{AtomicBalance, Balance};
-use crate::utxo::{UtxoContext, UtxoEntryReference};
+use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoEntryReferenceExtension};
 use std::cmp::max;
 
 pub const DEFAULT_WINDOW_SIZE: usize = 8;
@@ -107,7 +107,8 @@ impl Scan {
             yield_executor().await;
 
             let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
-                let entry_balance = r.as_ref().balance(self.current_daa_score);
+                // let entry_balance = r.as_ref().balance(self.current_daa_score);
+                let entry_balance = r.balance(self.current_daa_score);
                 balance.mature += entry_balance.mature;
                 balance.pending += entry_balance.pending;
                 balance
@@ -149,7 +150,7 @@ impl Scan {
         let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
 
         let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
-            let entry_balance = r.as_ref().balance(self.current_daa_score);
+            let entry_balance = r.balance(self.current_daa_score);
             balance.mature += entry_balance.mature;
             balance.pending += entry_balance.pending;
             balance

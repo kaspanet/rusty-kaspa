@@ -2143,6 +2143,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-consensus-wasm"
+version = "0.1.6"
+dependencies = [
+ "faster-hex 0.6.1",
+ "js-sys",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
+ "kaspa-hashes",
+ "kaspa-txscript",
+ "kaspa-utils",
+ "rand 0.8.5",
+ "secp256k1",
+ "serde",
+ "serde-wasm-bindgen 0.4.5",
+ "serde_json",
+ "thiserror",
+ "wasm-bindgen",
+ "workflow-log",
+ "workflow-wasm",
+]
+
+[[package]]
 name = "kaspa-consensusmanager"
 version = "0.1.6"
 dependencies = [
@@ -2606,6 +2628,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
+ "kaspa-consensus-wasm",
  "kaspa-hashes",
  "kaspa-index-core",
  "kaspa-math",
@@ -2839,6 +2862,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-bip32",
  "kaspa-consensus-core",
+ "kaspa-consensus-wasm",
  "kaspa-core",
  "kaspa-hashes",
  "kaspa-notify",
@@ -2882,6 +2906,7 @@ dependencies = [
  "js-sys",
  "kaspa-addresses",
  "kaspa-consensus-core",
+ "kaspa-consensus-wasm",
  "kaspa-core",
  "kaspa-math",
  "kaspa-pow",
@@ -2905,6 +2930,7 @@ dependencies = [
  "js-sys",
  "kaspa-addresses",
  "kaspa-consensus-core",
+ "kaspa-consensus-wasm",
  "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-rpc-macros",

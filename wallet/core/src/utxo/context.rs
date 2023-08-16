@@ -6,7 +6,8 @@ use crate::runtime::{AccountId, Balance};
 use crate::storage::{TransactionRecord, TransactionType};
 use crate::tx::PendingTransaction;
 use crate::utxo::{
-    PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference, UtxoProcessor, UtxoSelectionContext,
+    PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference, UtxoEntryReferenceExtension, UtxoProcessor,
+    UtxoSelectionContext,
 };
 use kaspa_hashes::Hash;
 use kaspa_rpc_core::GetUtxosByAddressesResponse;
@@ -528,7 +529,11 @@ impl UtxoContext {
 #[wasm_bindgen]
 impl UtxoContext {
     pub fn js_remove(&self, ids: Array) -> Result<Array> {
-        let vec = ids.to_vec().iter().map(UtxoEntryId::try_from).collect::<Result<Vec<UtxoEntryId>>>()?;
+        let vec = ids
+            .to_vec()
+            .iter()
+            .map(UtxoEntryId::try_from)
+            .collect::<std::result::Result<Vec<UtxoEntryId>, kaspa_consensus_wasm::error::Error>>()?;
 
         let mut context = self.context();
 

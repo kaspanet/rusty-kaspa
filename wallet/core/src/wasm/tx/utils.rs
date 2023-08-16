@@ -1,17 +1,18 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::PaymentOutputs;
-use crate::utxo::UtxoEntryReference;
+// use kaspa_consensus_wasm::{UtxoEntryReference,SignableTransaction};
 use crate::wasm::tx::consensus::get_consensus_params_by_address;
 use crate::wasm::tx::generator::*;
 use crate::wasm::tx::mass::MassCalculator;
-use crate::wasm::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutput};
+use kaspa_consensus_wasm::*;
+// use crate::wasm::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutput};
 use kaspa_addresses::Address;
-use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
-use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
-use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
+// use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
+// use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
+// use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-use kaspa_consensus_core::tx::SignableTransaction;
+// use kaspa_consensus_core::tx::SignableTransaction;
 use workflow_core::runtime::is_web;
 
 /// Create a basic transaction without any mass limit checks.
@@ -24,7 +25,7 @@ pub fn create_transaction_js(
     payload: JsValue,
     sig_op_count: JsValue,
     minimum_signatures: JsValue,
-) -> crate::Result<MutableTransaction> {
+) -> crate::Result<SignableTransaction> {
     let change_address = Address::try_from(change_address)?;
     let params = get_consensus_params_by_address(&change_address);
     let mc = MassCalculator::new(params);
@@ -74,7 +75,7 @@ pub fn create_transaction_js(
 
     let _fee = mc.calc_minimum_transaction_relay_fee(&transaction, minimum_signatures);
 
-    let mtx = MutableTransaction::new(transaction, entries.into());
+    let mtx = SignableTransaction::new(transaction, entries.into());
 
     Ok(mtx)
 }
@@ -125,18 +126,4 @@ pub async fn estimate_js(settings: GeneratorSettingsObject) -> crate::Result<Gen
         generator.iter().collect::<Result<Vec<_>>>()?;
         Ok(generator.summary())
     }
-}
-
-pub fn script_hashes(mut mutable_tx: SignableTransaction) -> Result<Vec<kaspa_hashes::Hash>> {
-    let mut list = vec![];
-    for i in 0..mutable_tx.tx.inputs.len() {
-        mutable_tx.tx.inputs[i].sig_op_count = 1;
-    }
-
-    let mut reused_values = SigHashReusedValues::new();
-    for i in 0..mutable_tx.tx.inputs.len() {
-        let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
-        list.push(sig_hash);
-    }
-    Ok(list)
 }

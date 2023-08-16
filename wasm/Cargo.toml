@@ -16,6 +16,7 @@ crate-type = ["cdylib"]
 js-sys.workspace = true
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-consensus-wasm.workspace = true
 kaspa-core.workspace = true
 kaspa-math.workspace = true
 kaspa-pow.workspace = true

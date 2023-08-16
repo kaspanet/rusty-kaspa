@@ -40,6 +40,7 @@ wasm-bindgen-futures.workspace = true
 js-sys.workspace = true
 workflow-wasm.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-consensus-wasm.workspace = true
 kaspa-core.workspace = true
 kaspa-txscript.workspace = true
 serde.workspace = true

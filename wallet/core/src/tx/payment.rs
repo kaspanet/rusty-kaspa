@@ -1,5 +1,5 @@
 use crate::imports::*;
-use crate::wasm::tx::{TransactionOutput, TransactionOutputInner};
+use kaspa_consensus_wasm::{TransactionOutput, TransactionOutputInner};
 use kaspa_txscript::pay_to_address_script;
 
 pub enum PaymentDestination {

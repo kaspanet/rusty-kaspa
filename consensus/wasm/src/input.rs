@@ -1,4 +1,4 @@
-use kaspa_rpc_core::RpcTransactionInput;
+// use kaspa_rpc_core::RpcTransactionInput;
 
 use super::TransactionOutpoint;
 use crate::imports::*;
@@ -127,18 +127,5 @@ impl From<&TransactionInput> for cctx::TransactionInput {
             inner.sequence,
             inner.sig_op_count,
         )
-    }
-}
-
-impl From<TransactionInput> for RpcTransactionInput {
-    fn from(tx_input: TransactionInput) -> Self {
-        let inner = tx_input.inner();
-        RpcTransactionInput {
-            previous_outpoint: inner.previous_outpoint.clone().into(),
-            signature_script: inner.signature_script.clone(),
-            sequence: inner.sequence,
-            sig_op_count: inner.sig_op_count,
-            verbose_data: None,
-        }
     }
 }

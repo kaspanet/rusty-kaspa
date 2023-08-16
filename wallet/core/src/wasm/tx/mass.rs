@@ -3,6 +3,7 @@ use crate::tx::mass;
 use crate::wasm::tx::*;
 use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::tx as cctx;
+use kaspa_consensus_wasm::*;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -89,14 +90,22 @@ impl MassCalculator {
 
     #[wasm_bindgen(js_name=calcMassForOutputs)]
     pub fn calc_mass_for_outputs(&self, outputs: JsValue) -> Result<u32> {
-        let outputs = outputs.dyn_into::<js_sys::Array>()?.iter().map(TransactionOutput::try_from).collect::<Result<Vec<_>>>()?;
+        let outputs = outputs
+            .dyn_into::<js_sys::Array>()?
+            .iter()
+            .map(TransactionOutput::try_from)
+            .collect::<std::result::Result<Vec<_>, kaspa_consensus_wasm::error::Error>>()?;
         let outputs = outputs.iter().map(|output| self.calc_mass_for_output(output)).collect::<Result<Vec<_>>>()?;
         Ok(outputs.iter().sum())
     }
 
     #[wasm_bindgen(js_name=calcMassForInputs)]
     pub fn calc_mass_for_inputs(&self, inputs: JsValue) -> Result<u32> {
-        let inputs = inputs.dyn_into::<js_sys::Array>()?.iter().map(TransactionInput::try_from).collect::<Result<Vec<_>>>()?;
+        let inputs = inputs
+            .dyn_into::<js_sys::Array>()?
+            .iter()
+            .map(TransactionInput::try_from)
+            .collect::<std::result::Result<Vec<_>, kaspa_consensus_wasm::error::Error>>()?;
         let inputs = inputs.iter().map(|input| self.calc_mass_for_input(input)).collect::<Result<Vec<_>>>()?;
         Ok(inputs.iter().sum())
     }

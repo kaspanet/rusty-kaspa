@@ -115,10 +115,13 @@ pub mod rpc {
     pub use kaspa_wrpc_client::wasm::RpcClient;
 }
 
+pub use kaspa_consensus_wasm::*;
+
 pub use kaspa_wallet_core::{
     // runtime::account::Account,
     // runtime::wallet::Wallet,
     // storage::local::Storage,
-    utxo::{UtxoContext, UtxoEntry, UtxoEntryReference},
-    wasm::{keypair::*, tx::*, utils::*, wallet::*, xprivatekey::*, xpublickey::*},
+    utxo::UtxoContext,
+    // wasm::{keypair::*, tx::*, utils::*, wallet::*, xprivatekey::*, xpublickey::*},
+    wasm::{tx::*, utils::*, wallet::*, xprivatekey::*, xpublickey::*},
 };

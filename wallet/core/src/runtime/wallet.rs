@@ -780,11 +780,11 @@ mod test {
 
     use super::*;
     use crate::utxo::{UtxoContext, UtxoContextBinding};
-    use crate::wasm::tx::signer::sign_mutable_transaction;
-    use crate::wasm::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutput};
+    // use crate::wasm::tx::signer::sign_mutable_transaction;
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
     use kaspa_consensus_core::subnets::SubnetworkId;
+    use kaspa_consensus_wasm::{sign_transaction, SignableTransaction, Transaction, TransactionInput, TransactionOutput};
     use kaspa_rpc_core::api::rpc::RpcApi;
     use kaspa_txscript::pay_to_address_script;
     use workflow_rpc::client::ConnectOptions;
@@ -883,7 +883,7 @@ mod test {
             vec![],
         )?;
 
-        let mtx = MutableTransaction::new(tx, (*entries).clone().into());
+        let mtx = SignableTransaction::new(tx, (*entries).clone().into());
 
         let derivation_path =
             gen1::WalletDerivationManager::build_derivate_path(false, 0, None, Some(kaspa_bip32::AddressType::Receive))?;
@@ -909,7 +909,7 @@ mod test {
         println!("mtx: {mtx:?}");
 
         //let signer = Signer::new(private_keys)?;
-        let mtx = sign_mutable_transaction(mtx, private_keys, true)?;
+        let mtx = sign_transaction(mtx, private_keys, true)?;
         //println!("mtx: {mtx:?}");
 
         let utxo_set =
@@ -917,7 +917,7 @@ mod test {
         let to_balance = utxo_set.calculate_balance().await;
         println!("to address balance before tx submit: {to_balance:?}");
 
-        let result = rpc.submit_transaction(mtx.try_into()?, false).await?;
+        let result = rpc.submit_transaction(mtx.into(), false).await?;
 
         println!("tx submit result, {:?}", result);
         println!("sleep for 5s...");

@@ -1,16 +1,16 @@
 use base64::DecodeError;
 use downcast::DowncastError;
-use faster_hex::Error as FasterHexError;
 use kaspa_bip32::Error as BIP32Error;
 use kaspa_consensus_core::sign::Error as CoreSignError;
 use kaspa_rpc_core::RpcError as KaspaRpcError;
 use kaspa_wrpc_client::error::Error as KaspaWorkflowRpcError;
-use secp256k1::Error as Secp256k1Error;
+// use secp256k1::Error as Secp256k1Error;
 use std::sync::PoisonError;
 use wasm_bindgen::JsValue;
 use workflow_core::abortable::Aborted;
 use workflow_core::sendable::*;
 use workflow_rpc::client::error::Error as RpcError;
+use workflow_wasm::jserror::*;
 use workflow_wasm::printable::*;
 
 use thiserror::Error;
@@ -42,7 +42,7 @@ pub enum Error {
     PoisonError(String),
 
     #[error("Secp256k1 -> {0}")]
-    Secp256k1Error(#[from] Secp256k1Error),
+    Secp256k1Error(#[from] secp256k1::Error),
 
     #[error("(consensus core sign()) {0}")]
     CoreSignError(#[from] CoreSignError),
@@ -99,7 +99,7 @@ pub enum Error {
     Io(#[from] std::io::Error),
 
     #[error("{0}")]
-    JsValue(Sendable<Printable>),
+    JsValue(JsErrorData),
 
     #[error("Base64 decode -> {0}")]
     DecodeError(#[from] DecodeError),
@@ -117,7 +117,7 @@ pub enum Error {
     SerdeWasmBindgen(Sendable<Printable>),
 
     #[error(transparent)]
-    FasterHexError(#[from] FasterHexError),
+    FasterHexError(#[from] faster_hex::Error),
 
     #[error(transparent)]
     ParseFloatError(#[from] std::num::ParseFloatError),
@@ -167,9 +167,8 @@ pub enum Error {
     #[error(transparent)]
     Utf8Error(#[from] std::str::Utf8Error),
 
-    #[error("invalid transaction outpoint: {0}")]
-    InvalidTransactionOutpoint(String),
-
+    // #[error("invalid transaction outpoint: {0}")]
+    // InvalidTransactionOutpoint(String),
     #[error("{0}")]
     ParseIntError(#[from] std::num::ParseIntError),
 
@@ -196,6 +195,9 @@ pub enum Error {
 
     #[error("{0}")]
     DowncastError(String),
+
+    #[error(transparent)]
+    ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),
 }
 
 impl From<Aborted> for Error {
@@ -219,7 +221,7 @@ impl From<chacha20poly1305::Error> for Error {
 impl From<Error> for JsValue {
     fn from(value: Error) -> Self {
         match value {
-            Error::JsValue(js_value) => js_value.as_ref().as_ref().clone(),
+            Error::JsValue(js_error_data) => js_error_data.into(),
             _ => JsValue::from(value.to_string()),
         }
     }
@@ -245,15 +247,22 @@ impl From<&str> for Error {
 
 impl From<wasm_bindgen::JsValue> for Error {
     fn from(err: wasm_bindgen::JsValue) -> Self {
-        Self::JsValue(Sendable(err.into()))
+        Self::JsValue(err.into())
+        // Self::JsValue(Sendable(err.into()))
     }
 }
 
 impl From<wasm_bindgen::JsError> for Error {
     fn from(err: wasm_bindgen::JsError) -> Self {
-        Self::JsValue(Sendable(err.into()))
+        Self::JsValue(err.into())
     }
 }
+
+// impl From<wasm_bindgen::JsError> for Error {
+//     fn from(err: wasm_bindgen::JsError) -> Self {
+//         Self::JsValue(Sendable(err.into()))
+//     }
+// }
 
 impl From<serde_wasm_bindgen::Error> for Error {
     fn from(err: serde_wasm_bindgen::Error) -> Self {

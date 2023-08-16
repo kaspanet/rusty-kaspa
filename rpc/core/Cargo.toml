@@ -18,6 +18,7 @@ kaspa-index-core.workspace = true
 kaspa-txscript.workspace = true
 kaspa-math.workspace = true
 kaspa-mining-errors.workspace = true
+kaspa-consensus-wasm.workspace = true
 
 faster-hex.workspace = true
 serde.workspace = true

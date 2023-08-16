@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_rpc_core::RpcTransactionOutput;
+// use kaspa_rpc_core::RpcTransactionOutput;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,13 +90,6 @@ impl From<&TransactionOutput> for cctx::TransactionOutput {
     fn from(output: &TransactionOutput) -> Self {
         let inner = output.inner();
         cctx::TransactionOutput::new(inner.value, inner.script_public_key.clone())
-    }
-}
-
-impl From<TransactionOutput> for RpcTransactionOutput {
-    fn from(output: TransactionOutput) -> Self {
-        let inner = output.inner();
-        RpcTransactionOutput { value: inner.value, script_public_key: inner.script_public_key.clone(), verbose_data: None }
     }
 }
 

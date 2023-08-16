@@ -4,10 +4,10 @@ use crate::tx::{
     get_consensus_params_by_address, mass::*, Fees, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction,
     PendingTransactionIterator, PendingTransactionStream,
 };
-use crate::utxo::UtxoEntry;
 use crate::utxo::{UtxoContext, UtxoEntryReference};
 use kaspa_consensus_core::tx as cctx;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+use kaspa_consensus_wasm::UtxoEntry;
 use kaspa_txscript::pay_to_address_script;
 use std::collections::VecDeque;
 

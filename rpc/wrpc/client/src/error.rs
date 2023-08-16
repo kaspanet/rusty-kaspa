@@ -41,6 +41,9 @@ pub enum Error {
 
     #[error("invalid network type: {0}")]
     NetworkType(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
+
+    #[error(transparent)]
+    ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),
 }
 
 impl Error {

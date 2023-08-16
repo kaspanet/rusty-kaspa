@@ -1,9 +1,9 @@
 use crate::imports::*;
+use crate::utils::script_hashes;
 use crate::utxo::UtxoEntries;
-use crate::wasm::tx::utils::script_hashes;
-use crate::wasm::tx::{Transaction, TransactionInput, TransactionOutput};
+use crate::{Transaction, TransactionInput, TransactionOutput};
 use kaspa_consensus_core::tx;
-use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
+// use kaspa_rpc_core::{RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
 use serde_wasm_bindgen::to_value;
 use std::str::FromStr;
 use workflow_wasm::jsvalue::JsValueTrait;
@@ -11,7 +11,7 @@ use workflow_wasm::jsvalue::JsValueTrait;
 /// Represents a generic mutable transaction
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen]
-pub struct MutableTransaction {
+pub struct SignableTransaction {
     tx: Arc<Mutex<Transaction>>,
     /// UTXO entry data
     #[wasm_bindgen(getter_with_clone)]
@@ -19,7 +19,7 @@ pub struct MutableTransaction {
 }
 
 #[wasm_bindgen]
-impl MutableTransaction {
+impl SignableTransaction {
     #[wasm_bindgen(constructor)]
     pub fn new_from_refs(tx: &Transaction, entries: &UtxoEntries) -> Self {
         Self { tx: Arc::new(Mutex::new(tx.clone())), entries: entries.clone() }
@@ -36,7 +36,7 @@ impl MutableTransaction {
     }
 
     #[wasm_bindgen(js_name=fromJSON)]
-    pub fn from_json(json: &str) -> Result<MutableTransaction, JsError> {
+    pub fn from_json(json: &str) -> Result<SignableTransaction, JsError> {
         let mtx: Self = serde_json::from_value(serde_json::Value::from_str(json)?)?;
         Ok(mtx)
     }
@@ -66,15 +66,17 @@ impl MutableTransaction {
             }
         }
 
-        let tx: RpcTransaction = (*self).clone().try_into()?;
-        Ok(to_value(&tx)?)
+        // let tx: RpcTransaction = (*self).clone().try_into()?;
+        // Ok(to_value(&tx)?)
+        // let tx: RpcTransaction = (*self).clone().try_into()?;
+        Ok(to_value(self)?)
     }
 
-    #[wasm_bindgen(js_name=toRpcTransaction)]
-    pub fn rpc_tx_request(&self) -> Result<JsValue, JsError> {
-        let tx: RpcTransaction = (*self).clone().try_into()?;
-        Ok(to_value(&tx)?)
-    }
+    // #[wasm_bindgen(js_name=toRpcTransaction)]
+    // pub fn rpc_tx_request(&self) -> Result<JsValue, JsError> {
+    //     let tx: RpcTransaction = (*self).clone().try_into()?;
+    //     Ok(to_value(&tx)?)
+    // }
 
     #[wasm_bindgen(getter=inputs)]
     pub fn get_inputs(&self) -> Result<js_sys::Array, JsError> {
@@ -97,7 +99,7 @@ impl MutableTransaction {
     // }
 }
 
-impl MutableTransaction {
+impl SignableTransaction {
     pub fn new(tx: Transaction, entries: UtxoEntries) -> Self {
         Self { tx: Arc::new(Mutex::new(tx)), entries }
     }
@@ -110,11 +112,11 @@ impl MutableTransaction {
         self.tx.lock().unwrap()
     }
     pub fn inputs(&self) -> Result<Vec<TransactionInput>, crate::error::Error> {
-        Ok(self.tx.lock()?.inner().inputs.clone())
+        Ok(self.tx.lock().unwrap().inner().inputs.clone())
     }
 
     pub fn outputs(&self) -> Result<Vec<TransactionOutput>, crate::error::Error> {
-        Ok(self.tx.lock()?.inner().outputs.clone())
+        Ok(self.tx.lock().unwrap().inner().outputs.clone())
     }
 
     pub fn total_input_amount(&self) -> Result<u64, crate::error::Error> {
@@ -128,37 +130,16 @@ impl MutableTransaction {
     }
 }
 
-impl TryFrom<MutableTransaction> for tx::MutableTransaction<tx::Transaction> {
-    type Error = Error;
-    fn try_from(mtx: MutableTransaction) -> Result<Self, Self::Error> {
-        let tx = &mtx.tx.lock()?.clone();
-        Ok(Self { tx: tx.into(), entries: mtx.entries.into(), calculated_fee: None, calculated_mass: None })
+impl From<SignableTransaction> for tx::SignableTransaction {
+    fn from(mtx: SignableTransaction) -> Self {
+        let tx = &mtx.tx.lock().unwrap().clone();
+        Self { tx: tx.into(), entries: mtx.entries.into(), calculated_fee: None, calculated_mass: None }
     }
 }
 
-impl TryFrom<(tx::MutableTransaction<tx::Transaction>, UtxoEntries)> for MutableTransaction {
+impl TryFrom<(tx::SignableTransaction, UtxoEntries)> for SignableTransaction {
     type Error = Error;
-    fn try_from(value: (tx::MutableTransaction<tx::Transaction>, UtxoEntries)) -> Result<Self, Self::Error> {
+    fn try_from(value: (tx::SignableTransaction, UtxoEntries)) -> Result<Self, Self::Error> {
         Ok(Self { tx: Arc::new(Mutex::new(value.0.tx.into())), entries: value.1 })
-    }
-}
-
-impl TryFrom<MutableTransaction> for RpcTransaction {
-    type Error = Error;
-    fn try_from(mtx: MutableTransaction) -> Result<Self, Self::Error> {
-        let tx = tx::MutableTransaction::try_from(mtx)?.tx;
-
-        let rpc_tx = RpcTransaction {
-            version: tx.version,
-            inputs: RpcTransactionInput::from_transaction_inputs(tx.inputs),
-            outputs: RpcTransactionOutput::from_transaction_outputs(tx.outputs),
-            lock_time: tx.lock_time,
-            subnetwork_id: tx.subnetwork_id,
-            gas: tx.gas,
-            payload: tx.payload,
-            verbose_data: None,
-        };
-
-        Ok(rpc_tx)
     }
 }

@@ -1,15 +1,16 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::{Account, Balance};
-use crate::wasm::tx::{TransactionOutpoint, TransactionOutpointInner};
-use itertools::Itertools;
-use kaspa_rpc_core::RpcUtxosByAddressesEntry;
+use kaspa_addresses::Address;
+// use crate::runtime::{Account, Balance};
+use crate::{TransactionOutpoint, TransactionOutpointInner};
+// use itertools::Itertools;
+// use kaspa_rpc_core::RpcUtxosByAddressesEntry;
 use workflow_wasm::abi::ref_from_abi;
 
-use super::UtxoContext;
+// use super::UtxoContext;
 
 // thresholds for 1 BPS network
-use crate::utxo::{UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA, UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA};
+// use crate::utxo::{UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA, UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA};
 
 pub type UtxoEntryId = TransactionOutpointInner;
 
@@ -40,28 +41,22 @@ impl UtxoEntry {
         self.entry.is_coinbase
     }
 
-    #[inline(always)]
-    pub fn is_mature(&self, current_daa_score: u64) -> bool {
-        if self.is_coinbase() {
-            self.block_daa_score() + UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score
-        } else {
-            self.block_daa_score() + UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score
-        }
-    }
+    // #[inline(always)]
+    // pub fn is_mature(&self, current_daa_score: u64) -> bool {
+    //     if self.is_coinbase() {
+    //         self.block_daa_score() + UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score
+    //     } else {
+    //         self.block_daa_score() + UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score
+    //     }
+    // }
 
-    pub fn balance(&self, current_daa_score: u64) -> Balance {
-        if self.is_mature(current_daa_score) {
-            Balance::new(self.amount(), 0)
-        } else {
-            Balance::new(0, self.amount())
-        }
-    }
-}
-
-impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
-    fn from(entry: RpcUtxosByAddressesEntry) -> UtxoEntry {
-        UtxoEntry { address: entry.address, outpoint: entry.outpoint.try_into().unwrap(), entry: entry.utxo_entry }
-    }
+    // pub fn balance(&self, current_daa_score: u64) -> Balance {
+    //     if self.is_mature(current_daa_score) {
+    //         Balance::new(self.amount(), 0)
+    //     } else {
+    //         Balance::new(0, self.amount())
+    //     }
+    // }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -71,11 +66,11 @@ pub struct UtxoEntryReference {
     pub utxo: Arc<UtxoEntry>,
 }
 
-impl UtxoEntryReference {
-    pub fn is_mature(&self, current_daa_score: u64) -> bool {
-        self.utxo.is_mature(current_daa_score)
-    }
-}
+// impl UtxoEntryReference {
+//     pub fn is_mature(&self, current_daa_score: u64) -> bool {
+//         self.utxo.is_mature(current_daa_score)
+//     }
+// }
 
 #[wasm_bindgen]
 impl UtxoEntryReference {
@@ -149,12 +144,6 @@ impl From<UtxoEntryReference> for UtxoEntry {
     }
 }
 
-impl From<RpcUtxosByAddressesEntry> for UtxoEntryReference {
-    fn from(entry: RpcUtxosByAddressesEntry) -> Self {
-        Self { utxo: Arc::new(entry.into()) }
-    }
-}
-
 impl From<UtxoEntry> for UtxoEntryReference {
     fn from(entry: UtxoEntry) -> Self {
         Self { utxo: Arc::new(entry) }
@@ -191,63 +180,63 @@ impl TryIntoUtxoEntryReferences for JsValue {
     }
 }
 
-pub struct PendingUtxoEntryReferenceInner {
-    pub entry: UtxoEntryReference,
-    pub utxo_context: UtxoContext,
-}
+// pub struct PendingUtxoEntryReferenceInner {
+//     pub entry: UtxoEntryReference,
+//     pub utxo_context: UtxoContext,
+// }
 
-#[derive(Clone)]
-pub struct PendingUtxoEntryReference {
-    pub inner: Arc<PendingUtxoEntryReferenceInner>,
-}
+// #[derive(Clone)]
+// pub struct PendingUtxoEntryReference {
+//     pub inner: Arc<PendingUtxoEntryReferenceInner>,
+// }
 
-impl PendingUtxoEntryReference {
-    pub fn new(entry: UtxoEntryReference, utxo_context: UtxoContext) -> Self {
-        Self { inner: Arc::new(PendingUtxoEntryReferenceInner { entry, utxo_context }) }
-    }
+// impl PendingUtxoEntryReference {
+//     pub fn new(entry: UtxoEntryReference, utxo_context: UtxoContext) -> Self {
+//         Self { inner: Arc::new(PendingUtxoEntryReferenceInner { entry, utxo_context }) }
+//     }
 
-    #[inline(always)]
-    pub fn inner(&self) -> &PendingUtxoEntryReferenceInner {
-        &self.inner
-    }
+//     #[inline(always)]
+//     pub fn inner(&self) -> &PendingUtxoEntryReferenceInner {
+//         &self.inner
+//     }
 
-    #[inline(always)]
-    pub fn entry(&self) -> &UtxoEntryReference {
-        &self.inner().entry
-    }
+//     #[inline(always)]
+//     pub fn entry(&self) -> &UtxoEntryReference {
+//         &self.inner().entry
+//     }
 
-    #[inline(always)]
-    pub fn utxo_context(&self) -> &UtxoContext {
-        &self.inner().utxo_context
-    }
+//     #[inline(always)]
+//     pub fn utxo_context(&self) -> &UtxoContext {
+//         &self.inner().utxo_context
+//     }
 
-    #[inline(always)]
-    pub fn id(&self) -> UtxoEntryId {
-        self.inner().entry.id()
-    }
+//     #[inline(always)]
+//     pub fn id(&self) -> UtxoEntryId {
+//         self.inner().entry.id()
+//     }
 
-    #[inline(always)]
-    pub fn transaction_id(&self) -> TransactionId {
-        self.inner().entry.transaction_id()
-    }
+//     #[inline(always)]
+//     pub fn transaction_id(&self) -> TransactionId {
+//         self.inner().entry.transaction_id()
+//     }
 
-    #[inline(always)]
-    pub fn is_mature(&self, current_daa_score: u64) -> bool {
-        self.inner().entry.is_mature(current_daa_score)
-    }
-}
+//     #[inline(always)]
+//     pub fn is_mature(&self, current_daa_score: u64) -> bool {
+//         self.inner().entry.is_mature(current_daa_score)
+//     }
+// }
 
-impl From<(&Arc<dyn Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
-    fn from((account, entry): (&Arc<dyn Account>, UtxoEntryReference)) -> Self {
-        Self::new(entry, (*account.utxo_context()).clone())
-    }
-}
+// impl From<(&Arc<dyn Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
+//     fn from((account, entry): (&Arc<dyn Account>, UtxoEntryReference)) -> Self {
+//         Self::new(entry, (*account.utxo_context()).clone())
+//     }
+// }
 
-impl From<PendingUtxoEntryReference> for UtxoEntryReference {
-    fn from(pending: PendingUtxoEntryReference) -> Self {
-        pending.inner().entry.clone()
-    }
-}
+// impl From<PendingUtxoEntryReference> for UtxoEntryReference {
+//     fn from(pending: PendingUtxoEntryReference) -> Self {
+//         pending.inner().entry.clone()
+//     }
+// }
 
 // ---
 
@@ -318,7 +307,7 @@ impl UtxoEntries {
 
 impl From<UtxoEntries> for Vec<Option<UtxoEntry>> {
     fn from(value: UtxoEntries) -> Self {
-        value.0.as_ref().iter().map(|entry| Some(entry.as_ref().clone())).collect_vec()
+        value.0.as_ref().iter().map(|entry| Some(entry.as_ref().clone())).collect::<Vec<_>>()
     }
 }
 
@@ -330,7 +319,7 @@ impl From<Vec<UtxoEntry>> for UtxoEntries {
 
 impl From<UtxoEntries> for Vec<Option<cctx::UtxoEntry>> {
     fn from(value: UtxoEntries) -> Self {
-        value.0.as_ref().iter().map(|entry| Some(entry.utxo.entry.clone())).collect_vec()
+        value.0.as_ref().iter().map(|entry| Some(entry.utxo.entry.clone())).collect::<Vec<_>>()
     }
 }
 

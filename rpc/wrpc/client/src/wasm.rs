@@ -4,10 +4,12 @@ use crate::result::Result;
 use js_sys::Array;
 use kaspa_addresses::{Address, AddressList};
 use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_wasm::Transaction;
 use kaspa_notify::notification::Notification as NotificationT;
 pub use kaspa_rpc_macros::{build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions};
 pub use serde_wasm_bindgen::from_value;
 pub use workflow_wasm::tovalue::to_value;
+// use kaspa_rpc_core::wasm::*;
 
 struct NotificationSink(Function);
 unsafe impl Send for NotificationSink {}
@@ -332,10 +334,13 @@ build_wrpc_wasm_bindgen_interface!(
 #[wasm_bindgen]
 impl RpcClient {
     #[wasm_bindgen(js_name = submitTransaction)]
-    pub async fn js_submit_transaction(&self, request: JsValue) -> Result<JsValue> {
+    pub async fn js_submit_transaction(&self, js_value: JsValue, allow_orphan: Option<bool>) -> Result<JsValue> {
+        let transaction = RpcTransaction::from(Transaction::try_from(js_value)?);
+
+        let request = SubmitTransactionRequest { transaction, allow_orphan: allow_orphan.unwrap_or(false) };
+
         // log_info!("submit_transaction req: {:?}", request);
-        let response =
-            self.submit_transaction(from_value(request)?).await.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
+        let response = self.submit_transaction(request).await.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
         to_value(&response).map_err(|err| err.into())
     }
 

@@ -1,62 +1,62 @@
 use crate::imports::*;
-use crate::wasm::keypair::PrivateKey;
-use crate::wasm::tx::MutableTransaction;
-use crate::Result;
+use crate::keypair::PrivateKey;
+use crate::result::Result;
+use crate::signable::*;
 // use itertools::Itertools;
 use js_sys::Array;
 use kaspa_consensus_core::{
     hashing::sighash_type::SIG_HASH_ALL,
     sign::{sign_with_multiple_v2, verify},
-    tx::SignableTransaction,
+    tx, // tx::SignableTransaction,
 };
 use kaspa_hashes::Hash;
 use serde_wasm_bindgen::from_value;
 // use std::collections::BTreeMap;
 // use std::iter::once;
 use workflow_log::log_trace;
-use workflow_wasm::abi::TryFromJsValue;
+// use workflow_wasm::abi::TryFromJsValue;
 
-pub trait SignerTrait {
-    fn sign(&self, _mtx: SignableTransaction) -> Result<SignableTransaction>;
-}
+// pub trait SignerTrait {
+//     fn sign(&self, _mtx: SignableTransaction) -> Result<SignableTransaction>;
+// }
 
-/// `Signer` is a type capable of signing transactions.
-#[derive(TryFromJsValue, Clone, Debug)]
-#[wasm_bindgen]
-pub struct Signer {
-    private_keys: Vec<PrivateKey>,
-    pub verify: bool,
-}
+// /// `Signer` is a type capable of signing transactions.
+// #[derive(Clone, Debug)]
+// #[wasm_bindgen]
+// pub struct Signer {
+//     private_keys: Vec<PrivateKey>,
+//     pub verify: bool,
+// }
 
-impl Signer {
-    pub fn new(private_keys: Vec<PrivateKey>) -> Result<Signer> {
-        Ok(Self { private_keys, verify: true })
-    }
-    fn private_keys(&self) -> Vec<[u8; 32]> {
-        self.private_keys.iter().map(|k| k.into()).collect::<Vec<_>>()
-    }
-}
+// impl Signer {
+//     pub fn new(private_keys: Vec<PrivateKey>) -> Result<Signer> {
+//         Ok(Self { private_keys, verify: true })
+//     }
+//     fn private_keys(&self) -> Vec<[u8; 32]> {
+//         self.private_keys.iter().map(|k| k.into()).collect::<Vec<_>>()
+//     }
+// }
 
-#[wasm_bindgen]
-impl Signer {
-    #[wasm_bindgen(constructor)]
-    pub fn js_ctor(private_keys: PrivateKeyArray) -> Result<Signer> {
-        Ok(Self { private_keys: private_keys.try_into()?, verify: true })
-    }
+// #[wasm_bindgen]
+// impl Signer {
+//     #[wasm_bindgen(constructor)]
+//     pub fn js_ctor(private_keys: PrivateKeyArray) -> Result<Signer> {
+//         Ok(Self { private_keys: private_keys.try_into()?, verify: true })
+//     }
 
-    #[wasm_bindgen(js_name = "signTransaction")]
-    pub fn sign_transaction(&self, mtx: MutableTransaction, verify_sig: bool) -> Result<MutableTransaction> {
-        sign_mutable_transaction(mtx, self.private_keys(), verify_sig).map_err(|err| Error::Custom(err.to_string()))
-    }
-}
+//     #[wasm_bindgen(js_name = "signTransaction")]
+//     pub fn sign_transaction(&self, mtx: SignableTransaction, verify_sig: bool) -> Result<SignableTransaction> {
+//         sign_mutable_transaction(mtx, self.private_keys(), verify_sig).map_err(|err| Error::Custom(err.to_string()))
+//     }
+// }
 
-impl SignerTrait for Signer {
-    fn sign(&self, mtx: SignableTransaction) -> Result<SignableTransaction> {
-        let mtx = sign_transaction(mtx, self.private_keys(), self.verify).map_err(|err| Error::Custom(err.to_string()))?;
+// impl SignerTrait for Signer {
+//     fn sign(&self, mtx: SignableTransaction) -> Result<SignableTransaction> {
+//         let mtx = sign_transaction(mtx, self.private_keys(), self.verify).map_err(|err| Error::Custom(err.to_string()))?;
 
-        Ok(mtx)
-    }
-}
+//         Ok(mtx)
+//     }
+// }
 
 #[wasm_bindgen]
 extern "C" {
@@ -64,9 +64,9 @@ extern "C" {
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub type PrivateKeyArray;
 
-    #[wasm_bindgen(extends = js_sys::Object, typescript_type = "PrivateKey[] | Signer")]
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub type PrivateKeyArrayOrSigner;
+    // #[wasm_bindgen(extends = js_sys::Object, typescript_type = "PrivateKey[] | Signer")]
+    // #[derive(Clone, Debug, PartialEq, Eq)]
+    // pub type PrivateKeyArrayOrSigner;
 }
 
 impl TryFrom<PrivateKeyArray> for Vec<PrivateKey> {
@@ -83,7 +83,7 @@ impl TryFrom<PrivateKeyArray> for Vec<PrivateKey> {
 
 /// `signTransaction()` is a helper function to sign a transaction using a private key array or a signer array.
 #[wasm_bindgen(js_name = "signTransaction")]
-pub fn js_sign_transaction(mtx: MutableTransaction, signer: PrivateKeyArrayOrSigner, verify_sig: bool) -> Result<MutableTransaction> {
+pub fn js_sign_transaction(mtx: SignableTransaction, signer: PrivateKeyArray, verify_sig: bool) -> Result<SignableTransaction> {
     if signer.is_array() {
         let mut private_keys: Vec<[u8; 32]> = vec![];
         for key in Array::from(&signer).iter() {
@@ -91,24 +91,30 @@ pub fn js_sign_transaction(mtx: MutableTransaction, signer: PrivateKeyArrayOrSig
             private_keys.push(key.secret_bytes());
         }
 
-        let mtx = sign_mutable_transaction(mtx, private_keys, verify_sig)
-            .map_err(|err| Error::Custom(format!("Unable to sign: {err:?}")))?;
+        let mtx = sign_transaction(mtx, private_keys, verify_sig).map_err(|err| Error::Custom(format!("Unable to sign: {err:?}")))?;
         Ok(mtx)
     } else {
-        let signer = Signer::try_from(&JsValue::from(signer)).map_err(|_| Error::Custom("Unable to cast Signer".to_string()))?;
-        // log_trace!("\nSigning via Signer: {signer:?}....\n");
-        signer.sign_transaction(mtx, verify_sig)
+        Err(Error::custom("signTransaction() requires an array of signatures"))
     }
-}
-
-pub fn sign_mutable_transaction(mtx: MutableTransaction, private_keys: Vec<[u8; 32]>, verify_sig: bool) -> Result<MutableTransaction> {
-    let entries = mtx.entries.clone();
-    let mtx = sign_transaction(mtx.try_into()?, private_keys, verify_sig)?;
-    let mtx = MutableTransaction::try_from((mtx, entries))?;
-    Ok(mtx)
+    // } else {
+    //     let signer = Signer::try_from(&JsValue::from(signer)).map_err(|_| Error::Custom("Unable to cast Signer".to_string()))?;
+    //     // log_trace!("\nSigning via Signer: {signer:?}....\n");
+    //     signer.sign_transaction(mtx, verify_sig)
+    // }
 }
 
 pub fn sign_transaction(mtx: SignableTransaction, private_keys: Vec<[u8; 32]>, verify_sig: bool) -> Result<SignableTransaction> {
+    let entries = mtx.entries.clone();
+    let mtx = sign_transaction_impl(mtx.into(), private_keys, verify_sig)?;
+    let mtx = SignableTransaction::try_from((mtx, entries))?;
+    Ok(mtx)
+}
+
+fn sign_transaction_impl(
+    mtx: tx::SignableTransaction,
+    private_keys: Vec<[u8; 32]>,
+    verify_sig: bool,
+) -> Result<tx::SignableTransaction> {
     let mtx = sign(mtx, private_keys)?;
     if verify_sig {
         // let mtx_clone = mtx.clone();
@@ -122,7 +128,7 @@ pub fn sign_transaction(mtx: SignableTransaction, private_keys: Vec<[u8; 32]>, v
 }
 
 /// Sign a transaction using schnorr, returns a new transaction with the signatures added.
-pub fn sign(mutable_tx: SignableTransaction, privkeys: Vec<[u8; 32]>) -> Result<SignableTransaction> {
+pub fn sign(mutable_tx: tx::SignableTransaction, privkeys: Vec<[u8; 32]>) -> Result<tx::SignableTransaction> {
     Ok(sign_with_multiple_v2(mutable_tx, privkeys))
 
     // let mut map = BTreeMap::new();

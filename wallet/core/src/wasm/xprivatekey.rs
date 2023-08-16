@@ -1,7 +1,7 @@
 use crate::accounts::gen1::WalletDerivationManager;
-use crate::wasm::keypair::PrivateKey;
 use crate::Result;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
+use kaspa_consensus_wasm::PrivateKey;
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 
