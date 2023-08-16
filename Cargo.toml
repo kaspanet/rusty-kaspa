@@ -208,7 +208,7 @@ workflow-dom = { version = "0.5.0" }
 workflow-rpc = { version = "0.5.0" }
 workflow-node = { version = "0.5.0" }
 workflow-store = { version = "0.5.0" }
-workflow-terminal = { version = "0.5.0" }
+workflow-terminal = { version = "0.5.2" }
 nw-sys = "0.1.5"
 
 # if below is enabled, this means that there is an ongoing work
