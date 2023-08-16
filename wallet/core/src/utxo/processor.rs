@@ -52,13 +52,9 @@ impl Inner {
 }
 
 #[derive(Clone)]
-#[wasm_bindgen]
 pub struct UtxoProcessor {
     inner: Arc<Inner>,
 }
-
-#[wasm_bindgen]
-impl UtxoProcessor {}
 
 impl UtxoProcessor {
     pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: &Multiplexer<Events>) -> Self {
@@ -436,6 +432,3 @@ impl UtxoProcessor {
         Ok(())
     }
 }
-
-#[wasm_bindgen]
-impl UtxoProcessor {}

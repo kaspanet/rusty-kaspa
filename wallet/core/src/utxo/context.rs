@@ -15,10 +15,7 @@ use crate::utxo::{
     // UtxoSelectionContext,
 };
 use kaspa_hashes::Hash;
-use kaspa_rpc_core::GetUtxosByAddressesResponse;
-use serde_wasm_bindgen::from_value;
 use sorted_insert::SortedInsertBinaryByKey;
-use workflow_wasm::abi::ref_from_abi;
 
 static PROCESSOR_ID_SEQUENCER: AtomicU64 = AtomicU64::new(0);
 fn next_processor_id() -> Hash {
@@ -61,7 +58,6 @@ impl UtxoContextId {
 impl ToHex for UtxoContextId {
     fn to_hex(&self) -> String {
         self.0.to_hex()
-        // format!("{}", self.0)
     }
 }
 
@@ -135,25 +131,8 @@ impl Inner {
 
 /// a collection of UTXO entries
 #[derive(Clone)]
-#[wasm_bindgen]
 pub struct UtxoContext {
     inner: Arc<Inner>,
-}
-
-#[wasm_bindgen]
-impl UtxoContext {
-    pub async fn clear(&self) -> Result<()> {
-        let local = self.addresses();
-        let addresses = local.iter().map(|v| v.clone()).collect::<Vec<_>>();
-        if !addresses.is_empty() {
-            self.processor().unregister_addresses(addresses).await?;
-            local.clear();
-        }
-
-        self.context().clear();
-
-        Ok(())
-    }
 }
 
 impl UtxoContext {
@@ -168,10 +147,6 @@ impl UtxoContext {
     ) -> Self {
         Self { inner: Arc::new(Inner::new_with_mature_entries(processor, binding, mature_entries)) }
     }
-
-    // pub fn inner(&self) -> &Arc<Inner> {
-    //     &self.inner
-    // }
 
     pub fn context(&self) -> MutexGuard<Context> {
         self.inner.context.lock().unwrap()
@@ -209,6 +184,19 @@ impl UtxoContext {
         self.context().addresses.clone()
     }
 
+    pub async fn clear(&self) -> Result<()> {
+        let local = self.addresses();
+        let addresses = local.iter().map(|v| v.clone()).collect::<Vec<_>>();
+        if !addresses.is_empty() {
+            self.processor().unregister_addresses(addresses).await?;
+            local.clear();
+        }
+
+        self.context().clear();
+
+        Ok(())
+    }
+
     pub async fn update_balance(&self) -> Result<Balance> {
         let (balance, mature_utxo_size, pending_utxo_size) = {
             let previous_balance = self.balance();
@@ -229,10 +217,6 @@ impl UtxoContext {
 
         Ok(balance)
     }
-
-    // pub fn create_selection_context(&self) -> UtxoSelectionContext {
-    //     UtxoSelectionContext::new(self)
-    // }
 
     /// Process pending transaction. Remove mature UTXO entries and add them to the consumed set.
     /// Produces a notification on the even multiplexer.
@@ -257,6 +241,8 @@ impl UtxoContext {
 
     /// Removes entries from mature utxo set and adds them to the consumed utxo set.
     /// NOTE: This method does not issue a notification on the event multiplexer.
+    /// This has been replaced with `handle_outgoing_transaction`, pending decision
+    /// on removal.
     #[allow(dead_code)]
     pub(crate) async fn consume(&self, entries: &[UtxoEntryReference]) -> Result<()> {
         let mut context = self.context();
@@ -313,7 +299,6 @@ impl UtxoContext {
         let remove_mature_ids = remove_mature_ids
             .into_iter()
             .filter(|id| {
-                // inner.consumed.remove(id).is_none()
                 if let Some(consumed) = context.consumed.remove(id) {
                     removed.push(UtxoEntryVariant::Consumed(consumed.entry));
                     false
@@ -390,11 +375,11 @@ impl UtxoContext {
         Ok(())
     }
 
-    pub async fn chunks(&self, chunk_size: usize) -> Result<Vec<Vec<UtxoEntryReference>>> {
-        let entries = &self.context().mature;
-        let l = entries.chunks(chunk_size).map(|v| v.to_owned()).collect();
-        Ok(l)
-    }
+    // pub async fn chunks(&self, chunk_size: usize) -> Result<Vec<Vec<UtxoEntryReference>>> {
+    //     let entries = &self.context().mature;
+    //     let l = entries.chunks(chunk_size).map(|v| v.to_owned()).collect();
+    //     Ok(l)
+    // }
 
     // recover UTXOs that went into `consumed` state but were never removed
     // from the set by the UtxoChanged notification.
@@ -533,56 +518,6 @@ impl UtxoContext {
 
         Ok(())
     }
-}
-
-#[wasm_bindgen]
-impl UtxoContext {
-    pub fn js_remove(&self, ids: Array) -> Result<Array> {
-        let vec = ids
-            .to_vec()
-            .iter()
-            .map(UtxoEntryId::try_from)
-            .collect::<std::result::Result<Vec<UtxoEntryId>, kaspa_consensus_wasm::error::Error>>()?;
-
-        let mut context = self.context();
-
-        let mut removed = vec![];
-        for id in vec.iter() {
-            if let Some(entry) = context.map.remove(id) {
-                removed.push(entry)
-            }
-        }
-
-        for entry in removed.iter() {
-            if context.consumed.remove(&entry.id()).is_none() {
-                context.mature.retain(|entry| entry.id() != entry.id());
-            }
-        }
-
-        Ok(removed.into_iter().map(JsValue::from).collect::<Array>())
-    }
-
-    // #[wasm_bindgen(constructor)]
-    // pub fn constructor(core: &JsValue, id_or_account : &JsValue, utxo_by_address_response: JsValue) -> Result<UtxoProcessor> {
-    pub fn from(processor: &JsValue, id: Hash, utxo_by_address_response: JsValue) -> Result<UtxoContext> {
-        let processor = ref_from_abi!(UtxoProcessor, processor)?;
-        let r: GetUtxosByAddressesResponse = from_value(utxo_by_address_response)?;
-        let mut entries = r.entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
-        entries.sort_by_key(|e| e.amount());
-        let binding = UtxoContextBinding::Id(UtxoContextId::new(id));
-        let utxo_context = UtxoContext::new_with_mature_entries(&processor, binding, entries);
-        Ok(utxo_context)
-    }
-
-    #[wasm_bindgen(js_name=calculateBalance)]
-    pub async fn js_calculate_balance(&self) -> crate::wasm::wallet::Balance {
-        self.calculate_balance().await.into()
-    }
-
-    // #[wasm_bindgen(js_name=createSelectionContext)]
-    // pub fn js_create_selection_context(&self) -> UtxoSelectionContext {
-    //     UtxoSelectionContext::new(self)
-    // }
 }
 
 impl Eq for UtxoContext {}
