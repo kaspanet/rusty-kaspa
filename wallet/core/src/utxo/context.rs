@@ -6,8 +6,13 @@ use crate::runtime::{AccountId, Balance};
 use crate::storage::{TransactionRecord, TransactionType};
 use crate::tx::PendingTransaction;
 use crate::utxo::{
-    PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference, UtxoEntryReferenceExtension, UtxoProcessor,
-    UtxoSelectionContext,
+    PendingUtxoEntryReference,
+    UtxoContextBinding,
+    UtxoEntryId,
+    UtxoEntryReference,
+    UtxoEntryReferenceExtension,
+    UtxoProcessor,
+    // UtxoSelectionContext,
 };
 use kaspa_hashes::Hash;
 use kaspa_rpc_core::GetUtxosByAddressesResponse;
@@ -164,6 +169,10 @@ impl UtxoContext {
         Self { inner: Arc::new(Inner::new_with_mature_entries(processor, binding, mature_entries)) }
     }
 
+    // pub fn inner(&self) -> &Arc<Inner> {
+    //     &self.inner
+    // }
+
     pub fn context(&self) -> MutexGuard<Context> {
         self.inner.context.lock().unwrap()
     }
@@ -221,9 +230,9 @@ impl UtxoContext {
         Ok(balance)
     }
 
-    pub fn create_selection_context(&self) -> UtxoSelectionContext {
-        UtxoSelectionContext::new(self)
-    }
+    // pub fn create_selection_context(&self) -> UtxoSelectionContext {
+    //     UtxoSelectionContext::new(self)
+    // }
 
     /// Process pending transaction. Remove mature UTXO entries and add them to the consumed set.
     /// Produces a notification on the even multiplexer.
@@ -570,10 +579,10 @@ impl UtxoContext {
         self.calculate_balance().await.into()
     }
 
-    #[wasm_bindgen(js_name=createSelectionContext)]
-    pub fn js_create_selection_context(&self) -> UtxoSelectionContext {
-        UtxoSelectionContext::new(self)
-    }
+    // #[wasm_bindgen(js_name=createSelectionContext)]
+    // pub fn js_create_selection_context(&self) -> UtxoSelectionContext {
+    //     UtxoSelectionContext::new(self)
+    // }
 }
 
 impl Eq for UtxoContext {}

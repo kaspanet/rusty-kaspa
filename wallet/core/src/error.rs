@@ -4,7 +4,6 @@ use kaspa_bip32::Error as BIP32Error;
 use kaspa_consensus_core::sign::Error as CoreSignError;
 use kaspa_rpc_core::RpcError as KaspaRpcError;
 use kaspa_wrpc_client::error::Error as KaspaWorkflowRpcError;
-// use secp256k1::Error as Secp256k1Error;
 use std::sync::PoisonError;
 use wasm_bindgen::JsValue;
 use workflow_core::abortable::Aborted;
@@ -167,8 +166,6 @@ pub enum Error {
     #[error(transparent)]
     Utf8Error(#[from] std::str::Utf8Error),
 
-    // #[error("invalid transaction outpoint: {0}")]
-    // InvalidTransactionOutpoint(String),
     #[error("{0}")]
     ParseIntError(#[from] std::num::ParseIntError),
 
@@ -248,7 +245,6 @@ impl From<&str> for Error {
 impl From<wasm_bindgen::JsValue> for Error {
     fn from(err: wasm_bindgen::JsValue) -> Self {
         Self::JsValue(err.into())
-        // Self::JsValue(Sendable(err.into()))
     }
 }
 
@@ -257,12 +253,6 @@ impl From<wasm_bindgen::JsError> for Error {
         Self::JsValue(err.into())
     }
 }
-
-// impl From<wasm_bindgen::JsError> for Error {
-//     fn from(err: wasm_bindgen::JsError) -> Self {
-//         Self::JsValue(Sendable(err.into()))
-//     }
-// }
 
 impl From<serde_wasm_bindgen::Error> for Error {
     fn from(err: serde_wasm_bindgen::Error) -> Self {

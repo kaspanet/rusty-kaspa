@@ -26,7 +26,6 @@ pub struct Wallet {
 #[wasm_bindgen]
 impl Wallet {
     #[wasm_bindgen(constructor)]
-    // pub fn constructor(js_value: JsValue) -> std::result::Result<Wallet, JsError> {
     pub fn constructor(js_value: JsValue) -> Result<Wallet> {
         let WalletCtorArgs { resident, network_id, encoding, url } = WalletCtorArgs::try_from(js_value)?;
 

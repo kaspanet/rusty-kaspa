@@ -1,20 +1,15 @@
-use crate::imports::*;
 use crate::utxo::{UtxoContext, UtxoEntryReference};
 
 pub struct UtxoIterator {
-    entries : Vec<UtxoEntryReference>,
+    entries: Vec<UtxoEntryReference>,
     cursor: usize,
 }
 
 impl UtxoIterator {
     pub fn new(utxo_context: &UtxoContext) -> Self {
-        Self { 
-            entries: utxo_context.inner.lock().unwrap().mature.clone(),
-            cursor: 0 
-        }
+        Self { entries: utxo_context.context().mature.clone(), cursor: 0 }
     }
 }
-
 
 impl Iterator for UtxoIterator {
     type Item = UtxoEntryReference;
@@ -25,4 +20,3 @@ impl Iterator for UtxoIterator {
         entry
     }
 }
-

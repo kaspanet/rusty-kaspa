@@ -1,7 +1,7 @@
 use crate::result::Result;
 use crate::runtime::Account;
 use crate::tx::{Fees, PaymentDestination};
-use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoSelectionContext};
+use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoIterator};
 use crate::Events;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::networktype::NetworkType;
@@ -44,7 +44,8 @@ impl GeneratorSettings {
         let sig_op_count = account.sig_op_count();
         let minimum_signatures = account.minimum_signatures();
 
-        let utxo_selector = Arc::new(UtxoSelectionContext::new(account.utxo_context()));
+        let utxo_iterator = UtxoIterator::new(account.utxo_context());
+        // let utxo_selector = Arc::new(UtxoSelectionContext::new(account.utxo_context()));
 
         let settings = GeneratorSettings {
             network_type,
@@ -52,7 +53,7 @@ impl GeneratorSettings {
             sig_op_count,
             minimum_signatures,
             change_address,
-            utxo_iterator: Box::new(utxo_selector.iter()),
+            utxo_iterator: Box::new(utxo_iterator),
             utxo_context: Some(account.utxo_context().clone()),
 
             final_priority_fee,

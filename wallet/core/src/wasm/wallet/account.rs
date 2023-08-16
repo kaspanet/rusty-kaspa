@@ -6,53 +6,14 @@ use crate::tx::PaymentOutputs;
 use workflow_core::abortable::Abortable;
 use workflow_wasm::abi::ref_from_abi;
 
-// pub struct CacheInner {
-//     receive_address: Address,
-//     change_address: Address,
-// }
-
-// #[derive(Clone)]
-// pub struct Cache {
-//     inner: Arc<Mutex<CacheInner>>,
-// }
-
-// impl Cache {
-//     pub async fn try_new(account: &Arc<dyn runtime::Account>) -> Result<Self> {
-//         let inner = Self::make_inner(account).await?;
-//         Ok(Cache { inner: Arc::new(Mutex::new(inner)) })
-//     }
-
-//     pub async fn update(&self, account: &Arc<dyn runtime::Account>) -> Result<()> {
-//         *self.inner.lock().unwrap() = Self::make_inner(account).await?;
-//         Ok(())
-//     }
-
-//     pub async fn make_inner(account: &Arc<dyn runtime::Account>) -> Result<CacheInner> {
-//         let receive_address = account.derivation.receive_address_manager.current_address().await?;
-//         let change_address = account.derivation.change_address_manager.current_address().await?;
-//         Ok(CacheInner { receive_address, change_address })
-//     }
-
-//     pub fn receive_address(&self) -> Address {
-//         self.inner.lock().unwrap().receive_address.clone()
-//     }
-
-//     pub fn change_address(&self) -> Address {
-//         self.inner.lock().unwrap().change_address.clone()
-//     }
-// }
-
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct Account {
     inner: Arc<dyn runtime::Account>,
-    // cache: Cache,
 }
 
 impl Account {
     pub async fn try_new(inner: Arc<dyn runtime::Account>) -> Result<Self> {
-        // let cache = Cache::try_new(&inner).await?;
-
         Ok(Self { inner })
     }
 }
@@ -67,10 +28,10 @@ impl Account {
         }
     }
 
-    // #[wasm_bindgen(getter, js_name = "accountKind")]
-    // pub fn account_kind(&self) -> String {
-    //     self.inner.account_kind.to_string()
-    // }
+    #[wasm_bindgen(getter, js_name = "type")]
+    pub fn account_kind(&self) -> String {
+        self.inner.account_kind().to_string()
+    }
 
     // #[wasm_bindgen(getter)]
     // pub fn index(&self) -> u64 {
@@ -87,39 +48,29 @@ impl Account {
     //     self.inner.ecdsa
     // }
 
-    // #[wasm_bindgen(getter, js_name = "receiveAddress")]
-    // pub fn receive_address(&self) -> String {
-    //     self.cache.receive_address().to_string()
-    // }
+    #[wasm_bindgen(getter, js_name = "receiveAddress")]
+    pub fn receive_address(&self) -> Result<String> {
+        Ok(self.inner.receive_address()?.to_string())
+    }
 
-    // #[wasm_bindgen(getter, js_name = "changeAddress")]
-    // pub fn change_address(&self) -> String {
-    //     self.cache.change_address().to_string()
-    // }
+    #[wasm_bindgen(getter, js_name = "changeAddress")]
+    pub fn change_address(&self) -> Result<String> {
+        Ok(self.inner.change_address()?.to_string())
+    }
 
-    // #[wasm_bindgen(js_name = "getReceiveAddress")]
-    // pub async fn get_receive_address(&self) -> Result<Address> {
-    //     self.inner.derivation.receive_address_manager.current_address().await
-    // }
+    #[wasm_bindgen(js_name = "deriveReceiveAddress")]
+    pub async fn create_receive_address(&self) -> Result<Address> {
+        let account = self.inner.clone().as_derivation_capable()?;
+        let receive_address = account.new_receive_address().await?;
+        Ok(receive_address)
+    }
 
-    // #[wasm_bindgen(js_name = "createReceiveAddress")]
-    // pub async fn create_receive_address(&self) -> Result<Address> {
-    //     let receive_address = self.inner.derivation.receive_address_manager.new_address().await?;
-    //     self.cache.inner.lock().unwrap().receive_address = receive_address.clone();
-    //     Ok(receive_address)
-    // }
-
-    // #[wasm_bindgen(js_name = "getChangeAddress")]
-    // pub async fn get_change_address(&self) -> Result<Address> {
-    //     self.inner.derivation.change_address_manager.current_address().await
-    // }
-
-    // #[wasm_bindgen(js_name = "createChangeAddress")]
-    // pub async fn create_change_address(&self) -> Result<Address> {
-    //     let change_address = self.inner.derivation.change_address_manager.new_address().await?;
-    //     self.cache.inner.lock().unwrap().change_address = change_address.clone();
-    //     Ok(change_address)
-    // }
+    #[wasm_bindgen(js_name = "deriveChangeAddress")]
+    pub async fn create_change_address(&self) -> Result<Address> {
+        let account = self.inner.clone().as_derivation_capable()?;
+        let change_address = account.new_change_address().await?;
+        Ok(change_address)
+    }
 
     pub async fn scan(&self) -> Result<()> {
         self.inner.clone().scan(None, None).await
@@ -127,6 +78,19 @@ impl Account {
 
     pub async fn send(&self, js_value: JsValue) -> Result<JsValue> {
         let _args = AccountSendArgs::try_from(js_value)?;
+
+        // self.inner.clone().send(
+
+        // self: Arc<Self>,
+        // destination: PaymentDestination,
+        // priority_fee_sompi: Fees,
+        // payload: Option<Vec<u8>>,
+        // wallet_secret: Secret,
+        // payment_secret: Option<Secret>,
+        // abortable: &Abortable,
+        // notifier: Option<GenerationNotifier>,
+
+        // ).await;
 
         // self.inner
         //     .send_v1(
@@ -149,26 +113,6 @@ impl From<Account> for Arc<dyn runtime::Account> {
     }
 }
 
-impl Account {
-    // pub async fn update(&self) -> Result<()> {
-    //     self.cache.update(&self.inner).await
-    // }
-}
-//     pub async fn update_addresses(&self) -> Result<()> {
-//         let receive_address = self.inner.derivation.receive_address_manager.current_address().await?;
-//         let change_address = self.inner.derivation.receive_address_manager.current_address().await?;
-//         self.receive_address_cache.lock().unwrap().replace(receive_address);
-//         self.change_address_cache.lock().unwrap().replace(change_address);
-//         Ok(())
-//     }
-// }
-
-// impl From<Arc<runtime::Account>> for Account {
-//     fn from(inner: Arc<runtime::Account>) -> Self {
-//         Account { inner, cache : Cache::default() }
-//     }
-// }
-
 // pub enum IterResult<T, E> {
 //     Ok(T),
 //     Err(E),
@@ -189,7 +133,17 @@ impl Account {
 //     }
 // }
 
+// self: Arc<Self>,
+// destination: PaymentDestination,
+// priority_fee_sompi: Fees,
+// payload: Option<Vec<u8>>,
+// wallet_secret: Secret,
+// payment_secret: Option<Secret>,
+// abortable: &Abortable,
+// notifier: Option<GenerationNotifier>,
+
 pub struct AccountSendArgs {
+    // pub destination : PaymentDestination,
     pub outputs: PaymentOutputs,
     pub priority_fee_sompi: Option<u64>,
     pub include_fees_in_amount: bool,

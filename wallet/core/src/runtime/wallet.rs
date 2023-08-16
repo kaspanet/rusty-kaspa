@@ -779,7 +779,7 @@ mod test {
     use std::{str::FromStr, thread::sleep, time};
 
     use super::*;
-    use crate::utxo::{UtxoContext, UtxoContextBinding};
+    use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoIterator};
     // use crate::wasm::tx::signer::sign_mutable_transaction;
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
@@ -789,19 +789,19 @@ mod test {
     use kaspa_txscript::pay_to_address_script;
     use workflow_rpc::client::ConnectOptions;
 
-    async fn get_utxos_set_by_addresses(
+    async fn create_utxos_context_with_addresses(
         rpc: Arc<DynRpcApi>,
         addresses: Vec<Address>,
         current_daa_score: u64,
         core: &UtxoProcessor,
     ) -> Result<UtxoContext> {
         let utxos = rpc.get_utxos_by_addresses(addresses).await?;
-        let utxo_set = UtxoContext::new(core, UtxoContextBinding::default());
+        let utxo_context = UtxoContext::new(core, UtxoContextBinding::default());
         let entries = utxos.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
         for entry in entries.into_iter() {
-            utxo_set.insert(entry, current_daa_score).await?;
+            utxo_context.insert(entry, current_daa_score).await?;
         }
-        Ok(utxo_set)
+        Ok(utxo_context)
     }
 
     #[allow(dead_code)]
@@ -838,16 +838,17 @@ mod test {
 
         let address = Address::try_from("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")?;
 
-        let utxo_set = self::get_utxos_set_by_addresses(rpc.clone(), vec![address.clone()], current_daa_score, utxo_processor).await?;
+        let utxo_context =
+            self::create_utxos_context_with_addresses(rpc.clone(), vec![address.clone()], current_daa_score, utxo_processor).await?;
 
-        let utxo_set_balance = utxo_set.calculate_balance().await;
+        let utxo_set_balance = utxo_context.calculate_balance().await;
         println!("get_utxos_by_addresses: {utxo_set_balance:?}");
 
-        let mut ctx = utxo_set.create_selection_context();
+        // let mut ctx = utxo_set.create_selection_context();
         // let mut ctx = UtxoSelectionContext::new(utxo_set);
 
-        #[allow(deprecated)]
-        let selected_entries = ctx.select(100_000)?;
+        // #[allow(deprecated)]
+        // let selected_entries = ctx.select(100_000)?;
 
         // let utxo_selection = utxo_set.select(100000, UtxoOrdering::AscendingAmount, true).await?;
 
@@ -856,8 +857,12 @@ mod test {
         //let outputs = Outputs { outputs: vec![Output::new(to_address, 100000, None)] };
         //let vtx = VirtualTransaction::new(utxo_selection, &outputs, payload);
 
+        let mut iter = UtxoIterator::new(&utxo_context);
+
+        // let UtxoEntryReference { utxo }
+        let utxo = iter.next().unwrap();
         //vtx.sign();
-        let utxo = (*selected_entries[0].utxo).clone();
+        let utxo = (*utxo.utxo).clone();
         //utxo.utxo_entry.is_coinbase = false;
         let selected_entries = vec![utxo];
 
@@ -912,9 +917,10 @@ mod test {
         let mtx = sign_transaction(mtx, private_keys, true)?;
         //println!("mtx: {mtx:?}");
 
-        let utxo_set =
-            self::get_utxos_set_by_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, utxo_processor).await?;
-        let to_balance = utxo_set.calculate_balance().await;
+        let utxo_context =
+            self::create_utxos_context_with_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)
+                .await?;
+        let to_balance = utxo_context.calculate_balance().await;
         println!("to address balance before tx submit: {to_balance:?}");
 
         let result = rpc.submit_transaction(mtx.into(), false).await?;
@@ -922,9 +928,10 @@ mod test {
         println!("tx submit result, {:?}", result);
         println!("sleep for 5s...");
         sleep(time::Duration::from_millis(5000));
-        let utxo_set =
-            self::get_utxos_set_by_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, utxo_processor).await?;
-        let to_balance = utxo_set.calculate_balance().await;
+        let utxo_context =
+            self::create_utxos_context_with_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)
+                .await?;
+        let to_balance = utxo_context.calculate_balance().await;
         println!("to address balance after tx submit: {to_balance:?}");
 
         Ok(())
