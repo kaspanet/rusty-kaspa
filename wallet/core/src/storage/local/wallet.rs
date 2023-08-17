@@ -4,9 +4,10 @@ use crate::secret::Secret;
 use crate::storage::local::Payload;
 use crate::storage::local::Storage;
 use crate::storage::{Decrypted, Encrypted, Hint, Metadata, PrvKeyData, PrvKeyDataId};
+use serde_json::{from_str, from_value, Value};
 use workflow_store::fs;
 
-pub const WALLET_VERSION: [u16; 3] = [1, 0, 0];
+pub const WALLET_VERSION: [u16; 3] = [0, 0, 1];
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Wallet {
@@ -35,8 +36,24 @@ impl Wallet {
 
     pub async fn try_load(store: &Storage) -> Result<Wallet> {
         if fs::exists(store.filename()).await? {
-            let wallet = fs::read_json::<Wallet>(store.filename()).await?;
-            Ok(wallet)
+            let text = fs::read_to_string(store.filename()).await?;
+            let root = from_str::<Value>(&text)?;
+
+            let version = root.get("version");
+            let version: [u16; 3] = if let Some(version) = version {
+                from_value(version.clone()).map_err(|err| Error::Custom(format!("unknown wallet version `{version:?}`: {err}")))?
+            } else {
+                [0, 0, 0]
+            };
+
+            match version {
+                [0,0,0] => {
+                    Err(Error::Custom("wallet version 0.0.0 used during the development is no longer supported, please recreate the wallet using your saved mnemonic".to_string()))
+                },
+                _ => {
+                    Ok(from_value::<Wallet>(root)?)
+                }
+            }
         } else {
             let name = store.filename().file_name().unwrap().to_str().unwrap();
             Err(Error::NoWalletInStorage(name.to_string()))
