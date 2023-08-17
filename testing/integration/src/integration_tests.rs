@@ -1711,10 +1711,10 @@ async fn staging_consensus_test() {
 
 #[tokio::test]
 async fn sanity_integration_test() {
-    let core1 = DaemonWithRpc::new_random(true);
+    let core1 = DaemonWithRpc::new_random();
     let (workers1, rpc_client1) = core1.start().await;
 
-    let core2 = DaemonWithRpc::new_random(false);
+    let core2 = DaemonWithRpc::new_random();
     let (workers2, rpc_client2) = core2.start().await;
 
     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -1735,9 +1735,8 @@ struct DaemonWithRpc {
 }
 
 impl DaemonWithRpc {
-    fn new_random(with_logs: bool) -> DaemonWithRpc {
-        let mut args: Args = Default::default();
-        args.devnet = true;
+    fn new_random() -> DaemonWithRpc {
+        let mut args = Args { devnet: true, ..Default::default() };
 
         // This should ask the OS to allocate free port for socket 1 to 4.
         let socket1 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1763,7 +1762,7 @@ impl DaemonWithRpc {
         args.rpclisten_borsh = Some(format!("0.0.0.0:{rpc_borsh_port}").try_into().unwrap());
         args.appdir = Some(tempdir().unwrap().path().to_str().unwrap().to_owned());
 
-        let core = create_core(args, with_logs, false);
+        let core = create_core(args, false, false);
         DaemonWithRpc { core, rpc_port }
     }
 
