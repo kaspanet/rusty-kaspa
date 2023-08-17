@@ -22,6 +22,7 @@ use std::collections::HashMap;
 pub struct Inner {
     pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
     address_to_utxo_context_map: DashMap<Arc<Address>, UtxoContext>,
+    recoverable_contexts: DashSet<UtxoContext>,
     current_daa_score: Arc<AtomicU64>,
     network_id: Arc<Mutex<Option<NetworkId>>>,
     rpc: Arc<DynRpcApi>,
@@ -38,6 +39,7 @@ impl Inner {
         Self {
             pending: DashMap::new(),
             address_to_utxo_context_map: DashMap::new(),
+            recoverable_contexts: DashSet::new(),
             current_daa_score: Arc::new(AtomicU64::new(0)),
             network_id: Arc::new(Mutex::new(network_id)),
             rpc: rpc.clone(),
@@ -160,6 +162,7 @@ impl UtxoProcessor {
         self.inner.current_daa_score.store(current_daa_score, Ordering::SeqCst);
         self.notify(Events::DAAScoreChange(current_daa_score)).await?;
         self.handle_pending(current_daa_score).await?;
+        self.handle_recoverable(current_daa_score).await?;
         Ok(())
     }
 
@@ -193,6 +196,16 @@ impl UtxoProcessor {
         }
 
         Ok(())
+    }
+
+    async fn handle_recoverable(&self, current_daa_score: u64) -> Result<()> {
+        self.inner.recoverable_contexts.retain(|context| context.recover(current_daa_score, None));
+
+        Ok(())
+    }
+
+    pub fn register_recoverable_context(&self, context: &UtxoContext) {
+        self.inner.recoverable_contexts.insert(context.clone());
     }
 
     pub async fn handle_utxo_changed(&self, utxos: UtxosChangedNotification) -> Result<()> {

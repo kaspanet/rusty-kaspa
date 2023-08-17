@@ -233,8 +233,10 @@ impl UtxoContext {
             context.outgoing.insert(pending_tx.id(), pending_tx.clone());
         }
 
+        let processor = self.processor();
+        processor.register_recoverable_context(self);
         let record = TransactionRecord::new_outgoing(self, pending_tx);
-        self.processor().notify(Events::Outgoing { record }).await?;
+        processor.notify(Events::Outgoing { record }).await?;
 
         Ok(())
     }
@@ -375,22 +377,19 @@ impl UtxoContext {
         Ok(())
     }
 
-    // pub async fn chunks(&self, chunk_size: usize) -> Result<Vec<Vec<UtxoEntryReference>>> {
-    //     let entries = &self.context().mature;
-    //     let l = entries.chunks(chunk_size).map(|v| v.to_owned()).collect();
-    //     Ok(l)
-    // }
-
-    // recover UTXOs that went into `consumed` state but were never removed
-    // from the set by the UtxoChanged notification.
-    pub async fn recover(&self, duration: Option<Duration>) -> Result<bool> {
+    /// recover UTXOs that went into `consumed` state but were never removed
+    /// from the set by the UtxoChanged notification.
+    pub fn recover(&self, _current_daa_score: u64, duration: Option<Duration>) -> bool {
         let mut context = self.context();
         if context.consumed.is_empty() {
-            return Ok(false);
+            return false;
         }
 
-        let recovery_period = crate::utxo::UTXO_RECOVERY_PERIOD_SECONDS.load(Ordering::Relaxed);
-        let checkpoint = Instant::now().checked_sub(duration.unwrap_or(Duration::from_secs(recovery_period))).unwrap();
+        let checkpoint = Instant::now()
+            .checked_sub(
+                duration.unwrap_or_else(|| Duration::from_secs(crate::utxo::UTXO_RECOVERY_PERIOD_SECONDS.load(Ordering::Relaxed))),
+            )
+            .expect("UtxoContext::recover() invalid recovery period");
 
         let mut removed = vec![];
         context.consumed.retain(|_, consumed| {
@@ -402,13 +401,11 @@ impl UtxoContext {
             }
         });
 
-        let recovered = !removed.is_empty();
-
         removed.into_iter().for_each(|entry| {
             context.mature.sorted_insert_binary_asc_by_key(entry, |entry| entry.amount_as_ref());
         });
 
-        Ok(recovered)
+        context.consumed.is_not_empty()
     }
 
     pub async fn calculate_balance(&self) -> Balance {
