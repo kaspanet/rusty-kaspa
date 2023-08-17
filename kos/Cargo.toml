@@ -3,7 +3,7 @@
 name = "kaspa-os"
 description = "Kaspa Node & Wallet Manager"
 # please keep this version detached from the workspace
-version = "0.0.1"
+version = "0.0.2"
 edition.workspace = true
 authors.workspace = true
 include.workspace = true
