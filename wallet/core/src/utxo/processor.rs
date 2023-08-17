@@ -20,9 +20,15 @@ use kaspa_rpc_core::{
 use std::collections::HashMap;
 
 pub struct Inner {
+    /// UTXOs pending maturity (confirmation)
     pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
+    /// Address to UtxoContext map (maps all addresses used by
+    /// all UtxoContexts to their respective UtxoContexts)
     address_to_utxo_context_map: DashMap<Arc<Address>, UtxoContext>,
+    /// UtxoContexts that have recoverable UTXOs (UTXOs used in
+    /// outgoing transactions, that have not yet been confirmed)
     recoverable_contexts: DashSet<UtxoContext>,
+    // ---
     current_daa_score: Arc<AtomicU64>,
     network_id: Arc<Mutex<Option<NetworkId>>>,
     rpc: Arc<DynRpcApi>,

@@ -86,12 +86,21 @@ pub enum UtxoEntryVariant {
 
 #[derive(Default)]
 pub struct Context {
+    /// Mature (Confirmed) UTXOs
     pub(crate) mature: Vec<UtxoEntryReference>,
+    /// UTXOs that are pending confirmation
     pub(crate) pending: HashMap<UtxoEntryId, UtxoEntryReference>,
+    /// UTXOs consumed by recently created outgoing transactions
     pub(crate) consumed: HashMap<UtxoEntryId, Consumed>,
+    /// All UTXOs in posession of this context instance
     pub(crate) map: HashMap<UtxoEntryId, UtxoEntryReference>,
+    /// Outgoing transactions that have not yet been confirmed.
+    /// Confirmation occurs when the transaction UTXOs are
+    /// removed from the context by the UTXO change notification.
     outgoing: HashMap<TransactionId, PendingTransaction>,
+    /// Total balance of all UTXOs in this context (mature, pending)
     balance: Option<Balance>,
+    /// Addresses monitored by this UTXO context
     addresses: Arc<DashSet<Arc<Address>>>,
 }
 
