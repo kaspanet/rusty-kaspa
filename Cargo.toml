@@ -199,16 +199,16 @@ pbkdf2 = { version = "0.12.1" }
 # pbkdf2 = { version = "0.11", default-features = false}
 
 # workflow dependencies
-workflow-d3 = { version = "0.5.0" }
-workflow-nw = { version = "0.5.0" }
-workflow-log = { version = "0.5.0" }
-workflow-core = { version = "0.5.0" }
-workflow-wasm = { version = "0.5.0" }
-workflow-dom = { version = "0.5.0" }
-workflow-rpc = { version = "0.5.0" }
-workflow-node = { version = "0.5.0" }
-workflow-store = { version = "0.5.0" }
-workflow-terminal = { version = "0.5.2" }
+workflow-d3 = { version = "0.5.3" }
+workflow-nw = { version = "0.5.3" }
+workflow-log = { version = "0.5.3" }
+workflow-core = { version = "0.5.3" }
+workflow-wasm = { version = "0.5.3" }
+workflow-dom = { version = "0.5.3" }
+workflow-rpc = { version = "0.5.3" }
+workflow-node = { version = "0.5.3" }
+workflow-store = { version = "0.5.3" }
+workflow-terminal = { version = "0.5.3" }
 nw-sys = "0.1.5"
 
 # if below is enabled, this means that there is an ongoing work
