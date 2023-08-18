@@ -61,5 +61,5 @@ stage = "build"
 name = "building kaspa CPU miner (bin/kaspa-cpu-miner)"
 items = [
     { run = { cmd = "cargo build --release", cwd = "../../kaspa-cpu-miner" } },
-    { copy = { file = "../../kaspa-cpu-miner/target/release/kaspa-cpu-miner$EXE", to = "$TARGET/bin/" } },
+    { copy = { file = "../../kaspa-cpu-miner/target/release/kaspa-miner$EXE", to = "$TARGET/bin/kaspa-cpu-miner$EXE" } },
 ]
