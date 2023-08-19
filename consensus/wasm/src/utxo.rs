@@ -276,11 +276,11 @@ impl TryFrom<&JsValue> for UtxoEntryReference {
         } else if let Ok(utxo_entry_reference) = ref_from_abi!(UtxoEntryReference, js_value) {
             Ok(utxo_entry_reference)
         } else if let Some(object) = Object::try_from(js_value) {
-            let address = Address::try_from(object.get("address")?)?;
-            let outpoint = TransactionOutpoint::try_from(object.get("outpoint")?)?;
-            let utxo_entry = Object::from(object.get("utxoEntry")?);
+            let address = Address::try_from(object.get_value("address")?)?;
+            let outpoint = TransactionOutpoint::try_from(object.get_value("outpoint")?)?;
+            let utxo_entry = Object::from(object.get_value("utxoEntry")?);
             let amount = utxo_entry.get_u64("amount")?;
-            let script_public_key = ScriptPublicKey::try_from(utxo_entry.get("scriptPublicKey")?)?;
+            let script_public_key = ScriptPublicKey::try_from(utxo_entry.get_value("scriptPublicKey")?)?;
             let block_daa_score = utxo_entry.get_u64("blockDaaScore")?;
             let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
 

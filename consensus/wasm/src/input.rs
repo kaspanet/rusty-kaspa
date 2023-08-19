@@ -93,7 +93,7 @@ impl TryFrom<JsValue> for TransactionInput {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(&js_value) {
-            let previous_outpoint: TransactionOutpoint = object.get("previousOutpoint")?.try_into()?;
+            let previous_outpoint: TransactionOutpoint = object.get_value("previousOutpoint")?.try_into()?;
             let signature_script = object.get_vec_u8("signatureScript")?;
             let sequence = object.get_u64("sequence")?;
             let sig_op_count = object.get_u8("sigOpCount")?;

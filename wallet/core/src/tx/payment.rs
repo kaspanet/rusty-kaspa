@@ -37,7 +37,7 @@ impl TryFrom<JsValue> for PaymentOutput {
                 Ok(Self { address, amount })
             }
         } else if let Some(object) = Object::try_from(&js_value) {
-            let address = Address::try_from(object.get("address")?)?; //.ok().map(Address::try_from)?;
+            let address = object.get::<Address>("address")?;
             let amount = object.get_u64("amount")?;
             Ok(Self { address, amount })
         } else {

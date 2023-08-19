@@ -197,10 +197,6 @@ impl Interface for LocalStore {
         Ok(self.inner()?)
     }
 
-    // fn as_metadata_store(&self) -> Result<Arc<dyn MetadataStore>> {
-    //     Ok(self.inner()?)
-    // }
-
     fn as_transaction_record_store(&self) -> Result<Arc<dyn TransactionRecordStore>> {
         Ok(self.inner()?.transactions.clone())
     }
@@ -336,7 +332,7 @@ impl AccountStore for LocalStoreInner {
 
     async fn len(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize> {
         let len = match prv_key_data_id_filter {
-            Some(filter) => self.cache().accounts.vec.iter().filter(|account| account.prv_key_data_id == filter).count(),
+            Some(filter) => self.cache().accounts.vec.iter().filter(|account| account.prv_key_data_id == Some(filter)).count(),
             None => self.cache().accounts.vec.len(),
         };
 
@@ -409,23 +405,3 @@ impl AddressBookStore for LocalStoreInner {
         Ok(matches)
     }
 }
-
-// #[async_trait]
-// impl MetadataStore for LocalStoreInner {
-//     // async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Metadata>> {
-//     //     Ok(Box::pin(MetadataStream::new(self.cache.clone(), prv_key_data_id_filter)))
-//     // }
-
-//     // async fn load(&self, ids: &[AccountId]) -> Result<Vec<Arc<Metadata>>> {
-//     async fn load_single(&self, ids: &AccountId) -> Result<Option<Arc<Metadata>>> {
-//         Ok(self.cache().metadata.load_single(ids)?)
-//     }
-
-//     async fn store(&self, accounts: &[&Metadata]) -> Result<()> {
-//         let mut cache = self.cache();
-//         cache.metadata.store(accounts)?;
-//         self.set_modified(true);
-//         Ok(())
-//     }
-
-// }

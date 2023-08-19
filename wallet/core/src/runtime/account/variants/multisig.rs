@@ -88,7 +88,8 @@ impl Account for MultiSig {
             minimum_signatures: self.minimum_signatures,
         };
 
-        let account = storage::Account::new(*self.id(), self.prv_key_data_id, settings, storage::AccountData::MultiSig(multisig));
+        let account =
+            storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::MultiSig(multisig));
 
         Ok(account)
     }

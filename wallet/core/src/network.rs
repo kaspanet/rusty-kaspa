@@ -136,3 +136,12 @@ impl<'de> Deserialize<'de> for NetworkId {
         deserializer.deserialize_str(NetworkIdVisitor)
     }
 }
+
+impl TryFrom<JsValue> for NetworkId {
+    type Error = Error;
+
+    fn try_from(value: JsValue) -> Result<Self, Self::Error> {
+        let network_name = value.as_string().ok_or_else(|| Error::InvalidNetworkId(format!("{value:?}")))?;
+        NetworkId::from_str(&network_name)
+    }
+}

@@ -45,7 +45,7 @@ impl TryFrom<&JsValue> for TransactionOutpointInner {
                 Err(Error::InvalidTransactionOutpoint(string))
             }
         } else if let Some(object) = Object::try_from(js_value) {
-            let transaction_id: TransactionId = object.get("transactionId")?.try_into()?;
+            let transaction_id: TransactionId = object.get_value("transactionId")?.try_into()?;
             let index = object.get_u32("index")?;
             Ok(TransactionOutpointInner::new(transaction_id, index))
         } else {

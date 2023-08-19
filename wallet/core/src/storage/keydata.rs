@@ -104,15 +104,17 @@ impl KeyCaps {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "kebab-case")]
 #[serde(tag = "key-variant", content = "key-data")]
 pub enum PrvKeyVariant {
     // 12 (legacy) or 24 word Bip39 mnemonic
     Mnemonic(String),
-    // Bip39 seed
+    // Bip39 seed (generated from mnemonic)
     Bip39Seed(String),
-    // extended ECDSA/secp256k1 private keys
+    // Extended Private Key (XPrv)
     ExtendedPrivateKey(String),
+    // SecretKey
+    SecretKey(String),
 }
 
 impl PrvKeyVariant {
@@ -120,11 +122,16 @@ impl PrvKeyVariant {
         PrvKeyVariant::Mnemonic(mnemonic.phrase_string())
     }
 
+    pub fn from_secret_key(secret_key: SecretKey) -> Self {
+        PrvKeyVariant::SecretKey(secret_key.secret_bytes().to_vec().to_hex())
+    }
+
     pub fn get_string(&self) -> Zeroizing<String> {
         match self {
             PrvKeyVariant::Mnemonic(s) => Zeroizing::new(s.clone()),
-            PrvKeyVariant::ExtendedPrivateKey(s) => Zeroizing::new(s.clone()),
             PrvKeyVariant::Bip39Seed(s) => Zeroizing::new(s.clone()),
+            PrvKeyVariant::ExtendedPrivateKey(s) => Zeroizing::new(s.clone()),
+            PrvKeyVariant::SecretKey(s) => Zeroizing::new(s.clone()),
         }
     }
 
@@ -154,8 +161,9 @@ impl Zeroize for PrvKeyVariant {
     fn zeroize(&mut self) {
         match self {
             PrvKeyVariant::Mnemonic(s) => s.zeroize(),
-            PrvKeyVariant::ExtendedPrivateKey(s) => s.zeroize(),
             PrvKeyVariant::Bip39Seed(s) => s.zeroize(),
+            PrvKeyVariant::ExtendedPrivateKey(s) => s.zeroize(),
+            PrvKeyVariant::SecretKey(s) => s.zeroize(),
         }
     }
 }
@@ -174,8 +182,12 @@ pub struct PrvKeyDataPayload {
 }
 
 impl PrvKeyDataPayload {
-    pub fn try_new(mnemonic: Mnemonic, _payment_secret: Option<&Secret>) -> Result<Self> {
+    pub fn try_new_with_mnemonic(mnemonic: Mnemonic) -> Result<Self> {
         Ok(Self { prv_key_variant: PrvKeyVariant::from_mnemonic(mnemonic) })
+    }
+
+    pub fn try_new_with_secret_key(secret_key: SecretKey) -> Result<Self> {
+        Ok(Self { prv_key_variant: PrvKeyVariant::from_secret_key(secret_key) })
     }
 
     pub fn get_xprv(&self, payment_secret: Option<&Secret>) -> Result<ExtendedPrivateKey<SecretKey>> {
@@ -187,15 +199,16 @@ impl PrvKeyDataPayload {
                 let xkey = ExtendedPrivateKey::<SecretKey>::new(mnemonic.to_seed(payment_secret.unwrap_or_default()))?;
                 Ok(xkey)
             }
-            PrvKeyVariant::ExtendedPrivateKey(extended_private_key) => {
-                let xkey: ExtendedPrivateKey<SecretKey> = extended_private_key.parse()?;
-                Ok(xkey)
-            }
             PrvKeyVariant::Bip39Seed(seed) => {
                 let seed = Zeroizing::new(Vec::from_hex(seed.as_ref())?);
                 let xkey = ExtendedPrivateKey::<SecretKey>::new(seed)?;
                 Ok(xkey)
             }
+            PrvKeyVariant::ExtendedPrivateKey(extended_private_key) => {
+                let xkey: ExtendedPrivateKey<SecretKey> = extended_private_key.parse()?;
+                Ok(xkey)
+            }
+            PrvKeyVariant::SecretKey(_) => Err(Error::XPrvSupport),
         }
     }
 
@@ -208,6 +221,13 @@ impl PrvKeyDataPayload {
 
     pub fn as_variant(&self) -> Zeroizing<PrvKeyVariant> {
         Zeroizing::new(self.prv_key_variant.clone())
+    }
+
+    pub fn as_secret_key(&self) -> Result<Option<SecretKey>> {
+        match &self.prv_key_variant {
+            PrvKeyVariant::SecretKey(private_key) => Ok(Some(SecretKey::from_str(private_key)?)),
+            _ => Ok(None),
+        }
     }
 
     pub fn id(&self) -> PrvKeyDataId {
@@ -265,7 +285,7 @@ impl TryFrom<(Mnemonic, Option<&Secret>)> for PrvKeyData {
     type Error = Error;
     fn try_from((mnemonic, payment_secret): (Mnemonic, Option<&Secret>)) -> Result<Self> {
         let account_caps = KeyCaps::from_mnemonic_phrase(mnemonic.phrase());
-        let key_data_payload = PrvKeyDataPayload::try_new(mnemonic, payment_secret)?;
+        let key_data_payload = PrvKeyDataPayload::try_new_with_mnemonic(mnemonic)?;
         let key_data_payload_id = key_data_payload.id();
         let key_data_payload = Encryptable::Plain(key_data_payload);
 
@@ -297,10 +317,24 @@ impl PrvKeyData {
         Self { id, payload, key_caps, name }
     }
 
-    pub fn try_new_from_mnemonic(mnemonic: Mnemonic, secret: Option<&Secret>) -> Result<Self> {
-        let account_caps = KeyCaps::from_mnemonic_phrase(mnemonic.phrase());
-        let payload = PrvKeyDataPayload::try_new(mnemonic, secret)?;
-        let prv_key_data = Self { id: payload.id(), payload: Encryptable::Plain(payload), key_caps: account_caps, name: None };
+    pub fn try_new_from_mnemonic(mnemonic: Mnemonic, payment_secret: Option<&Secret>) -> Result<Self> {
+        let key_caps = KeyCaps::from_mnemonic_phrase(mnemonic.phrase());
+        let payload = PrvKeyDataPayload::try_new_with_mnemonic(mnemonic)?;
+        let mut prv_key_data = Self { id: payload.id(), payload: Encryptable::Plain(payload), key_caps, name: None };
+        if let Some(payment_secret) = payment_secret {
+            prv_key_data.encrypt(payment_secret)?;
+        }
+
+        Ok(prv_key_data)
+    }
+
+    pub fn try_new_from_secret_key(secret_key: SecretKey, payment_secret: Option<&Secret>) -> Result<Self> {
+        let key_caps = KeyCaps::SingleAccount;
+        let payload = PrvKeyDataPayload::try_new_with_secret_key(secret_key)?;
+        let mut prv_key_data = Self { id: payload.id(), payload: Encryptable::Plain(payload), key_caps, name: None };
+        if let Some(payment_secret) = payment_secret {
+            prv_key_data.encrypt(payment_secret)?;
+        }
 
         Ok(prv_key_data)
     }
@@ -345,39 +379,3 @@ impl Display for PrvKeyDataInfo {
         Ok(())
     }
 }
-
-// #[derive(Clone, Debug, Serialize, Deserialize)]
-// #[serde(rename_all = "camelCase")]
-// pub struct PubKeyData {
-//     pub id: PubKeyDataId,
-//     pub keys: Vec<String>,
-//     pub cosigner_index: Option<u32>,
-//     pub minimum_signatures: Option<u16>,
-// }
-
-// impl Zeroize for PubKeyData {
-//     fn zeroize(&mut self) {
-//         self.id.zeroize();
-//         self.keys.zeroize();
-//         self.cosigner_index.zeroize();
-//         self.minimum_signatures.zeroize();
-//     }
-// }
-
-// impl Drop for PubKeyData {
-//     fn drop(&mut self) {
-//         self.zeroize();
-//     }
-// }
-
-// impl ZeroizeOnDrop for PubKeyData {}
-
-// impl PubKeyData {
-//     pub fn new(keys: Vec<String>, cosigner_index: Option<u32>, minimum_signatures: Option<u16>) -> Self {
-//         let mut temp = keys.clone();
-//         temp.sort();
-//         let str = String::from_iter(temp);
-//         let id = PubKeyDataId::new(xxh3_64(str.as_bytes()));
-//         Self { id, keys, cosigner_index, minimum_signatures }
-//     }
-// }

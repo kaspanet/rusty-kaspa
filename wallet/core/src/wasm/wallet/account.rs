@@ -3,6 +3,8 @@ use crate::result::Result;
 use crate::runtime;
 use crate::secret::Secret;
 use crate::tx::PaymentOutputs;
+use crate::wasm::utxo::UtxoContext;
+use kaspa_consensus_wasm::Keypair;
 use workflow_core::abortable::Abortable;
 use workflow_wasm::abi::ref_from_abi;
 
@@ -10,16 +12,27 @@ use workflow_wasm::abi::ref_from_abi;
 #[derive(Clone)]
 pub struct Account {
     inner: Arc<dyn runtime::Account>,
+    #[wasm_bindgen(getter_with_clone)]
+    pub context: UtxoContext,
 }
 
 impl Account {
     pub async fn try_new(inner: Arc<dyn runtime::Account>) -> Result<Self> {
-        Ok(Self { inner })
+        let context = inner.utxo_context().clone();
+        Ok(Self { inner, context: context.into() })
     }
 }
 
 #[wasm_bindgen]
 impl Account {
+    pub fn ctor(js_value: JsValue) -> Result<Account> {
+        let AccountCreateArgs {} = js_value.try_into()?;
+
+        todo!();
+
+        // Ok(account)
+    }
+
     #[wasm_bindgen(getter)]
     pub fn balance(&self) -> JsValue {
         match self.inner.balance() {
@@ -59,14 +72,14 @@ impl Account {
     }
 
     #[wasm_bindgen(js_name = "deriveReceiveAddress")]
-    pub async fn create_receive_address(&self) -> Result<Address> {
+    pub async fn derive_receive_address(&self) -> Result<Address> {
         let account = self.inner.clone().as_derivation_capable()?;
         let receive_address = account.new_receive_address().await?;
         Ok(receive_address)
     }
 
     #[wasm_bindgen(js_name = "deriveChangeAddress")]
-    pub async fn create_change_address(&self) -> Result<Address> {
+    pub async fn derive_change_address(&self) -> Result<Address> {
         let account = self.inner.clone().as_derivation_capable()?;
         let change_address = account.new_change_address().await?;
         Ok(change_address)
@@ -110,6 +123,13 @@ impl Account {
 impl From<Account> for Arc<dyn runtime::Account> {
     fn from(account: Account) -> Self {
         account.inner
+    }
+}
+
+impl TryFrom<JsValue> for Account {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
+        Ok(ref_from_abi!(Account, &js_value)?)
     }
 }
 
@@ -158,14 +178,14 @@ impl TryFrom<JsValue> for AccountSendArgs {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(&js_value) {
-            let outputs = PaymentOutputs::try_from(object.get("outputs")?)?;
+            let outputs = object.get::<PaymentOutputs>("outputs")?;
 
             let priority_fee_sompi = object.get_u64("priorityFee").ok();
             let include_fees_in_amount = object.get_bool("includeFeesInAmount").unwrap_or(false);
             let abortable = object.get("abortable").ok().and_then(|v| ref_from_abi!(Abortable, &v).ok()).unwrap_or_default();
 
             let wallet_secret = object.get_string("walletSecret")?.into();
-            let payment_secret = object.get("paymentSecret")?.as_string().map(|s| s.into());
+            let payment_secret = object.get_value("paymentSecret")?.as_string().map(|s| s.into());
 
             let send_args =
                 AccountSendArgs { outputs, priority_fee_sompi, include_fees_in_amount, wallet_secret, payment_secret, abortable };
@@ -173,6 +193,25 @@ impl TryFrom<JsValue> for AccountSendArgs {
             Ok(send_args)
         } else {
             Err("Argument to Account::send() must be an object".into())
+        }
+    }
+}
+
+pub struct AccountCreateArgs {
+    // rpc: RpcClient,
+    // network_id: NetworkId,
+}
+
+impl TryFrom<JsValue> for AccountCreateArgs {
+    type Error = Error;
+    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+        if let Some(object) = Object::try_from(&value) {
+            let _keypair = object.try_get::<Keypair>("keypair")?;
+            let _public_key = object.try_get::<Keypair>("keypair")?;
+
+            Ok(AccountCreateArgs {})
+        } else {
+            Err(Error::custom("Account: suppliedd value must be an object"))
         }
     }
 }

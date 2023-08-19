@@ -72,7 +72,7 @@ impl Stream for AccountStream {
             while self.inner.cursor < accounts.len() {
                 let account = accounts[self.inner.cursor].clone();
                 self.inner.cursor += 1;
-                if account.prv_key_data_id == filter {
+                if account.prv_key_data_id == Some(filter) {
                     let meta = metadata.get(&account.id).cloned();
 
                     return Poll::Ready(Some(Ok((account, meta))));
@@ -89,44 +89,6 @@ impl Stream for AccountStream {
         }
     }
 }
-
-// pub struct MetadataStream {
-//     inner: StoreStreamInner,
-//     // filter: Option<PrvKeyDataId>,
-// }
-
-// impl MetadataStream {
-//     pub(crate) fn new(cache: Arc<Mutex<Cache>>, filter: Option<PrvKeyDataId>) -> Self {
-//         Self { inner: StoreStreamInner::new(cache), filter }
-//     }
-// }
-
-// impl Stream for MetadataStream {
-//     type Item = Result<Arc<Metadata>>;
-
-//     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-//         let cache = self.inner.cache.clone();
-//         let cache = cache.lock().unwrap();
-//         let vec = &cache.metadata.vec;
-
-//         if let Some(filter) = self.filter {
-//             while self.inner.cursor < vec.len() {
-//                 let account = vec[self.inner.cursor].clone();
-//                 self.inner.cursor += 1;
-//                 if account.prv_key_data_id == filter {
-//                     return Poll::Ready(Some(Ok(account)));
-//                 }
-//             }
-//             Poll::Ready(None)
-//         } else if self.inner.cursor < vec.len() {
-//             let account = vec[self.inner.cursor].clone();
-//             self.inner.cursor += 1;
-//             Poll::Ready(Some(Ok(account)))
-//         } else {
-//             Poll::Ready(None)
-//         }
-//     }
-// }
 
 #[derive(Clone, Debug)]
 pub struct AddressBookEntryStream {

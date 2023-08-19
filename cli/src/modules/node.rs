@@ -282,7 +282,11 @@ impl Node {
                                             term.writeln(format!("{time} {}", style(text).red()));
                                         }
                                         _ => {
-                                            term.writeln(format!("{time} {text}"));
+                                            if text.starts_with("Processed") {
+                                                term.writeln(format!("{time} {}", style(text).blue()));
+                                            } else {
+                                                term.writeln(format!("{time} {text}"));
+                                            }
                                         }
                                     }
                                 }

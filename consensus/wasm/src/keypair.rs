@@ -93,6 +93,13 @@ impl Keypair {
     }
 }
 
+impl TryFrom<JsValue> for Keypair {
+    type Error = Error;
+    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+        Ok(ref_from_abi!(Keypair, &value)?)
+    }
+}
+
 /// Data structure that envelops a Private Key
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

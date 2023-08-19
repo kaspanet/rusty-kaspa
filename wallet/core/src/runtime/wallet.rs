@@ -132,7 +132,7 @@ impl Wallet {
         };
 
         let multiplexer = Multiplexer::new();
-        let utxo_processor = Arc::new(UtxoProcessor::new(&rpc, network_id, &multiplexer));
+        let utxo_processor = Arc::new(UtxoProcessor::new(&rpc, network_id, Some(multiplexer.clone())));
 
         let wallet = Wallet {
             inner: Arc::new(Inner {

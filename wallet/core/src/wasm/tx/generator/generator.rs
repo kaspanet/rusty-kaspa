@@ -148,20 +148,17 @@ impl TryFrom<GeneratorSettingsObject> for GeneratorSettings {
     type Error = Error;
     fn try_from(args: GeneratorSettingsObject) -> std::result::Result<Self, Self::Error> {
         // lack of outputs results in a sweep transaction compounding utxos into the change address
-        let outputs = args.get("outputs")?;
+
+        let outputs = args.get_value("outputs")?;
         let final_transaction_destination: PaymentDestination =
             if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_from(outputs)?.into() };
 
-        let change_address = args.get("changeAddress")?;
-        if change_address.is_undefined() {
-            return Err(Error::custom("changeAddress is required"));
-        }
-        let change_address = Address::try_from(change_address)?;
+        let change_address = args.try_get::<Address>("changeAddress")?.ok_or(Error::custom("changeAddress is required"))?;
 
-        let final_priority_fee = Fees::try_from(args.get("priorityFee")?)?;
+        let final_priority_fee = args.get::<Fees>("priorityFee")?;
 
         let utxo_entries = {
-            let utxo_entries = args.get("utxoEntries")?;
+            let utxo_entries = args.get_value("utxoEntries")?;
             if utxo_entries.is_falsy() {
                 args.get("entries")?
             } else {
@@ -171,19 +168,17 @@ impl TryFrom<GeneratorSettingsObject> for GeneratorSettings {
         let generator_source = if !utxo_entries.is_undefined() {
             GeneratorSource::UtxoEntries(utxo_entries.try_into_utxo_entry_references()?)
         } else {
-            let account = args.get("account")?;
-            if account.is_undefined() {
-                return Err(Error::custom("'account' or 'utxoEntries' property is required for Generator"));
-            } else {
-                GeneratorSource::Account(ref_from_abi!(Account, &account)?)
-            }
+            let account = args
+                .try_get::<Account>("account")?
+                .ok_or(Error::custom("'account' or 'utxoEntries' property is required for Generator"))?;
+            GeneratorSource::Account(account)
         };
 
-        let sig_op_count = args.get("sigOpCount")?;
+        let sig_op_count = args.get_value("sigOpCount")?;
         let sig_op_count =
             if !sig_op_count.is_undefined() { sig_op_count.as_f64().expect("sigOpCount should be a number") as u8 } else { 1 };
 
-        let minimum_signatures = args.get("minimumSignatures")?;
+        let minimum_signatures = args.get_value("minimumSignatures")?;
         let minimum_signatures = if !minimum_signatures.is_undefined() {
             minimum_signatures.as_f64().expect("minimumSignatures should be a number") as u16
         } else {

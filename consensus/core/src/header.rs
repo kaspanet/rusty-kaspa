@@ -255,22 +255,28 @@ impl TryFrom<JsValue> for Header {
                 .collect::<std::result::Result<Vec<Vec<Hash>>, Error>>()?;
 
             let header = Self {
-                hash: object.get("hash")?.try_into().unwrap_or_default(),
+                hash: object.get_value("hash")?.try_into().unwrap_or_default(),
                 version: object.get_u16("version")?,
                 parents_by_level,
-                hash_merkle_root: object.get("hashMerkleRoot")?.try_into().map_err(|err| Error::convert("hashMerkleRoot", err))?,
+                hash_merkle_root: object
+                    .get_value("hashMerkleRoot")?
+                    .try_into()
+                    .map_err(|err| Error::convert("hashMerkleRoot", err))?,
                 accepted_id_merkle_root: object
-                    .get("acceptedIdMerkleRoot")?
+                    .get_value("acceptedIdMerkleRoot")?
                     .try_into()
                     .map_err(|err| Error::convert("acceptedIdMerkleRoot", err))?,
-                utxo_commitment: object.get("utxoCommitment")?.try_into().map_err(|err| Error::convert("utxoCommitment", err))?,
+                utxo_commitment: object
+                    .get_value("utxoCommitment")?
+                    .try_into()
+                    .map_err(|err| Error::convert("utxoCommitment", err))?,
                 nonce: object.get_u64("nonce")?,
                 timestamp: object.get_u64("timestamp")?,
                 daa_score: object.get_u64("daaScore")?,
                 bits: object.get_u32("bits")?,
-                blue_work: object.get("blueWork")?.try_into().map_err(|err| Error::convert("blueWork", err))?,
+                blue_work: object.get_value("blueWork")?.try_into().map_err(|err| Error::convert("blueWork", err))?,
                 blue_score: object.get_u64("blueScore")?,
-                pruning_point: object.get("pruningPoint")?.try_into().map_err(|err| Error::convert("pruningPoint", err))?,
+                pruning_point: object.get_value("pruningPoint")?.try_into().map_err(|err| Error::convert("pruningPoint", err))?,
             };
 
             Ok(header)

@@ -61,7 +61,7 @@ impl Account for Keypair {
 
         let keypair = storage::Keypair { public_key: self.public_key, ecdsa: self.ecdsa };
 
-        let account = storage::Account::new(*self.id(), self.prv_key_data_id, settings, storage::AccountData::Keypair(keypair));
+        let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Keypair(keypair));
 
         Ok(account)
     }

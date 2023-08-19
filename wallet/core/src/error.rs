@@ -67,6 +67,9 @@ pub enum Error {
     #[error("No network selected. Please use `network (mainnet|testnet-10|testnet-11)` to select a network.")]
     MissingNetworkId,
 
+    #[error("Invalid or unsupported network id: {0}")]
+    InvalidNetworkId(String),
+
     #[error("Invalid network type - expected: {0} connected to: {1}")]
     InvalidNetworkType(String, String),
 
@@ -144,6 +147,9 @@ pub enum Error {
 
     #[error("private key {0} already exists")]
     PrivateKeyAlreadyExists(String),
+
+    #[error("xprv key is not supported for this key type")]
+    XPrvSupport,
 
     #[error("invalid key id: {0}")]
     KeyId(String),

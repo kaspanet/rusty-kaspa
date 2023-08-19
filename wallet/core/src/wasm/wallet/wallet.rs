@@ -18,9 +18,9 @@ use workflow_wasm::channel::MultiplexerClient;
 pub struct Wallet {
     pub(crate) wallet: Arc<runtime::Wallet>,
     #[wasm_bindgen(getter_with_clone)]
-    pub events: MultiplexerClient,
-    #[wasm_bindgen(getter_with_clone)]
     pub rpc: RpcClient,
+    #[wasm_bindgen(getter_with_clone)]
+    pub events: MultiplexerClient,
 }
 
 #[wasm_bindgen]
@@ -212,25 +212,12 @@ impl TryFrom<JsValue> for WalletCtorArgs {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self> {
         if let Some(object) = Object::try_from(&js_value) {
-            let resident = object.get("resident")?.as_bool().unwrap_or(false);
+            let resident = object.get_value("resident")?.as_bool().unwrap_or(false);
 
-            let network_id = object.get("networkId")?;
-            let network_id = if let Some(network_id) = network_id.as_string() {
-                let network_id = NetworkId::from_str(network_id.as_str())?;
-                Some(network_id)
-            } else {
-                None
-            };
+            let network_id = object.try_get::<NetworkId>("networkId")?;
+            let encoding = object.try_get::<WrpcEncoding>("encoding")?;
 
-            let encoding = object.get("encoding")?;
-            let encoding = if let Some(encoding) = encoding.as_string() {
-                let encoding = WrpcEncoding::from_str(encoding.as_str())?;
-                Some(encoding)
-            } else {
-                None
-            };
-
-            let url = object.get("url")?.as_string();
+            let url = object.get_value("url")?.as_string();
 
             Ok(Self { resident, network_id, encoding, url })
         } else {
@@ -251,14 +238,12 @@ impl TryFrom<&JsValue> for WalletCreateArgs {
     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(js_value) {
             Ok(WalletCreateArgs {
-                name: object.get("name")?.as_string(),
-                user_hint: object.get("hint")?.as_string().map(Hint::from),
+                name: object.try_get_string("name")?,
+                user_hint: object.try_get_string("hint")?.map(Hint::from),
                 wallet_secret: object.get_string("walletSecret")?.into(),
-                overwrite_wallet_storage: object.get("overwrite")?.as_bool().unwrap_or(false),
+                overwrite_wallet_storage: object.try_get_bool("overwrite")?.unwrap_or(false),
             })
         } else if let Some(secret) = js_value.as_string() {
-            // Err("WalletCreateArgs argument must be an object".into())
-            // Ok(WalletCreateArgs::default())
             Ok(WalletCreateArgs { name: None, user_hint: None, wallet_secret: secret.into(), overwrite_wallet_storage: false })
         } else {
             Err("WalletCreateArgs argument must be an object or a secret".into())
@@ -289,10 +274,10 @@ impl TryFrom<&JsValue> for PrvKeyDataCreateArgs {
     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(js_value) {
             Ok(PrvKeyDataCreateArgs {
-                name: object.get("name")?.as_string(),
+                name: object.try_get_string("name")?,
                 wallet_secret: object.get_string("walletSecret")?.into(),
-                payment_secret: object.get("paymentSecret")?.as_string().map(|s| s.into()),
-                mnemonic: object.get("mnemonic")?.as_string(),
+                payment_secret: object.try_get_string("paymentSecret")?.map(|s| s.into()),
+                mnemonic: object.try_get_string("mnemonic")?,
             })
         } else if let Some(secret) = js_value.as_string() {
             Ok(PrvKeyDataCreateArgs { name: None, wallet_secret: secret.into(), payment_secret: None, mnemonic: None })
@@ -328,23 +313,23 @@ impl TryFrom<&JsValue> for AccountCreateArgs {
     type Error = Error;
     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(js_value) {
-            let kind = object.get("accountKind")?;
-            let account_kind = if let Some(kind) = kind.as_f64() {
-                AccountKind::try_from(kind as u8)?
-            } else if let Some(kind) = kind.as_string() {
-                AccountKind::from_str(kind.as_str())?
-            } else if kind.is_undefined() {
-                AccountKind::default()
-            } else {
-                return Err(Error::Custom("AccountCreateArgs is missing `accountKind` property".to_string()));
-            };
+            let account_kind = object.get::<AccountKind>("accountKind")?;
+            // let account_kind = if let Some(kind) = kind.as_f64() {
+            //     AccountKind::try_from(kind as u8)?
+            // } else if let Some(kind) = kind.as_string() {
+            //     AccountKind::from_str(kind.as_str())?
+            // } else if kind.is_undefined() {
+            //     AccountKind::default()
+            // } else {
+            //     return Err(Error::Custom("AccountCreateArgs is missing `accountKind` property".to_string()));
+            // };
 
             Ok(AccountCreateArgs {
-                name: object.get("name")?.as_string(),
-                title: object.get("title")?.as_string(),
+                name: object.try_get_string("name")?,
+                title: object.try_get_string("title")?,
                 account_kind,
                 wallet_secret: object.get_string("walletSecret")?.into(),
-                payment_secret: object.get("paymentSecret")?.as_string(),
+                payment_secret: object.try_get_string("paymentSecret")?,
             })
         } else {
             Err("AccountCreateArgs argument must be an object".into())

@@ -36,12 +36,12 @@ pub struct Inner {
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
     notification_channel: Channel<Notification>,
-    multiplexer: Multiplexer<Events>,
     sync_proc: SyncMonitor,
+    multiplexer: Multiplexer<Events>,
 }
 
 impl Inner {
-    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: &Multiplexer<Events>) -> Self {
+    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: Multiplexer<Events>) -> Self {
         Self {
             pending: DashMap::new(),
             address_to_utxo_context_map: DashMap::new(),
@@ -53,8 +53,8 @@ impl Inner {
             listener_id: Mutex::new(None),
             task_ctl: DuplexChannel::oneshot(),
             notification_channel: Channel::<Notification>::unbounded(),
-            multiplexer: multiplexer.clone(),
-            sync_proc: SyncMonitor::new(rpc, multiplexer),
+            sync_proc: SyncMonitor::new(rpc, &multiplexer),
+            multiplexer,
         }
     }
 }
@@ -65,7 +65,8 @@ pub struct UtxoProcessor {
 }
 
 impl UtxoProcessor {
-    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: &Multiplexer<Events>) -> Self {
+    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: Option<Multiplexer<Events>>) -> Self {
+        let multiplexer = multiplexer.unwrap_or_else(Multiplexer::new);
         UtxoProcessor { inner: Arc::new(Inner::new(rpc, network_id, multiplexer)) }
     }
 

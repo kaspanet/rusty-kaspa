@@ -50,20 +50,10 @@ mod tests {
         let mnemonic2s = "fiber boy desk trip pitch snake table awkward endorse car learn forest solid ticket enemy pink gesture wealth iron chaos clock gather honey farm".to_string();
 
         let mnemonic1 = Mnemonic::new(mnemonic1s.clone(), Language::English)?;
-        let key_caps = KeyCaps::from_mnemonic_phrase(mnemonic1.phrase());
-        let key_data_payload1 = PrvKeyDataPayload::try_new(mnemonic1.clone(), Some(&payment_secret))?;
-        let prv_key_data1 = PrvKeyData::new(key_data_payload1.id(), None, key_caps, Encryptable::Plain(key_data_payload1));
+        let prv_key_data1 = PrvKeyData::try_new_from_mnemonic(mnemonic1.clone(), Some(&payment_secret))?;
+        let mnemonic2 = Mnemonic::new(mnemonic2s.clone(), Language::English)?;
 
-        // let mnemonic2 = Mnemonic::new(mnemonic2, Language::English)?;
-        let mnemonic2 = Mnemonic::new(mnemonic2s, Language::English)?;
-        let key_caps = KeyCaps::from_mnemonic_phrase(mnemonic2.phrase());
-        let key_data_payload2 = PrvKeyDataPayload::try_new(mnemonic2.clone(), Some(&payment_secret))?;
-        let prv_key_data2 = PrvKeyData::new(
-            key_data_payload2.id(),
-            None,
-            key_caps,
-            Encryptable::Plain(key_data_payload2).into_encrypted(&payment_secret)?,
-        );
+        let prv_key_data2 = PrvKeyData::try_new_from_mnemonic(mnemonic2.clone(), Some(&payment_secret))?;
 
         let pub_key_data1 = Arc::new(vec!["abc".to_string()]);
         let pub_key_data2 = Arc::new(vec!["xyz".to_string()]);
@@ -78,22 +68,7 @@ mod tests {
 
         let id = AccountId::from_bip32(&prv_key_data1.id, &bip32);
 
-        let account1 = Account::new(
-            id,
-            prv_key_data1.id,
-            settings,
-            AccountData::Bip32(bip32),
-            // Some("Wallet-A".to_string()),
-            // Some("Wallet A".to_string()),
-            // AccountKind::Bip32,
-            // 0,
-            // true,
-            // pub_key_data1.clone(),
-            // prv_key_data1.id,
-            // false,
-            // 1,
-            // 0,
-        );
+        let account1 = Account::new(id, Some(prv_key_data1.id), settings, AccountData::Bip32(bip32));
 
         payload.accounts.push(account1);
 
@@ -103,38 +78,9 @@ mod tests {
 
         let id = AccountId::from_bip32(&prv_key_data2.id, &bip32);
 
-        let account2 = Account::new(
-            id,
-            prv_key_data2.id,
-            settings,
-            AccountData::Bip32(bip32),
-            // Some("Wallet-A".to_string()),
-            // Some("Wallet A".to_string()),
-            // AccountKind::Bip32,
-            // 0,
-            // true,
-            // pub_key_data1.clone(),
-            // prv_key_data1.id,
-            // false,
-            // 1,
-            // 0,
-        );
-        //let account_id = account1.id.clone();
-        payload.accounts.push(account2);
+        let account2 = Account::new(id, Some(prv_key_data2.id), settings, AccountData::Bip32(bip32));
 
-        // let account2 = Account::new(
-        //     Some("Wallet-B".to_string()),
-        //     Some("Wallet B".to_string()),
-        //     AccountKind::Bip32,
-        //     0,
-        //     true,
-        //     pub_key_data2.clone(),
-        //     prv_key_data2.id,
-        //     false,
-        //     1,
-        //     0,
-        // );
-        // payload.accounts.push(account2);
+        payload.accounts.push(account2);
 
         let payload_json = serde_json::to_string(&payload).unwrap();
         // let settings = WalletSettings::new(account_id);
