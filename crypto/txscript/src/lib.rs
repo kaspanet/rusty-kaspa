@@ -616,6 +616,111 @@ mod tests {
     }
 
     #[test]
+    fn test_check_opelse() {
+        let test_cases = vec![
+            ScriptTestCase {
+                script: b"\x67", // OpElse
+                expected_result: Err(TxScriptError::InvalidState("condition stack empty".to_string())),
+            },
+            ScriptTestCase {
+                script: b"\x51\x63\x67", // OpTrue, OpIf, OpElse
+                expected_result: Err(TxScriptError::ErrUnbalancedConditional),
+            },
+            ScriptTestCase {
+                script: b"\x00\x63\x67", // OpFalse, OpIf, OpElse
+                expected_result: Err(TxScriptError::ErrUnbalancedConditional),
+            },
+            ScriptTestCase {
+                script: b"\x51\x63\x51\x67\x68", // OpTrue, OpIf, OpTrue, OpElse, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x00\x63\x67\x51\x68", // OpFalse, OpIf, OpElse, OpTrue, OpEndIf
+                expected_result: Ok(()),
+            },
+        ];
+
+        run_test_script_cases(test_cases)
+    }
+
+    #[test]
+    fn test_check_opnotif() {
+        let test_cases = vec![
+            ScriptTestCase {
+                script: b"\x64", // OpNotIf
+                expected_result: Err(TxScriptError::EmptyStack),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64", // OpTrue, OpNotIf
+                expected_result: Err(TxScriptError::ErrUnbalancedConditional),
+            },
+            ScriptTestCase {
+                script: b"\x00\x64", // OpFalse, OpNotIf
+                expected_result: Err(TxScriptError::ErrUnbalancedConditional),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64\x67\x51\x68", // OpTrue, OpNotIf, OpElse, OpTrue, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64\x51\x67\x00\x68", // OpTrue, OpNotIf, OpTrue, OpElse, OpFalse, OpEndIf
+                expected_result: Err(TxScriptError::EvalFalse),
+            },
+            ScriptTestCase {
+                script: b"\x00\x64\x51\x68", // OpFalse, OpIf, OpTrue, OpEndIf
+                expected_result: Ok(()),
+            },
+        ];
+
+        run_test_script_cases(test_cases)
+    }
+
+    #[test]
+    fn test_check_nestedif() {
+        let test_cases = vec![
+            ScriptTestCase {
+                script: b"\x51\x63\x00\x67\x51\x63\x51\x68\x68", // OpTrue, OpIf, OpFalse, OpElse, OpTrue, OpIf,
+                // OpTrue, OpEndIf, OpEndIf
+                expected_result: Err(TxScriptError::EvalFalse),
+            },
+            ScriptTestCase {
+                script: b"\x51\x63\x00\x67\x00\x63\x67\x51\x68\x68", // OpTrue, OpIf, OpFalse, OpElse, OpFalse, OpIf,
+                // OpElse, OpTrue, OpEndIf, OpEndIf
+                expected_result: Err(TxScriptError::EvalFalse),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64\x00\x67\x51\x63\x51\x68\x68", // OpTrue, OpNotIf, OpFalse, OpElse, OpTrue, OpIf,
+                // OpTrue, OpEndIf, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64\x00\x67\x00\x63\x67\x51\x68\x68", // OpTrue, OpNotIf, OpFalse, OpElse, OpFalse, OpIf,
+                // OpTrue, OpEndIf, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64\x00\x67\x00\x64\x00\x67\x51\x68\x68", // OpTrue, OpNotIf, OpFalse, OpElse, OpFalse, OpNotIf,
+                // OpFalse, OpElse, OpTrue, OpEndIf, OpEndIf
+                expected_result: Err(TxScriptError::EvalFalse),
+            },
+            ScriptTestCase {
+                script: b"\x51\x00\x63\x63\x00\x68\x68", // OpTrue, OpFalse, OpIf, OpIf  OpFalse, OpEndIf, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x51\x00\x63\x63\x63\x00\x67\x00\x68\x68\x68", // OpTrue, OpFalse, OpIf, OpIf  OpFalse, OpEndIf, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x51\x00\x63\x63\x63\x63\x00\x67\x00\x68\x68\x68\x68", // OpTrue, OpFalse, OpIf, OpIf  OpFalse, OpEndIf, OpEndIf
+                expected_result: Ok(()),
+            },
+        ];
+
+        run_test_script_cases(test_cases)
+    }
+
+    #[test]
     fn test_check_pub_key_encode() {
         let test_cases = vec![
             KeyTestCase {
