@@ -66,7 +66,7 @@ impl Keypair {
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
     pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
-        let pk = JSPublicKey{ inner: self.public_key };
+        let pk = JSPublicKey { inner: self.public_key };
         let address = pk.to_address(network_type).unwrap();
         Ok(address)
     }
@@ -165,13 +165,13 @@ impl TryFrom<JsValue> for PrivateKey {
 
 // Data structure that envelopes a PublicKey
 #[derive(Clone, Debug)]
-#[wasm_bindgen()]
+#[wasm_bindgen(js_name = PublicKey)]
 pub struct JSPublicKey {
-    inner: PublicKey
+    inner: PublicKey,
 }
 
 // TODO: Fix this to be exported as `PublicKey` in JS
-#[wasm_bindgen]
+#[wasm_bindgen(js_class = PublicKey)]
 impl JSPublicKey {
     /// Create a new [`PublicKey`] from a hex-encoded string.
     #[wasm_bindgen(constructor)]
@@ -200,10 +200,12 @@ impl TryFrom<JsValue> for JSPublicKey {
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(hex_str) = js_value.as_string() {
             Self::try_new(hex_str.as_str())
-        } /*else if Array::is_array(&js_value) {
+        }
+        /*else if Array::is_array(&js_value) {
             let array = Uint8Array::new(&js_value);
             Self::try_from_slice(array.to_vec().as_slice())
-        } */else {
+        } */
+        else {
             Ok(ref_from_abi!(JSPublicKey, &js_value)?)
         }
     }

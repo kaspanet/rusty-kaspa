@@ -3,8 +3,7 @@ globalThis.WebSocket = require('websocket').w3cwebsocket;
 let kaspa = require('./kaspa/kaspa_wasm');
 let {
     PrivateKey,
-    // FIXME: Make sure we're binding `PublicKey` not `JSPublicKey`
-    JSPublicKey: PublicKey,
+    PublicKey,
     XPublicKey,
     createAddress,
     NetworkType,
