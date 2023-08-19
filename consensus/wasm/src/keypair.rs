@@ -66,8 +66,8 @@ impl Keypair {
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
     pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
-        let payload = &self.public_key.serialize()[1..];
-        let address = Address::new(network_type.into(), AddressVersion::PubKey, payload);
+        let pk = JSPublicKey { xonly_public_key: self.xonly_public_key, source: self.public_key.to_string() };
+        let address = pk.to_address(network_type).unwrap();
         Ok(address)
     }
 
@@ -166,6 +166,56 @@ impl TryFrom<JsValue> for PrivateKey {
             Self::try_from_slice(array.to_vec().as_slice())
         } else {
             Ok(ref_from_abi!(PrivateKey, &js_value)?)
+        }
+    }
+}
+
+// Data structure that envelopes a PublicKey
+// Only supports Schnorr-based addresses
+#[derive(Clone, Debug)]
+#[wasm_bindgen(js_name = PublicKey)]
+pub struct JSPublicKey {
+    xonly_public_key: XOnlyPublicKey,
+    source: String,
+}
+
+#[wasm_bindgen(js_class = PublicKey)]
+impl JSPublicKey {
+    /// Create a new [`PublicKey`] from a hex-encoded string.
+    #[wasm_bindgen(constructor)]
+    pub fn try_new(key: &str) -> Result<JSPublicKey> {
+        match PublicKey::from_str(key) {
+            Ok(public_key) => {
+                let (xonly_public_key, _) = public_key.x_only_public_key();
+                Ok(Self { xonly_public_key, source: (*key).to_string() })
+            }
+            Err(_e) => Ok(Self { xonly_public_key: XOnlyPublicKey::from_str(key)?, source: (*key).to_string() }),
+        }
+    }
+
+    #[wasm_bindgen(js_name = toString)]
+    pub fn to_string(&self) -> String {
+        self.source.clone()
+    }
+
+    /// Get the [`Address`] of this PublicKey.
+    /// Receives a [`NetworkType`] to determine the prefix of the address.
+    /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
+    #[wasm_bindgen(js_name = toAddress)]
+    pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
+        let payload = &self.xonly_public_key.serialize();
+        let address = Address::new(network_type.into(), AddressVersion::PubKey, payload);
+        Ok(address)
+    }
+}
+
+impl TryFrom<JsValue> for JSPublicKey {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
+        if let Some(hex_str) = js_value.as_string() {
+            Self::try_new(hex_str.as_str())
+        } else {
+            Ok(ref_from_abi!(JSPublicKey, &js_value)?)
         }
     }
 }
