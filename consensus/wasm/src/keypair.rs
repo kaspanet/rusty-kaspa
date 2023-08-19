@@ -22,7 +22,7 @@ use crate::result::Result;
 use js_sys::{Array, Uint8Array};
 use kaspa_addresses::{Address, Version as AddressVersion};
 use kaspa_consensus_core::networktype::NetworkType;
-use secp256k1::{PublicKey, Secp256k1, SecretKey, XOnlyPublicKey};
+use secp256k1::{Secp256k1, XOnlyPublicKey};
 use serde_wasm_bindgen::to_value;
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
@@ -32,14 +32,14 @@ use workflow_wasm::abi::*;
 #[derive(Debug, Clone)]
 #[wasm_bindgen(inspectable)]
 pub struct Keypair {
-    secret_key: SecretKey,
-    public_key: PublicKey,
+    secret_key: secp256k1::SecretKey,
+    public_key: secp256k1::PublicKey,
     xonly_public_key: XOnlyPublicKey,
 }
 
 #[wasm_bindgen]
 impl Keypair {
-    fn new(secret_key: SecretKey, public_key: PublicKey, xonly_public_key: XOnlyPublicKey) -> Self {
+    fn new(secret_key: secp256k1::SecretKey, public_key: secp256k1::PublicKey, xonly_public_key: XOnlyPublicKey) -> Self {
         Self { secret_key, public_key, xonly_public_key }
     }
 
@@ -66,8 +66,18 @@ impl Keypair {
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
     pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
-        let pk = JSPublicKey { xonly_public_key: self.xonly_public_key, source: self.public_key.to_string() };
+        let pk = PublicKey { xonly_public_key: self.xonly_public_key, source: self.public_key.to_string() };
         let address = pk.to_address(network_type).unwrap();
+        Ok(address)
+    }
+
+    /// Get `ECDSA` [`Address`] of this Keypair's [`PublicKey`].
+    /// Receives a [`NetworkType`] to determine the prefix of the address.
+    /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
+    #[wasm_bindgen(js_name = toAddressECDSA)]
+    pub fn to_address_ecdsa(&self, network_type: NetworkType) -> Result<Address> {
+        let pk = PublicKey { xonly_public_key: self.xonly_public_key, source: self.public_key.to_string() };
+        let address = pk.to_address_ecdsa(network_type).unwrap();
         Ok(address)
     }
 
@@ -86,8 +96,8 @@ impl Keypair {
     #[wasm_bindgen(js_name = "fromPrivateKey")]
     pub fn from_private_key(secret_key: &PrivateKey) -> Result<Keypair, JsError> {
         let secp = Secp256k1::new();
-        let secret_key = SecretKey::from_slice(&secret_key.secret_bytes())?;
-        let public_key = PublicKey::from_secret_key(&secp, &secret_key);
+        let secret_key = secp256k1::SecretKey::from_slice(&secret_key.secret_bytes())?;
+        let public_key = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
         let (xonly_public_key, _) = public_key.x_only_public_key();
         Ok(Keypair::new(secret_key, public_key, xonly_public_key))
     }
@@ -104,7 +114,7 @@ impl TryFrom<JsValue> for Keypair {
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct PrivateKey {
-    inner: SecretKey,
+    inner: secp256k1::SecretKey,
 }
 
 impl PrivateKey {
@@ -113,8 +123,8 @@ impl PrivateKey {
     }
 }
 
-impl From<&SecretKey> for PrivateKey {
-    fn from(value: &SecretKey) -> Self {
+impl From<&secp256k1::SecretKey> for PrivateKey {
+    fn from(value: &secp256k1::SecretKey) -> Self {
         Self { inner: *value }
     }
 }
@@ -130,13 +140,13 @@ impl PrivateKey {
     /// Create a new [`PrivateKey`] from a hex-encoded string.
     #[wasm_bindgen(constructor)]
     pub fn try_new(key: &str) -> Result<PrivateKey> {
-        Ok(Self { inner: SecretKey::from_str(key)? })
+        Ok(Self { inner: secp256k1::SecretKey::from_str(key)? })
     }
 }
 
 impl PrivateKey {
     pub fn try_from_slice(data: &[u8]) -> Result<PrivateKey> {
-        Ok(Self { inner: SecretKey::from_slice(data)? })
+        Ok(Self { inner: secp256k1::SecretKey::from_slice(data)? })
     }
 }
 
@@ -174,28 +184,23 @@ impl TryFrom<JsValue> for PrivateKey {
 // Only supports Schnorr-based addresses
 #[derive(Clone, Debug)]
 #[wasm_bindgen(js_name = PublicKey)]
-pub struct JSPublicKey {
+pub struct PublicKey {
     xonly_public_key: XOnlyPublicKey,
     source: String,
 }
 
 #[wasm_bindgen(js_class = PublicKey)]
-impl JSPublicKey {
+impl PublicKey {
     /// Create a new [`PublicKey`] from a hex-encoded string.
     #[wasm_bindgen(constructor)]
-    pub fn try_new(key: &str) -> Result<JSPublicKey> {
-        match PublicKey::from_str(key) {
+    pub fn try_new(key: &str) -> Result<PublicKey> {
+        match secp256k1::PublicKey::from_str(key) {
             Ok(public_key) => {
                 let (xonly_public_key, _) = public_key.x_only_public_key();
                 Ok(Self { xonly_public_key, source: (*key).to_string() })
             }
             Err(_e) => Ok(Self { xonly_public_key: XOnlyPublicKey::from_str(key)?, source: (*key).to_string() }),
         }
-    }
-
-    #[wasm_bindgen(js_name = toString)]
-    pub fn to_string(&self) -> String {
-        self.source.clone()
     }
 
     /// Get the [`Address`] of this PublicKey.
@@ -207,15 +212,31 @@ impl JSPublicKey {
         let address = Address::new(network_type.into(), AddressVersion::PubKey, payload);
         Ok(address)
     }
+
+    /// Get `ECDSA` [`Address`] of this PublicKey.
+    /// Receives a [`NetworkType`] to determine the prefix of the address.
+    /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
+    #[wasm_bindgen(js_name = toAddressECDSA)]
+    pub fn to_address_ecdsa(&self, network_type: NetworkType) -> Result<Address> {
+        let payload = &self.xonly_public_key.serialize();
+        let address = Address::new(network_type.into(), AddressVersion::PubKeyECDSA, payload);
+        Ok(address)
+    }
 }
 
-impl TryFrom<JsValue> for JSPublicKey {
+impl std::fmt::Display for PublicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.source)
+    }
+}
+
+impl TryFrom<JsValue> for PublicKey {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(hex_str) = js_value.as_string() {
             Self::try_new(hex_str.as_str())
         } else {
-            Ok(ref_from_abi!(JSPublicKey, &js_value)?)
+            Ok(ref_from_abi!(PublicKey, &js_value)?)
         }
     }
 }
