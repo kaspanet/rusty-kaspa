@@ -66,7 +66,7 @@ impl Keypair {
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
     pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
-        let pk = JSPublicKey { inner: self.public_key };
+        let pk = JSPublicKey { public_key: Some(self.public_key), xonly_public_key: self.xonly_public_key };
         let address = pk.to_address(network_type).unwrap();
         Ok(address)
     }
@@ -167,7 +167,8 @@ impl TryFrom<JsValue> for PrivateKey {
 #[derive(Clone, Debug)]
 #[wasm_bindgen(js_name = PublicKey)]
 pub struct JSPublicKey {
-    inner: PublicKey,
+    public_key: Option<PublicKey>,
+    xonly_public_key: XOnlyPublicKey,
 }
 
 // TODO: Fix this to be exported as `PublicKey` in JS
@@ -176,12 +177,21 @@ impl JSPublicKey {
     /// Create a new [`PublicKey`] from a hex-encoded string.
     #[wasm_bindgen(constructor)]
     pub fn try_new(key: &str) -> Result<JSPublicKey> {
-        Ok(Self { inner: PublicKey::from_str(key)? })
+        match PublicKey::from_str(key) {
+            Ok(public_key) => {
+                let (xonly_public_key, _) = public_key.x_only_public_key();
+                Ok(Self { public_key: Some(public_key), xonly_public_key })
+            }
+            Err(_e) => Ok(Self { public_key: None, xonly_public_key: XOnlyPublicKey::from_str(key)?, source: (*key).to_string() }),
+        }
     }
 
     #[wasm_bindgen(js_name = toString)]
     pub fn to_string(&self) -> String {
-        self.inner.to_string()
+        match self.public_key {
+            Some(pk) => pk.to_string(),
+            None => self.xonly_public_key.to_string(),
+        }
     }
 
     /// Get the [`Address`] of this PublicKey.
@@ -189,7 +199,7 @@ impl JSPublicKey {
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
     pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
-        let payload = &self.inner.serialize()[1..];
+        let payload = &self.xonly_public_key.serialize();
         let address = Address::new(network_type.into(), AddressVersion::PubKey, payload);
         Ok(address)
     }
