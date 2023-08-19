@@ -80,10 +80,10 @@ impl Inner {
         });
 
         let ws_config = WebSocketConfig {
-            max_send_queue: None,
             max_message_size: Some(1024 * 1024 * 1024), // 1Gb message size limit on native platforms
             max_frame_size: None,
             accept_unmasked_frames: false,
+            ..Default::default()
         };
 
         let rpc = Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options, Some(ws_config))?);
@@ -235,7 +235,6 @@ impl KaspaRpcClient {
     /// to the wRPC server.  If the supplied `block` call is `true`
     /// this function will block until the first successful
     /// connection.
-    // pub async fn connect(&self, options: ConnectOptions) -> ConnectResult {
     pub async fn connect(&self, options: ConnectOptions) -> ConnectResult<Error> {
         self.start().await?;
         Ok(self.inner.rpc.connect(options).await?)

@@ -70,8 +70,7 @@ impl RpcClient {
         let options: ConnectOptions = args.try_into()?;
 
         self.start_notification_task()?;
-        // self.client.start().await?;
-        self.client.connect(options).await?; //.unwrap();
+        self.client.connect(options).await?;
         Ok(())
     }
 
@@ -79,7 +78,6 @@ impl RpcClient {
     pub async fn disconnect(&self) -> Result<()> {
         self.clear_notification_callback();
         self.stop_notification_task().await?;
-        // self.client.stop().await?;
         self.client.shutdown().await?;
         Ok(())
     }
