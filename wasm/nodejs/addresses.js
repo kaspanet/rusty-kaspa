@@ -52,10 +52,19 @@ function demoGenerateAddressFromPublicKeyHexString() {
     console.info("Given compressed public key: '02dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659'");
     console.info(publicKey.toString());
     console.info(publicKey.toAddress(NetworkType.Mainnet).toString());
+    console.info(publicKey.toAddress(NetworkType.Mainnet).toString() == 'kaspa:qr0lr4ml9fn3chekrqmjdkergxl93l4wrk3dankcgvjq776s9wn9jkdskewva');
 
     // Given x-only public key: 'dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659'
     const xOnlyPublicKey = new PublicKey('dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659');
     console.info("Given x-only public key: 'dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659'");
     console.info(xOnlyPublicKey.toString());
     console.info(xOnlyPublicKey.toAddress(NetworkType.Mainnet).toString());
+    console.info(xOnlyPublicKey.toAddress(NetworkType.Mainnet).toString() == 'kaspa:qr0lr4ml9fn3chekrqmjdkergxl93l4wrk3dankcgvjq776s9wn9jkdskewva');
+
+    // Given full DER public key: '0421EB0C4270128B16C93C5F0DAC48D56051A6237DAE997B58912695052818E348B0A895CBD0C93A11EE7AFAC745929D96A4642A71831F54A7377893AF71A2E2AE'
+    const fullDERPublicKey = new PublicKey('0421EB0C4270128B16C93C5F0DAC48D56051A6237DAE997B58912695052818E348B0A895CBD0C93A11EE7AFAC745929D96A4642A71831F54A7377893AF71A2E2AE');
+    console.info("Given x-only public key: '0421EB0C4270128B16C93C5F0DAC48D56051A6237DAE997B58912695052818E348B0A895CBD0C93A11EE7AFAC745929D96A4642A71831F54A7377893AF71A2E2AE'");
+    console.info(fullDERPublicKey.toString());
+    console.info(fullDERPublicKey.toAddress(NetworkType.Mainnet).toString());
+    console.info(fullDERPublicKey.toAddress(NetworkType.Mainnet).toString() == 'kaspa:qqs7krzzwqfgk9kf830smtzg64s9rf3r0khfj76cjynf2pfgrr35saatu88xq');
 }
