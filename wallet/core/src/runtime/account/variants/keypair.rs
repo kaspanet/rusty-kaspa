@@ -25,7 +25,6 @@ impl Keypair {
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
         let storage::account::Keypair { public_key, ecdsa } = data;
-
         Ok(Self { inner, prv_key_data_id, public_key, ecdsa })
     }
 }
@@ -49,20 +48,19 @@ impl Account for Keypair {
     }
 
     fn receive_address(&self) -> Result<Address> {
-        Ok(Address::new(self.inner().wallet.network_id()?.into(), Version::PubKey, &self.public_key.serialize()[1..]))
+        let (xonly_public_key, _) = self.public_key.x_only_public_key();
+        Ok(Address::new(self.inner().wallet.network_id()?.into(), Version::PubKey, &xonly_public_key.serialize()))
     }
 
     fn change_address(&self) -> Result<Address> {
-        Ok(Address::new(self.inner().wallet.network_id()?.into(), Version::PubKey, &self.public_key.serialize()[1..]))
+        let (xonly_public_key, _) = self.public_key.x_only_public_key();
+        Ok(Address::new(self.inner().wallet.network_id()?.into(), Version::PubKey, &xonly_public_key.serialize()))
     }
 
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
-
         let keypair = storage::Keypair { public_key: self.public_key, ecdsa: self.ecdsa };
-
         let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Keypair(keypair));
-
         Ok(account)
     }
 

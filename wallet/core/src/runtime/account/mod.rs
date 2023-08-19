@@ -1,9 +1,7 @@
-pub mod data;
 pub mod id;
 pub mod kind;
 pub mod variants;
 
-pub use data::*;
 pub use id::*;
 use kaspa_bip32::ChildNumber;
 pub use kind::*;

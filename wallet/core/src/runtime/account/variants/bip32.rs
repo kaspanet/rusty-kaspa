@@ -73,11 +73,8 @@ impl Account for Bip32 {
 
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
-
         let bip32 = storage::Bip32 { account_index: self.account_index, xpub_keys: self.xpub_keys.clone(), ecdsa: self.ecdsa };
-
         let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Bip32(bip32));
-
         Ok(account)
     }
 

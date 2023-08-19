@@ -1,32 +1,11 @@
 #[allow(unused_imports)]
 use crate::derivation::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
-// use crate::address::{build_derivate_paths, AddressManager};
+use crate::encryption::sha256_hash;
 use crate::imports::*;
-// use crate::result::Result;
-// use crate::runtime::{AtomicBalance, Balance, BalanceStrings, Wallet};
-// use crate::secret::Secret;
-// use crate::storage::interface::AccessContext;
+use crate::runtime::account::AccountKind;
 use crate::storage::{self, PrvKeyDataId};
-// use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, KeydataSigner, PaymentDestination, PendingTransaction, Signer};
-// use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoEntryReference};
-// use crate::AddressDerivationManager;
-// use faster_hex::hex_string;
 use kaspa_hashes::Hash;
 use secp256k1::PublicKey;
-// use futures::future::join_all;
-// use kaspa_bip32::ChildNumber;
-// use kaspa_notify::listener::ListenerId;
-// use secp256k1::{ONE_KEY, PublicKey, SecretKey};
-// use separator::Separatable;
-// use serde::Serializer;
-// use std::hash::Hash;
-// use std::str::FromStr;
-// use workflow_core::abortable::Abortable;
-// use workflow_core::enums::u8_try_from;
-// use kaspa_addresses::Version as AddressVersion;
-// use crate::storage::AccountData as StorageData;
-use crate::encryption::sha256_hash;
-use crate::runtime::account::AccountKind;
 
 // #[derive(Hash)]
 #[derive(BorshSerialize)]
@@ -126,33 +105,6 @@ impl ToHex for AccountId {
         format!("{}", self.0)
     }
 }
-
-// impl Serialize for AccountId {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         // self.0.serialize(&mut serializer)
-//         // serializer.serialize(&self.0)
-//         // serializer.serialize_str(&hex_string(&self.0.to_be_bytes()))
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for AccountId {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-
-//         let hex_str = <std::string::String as Deserialize>::deserialize(deserializer)?;
-//         let mut out = [0u8; 8];
-//         let mut input = [b'0'; 16];
-//         let start = input.len() - hex_str.len();
-//         input[start..].copy_from_slice(hex_str.as_bytes());
-//         faster_hex::hex_decode(&input, &mut out).map_err(serde::de::Error::custom)?;
-//         Ok(AccountId(u64::from_be_bytes(out)))
-//     }
-// }
 
 impl std::fmt::Display for AccountId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -183,6 +183,13 @@ pub fn js_sha256_hash(data: JsValue) -> Result<String> {
     Ok(hash.as_ref().to_hex())
 }
 
+#[wasm_bindgen(js_name = "sha256d")]
+pub fn js_sha256d_hash(data: JsValue) -> Result<String> {
+    let data = data.try_as_vec_u8()?;
+    let hash = sha256d_hash(&data);
+    Ok(hash.as_ref().to_hex())
+}
+
 #[wasm_bindgen(js_name = "argon2sha256iv")]
 pub fn js_argon2_sha256iv_phash(data: JsValue, byte_length: usize) -> Result<String> {
     let data = data.try_as_vec_u8()?;
