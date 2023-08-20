@@ -5,7 +5,7 @@ const {parseArgs} = require("./utils");
 const {
     RpcClient
 } = kaspa;
-kaspa.init_console_panic_hook();
+kaspa.initConsolePanicHook();
 
 (async () => {
     const {

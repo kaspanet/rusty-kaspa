@@ -10,10 +10,10 @@ const {
     UtxoEntries,
     kaspaToSompi,
     createTransactions,
-    init_console_panic_hook
+    initConsolePanicHook
 } = require('./kaspa/kaspa_wasm');
 
-init_console_panic_hook();
+initConsolePanicHook();
 
 async function runDemo() {
     let args = process.argv.slice(2);
@@ -44,6 +44,13 @@ async function runDemo() {
     console.log(`Connecting to ${rpc.url}`);
 
     await rpc.connect();
+    let { isSynced } = await rpc.getServerInfo();
+    if (!isSynced) {
+        console.error("Please wait for the node to sync");
+        rpc.disconnect();
+        return;
+    }
+
 
     let entries = await rpc.getUtxosByAddresses([address]);
     

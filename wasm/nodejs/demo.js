@@ -9,11 +9,11 @@ const {
     NetworkType,
     createTransaction,
     signTransaction,
-    init_console_panic_hook
+    initConsolePanicHook
 } = require('./kaspa/kaspa_wasm');
 const {parseArgs} = require("./utils");
 
-init_console_panic_hook();
+initConsolePanicHook();
 
 async function runDemo() {
     const args = parseArgs({});
@@ -43,6 +43,13 @@ async function runDemo() {
     const rpc = new RpcClient(encoding, rpcUrl, networkType);
 
     await rpc.connect();
+    let { isSynced } = await rpc.getServerInfo();
+    if (!isSynced) {
+        console.error("Please wait for the node to sync");
+        rpc.disconnect();
+        return;
+    }
+
 
     try {
         const utxos = await rpc.getUtxosByAddresses({addresses: [address]});
@@ -72,13 +79,10 @@ async function runDemo() {
 
         console.info(tx);
 
-        let transaction = signTransaction(tx, [sk], true);
+        const transaction = signTransaction(tx, [sk], true);
+        console.info(JSON.stringify(transaction, null, 4));
 
-        let rpcTransaction = transaction.toRpcTransaction();
-
-        console.info(JSON.stringify(rpcTransaction, null, 4));
-
-        let result = await rpc.submitTransaction({transaction: rpcTransaction, allowOrphan: false});
+        let result = await rpc.submitTransaction(transaction);
 
         console.info(result);
     } finally {

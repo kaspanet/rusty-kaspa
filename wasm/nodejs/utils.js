@@ -65,20 +65,6 @@ function parseArgs(options = {
     };
 }
 
-async function guardRpcIsSynced(rpc) {
-    try {
-        const info = await rpc.getInfo();
-        if (!info.isSynced) {
-            console.error(`RPC is not synced, please wait until it is synced and try again.`);
-            process.exit(0);
-        }
-    } catch (err) {
-        console.error(`Failed to get info from RPC: ${err.message}`);
-        process.exit(1);
-    }
-}
-
 module.exports = {
     parseArgs,
-    guardRpcIsSynced,
 };

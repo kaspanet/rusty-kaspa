@@ -7,11 +7,11 @@ const {
     RpcClient,
     kaspaToSompi,
     createTransactions,
-    init_console_panic_hook
+    initConsolePanicHook
 } = require('./kaspa/kaspa_wasm');
-const {parseArgs, guardRpcIsSynced} = require('./utils');
+const { parseArgs } = require('./utils');
 
-init_console_panic_hook();
+initConsolePanicHook();
 
 async function runDemo() {
     let {
@@ -39,7 +39,12 @@ async function runDemo() {
     console.log(`Connecting to ${rpc.url}`);
 
     await rpc.connect();
-    await guardRpcIsSynced(rpc);
+    let { isSynced } = await rpc.getServerInfo();
+    if (!isSynced) {
+        console.error("Please wait for the node to sync");
+        rpc.disconnect();
+        return;
+    }
 
     let entries = await rpc.getUtxosByAddresses([skAddress]);
 

@@ -1,5 +1,3 @@
-globalThis.WebSocket = require('websocket').w3cwebsocket;
-
 let kaspa = require('./kaspa/kaspa_wasm');
 let {
     PrivateKey,
@@ -8,7 +6,7 @@ let {
     createAddress,
     NetworkType,
 } = kaspa;
-kaspa.init_console_panic_hook();
+kaspa.initConsolePanicHook();
 
 (async ()=>{
     /*** Common Use-cases ***/
