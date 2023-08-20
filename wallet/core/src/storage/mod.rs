@@ -51,8 +51,8 @@ mod tests {
 
         let mnemonic1 = Mnemonic::new(mnemonic1s.clone(), Language::English)?;
         let prv_key_data1 = PrvKeyData::try_new_from_mnemonic(mnemonic1.clone(), Some(&payment_secret))?;
-        let mnemonic2 = Mnemonic::new(mnemonic2s.clone(), Language::English)?;
 
+        let mnemonic2 = Mnemonic::new(mnemonic2s.clone(), Language::English)?;
         let prv_key_data2 = PrvKeyData::try_new_from_mnemonic(mnemonic2.clone(), Some(&payment_secret))?;
 
         let pub_key_data1 = Arc::new(vec!["abc".to_string()]);
@@ -63,23 +63,15 @@ mod tests {
         payload.prv_key_data.push(prv_key_data2.clone());
 
         let settings = Settings { name: Some("Wallet-A".to_string()), title: Some("Wallet A".to_string()), is_visible: false };
-
         let bip32 = Bip32 { account_index: 0, xpub_keys: pub_key_data1.clone(), ecdsa: false };
-
         let id = AccountId::from_bip32(&prv_key_data1.id, &bip32);
-
         let account1 = Account::new(id, Some(prv_key_data1.id), settings, AccountData::Bip32(bip32));
-
         payload.accounts.push(account1);
 
         let settings = Settings { name: Some("Wallet-B".to_string()), title: Some("Wallet B".to_string()), is_visible: false };
-
         let bip32 = Bip32 { account_index: 0, xpub_keys: pub_key_data2.clone(), ecdsa: false };
-
         let id = AccountId::from_bip32(&prv_key_data2.id, &bip32);
-
         let account2 = Account::new(id, Some(prv_key_data2.id), settings, AccountData::Bip32(bip32));
-
         payload.accounts.push(account2);
 
         let payload_json = serde_json::to_string(&payload).unwrap();
@@ -100,7 +92,7 @@ mod tests {
         assert_eq!(payload_json, serde_json::to_string(w2payload.as_ref())?);
 
         let w2keydata1 = w2payload.as_ref().prv_key_data.get(0).unwrap();
-        let w2keydata1_payload = w2keydata1.payload.decrypt(None).unwrap();
+        let w2keydata1_payload = w2keydata1.payload.decrypt(Some(&payment_secret)).unwrap();
         let first_mnemonic = &w2keydata1_payload.as_ref().as_mnemonic()?.unwrap().phrase_string();
         // println!("first mnemonic (plain): {}", hex_string(first_mnemonic.as_ref()));
         println!("first mnemonic (plain): {first_mnemonic}");
