@@ -15,11 +15,12 @@ const {
 
 initConsolePanicHook();
 
-async function runDemo() {
+(async () => {
+
     let args = process.argv.slice(2);
     let destination = args.shift() || "kaspatest:qqkl0ct62rv6dz74pff2kx5sfyasl4z28uekevau23g877r5gt6userwyrmtt";
     console.log("using destination address:", destination);
-    
+
     // ---
     // network type
     let network = NetworkType.Testnet;
@@ -53,12 +54,12 @@ async function runDemo() {
 
 
     let entries = await rpc.getUtxosByAddresses([address]);
-    
+
     if (!entries.length) {
         console.error(`No UTXOs found for address ${address}`);
     } else {
         console.info(entries);
-        
+
         // a very basic JS-driven utxo entry sort
         entries.sort((a, b) => a.utxoEntry.amount > b.utxoEntry.amount || -(a.utxoEntry.amount < b.utxoEntry.amount));
 
@@ -83,8 +84,8 @@ async function runDemo() {
         // amount is reached.  It will then create a final
         // transaction according to the supplied outputs.
         let generator = new Generator({
-            entries, 
-            outputs : [[destination, kaspaToSompi(0.2)]],
+            entries,
+            outputs: [[destination, kaspaToSompi(0.2)]],
             priorityFee: 0,
             changeAddress: address,
         });
@@ -93,7 +94,7 @@ async function runDemo() {
         // sequence of transactions
         // for a requested amount of KAS.
         // sign and submit these transactions
-        while(pending = await generator.next()) {
+        while (pending = await generator.next()) {
             await pending.sign([sk]);
             let txid = await pending.submit(rpc);
             console.log("txid:", txid);
@@ -104,6 +105,5 @@ async function runDemo() {
     }
 
     rpc.disconnect();
-}
 
-runDemo();
+})();

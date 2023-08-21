@@ -321,11 +321,11 @@ impl UtxoContext {
 
         context.mature.retain(|entry| {
             if remove_mature_ids.contains(&entry.id()) {
-                // log_info!("REMOVE MATURE VIA REMOVED LIST: {}", entry.id());
+                // log_info!("remove mature via removed list: {}", entry.id());
                 removed.push(UtxoEntryVariant::Mature(entry.clone()));
                 false
             } else {
-                // log_info!("MATURE NOT IN REMOVED LIST - RETAINING {}", entry.id());
+                // log_info!("mature not in removed list - retaining {}", entry.id());
                 true
             }
         });
@@ -510,7 +510,7 @@ impl UtxoContext {
         Ok(())
     }
 
-    pub async fn unregister_addresses(self: &Arc<Self>, addresses: Vec<Address>) -> Result<()> {
+    pub async fn unregister_addresses(&self, addresses: Vec<Address>) -> Result<()> {
         if !addresses.is_empty() {
             let local = self.addresses();
             let addresses = addresses.clone().into_iter().map(Arc::new).collect::<Vec<_>>();
@@ -522,6 +522,20 @@ impl UtxoContext {
             log_warning!("utxo processor: unregistering empty address set")
         }
 
+        Ok(())
+    }
+
+    pub async fn scan_and_register_addresses(&self, addresses: Vec<Address>, current_daa_score: Option<u64>) -> Result<()> {
+        self.register_addresses(&addresses).await?;
+        let resp = self.processor().rpc().get_utxos_by_addresses(addresses).await?;
+        let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
+        let current_daa_score = current_daa_score.unwrap_or_else(|| {
+            self.processor()
+                .current_daa_score()
+                .expect("daa score or initialized UtxoProcessor are when invoking scan_and_register_addresses()")
+        });
+        self.extend(refs, current_daa_score).await?;
+        self.update_balance().await?;
         Ok(())
     }
 }

@@ -36,7 +36,7 @@ impl Account {
     #[wasm_bindgen(getter)]
     pub fn balance(&self) -> JsValue {
         match self.inner.balance() {
-            Some(balance) => super::Balance::from(balance).into(),
+            Some(balance) => crate::wasm::Balance::from(balance).into(),
             None => JsValue::UNDEFINED,
         }
     }
@@ -60,6 +60,14 @@ impl Account {
     // pub fn is_ecdsa(&self) -> bool {
     //     self.inner.ecdsa
     // }
+
+    #[wasm_bindgen(js_name = balanceStrings)]
+    pub fn balance_strings(&self, network_type: JsValue) -> Result<JsValue> {
+        match self.inner.balance() {
+            Some(balance) => Ok(crate::wasm::Balance::from(balance).as_strings(network_type)?.into()),
+            None => Ok(JsValue::UNDEFINED),
+        }
+    }
 
     #[wasm_bindgen(getter, js_name = "receiveAddress")]
     pub fn receive_address(&self) -> Result<String> {

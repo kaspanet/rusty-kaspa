@@ -5989,9 +5989,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3200e3dabc472918b2a61032ee04043025ba2da2afdc05009477c70114b4453f"
+checksum = "d87f799a46745701f69606fc5012f5e63e6856b9c5e4f798c364d2785ad05642"
 dependencies = [
  "cfg-if 1.0.0",
  "faster-hex 0.8.0",

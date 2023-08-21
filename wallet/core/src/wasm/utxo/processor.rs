@@ -3,7 +3,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::utxo as native;
 use kaspa_wrpc_client::wasm::RpcClient;
-use workflow_wasm::channel::MultiplexerClient;
+use workflow_wasm::channel::EventDispatcher;
 
 #[derive(Clone)]
 #[wasm_bindgen(inspectable)]
@@ -12,7 +12,7 @@ pub struct UtxoProcessor {
     #[wasm_bindgen(getter_with_clone)]
     pub rpc: RpcClient,
     #[wasm_bindgen(getter_with_clone)]
-    pub events: MultiplexerClient,
+    pub events: EventDispatcher,
 }
 
 impl UtxoProcessor {
@@ -23,24 +23,33 @@ impl UtxoProcessor {
 
 #[wasm_bindgen]
 impl UtxoProcessor {
-    pub fn ctor(js_value: JsValue) -> Result<UtxoProcessor> {
+    #[wasm_bindgen(constructor)]
+    pub async fn ctor(js_value: JsValue) -> Result<UtxoProcessor> {
         let UtxoProcessorCreateArgs { rpc, network_id } = js_value.try_into()?;
         let rpc_client: Arc<DynRpcApi> = rpc.client().clone();
         let inner = native::UtxoProcessor::new(&rpc_client, Some(network_id), None);
+        let events = EventDispatcher::new();
 
-        // - TODO
-        let events = MultiplexerClient::new();
+        inner.start().await?;
+
         Ok(UtxoProcessor { inner, rpc, events })
-        // - TODO
+    }
+
+    // pub async fn start(&self) -> Result<()> {
+    //     self.inner().start().await
+    // }
+
+    pub async fn shutdown(&self) -> Result<()> {
+        self.inner().stop().await
     }
 }
 
-// impl TryFrom<JsValue> for UtxoProcessor {
-//     type Error = Error;
-//     fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-//         Ok(ref_from_abi!(UtxoProcessor, &value)?)
-//     }
-// }
+impl TryFrom<JsValue> for UtxoProcessor {
+    type Error = Error;
+    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+        Ok(ref_from_abi!(UtxoProcessor, &value)?)
+    }
+}
 
 pub struct UtxoProcessorCreateArgs {
     rpc: RpcClient,
@@ -53,12 +62,7 @@ impl TryFrom<JsValue> for UtxoProcessorCreateArgs {
         if let Some(object) = Object::try_from(&value) {
             let rpc = object.get_value("rpc")?;
             let rpc = ref_from_abi!(RpcClient, &rpc)?;
-
-            let network_id = object.get::<NetworkId>("network_id")?;
-
-            // let network_id = NetworkId::try_from(object.get("network_id"))?;
-            // let
-
+            let network_id = object.get::<NetworkId>("networkId")?;
             Ok(UtxoProcessorCreateArgs { rpc, network_id })
         } else {
             Err(Error::custom("UtxoProcessor: suppliedd value must be an object"))

@@ -13,7 +13,8 @@ const { parseArgs } = require('./utils');
 
 initConsolePanicHook();
 
-async function runDemo() {
+(async ()=>{
+
     let {
         address: destinationAddress,
         networkType,
@@ -23,30 +24,30 @@ async function runDemo() {
     console.log("using destination address:", destinationAddress);
 
     // From BIP0340
-    const sk = new PrivateKey('b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f');
+    const privateKey = new PrivateKey('b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f');
 
-    const kaspaAddress = sk.toKeypair().toAddress(networkType).toString();
+    const kaspaAddress = privateKey.toKeypair().toAddress(networkType).toString();
     // Full kaspa address: kaspa:qr0lr4ml9fn3chekrqmjdkergxl93l4wrk3dankcgvjq776s9wn9jkdskewva
     console.info(`Full kaspa address: ${kaspaAddress}`);
 
-    const skAddress = new Address(kaspaAddress);
-    console.info(skAddress);
-    console.info(sk.toKeypair().xOnlyPublicKey); // dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
-    console.info(sk.toKeypair().publicKey);      // 02dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+    console.info(kaspaAddress);
+    const keypair = privateKey.toKeypair();
+    console.info(keypair.xOnlyPublicKey); // dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+    console.info(keypair.publicKey);      // 02dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
 
     let rpcUrl = RpcClient.parseUrl("127.0.0.1", encoding, networkType);
     const rpc = new RpcClient(encoding, rpcUrl, networkType);
     console.log(`Connecting to ${rpc.url}`);
 
     await rpc.connect();
-    let { isSynced } = await rpc.getServerInfo();
+    let { isSynced, virtualDaaScore } = await rpc.getServerInfo();
     if (!isSynced) {
         console.error("Please wait for the node to sync");
         rpc.disconnect();
         return;
     }
 
-    let entries = await rpc.getUtxosByAddresses([skAddress]);
+    let entries = await rpc.getUtxosByAddresses([kaspaAddress]);
 
     if (!entries.length) {
         console.error("No UTXOs found for address");
@@ -63,19 +64,18 @@ async function runDemo() {
             changeAddress: skAddress,
         });
 
-        console.log("summary:", summary);
+        console.log("Summary:", summary);
 
         for (let pending of transactions) {
-            console.log("pending transaction:", pending);
-            console.log("signing tx with secret key:",sk.toString());
+            console.log("Pending transaction:", pending);
+            console.log("Signing tx with secret key:",sk.toString());
             await pending.sign([sk]);
-            console.log("submitting pending tx to RPC ...")
+            console.log("Submitting pending tx to RPC ...")
             let txid = await pending.submit(rpc);
-            console.log("node responded with txid:", txid);
+            console.log("Node responded with txid:", txid);
         }
     }
 
     rpc.disconnect();
-}
 
-runDemo();
+})();

@@ -203,7 +203,7 @@ workflow-d3 = { version = "0.6.0" }
 workflow-nw = { version = "0.6.0" }
 workflow-log = { version = "0.6.0" }
 workflow-core = { version = "0.6.0" }
-workflow-wasm = { version = "0.6.0" }
+workflow-wasm = { version = "0.6.1" }
 workflow-dom = { version = "0.6.0" }
 workflow-rpc = { version = "0.6.0" }
 workflow-node = { version = "0.6.0" }

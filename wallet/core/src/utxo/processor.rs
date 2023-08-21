@@ -252,7 +252,7 @@ impl UtxoProcessor {
     cfg_if! {
         if #[cfg(feature = "legacy-rpc")] {
 
-            pub async fn init_state_from_server(self: &Arc<Self>) -> Result<()> {
+            pub async fn init_state_from_server(&self) -> Result<()> {
 
                 let kaspa_rpc_core::GetInfoResponse { is_synced, is_utxo_indexed: has_utxo_index, server_version, .. } = self.rpc().get_info().await?;
 
@@ -281,7 +281,7 @@ impl UtxoProcessor {
 
         } else {
 
-            pub async fn init_state_from_server(self: &Arc<Self>) -> Result<()> {
+            pub async fn init_state_from_server(&self) -> Result<()> {
 
                 let GetServerInfoResponse { server_version, network_id: server_network_id, has_utxo_index, is_synced, virtual_daa_score } =
                 self.rpc().get_server_info().await?;
@@ -308,7 +308,7 @@ impl UtxoProcessor {
         }
     }
 
-    pub async fn handle_connect_impl(self: &Arc<Self>) -> Result<()> {
+    pub async fn handle_connect_impl(&self) -> Result<()> {
         self.init_state_from_server().await?;
 
         self.inner.is_connected.store(true, Ordering::SeqCst);
@@ -317,7 +317,7 @@ impl UtxoProcessor {
         Ok(())
     }
 
-    pub async fn handle_connect(self: &Arc<Self>) -> Result<()> {
+    pub async fn handle_connect(&self) -> Result<()> {
         if let Err(err) = self.handle_connect_impl().await {
             self.notify(Events::UtxoProcError(err.to_string())).await?;
             self.rpc_client().disconnect().await?;
@@ -329,6 +329,7 @@ impl UtxoProcessor {
         self.inner.is_connected.store(false, Ordering::SeqCst);
         self.notify(Events::UtxoProcStop).await?;
         self.unregister_notification_listener().await?;
+
         Ok(())
     }
 
@@ -376,7 +377,7 @@ impl UtxoProcessor {
         Ok(())
     }
 
-    pub async fn start(self: &Arc<Self>) -> Result<()> {
+    pub async fn start(&self) -> Result<()> {
         let this = self.clone();
         let rpc_ctl_channel = this
             .rpc()

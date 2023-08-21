@@ -11,7 +11,7 @@ use kaspa_wrpc_client::wasm::RpcClient;
 use kaspa_wrpc_client::WrpcEncoding;
 use runtime::AccountKind;
 use workflow_core::sendable::Sendable;
-use workflow_wasm::channel::MultiplexerClient;
+use workflow_wasm::channel::EventDispatcher;
 
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
@@ -20,7 +20,7 @@ pub struct Wallet {
     #[wasm_bindgen(getter_with_clone)]
     pub rpc: RpcClient,
     #[wasm_bindgen(getter_with_clone)]
-    pub events: MultiplexerClient,
+    pub events: EventDispatcher,
 }
 
 #[wasm_bindgen]
@@ -36,7 +36,7 @@ impl Wallet {
             None,
         )?;
         let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc.client().clone()), store, network_id)?);
-        let events = MultiplexerClient::default();
+        let events = EventDispatcher::default();
 
         Ok(Self { wallet, events, rpc })
     }

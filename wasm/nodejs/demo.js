@@ -15,7 +15,8 @@ const {parseArgs} = require("./utils");
 
 initConsolePanicHook();
 
-async function runDemo() {
+(async ()=>{
+
     const args = parseArgs({});
 
     // Either NetworkType.Mainnet or NetworkType.Testnet
@@ -88,6 +89,4 @@ async function runDemo() {
     } finally {
         await rpc.disconnect();
     }
-}
-
-runDemo();
+})();
