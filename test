@@ -5,16 +5,11 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# wasm build
+# integration tests
+cargo test --release --workspace -p kaspa-testing-integration --lib
+
+# wasm build (tests for potential multiple exports of the same symbol)
 pushd .
 cd wasm
 ./build-node
-if [ $? -ne 0 ]; then
-    popd
-    echo "Failed to build WASM libraries"
-    exit 1
-fi
 popd
-
-# integration tests
-cargo test --release --workspace -p kaspa-testing-integration --lib
