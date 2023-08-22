@@ -24,7 +24,7 @@ impl From<&Hash> for protowire::TransactionId {
 
 impl From<&SubnetworkId> for protowire::SubnetworkId {
     fn from(id: &SubnetworkId) -> Self {
-        Self { bytes: Vec::from(id.as_ref()) }
+        Self { bytes: Vec::from(<SubnetworkId as AsRef<[u8]>>::as_ref(id)) }
     }
 }
 

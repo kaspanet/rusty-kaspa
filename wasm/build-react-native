@@ -1,0 +1,17 @@
+
+OUTDIR=react-native/kaspa
+
+# Compile our wasm module and run `wasm-bindgen`
+# wasm-pack build --target nodejs --out-dir $OUTDIR
+wasm-pack build --out-dir $OUTDIR
+
+echo compiling WASM to JS ...
+# Run the `wasm2js` tool from `binaryen`
+wasm2js -O4 $OUTDIR/kaspa_wasm_bg.wasm -o $OUTDIR/kaspa_wasm_bg.wasm.js
+
+# Update our JS shim to require the JS file instead
+sed -i "" "s/kaspa_wasm_bg.wasm/kaspa_wasm_bg.wasm.js/" $OUTDIR/kaspa_wasm.js
+
+# sed -i 's/wasm2js_bg.wasm/wasm2js_bg.wasm.js/' pkg/kaspa_wasm_bg.js
+
+echo done

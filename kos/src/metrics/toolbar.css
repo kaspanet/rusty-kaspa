@@ -1,0 +1,36 @@
+.toolbar{
+    padding:10px;
+    user-select: none;
+}
+.toolbar .control{display: inline-block}
+.toolbar .separator{
+    width: 1px;
+    background: #aaa;
+    display: inline-block;
+    height: 12px;
+    margin: 0px 5px;
+}
+
+.toolbar .button{
+    display:inline-block;
+    width: auto;
+    border:1px solid #CCC;
+    border-radius:4px;
+    padding:5px 8px;
+    margin:2px;
+    cursor:pointer;
+    transition: all 0.2s ease-out;
+    color:#171717
+}
+
+.toolbar .button:hover {
+    background-color: #f6f6f6;
+    transform-origin: center center;
+    transform: scale(1.12);
+}
+.toolbar .button:has(input:checked){
+    background-color: #efefef;
+    border-color: #aaa;
+    color: #000;
+}
+.toolbar .button input{display:none;}

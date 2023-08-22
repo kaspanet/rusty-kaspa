@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-wrpc-client"
+description = "Kaspa wRPC client"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -15,9 +16,12 @@ async-trait.workspace = true
 borsh.workspace = true
 futures.workspace = true
 js-sys.workspace = true
+kaspa-addresses.workspace = true
 kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-macros.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus-wasm.workspace = true
 paste.workspace = true
 regex.workspace = true
 serde_json.workspace = true
@@ -29,3 +33,5 @@ wasm-bindgen.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
 workflow-rpc.workspace = true
+workflow-wasm.workspace = true
+workflow-dom.workspace = true

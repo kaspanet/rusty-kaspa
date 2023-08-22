@@ -2,20 +2,34 @@ use std::fmt::{Debug, Display, Formatter};
 use std::str::{self, FromStr};
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use serde::{Deserialize, Serialize};
+use kaspa_utils::hex::{FromHex, ToHex};
+use kaspa_utils::{serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref};
 
 /// The size of the array used to store subnetwork IDs.
 pub const SUBNETWORK_ID_SIZE: usize = 20;
 
 /// The domain representation of a Subnetwork ID
-#[derive(
-    Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
-)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
+
+serde_impl_ser_fixed_bytes_ref!(SubnetworkId, SUBNETWORK_ID_SIZE);
+serde_impl_deser_fixed_bytes_ref!(SubnetworkId, SUBNETWORK_ID_SIZE);
+
+impl AsRef<[u8; SUBNETWORK_ID_SIZE]> for SubnetworkId {
+    fn as_ref(&self) -> &[u8; SUBNETWORK_ID_SIZE] {
+        &self.0
+    }
+}
 
 impl AsRef<[u8]> for SubnetworkId {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl From<[u8; SUBNETWORK_ID_SIZE]> for SubnetworkId {
+    fn from(value: [u8; SUBNETWORK_ID_SIZE]) -> Self {
+        Self::from_bytes(value)
     }
 }
 
@@ -63,13 +77,30 @@ impl Display for SubnetworkId {
     }
 }
 
+impl ToHex for SubnetworkId {
+    fn to_hex(&self) -> String {
+        let mut hex = [0u8; SUBNETWORK_ID_SIZE * 2];
+        faster_hex::hex_encode(&self.0, &mut hex).expect("The output is exactly twice the size of the input");
+        str::from_utf8(&hex).expect("hex is always valid UTF-8").to_string()
+    }
+}
+
 impl FromStr for SubnetworkId {
     type Err = faster_hex::Error;
 
     #[inline]
-    fn from_str(str: &str) -> Result<Self, Self::Err> {
+    fn from_str(hex_str: &str) -> Result<Self, Self::Err> {
         let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
-        faster_hex::hex_decode(str.as_bytes(), &mut bytes)?;
+        faster_hex::hex_decode(hex_str.as_bytes(), &mut bytes)?;
+        Ok(SubnetworkId(bytes))
+    }
+}
+
+impl FromHex for SubnetworkId {
+    type Error = faster_hex::Error;
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
+        let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
+        faster_hex::hex_decode(hex_str.as_bytes(), &mut bytes)?;
         Ok(SubnetworkId(bytes))
     }
 }

@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-p2p-lib"
+description = "Kaspa p2p library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

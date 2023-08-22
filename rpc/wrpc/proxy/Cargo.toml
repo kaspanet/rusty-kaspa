@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-wrpc-proxy"
+description = "Kaspa wRPC to gRPC proxy"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -20,3 +21,7 @@ workflow-log.workspace = true
 async-trait.workspace = true
 kaspa-rpc-macros.workspace = true
 num_cpus.workspace = true
+kaspa-wrpc-core.workspace = true
+
+[package.metadata.emanate.build]
+folder = "setup"

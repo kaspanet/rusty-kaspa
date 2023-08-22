@@ -1,15 +1,16 @@
+use std::fmt;
+
 pub enum AddressType {
     Receive = 0,
     Change,
 }
 
-impl ToString for AddressType {
-    fn to_string(&self) -> String {
+impl fmt::Display for AddressType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Receive => "Receive",
-            Self::Change => "Change",
+            Self::Receive => write!(f, "Receive"),
+            Self::Change => write!(f, "Change"),
         }
-        .to_string()
     }
 }
 

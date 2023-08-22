@@ -12,15 +12,18 @@ mod xpublic_key;
 mod address_type;
 mod attrs;
 mod child_number;
+mod derivation_path;
 mod error;
 mod mnemonic;
 mod prefix;
 mod result;
 pub mod types;
+pub mod wasm;
 
 pub use address_type::AddressType;
 pub use attrs::ExtendedKeyAttrs;
 pub use child_number::ChildNumber;
+pub use derivation_path::DerivationPath;
 pub use mnemonic::{Language, Mnemonic};
 pub use prefix::Prefix;
 pub use private_key::PrivateKey;

@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-database"
+description = "Kaspa database"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

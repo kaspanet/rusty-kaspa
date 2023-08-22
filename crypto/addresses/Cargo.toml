@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-addresses"
+description = "Kaspa address"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,12 +9,17 @@ license.workspace = true
 
 [dependencies]
 borsh.workspace = true
+js-sys.workspace = true
 serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
+wasm-bindgen.workspace = true
+workflow-wasm.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+wasm-bindgen-test.workspace = true
+web-sys.workspace = true
 
 [[bench]]
 name = "bench"

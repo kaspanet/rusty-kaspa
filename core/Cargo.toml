@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-core"
+description = "Kaspa core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -18,6 +19,6 @@ triggered = "0.1"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 log4rs = { version = "1", features = ["all_components", "gzip", "background_rotation"] }
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread", "time"] }
-ctrlc = "3.2"
+ctrlc = { version = "3.2", features = ["termination"] }
 intertrait = "0.2"
 num_cpus.workspace = true

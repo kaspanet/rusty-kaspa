@@ -4,6 +4,7 @@ use core::fmt::{self, Display};
 use core::str::Utf8Error;
 use std::sync::PoisonError;
 use thiserror::Error;
+use wasm_bindgen::JsValue;
 
 /// Result type.
 pub type Result<T> = core::result::Result<T, Error>;
@@ -31,15 +32,15 @@ impl Display for ErrorImpl {
 /// Error type.
 #[derive(Clone, Debug, Error)]
 pub enum Error {
-    #[error("Error: {0}")]
+    #[error("Bip32 -> {0}")]
     String(String),
 
     /// Base58 errors.
-    #[error("Base58Encode error: {0}")]
+    #[error("Base58Encode -> {0}")]
     Base58Encode(bs58::encode::Error),
 
     /// Base58 errors.
-    #[error("Base58Decode error: {0}")]
+    #[error("Base58Decode -> {0}")]
     Base58Decode(bs58::decode::Error),
 
     /// BIP39-related errors.
@@ -47,7 +48,7 @@ pub enum Error {
     Bip39,
 
     /// Hmac-related errors.
-    #[error("HMAC error: {0}")]
+    #[error("HMAC -> {0}")]
     Hmac(hmac::digest::InvalidLength),
 
     /// Child number-related errors.
@@ -55,15 +56,15 @@ pub enum Error {
     ChildNumber,
 
     /// Cryptographic errors.
-    #[error("Cryptographic error: {0}")]
+    #[error("Secp256k1 -> {0}")]
     Crypto(#[from] secp256k1::Error),
 
     /// Decoding errors (not related to Base58).
-    #[error("Decoding error: {0}")]
+    #[error("Decoding(TryFromSlice) -> {0}")]
     Decode(#[from] core::array::TryFromSliceError),
 
     /// Decoding errors (not related to Base58).
-    #[error("Decoding error: {0}")]
+    #[error("Decoding(Length) -> {0}")]
     DecodeLength(usize, usize),
 
     /// Decoding errors (not related to Base58).
@@ -83,10 +84,10 @@ pub enum Error {
     ScalarOutOfRangeError(#[from] secp256k1::scalar::OutOfRangeError),
 
     /// Utf8Error
-    #[error("Utf8Error : {0}")]
+    #[error("Utf8Error -> {0}")]
     Utf8Error(#[from] Utf8Error),
 
-    #[error("PoisonError: {0:?}")]
+    #[error("Poison error -> {0:?}")]
     PoisonError(String),
 }
 
@@ -117,5 +118,11 @@ impl From<bs58::decode::Error> for Error {
 impl From<hmac::digest::InvalidLength> for Error {
     fn from(e: hmac::digest::InvalidLength) -> Error {
         Error::Hmac(e)
+    }
+}
+
+impl From<Error> for JsValue {
+    fn from(value: Error) -> Self {
+        JsValue::from(value.to_string())
     }
 }

@@ -1,6 +1,7 @@
 [package]
 name = "simpa"
 description = "Kaspa Network Simulator"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

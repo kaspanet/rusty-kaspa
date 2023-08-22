@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-grpc-server"
+description = "Kaspa gRPC server"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

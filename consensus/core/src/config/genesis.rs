@@ -24,7 +24,7 @@ impl GenesisBlock {
 
 impl From<&GenesisBlock> for Header {
     fn from(genesis: &GenesisBlock) -> Self {
-        Header::new(
+        Header::new_finalized(
             genesis.version,
             Vec::new(),
             genesis.hash_merkle_root,

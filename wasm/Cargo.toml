@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-wasm"
-description = "KASPA bindings"
+description = "KASPA WASM bindings"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -13,15 +13,32 @@ license = "MIT/Apache-2.0"
 crate-type = ["cdylib"]
 
 [dependencies]
-kaspa-core.workspace = true
-kaspa-wallet-core.workspace = true
-wasm-bindgen.workspace = true
+js-sys.workspace = true
 kaspa-addresses.workspace = true
-kaspa-utils.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus-wasm.workspace = true
+kaspa-core.workspace = true
+kaspa-math.workspace = true
+kaspa-pow.workspace = true
 kaspa-rpc-core.workspace = true
+kaspa-utils.workspace = true
+kaspa-wallet-core.workspace = true
 kaspa-wrpc-client.workspace = true
+num.workspace = true
+wasm-bindgen.workspace = true
+workflow-log.workspace = true
 
 [features] 
 wallet = [] 
 full = ["wallet"] 
 default = [] 
+
+[package.metadata.docs.rs]
+targets = ["wasm32-unknown-unknown"]
+
+[package.metadata.emanate.wasm]
+targets = [
+    { target = "nodejs", out-dir = "nodejs/kaspa" },
+    { target = "web", out-dir = "web/kaspa" }
+]
+folder = "setup"

@@ -1,0 +1,34 @@
+[package]
+name = "kaspa-wrpc-core"
+description = "Kaspa wRPC core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+# async-std.workspace = true
+# async-trait.workspace = true
+# borsh.workspace = true
+# futures.workspace = true
+# js-sys.workspace = true
+# kaspa-addresses.workspace = true
+# kaspa-notify.workspace = true
+# kaspa-rpc-core.workspace = true
+# kaspa-rpc-macros.workspace = true
+# paste.workspace = true
+# regex.workspace = true
+# serde_json.workspace = true
+# serde-wasm-bindgen.workspace = true
+# serde.workspace = true
+# thiserror.workspace = true
+# wasm-bindgen-futures.workspace = true
+# wasm-bindgen.workspace = true
+# workflow-core.workspace = true
+# workflow-log.workspace = true
+# workflow-rpc.workspace = true
+# workflow-wasm.workspace = true

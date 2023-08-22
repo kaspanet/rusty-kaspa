@@ -1,11 +1,63 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use wasm_bindgen::JsValue;
+use workflow_core::sendable::Sendable;
 
 pub mod int;
 pub mod uint;
+pub mod wasm;
+
 construct_uint!(Uint192, 3, BorshSerialize, BorshDeserialize, BorshSchema);
 construct_uint!(Uint256, 4);
 construct_uint!(Uint320, 5);
 construct_uint!(Uint3072, 48);
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("{0:?}")]
+    JsValue(Sendable<JsValue>),
+
+    #[error("Invalid hex string: {0}")]
+    Hex(#[from] faster_hex::Error),
+
+    #[error(transparent)]
+    TryFromSliceError(#[from] uint::TryFromSliceError),
+    // TryFromSliceError(#[from] std::array::TryFromSliceError),
+    #[error("Utf8 error: {0}")]
+    Utf8(#[from] std::str::Utf8Error),
+
+    #[error(transparent)]
+    WorkflowWasm(#[from] workflow_wasm::error::Error),
+
+    #[error(transparent)]
+    SerdeWasmBindgen(#[from] serde_wasm_bindgen::Error),
+
+    #[error("{0:?}")]
+    JsSys(Sendable<js_sys::Error>),
+
+    #[error("Supplied value is not compatible with this type")]
+    NotCompatible,
+
+    #[error("range error: {0:?}")]
+    Range(Sendable<js_sys::RangeError>),
+}
+
+impl From<js_sys::Error> for Error {
+    fn from(err: js_sys::Error) -> Self {
+        Error::JsSys(Sendable(err))
+    }
+}
+
+impl From<js_sys::RangeError> for Error {
+    fn from(err: js_sys::RangeError) -> Self {
+        Error::Range(Sendable(err))
+    }
+}
+
+impl From<JsValue> for Error {
+    fn from(err: JsValue) -> Self {
+        Error::JsValue(Sendable(err))
+    }
+}
 
 impl Uint256 {
     #[inline]

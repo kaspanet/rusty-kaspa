@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-mining"
+description = "Kaspa mining"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

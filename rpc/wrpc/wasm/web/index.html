@@ -1,9 +1,9 @@
 <html>
     <head>
         <script type="module">
-            import * as workflow from './kaspa-rpc/kaspa-rpc.js';
+            import * as kaspa from './kaspa-rpc/kaspa-rpc.js';
             (async () => {
-                const wasm = await workflow.default('./kaspa-rpc/kaspa-rpc_bg.wasm');
+                const wasm = await kaspa.default('./kaspa-rpc/kaspa-rpc_bg.wasm');
             })();
         </script>
     </head>

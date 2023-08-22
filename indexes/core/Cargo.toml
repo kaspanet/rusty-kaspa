@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-index-core"
+description = "Kaspa index core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

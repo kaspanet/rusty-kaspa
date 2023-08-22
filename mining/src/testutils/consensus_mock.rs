@@ -78,7 +78,7 @@ impl ConsensusApi for ConsensusMock {
         txs.insert(0, coinbase.tx);
         let now = unix_now();
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        let header = Header::new(
+        let header = Header::new_finalized(
             BLOCK_VERSION,
             vec![],
             hash_merkle_root,

@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-hashes"
+description = "Kaspa hashing functions"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -17,6 +18,10 @@ blake2b_simd = "1"
 sha2 = "0.10"
 once_cell = "1"
 keccak = { version = "0.1", optional = true }
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+workflow-wasm.workspace = true
+kaspa-utils.workspace = true
 
 [target.'cfg(any(target_os = "windows", not(target_arch = "x86_64")))'.dependencies]
 keccak = "0.1"

@@ -1,0 +1,2 @@
+wasm-pack build --target web --out-dir web/kaspa
+jsdoc --destination docs/kaspa-wasm web/kaspa/kaspa_wasm.js ./README.md

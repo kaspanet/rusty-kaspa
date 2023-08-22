@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
+use wasm_bindgen::prelude::*;
+use workflow_core::enums::u8_try_from;
 
 #[derive(thiserror::Error, PartialEq, Eq, Debug, Clone)]
 pub enum NetworkTypeError {
@@ -11,13 +13,16 @@ pub enum NetworkTypeError {
     InvalidNetworkType(String),
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum NetworkType {
-    Mainnet,
-    Testnet,
-    Devnet,
-    Simnet,
+u8_try_from! {
+    #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
+    #[serde(rename_all = "lowercase")]
+    #[wasm_bindgen]
+    pub enum NetworkType {
+        Mainnet,
+        Testnet,
+        Devnet,
+        Simnet,
+    }
 }
 
 impl NetworkType {
@@ -27,6 +32,24 @@ impl NetworkType {
             NetworkType::Testnet => 16210,
             NetworkType::Simnet => 16510,
             NetworkType::Devnet => 16610,
+        }
+    }
+
+    pub fn default_borsh_rpc_port(&self) -> u16 {
+        match self {
+            NetworkType::Mainnet => 17110,
+            NetworkType::Testnet => 17210,
+            NetworkType::Simnet => 17510,
+            NetworkType::Devnet => 17610,
+        }
+    }
+
+    pub fn default_json_rpc_port(&self) -> u16 {
+        match self {
+            NetworkType::Mainnet => 18110,
+            NetworkType::Testnet => 18210,
+            NetworkType::Simnet => 18510,
+            NetworkType::Devnet => 18610,
         }
     }
 
@@ -66,7 +89,7 @@ impl From<NetworkType> for Prefix {
 impl FromStr for NetworkType {
     type Err = NetworkTypeError;
     fn from_str(network_type: &str) -> Result<Self, Self::Err> {
-        match network_type {
+        match network_type.to_lowercase().as_str() {
             "mainnet" => Ok(NetworkType::Mainnet),
             "testnet" => Ok(NetworkType::Testnet),
             "simnet" => Ok(NetworkType::Simnet),
@@ -86,6 +109,19 @@ impl Display for NetworkType {
             NetworkType::Devnet => "devnet",
         };
         f.write_str(s)
+    }
+}
+
+impl TryFrom<JsValue> for NetworkType {
+    type Error = NetworkTypeError;
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        if let Some(network_type) = js_value.as_string() {
+            Self::from_str(&network_type)
+        } else if let Some(v) = js_value.as_f64() {
+            Self::try_from(v as u8).map_err(|_| NetworkTypeError::InvalidNetworkType(format!("{js_value:?}")))
+        } else {
+            Err(NetworkTypeError::InvalidNetworkType(format!("{js_value:?}")))
+        }
     }
 }
 
@@ -122,6 +158,14 @@ impl NetworkId {
 
     pub fn name(&self) -> String {
         self.to_string()
+    }
+
+    pub fn as_type(&self) -> &NetworkType {
+        &self.network_type
+    }
+
+    pub fn suffix(&self) -> Option<u32> {
+        self.suffix
     }
 
     pub fn default_p2p_port(&self) -> u16 {
@@ -170,6 +214,12 @@ impl From<NetworkType> for NetworkId {
 impl From<NetworkId> for Prefix {
     fn from(net: NetworkId) -> Self {
         (*net).into()
+    }
+}
+
+impl From<NetworkId> for NetworkType {
+    fn from(net: NetworkId) -> Self {
+        *net
     }
 }
 

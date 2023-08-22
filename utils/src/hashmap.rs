@@ -27,3 +27,25 @@ where
         }
     }
 }
+
+pub trait GroupExtension<K, V, I>
+where
+    K: std::hash::Hash + Ord,
+    I: IntoIterator<Item = (K, V)>,
+{
+    fn group_from(v: I) -> HashMap<K, Vec<V>>;
+}
+
+impl<K, V, I> GroupExtension<K, V, I> for HashMap<K, Vec<V>>
+where
+    K: std::hash::Hash + Ord,
+    I: IntoIterator<Item = (K, V)>,
+{
+    fn group_from(v: I) -> HashMap<K, Vec<V>> {
+        let mut result = HashMap::<K, Vec<V>>::new();
+        for (a, b) in v {
+            result.entry(a).or_default().push(b);
+        }
+        result
+    }
+}

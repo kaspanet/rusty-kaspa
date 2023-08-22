@@ -117,7 +117,7 @@ impl UtxoDiff {
     ///
     /// diff_from follows a set of rules represented by the following 3 by 3 table:
     ///
-    /// ```ignore
+    /// ```text
     ///          |           |   this    |           |
     /// ---------+-----------+-----------+-----------+-----------
     ///          |           |   add     |   remove  |   None

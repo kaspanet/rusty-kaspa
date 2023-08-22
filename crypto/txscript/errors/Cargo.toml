@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-txscript-errors"
+description = "Kaspa txscript errors"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -30,7 +30,7 @@ pub(crate) struct Counters {
 impl Counters {
     pub(crate) fn update(&self, snapshot: CountersSnapshot) {
         self.resident_set_size.store(snapshot.resident_set_size, Ordering::Release);
-        self.virtual_memory_size.store(snapshot.resident_set_size, Ordering::Release);
+        self.virtual_memory_size.store(snapshot.virtual_memory_size, Ordering::Release);
         self.core_num.store(snapshot.core_num, Ordering::Release);
         self.cpu_usage.store(snapshot.cpu_usage, Ordering::Release);
         self.fd_num.store(snapshot.fd_num, Ordering::Release);

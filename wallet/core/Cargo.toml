@@ -1,10 +1,16 @@
 [package]
 name = "kaspa-wallet-core"
+description = "Kaspa wallet library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 include.workspace = true
 license.workspace = true
+
+[features]
+multi-user = []
+legacy-rpc = []
+default = ["legacy-rpc"]
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -13,12 +19,15 @@ crate-type = ["cdylib", "lib"]
 workflow-log.workspace = true
 workflow-rpc.workspace = true
 workflow-core.workspace = true
+workflow-node.workspace = true
+workflow-store.workspace = true
 thiserror.workspace = true
 kaspa-notify.workspace = true
 kaspa-wrpc-client.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-bip32.workspace = true
 kaspa-addresses.workspace = true
+rand.workspace = true
 hmac.workspace = true
 ripemd.workspace = true
 sha2.workspace = true
@@ -27,6 +36,58 @@ async-trait.workspace = true
 secp256k1.workspace = true
 faster-hex.workspace = true
 wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+js-sys.workspace = true
+workflow-wasm.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus-wasm.workspace = true
+kaspa-core.workspace = true
+kaspa-txscript.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde-wasm-bindgen.workspace = true
+borsh.workspace = true
+# consensus.workspace = true
+cfg-if.workspace = true
+base64.workspace = true
+itertools.workspace = true
+futures.workspace = true
+kaspa-utils.workspace = true
+kaspa-hashes.workspace = true
+chacha20poly1305.workspace = true
+heapless.workspace = true
+argon2.workspace = true
+cfb-mode.workspace = true
+evpkdf.workspace = true
+sha1.workspace = true
+md-5.workspace = true
+aes.workspace = true
+pbkdf2.workspace = true
+derivative.workspace = true
+downcast.workspace = true
+sorted-insert.workspace = true
+dashmap.workspace = true
+separator.workspace = true
+pad.workspace = true
+async-std.workspace = true
+xxhash-rust.workspace = true
+regex.workspace = true
+
+[dependencies.web-sys]
+workspace = true
+features = [
+    'Storage',
+    'Window',
+    'IdbFactory',
+    'IdbDatabase',
+    'IdbOpenDbOptions',
+    'IdbOpenDbRequest',
+    'IdbTransaction',
+    'IdbCursorDirection',
+]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+home.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio.workspace = true

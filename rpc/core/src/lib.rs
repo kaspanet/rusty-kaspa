@@ -6,6 +6,7 @@ pub mod convert;
 pub mod error;
 pub mod model;
 pub mod notify;
+pub mod wasm;
 
 pub mod prelude {
     pub use super::api::notifications::*;

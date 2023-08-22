@@ -25,6 +25,14 @@ cfg_if::cfg_if! {
         }
         pub fn set_log_level(level: LevelFilter) {
             unsafe { LEVEL_FILTER = level };
+            workflow_log::set_log_level(level);
+        }
+    } else {
+
+        /// WARNING: This function is internal and
+        /// only has effect on the workflow_log logger.
+        pub fn set_log_level(level: LevelFilter) {
+            workflow_log::set_log_level(level);
         }
     }
 }
@@ -60,7 +68,7 @@ pub fn init_logger(log_dir: Option<&str>, filters: &str) {
 
     let _handle = log4rs::init_config(config).unwrap();
 
-    workflow_log::set_log_level(level);
+    set_log_level(level);
 }
 
 /// Tries to init the global logger, but does not panic if it was already setup.

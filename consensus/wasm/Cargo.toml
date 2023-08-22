@@ -1,0 +1,28 @@
+[package]
+name = "kaspa-consensus-wasm"
+description = "Kaspa consensus core WASM bindings"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+kaspa-consensus-core.workspace = true
+kaspa-addresses.workspace = true
+kaspa-txscript.workspace = true
+kaspa-hashes.workspace = true
+kaspa-utils.workspace = true
+
+wasm-bindgen.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde-wasm-bindgen.workspace = true
+thiserror.workspace = true
+js-sys.workspace = true
+secp256k1.workspace = true
+faster-hex.workspace = true
+rand.workspace = true
+
+workflow-wasm.workspace = true
+workflow-log.workspace = true

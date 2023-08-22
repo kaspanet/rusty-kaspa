@@ -3,6 +3,7 @@
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use async_trait::async_trait;
+use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
@@ -22,6 +23,7 @@ use kaspa_core::{
     kaspad_env::version,
     signals::Shutdown,
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
+    task::tick::TickService,
     trace, warn,
 };
 use kaspa_index_core::{
@@ -39,8 +41,12 @@ use kaspa_notify::{
     subscriber::{Subscriber, SubscriptionManager},
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
+use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
-    api::rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
+    api::{
+        ops::RPC_API_VERSION,
+        rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
+    },
     model::*,
     notify::connection::ChannelConnection,
     Notification, RpcError, RpcResult,
@@ -48,7 +54,13 @@ use kaspa_rpc_core::{
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
-use std::{iter::once, sync::Arc, vec};
+use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
+use std::{
+    iter::once,
+    sync::{atomic::Ordering, Arc},
+    time::{SystemTime, UNIX_EPOCH},
+    vec,
+};
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
@@ -78,12 +90,17 @@ pub struct RpcCoreService {
     index_converter: Arc<IndexConverter>,
     protocol_converter: Arc<ProtocolConverter>,
     core: Arc<Core>,
+    processing_counters: Arc<ProcessingCounters>,
+    wrpc_borsh_counters: Arc<WrpcServerCounters>,
+    wrpc_json_counters: Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
+    perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
 }
 
 const RPC_CORE: &str = "rpc-core";
 
 impl RpcCoreService {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         consensus_manager: Arc<ConsensusManager>,
         consensus_notifier: Arc<ConsensusNotifier>,
@@ -93,6 +110,10 @@ impl RpcCoreService {
         utxoindex: Option<UtxoIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
+        processing_counters: Arc<ProcessingCounters>,
+        wrpc_borsh_counters: Arc<WrpcServerCounters>,
+        wrpc_json_counters: Arc<WrpcServerCounters>,
+        perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -150,7 +171,11 @@ impl RpcCoreService {
             index_converter,
             protocol_converter,
             core,
+            processing_counters,
+            wrpc_borsh_counters,
+            wrpc_json_counters,
             shutdown: SingleTrigger::default(),
+            perf_monitor,
         }
     }
 
@@ -335,7 +360,12 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_mempool_entry_call(&self, request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
-        let Some(transaction) = self.mining_manager.clone().get_transaction(request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool).await else {
+        let Some(transaction) = self
+            .mining_manager
+            .clone()
+            .get_transaction(request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool)
+            .await
+        else {
             return Err(RpcError::TransactionNotFound(request.transaction_id));
         };
         let session = self.consensus_manager.consensus().session().await;
@@ -612,8 +642,75 @@ impl RpcApi for RpcCoreService {
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // UNIMPLEMENTED METHODS
 
-    async fn get_process_metrics_call(&self, _: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse> {
-        Err(RpcError::NotImplemented)
+    async fn get_metrics_call(&self, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
+        let CountersSnapshot {
+            resident_set_size,
+            virtual_memory_size,
+            core_num,
+            cpu_usage,
+            fd_num,
+            disk_io_read_bytes,
+            disk_io_write_bytes,
+            disk_io_read_per_sec,
+            disk_io_write_per_sec,
+            ..
+        } = self.perf_monitor.snapshot();
+        let process_metrics = req.process_metrics.then_some(ProcessMetrics {
+            resident_set_size,
+            virtual_memory_size,
+            core_num: core_num as u64,
+            cpu_usage,
+            fd_num: fd_num as u64,
+            disk_io_read_bytes,
+            disk_io_write_bytes,
+            disk_io_read_per_sec,
+            disk_io_write_per_sec,
+            borsh_live_connections: self.wrpc_borsh_counters.live_connections.load(Ordering::Relaxed),
+            borsh_connection_attempts: self.wrpc_borsh_counters.connection_attempts.load(Ordering::Relaxed),
+            borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed),
+            json_live_connections: self.wrpc_json_counters.live_connections.load(Ordering::Relaxed),
+            json_connection_attempts: self.wrpc_json_counters.connection_attempts.load(Ordering::Relaxed),
+            json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed),
+        });
+
+        let consensus_metrics = req.consensus_metrics.then_some(ConsensusMetrics {
+            blocks_submitted: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
+            header_counts: self.processing_counters.header_counts.load(Ordering::SeqCst),
+            dep_counts: self.processing_counters.dep_counts.load(Ordering::SeqCst),
+            body_counts: self.processing_counters.body_counts.load(Ordering::SeqCst),
+            txs_counts: self.processing_counters.txs_counts.load(Ordering::SeqCst),
+            chain_block_counts: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
+            mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
+        });
+
+        let start = SystemTime::now();
+        let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
+        let server_time = since_the_epoch.as_millis();
+
+        let response = GetMetricsResponse { server_time, process_metrics, consensus_metrics };
+
+        Ok(response)
+    }
+
+    async fn get_server_info_call(&self, _request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse> {
+        let session = self.consensus_manager.consensus().session().await;
+        let is_synced: bool = self.flow_context.hub().has_peers() && session.async_is_nearly_synced().await;
+        let virtual_daa_score = session.async_get_virtual_daa_score().await;
+
+        Ok(GetServerInfoResponse {
+            rpc_api_version: RPC_API_VERSION,
+            server_version: version().to_string(),
+            network_id: self.config.net,
+            has_utxo_index: self.config.utxoindex,
+            is_synced,
+            virtual_daa_score,
+        })
+    }
+
+    async fn get_sync_status_call(&self, _request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse> {
+        let session = self.consensus_manager.consensus().session().await;
+        let is_synced: bool = self.flow_context.hub().has_peers() && session.async_is_nearly_synced().await;
+        Ok(GetSyncStatusResponse { is_synced })
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
