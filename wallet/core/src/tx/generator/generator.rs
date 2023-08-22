@@ -1,10 +1,12 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{
-    get_consensus_params_by_address, mass::*, Fees, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction,
-    PendingTransactionIterator, PendingTransactionStream,
+    mass::*, Fees, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, PendingTransactionIterator,
+    PendingTransactionStream,
 };
 use crate::utxo::{UtxoContext, UtxoEntryReference};
+use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
+use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx as cctx;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_consensus_wasm::UtxoEntry;
@@ -86,7 +88,7 @@ impl Generator {
             final_transaction_payload,
         } = settings;
 
-        let mass_calculator = MassCalculator::new(get_consensus_params_by_address(&change_address));
+        let mass_calculator = MassCalculator::new(&network_type.into());
 
         let (final_transaction_outputs, final_transaction_amount) = match final_transaction_destination {
             // PaymentDestination::Address(address) => (vec![TransactionOutput::new(0, &pay_to_address_script(&address))], None),
@@ -187,10 +189,11 @@ impl Generator {
     ///
     /// This function returns `None` once the supplied UTXO iterator is depleted.
     ///
-    /// This function runs continious loop by ingestin inputs from the UTXO iterator,
-    /// analyzing the resulting transaction mass and eithe producing an intermediate
-    /// orphan transaction sending funds to the change address, or creating a final
-    /// transaction with the requested set of outputs and the payload.
+    /// This function runs a continuous loop by ingesting inputs from the UTXO
+    /// iterator, analyzing the resulting transaction mass, and either producing
+    /// an intermediate "batch" transaction sending funds to the change address
+    /// or creating a final transaction with the requested set of outputs and the
+    /// payload.
     pub fn generate_transaction(&self) -> Result<Option<PendingTransaction>> {
         let mut context = self.context();
 
@@ -324,17 +327,9 @@ impl Generator {
             #[cfg(any(debug_assertions, test))]
             assert_eq!(transaction_amount_accumulator, aggregate_input_value);
 
-            let mut tx = Transaction::new(
-                0,
-                inputs,
-                final_outputs,
-                0,
-                SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                0,
-                self.inner.final_transaction_payload.clone(),
-            );
+            let tx =
+                Transaction::new(0, inputs, final_outputs, 0, SUBNETWORK_ID_NATIVE, 0, self.inner.final_transaction_payload.clone());
 
-            tx.finalize();
             context.final_transaction_id = Some(tx.id());
             context.number_of_generated_transactions += 1;
 
@@ -363,17 +358,7 @@ impl Generator {
             #[cfg(any(debug_assertions, test))]
             assert_eq!(transaction_amount_accumulator, aggregate_input_value);
 
-            let mut tx = Transaction::new(
-                0,
-                inputs,
-                vec![output],
-                0,
-                SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                0,
-                vec![],
-            );
-
-            tx.finalize();
+            let tx = Transaction::new(0, inputs, vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
 
             let utxo_entry_reference =
                 Self::create_batch_utxo_entry_reference(tx.id(), amount, script_public_key, &self.inner.change_address);
@@ -401,7 +386,7 @@ impl Generator {
         script_public_key: ScriptPublicKey,
         address: &Address,
     ) -> UtxoEntryReference {
-        let entry = cctx::UtxoEntry { amount, script_public_key, block_daa_score: u64::MAX, is_coinbase: false };
+        let entry = cctx::UtxoEntry { amount, script_public_key, block_daa_score: UNACCEPTED_DAA_SCORE, is_coinbase: false };
         let outpoint = TransactionOutpoint::new(txid, 0);
         let utxo = UtxoEntry { address: Some(address.clone()), outpoint: outpoint.into(), entry };
         UtxoEntryReference { utxo: Arc::new(utxo) }

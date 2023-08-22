@@ -17,7 +17,7 @@ impl MassCalculator {
     #[wasm_bindgen(constructor)]
     pub fn new(cp: ConsensusParams) -> Self {
         let params = Params::from(cp);
-        Self { mc: Arc::new(mass::MassCalculator::new(params)) }
+        Self { mc: Arc::new(mass::MassCalculator::new(&params)) }
     }
 
     #[wasm_bindgen(js_name=isStandardOutputAmountDust)]

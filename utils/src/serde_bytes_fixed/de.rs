@@ -28,7 +28,7 @@ macro_rules! deser_fixed_bytes {
                     type Value = [u8; $size];
 
                     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                        write!(formatter, "an byte array of size {}", $size)
+                        write!(formatter, "a byte array of size {}", $size)
                     }
                     #[inline]
                     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>

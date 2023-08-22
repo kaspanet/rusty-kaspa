@@ -97,6 +97,15 @@ impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
                     write!(formatter, "string-type: string, str; bytes-type: slice of bytes, vec of bytes; map")
                 }
             }
+
+            // TODO - review integer conversions (SPK & Address)
+            // This is currently used to allow for deserialization
+            // of JsValues created via wasm-bindgen bindings in the
+            // WASM context. This is not used in the native context
+            // as serialization will never produce objects.
+            // - review multiple integer mappings (are they all needed?)
+            // - consider manual marshaling of RPC data structures
+            // (which is now possible due to the introduction of the kaspa-consensus-wasm crate)
             #[cfg(target_arch = "wasm32")]
             fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
             where

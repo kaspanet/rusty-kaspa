@@ -199,7 +199,7 @@ pub struct MassCalculator {
 }
 
 impl MassCalculator {
-    pub fn new(params: Params) -> Self {
+    pub fn new(params: &Params) -> Self {
         Self {
             mass_per_tx_byte: params.mass_per_tx_byte,
             mass_per_script_pub_key_byte: params.mass_per_script_pub_key_byte,

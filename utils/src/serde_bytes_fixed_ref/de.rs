@@ -18,7 +18,7 @@ macro_rules! serde_impl_deser_fixed_bytes_ref {
                     type Value = $t;
 
                     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                        write!(formatter, "an byte array of size {} to ", $size)?;
+                        write!(formatter, "a byte array of size {} to ", $size)?;
                         write!(formatter, "{}", stringify!($t))
                     }
                     #[inline]
