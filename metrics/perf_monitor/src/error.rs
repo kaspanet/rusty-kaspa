@@ -1,5 +1,5 @@
-use perf_monitor::io::IOStatsError;
 use std::io;
+use workflow_perf_monitor::io::IOStatsError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {

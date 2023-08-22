@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-merkle"
-description = "Merkle tree lib"
+description = "Kaspa merkle tree library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
