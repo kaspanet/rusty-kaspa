@@ -77,7 +77,6 @@ impl Zeroize for KeyDataId {
 }
 
 pub type PrvKeyDataId = KeyDataId;
-// pub type PubKeyDataId = KeyDataId;
 pub type PrvKeyDataMap = HashMap<PrvKeyDataId, PrvKeyData>;
 
 /// Indicates key capabilities in the context of Kaspa

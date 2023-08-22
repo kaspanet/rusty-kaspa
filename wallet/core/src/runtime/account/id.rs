@@ -7,7 +7,6 @@ use crate::storage::{self, PrvKeyDataId};
 use kaspa_hashes::Hash;
 use secp256k1::PublicKey;
 
-// #[derive(Hash)]
 #[derive(BorshSerialize)]
 struct AccountIdHashData {
     account_kind: AccountKind,
@@ -108,7 +107,6 @@ impl ToHex for AccountId {
 
 impl std::fmt::Display for AccountId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // write!(f, "{}", hex_string(&self.0.to_be_bytes()))
         write!(f, "{}", self.0)
     }
 }

@@ -419,26 +419,16 @@ impl Wallet {
             .ok_or(Error::PrivateKeyNotFound(prv_key_data_id.to_hex()))?;
         let xpub_key = prv_key_data.create_xpub(args.payment_secret.as_ref(), args.account_kind, account_index).await?;
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
-        // let pub_key_data = PubKeyData::new(vec![xpub_key.to_string(Some(xpub_prefix))], None, None);
         let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(xpub_prefix))]);
 
-        let bip32 = storage::Bip32 {
-            // prv_key_data_id : prv_key_data.id.clone(),
-            account_index,
-            xpub_keys,
-            ecdsa: false,
-        };
+        let bip32 = storage::Bip32 { account_index, xpub_keys, ecdsa: false };
 
-        // TODO
         let settings = storage::Settings { is_visible: false, name: None, title: None };
-
         let account: Arc<dyn Account> = Arc::new(runtime::Bip32::try_new(self, prv_key_data.id, settings, bip32, None).await?);
-
         let stored_account = account.as_storable()?;
 
         account_storage.store_single(&stored_account, None).await?;
         self.inner.store.clone().commit(&ctx).await?;
-        // let account = dyn Account::try_new_arc_from_storage(self, &stored_account).await?;
         account.clone().start().await?;
 
         Ok(account)
@@ -513,9 +503,7 @@ impl Wallet {
             Ok(Some(account.clone()))
         } else {
             let account_storage = self.inner.store.as_account_store()?;
-            // let metadata_storage = self.inner.store.as_metadata_store()?;
             let stored = account_storage.load_single(account_id).await?;
-            // let stored_metadata = metadata_storage.load_single(account_id).await?;
             if let Some((stored_account, stored_metadata)) = stored {
                 let account = try_from_storage(self, stored_account, stored_metadata).await?;
                 Ok(Some(account))
@@ -636,9 +624,7 @@ impl Wallet {
 
         let stream = iter.then(move |stored| {
             let wallet = wallet.clone();
-            // if stored.is_err() {
-            //     return stored;
-            // }
+
             async move {
                 let (stored_account, stored_metadata) = stored.unwrap();
                 if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
@@ -670,14 +656,8 @@ impl Wallet {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
         }
 
-        // -- TODO --
-        // -- TODO --
-        // -- TODO --
+        // TODO: xpub_keys
         let xpub_keys = Arc::new(vec![]);
-        // -- TODO --
-        // -- TODO --
-        // -- TODO --
-
         let data = storage::Legacy { xpub_keys };
         let settings = storage::Settings::default();
         let account = Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?);
@@ -711,8 +691,6 @@ impl Wallet {
         mnemonic: Mnemonic,
         account_kind: AccountKind,
     ) -> Result<Arc<dyn Account>> {
-        // todo!()
-
         let prv_key_data = storage::PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret)?;
         let prv_key_data_store = self.store().as_prv_key_data_store()?;
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
@@ -733,11 +711,8 @@ impl Wallet {
                 // account
             }
             AccountKind::Legacy => {
-                // - TODO -
-                // - TODO -
+                // TODO xpub_keys
                 let xpub_keys = Arc::new(vec![]);
-                // - TODO -
-                // - TODO -
                 // ---
 
                 let data = storage::Legacy { xpub_keys };
@@ -779,7 +754,6 @@ mod test {
 
     use super::*;
     use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoIterator};
-    // use crate::wasm::tx::signer::sign_mutable_transaction;
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
     use kaspa_consensus_core::subnets::SubnetworkId;

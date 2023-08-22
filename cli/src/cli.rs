@@ -81,7 +81,6 @@ impl workflow_log::Sink for KaspaCli {
                     true
                 }
             }
-            // true
         } else {
             false
         }
@@ -290,8 +289,6 @@ impl KaspaCli {
                                 #[allow(unused_variables)]
                                 Events::Connect{ url, network_id } => {
                                     // log_info!("Connected to {url}");
-                                    // this.term().refresh_prompt();
-
                                 },
                                 #[allow(unused_variables)]
                                 Events::Disconnect{ url, network_id } => {
@@ -626,11 +623,6 @@ impl KaspaCli {
 
             tprintln!(self, "{}", style("shutting down...").magenta());
 
-            // if self.wallet().is_connected() {
-            //     self.wallet().rpc_client().disconnect().await?;
-            //     // self.wallet().stop().await?;
-            // }
-
             let miner = self.daemons().try_cpu_miner();
             let kaspad = self.daemons().try_kaspad();
 
@@ -659,7 +651,6 @@ impl KaspaCli {
     }
 
     fn sync_state(&self) -> Option<String> {
-        // if !self.wallet.is_synced() {
         if let Some(state) = self.sync_state.lock().unwrap().as_ref() {
             match state {
                 SyncState::Proof { level } => {
@@ -703,9 +694,6 @@ impl KaspaCli {
         } else {
             Some(style("SYNC").red().to_string())
         }
-        // } else {
-        //     None
-        // }
     }
 }
 
@@ -716,7 +704,6 @@ impl Cli for KaspaCli {
 
         self.notifier().try_init()?;
 
-        // let this = self.clone();
         term.register_event_handler(Arc::new(Box::new(move |event| match event {
             TerminalEvent::Copy | TerminalEvent::Paste => {
                 self.notifier().notify(Notification::Clipboard);

@@ -110,8 +110,6 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
     tprintln!(ctx, "{}", style("IMPORTANT:").red());
     tprintln!(ctx, "");
 
-    // ["", "---", "", "IMPORTANT:", ""].into_iter().for_each(|line| term.writeln(line));
-
     tpara!(
         ctx,
         "Your mnemonic phrase allows your to re-create your private key. \

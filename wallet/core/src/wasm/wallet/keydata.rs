@@ -36,6 +36,5 @@ impl PrvKeyDataInfo {
     #[wasm_bindgen(js_name = "setName")]
     pub fn set_name(&mut self, _name: String) -> Result<()> {
         todo!()
-        // Ok(())
     }
 }

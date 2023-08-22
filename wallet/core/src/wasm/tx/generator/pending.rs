@@ -2,8 +2,6 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::tx::generator as native;
 use kaspa_consensus_wasm::{PrivateKey, Transaction};
-// use crate::wasm::keypair::PrivateKey;
-// use crate::wasm::tx::Transaction;
 use kaspa_wrpc_client::wasm::RpcClient;
 
 #[wasm_bindgen(inspectable)]

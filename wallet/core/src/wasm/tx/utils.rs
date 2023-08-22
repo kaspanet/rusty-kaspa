@@ -1,18 +1,12 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::PaymentOutputs;
-// use kaspa_consensus_wasm::{UtxoEntryReference,SignableTransaction};
 use crate::wasm::tx::consensus::get_consensus_params_by_address;
 use crate::wasm::tx::generator::*;
 use crate::wasm::tx::mass::MassCalculator;
-use kaspa_consensus_wasm::*;
-// use crate::wasm::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutput};
 use kaspa_addresses::Address;
-// use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
-// use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
-// use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-// use kaspa_consensus_core::tx::SignableTransaction;
+use kaspa_consensus_wasm::*;
 use workflow_core::runtime::is_web;
 
 /// Create a basic transaction without any mass limit checks.
@@ -70,11 +64,8 @@ pub fn create_transaction_js(
     // TODO - Calculate mass and fees
 
     let outputs: Vec<TransactionOutput> = outputs.into();
-
     let transaction = Transaction::new(0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload)?;
-
     let _fee = mc.calc_minimum_transaction_relay_fee(&transaction, minimum_signatures);
-
     let mtx = SignableTransaction::new(transaction, entries.into());
 
     Ok(mtx)

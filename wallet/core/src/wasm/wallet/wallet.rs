@@ -41,10 +41,9 @@ impl Wallet {
         Ok(Self { wallet, events, rpc })
     }
 
-    // #[wasm_bindgen(getter)]
     pub async fn keys(&self) -> JsValue {
         let wallet = self.wallet.clone();
-        let accounts = self.wallet.keys().await.expect("Unable to access Wallet::account iterator").then(move |item| {
+        let keys = self.wallet.keys().await.expect("Unable to access Wallet::keys iterator").then(move |item| {
             let wallet = wallet.clone();
             async move {
                 match item {
@@ -54,10 +53,9 @@ impl Wallet {
             }
         });
 
-        AsyncStream::new(accounts).into()
+        AsyncStream::new(keys).into()
     }
 
-    // #[wasm_bindgen(getter)]
     pub async fn accounts(&self) -> Result<JsValue> {
         self.account_iterator(JsValue::NULL).await
     }
@@ -109,7 +107,6 @@ impl Wallet {
         }
     }
 
-    // #[wasm_bindgen(js_name = "exists")]
     pub async fn exists(&self, name: JsValue) -> Result<bool> {
         let name =
             if name.is_falsy() {
@@ -139,20 +136,6 @@ impl Wallet {
         object.set("mnemonic", &JsValue::from(mnemonic.phrase_string()))?;
         Ok(object)
     }
-
-    // #[wasm_bindgen(js_name = "createWallet")]
-    // pub async fn create_wallet(&self, wallet_args: &JsValue, account_args: &JsValue) -> Result<String> {
-    // // pub async fn create_wallet(&self, args: &JsValue) -> Result<String> {
-
-    //     // let secret = wallet_args
-
-    //     let wallet_args: WalletCreateArgs = wallet_args.try_into()?;
-    //     let account_args: AccountCreateArgs = account_args.try_into()?;
-
-    //     let (mnemonic, _descriptor) = self.wallet.create_wallet(wallet_args.into(), account_args.into()).await?;
-
-    //     Ok(mnemonic.phrase_string())
-    // }
 
     #[wasm_bindgen(js_name = "createAccount")]
     pub async fn create_account(&self, prv_key_data_id: String, account_args: &JsValue) -> Result<JsValue> {

@@ -21,11 +21,6 @@ pub struct Wallet {
 
 impl Wallet {
     pub fn try_new(user_hint: Option<Hint>, secret: &Secret, payload: Payload, metadata: Vec<Metadata>) -> Result<Self> {
-        // let metadata = payload
-        //     .accounts
-        //     .iter()
-        //     .filter_map(|account| if account.settings.is_visible { Some(account.clone()) } else { None })
-        //     .collect();
         let payload = Decrypted::new(payload).encrypt(secret)?;
         Ok(Self { version: WALLET_VERSION, payload, metadata, user_hint })
     }
@@ -66,7 +61,7 @@ impl Wallet {
         Ok(())
     }
 
-    /// Obtain [`PrvKeyData`] by [`PrvKeyDataId`]
+    /// Obtain [`PrvKeyData`] using [`PrvKeyDataId`]
     pub async fn try_get_prv_key_data(&self, secret: &Secret, prv_key_data_id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
         let payload = self.payload.decrypt::<Payload>(secret)?;
         let idx = payload.as_ref().prv_key_data.iter().position(|keydata| &keydata.id == prv_key_data_id);

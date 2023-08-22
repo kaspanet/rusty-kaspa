@@ -6,13 +6,7 @@ use crate::runtime::{AccountId, Balance};
 use crate::storage::{TransactionRecord, TransactionType};
 use crate::tx::PendingTransaction;
 use crate::utxo::{
-    PendingUtxoEntryReference,
-    UtxoContextBinding,
-    UtxoEntryId,
-    UtxoEntryReference,
-    UtxoEntryReferenceExtension,
-    UtxoProcessor,
-    // UtxoSelectionContext,
+    PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference, UtxoEntryReferenceExtension, UtxoProcessor,
 };
 use kaspa_hashes::Hash;
 use sorted_insert::SortedInsertBinaryByKey;
@@ -467,18 +461,12 @@ impl UtxoContext {
         });
 
         let mature = HashMap::group_from(mature.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
-        // let consumed = HashMap::group_from(consumed.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
         let pending = HashMap::group_from(pending.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
 
         for (txid, utxos) in mature.into_iter() {
             let record = TransactionRecord::new_external(self, txid, utxos);
             self.processor().notify(Events::External { record }).await?;
         }
-
-        // for (txid, utxos) in consumed.into_iter() {
-        //     let record = TransactionRecord::new_incoming(self, TransactionType::Debit, txid, utxos);
-        //     self.processor().notify(Events::Debit { record }).await?;
-        // }
 
         for (txid, utxos) in pending.into_iter() {
             let record = TransactionRecord::new_incoming(self, TransactionType::Reorg, txid, utxos);

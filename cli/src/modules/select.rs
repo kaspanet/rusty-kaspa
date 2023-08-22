@@ -17,16 +17,6 @@ impl Select {
 
             let account = ctx.find_accounts_by_name_or_id(pat).await?;
             ctx.wallet().select(Some(&account)).await?;
-
-            // let matches = ctx.wallet().find_accounts_by_name_or_id(pat).await?;
-            // if matches.is_empty() {
-            //     return Err(Error::AccountNotFound(pat.to_string()));
-            // } else if matches.len() > 1 {
-            //     return Err(Error::AmbigiousAccount(pat.to_string()));
-            // } else {
-            //     let account = matches[0].clone();
-            //     ctx.wallet().select(Some(&account)).await?;
-            // };
         }
 
         Ok(())

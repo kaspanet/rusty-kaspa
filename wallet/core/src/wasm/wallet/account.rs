@@ -46,21 +46,6 @@ impl Account {
         self.inner.account_kind().to_string()
     }
 
-    // #[wasm_bindgen(getter)]
-    // pub fn index(&self) -> u64 {
-    //     self.inner.account_index
-    // }
-
-    // #[wasm_bindgen(getter, js_name = "privateKeyId")]
-    // pub fn private_key_id(&self) -> String {
-    //     self.inner.prv_key_data_id.to_hex()
-    // }
-
-    // #[wasm_bindgen(getter, js_name = "isECDSA")]
-    // pub fn is_ecdsa(&self) -> bool {
-    //     self.inner.ecdsa
-    // }
-
     #[wasm_bindgen(js_name = balanceStrings)]
     pub fn balance_strings(&self, network_type: JsValue) -> Result<JsValue> {
         match self.inner.balance() {

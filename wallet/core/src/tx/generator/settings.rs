@@ -45,7 +45,6 @@ impl GeneratorSettings {
         let minimum_signatures = account.minimum_signatures();
 
         let utxo_iterator = UtxoIterator::new(account.utxo_context());
-        // let utxo_selector = Arc::new(UtxoSelectionContext::new(account.utxo_context()));
 
         let settings = GeneratorSettings {
             network_type,

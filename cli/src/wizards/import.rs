@@ -39,7 +39,6 @@ pub async fn ask(term: &Arc<Terminal>) -> Result<Vec<String>> {
 }
 
 pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>) -> Result<()> {
-    // let term = ctx.term();
     let wallet = ctx.wallet();
 
     if !wallet.is_open() {
@@ -55,8 +54,6 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>) -> Result<()> {
     let account_kind = if mnemonic.len() == 24 { AccountKind::Bip32 } else { AccountKind::Legacy };
 
     let payment_secret = if matches!(account_kind, AccountKind::Bip32) {
-        //mnemonic.len() == 24 {
-
         tpara!(
             ctx,
             "\

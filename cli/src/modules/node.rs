@@ -30,7 +30,6 @@ impl DefaultSettings for KaspadSettings {
     }
 }
 
-// #[derive(Default)]
 pub struct Node {
     settings: SettingsStore<KaspadSettings>,
     mute: Arc<AtomicBool>,
@@ -212,8 +211,6 @@ impl Node {
                     if let Some(selection) = ctx.term().select("Please select a kaspad binary", &binaries).await? {
                         tprintln!(ctx, "selecting: {}", selection);
                         self.settings.set(KaspadSettings::Location, selection.as_str()).await?;
-                        // let config = KaspadConfig::new(selection.as_str(), NetworkType::Testnet)?;
-                        // ctx.daemons().kaspad().configure(config).await?;
                     } else {
                         tprintln!(ctx, "no selection is made");
                     }
@@ -262,7 +259,6 @@ impl Node {
                 if !self.mute.load(Ordering::SeqCst) {
                     let sanitize = true;
                     if sanitize {
-                        // let text: String = stdio.into();
                         let lines = text.split('\n').collect::<Vec<_>>();
                         lines.into_iter().for_each(|line| {
                             let line = line.trim();
@@ -273,7 +269,7 @@ impl Node {
                                     let time = &line[11..23];
                                     let kind = &line[31..36];
                                     let text = &line[38..];
-                                    // 𐤊
+
                                     match kind {
                                         "WARN " => {
                                             term.writeln(format!("{time} {}", style(text).yellow()));

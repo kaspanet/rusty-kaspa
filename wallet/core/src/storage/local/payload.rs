@@ -17,7 +17,6 @@ impl ZeroizeOnDrop for Payload {}
 impl Zeroize for Payload {
     fn zeroize(&mut self) {
         self.prv_key_data.zeroize();
-        // self.accounts.zeroize();
     }
 }
 

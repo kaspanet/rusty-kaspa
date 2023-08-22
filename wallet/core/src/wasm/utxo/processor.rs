@@ -35,6 +35,7 @@ impl UtxoProcessor {
         Ok(UtxoProcessor { inner, rpc, events })
     }
 
+    // TODO - discuss async ctor interface
     // pub async fn start(&self) -> Result<()> {
     //     self.inner().start().await
     // }

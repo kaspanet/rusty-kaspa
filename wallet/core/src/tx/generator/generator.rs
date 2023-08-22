@@ -312,20 +312,17 @@ impl Generator {
             context.is_done = true;
 
             let mut final_outputs = self.inner.final_transaction_outputs.clone();
-            // let transaction_payment_value = final_outputs.iter().map(|output| output.value).sum::<u64>();
             if change_amount > 0 {
                 let output = TransactionOutput::new(change_amount, pay_to_address_script(&self.inner.change_address));
                 final_outputs.push(output);
             }
 
-            // --- TODO gate checks
             let aggregate_input_value = utxo_entry_references.iter().map(|entry| entry.amount()).sum::<u64>();
             let aggregate_output_value = final_outputs.iter().map(|output| output.value).sum::<u64>();
             let transaction_fees = aggregate_input_value - aggregate_output_value;
             context.aggregate_fees += transaction_fees;
             #[cfg(any(debug_assertions, test))]
             assert_eq!(transaction_amount_accumulator, aggregate_input_value);
-            // ---
 
             let mut tx = Transaction::new(
                 0,
@@ -355,18 +352,16 @@ impl Generator {
             )?))
         } else {
             let transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(mass_accumulator + change_output_mass);
-            workflow_log::log_info!("fees: {transaction_fees}");
+            // workflow_log::log_info!("batch transaction fees: {transaction_fees}");
             let amount = transaction_amount_accumulator - transaction_fees;
             let script_public_key = pay_to_address_script(&self.inner.change_address);
             let output = TransactionOutput::new(amount, script_public_key.clone());
 
-            // --- TODO gate checks
             let aggregate_input_value = utxo_entry_references.iter().map(|entry| entry.amount()).sum::<u64>();
             let aggregate_output_value = output.value;
             context.aggregate_fees += transaction_fees;
             #[cfg(any(debug_assertions, test))]
             assert_eq!(transaction_amount_accumulator, aggregate_input_value);
-            // ---
 
             let mut tx = Transaction::new(
                 0,

@@ -125,21 +125,11 @@ impl PendingTransaction {
             panic!("PendingTransaction::commit() called multiple times");
         });
         self.inner.is_committed.store(true, Ordering::SeqCst);
-        // let signable_tx = self.inner.signable_tx.lock().unwrap().clone();
         if let Some(utxo_context) = self.inner.generator.utxo_context() {
-            // utxo_context.consume(&self.inner.utxo_entries, Some(signable_tx))?;
             utxo_context.handle_outgoing_transaction(self).await?;
         }
         Ok(())
     }
-
-    // fn notify(&self) -> Result<()> {
-    //     if let Some(utxo_context) = self.inner.generator.utxo_context() {
-    //         let signable_tx = self.inner.signable_tx.lock().unwrap();
-    //         utxo_context.notify_outgoing(&signable_tx)?;
-    //     }
-    //     Ok(())
-    // }
 
     pub fn transaction(&self) -> Transaction {
         self.inner.signable_tx.lock().unwrap().tx.clone()
@@ -151,7 +141,6 @@ impl PendingTransaction {
 
     /// Submit the transaction on the supplied rpc
     pub async fn try_submit(&self, rpc: &Arc<DynRpcApi>) -> Result<RpcTransactionId> {
-        // self.notify()?;
         self.commit().await?; // commit transactions only if we are submitting
         let rpc_transaction: RpcTransaction = self.rpc_transaction();
         Ok(rpc.submit_transaction(rpc_transaction, true).await?)

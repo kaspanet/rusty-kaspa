@@ -116,7 +116,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
     fn name_or_id(&self) -> String {
         if let Some(name) = self.name() {
-            // compensate for an empty name
             if name.is_empty() {
                 self.id().short()
             } else {
@@ -129,7 +128,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
     fn name_with_id(&self) -> String {
         if let Some(name) = self.name() {
-            // compensate for an empty name
             if name.is_empty() {
                 self.id().short()
             } else {
@@ -384,14 +382,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
 }
 
 downcast_sync!(dyn Account);
-
-// pub struct DerivationInfo {
-//     pub account_kind: AccountKind,
-//     pub account_index: u64,
-//     pub cosigner_index: u8,
-//     pub minimum_signatures: u16,
-//     pub ecdsa: bool,
-// }
 
 #[async_trait]
 pub trait DerivationCapableAccount: Account {

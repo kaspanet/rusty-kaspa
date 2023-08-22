@@ -1,17 +1,9 @@
-use std::pin::Pin;
-
-use futures::{future::join_all, pin_mut};
-use workflow_core::{runtime::is_nw, task::interval};
-
-use crate::imports::*;
-use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse};
-
-// use kaspa_rpc_core::{ConsensusMetrics, ProcessMetrics};
-// use workflow_nw::ipc::*;
-// use kaspa_metrics::{MetricsCtl, data::MetricsData, result::Result as MetricsResult};
 use super::{MetricsData, MetricsSnapshot};
-
-// pub type MetricsSinkFn = Arc<Box<(dyn Fn(MetricsData))>>;
+use crate::imports::*;
+use futures::{future::join_all, pin_mut};
+use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse};
+use std::pin::Pin;
+use workflow_core::{runtime::is_nw, task::interval};
 pub type MetricsSinkFn =
     Arc<Box<dyn Send + Sync + Fn(MetricsSnapshot) -> Pin<Box<(dyn Send + 'static + Future<Output = Result<()>>)>> + 'static>>;
 

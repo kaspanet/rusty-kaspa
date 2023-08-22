@@ -35,14 +35,7 @@ impl Signer {
         let mut keys = self.inner.keys.lock().unwrap();
         let addresses = addresses.iter().filter(|a| !keys.contains_key(a)).collect::<Vec<_>>();
         if !addresses.is_empty() {
-            // -------  TODO  -------
-            // -------  TODO  -------
-            // -------  TODO  -------
             let account = self.inner.account.clone().as_derivation_capable().expect("expecting derivation capable");
-            // -------  TODO  -------
-            // -------  TODO  -------
-            // -------  TODO  -------
-            //downcast_arc::<Arc<DerivationCapableAccount>>()?;
 
             let (receive, change) = account.derivation().addresses_indexes(&addresses)?;
             let private_keys = account.create_private_keys(&self.inner.keydata, &self.inner.payment_secret, &receive, &change)?;
@@ -84,7 +77,6 @@ impl KeydataSigner {
 
 impl SignerT for KeydataSigner {
     fn try_sign(&self, mutable_tx: SignableTransaction, addresses: &[Address]) -> Result<SignableTransaction> {
-        // let keys = self.inner.keys.lock().unwrap();
         let keys_for_signing = addresses.iter().map(|address| *self.inner.keys.get(address).unwrap()).collect::<Vec<_>>();
         Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing))
     }

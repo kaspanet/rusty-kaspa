@@ -11,19 +11,6 @@ extern "C" {
     #[wasm_bindgen(js_name="Storage")]
     pub type Storage;
 
-    // #[wasm_bindgen(
-    //     constructor,
-    //     js_name = "Storage"
-    // )]
-    // pub fn new() -> Storage;
-
-    // #[wasm_bindgen(method, js_name = "proposeDimensions")]
-    // pub fn propose_dimensions(this: &FitAddon);
-
-    // #[wasm_bindgen(method, js_name = "fit")]
-    // pub fn fit(this: &FitAddon);
-
-
     #[wasm_bindgen(method, js_name = "exists")]
     async fn exists(&self, name: Option<&str>) -> Result<bool>;
 

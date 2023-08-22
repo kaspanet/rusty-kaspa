@@ -148,7 +148,6 @@ impl Encrypted {
     pub fn decrypt<T>(&self, secret: &Secret) -> Result<Decrypted<T>>
     where
         T: DeserializeOwned,
-        // T: Zeroize + DeserializeOwned,
     {
         let t: T = serde_json::from_slice(decrypt_xchacha20poly1305(&self.payload, secret)?.as_ref())?;
         Ok(Decrypted(t))

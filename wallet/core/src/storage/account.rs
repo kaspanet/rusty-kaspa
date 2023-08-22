@@ -1,7 +1,6 @@
 use crate::imports::*;
 use crate::storage::{AccountId, AccountKind, PrvKeyDataId};
 use secp256k1::PublicKey;
-// use zeroize::Zeroize;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -70,12 +69,6 @@ impl AccountData {
         }
     }
 }
-
-// impl Zeroize for AccountData {
-//     fn zeroize(&mut self) {
-//         // self.data.zeroize();
-//     }
-// }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
