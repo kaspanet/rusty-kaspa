@@ -1,7 +1,6 @@
 use serde::{Deserialize, Deserializer, Serializer};
-use std::fmt::Debug;
-// use consensus_core::BlueWorkType;
 use smallvec::{smallvec, SmallVec};
+use std::fmt::Debug;
 use std::str;
 
 pub trait ToHex {
@@ -120,24 +119,6 @@ impl<A: smallvec::Array<Item = u8>> FromHex for SmallVec<A> {
     }
 }
 
-// /// Big endian format.
-// /// Leading '0' are ignored by str parsing and absent of string result.
-// /// Odd str lengths are valid.
-// impl ToHex for BlueWorkType {
-//     fn to_rpc_hex(&self) -> String {
-//         format!("{self:x}")
-//     }
-// }
-
-// /// Big endian format.
-// /// Leading '0' are ignored by str parsing and absent of string result.
-// /// Odd str lengths are valid.
-// impl FromHex for BlueWorkType {
-//     fn from_rpc_hex(hex_str: &str) -> Result<Self, faster_hex::Error> {
-//         BlueWorkType::from_hex(hex_str)
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,28 +158,4 @@ mod tests {
         // empty str is supported
         assert_eq!(TestVec::from_hex("").unwrap().len(), 0);
     }
-
-    // #[test]
-    // fn test_blue_work_type_hex_convert() {
-    //     const HEX_STR: &str = "a1b21";
-    //     const HEX_VAL: u64 = 0xa1b21;
-    //     let b: BlueWorkType = BlueWorkType::from_u64(HEX_VAL);
-    //     assert_eq!(HEX_STR.to_string(), b.to_rpc_hex());
-    //     assert!(BlueWorkType::from_rpc_hex("not a number").is_err());
-
-    //     // max str len is 48 for a 192 bits Uint
-    //     // odd lengths are accepted
-    //     // leading '0' are ignored
-    //     // empty str is supported
-    //     const TEST_STR: &str = "000fedcba987654321000000a9876543210fedcba9876543210fedcba9876543210";
-    //     for i in 0..TEST_STR.len() {
-    //         assert!(BlueWorkType::from_rpc_hex(&TEST_STR[0..i]).is_ok() == (i <= 48));
-    //         if 0 < i && i < 33 {
-    //             let b = BlueWorkType::from_rpc_hex(&TEST_STR[0..i]).unwrap();
-    //             let u = u128::from_str_radix(&TEST_STR[0..i], 16).unwrap();
-    //             assert_eq!(b, BlueWorkType::from_u128(u));
-    //             assert_eq!(b.to_rpc_hex(), format!("{u:x}"));
-    //         }
-    //     }
-    // }
 }

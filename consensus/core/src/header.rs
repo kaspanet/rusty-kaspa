@@ -132,11 +132,6 @@ impl Header {
         self.hash.to_hex()
     }
 
-    #[wasm_bindgen(setter = hash)]
-    pub fn set_hash_from_js_value(&mut self, js_value: JsValue) {
-        self.hash = Hash::from_slice(&js_value.try_as_vec_u8().expect("hash merkle root"));
-    }
-
     #[wasm_bindgen(getter = hashMerkleRoot)]
     pub fn get_hash_merkle_root_as_hex(&self) -> String {
         self.hash_merkle_root.to_hex()

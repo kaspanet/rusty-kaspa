@@ -7,7 +7,6 @@ use std::{
     fmt::{Display, Formatter},
     sync::Arc,
 };
-// use wasm_bindgen::prelude::*;
 
 pub type RpcExtraData = Vec<u8>;
 
@@ -543,9 +542,7 @@ impl GetSinkBlueScoreResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-// #[wasm_bindgen]
 pub struct GetUtxosByAddressesRequest {
-    // #[wasm_bindgen(getter_with_clone)]
     pub addresses: Vec<RpcAddress>,
 }
 
@@ -676,7 +673,7 @@ pub struct PingRequest {}
 #[serde(rename_all = "camelCase")]
 pub struct PingResponse {}
 
-// custom wRPC commands (need review and implementation in gRPC)
+// TODO - custom wRPC commands (need review and implementation in gRPC)
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -724,10 +721,6 @@ pub struct GetMetricsResponse {
     pub server_time: u128,
     pub process_metrics: Option<ProcessMetrics>,
     pub consensus_metrics: Option<ConsensusMetrics>,
-    // TBD:
-    //  - approx bandwidth consumption
-    //  - other connection metrics
-    //  - cpu usage
 }
 
 impl GetMetricsResponse {

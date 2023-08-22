@@ -45,7 +45,6 @@ impl From<workflow_wasm::error::Error> for AddressError {
 #[derive(
     PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
 )]
-// #[wasm_bindgen]
 pub enum Prefix {
     #[serde(rename = "kaspa")]
     Mainnet,
@@ -358,6 +357,7 @@ impl<'de> Deserialize<'de> for Address {
                 }
             }
 
+            // TODO: see related comment in script_public_key.rs
             #[cfg(target_arch = "wasm32")]
             fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
             where
@@ -642,9 +642,6 @@ mod tests {
 
         let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
         let wasm_js_value: JsValue = expected.clone().into_abi().into();
-
-        // use web_sys::console;
-        // console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
 
         let actual = from_value(wasm_js_value).unwrap();
         assert_eq!(expected, actual);

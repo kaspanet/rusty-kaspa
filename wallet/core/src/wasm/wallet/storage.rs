@@ -5,6 +5,8 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 use web_sys::Element;
 
+// TODO - finish WASM storage implementation bindings
+
 #[wasm_bindgen]
 extern "C" {
 
