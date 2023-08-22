@@ -29,16 +29,11 @@ initConsolePanicHook();
     // ---
 
     // From BIP0340
-    const sk = new PrivateKey('b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef');
+    const privateKey = new PrivateKey('b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef');
 
-    const kaspaAddress = sk.toKeypair().toAddress(network).toString();
+    const address = sk.toKeypair().toAddress(network);
     // Full kaspa address: kaspa:qr0lr4ml9fn3chekrqmjdkergxl93l4wrk3dankcgvjq776s9wn9jkdskewva
-    console.info(`Full kaspa address: ${kaspaAddress}`);
-
-    const address = new Address(kaspaAddress);
-    console.info(address);
-    console.info(sk.toKeypair().xOnlyPublicKey); // dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
-    console.info(sk.toKeypair().publicKey);      // 02dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+    console.info(`Kaspa address: ${address}`);
 
     let rpcUrl = RpcClient.parseUrl("127.0.0.1", encoding, network);
     const rpc = new RpcClient(encoding, rpcUrl, network);
@@ -95,7 +90,7 @@ initConsolePanicHook();
         // for a requested amount of KAS.
         // sign and submit these transactions
         while (pending = await generator.next()) {
-            await pending.sign([sk]);
+            await pending.sign([privateKey]);
             let txid = await pending.submit(rpc);
             console.log("txid:", txid);
         }
@@ -104,6 +99,6 @@ initConsolePanicHook();
 
     }
 
-    rpc.disconnect();
+    await rpc.disconnect();
 
 })();

@@ -32,7 +32,7 @@ function parseArgs(options = {
             json: {
                 type: 'boolean',
             },
-            address: {
+            destination: {
                 type: 'string',
             },
             network: {
@@ -41,13 +41,13 @@ function parseArgs(options = {
         }, tokens: true, allowPositionals: true
     });
     if (values.help) {
-        console.log(`Usage: node ${script} [address] [mainnet|testnet] [--address <address>] [--network <mainnet|testnet>] [--json] ${options.additionalHelpOutput}`);
+        console.log(`Usage: node ${script} [address] [mainnet|testnet] [--destination <address>] [--network <mainnet|testnet>] [--json] ${options.additionalHelpOutput}`);
         process.exit(0);
     }
 
     const addressRegex = new RegExp(/(kaspa|kaspatest):\S+/i);
     const addressArg = values.address ?? positionals.find((positional) => addressRegex.test(positional)) ?? null;
-    const address = addressArg === null ? null : new Address(addressArg);
+    const destinationAddress = addressArg === null ? null : new Address(addressArg);
 
     let networkType = addressArg?.startsWith('kaspa:') ? NetworkType.Mainnet : NetworkType.Testnet;
     const networkArg = values.network ?? positionals.find((positional) => positional === 'mainnet' || positional === 'testnet') ?? null;
@@ -58,7 +58,7 @@ function parseArgs(options = {
     const encoding = values.json ? Encoding.SerdeJson : Encoding.Borsh;
 
     return {
-        address,
+        destinationAddress,
         networkType,
         encoding,
         tokens,

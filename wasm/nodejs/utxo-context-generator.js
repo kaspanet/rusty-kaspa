@@ -18,12 +18,17 @@ initConsolePanicHook();
 (async () => {
 
     let {
+        destinationAddress,
         networkType,
         encoding,
     } = parseArgs();
     
     const privateKey = new PrivateKey('b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f');
     const kaspaAddress = privateKey.toKeypair().toAddress(networkType);
+
+    // if not destination is specified, send back to ourselves
+    destinationAddress = destinationAddress ?? kaspaAddress;
+    console.log("using destination address:", destinationAddress.toString());
 
     // 1) Initialize RPC
     const rpc = new RpcClient(encoding, "127.0.0.1", networkType);
@@ -55,5 +60,30 @@ initConsolePanicHook();
 
     // 6) Register the address list with the UtxoContext
     await context.trackAddresses([kaspaAddress]);
+
+    if (context.balance.mature > kaspaToSompi(0.2)) {
+        console.log("Sending transaction");
+
+        let generator = new Generator({
+            context,
+            outputs: [[destinationAddress, kaspaToSompi(0.2)]],
+            priorityFee: 0,
+            changeAddress: address,
+        });
+
+        while (pending = await generator.next()) {
+            await pending.sign([privateKey]);
+            let txid = await pending.submit(rpc);
+            console.log("txid:", txid);
+        }
+
+        console.log("summary:", generator.summary());
+
+    } else {
+        console.log("Not enough funds to send transaction");
+    }
+    
+    await processor.shutdown();
+    await rpc.disconnect();
 
 })();

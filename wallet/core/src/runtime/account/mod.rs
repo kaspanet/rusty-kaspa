@@ -301,7 +301,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
         let settings =
-            GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), PaymentDestination::Change, Fees::None, None).await?;
+            GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), PaymentDestination::Change, Fees::None, None)?;
         let generator = Generator::new(settings, Some(signer), abortable);
 
         let mut stream = generator.stream();
@@ -334,8 +334,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
 
-        let settings =
-            GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload).await?;
+        let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
 
         let generator = Generator::new(settings, Some(signer), abortable);
 
@@ -363,7 +362,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payload: Option<Vec<u8>>,
         abortable: &Abortable,
     ) -> Result<GeneratorSummary> {
-        let settings = GeneratorSettings::try_new_with_account(self.as_dyn_arc(), destination, priority_fee_sompi, payload).await?;
+        let settings = GeneratorSettings::try_new_with_account(self.as_dyn_arc(), destination, priority_fee_sompi, payload)?;
 
         let generator = Generator::new(settings, None, abortable);
 
@@ -440,12 +439,12 @@ pub trait DerivationCapableAccount: Account {
                     let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
                     let settings = GeneratorSettings::try_new_with_iterator(
                         Box::new(utxos.into_iter()),
-                        None,
-                        1,
-                        1,
                         change_address.clone(),
+                        1,
+                        1,
                         PaymentDestination::Change,
                         Fees::None,
+                        None,
                         None,
                     )?;
 

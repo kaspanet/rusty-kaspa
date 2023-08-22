@@ -91,6 +91,19 @@ impl From<native::UtxoContext> for UtxoContext {
     }
 }
 
+impl From<UtxoContext> for native::UtxoContext {
+    fn from(utxo_context: UtxoContext) -> Self {
+        utxo_context.inner
+    }
+}
+
+impl TryFrom<JsValue> for UtxoContext {
+    type Error = Error;
+    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+        Ok(ref_from_abi!(UtxoContext, &value)?)
+    }
+}
+
 pub struct UtxoContextCreateArgs {
     processor: UtxoProcessor,
     binding: UtxoContextBinding,

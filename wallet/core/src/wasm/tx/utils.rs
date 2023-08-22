@@ -74,7 +74,7 @@ pub fn create_transaction_js(
 /// Creates a set of transactions using transaction [`Generator`].
 #[wasm_bindgen(js_name=createTransactions)]
 pub async fn create_transactions_js(settings: GeneratorSettingsObject) -> crate::Result<Object> {
-    let generator = Generator::js_new(settings).await?;
+    let generator = Generator::ctor(settings)?;
     if is_web() {
         // yield after each generated transaction if operating in the browser
         let mut stream = generator.stream();
@@ -104,7 +104,7 @@ pub async fn create_transactions_js(settings: GeneratorSettingsObject) -> crate:
 /// Creates a set of transactions using transaction [`Generator`].
 #[wasm_bindgen(js_name=estimateTransactions)]
 pub async fn estimate_js(settings: GeneratorSettingsObject) -> crate::Result<GeneratorSummary> {
-    let generator = Generator::js_new(settings).await?;
+    let generator = Generator::ctor(settings)?;
     if is_web() {
         // yield after each generated transaction if operating in the browser
         let mut stream = generator.stream();

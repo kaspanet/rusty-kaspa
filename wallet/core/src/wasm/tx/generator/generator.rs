@@ -5,6 +5,7 @@ use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutputs};
 use crate::utxo::{TryIntoUtxoEntryReferences, UtxoEntryReference};
 use crate::wasm::tx::generator::*;
 use crate::wasm::wallet::Account;
+use crate::wasm::UtxoContext;
 
 #[wasm_bindgen]
 extern "C" {
@@ -33,7 +34,7 @@ extern "C" {
 ///
 /// ```javascript
 ///
-/// let generator = await Generator.new({
+/// let generator = new Generator({
 ///     utxoEntries : [...],
 ///     changeAddress : "kaspa:...",
 ///     outputs : [[1000, "kaspa:..."], [2000, "kaspa:..."], ...],
@@ -58,7 +59,7 @@ pub struct Generator {
 #[wasm_bindgen]
 impl Generator {
     #[wasm_bindgen(constructor)]
-    pub async fn js_new(args: GeneratorSettingsObject) -> Result<Generator> {
+    pub fn ctor(args: GeneratorSettingsObject) -> Result<Generator> {
         let settings = GeneratorSettings::try_from(args)?;
 
         let GeneratorSettings {
@@ -73,20 +74,39 @@ impl Generator {
         } = settings;
 
         let settings = match source {
-            GeneratorSource::UtxoEntries(utxo_entries) => native::GeneratorSettings::try_new_with_iterator(
-                Box::new(utxo_entries.into_iter()),
-                multiplexer,
-                sig_op_count,
-                minimum_signatures,
-                change_address,
-                final_transaction_destination,
-                final_priority_fee,
-                payload,
-            )?,
+            GeneratorSource::UtxoEntries(utxo_entries) => {
+                let change_address = change_address
+                    .ok_or_else(|| Error::custom("changeAddress is required for Generator constructor with UTXO entries"))?;
+
+                native::GeneratorSettings::try_new_with_iterator(
+                    Box::new(utxo_entries.into_iter()),
+                    change_address,
+                    sig_op_count,
+                    minimum_signatures,
+                    final_transaction_destination,
+                    final_priority_fee,
+                    payload,
+                    multiplexer,
+                )?
+            }
+            GeneratorSource::UtxoContext(utxo_context) => {
+                let change_address = change_address
+                    .ok_or_else(|| Error::custom("changeAddress is required for Generator constructor with UTXO entries"))?;
+
+                native::GeneratorSettings::try_new_with_context(
+                    utxo_context.into(),
+                    change_address,
+                    sig_op_count,
+                    minimum_signatures,
+                    final_transaction_destination,
+                    final_priority_fee,
+                    payload,
+                    multiplexer,
+                )?
+            }
             GeneratorSource::Account(account) => {
                 let account: Arc<dyn runtime::Account> = account.into();
-                native::GeneratorSettings::try_new_with_account(account, final_transaction_destination, final_priority_fee, None)
-                    .await?
+                native::GeneratorSettings::try_new_with_account(account, final_transaction_destination, final_priority_fee, None)?
             }
         };
 
@@ -129,6 +149,7 @@ impl Generator {
 
 enum GeneratorSource {
     UtxoEntries(Vec<UtxoEntryReference>),
+    UtxoContext(UtxoContext),
     Account(Account),
 }
 
@@ -137,7 +158,7 @@ struct GeneratorSettings {
     pub source: GeneratorSource,
     pub multiplexer: Option<Multiplexer<Events>>,
     pub final_transaction_destination: PaymentDestination,
-    pub change_address: Address,
+    pub change_address: Option<Address>,
     pub final_priority_fee: Fees,
     pub sig_op_count: u8,
     pub minimum_signatures: u16,
@@ -153,25 +174,18 @@ impl TryFrom<GeneratorSettingsObject> for GeneratorSettings {
         let final_transaction_destination: PaymentDestination =
             if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_from(outputs)?.into() };
 
-        let change_address = args.try_get::<Address>("changeAddress")?.ok_or(Error::custom("changeAddress is required"))?;
+        let change_address = args.try_get::<Address>("changeAddress")?; //.ok_or(Error::custom("changeAddress is required"))?;
 
         let final_priority_fee = args.get::<Fees>("priorityFee")?;
 
-        let utxo_entries = {
-            let utxo_entries = args.get_value("utxoEntries")?;
-            if utxo_entries.is_falsy() {
-                args.get("entries")?
-            } else {
-                utxo_entries
-            }
-        };
-        let generator_source = if !utxo_entries.is_undefined() {
+        let generator_source = if let Some(utxo_entries) = args.try_get_value("entries")? {
             GeneratorSource::UtxoEntries(utxo_entries.try_into_utxo_entry_references()?)
-        } else {
-            let account = args
-                .try_get::<Account>("account")?
-                .ok_or(Error::custom("'account' or 'utxoEntries' property is required for Generator"))?;
+        } else if let Some(context) = args.try_get::<UtxoContext>("entries")? {
+            GeneratorSource::UtxoContext(context)
+        } else if let Some(account) = args.try_get::<Account>("account")? {
             GeneratorSource::Account(account)
+        } else {
+            return Err(Error::custom("'entries', 'context' or 'account' property is required for Generator"));
         };
 
         let sig_op_count = args.get_value("sigOpCount")?;

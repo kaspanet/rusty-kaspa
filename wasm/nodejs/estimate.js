@@ -97,6 +97,6 @@ initConsolePanicHook();
 
     }
 
-    rpc.disconnect();
+    await rpc.disconnect();
 
 })();
