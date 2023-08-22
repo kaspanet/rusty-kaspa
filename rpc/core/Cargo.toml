@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-rpc-core"
+description = "Kaspa RPC core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -15,7 +16,9 @@ kaspa-utils.workspace = true
 kaspa-notify.workspace = true
 kaspa-index-core.workspace = true
 kaspa-txscript.workspace = true
+kaspa-math.workspace = true
 kaspa-mining-errors.workspace = true
+kaspa-consensus-wasm.workspace = true
 
 faster-hex.workspace = true
 serde.workspace = true
@@ -30,4 +33,9 @@ wasm-bindgen.workspace = true
 async-trait.workspace = true
 workflow-core.workspace = true
 paste.workspace = true
+downcast.workspace = true
 uuid.workspace = true
+workflow-wasm.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
