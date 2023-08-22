@@ -61,7 +61,8 @@ initConsolePanicHook();
     // 6) Register the address list with the UtxoContext
     await context.trackAddresses([kaspaAddress]);
 
-    if (context.balance.mature > kaspaToSompi(0.2)) {
+    // 7) Check balance, if there are enough funds, send a transaction
+    if (context.balance.mature > kaspaToSompi(0.2) + 1000n) {
         console.log("Sending transaction");
 
         let generator = new Generator({
