@@ -60,14 +60,6 @@ impl NetworkType {
     }
 }
 
-// #[wasm_bindgen]
-// impl NetworkType {
-//     pub fn as_address_prefix_str(&self) -> String {
-//         let prefix : Prefix = self.clone().into();
-//         prefix.to_string()
-//     }
-// }
-
 impl TryFrom<Prefix> for NetworkType {
     type Error = NetworkTypeError;
     fn try_from(prefix: Prefix) -> Result<Self, Self::Error> {
@@ -97,15 +89,12 @@ impl From<NetworkType> for Prefix {
 impl FromStr for NetworkType {
     type Err = NetworkTypeError;
     fn from_str(network_type: &str) -> Result<Self, Self::Err> {
-        // println!("NetworkType::from_str(\"{}\")\n", network_type);
-        // temporary `to_lowercase()` patch for proxy
         match network_type.to_lowercase().as_str() {
             "mainnet" => Ok(NetworkType::Mainnet),
             "testnet" => Ok(NetworkType::Testnet),
             "simnet" => Ok(NetworkType::Simnet),
             "devnet" => Ok(NetworkType::Devnet),
             _ => Err(NetworkTypeError::InvalidNetworkType(network_type.to_string())),
-            // _ => Err(NetworkTypeError::InvalidNetworkType(format!("{}",network_type.to_string()))),
         }
     }
 }

@@ -186,18 +186,18 @@ impl Header {
     pub fn set_parents_by_level_from_js_value(&mut self, js_value: JsValue) {
         let array = Array::from(&js_value);
         self.parents_by_level = array
-        // .get_vec("parentsByLevel").expect("parentsByLevel is not a vec")
-        .iter()
-        .map(|jsv| {
-            Array::from(&jsv)
-                .to_vec()
-                .into_iter()
-                .map(|hash| Ok(hash.try_into()?))
-                .collect::<std::result::Result<Vec<Hash>, Error>>()
-        })
-        .collect::<std::result::Result<Vec<Vec<Hash>>, Error>>().unwrap_or_else(|err| {
-            panic!("{}", err);
-        });
+            .iter()
+            .map(|jsv| {
+                Array::from(&jsv)
+                    .to_vec()
+                    .into_iter()
+                    .map(|hash| Ok(hash.try_into()?))
+                    .collect::<std::result::Result<Vec<Hash>, Error>>()
+            })
+            .collect::<std::result::Result<Vec<Vec<Hash>>, Error>>()
+            .unwrap_or_else(|err| {
+                panic!("{}", err);
+            });
     }
 
     #[wasm_bindgen(getter = blueWork)]

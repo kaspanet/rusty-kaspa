@@ -968,22 +968,9 @@ macro_rules! construct_uint {
                     let bytes = js_value.try_as_vec_u8()?;
                     Ok(Self::from_be_bytes_var(&bytes)?)
                 } else if js_value.is_bigint() {
-
-                    if false {
-                        let mut limbs = [0u64; Self::LIMBS];
-                        for (idx, limb) in limbs.iter_mut().enumerate() {
-                            let v = js_value.clone() >> JsValue::from(idx as u64 * 64u64);
-                            let mask = JsValue::from(BigInt::new(&JsValue::from_str(&format!("0xffffffffffffffff"))).unwrap());
-                            let v: JsValue = v & mask;
-                            *limb = u64::try_from(v).map_err(|e|$crate::Error::JsValue(Sendable(e)))?;
-                        }
-                        Ok(Self(limbs))
-                    } else {
-                        let v: &BigInt = js_value.dyn_ref().unwrap();
-                        let hex = String::from(v.to_string(16)?);
-                        Ok(Self::from_hex(hex.as_str())?)
-                    }
-
+                    let v: &BigInt = js_value.dyn_ref().unwrap();
+                    let hex = String::from(v.to_string(16)?);
+                    Ok(Self::from_hex(hex.as_str())?)
                 } else {
                     return Err(Self::Error::NotCompatible);
                 }

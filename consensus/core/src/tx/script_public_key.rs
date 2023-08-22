@@ -442,19 +442,6 @@ mod tests {
 
         let actual: ScriptPublicKey = from_value(obj_hex.into_js_result().unwrap()).unwrap();
         assert_eq!(spk, actual);
-
-        // // fixme:  Error: invalid type: byte array, expected any value,
-        // // I tried all possible
-        // // types to deser it from uint8array
-
-        // let script_u8 = spk.script();
-        // let script_u8_js = js_sys::Uint8Array::try_from(script_u8).unwrap();
-        // let obj_u8 = Object::new();
-        // obj_u8.set("version", &version_js).unwrap();
-        // obj_u8.set("script", &script_u8_js).unwrap();
-        //
-        // let actual: ScriptPublicKey = from_value(obj_u8.into_js_result().unwrap()).unwrap();
-        // assert_eq!(spk, actual);
     }
 
     #[wasm_bindgen_test]
@@ -470,9 +457,6 @@ mod tests {
 
         let expected = ScriptPublicKey::constructor(version, script_hex_js).map_err(|_| ()).unwrap();
         let wasm_js_value: JsValue = expected.clone().into_abi().into();
-
-        // use web_sys::console;
-        // console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
 
         let actual = from_value(wasm_js_value).unwrap();
         assert_eq!(expected, actual);

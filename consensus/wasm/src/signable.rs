@@ -64,17 +64,8 @@ impl SignableTransaction {
             }
         }
 
-        // let tx: RpcTransaction = (*self).clone().try_into()?;
-        // Ok(to_value(&tx)?)
-        // let tx: RpcTransaction = (*self).clone().try_into()?;
         Ok(to_value(self)?)
     }
-
-    // #[wasm_bindgen(js_name=toRpcTransaction)]
-    // pub fn rpc_tx_request(&self) -> Result<JsValue, JsError> {
-    //     let tx: RpcTransaction = (*self).clone().try_into()?;
-    //     Ok(to_value(&tx)?)
-    // }
 
     #[wasm_bindgen(getter=inputs)]
     pub fn get_inputs(&self) -> Result<js_sys::Array, JsError> {
@@ -88,10 +79,10 @@ impl SignableTransaction {
         Ok(outputs)
     }
 
+    // TODO (aspect) - discuss - either remove this or make it utilize wasm MassCalculator (address this as a part of MassCalculator refactoring).
     // pub fn mass(&self, network_type: NetworkType, estimate_signature_mass: bool, minimum_signatures: u16) -> Result<u64, JsError> {
     //     let params = get_consensus_params_by_network(&network_type);
     //     let calc = MassCalculator::new(params);
-
     //     calc.calc_mass_for_tx(tx)
     //     Ok(calculate_mass(&self.tx(), &params, estimate_signature_mass, minimum_signatures))
     // }

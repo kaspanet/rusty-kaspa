@@ -15,9 +15,9 @@ pub struct KaspadConfig {
     pub perf_metrics_interval_sec: Option<u64>,
     // --- TODO: these are not used yet ---
     pub peers: Vec<String>,
-    pub enablge_grpc: bool,
-    pub enablge_borsh_rpc: bool,
-    pub enablge_json_rpc: bool,
+    pub enable_grpc: bool,
+    pub enable_borsh_rpc: bool,
+    pub enable_json_rpc: bool,
     pub is_grpc_public: bool,
     pub is_borsh_rpc_public: bool,
     pub is_json_rpc_public: bool,
@@ -42,11 +42,11 @@ impl Default for KaspadConfig {
             path: None,
             network: None,
             utxo_index: true,
-            enablge_grpc: true,
+            enable_grpc: true,
             is_grpc_public: false,
-            enablge_borsh_rpc: true,
+            enable_borsh_rpc: true,
             is_borsh_rpc_public: false,
-            enablge_json_rpc: false,
+            enable_json_rpc: false,
             is_json_rpc_public: false,
             // --
             perf_metrics: true,
@@ -109,7 +109,7 @@ impl TryFrom<KaspadConfig> for Vec<String> {
 
         // ---
 
-        if args.enablge_borsh_rpc {
+        if args.enable_borsh_rpc {
             if args.is_borsh_rpc_public {
                 argv.push("--rpclisten-borsh=public");
             } else {
@@ -119,7 +119,7 @@ impl TryFrom<KaspadConfig> for Vec<String> {
 
         // ---
 
-        if args.enablge_json_rpc {
+        if args.enable_json_rpc {
             if args.is_borsh_rpc_public {
                 argv.push("--rpclisten-borsh=public");
             } else {
@@ -135,7 +135,7 @@ impl TryFrom<KaspadConfig> for Vec<String> {
         } else {
             format!("--rpclisten=127.0.0.1:{}", grpc_port)
         };
-        if args.enablge_grpc {
+        if args.enable_grpc {
             argv.push(grpc_listen_flag.as_str());
         }
 
