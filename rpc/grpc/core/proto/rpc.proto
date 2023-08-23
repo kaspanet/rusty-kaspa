@@ -775,9 +775,16 @@ message NotifySyncStateChangedResponseMessage {
 message SyncStateChangedNotificationMessage {
   oneof syncState {
     ProofState proof = 1;
+    HeadersState headers = 2;
   }
 }
+
 message ProofState {
   uint32 current = 1;
   uint32 max = 2;
+}
+
+message HeadersState {
+    uint64 headers = 1;
+    int64 progress = 2;
 }

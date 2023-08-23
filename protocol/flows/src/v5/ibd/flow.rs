@@ -13,10 +13,13 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointsList},
     BlockHashSet,
 };
+use kaspa_consensus_notify::notification::{Notification, SyncStateChangedNotification};
+use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy, StagingConsensus};
 use kaspa_core::{debug, info, time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_notify::notifier::Notify;
 use kaspa_p2p_lib::{
     common::ProtocolError,
     convert::model::trusted::TrustedDataPackage,
@@ -43,6 +46,8 @@ pub struct IbdFlow {
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
     relay_receiver: Receiver<Block>,
+
+    notification_root: Option<Arc<ConsensusNotificationRoot>>,
 }
 
 #[async_trait::async_trait]
@@ -65,8 +70,14 @@ pub enum IbdType {
 // TODO: define a peer banning strategy
 
 impl IbdFlow {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: Receiver<Block>) -> Self {
-        Self { ctx, router, incoming_route, relay_receiver }
+    pub fn new(
+        ctx: FlowContext,
+        router: Arc<Router>,
+        incoming_route: IncomingRoute,
+        relay_receiver: Receiver<Block>,
+        notification_root: Arc<ConsensusNotificationRoot>,
+    ) -> Self {
+        Self { ctx, router, incoming_route, relay_receiver, notification_root: Some(notification_root) }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -330,7 +341,17 @@ impl IbdFlow {
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
         let highest_shared_header_score = consensus.async_get_header(highest_known_syncer_chain_hash).await?.daa_score;
-        let mut progress_reporter = ProgressReporter::new(highest_shared_header_score, relay_block.header.daa_score, "block headers");
+        let notification_root = self.notification_root.take().unwrap();
+        let mut progress_reporter = ProgressReporter::new(
+            highest_shared_header_score,
+            relay_block.header.daa_score,
+            "block headers",
+            Some(|headers: usize, progress: i32| {
+                notification_root
+                    .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_headers(headers as u64, progress as i64)))
+                    .expect("expecting an open unbounded channel")
+            }),
+        );
 
         self.router
             .enqueue(make_message!(
@@ -363,10 +384,10 @@ impl IbdFlow {
             let prev_chunk_len = prev_jobs.len();
             try_join_all(prev_jobs).await?;
             progress_reporter.report_completion(prev_chunk_len);
+            self.notification_root = Some(notification_root);
         }
 
         self.sync_missing_relay_past_headers(consensus, syncer_virtual_selected_parent, relay_block.hash()).await?;
-
         Ok(())
     }
 
@@ -462,7 +483,13 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
 
         let low_header = consensus.async_get_header(*hashes.first().expect("hashes was non empty")).await?;
         let high_header = consensus.async_get_header(*hashes.last().expect("hashes was non empty")).await?;
-        let mut progress_reporter = ProgressReporter::new(low_header.daa_score, high_header.daa_score, "blocks");
+        let notification_root = self.notification_root.take().unwrap();
+        let mut progress_reporter = ProgressReporter::new(
+            low_header.daa_score,
+            high_header.daa_score,
+            "blocks",
+            Some(|a, b| notification_root.notify(todo!()).expect("expecting an open unbounded channel")),
+        );
 
         let mut iter = hashes.chunks(IBD_BATCH_SIZE);
         let (mut prev_jobs, mut prev_daa_score) =
@@ -482,7 +509,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         let prev_chunk_len = prev_jobs.len();
         try_join_all(prev_jobs).await?;
         progress_reporter.report_completion(prev_chunk_len);
-
+        self.notification_root = Some(notification_root);
         self.ctx.on_new_block_template().await?;
 
         Ok(())

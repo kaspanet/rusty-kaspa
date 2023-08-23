@@ -82,6 +82,12 @@ from!(item: &kaspa_rpc_core::SyncStateChangedNotification, SyncStateChangedNotif
                     max: *max as u32,
                 })),
             },
+            SyncStateChangedNotification::Headers { headers, progress} => SyncStateChangedNotificationMessage {
+                sync_state: Some(sync_state_changed_notification_message::SyncState::Headers(crate::protowire::HeadersState {
+                    headers: *headers,
+                    progress: *progress
+                }))
+            }
         }
 });
 

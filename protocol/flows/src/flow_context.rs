@@ -122,7 +122,7 @@ pub struct FlowContextInner {
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: MiningManagerProxy,
     pub(crate) tick_service: Arc<TickService>,
-    notification_root: Arc<ConsensusNotificationRoot>,
+    pub(crate) notification_root: Arc<ConsensusNotificationRoot>,
 
     // Special sampling logger used only for high-bps networks where logs must be throttled
     accepted_block_logger: Option<AcceptedBlockLogger>,

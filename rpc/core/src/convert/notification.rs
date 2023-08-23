@@ -116,6 +116,9 @@ impl From<&consensus_notify::SyncStateChangedNotification> for SyncStateChangedN
     fn from(value: &consensus_notify::SyncStateChangedNotification) -> Self {
         match value {
             consensus_notify::SyncStateChangedNotification::Proof { current, max } => Self::Proof { current: *current, max: *max },
+            consensus_notify::SyncStateChangedNotification::Headers { headers, progress } => {
+                Self::Headers { headers: *headers, progress: *progress }
+            }
         }
     }
 }

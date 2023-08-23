@@ -56,6 +56,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
                 KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
             ]),
             relay_receiver,
+            ctx.notification_root.clone(),
         )),
         Box::new(HandleRelayInvsFlow::new(
             ctx.clone(),
