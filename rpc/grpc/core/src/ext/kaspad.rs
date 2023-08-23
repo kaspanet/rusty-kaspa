@@ -3,8 +3,8 @@ use kaspa_notify::{scope::Scope, subscription::Command};
 use crate::protowire::{
     kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage,
     NotifyFinalityConflictRequestMessage, NotifyNewBlockTemplateRequestMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
-    NotifySinkBlueScoreChangedRequestMessage, NotifyUtxosChangedRequestMessage, NotifyVirtualChainChangedRequestMessage,
-    NotifyVirtualDaaScoreChangedRequestMessage,
+    NotifySinkBlueScoreChangedRequestMessage, NotifySyncStateChangedRequestMessage, NotifyUtxosChangedRequestMessage,
+    NotifyVirtualChainChangedRequestMessage, NotifyVirtualDaaScoreChangedRequestMessage,
 };
 
 impl KaspadRequest {
@@ -61,6 +61,11 @@ impl kaspad_request::Payload {
             }
             Scope::PruningPointUtxoSetOverride(_) => {
                 kaspad_request::Payload::NotifyPruningPointUtxoSetOverrideRequest(NotifyPruningPointUtxoSetOverrideRequestMessage {
+                    command: command.into(),
+                })
+            }
+            Scope::SyncStateChanged(_) => {
+                kaspad_request::Payload::NotifySyncStateChangedRequest(NotifySyncStateChangedRequestMessage {
                     command: command.into(),
                 })
             }

@@ -18,6 +18,7 @@ use crate::{
 };
 
 use itertools::Itertools;
+use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use std::sync::Arc;
 
@@ -71,6 +72,7 @@ impl ConsensusServices {
         storage: Arc<ConsensusStorage>,
         config: Arc<Config>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
+        notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Arc<Self> {
         let params = &config.params;
 
@@ -185,6 +187,7 @@ impl ConsensusServices {
             params.pruning_proof_m,
             params.anticone_finalization_depth(),
             params.ghostdag_k,
+            notification_root,
         ));
 
         let sync_manager = SyncManager::new(

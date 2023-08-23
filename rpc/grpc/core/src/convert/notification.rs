@@ -1,5 +1,6 @@
 use crate::protowire::{
-    kaspad_response::Payload, BlockAddedNotificationMessage, KaspadResponse, NewBlockTemplateNotificationMessage, RpcNotifyCommand,
+    kaspad_response::Payload, sync_state_changed_notification_message, BlockAddedNotificationMessage, KaspadResponse,
+    NewBlockTemplateNotificationMessage, RpcNotifyCommand, SyncStateChangedNotificationMessage,
 };
 use crate::protowire::{
     FinalityConflictNotificationMessage, FinalityConflictResolvedNotificationMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
@@ -11,7 +12,7 @@ use crate::protowire::{
 };
 use crate::{from, try_from};
 use kaspa_notify::subscription::Command;
-use kaspa_rpc_core::{Notification, RpcError, RpcHash};
+use kaspa_rpc_core::{Notification, RpcError, RpcHash, SyncStateChangedNotification};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -23,17 +24,18 @@ from!(item: &kaspa_rpc_core::Notification, KaspadResponse, { Self { id: 0, paylo
 
 from!(item: &kaspa_rpc_core::Notification, Payload, {
     match item {
-        Notification::BlockAdded(ref notification) => Payload::BlockAddedNotification(notification.into()),
-        Notification::NewBlockTemplate(ref notification) => Payload::NewBlockTemplateNotification(notification.into()),
-        Notification::VirtualChainChanged(ref notification) => Payload::VirtualChainChangedNotification(notification.into()),
-        Notification::FinalityConflict(ref notification) => Payload::FinalityConflictNotification(notification.into()),
-        Notification::FinalityConflictResolved(ref notification) => Payload::FinalityConflictResolvedNotification(notification.into()),
-        Notification::UtxosChanged(ref notification) => Payload::UtxosChangedNotification(notification.into()),
-        Notification::SinkBlueScoreChanged(ref notification) => Payload::SinkBlueScoreChangedNotification(notification.into()),
-        Notification::VirtualDaaScoreChanged(ref notification) => Payload::VirtualDaaScoreChangedNotification(notification.into()),
-        Notification::PruningPointUtxoSetOverride(ref notification) => {
+        Notification::BlockAdded(notification) => Payload::BlockAddedNotification(notification.into()),
+        Notification::NewBlockTemplate(notification) => Payload::NewBlockTemplateNotification(notification.into()),
+        Notification::VirtualChainChanged(notification) => Payload::VirtualChainChangedNotification(notification.into()),
+        Notification::FinalityConflict(notification) => Payload::FinalityConflictNotification(notification.into()),
+        Notification::FinalityConflictResolved(notification) => Payload::FinalityConflictResolvedNotification(notification.into()),
+        Notification::UtxosChanged(notification) => Payload::UtxosChangedNotification(notification.into()),
+        Notification::SinkBlueScoreChanged(notification) => Payload::SinkBlueScoreChangedNotification(notification.into()),
+        Notification::VirtualDaaScoreChanged(notification) => Payload::VirtualDaaScoreChangedNotification(notification.into()),
+        Notification::PruningPointUtxoSetOverride(notification) => {
             Payload::PruningPointUtxoSetOverrideNotification(notification.into())
-        }
+        },
+        Notification::SyncStateChanged(notification) => Payload::SyncStateChangedNotification(notification.into()),
     }
 });
 
@@ -70,6 +72,17 @@ from!(item: &kaspa_rpc_core::SinkBlueScoreChangedNotification, SinkBlueScoreChan
 
 from!(item: &kaspa_rpc_core::VirtualDaaScoreChangedNotification, VirtualDaaScoreChangedNotificationMessage, {
     Self { virtual_daa_score: item.virtual_daa_score }
+});
+
+from!(item: &kaspa_rpc_core::SyncStateChangedNotification, SyncStateChangedNotificationMessage, {
+    match item {
+            SyncStateChangedNotification::Proof { current, max } => SyncStateChangedNotificationMessage {
+                sync_state: Some(sync_state_changed_notification_message::SyncState::Proof(crate::protowire::ProofState {
+                    current: *current as u32,
+                    max: *max as u32,
+                })),
+            },
+        }
 });
 
 from!(&kaspa_rpc_core::PruningPointUtxoSetOverrideNotification, PruningPointUtxoSetOverrideNotificationMessage);

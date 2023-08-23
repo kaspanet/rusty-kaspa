@@ -22,9 +22,14 @@ use kaspa_consensus_core::{
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
+use kaspa_consensus_notify::{
+    notification::{Notification, SyncStateChangedNotification},
+    root::ConsensusNotificationRoot,
+};
 use kaspa_core::{debug, info, trace};
 use kaspa_database::prelude::{ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
+use kaspa_notify::notifier::Notify;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
 
@@ -102,6 +107,7 @@ pub struct PruningProofManager {
     pruning_proof_m: u64,
     anticone_finalization_depth: u64,
     ghostdag_k: KType,
+    notification_root: Arc<ConsensusNotificationRoot>,
 }
 
 impl PruningProofManager {
@@ -119,6 +125,7 @@ impl PruningProofManager {
         pruning_proof_m: u64,
         anticone_finalization_depth: u64,
         ghostdag_k: KType,
+        notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
         Self {
             db,
@@ -149,6 +156,7 @@ impl PruningProofManager {
             pruning_proof_m,
             anticone_finalization_depth,
             ghostdag_k,
+            notification_root,
         }
     }
 
@@ -406,6 +414,10 @@ impl PruningProofManager {
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
+            self.notification_root
+                .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_proof(level, self.max_block_level)))
+                .expect("expecting an open unbounded channel");
+
             info!("Validating level {level} from the pruning point proof");
             let level_idx = level as usize;
             let mut selected_tip = None;

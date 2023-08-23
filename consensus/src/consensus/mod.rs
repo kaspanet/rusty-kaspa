@@ -149,7 +149,7 @@ impl Consensus {
         // Services and managers
         //
 
-        let services = ConsensusServices::new(db.clone(), storage.clone(), config.clone(), tx_script_cache_counters);
+        let services = ConsensusServices::new(db.clone(), storage.clone(), config.clone(), tx_script_cache_counters, , notification_root.clone());
 
         //
         // Processor channels

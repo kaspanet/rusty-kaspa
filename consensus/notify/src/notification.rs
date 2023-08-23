@@ -41,6 +41,8 @@ pub enum Notification {
 
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
+    #[display(fmt = "SyncStateChanged notification")]
+    SyncStateChanged(SyncStateChangedNotification),
 }
 }
 
@@ -172,3 +174,14 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct NewBlockTemplateNotification {}
+
+#[derive(Debug, Clone)]
+pub enum SyncStateChangedNotification {
+    Proof { current: u8, max: u8 }, // todo other variants
+}
+
+impl SyncStateChangedNotification {
+    pub fn new_proof(current: u8, max: u8) -> SyncStateChangedNotification {
+        Self::Proof { current, max }
+    }
+}

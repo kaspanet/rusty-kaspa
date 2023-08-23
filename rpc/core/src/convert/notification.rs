@@ -1,7 +1,8 @@
 use crate::{
     convert::utxo::utxo_set_into_rpc, BlockAddedNotification, FinalityConflictNotification, FinalityConflictResolvedNotification,
     NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification, RpcAcceptedTransactionIds,
-    SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
+    SinkBlueScoreChangedNotification, SyncStateChangedNotification, UtxosChangedNotification, VirtualChainChangedNotification,
+    VirtualDaaScoreChangedNotification,
 };
 use kaspa_consensus_notify::notification as consensus_notify;
 use kaspa_index_core::notification as index_notify;
@@ -29,6 +30,7 @@ impl From<&consensus_notify::Notification> for Notification {
             consensus_notify::Notification::VirtualDaaScoreChanged(msg) => Notification::VirtualDaaScoreChanged(msg.into()),
             consensus_notify::Notification::PruningPointUtxoSetOverride(msg) => Notification::PruningPointUtxoSetOverride(msg.into()),
             consensus_notify::Notification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
+            consensus_notify::Notification::SyncStateChanged(msg) => Notification::SyncStateChanged(msg.into()),
         }
     }
 }
@@ -107,6 +109,14 @@ impl From<&consensus_notify::PruningPointUtxoSetOverrideNotification> for Prunin
 impl From<&consensus_notify::NewBlockTemplateNotification> for NewBlockTemplateNotification {
     fn from(_: &consensus_notify::NewBlockTemplateNotification) -> Self {
         Self {}
+    }
+}
+
+impl From<&consensus_notify::SyncStateChangedNotification> for SyncStateChangedNotification {
+    fn from(value: &consensus_notify::SyncStateChangedNotification) -> Self {
+        match value {
+            consensus_notify::SyncStateChangedNotification::Proof { current, max } => Self::Proof { current: *current, max: *max },
+        }
     }
 }
 

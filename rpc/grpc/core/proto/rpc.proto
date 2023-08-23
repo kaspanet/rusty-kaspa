@@ -763,3 +763,21 @@ message GetMetricsResponseMessage{
         // uint64 wrpcConnections = 5;
         RPCError error = 1000;
 }
+
+message NotifySyncStateChangedRequestMessage {
+  RpcNotifyCommand command = 101;
+}
+
+message NotifySyncStateChangedResponseMessage {
+  RPCError error = 1000;
+}
+
+message SyncStateChangedNotificationMessage {
+  oneof syncState {
+    ProofState proof = 1;
+  }
+}
+message ProofState {
+  uint32 current = 1;
+  uint32 max = 2;
+}
