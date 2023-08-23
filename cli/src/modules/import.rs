@@ -25,7 +25,7 @@ impl Import {
                         ctx.term().ask(true, "Enter the password for the wallet you are importing:").await?.trim().as_bytes().to_vec(),
                     );
                     let wallet_secret = Secret::new(ctx.term().ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());
-                    wallet.import_gen0_keydata(import_secret, wallet_secret).await?;
+                    wallet.import_gen0_keydata(import_secret, wallet_secret, None).await?;
                 } else if application_runtime::is_web() {
                     return Err("'kaspanet' web wallet storage not found at this domain name".into());
                 } else {

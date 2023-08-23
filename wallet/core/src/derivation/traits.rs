@@ -43,4 +43,7 @@ pub trait PubkeyDerivationManagerTrait: Send + Sync {
     fn index(&self) -> Result<u32>;
     fn set_index(&self, index: u32) -> Result<()>;
     fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>>;
+    fn uninitialize(&self) -> Result<()> {
+        Ok(())
+    }
 }

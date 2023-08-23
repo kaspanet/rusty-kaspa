@@ -260,6 +260,26 @@ impl Wallet {
         Ok(())
     }
 
+    /// Loads a wallet from storage. Accounts are activated by this call.
+    pub async fn load_and_activate(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+        self.reset().await?;
+
+        let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret.clone()));
+        self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
+
+        let hint = self.store().get_user_hint().await?;
+        self.initialize_all_stored_accounts(secret).await?;
+        self.notify(Events::WalletHint { hint }).await?;
+        self.notify(Events::WalletOpen).await?;
+        Ok(())
+    }
+
+    async fn initialize_all_stored_accounts(self: &Arc<Wallet>, secret: Secret) -> Result<()> {
+        self.initialized_accounts(None, secret).await?.try_collect::<Vec<_>>().await?;
+        Ok(())
+    }
+
     pub async fn get_prv_key_data(&self, wallet_secret: Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         self.inner.store.as_prv_key_data_store()?.load_key_data(&ctx, id).await
@@ -642,7 +662,50 @@ impl Wallet {
         Ok(Box::pin(stream))
     }
 
-    pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<Arc<dyn Account>> {
+    pub async fn initialized_accounts(
+        self: &Arc<Self>,
+        filter: Option<PrvKeyDataId>,
+        secret: Secret,
+    ) -> Result<impl Stream<Item = Result<Arc<dyn Account>>>> {
+        let iter = self.inner.store.as_account_store().unwrap().iter(filter).await.unwrap();
+        let wallet = self.clone();
+
+        let stream = iter.then(move |stored| {
+            let wallet = wallet.clone();
+            let secret = secret.clone();
+            // if stored.is_err() {
+            //     return stored;
+            // }
+            async move {
+                let (stored_account, stored_metadata) = stored.unwrap();
+                if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
+                    // log_trace!("fetching active account: {}", account.id);
+                    Ok(account)
+                } else {
+                    let is_legacy = matches!(stored_account.data.account_kind(), AccountKind::Legacy);
+                    let account = try_from_storage(&wallet, stored_account, stored_metadata).await?;
+                    log_info!("starting new active account instance {}", account.id());
+                    if is_legacy {
+                        account.clone().initialize(secret, None, None).await?;
+                    }
+                    account.clone().start().await?;
+                    if is_legacy {
+                        account.clone().uninitialize().await?;
+                    }
+                    Ok(account)
+                }
+            }
+        });
+
+        Ok(Box::pin(stream))
+    }
+
+    pub async fn import_gen0_keydata(
+        self: &Arc<Wallet>,
+        import_secret: Secret,
+        wallet_secret: Secret,
+        payment_secret: Option<&Secret>,
+    ) -> Result<Arc<dyn Account>> {
         let keydata = load_v0_keydata(&import_secret).await?;
 
         //workflow_log::log_info!("keydata: {:?}", keydata);

@@ -11,7 +11,7 @@ pub use variants::*;
 use crate::derivation::build_derivate_paths;
 use crate::derivation::AddressDerivationManagerTrait;
 #[allow(unused_imports)]
-use crate::derivation::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
+use crate::derivation::{gen0::*, gen1::*, AddressDerivationMeta, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Balance, BalanceStrings, Wallet};
@@ -63,7 +63,9 @@ pub async fn try_from_storage(
 
     match data {
         AccountData::Bip32(bip32) => Ok(Arc::new(Bip32::try_new(wallet, prv_key_data_id.unwrap(), settings, bip32, meta).await?)),
-        AccountData::Legacy(legacy) => Ok(Arc::new(Legacy::try_new(wallet, prv_key_data_id.unwrap(), settings, legacy, meta).await?)),
+        AccountData::Legacy(legacy) => {
+            Ok(Arc::new(Legacy::try_new(wallet, stored_account.prv_key_data_id.unwrap(), settings, legacy, meta).await?))
+        }
         AccountData::MultiSig(multisig) => {
             Ok(Arc::new(MultiSig::try_new(wallet, prv_key_data_id.unwrap(), settings, multisig, meta).await?))
         }
@@ -377,6 +379,19 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {
         Err(Error::AccountAddressDerivationCaps)
+    }
+
+    async fn initialize(
+        self: Arc<Self>,
+        _secret: Secret,
+        _payment_secret: Option<&Secret>,
+        _derivation_indexes: Option<AddressDerivationMeta>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn uninitialize(self: Arc<Self>) -> Result<()> {
+        Ok(())
     }
 }
 
