@@ -1,9 +1,11 @@
 // use futures::future::join_all;
+use crate::imports::{AtomicBool, Ordering};
 use hmac::Mac;
 use kaspa_addresses::{Address, Prefix as AddressPrefix, Version as AddressVersion};
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
     fmt::Debug,
     str::FromStr,
     sync::{Arc, Mutex, MutexGuard},
@@ -18,6 +20,8 @@ use kaspa_bip32::{
     PrivateKey, PublicKey, SecretKey, SecretKeyExt,
 };
 use wasm_bindgen::prelude::*;
+
+//pub const CACHE_LIMIT: u32 = 10_000;
 
 fn get_fingerprint<K>(private_key: &K) -> KeyFingerprint
 where
@@ -37,12 +41,11 @@ struct Inner {
     #[allow(dead_code)]
     fingerprint: KeyFingerprint,
     hmac: HmacSha512,
-    index: u32,
 }
 
 impl Inner {
     fn new(public_key: secp256k1::PublicKey, attrs: ExtendedKeyAttrs, hmac: HmacSha512) -> Self {
-        Self { index: 0, public_key, fingerprint: public_key.fingerprint(), hmac, attrs }
+        Self { public_key, fingerprint: public_key.fingerprint(), hmac, attrs }
     }
 }
 
@@ -50,6 +53,9 @@ impl Inner {
 #[wasm_bindgen(inspectable)]
 pub struct PubkeyDerivationManagerV0 {
     inner: Arc<Mutex<Option<Inner>>>,
+    index: Arc<Mutex<u32>>,
+    cache: Arc<Mutex<HashMap<u32, secp256k1::PublicKey>>>,
+    use_cache: Arc<AtomicBool>,
 }
 
 impl PubkeyDerivationManagerV0 {
@@ -59,17 +65,25 @@ impl PubkeyDerivationManagerV0 {
         fingerprint: KeyFingerprint,
         hmac: HmacSha512,
         index: u32,
+        use_cache: bool,
     ) -> Result<Self> {
-        let wallet = Self { inner: Arc::new(Mutex::new(Some(Inner { public_key, attrs, fingerprint, hmac, index }))) };
+        let wallet = Self {
+            index: Arc::new(Mutex::new(index)),
+            inner: Arc::new(Mutex::new(Some(Inner { public_key, attrs, fingerprint, hmac }))),
+            cache: Arc::new(Mutex::new(HashMap::new())),
+            use_cache: Arc::new(AtomicBool::new(use_cache)),
+        };
 
         Ok(wallet)
     }
 
     fn set_key(&self, public_key: secp256k1::PublicKey, attrs: ExtendedKeyAttrs, hmac: HmacSha512, index: Option<u32>) {
         let new_inner = Inner::new(public_key, attrs, hmac);
+        {
+            *self.index.lock().unwrap() = index.unwrap_or(0);
+        }
         let mut locked = self.opt_inner();
         if let Some(inner) = locked.as_mut() {
-            inner.index = index.unwrap_or(0);
             inner.public_key = new_inner.public_key;
             inner.fingerprint = new_inner.fingerprint;
             inner.hmac = new_inner.hmac;
@@ -89,15 +103,21 @@ impl PubkeyDerivationManagerV0 {
 
     fn public_key_(&self) -> Result<secp256k1::PublicKey> {
         let locked = self.opt_inner();
-        let inner =
-            locked.as_ref().ok_or(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending.".into()))?;
+        let inner = locked
+            .as_ref()
+            .ok_or(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending (Error: 101).".into()))?;
         Ok(inner.public_key.clone())
     }
     fn index_(&self) -> Result<u32> {
-        let locked = self.opt_inner();
-        let inner =
-            locked.as_ref().ok_or(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending.".into()))?;
-        Ok(inner.index)
+        // let locked = self.opt_inner();
+        // let inner =
+        //     locked.as_ref().ok_or(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending.".into()))?;
+        // Ok(inner.index)
+        Ok(*self.index.lock().unwrap())
+    }
+
+    fn use_cache(&self) -> bool {
+        self.use_cache.load(Ordering::SeqCst)
     }
 
     pub fn derive_pubkey_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
@@ -108,12 +128,23 @@ impl PubkeyDerivationManagerV0 {
     }
 
     pub fn derive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
+        let use_cache = self.use_cache();
         let locked = self.opt_inner();
-        let inner =
-            locked.as_ref().ok_or(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending.".into()))?;
-        let (key, _chain_code) =
-            WalletDerivationManagerV0::derive_public_key_child(&inner.public_key, ChildNumber::new(index, true)?, inner.hmac.clone())?;
-        Ok(key)
+        if let Some(inner) = locked.as_ref() {
+            let (key, _chain_code) = WalletDerivationManagerV0::derive_public_key_child(
+                &inner.public_key,
+                ChildNumber::new(index, true)?,
+                inner.hmac.clone(),
+            )?;
+            if use_cache {
+                self.cache.lock()?.insert(index, key.clone());
+            }
+            return Ok(key);
+        } else if let Some(key) = self.cache.lock()?.get(&index) {
+            return Ok(key.clone());
+        }
+
+        Err(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending  (Error: 102).".into()))
     }
 
     pub fn create_address(key: &secp256k1::PublicKey, prefix: AddressPrefix, _ecdsa: bool) -> Result<Address> {
@@ -129,7 +160,7 @@ impl PubkeyDerivationManagerV0 {
 
     pub fn attrs(&self) -> ExtendedKeyAttrs {
         let locked = self.opt_inner();
-        let inner = locked.as_ref().expect("PubkeyDerivationManagerV0 initialization is pending.");
+        let inner = locked.as_ref().expect("PubkeyDerivationManagerV0 initialization is pending (Error: 103).");
         inner.attrs.clone()
     }
 
@@ -176,18 +207,20 @@ impl PubkeyDerivationManagerTrait for PubkeyDerivationManagerV0 {
     }
 
     fn set_index(&self, index: u32) -> Result<()> {
-        self.opt_inner().as_mut().expect("PubkeyDerivationManagerV0 initialization is pending.").index = index;
+        *self.index.lock().unwrap() = index;
         Ok(())
     }
 
     fn current_pubkey(&self) -> Result<secp256k1::PublicKey> {
         let index = self.index()?;
+        workflow_log::log_info!("current_pubkey");
         let key = self.derive_pubkey(index)?;
 
         Ok(key)
     }
 
     fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
+        workflow_log::log_info!("get_range {:?}", range);
         self.derive_pubkey_range(range)
     }
 
@@ -283,6 +316,7 @@ impl WalletDerivationManagerV0 {
             private_key.get_public_key().fingerprint(),
             hmac,
             0,
+            true,
         )
     }
 
@@ -405,7 +439,7 @@ impl WalletDerivationManagerV0 {
     }
 
     fn extended_public_key(&self) -> ExtendedPublicKey<secp256k1::PublicKey> {
-        self.extended_public_key.clone().expect("WalletDerivationManagerV0 initialization is pending")
+        self.extended_public_key.clone().expect("WalletDerivationManagerV0 initialization is pending (Error: 104)")
     }
 
     /// Serialize the raw public key as a byte array.
@@ -439,8 +473,18 @@ impl WalletDerivationManagerV0 {
     }
 
     pub fn create_uninitialized(account_index: u64) -> Result<Self> {
-        let receive_wallet = PubkeyDerivationManagerV0 { inner: Arc::new(Mutex::new(None)) };
-        let change_wallet = PubkeyDerivationManagerV0 { inner: Arc::new(Mutex::new(None)) };
+        let receive_wallet = PubkeyDerivationManagerV0 {
+            index: Arc::new(Mutex::new(0)),
+            use_cache: Arc::new(AtomicBool::new(true)),
+            cache: Arc::new(Mutex::new(HashMap::new())),
+            inner: Arc::new(Mutex::new(None)),
+        };
+        let change_wallet = PubkeyDerivationManagerV0 {
+            index: Arc::new(Mutex::new(0)),
+            use_cache: Arc::new(AtomicBool::new(true)),
+            cache: Arc::new(Mutex::new(HashMap::new())),
+            inner: Arc::new(Mutex::new(None)),
+        };
         let wallet = Self {
             extended_public_key: None,
             account_index,
@@ -564,14 +608,25 @@ impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
 
     #[inline(always)]
     fn derive_receive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
+        workflow_log::log_info!("derive_receive_pubkey");
         let key = self.receive_pubkey_manager.derive_pubkey(index)?;
         Ok(key)
     }
 
     #[inline(always)]
     fn derive_change_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
+        workflow_log::log_info!("derive_change_pubkey");
         let key = self.change_pubkey_manager.derive_pubkey(index)?;
         Ok(key)
+    }
+
+    fn initialize(&self, key: String, index: Option<u32>) -> Result<()> {
+        self.set_key(key, index)?;
+        Ok(())
+    }
+    fn uninitialize(&self) -> Result<()> {
+        self.remove_key()?;
+        Ok(())
     }
 }
 

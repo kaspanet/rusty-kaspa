@@ -34,6 +34,13 @@ pub trait WalletDerivationManagerTrait: Send + Sync {
 
     fn new_receive_pubkey(&self) -> Result<secp256k1::PublicKey>;
     fn new_change_pubkey(&self) -> Result<secp256k1::PublicKey>;
+
+    fn initialize(&self, _key: String, _index: Option<u32>) -> Result<()> {
+        Ok(())
+    }
+    fn uninitialize(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -43,6 +50,9 @@ pub trait PubkeyDerivationManagerTrait: Send + Sync {
     fn index(&self) -> Result<u32>;
     fn set_index(&self, index: u32) -> Result<()>;
     fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>>;
+    fn initialize(&self, _key: String) -> Result<()> {
+        Ok(())
+    }
     fn uninitialize(&self) -> Result<()> {
         Ok(())
     }

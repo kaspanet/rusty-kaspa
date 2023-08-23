@@ -381,12 +381,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Err(Error::AccountAddressDerivationCaps)
     }
 
-    async fn initialize(
-        self: Arc<Self>,
-        _secret: Secret,
-        _payment_secret: Option<&Secret>,
-        _derivation_indexes: Option<AddressDerivationMeta>,
-    ) -> Result<()> {
+    async fn initialize(self: Arc<Self>, _secret: Secret, _payment_secret: Option<&Secret>, _index: Option<u32>) -> Result<()> {
         Ok(())
     }
 

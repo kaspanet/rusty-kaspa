@@ -177,6 +177,7 @@ pub struct AddressDerivationManager {
     pub account_kind: AccountKind,
     pub account_index: u64,
     pub cosigner_index: Option<u32>,
+    pub derivators: Vec<Arc<dyn WalletDerivationManagerTrait>>,
     wallet: Arc<runtime::Wallet>,
     pub receive_address_manager: Arc<AddressManager>,
     pub change_address_manager: Arc<AddressManager>,
@@ -205,6 +206,7 @@ impl AddressDerivationManager {
         // let cosigner_index = pub_key_data.cosigner_index;
         let mut receive_pubkey_managers = vec![];
         let mut change_pubkey_managers = vec![];
+        let mut derivators = vec![];
         for xpub in keys {
             let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind {
                 AccountKind::Legacy => {
@@ -220,6 +222,7 @@ impl AddressDerivationManager {
 
             receive_pubkey_managers.push(derivator.receive_pubkey_manager());
             change_pubkey_managers.push(derivator.change_pubkey_manager());
+            derivators.push(derivator);
         }
 
         let receive_address_manager = AddressManager::new(
@@ -244,6 +247,46 @@ impl AddressDerivationManager {
             account_kind,
             account_index,
             cosigner_index,
+            derivators,
+            wallet: wallet.clone(),
+            receive_address_manager: Arc::new(receive_address_manager),
+            change_address_manager: Arc::new(change_address_manager),
+        };
+
+        Ok(manager.into())
+    }
+
+    pub fn create_legacy_pubkey_managers(
+        wallet: &Arc<runtime::Wallet>,
+        account_index: u64,
+        address_derivation_indexes: AddressDerivationMeta,
+    ) -> Result<Arc<AddressDerivationManager>> {
+        let mut receive_pubkey_managers = vec![];
+        let mut change_pubkey_managers = vec![];
+        let derivator: Arc<dyn WalletDerivationManagerTrait> =
+            Arc::new(gen0::WalletDerivationManagerV0::create_uninitialized(account_index)?);
+        receive_pubkey_managers.push(derivator.receive_pubkey_manager());
+        change_pubkey_managers.push(derivator.change_pubkey_manager());
+
+        let account_kind = AccountKind::Legacy;
+
+        let receive_address_manager = AddressManager::new(
+            wallet.clone(),
+            account_kind,
+            receive_pubkey_managers,
+            false,
+            address_derivation_indexes.receive(),
+            1,
+        )?;
+
+        let change_address_manager =
+            AddressManager::new(wallet.clone(), account_kind, change_pubkey_managers, false, address_derivation_indexes.change(), 1)?;
+
+        let manager = Self {
+            account_kind,
+            account_index,
+            cosigner_index: None,
+            derivators: vec![derivator],
             wallet: wallet.clone(),
             receive_address_manager: Arc::new(receive_address_manager),
             change_address_manager: Arc::new(change_address_manager),

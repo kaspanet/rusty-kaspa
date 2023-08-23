@@ -9,16 +9,17 @@ use crate::AddressDerivationManager;
 use crate::AddressDerivationManagerTrait;
 use kaspa_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
 
-pub struct Info {
-    receive_address: Option<Address>,
-    change_address: Option<Address>,
-    derivation: Option<Arc<AddressDerivationManager>>,
-    meta: AddressDerivationMeta,
-}
+// pub struct Info {
+//     // receive_address: Option<Address>,
+//     // change_address: Option<Address>,
+//     derivation: Option<Arc<AddressDerivationManager>>,
+//     // meta: AddressDerivationMeta,
+// }
 pub struct Legacy {
     inner: Arc<Inner>,
-    info: Arc<Mutex<Info>>,
+    //info: Arc<Mutex<Info>>,
     prv_key_data_id: PrvKeyDataId,
+    derivation: Arc<AddressDerivationManager>,
 }
 
 impl Legacy {
@@ -34,10 +35,11 @@ impl Legacy {
 
         //let storage::account::Legacy { xpub_keys } = data;
 
-        let derivation_indexes = meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or(AddressDerivationMeta::new(0, 0));
-
-        // let derivation =
-        //     Self::create_derivation(wallet, prv_key_data_id, address_derivation_indexes).await?;
+        let address_derivation_indexes =
+            meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or(AddressDerivationMeta::new(0, 0));
+        let account_index = 0;
+        let derivation =
+            AddressDerivationManager::create_legacy_pubkey_managers(wallet, account_index, address_derivation_indexes.clone())?;
 
         // let derivation_meta = derivation.address_derivation_meta();
         // let receive_address = derivation.receive_address_manager.current_address()?;
@@ -46,12 +48,14 @@ impl Legacy {
         Ok(Self {
             inner,
             prv_key_data_id,
-            info: Arc::new(Mutex::new(Info {
-                receive_address: None,
-                change_address: None,
-                meta: derivation_indexes,
-                derivation: None,
-            })),
+            derivation,
+            // info: Arc::new(Mutex::new(Info {
+            //     // receive_address: None,
+            //     // change_address: None,
+            //     // meta: address_derivation_indexes,
+            //     derivation: Some(derivation),
+            // }
+            //)),
         })
     }
 
@@ -59,8 +63,10 @@ impl Legacy {
         &self,
         wallet_secret: Secret,
         payment_secret: Option<&Secret>,
-        address_derivation_indexes: Option<AddressDerivationMeta>,
-    ) -> Result<Arc<AddressDerivationManager>> {
+        index: Option<u32>,
+    ) -> Result<()> {
+        log_info!("initialize_derivation2");
+
         let prv_key_data = self
             .inner
             .wallet
@@ -73,40 +79,50 @@ impl Legacy {
 
         let seed = mnemonic.to_seed("");
         let xprv = ExtendedPrivateKey::<SecretKey>::new(seed).unwrap();
+        let xprv = xprv.to_string(Prefix::XPRV).to_string();
+        // for manager in self.derivation.receive_address_manager().pubkey_managers.iter() {
+        //     manager.initialize(xprv.clone())?;
+        // }
+        // for manager in self.derivation.change_address_manager().pubkey_managers.iter() {
+        //     manager.initialize(xprv.clone())?;
+        // }
+        log_info!("setting xprv ...");
+        for derivator in &self.derivation.derivators {
+            derivator.initialize(xprv.clone(), index)?;
+        }
+        //let keys = vec![xprv];
 
-        let keys = vec![xprv.to_string(Prefix::XPRV).to_string()];
+        // let meta = { self.info.lock()?.meta.clone() };
 
-        let meta = { self.info.lock()?.meta.clone() };
+        // let address_derivation_indexes = address_derivation_indexes.unwrap_or(meta);
+        // let derivation = AddressDerivationManager::new(
+        //     &self.inner.wallet,
+        //     AccountKind::Legacy,
+        //     &keys,
+        //     false,
+        //     0,
+        //     None,
+        //     1,
+        //     address_derivation_indexes,
+        // )
+        // .await?;
 
-        let address_derivation_indexes = address_derivation_indexes.unwrap_or(meta);
-        let derivation = AddressDerivationManager::new(
-            &self.inner.wallet,
-            AccountKind::Legacy,
-            &keys,
-            false,
-            0,
-            None,
-            1,
-            address_derivation_indexes,
-        )
-        .await?;
+        // let meta = derivation.address_derivation_meta();
+        // let receive_address = derivation.receive_address_manager.current_address()?;
+        // let change_address = derivation.change_address_manager.current_address()?;
 
-        let meta = derivation.address_derivation_meta();
-        let receive_address = derivation.receive_address_manager.current_address()?;
-        let change_address = derivation.change_address_manager.current_address()?;
+        // let mut info = self.info.lock()?;
+        // info.derivation = Some(derivation.clone());
+        // info.receive_address = Some(receive_address);
+        // info.change_address = Some(change_address);
+        // info.meta = meta;
 
-        let mut info = self.info.lock()?;
-        info.derivation = Some(derivation.clone());
-        info.receive_address = Some(receive_address);
-        info.change_address = Some(change_address);
-        info.meta = meta;
-
-        Ok(derivation)
+        Ok(())
     }
 
-    fn info(&self) -> Result<MutexGuard<Info>> {
-        Ok(self.info.lock()?)
-    }
+    // fn info(&self) -> Result<MutexGuard<Info>> {
+    //     Ok(self.info.lock()?)
+    // }
 }
 
 #[async_trait]
@@ -128,12 +144,14 @@ impl Account for Legacy {
     }
 
     fn receive_address(&self) -> Result<Address> {
-        self.info()?.receive_address.clone().ok_or(Error::Custom("Account initialization is pending.".into()))
+        //self.info()?.receive_address.clone().ok_or(Error::Custom("Account initialization is pending.".into()))
+        Ok(self.derivation.receive_address_manager().current_address()?)
         //Ok(self.receive_address.clone())
     }
 
     fn change_address(&self) -> Result<Address> {
-        self.info()?.change_address.clone().ok_or(Error::Custom("Account initialization is pending.".into()))
+        //self.info()?.change_address.clone().ok_or(Error::Custom("Account initialization is pending.".into()))
+        Ok(self.derivation.change_address_manager().current_address()?)
         //Ok(self.change_address.clone())
     }
 
@@ -148,8 +166,7 @@ impl Account for Legacy {
     }
 
     fn metadata(&self) -> Result<Option<Metadata>> {
-        let derivation = self.info().unwrap().derivation.clone().expect("Account initialization is pending.");
-        let metadata = Metadata::new(self.inner.id, derivation.address_derivation_meta());
+        let metadata = Metadata::new(self.inner.id, self.derivation.address_derivation_meta());
         Ok(Some(metadata))
     }
 
@@ -157,23 +174,15 @@ impl Account for Legacy {
         Ok(self.clone())
     }
 
-    async fn initialize(
-        self: Arc<Self>,
-        secret: Secret,
-        payment_secret: Option<&Secret>,
-        address_derivation_indexes: Option<AddressDerivationMeta>,
-    ) -> Result<()> {
-        self.initialize_derivation(secret, payment_secret, address_derivation_indexes).await?;
+    async fn initialize(self: Arc<Self>, secret: Secret, payment_secret: Option<&Secret>, index: Option<u32>) -> Result<()> {
+        log_info!("initialize_derivation");
+        self.initialize_derivation(secret, payment_secret, index).await?;
         Ok(())
     }
 
     async fn uninitialize(self: Arc<Self>) -> Result<()> {
-        let derivation = self.derivation();
-        for manager in derivation.receive_address_manager().pubkey_managers.iter() {
-            manager.uninitialize()?;
-        }
-        for manager in derivation.change_address_manager().pubkey_managers.iter() {
-            manager.uninitialize()?;
+        for derivator in &self.derivation.derivators {
+            derivator.uninitialize()?;
         }
         Ok(())
     }
@@ -181,6 +190,6 @@ impl Account for Legacy {
 
 impl DerivationCapableAccount for Legacy {
     fn derivation(&self) -> Arc<dyn AddressDerivationManagerTrait> {
-        self.info().unwrap().derivation.clone().expect("Account initialization is pending.")
+        self.derivation.clone()
     }
 }

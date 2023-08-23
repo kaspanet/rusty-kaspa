@@ -337,14 +337,17 @@ impl KaspaCli {
                                 Events::WalletOpen |
                                 Events::WalletReload => {
 
+                                    tprintln!(this, "\nWalletOpen\n");
                                     // load all accounts
                                     this.wallet().activate_all_stored_accounts().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
 
                                     // list all accounts
                                     this.list().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
 
+                                    tprintln!(this, "----after-list----");
                                     // load default account if only one account exists
                                     this.wallet().autoselect_default_account_if_single().await.ok();
+                                    tprintln!(this, "----refresh_prompt----");
                                     this.term().refresh_prompt();
 
                                 },
@@ -600,6 +603,7 @@ impl KaspaCli {
     }
 
     pub async fn list(&self) -> Result<()> {
+        tprintln!(self, "----in-list----");
         let mut keys = self.wallet.keys().await?;
 
         tprintln!(self);
