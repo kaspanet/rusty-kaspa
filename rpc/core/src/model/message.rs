@@ -1084,6 +1084,12 @@ pub enum SyncStateChangedNotification {
         #[allow(dead_code)]
         progress: i64,
     },
+    Blocks {
+        #[allow(dead_code)]
+        blocks: u64,
+        #[allow(dead_code)]
+        progress: i64,
+    },
 }
 
 ///

@@ -488,7 +488,11 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             low_header.daa_score,
             high_header.daa_score,
             "blocks",
-            Some(|a, b| notification_root.notify(todo!()).expect("expecting an open unbounded channel")),
+            Some(|blocks, progress| {
+                notification_root
+                    .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_blocks(blocks as u64, progress as i64)))
+                    .expect("expecting an open unbounded channel")
+            }),
         );
 
         let mut iter = hashes.chunks(IBD_BATCH_SIZE);

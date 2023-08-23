@@ -776,6 +776,7 @@ message SyncStateChangedNotificationMessage {
   oneof syncState {
     ProofState proof = 1;
     HeadersState headers = 2;
+    BlocksState blocks = 3;
   }
 }
 
@@ -787,4 +788,9 @@ message ProofState {
 message HeadersState {
     uint64 headers = 1;
     int64 progress = 2;
+}
+
+message BlocksState {
+  uint64 blocks = 1;
+  int64 progress = 2;
 }

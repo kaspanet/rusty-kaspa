@@ -87,7 +87,13 @@ from!(item: &kaspa_rpc_core::SyncStateChangedNotification, SyncStateChangedNotif
                     headers: *headers,
                     progress: *progress
                 }))
-            }
+            },
+            SyncStateChangedNotification::Blocks { blocks, progress} => SyncStateChangedNotificationMessage {
+                sync_state: Some(sync_state_changed_notification_message::SyncState::Blocks(crate::protowire::BlocksState {
+                    blocks: *blocks,
+                    progress: *progress
+                }))
+            },
         }
 });
 

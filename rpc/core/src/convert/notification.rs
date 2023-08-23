@@ -119,6 +119,9 @@ impl From<&consensus_notify::SyncStateChangedNotification> for SyncStateChangedN
             consensus_notify::SyncStateChangedNotification::Headers { headers, progress } => {
                 Self::Headers { headers: *headers, progress: *progress }
             }
+            consensus_notify::SyncStateChangedNotification::Blocks { blocks, progress } => {
+                Self::Blocks { blocks: *blocks, progress: *progress }
+            }
         }
     }
 }

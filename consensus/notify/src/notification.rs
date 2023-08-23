@@ -179,6 +179,7 @@ pub struct NewBlockTemplateNotification {}
 pub enum SyncStateChangedNotification {
     Proof { current: u8, max: u8 }, // todo other variants
     Headers { headers: u64, progress: i64 },
+    Blocks { blocks: u64, progress: i64 },
 }
 
 impl SyncStateChangedNotification {
@@ -188,5 +189,9 @@ impl SyncStateChangedNotification {
 
     pub fn new_headers(headers: u64, progress: i64) -> SyncStateChangedNotification {
         Self::Headers { headers, progress }
+    }
+
+    pub fn new_blocks(blocks: u64, progress: i64) -> SyncStateChangedNotification {
+        Self::Blocks { blocks, progress }
     }
 }
