@@ -568,7 +568,7 @@ mod tests {
         let secp = Secp256k1::new();
         let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
         let (public_key, _) = public_key.x_only_public_key();
-        let script_pub_key = once(0x20).chain(public_key.serialize().into_iter()).chain(once(0xac)).collect_vec();
+        let script_pub_key = once(0x20).chain(public_key.serialize()).chain(once(0xac)).collect_vec();
         let script_pub_key = ScriptVec::from_slice(&script_pub_key);
 
         let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
