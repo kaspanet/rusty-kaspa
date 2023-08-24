@@ -117,7 +117,7 @@ impl IbdFlow {
                         ));
                     }
                 }
-                
+
                 drop(session); // Avoid holding the previous consensus throughout the staging IBD
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {

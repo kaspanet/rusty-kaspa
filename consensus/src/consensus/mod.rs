@@ -741,6 +741,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn finality_point(&self) -> Hash {
-        self.virtual_processor.virtual_finality_point(&self.virtual_stores.read().state.get().unwrap().ghostdag_data, self.pruning_point())
+        self.virtual_processor
+            .virtual_finality_point(&self.virtual_stores.read().state.get().unwrap().ghostdag_data, self.pruning_point())
     }
 }
