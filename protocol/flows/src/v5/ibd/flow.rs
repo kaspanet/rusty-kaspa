@@ -9,7 +9,6 @@ use futures::future::try_join_all;
 use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
-    errors::consensus::ConsensusError,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
     BlockHashSet,

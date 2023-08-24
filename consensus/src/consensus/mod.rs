@@ -63,7 +63,7 @@ use crossbeam_channel::{
 };
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
-use kaspa_core::time::unix_now;
+
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
