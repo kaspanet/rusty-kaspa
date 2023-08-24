@@ -123,6 +123,9 @@ impl From<&consensus_notify::SyncStateChangedNotification> for SyncStateChangedN
                 Self::Blocks { blocks: *blocks, progress: *progress }
             }
             consensus_notify::SyncStateChangedNotification::UtxoResync => Self::UtxoResync,
+            consensus_notify::SyncStateChangedNotification::UtxoSync { chunks, total } => {
+                Self::UtxoSync { chunks: *chunks, total: *total }
+            }
         }
     }
 }

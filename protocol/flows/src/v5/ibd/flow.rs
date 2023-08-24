@@ -459,7 +459,8 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 RequestPruningPointUtxoSetMessage { pruning_point_hash: Some(pruning_point.into()) }
             ))
             .await?;
-        let mut chunk_stream = PruningPointUtxosetChunkStream::new(&self.router, &mut self.incoming_route);
+        let mut chunk_stream =
+            PruningPointUtxosetChunkStream::new(&self.router, &mut self.incoming_route, self.notification_root.as_ref().unwrap());
         let mut multiset = MuHash::new();
         while let Some(chunk) = chunk_stream.next().await? {
             multiset = consensus

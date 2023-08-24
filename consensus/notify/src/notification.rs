@@ -181,22 +181,27 @@ pub enum SyncStateChangedNotification {
     Headers { headers: u64, progress: i64 },
     Blocks { blocks: u64, progress: i64 },
     UtxoResync,
+    UtxoSync { chunks: u64, total: u64 },
 }
 
 impl SyncStateChangedNotification {
-    pub fn new_proof(current: u8, max: u8) -> SyncStateChangedNotification {
+    pub fn new_proof(current: u8, max: u8) -> Self {
         Self::Proof { current, max }
     }
 
-    pub fn new_headers(headers: u64, progress: i64) -> SyncStateChangedNotification {
+    pub fn new_headers(headers: u64, progress: i64) -> Self {
         Self::Headers { headers, progress }
     }
 
-    pub fn new_blocks(blocks: u64, progress: i64) -> SyncStateChangedNotification {
+    pub fn new_blocks(blocks: u64, progress: i64) -> Self {
         Self::Blocks { blocks, progress }
     }
 
-    pub fn new_resync_utxo() -> SyncStateChangedNotification {
+    pub fn new_utxo_resync() -> Self {
         Self::UtxoResync
+    }
+
+    pub fn new_utxo_sync(chunks: u64, total: u64) -> Self {
+        Self::UtxoSync { chunks, total }
     }
 }

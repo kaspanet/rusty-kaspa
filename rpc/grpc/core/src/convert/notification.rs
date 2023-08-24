@@ -97,6 +97,12 @@ from!(item: &kaspa_rpc_core::SyncStateChangedNotification, SyncStateChangedNotif
             SyncStateChangedNotification::UtxoResync => SyncStateChangedNotificationMessage {
                 sync_state: Some(sync_state_changed_notification_message::SyncState::UtxoResync(crate::protowire::UtxoResyncState{}))
             },
+            SyncStateChangedNotification::UtxoSync { chunks, total} => SyncStateChangedNotificationMessage {
+                sync_state: Some(sync_state_changed_notification_message::SyncState::UtxoSync(crate::protowire::UtxoSyncState {
+                    chunks: *chunks,
+                    total: *total
+                }))
+            },
         }
 });
 

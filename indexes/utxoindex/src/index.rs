@@ -149,7 +149,7 @@ impl UtxoIndexApi for UtxoIndex {
 
         #[cfg(not(test))]
         self.notification_root
-            .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_resync_utxo()))
+            .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_utxo_resync()))
             .expect("expecting an open unbounded channel");
 
         self.store.delete_all()?;

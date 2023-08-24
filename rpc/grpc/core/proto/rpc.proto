@@ -778,6 +778,7 @@ message SyncStateChangedNotificationMessage {
     HeadersState headers = 2;
     BlocksState blocks = 3;
     UtxoResyncState utxoResync = 4;
+    UtxoSyncState utxoSync = 5;
   }
 }
 
@@ -797,3 +798,8 @@ message BlocksState {
 }
 
 message UtxoResyncState {}
+
+message UtxoSyncState {
+  uint64 chunks = 1;
+  uint64 total = 2;
+}
