@@ -126,6 +126,9 @@ impl From<&consensus_notify::SyncStateChangedNotification> for SyncStateChangedN
             consensus_notify::SyncStateChangedNotification::UtxoSync { chunks, total } => {
                 Self::UtxoSync { chunks: *chunks, total: *total }
             }
+            consensus_notify::SyncStateChangedNotification::TrustSync { processed, total } => {
+                Self::TrustSync { processed: *processed, total: *total }
+            }
         }
     }
 }

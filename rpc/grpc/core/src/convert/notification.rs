@@ -103,6 +103,12 @@ from!(item: &kaspa_rpc_core::SyncStateChangedNotification, SyncStateChangedNotif
                     total: *total
                 }))
             },
+            SyncStateChangedNotification::TrustSync { processed, total} => SyncStateChangedNotificationMessage {
+                sync_state: Some(sync_state_changed_notification_message::SyncState::TrustSync(crate::protowire::TrustSyncState {
+                    processed: *processed,
+                    total: *total
+                }))
+            },
         }
 });
 

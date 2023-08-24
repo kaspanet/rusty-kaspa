@@ -779,6 +779,7 @@ message SyncStateChangedNotificationMessage {
     BlocksState blocks = 3;
     UtxoResyncState utxoResync = 4;
     UtxoSyncState utxoSync = 5;
+    TrustSyncState trustSync = 6;
   }
 }
 
@@ -801,5 +802,10 @@ message UtxoResyncState {}
 
 message UtxoSyncState {
   uint64 chunks = 1;
+  uint64 total = 2;
+}
+
+message TrustSyncState {
+  uint64 processed = 1;
   uint64 total = 2;
 }

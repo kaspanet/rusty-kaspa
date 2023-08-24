@@ -1097,6 +1097,12 @@ pub enum SyncStateChangedNotification {
         #[allow(dead_code)]
         total: u64,
     },
+    TrustSync {
+        #[allow(dead_code)]
+        processed: u64,
+        #[allow(dead_code)]
+        total: u64,
+    },
 }
 
 ///

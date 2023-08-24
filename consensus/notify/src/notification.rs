@@ -182,6 +182,7 @@ pub enum SyncStateChangedNotification {
     Blocks { blocks: u64, progress: i64 },
     UtxoResync,
     UtxoSync { chunks: u64, total: u64 },
+    TrustSync { processed: u64, total: u64 },
 }
 
 impl SyncStateChangedNotification {
@@ -203,5 +204,9 @@ impl SyncStateChangedNotification {
 
     pub fn new_utxo_sync(chunks: u64, total: u64) -> Self {
         Self::UtxoSync { chunks, total }
+    }
+
+    pub fn new_trust_sync(processed: u64, total: u64) -> Self {
+        Self::TrustSync { processed, total }
     }
 }
