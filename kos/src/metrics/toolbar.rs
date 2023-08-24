@@ -50,7 +50,7 @@ pub struct ToolbarInner {
     pub callbacks: CallbackMap,
     pub container: Arc<Mutex<Option<Arc<Container>>>>,
     pub graphs: Arc<Mutex<HashMap<Metric, Arc<Graph>>>>,
-    pub controls: Arc<Mutex<Vec<Arc<dyn Control>>>>,
+    pub controls: Arc<Mutex<Vec<Arc<dyn Control + Send + Sync>>>>,
     pub layout: Arc<Mutex<(Cols, Rows)>>,
 }
 
@@ -109,11 +109,11 @@ impl Toolbar {
         self.inner.layout.lock().unwrap()
     }
 
-    pub fn controls(&self) -> MutexGuard<Vec<Arc<dyn Control>>> {
+    pub fn controls(&self) -> MutexGuard<Vec<Arc<dyn Control + Send + Sync>>> {
         self.inner.controls.lock().unwrap()
     }
 
-    pub fn push(&self, control: impl Control + 'static) {
+    pub fn push(&self, control: impl Control + Send + Sync + 'static) {
         let control = Arc::new(control);
         self.controls().push(control);
     }
@@ -246,7 +246,7 @@ impl Toolbar {
     }
 }
 
-type ButtonCallback = dyn Fn(&Button) + 'static;
+type ButtonCallback = dyn Fn(&Button) + Send + Sync + 'static;
 
 #[derive(Clone)]
 pub struct Button {
@@ -276,13 +276,16 @@ impl Button {
     }
 }
 
-type RadioButtonCallback = dyn Fn(&RadioButton) + 'static;
+type RadioButtonCallback = dyn Fn(&RadioButton) + Send + Sync + 'static;
 
 #[derive(Clone)]
 pub struct RadioButton {
     pub callbacks: CallbackMap,
     pub element: Element,
 }
+
+unsafe impl Send for RadioButton {}
+unsafe impl Sync for RadioButton {}
 
 impl RadioButton {
     pub fn try_new(
