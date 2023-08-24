@@ -350,13 +350,14 @@ impl IbdFlow {
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
         let highest_shared_header_score = consensus.async_get_header(highest_known_syncer_chain_hash).await?.daa_score;
-        let notification_root = self.notification_root.take().unwrap();
         let mut progress_reporter = ProgressReporter::new(
             highest_shared_header_score,
             relay_block.header.daa_score,
             "block headers",
             Some(|headers: usize, progress: i32| {
-                notification_root
+                self.notification_root
+                    .as_ref()
+                    .unwrap()
                     .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_headers(headers as u64, progress as i64)))
                     .expect("expecting an open unbounded channel")
             }),
@@ -393,7 +394,6 @@ impl IbdFlow {
             let prev_chunk_len = prev_jobs.len();
             try_join_all(prev_jobs).await?;
             progress_reporter.report_completion(prev_chunk_len);
-            self.notification_root = Some(notification_root);
         }
 
         self.sync_missing_relay_past_headers(consensus, syncer_virtual_selected_parent, relay_block.hash()).await?;

@@ -36,26 +36,11 @@ pub struct Params {
     /// Size of sampled blocks window that is inspected to calculate the past median time of each block
     pub past_median_time_sampled_window_size: u64,
 
-    /// Target time per block (in milliseconds)
-    pub target_time_per_block: u64,
-
-    /// DAA score from which the window sampling starts for difficulty and past median time calculation
-    pub sampling_activation_daa_score: u64,
-
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
     pub max_difficulty_target: Uint256,
 
     /// Highest allowed proof of work difficulty as a floating number
     pub max_difficulty_target_f64: f64,
-
-    /// Block sample rate for filling the difficulty window (selects one every N blocks)
-    pub difficulty_sample_rate: u64,
-
-    /// Size of sampled blocks window that is inspected to calculate the required difficulty of each block
-    pub sampled_difficulty_window_size: usize,
-
-    /// Size of full blocks window that is inspected to calculate the required difficulty of each block
-    pub legacy_difficulty_window_size: usize,
 
     /// The minimum length a difficulty window (full or sampled) must have to trigger a DAA calculation
     pub min_difficulty_window_len: usize,
@@ -84,6 +69,8 @@ pub struct Params {
     pub skip_proof_of_work: bool,
     pub max_block_level: BlockLevel,
     pub pruning_proof_m: u64,
+
+    pub daa_window_params: DAAWindowParams,
 }
 
 fn unix_now() -> u64 {
@@ -110,7 +97,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn past_median_time_window_size(&self, selected_parent_daa_score: u64) -> usize {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
+        if selected_parent_daa_score < self.daa_window_params.sampling_activation_daa_score {
             self.legacy_past_median_time_window_size()
         } else {
             self.sampled_past_median_time_window_size()
@@ -122,7 +109,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn timestamp_deviation_tolerance(&self, selected_parent_daa_score: u64) -> u64 {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
+        if selected_parent_daa_score < self.daa_window_params.sampling_activation_daa_score {
             self.legacy_timestamp_deviation_tolerance
         } else {
             self.new_timestamp_deviation_tolerance
@@ -134,7 +121,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn past_median_time_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
+        if selected_parent_daa_score < self.daa_window_params.sampling_activation_daa_score {
             1
         } else {
             self.past_median_time_sample_rate
@@ -146,10 +133,10 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn difficulty_window_size(&self, selected_parent_daa_score: u64) -> usize {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
-            self.legacy_difficulty_window_size
+        if selected_parent_daa_score < self.daa_window_params.sampling_activation_daa_score {
+            self.daa_window_params.legacy_difficulty_window_size
         } else {
-            self.sampled_difficulty_window_size
+            self.daa_window_params.sampled_difficulty_window_size
         }
     }
 
@@ -158,10 +145,10 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn difficulty_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
+        if selected_parent_daa_score < self.daa_window_params.sampling_activation_daa_score {
             1
         } else {
-            self.difficulty_sample_rate
+            self.daa_window_params.difficulty_sample_rate
         }
     }
 
@@ -170,30 +157,26 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn target_time_per_block(&self, _selected_parent_daa_score: u64) -> u64 {
-        self.target_time_per_block
+        self.daa_window_params.target_time_per_block
     }
 
     /// Returns the expected number of blocks per second
     #[inline]
     #[must_use]
     pub fn bps(&self) -> u64 {
-        1000 / self.target_time_per_block
+        1000 / self.daa_window_params.target_time_per_block
     }
 
     pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
-            self.legacy_difficulty_window_size as u64
+        if selected_parent_daa_score < self.daa_window_params.sampling_activation_daa_score {
+            self.daa_window_params.legacy_difficulty_window_size as u64
         } else {
-            self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
+            self.daa_window_params.difficulty_sample_rate * self.daa_window_params.sampled_difficulty_window_size as u64
         }
     }
 
     fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
-            self.target_time_per_block * self.legacy_difficulty_window_size as u64
-        } else {
-            self.target_time_per_block * self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
-        }
+        self.daa_window_params.expected_daa_window_duration_in_milliseconds(selected_parent_daa_score)
     }
 
     /// Returns the depth at which the anticone of a chain block is final (i.e., is a permanently closed set).
@@ -216,10 +199,7 @@ impl Params {
 
     /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
     pub fn is_nearly_synced(&self, sink_timestamp: u64, sink_daa_score: u64) -> bool {
-        // We consider the node close to being synced if the sink (virtual selected parent) block
-        // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
-        // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
-        unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds(sink_daa_score)
+        self.daa_window_params.is_nearly_synced(sink_timestamp, sink_daa_score)
     }
 
     pub fn network_name(&self) -> String {
@@ -239,7 +219,7 @@ impl Params {
     }
 
     pub fn finality_duration(&self) -> u64 {
-        self.target_time_per_block * self.finality_depth
+        self.daa_window_params.target_time_per_block * self.finality_depth
     }
 }
 
@@ -298,13 +278,8 @@ pub const MAINNET_PARAMS: Params = Params {
     new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    target_time_per_block: 1000,
-    sampling_activation_daa_score: u64::MAX,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
-    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
@@ -340,6 +315,14 @@ pub const MAINNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 225,
     pruning_proof_m: 1000,
+
+    daa_window_params: DAAWindowParams {
+        target_time_per_block: 1000,
+        sampling_activation_daa_score: u64::MAX,
+        difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
+        sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
+        legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    },
 };
 
 pub const TESTNET_PARAMS: Params = Params {
@@ -354,13 +337,8 @@ pub const TESTNET_PARAMS: Params = Params {
     new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    target_time_per_block: 1000,
-    sampling_activation_daa_score: u64::MAX,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
-    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
@@ -396,6 +374,14 @@ pub const TESTNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
+
+    daa_window_params: DAAWindowParams {
+        target_time_per_block: 1000,
+        sampling_activation_daa_score: u64::MAX,
+        difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
+        sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
+        legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    },
 };
 
 pub const TESTNET11_PARAMS: Params = Params {
@@ -408,20 +394,15 @@ pub const TESTNET11_PARAMS: Params = Params {
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
     new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    sampling_activation_daa_score: 0, // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
-    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
 
     //
     // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
     //
     ghostdag_k: Testnet11Bps::ghostdag_k(),
-    target_time_per_block: Testnet11Bps::target_time_per_block(),
     past_median_time_sample_rate: Testnet11Bps::past_median_time_sample_rate(),
-    difficulty_sample_rate: Testnet11Bps::difficulty_adjustment_sample_rate(),
     max_block_parents: Testnet11Bps::max_block_parents(),
     mergeset_size_limit: Testnet11Bps::mergeset_size_limit(),
     merge_depth: Testnet11Bps::merge_depth_bound(),
@@ -451,6 +432,14 @@ pub const TESTNET11_PARAMS: Params = Params {
 
     skip_proof_of_work: false,
     max_block_level: 250,
+
+    daa_window_params: DAAWindowParams {
+        sampling_activation_daa_score: 0, // Sampling is activated from network inception
+        sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
+        legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+        target_time_per_block: Testnet11Bps::target_time_per_block(),
+        difficulty_sample_rate: Testnet11Bps::difficulty_adjustment_sample_rate(),
+    },
 };
 
 pub const SIMNET_PARAMS: Params = Params {
@@ -460,11 +449,8 @@ pub const SIMNET_PARAMS: Params = Params {
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
     new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    sampling_activation_daa_score: 0, // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
-    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
 
     //
@@ -472,9 +458,7 @@ pub const SIMNET_PARAMS: Params = Params {
     //
     // Note we use a 10 BPS configuration for simnet
     ghostdag_k: Testnet11Bps::ghostdag_k(),
-    target_time_per_block: Testnet11Bps::target_time_per_block(),
     past_median_time_sample_rate: Testnet11Bps::past_median_time_sample_rate(),
-    difficulty_sample_rate: Testnet11Bps::difficulty_adjustment_sample_rate(),
     max_block_parents: Testnet11Bps::max_block_parents(),
     mergeset_size_limit: Testnet11Bps::mergeset_size_limit(),
     merge_depth: Testnet11Bps::merge_depth_bound(),
@@ -504,6 +488,14 @@ pub const SIMNET_PARAMS: Params = Params {
 
     skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
     max_block_level: 250,
+
+    daa_window_params: DAAWindowParams {
+        difficulty_sample_rate: Testnet11Bps::difficulty_adjustment_sample_rate(),
+        sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
+        legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+        target_time_per_block: Testnet11Bps::target_time_per_block(),
+        sampling_activation_daa_score: 0, // Sampling is activated from network inception
+    },
 };
 
 pub const DEVNET_PARAMS: Params = Params {
@@ -515,13 +507,8 @@ pub const DEVNET_PARAMS: Params = Params {
     new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    target_time_per_block: 1000,
-    sampling_activation_daa_score: u64::MAX,
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
-    sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
-    legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
     max_block_parents: 10,
     mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
@@ -557,4 +544,42 @@ pub const DEVNET_PARAMS: Params = Params {
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
+
+    daa_window_params: DAAWindowParams {
+        target_time_per_block: 1000,
+        sampling_activation_daa_score: u64::MAX,
+        difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
+        sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
+        legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
+    },
 };
+
+#[derive(Debug, Copy, Clone, Default)]
+pub struct DAAWindowParams {
+    /// DAA score from which the window sampling starts for difficulty and past median time calculation
+    pub sampling_activation_daa_score: u64,
+    /// Target time per block (in milliseconds)
+    pub target_time_per_block: u64,
+    /// Size of full blocks window that is inspected to calculate the required difficulty of each block
+    pub legacy_difficulty_window_size: usize,
+    /// Block sample rate for filling the difficulty window (selects one every N blocks)
+    pub difficulty_sample_rate: u64,
+    /// Size of sampled blocks window that is inspected to calculate the required difficulty of each block
+    pub sampled_difficulty_window_size: usize,
+}
+
+impl DAAWindowParams {
+    pub fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
+        if selected_parent_daa_score < self.sampling_activation_daa_score {
+            self.target_time_per_block * self.legacy_difficulty_window_size as u64
+        } else {
+            self.target_time_per_block * self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
+        }
+    }
+    pub fn is_nearly_synced(&self, sink_timestamp: u64, sink_daa_score: u64) -> bool {
+        // We consider the node close to being synced if the sink (virtual selected parent) block
+        // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
+        // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
+        unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds(sink_daa_score)
+    }
+}

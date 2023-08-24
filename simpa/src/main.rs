@@ -259,21 +259,22 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.ghostdag_k = k;
         params.mergeset_size_limit = k as u64 * 10;
         params.max_block_parents = u8::max((0.66 * k as f64) as u8, 10);
-        params.target_time_per_block = (1000.0 / args.bps) as u64;
+        params.daa_window_params.target_time_per_block = (1000.0 / args.bps) as u64;
         params.merge_depth = (params.merge_depth as f64 * args.bps) as u64;
         params.coinbase_maturity = (params.coinbase_maturity as f64 * f64::max(1.0, args.bps * args.delay * 0.25)) as u64;
 
         if args.daa_legacy {
             // Scale DAA and median-time windows linearly with BPS
-            params.sampling_activation_daa_score = u64::MAX;
+            params.daa_window_params.sampling_activation_daa_score = u64::MAX;
             params.legacy_timestamp_deviation_tolerance = (params.legacy_timestamp_deviation_tolerance as f64 * args.bps) as u64;
-            params.legacy_difficulty_window_size = (params.legacy_difficulty_window_size as f64 * args.bps) as usize;
+            params.daa_window_params.legacy_difficulty_window_size =
+                (params.daa_window_params.legacy_difficulty_window_size as f64 * args.bps) as usize;
         } else {
             // Use the new sampling algorithms
-            params.sampling_activation_daa_score = 0;
+            params.daa_window_params.sampling_activation_daa_score = 0;
             params.past_median_time_sample_rate = (10.0 * args.bps) as u64;
             params.new_timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
-            params.difficulty_sample_rate = (2.0 * args.bps) as u64;
+            params.daa_window_params.difficulty_sample_rate = (2.0 * args.bps) as u64;
         }
 
         info!(
@@ -285,7 +286,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
     }
     if args.test_pruning {
         params.pruning_proof_m = 16;
-        params.legacy_difficulty_window_size = 64;
+        params.daa_window_params.legacy_difficulty_window_size = 64;
         params.legacy_timestamp_deviation_tolerance = 16;
         params.finality_depth = 128;
         params.merge_depth = 128;
