@@ -94,6 +94,9 @@ from!(item: &kaspa_rpc_core::SyncStateChangedNotification, SyncStateChangedNotif
                     progress: *progress
                 }))
             },
+            SyncStateChangedNotification::UtxoResync => SyncStateChangedNotificationMessage {
+                sync_state: Some(sync_state_changed_notification_message::SyncState::UtxoResync(crate::protowire::UtxoResyncState{}))
+            },
         }
 });
 

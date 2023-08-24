@@ -1090,6 +1090,7 @@ pub enum SyncStateChangedNotification {
         #[allow(dead_code)]
         progress: i64,
     },
+    UtxoResync,
 }
 
 ///

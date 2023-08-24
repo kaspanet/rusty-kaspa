@@ -777,6 +777,7 @@ message SyncStateChangedNotificationMessage {
     ProofState proof = 1;
     HeadersState headers = 2;
     BlocksState blocks = 3;
+    UtxoResyncState utxoResync = 4;
   }
 }
 
@@ -794,3 +795,5 @@ message BlocksState {
   uint64 blocks = 1;
   int64 progress = 2;
 }
+
+message UtxoResyncState {}
