@@ -9,15 +9,8 @@ use crate::AddressDerivationManager;
 use crate::AddressDerivationManagerTrait;
 use kaspa_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
 
-// pub struct Info {
-//     // receive_address: Option<Address>,
-//     // change_address: Option<Address>,
-//     derivation: Option<Arc<AddressDerivationManager>>,
-//     // meta: AddressDerivationMeta,
-// }
 pub struct Legacy {
     inner: Arc<Inner>,
-    //info: Arc<Mutex<Info>>,
     prv_key_data_id: PrvKeyDataId,
     derivation: Arc<AddressDerivationManager>,
 }
@@ -33,30 +26,13 @@ impl Legacy {
         let id = AccountId::from_legacy(&prv_key_data_id, &data);
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
-        //let storage::account::Legacy { xpub_keys } = data;
-
         let address_derivation_indexes =
             meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or(AddressDerivationMeta::new(0, 0));
         let account_index = 0;
         let derivation =
-            AddressDerivationManager::create_legacy_pubkey_managers(wallet, account_index, address_derivation_indexes.clone())?;
+            AddressDerivationManager::create_legacy_pubkey_managers(wallet, account_index, address_derivation_indexes.clone(), data)?;
 
-        // let derivation_meta = derivation.address_derivation_meta();
-        // let receive_address = derivation.receive_address_manager.current_address()?;
-        // let change_address = derivation.change_address_manager.current_address()?;
-
-        Ok(Self {
-            inner,
-            prv_key_data_id,
-            derivation,
-            // info: Arc::new(Mutex::new(Info {
-            //     // receive_address: None,
-            //     // change_address: None,
-            //     // meta: address_derivation_indexes,
-            //     derivation: Some(derivation),
-            // }
-            //)),
-        })
+        Ok(Self { inner, prv_key_data_id, derivation })
     }
 
     pub async fn initialize_derivation(
@@ -65,8 +41,6 @@ impl Legacy {
         payment_secret: Option<&Secret>,
         index: Option<u32>,
     ) -> Result<()> {
-        log_info!("initialize_derivation2");
-
         let prv_key_data = self
             .inner
             .wallet
@@ -86,7 +60,6 @@ impl Legacy {
         // for manager in self.derivation.change_address_manager().pubkey_managers.iter() {
         //     manager.initialize(xprv.clone())?;
         // }
-        log_info!("setting xprv ...");
         for derivator in &self.derivation.derivators {
             derivator.initialize(xprv.clone(), index)?;
         }
@@ -157,8 +130,15 @@ impl Account for Legacy {
 
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
-
-        let legacy = storage::Legacy { xpub_keys: Arc::new(vec![]) };
+        // let mut receive_pubkeys = HashMap::new();
+        // let mut change_pubkeys = HashMap::new();
+        // for derivator in &self.derivation.derivators {
+        //     receive_pubkeys.extend(derivator.receive_pubkey_manager().get_cache()?);
+        //     change_pubkeys.extend(derivator.change_pubkey_manager().get_cache()?);
+        // }
+        let legacy = storage::Legacy {};
+        // receive_pubkeys: Arc::new(receive_pubkeys),
+        // change_pubkeys: Arc::new(change_pubkeys)
 
         let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Legacy(legacy));
 

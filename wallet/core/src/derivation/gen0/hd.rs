@@ -78,6 +78,7 @@ impl PubkeyDerivationManagerV0 {
     }
 
     fn set_key(&self, public_key: secp256k1::PublicKey, attrs: ExtendedKeyAttrs, hmac: HmacSha512, index: Option<u32>) {
+        *self.cache.lock().unwrap() = HashMap::new();
         let new_inner = Inner::new(public_key, attrs, hmac);
         {
             *self.index.lock().unwrap() = index.unwrap_or(0);
@@ -120,6 +121,10 @@ impl PubkeyDerivationManagerV0 {
         self.use_cache.load(Ordering::SeqCst)
     }
 
+    pub fn cache(&self) -> Result<HashMap<u32, secp256k1::PublicKey>> {
+        Ok(self.cache.lock()?.clone())
+    }
+
     pub fn derive_pubkey_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
         let list = indexes.map(|index| self.derive_pubkey(index)).collect::<Vec<_>>();
         let keys = list.into_iter().collect::<Result<Vec<_>>>()?;
@@ -136,7 +141,9 @@ impl PubkeyDerivationManagerV0 {
                 ChildNumber::new(index, true)?,
                 inner.hmac.clone(),
             )?;
+            workflow_log::log_info!("use_cache: {use_cache}");
             if use_cache {
+                workflow_log::log_info!("cache insert: {:?}", key);
                 self.cache.lock()?.insert(index, key.clone());
             }
             return Ok(key);
@@ -222,6 +229,10 @@ impl PubkeyDerivationManagerTrait for PubkeyDerivationManagerV0 {
     fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
         workflow_log::log_info!("get_range {:?}", range);
         self.derive_pubkey_range(range)
+    }
+
+    fn get_cache(&self) -> Result<HashMap<u32, secp256k1::PublicKey>> {
+        self.cache()
     }
 
     fn uninitialize(&self) -> Result<()> {
@@ -472,17 +483,21 @@ impl WalletDerivationManagerV0 {
         Ok(wallet)
     }
 
-    pub fn create_uninitialized(account_index: u64) -> Result<Self> {
+    pub fn create_uninitialized(
+        account_index: u64,
+        receive_keys: Option<HashMap<u32, secp256k1::PublicKey>>,
+        change_keys: Option<HashMap<u32, secp256k1::PublicKey>>,
+    ) -> Result<Self> {
         let receive_wallet = PubkeyDerivationManagerV0 {
             index: Arc::new(Mutex::new(0)),
             use_cache: Arc::new(AtomicBool::new(true)),
-            cache: Arc::new(Mutex::new(HashMap::new())),
+            cache: Arc::new(Mutex::new(receive_keys.unwrap_or(HashMap::new()))),
             inner: Arc::new(Mutex::new(None)),
         };
         let change_wallet = PubkeyDerivationManagerV0 {
             index: Arc::new(Mutex::new(0)),
             use_cache: Arc::new(AtomicBool::new(true)),
-            cache: Arc::new(Mutex::new(HashMap::new())),
+            cache: Arc::new(Mutex::new(change_keys.unwrap_or(HashMap::new()))),
             inner: Arc::new(Mutex::new(None)),
         };
         let wallet = Self {
@@ -859,7 +874,7 @@ mod tests {
         assert!(hd_wallet.is_ok(), "Could not parse key");
         let hd_wallet = hd_wallet.unwrap();
 
-        let hd_wallet_test = WalletDerivationManagerV0::create_uninitialized(0);
+        let hd_wallet_test = WalletDerivationManagerV0::create_uninitialized(0, None, None);
         assert!(hd_wallet_test.is_ok(), "Could not create empty wallet");
         let hd_wallet_test = hd_wallet_test.unwrap();
 

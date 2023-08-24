@@ -1,7 +1,7 @@
 use crate::Result;
 use async_trait::async_trait;
 use kaspa_bip32::ExtendedPublicKey;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 #[async_trait]
 pub trait WalletDerivationManagerTrait: Send + Sync {
@@ -52,6 +52,9 @@ pub trait PubkeyDerivationManagerTrait: Send + Sync {
     fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>>;
     fn initialize(&self, _key: String) -> Result<()> {
         Ok(())
+    }
+    fn get_cache(&self) -> Result<HashMap<u32, secp256k1::PublicKey>> {
+        Ok(HashMap::new())
     }
     fn uninitialize(&self) -> Result<()> {
         Ok(())

@@ -15,7 +15,8 @@ pub struct Settings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Legacy {
-    pub xpub_keys: Arc<Vec<String>>,
+    // pub receive_pubkeys: Arc<HashMap<u32, PublicKey>>,
+    // pub change_pubkeys: Arc<HashMap<u32, PublicKey>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

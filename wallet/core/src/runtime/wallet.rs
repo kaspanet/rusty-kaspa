@@ -95,6 +95,7 @@ impl AccountCreateArgs {
 
 pub struct Inner {
     active_accounts: ActiveAccountMap,
+    legacy_accounts: ActiveAccountMap,
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
     selected_account: Mutex<Option<Arc<dyn Account>>>,
@@ -140,6 +141,7 @@ impl Wallet {
                 multiplexer,
                 store,
                 active_accounts: ActiveAccountMap::default(),
+                legacy_accounts: ActiveAccountMap::default(),
                 listener_id: Mutex::new(None),
                 task_ctl: DuplexChannel::oneshot(),
                 selected_account: Mutex::new(None),
@@ -169,6 +171,16 @@ impl Wallet {
 
     pub fn active_accounts(&self) -> &ActiveAccountMap {
         &self.inner.active_accounts
+    }
+    pub fn legacy_accounts(&self) -> &ActiveAccountMap {
+        &self.inner.legacy_accounts
+    }
+
+    pub fn active_account(&self, id: &AccountId) -> Option<Arc<dyn Account>> {
+        if let Some(account) = self.legacy_accounts().get(id) {
+            return Some(account);
+        }
+        self.active_accounts().get(id)
     }
 
     pub async fn reset(self: &Arc<Self>) -> Result<()> {
@@ -521,7 +533,7 @@ impl Wallet {
     // }
 
     pub async fn get_account_by_id(self: &Arc<Self>, account_id: &AccountId) -> Result<Option<Arc<dyn Account>>> {
-        if let Some(account) = self.active_accounts().get(account_id) {
+        if let Some(account) = self.active_account(account_id) {
             Ok(Some(account.clone()))
         } else {
             let account_storage = self.inner.store.as_account_store()?;
@@ -649,7 +661,7 @@ impl Wallet {
 
             async move {
                 let (stored_account, stored_metadata) = stored.unwrap();
-                if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
+                if let Some(account) = wallet.active_account(&stored_account.id) {
                     log_info!("fetching active account: {}", account.id());
                     Ok(account)
                 } else {
@@ -680,7 +692,7 @@ impl Wallet {
             // }
             async move {
                 let (stored_account, stored_metadata) = stored.unwrap();
-                if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
+                if let Some(account) = wallet.active_account(&stored_account.id) {
                     // log_trace!("fetching active account: {}", account.id);
                     Ok(account)
                 } else {
@@ -689,6 +701,7 @@ impl Wallet {
                     log_info!("starting new active account instance22 is_legacy:{is_legacy} {}", account.id());
                     if is_legacy {
                         account.clone().initialize(secret, None, None).await?;
+                        wallet.legacy_accounts().insert(account.clone());
                     }
                     account.clone().start().await?;
                     // if is_legacy {
@@ -719,34 +732,32 @@ impl Wallet {
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
         if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
             //return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
-            log_info!("PrivateKeyAlreadyExists {}", prv_key_data.id.to_hex());
+            log_info!("TODO: PrivateKeyAlreadyExists {}", prv_key_data.id.to_hex());
         }
 
-        // -- TODO --
-        // -- TODO --
-        // -- TODO --
-        let xpub_keys = Arc::new(vec![]);
-        // -- TODO --
-        // -- TODO --
-        // -- TODO --
-
-        let data = storage::Legacy { xpub_keys };
+        let data = storage::Legacy {}; // receive_pubkeys: Arc::new(HashMap::new()), change_pubkeys: Arc::new(HashMap::new()) };
         let settings = storage::Settings::default();
         let account = Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?);
-        account.clone().initialize(wallet_secret, payment_secret, None).await?;
-
-        let account_store = self.inner.store.as_account_store()?;
-
-        let stored_account = account.as_storable()?;
-
         // store private key
         prv_key_data_store.store(&ctx, prv_key_data).await?;
+
+        account.clone().initialize(wallet_secret, payment_secret, None).await?;
+
+        //it will stop scan in connect() function
+        self.active_accounts().insert(account.clone().as_dyn_arc());
+
+        // activate account (add it to wallet active account list)
+        //account.clone().start().await?;
+        account.clone().scan(Some(100), Some(50000)).await?;
+
+        let account_store = self.inner.store.as_account_store()?;
+        let stored_account = account.as_storable()?;
+
         // store account
         account_store.store_single(&stored_account, None).await?;
         // flush to storage
         self.inner.store.commit(&ctx).await?;
-        // activate account (add it to wallet active account list)
-        account.clone().start().await?;
+
         account.clone().uninitialize().await?;
 
         Ok(account)
@@ -785,11 +796,10 @@ impl Wallet {
                 // account
             }
             AccountKind::Legacy => {
-                // TODO xpub_keys
-                let xpub_keys = Arc::new(vec![]);
-                // ---
+                // let receive_pubkeys = Arc::new(HashMap::new());
+                // let change_pubkeys = Arc::new(HashMap::new());
 
-                let data = storage::Legacy { xpub_keys };
+                let data = storage::Legacy {}; //receive_pubkeys, change_pubkeys };
                 let settings = storage::Settings::default();
                 Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?)
             }
