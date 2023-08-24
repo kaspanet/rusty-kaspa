@@ -3,7 +3,6 @@
 //!
 
 use async_channel::unbounded;
-use kaspa_component_manager::{create_core, Args};
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
@@ -57,6 +56,8 @@ use kaspa_muhash::MuHash;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
+use kaspad::args::Args;
+use kaspad::daemon::create_core_with_runtime;
 use serde::{Deserialize, Serialize};
 use std::cmp::{max, Ordering};
 use std::collections::HashSet;
@@ -1758,11 +1759,11 @@ impl DaemonWithRpc {
 
         args.rpclisten = Some(format!("0.0.0.0:{rpc_port}").try_into().unwrap());
         args.listen = Some(format!("0.0.0.0:{p2p_port}").try_into().unwrap());
-        args.rpclisten_json = Some(format!("0.0.0.0:{rpc_json_port}").try_into().unwrap());
-        args.rpclisten_borsh = Some(format!("0.0.0.0:{rpc_borsh_port}").try_into().unwrap());
+        args.rpclisten_json = Some(format!("0.0.0.0:{rpc_json_port}").parse().unwrap());
+        args.rpclisten_borsh = Some(format!("0.0.0.0:{rpc_borsh_port}").parse().unwrap());
         args.appdir = Some(tempdir().unwrap().path().to_str().unwrap().to_owned());
 
-        let core = create_core(args, false, false);
+        let core = create_core_with_runtime(&Default::default(), &args);
         DaemonWithRpc { core, rpc_port }
     }
 

@@ -14,7 +14,6 @@ members = [
     "consensus/wasm",
     "kos",
     "kaspad",
-    "kaspa_component_manager",
     "simpa",
     "wasm",
     "math",
@@ -94,33 +93,29 @@ kaspa-math = { version = "0.1.6", path = "math" }
 kaspa-merkle = { version = "0.1.6", path = "crypto/merkle" }
 kaspa-mining = { version = "0.1.6", path = "mining" }
 kaspa-mining-errors = { path = "mining/errors" }
-kaspa-p2p-flows = { path = "protocol/flows" }
-kaspa-p2p-lib = { path = "protocol/p2p" }
-kaspa-testing-integration = { path = "testing/integration" }
-kaspa-utxoindex = { path = "indexes/utxoindex" }
-kaspa-rpc-service = { version = "0.1.2", path = "rpc/service" }
-kaspa-notify = { version = "0.1.2", path = "notify" }
-kaspa-pow = { version = "0.1.2", path = "consensus/pow" }
-kaspa-rpc-core = { version = "0.1.2", path = "rpc/core" }
-kaspa-rpc-macros = { version = "0.1.2", path = "rpc/macros" }
-kaspa-txscript = { version = "0.1.2", path = "crypto/txscript" }
-kaspa-txscript-errors = { version = "0.1.2", path = "crypto/txscript/errors" }
-kaspa-utils = { version = "0.1.2", path = "utils" }
-kaspa-wallet-core = { version = "0.1.2", path = "wallet/core" }
-kaspa-wasm = { version = "0.1.2", path = "wasm" }
-kaspa-wrpc-client = { version = "0.1.2", path = "rpc/wrpc/client" }
-kaspa-wrpc-wasm = { version = "0.1.2", path = "rpc/wrpc/wasm" }
-kaspa-wallet-cli = { path = "wallet/cli" }
-kaspa-wallet-cli-native = { path = "wallet/native" }
-kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
-kaspa-wrpc-proxy = { path = "rpc/wrpc/proxy" }
-kaspa-wrpc-server = { path = "rpc/wrpc/server" }
-kaspad = { path = "kaspad" }
-kaspa-component-manager = { path = "kaspa_component_manager" }
 kaspa-muhash = { version = "0.1.6", path = "crypto/muhash" }
+kaspa-notify = { version = "0.1.6", path = "notify" }
+kaspa-p2p-flows = { version = "0.1.6", path = "protocol/flows" }
+kaspa-p2p-lib = { version = "0.1.6", path = "protocol/p2p" }
+kaspa-pow = { version = "0.1.6", path = "consensus/pow" }
+kaspa-rpc-core = { version = "0.1.6", path = "rpc/core" }
+kaspa-rpc-macros = { version = "0.1.6", path = "rpc/macros" }
+kaspa-rpc-service = { version = "0.1.6", path = "rpc/service" }
+kaspa-txscript = { version = "0.1.6", path = "crypto/txscript" }
+kaspa-txscript-errors = { version = "0.1.6", path = "crypto/txscript/errors" }
+kaspa-utils = { version = "0.1.6", path = "utils" }
+kaspa-utxoindex = { version = "0.1.6", path = "indexes/utxoindex" }
 kaspa-wallet = { version = "0.1.6", path = "wallet/native" }
 kaspa-cli = { version = "0.1.6", path = "cli" }
+kaspa-wallet-cli-wasm = { version = "0.1.6", path = "wallet/wasm" }
+kaspa-wallet-core = { version = "0.1.6", path = "wallet/core" }
+kaspa-wasm = { version = "0.1.6", path = "wasm" }
 kaspa-wrpc-core = { version = "0.1.6", path = "rpc/wrpc/core" }
+kaspa-wrpc-client = { version = "0.1.6", path = "rpc/wrpc/client" }
+kaspa-wrpc-proxy = { version = "0.1.6", path = "rpc/wrpc/proxy" }
+kaspa-wrpc-server = { version = "0.1.6", path = "rpc/wrpc/server" }
+kaspa-wrpc-wasm = { version = "0.1.6", path = "rpc/wrpc/wasm" }
+kaspad = { version = "0.1.6", path = "kaspad" }
 kaspa-perf-monitor = { path = "metrics/perf_monitor" }
 
 # external

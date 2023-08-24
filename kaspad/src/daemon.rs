@@ -4,30 +4,28 @@ use async_channel::unbounded;
 use kaspa_consensus_core::{
     config::{Config, ConfigBuilder},
     errors::config::{ConfigError, ConfigResult},
-    networktype::{NetworkId, NetworkType},
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
 use kaspa_core::{core::Core, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
+use kaspa_utils::networking::ContextualNetAddress;
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
 use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{signals::Signals, task::runtime::AsyncRuntime};
+use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
 use kaspa_mining::manager::{MiningManager, MiningManagerProxy};
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
 use kaspa_perf_monitor::builder::Builder as PerfMonitorBuilder;
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
-use kaspa_wrpc_server::{
-    address::WrpcNetAddress,
-    service::{Options as WrpcServerOptions, ServerCounters as WrpcServerCounters, WrpcEncoding, WrpcService},
-};
+use kaspa_wrpc_server::service::{Options as WrpcServerOptions, ServerCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
+
+use crate::args::Args;
 
 const DEFAULT_DATA_DIR: &str = "datadir";
 const CONSENSUS_DB: &str = "consensus";
@@ -47,92 +45,6 @@ fn get_app_dir() -> PathBuf {
     return get_home_dir().join("rusty-kaspa");
     #[cfg(not(target_os = "windows"))]
     return get_home_dir().join(".rusty-kaspa");
-}
-
-#[derive(Debug)]
-pub struct Args {
-    // NOTE: it is best if property names match config file fields
-    pub appdir: Option<String>,
-    pub logdir: Option<String>,
-    pub no_log_files: bool,
-    pub rpclisten: Option<ContextualNetAddress>,
-    pub rpclisten_borsh: Option<WrpcNetAddress>,
-    pub rpclisten_json: Option<WrpcNetAddress>,
-    pub unsafe_rpc: bool,
-    pub wrpc_verbose: bool,
-    pub log_level: String,
-    pub async_threads: usize,
-    pub connect_peers: Vec<ContextualNetAddress>,
-    pub add_peers: Vec<ContextualNetAddress>,
-    pub listen: Option<ContextualNetAddress>,
-    pub user_agent_comments: Vec<String>,
-    pub utxoindex: bool,
-    pub reset_db: bool,
-    pub outbound_target: usize,
-    pub inbound_limit: usize,
-    pub rpc_max_clients: usize,
-    pub enable_unsynced_mining: bool,
-    pub enable_mainnet_mining: bool,
-    pub testnet: bool,
-    pub testnet_suffix: u32,
-    pub devnet: bool,
-    pub simnet: bool,
-    pub archival: bool,
-    pub sanity: bool,
-    pub yes: bool,
-    pub externalip: Option<IpAddress>,
-    pub perf_metrics: bool,
-    pub perf_metrics_interval_sec: u64,
-}
-
-impl Default for Args {
-    fn default() -> Self {
-        Self {
-            appdir: Some("datadir".into()),
-            no_log_files: false,
-            rpclisten_borsh: Some(WrpcNetAddress::Default),
-            rpclisten_json: Some(WrpcNetAddress::Default),
-            unsafe_rpc: false,
-            async_threads: num_cpus::get(),
-            utxoindex: false,
-            reset_db: false,
-            outbound_target: 8,
-            inbound_limit: 128,
-            rpc_max_clients: 128,
-            enable_unsynced_mining: false,
-            enable_mainnet_mining: false,
-            testnet: false,
-            testnet_suffix: 10,
-            devnet: false,
-            simnet: false,
-            archival: false,
-            sanity: false,
-            logdir: Some("".into()),
-            rpclisten: None,
-            wrpc_verbose: false,
-            log_level: "INFO".into(),
-            connect_peers: vec![],
-            add_peers: vec![],
-            listen: None,
-            user_agent_comments: vec![],
-            yes: false,
-            perf_metrics: false,
-            perf_metrics_interval_sec: 1,
-            externalip: None,
-        }
-    }
-}
-
-impl Args {
-    pub fn apply_to_config(&self, config: &mut Config) {
-        config.utxoindex = self.utxoindex;
-        config.unsafe_rpc = self.unsafe_rpc;
-        config.enable_unsynced_mining = self.enable_unsynced_mining;
-        config.is_archival = self.archival;
-        // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
-        config.enable_sanity_checks = true;
-        config.user_agent_comments = self.user_agent_comments.clone();
-    }
 }
 
 fn validate_config_and_args(_config: &Arc<Config>, args: &Args) -> ConfigResult<()> {
@@ -169,17 +81,59 @@ fn get_user_approval_or_exit(message: &str, approve: bool) {
     }
 }
 
-pub fn create_core(args: Args, with_logs: bool, bind_signals: bool) -> Arc<Core> {
-    // Configure the panic behavior
-    kaspa_core::panic::configure_panic();
+#[derive(Default)]
+pub struct Runtime {
+    log_dir: Option<String>,
+}
 
-    let network = match (args.testnet, args.devnet, args.simnet) {
-        (false, false, false) => NetworkType::Mainnet.into(),
-        (true, false, false) => NetworkId::with_suffix(NetworkType::Testnet, args.testnet_suffix),
-        (false, true, false) => NetworkType::Devnet.into(),
-        (false, false, true) => NetworkType::Simnet.into(),
-        _ => panic!("only a single net should be activated"),
-    };
+impl Runtime {
+    pub fn from_args(args: &Args) -> Self {
+        // Configure the panic behavior
+        kaspa_core::panic::configure_panic();
+
+        let network = args.network();
+
+        let config = Arc::new(
+            ConfigBuilder::new(network.into())
+                .adjust_perf_params_to_consensus_params()
+                .apply_args(|config| args.apply_to_config(config))
+                .build(),
+        );
+
+        // Make sure config and args form a valid set of properties
+        if let Err(err) = validate_config_and_args(&config, args) {
+            println!("{}", err);
+            exit(1);
+        }
+
+        // TODO: Refactor all this quick-and-dirty code
+        let app_dir = args
+            .appdir
+            .clone()
+            .unwrap_or_else(|| get_app_dir().as_path().to_str().unwrap().to_string())
+            .replace('~', get_home_dir().as_path().to_str().unwrap());
+        let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
+
+        // Logs directory is usually under the application directory, unless otherwise specified
+        let log_dir = args.logdir.clone().unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
+        let log_dir =
+            if log_dir.is_empty() { app_dir.join(config.network_name()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
+        let log_dir = if args.no_log_files { None } else { log_dir.to_str() };
+
+        // Initialize the logger
+        kaspa_core::log::init_logger(log_dir, &args.log_level);
+
+        Self { log_dir: log_dir.map(|log_dir| log_dir.to_owned()) }
+    }
+}
+
+pub fn create_core(args: Args) -> Arc<Core> {
+    let rt = Runtime::from_args(&args);
+    create_core_with_runtime(&rt, &args)
+}
+
+pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> Arc<Core> {
+    let network = args.network();
 
     let config = Arc::new(
         ConfigBuilder::new(network.into())
@@ -189,7 +143,7 @@ pub fn create_core(args: Args, with_logs: bool, bind_signals: bool) -> Arc<Core>
     );
 
     // Make sure config and args form a valid set of properties
-    if let Err(err) = validate_config_and_args(&config, &args) {
+    if let Err(err) = validate_config_and_args(&config, args) {
         println!("{}", err);
         exit(1);
     }
@@ -197,25 +151,11 @@ pub fn create_core(args: Args, with_logs: bool, bind_signals: bool) -> Arc<Core>
     // TODO: Refactor all this quick-and-dirty code
     let app_dir = args
         .appdir
+        .clone()
         .unwrap_or_else(|| get_app_dir().as_path().to_str().unwrap().to_string())
         .replace('~', get_home_dir().as_path().to_str().unwrap());
     let app_dir = if app_dir.is_empty() { get_app_dir() } else { PathBuf::from(app_dir) };
     let db_dir = app_dir.join(config.network_name()).join(DEFAULT_DATA_DIR);
-
-    // TODO: Find a better way to deal with the fact that we can't init the logger twice.
-    let log_dir = if with_logs {
-        // Logs directory is usually under the application directory, unless otherwise specified
-        let log_dir = args.logdir.unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
-        let log_dir =
-            if log_dir.is_empty() { app_dir.join(config.network_name()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
-        let log_dir = if args.no_log_files { None } else { log_dir.to_str() };
-
-        // Initialize the logger
-        kaspa_core::log::init_logger(log_dir, &args.log_level);
-        log_dir.map(|log_dir| log_dir.to_owned())
-    } else {
-        None
-    };
 
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), version());
@@ -223,7 +163,7 @@ pub fn create_core(args: Args, with_logs: bool, bind_signals: bool) -> Arc<Core>
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.display());
     info!("Data directory: {}", db_dir.display());
-    match log_dir {
+    match runtime.log_dir.as_ref() {
         Some(s) => {
             info!("Logs directory: {}", s);
         }
@@ -388,8 +328,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments
     [
-        (args.rpclisten_borsh, WrpcEncoding::Borsh, wrpc_borsh_counters),
-        (args.rpclisten_json, WrpcEncoding::SerdeJson, wrpc_json_counters),
+        (args.rpclisten_borsh.clone(), WrpcEncoding::Borsh, wrpc_borsh_counters),
+        (args.rpclisten_json.clone(), WrpcEncoding::SerdeJson, wrpc_json_counters),
     ]
     .into_iter()
     .filter_map(|(listen_address, encoding, wrpc_server_counters)| {
@@ -408,11 +348,6 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         })
     })
     .for_each(|server| async_runtime.register(server));
-
-    if bind_signals {
-        // Bind the keyboard signal to the core
-        Arc::new(Signals::new(&core)).init();
-    }
 
     // Consensus must start first in order to init genesis in stores
     core.bind(consensus_manager);

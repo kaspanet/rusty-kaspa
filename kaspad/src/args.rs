@@ -1,11 +1,110 @@
 use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
-use kaspa_component_manager::Args;
 
+use kaspa_consensus_core::{
+    config::Config,
+    networktype::{NetworkId, NetworkType},
+};
 use kaspa_core::kaspad_env::version;
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 use kaspa_wrpc_server::address::WrpcNetAddress;
+
+#[derive(Debug)]
+pub struct Args {
+    // NOTE: it is best if property names match config file fields
+    pub appdir: Option<String>,
+    pub logdir: Option<String>,
+    pub no_log_files: bool,
+    pub rpclisten: Option<ContextualNetAddress>,
+    pub rpclisten_borsh: Option<WrpcNetAddress>,
+    pub rpclisten_json: Option<WrpcNetAddress>,
+    pub unsafe_rpc: bool,
+    pub wrpc_verbose: bool,
+    pub log_level: String,
+    pub async_threads: usize,
+    pub connect_peers: Vec<ContextualNetAddress>,
+    pub add_peers: Vec<ContextualNetAddress>,
+    pub listen: Option<ContextualNetAddress>,
+    pub user_agent_comments: Vec<String>,
+    pub utxoindex: bool,
+    pub reset_db: bool,
+    pub outbound_target: usize,
+    pub inbound_limit: usize,
+    pub rpc_max_clients: usize,
+    pub enable_unsynced_mining: bool,
+    pub enable_mainnet_mining: bool,
+    pub testnet: bool,
+    pub testnet_suffix: u32,
+    pub devnet: bool,
+    pub simnet: bool,
+    pub archival: bool,
+    pub sanity: bool,
+    pub yes: bool,
+    pub externalip: Option<IpAddress>,
+    pub perf_metrics: bool,
+    pub perf_metrics_interval_sec: u64,
+}
+
+impl Default for Args {
+    fn default() -> Self {
+        Self {
+            appdir: Some("datadir".into()),
+            no_log_files: false,
+            rpclisten_borsh: Some(WrpcNetAddress::Default),
+            rpclisten_json: Some(WrpcNetAddress::Default),
+            unsafe_rpc: false,
+            async_threads: num_cpus::get(),
+            utxoindex: false,
+            reset_db: false,
+            outbound_target: 8,
+            inbound_limit: 128,
+            rpc_max_clients: 128,
+            enable_unsynced_mining: false,
+            enable_mainnet_mining: false,
+            testnet: false,
+            testnet_suffix: 10,
+            devnet: false,
+            simnet: false,
+            archival: false,
+            sanity: false,
+            logdir: Some("".into()),
+            rpclisten: None,
+            wrpc_verbose: false,
+            log_level: "INFO".into(),
+            connect_peers: vec![],
+            add_peers: vec![],
+            listen: None,
+            user_agent_comments: vec![],
+            yes: false,
+            perf_metrics: false,
+            perf_metrics_interval_sec: 1,
+            externalip: None,
+        }
+    }
+}
+
+impl Args {
+    pub fn apply_to_config(&self, config: &mut Config) {
+        config.utxoindex = self.utxoindex;
+        config.unsafe_rpc = self.unsafe_rpc;
+        config.enable_unsynced_mining = self.enable_unsynced_mining;
+        config.is_archival = self.archival;
+        // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
+        config.enable_sanity_checks = true;
+        config.user_agent_comments = self.user_agent_comments.clone();
+    }
+
+    pub fn network(&self) -> NetworkId {
+        match (self.testnet, self.devnet, self.simnet) {
+            (false, false, false) => NetworkType::Mainnet.into(),
+            (true, false, false) => NetworkId::with_suffix(NetworkType::Testnet, self.testnet_suffix),
+            (false, true, false) => NetworkType::Devnet.into(),
+            (false, false, true) => NetworkType::Simnet.into(),
+            _ => panic!("only a single net should be activated"),
+        }
+    }
+}
 
 pub fn cli() -> Command {
     let defaults: Args = Default::default();
