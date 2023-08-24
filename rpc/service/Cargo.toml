@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-rpc-service"
+description = "Kaspa RPC service"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 kaspa-rpc-core.workspace = true
+kaspa-consensus.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-core.workspace = true
@@ -22,6 +24,8 @@ kaspa-p2p-lib.workspace = true
 kaspa-p2p-flows.workspace = true
 kaspa-math.workspace = true
 kaspa-utxoindex.workspace = true
+kaspa-wrpc-core.workspace = true
+kaspa-perf-monitor.workspace = true
 
 log.workspace = true
 async-trait.workspace = true

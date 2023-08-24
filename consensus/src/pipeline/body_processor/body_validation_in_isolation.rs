@@ -130,7 +130,7 @@ mod tests {
 
         let body_processor = consensus.block_body_processor();
         let example_block = MutableBlock::new(
-            Header::new(
+            Header::new_finalized(
                 0,
                 vec![vec![
                     Hash::from_slice(&[

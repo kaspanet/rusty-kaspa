@@ -95,7 +95,7 @@ pub fn generate_random_block(
 
 ///Note: generate_random_header is filled with random data, it does not represent a consensus-valid header!
 pub fn generate_random_header(rng: &mut SmallRng, parent_amount: usize) -> Header {
-    Header::new(
+    Header::new_finalized(
         rng.gen(),
         vec![generate_random_hashes(rng, parent_amount)],
         generate_random_hash(rng),

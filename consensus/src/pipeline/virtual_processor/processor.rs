@@ -797,7 +797,7 @@ impl VirtualStateProcessor {
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
-        let header = Header::new(
+        let header = Header::new_finalized(
             version,
             parents_by_level,
             hash_merkle_root,

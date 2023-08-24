@@ -2,18 +2,44 @@ mod hashers;
 mod pow_hashers;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Display, Formatter};
-use std::hash::{Hash as StdHash, Hasher as StdHasher};
-use std::str::{self, FromStr};
+use kaspa_utils::{
+    hex::{FromHex, ToHex},
+    serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref,
+};
+use std::{
+    array::TryFromSliceError,
+    fmt::{Debug, Display, Formatter},
+    hash::{Hash as StdHash, Hasher as StdHasher},
+    str::{self, FromStr},
+};
+use wasm_bindgen::prelude::*;
+use workflow_wasm::prelude::*;
 
 pub const HASH_SIZE: usize = 32;
 
 pub use hashers::*;
 
 // TODO: Check if we use hash more as an array of u64 or of bytes and change the default accordingly
-#[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[wasm_bindgen]
 pub struct Hash([u8; HASH_SIZE]);
+
+serde_impl_ser_fixed_bytes_ref!(Hash, HASH_SIZE);
+serde_impl_deser_fixed_bytes_ref!(Hash, HASH_SIZE);
+
+impl From<[u8; HASH_SIZE]> for Hash {
+    fn from(value: [u8; HASH_SIZE]) -> Self {
+        Hash(value)
+    }
+}
+
+impl TryFrom<&[u8]> for Hash {
+    type Error = TryFromSliceError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        Hash::try_from_slice(value)
+    }
+}
 
 impl Hash {
     #[inline(always)]
@@ -31,6 +57,11 @@ impl Hash {
     /// Panics if `bytes` length is not exactly `HASH_SIZE`.
     pub fn from_slice(bytes: &[u8]) -> Self {
         Self(<[u8; HASH_SIZE]>::try_from(bytes).expect("Slice must have the length of Hash"))
+    }
+
+    #[inline(always)]
+    pub fn try_from_slice(bytes: &[u8]) -> Result<Self, TryFromSliceError> {
+        Ok(Self(<[u8; HASH_SIZE]>::try_from(bytes)?))
     }
 
     #[inline(always)]
@@ -109,10 +140,73 @@ impl From<u64> for Hash {
     }
 }
 
+impl AsRef<[u8; HASH_SIZE]> for Hash {
+    #[inline(always)]
+    fn as_ref(&self) -> &[u8; HASH_SIZE] {
+        &self.0
+    }
+}
+
 impl AsRef<[u8]> for Hash {
     #[inline(always)]
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl ToHex for Hash {
+    fn to_hex(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl FromHex for Hash {
+    type Error = faster_hex::Error;
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
+        Self::from_str(hex_str)
+    }
+}
+
+#[wasm_bindgen]
+impl Hash {
+    #[wasm_bindgen(constructor)]
+    pub fn constructor(hex_str: &str) -> Self {
+        Hash::from_str(hex_str).expect("invalid hash value")
+    }
+
+    #[wasm_bindgen(js_name = toString)]
+    pub fn js_to_string(&self) -> String {
+        self.to_string()
+    }
+}
+
+type TryFromError = workflow_wasm::error::Error;
+impl TryFrom<JsValue> for Hash {
+    type Error = workflow_wasm::error::Error;
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        let hash = if js_value.is_string() || js_value.is_array() {
+            let bytes = js_value.try_as_vec_u8()?;
+            Hash(
+                <[u8; HASH_SIZE]>::try_from(bytes)
+                    .map_err(|_| TryFromError::WrongSize("Slice must have the length of Hash".into()))?,
+            )
+        } else if js_value.is_object() {
+            ref_from_abi!(Hash, &js_value).map_err(|_| TryFromError::WrongType("supplied object must be a `Hash`".to_string()))?
+        } else {
+            return Err(TryFromError::WrongType("supplied object must be a `Hash`".to_string()));
+        };
+        Ok(hash)
+    }
+}
+
+impl Hash {
+    pub fn try_vec_from_array(array: js_sys::Array) -> Result<Vec<Hash>, workflow_wasm::error::Error> {
+        let mut list = vec![];
+        for item in array.iter() {
+            list.push(item.try_into()?);
+        }
+
+        Ok(list)
     }
 }
 

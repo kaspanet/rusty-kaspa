@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-p2p-flows"
+description = "Kaspa p2p flows"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
