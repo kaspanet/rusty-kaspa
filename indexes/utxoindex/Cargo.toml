@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-utxoindex"
+description = "Kaspa UTXO index"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

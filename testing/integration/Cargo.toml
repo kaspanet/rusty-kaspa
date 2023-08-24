@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-testing-integration"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -42,6 +43,8 @@ rocksdb.workspace = true
 kaspa-database.workspace = true
 kaspa-utxoindex.workspace = true
 kaspa-index-processor.workspace = true
+kaspa-bip32.workspace = true
+kaspa-wrpc-server.workspace = true
 
 crossbeam-channel = "0.5"
 async-channel = "1.8.0"

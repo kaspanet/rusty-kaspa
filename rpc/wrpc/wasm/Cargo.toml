@@ -1,7 +1,11 @@
 [package]
 name = "kaspa-wrpc-wasm"
+description = "Kaspa wRPC WASM client"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
 
 [lib]
 crate-type = ["cdylib", "lib"]

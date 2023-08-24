@@ -1,0 +1,15 @@
+# unit tests
+cargo nextest run --release
+if [ $? -ne 0 ]; then
+    echo "Failed to run tests"
+    exit 1
+fi
+
+# integration tests
+cargo test --release --workspace -p kaspa-testing-integration --lib
+
+# wasm build (tests for potential multiple exports of the same symbol)
+pushd .
+cd wasm
+./build-node
+popd

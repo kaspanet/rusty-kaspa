@@ -5,6 +5,7 @@ use kaspa_component_manager::Args;
 
 use kaspa_core::kaspad_env::version;
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
+use kaspa_wrpc_server::address::WrpcNetAddress;
 
 pub fn cli() -> Command {
     let defaults: Args = Default::default();
@@ -36,6 +37,7 @@ pub fn cli() -> Command {
             Arg::new("rpclisten")
                 .long("rpclisten")
                 .value_name("IP[:PORT]")
+                .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Interface:port to listen for gRPC connections (default port: 16110, testnet: 16210)."),
@@ -44,22 +46,22 @@ pub fn cli() -> Command {
             Arg::new("rpclisten-borsh")
                 .long("rpclisten-borsh")
                 .value_name("IP[:PORT]")
+                .num_args(0..=1)
                 .require_equals(true)
-                .default_missing_value(defaults.rpclisten_borsh.unwrap().to_string())
-                .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help(format!(
-                    "Interface:port to listen for wRPC Borsh connections (interop only; default: `{}`).",
-                    defaults.rpclisten_borsh.unwrap()
-                )),
+                .default_missing_value("default") // TODO: Find a way to use defaults.rpclisten_borsh
+                .value_parser(clap::value_parser!(WrpcNetAddress))
+                .help("Interface:port to listen for wRPC Borsh connections (default port: 17110, testnet: 17210)."),
+
         )
         .arg(
             Arg::new("rpclisten-json")
                 .long("rpclisten-json")
                 .value_name("IP[:PORT]")
+                .num_args(0..=1)
                 .require_equals(true)
-                .default_missing_value(defaults.rpclisten_json.unwrap().to_string())
-                .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json.unwrap())),
+                .default_missing_value("default") // TODO: Find a way to use defaults.rpclisten_json
+                .value_parser(clap::value_parser!(WrpcNetAddress))
+                .help("Interface:port to listen for wRPC JSON connections (default port: 18110, testnet: 18210)."),
         )
         .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node"))
         .arg(
@@ -171,8 +173,8 @@ pub fn parse_args() -> Args {
         logdir: m.get_one::<String>("logdir").cloned(),
         no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
         rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
-        rpclisten_borsh: m.get_one::<ContextualNetAddress>("rpclisten-borsh").cloned(),
-        rpclisten_json: m.get_one::<ContextualNetAddress>("rpclisten-json").cloned(),
+        rpclisten_borsh: m.get_one::<WrpcNetAddress>("rpclisten-borsh").cloned(),
+        rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned(),
         unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
         wrpc_verbose: false,
         log_level: m.get_one::<String>("log_level").cloned().unwrap(),

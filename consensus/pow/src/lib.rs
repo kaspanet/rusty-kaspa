@@ -3,6 +3,8 @@
 pub mod matrix;
 #[doc(hidden)]
 pub mod xoshiro;
+//#[cfg(target_arch="wasm32")]
+pub mod wasm;
 
 use std::cmp::max;
 
@@ -13,10 +15,10 @@ use kaspa_math::Uint256;
 
 /// State is an intermediate data structure with pre-computed values to speed up mining.
 pub struct State {
-    matrix: Matrix,
-    target: Uint256,
+    pub(crate) matrix: Matrix,
+    pub(crate) target: Uint256,
     // PRE_POW_HASH || TIME || 32 zero byte padding; without NONCE
-    hasher: PowHash,
+    pub(crate) hasher: PowHash,
 }
 
 impl State {

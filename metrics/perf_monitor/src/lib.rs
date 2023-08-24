@@ -6,7 +6,7 @@ use kaspa_core::{
     },
     trace,
 };
-use perf_monitor::{
+use workflow_perf_monitor::{
     cpu::{processor_numbers, ProcessStat},
     fd::fd_count_cur,
     io::{get_process_io_stats, IOStats},

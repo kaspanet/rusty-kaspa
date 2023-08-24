@@ -4,6 +4,7 @@ mod result;
 use clap::Parser;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_rpc_core::api::ops::RpcApiOps;
+use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use kaspa_wrpc_server::{
     connection::Connection,
     router::Router,
@@ -19,9 +20,15 @@ use workflow_rpc::server::prelude::*;
 #[clap(name = "proxy")]
 #[clap(version)]
 struct Args {
-    /// network type
-    #[clap(name = "network", default_value = "mainnet")]
-    network_type: NetworkType,
+    /// proxy for testnet network
+    #[clap(long)]
+    testnet: bool,
+    /// proxy for simnet network
+    #[clap(long)]
+    simnet: bool,
+    /// proxy for devnet network
+    #[clap(long)]
+    devnet: bool,
 
     /// proxy:port for gRPC server (grpc://127.0.0.1:16110)
     #[clap(name = "grpc")]
@@ -44,11 +51,25 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let Args { network_type, grpc_proxy_address, interface, verbose, threads, encoding } = Args::parse();
-    let proxy_port: u16 = 17110;
+    let Args { testnet, simnet, devnet, grpc_proxy_address, interface, verbose, threads, encoding } = Args::parse();
+
+    let network_type = if testnet {
+        NetworkType::Testnet
+    } else if simnet {
+        NetworkType::Simnet
+    } else if devnet {
+        NetworkType::Devnet
+    } else {
+        NetworkType::Mainnet
+    };
+
+    let kaspad_port = network_type.default_rpc_port();
 
     let encoding: Encoding = encoding.unwrap_or_else(|| "borsh".to_owned()).parse()?;
-    let kaspad_port = network_type.default_rpc_port();
+    let proxy_port = match encoding {
+        Encoding::Borsh => network_type.default_borsh_rpc_port(),
+        Encoding::SerdeJson => network_type.default_json_rpc_port(),
+    };
 
     let options = Arc::new(Options {
         listen_address: interface.unwrap_or_else(|| format!("wrpc://127.0.0.1:{proxy_port}")),
@@ -59,8 +80,9 @@ async fn main() -> Result<()> {
     log_info!("");
     log_info!("Proxy routing to `{}` on {}", network_type, options.grpc_proxy_address.as_ref().unwrap());
 
+    let counters = Arc::new(WrpcServerCounters::default());
     let tasks = threads.unwrap_or_else(num_cpus::get);
-    let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, None, options.clone()));
+    let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, None, options.clone(), counters));
 
     let router = Arc::new(Router::new(rpc_handler.server.clone()));
     let server =
@@ -68,7 +90,9 @@ async fn main() -> Result<()> {
 
     log_info!("Kaspa wRPC server is listening on {}", options.listen_address);
     log_info!("Using `{encoding}` protocol encoding");
-    server.listen(&options.listen_address).await?;
+
+    let config = WebSocketConfig { max_message_size: Some(1024 * 1024 * 1024), ..Default::default() };
+    server.listen(&options.listen_address, Some(config)).await?;
 
     Ok(())
 }
