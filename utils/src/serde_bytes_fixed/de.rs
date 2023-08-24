@@ -15,7 +15,7 @@ pub trait Deserialize<'de, const N: usize>: Sized + crate::hex::FromHex + From<[
 macro_rules! deser_fixed_bytes {
     ($size: expr) => {
         impl<'de, T: $crate::hex::FromHex + From<[u8; $size]>> $crate::serde_bytes_fixed::Deserialize<'de, $size> for T {
-             /// Deserialization function for types `T`
+            /// Deserialization function for types `T`
             fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
             where
                 D: serde::Deserializer<'de>,
@@ -76,8 +76,8 @@ macro_rules! deser_fixed_bytes {
                         A: serde::de::SeqAccess<'de>,
                     {
                         let Some(value): Option<[u8; $size]> = seq.next_element()? else {
-                                    return Err(serde::de::Error::invalid_length(0usize, &"tuple struct fixed array with 1 element"));
-                                } ;
+                            return Err(serde::de::Error::invalid_length(0usize, &"tuple struct fixed array with 1 element"));
+                        };
                         Ok(Self::Value::from(value))
                     }
                 }

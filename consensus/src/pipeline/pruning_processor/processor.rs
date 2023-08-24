@@ -108,7 +108,9 @@ impl PruningProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() else { return; };
+        let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() else {
+            return;
+        };
 
         // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
         // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
@@ -258,7 +260,9 @@ impl PruningProcessor {
             let mut counter = 0;
             let mut batch = WriteBatch::default();
             for kept in keep_relations.iter().copied() {
-                let Some(ghostdag) = self.ghostdag_primary_store.get_data(kept).unwrap_option() else { continue; };
+                let Some(ghostdag) = self.ghostdag_primary_store.get_data(kept).unwrap_option() else {
+                    continue;
+                };
                 if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains(&h)) {
                     let mut mutable_ghostdag: ExternalGhostdagData = ghostdag.as_ref().into();
                     mutable_ghostdag.mergeset_blues.retain(|h| keep_relations.contains(h));
