@@ -743,8 +743,9 @@ impl Wallet {
 
         account.clone().initialize(wallet_secret, payment_secret, None).await?;
 
-        //it will stop scan in connect() function
+        
         self.active_accounts().insert(account.clone().as_dyn_arc());
+        self.legacy_accounts().insert(account.clone().as_dyn_arc());
 
         // activate account (add it to wallet active account list)
         //account.clone().start().await?;
