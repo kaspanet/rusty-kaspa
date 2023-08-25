@@ -107,16 +107,6 @@ impl IbdFlow {
                 .await?;
             }
             IbdType::DownloadHeadersProof => {
-                if unix_now() - session.async_creation_timestamp().await > self.ctx.config.finality_duration() {
-                    let f = session.async_finality_point().await;
-                    let f_ts = session.async_get_header(f).await?.timestamp;
-                    if unix_now() - f_ts < self.ctx.config.finality_duration() * 3 / 2 {
-                        return Err(ProtocolError::Other(
-                            "This consensus instance is already synced and cannot be replaced via pruning point proof",
-                        ));
-                    }
-                }
-
                 drop(session); // Avoid holding the previous consensus throughout the staging IBD
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {
@@ -164,6 +154,17 @@ impl IbdFlow {
         if relay_header.blue_score >= hst_header.blue_score + self.ctx.config.pruning_depth
             && relay_header.blue_work > hst_header.blue_work
         {
+            if unix_now() > consensus.async_creation_timestamp().await + self.ctx.config.finality_duration() {
+                let fp = consensus.async_finality_point().await;
+                let fp_ts = consensus.async_get_header(fp).await?.timestamp;
+                if unix_now() < fp_ts + self.ctx.config.finality_duration() * 3 / 2 {
+                    // We reject the headers proof if the node has a relatively up-to-date finality point and current
+                    // consensus has matured for long enough (and not recently synced). This is mostly a spam-protector
+                    // since subsequent checks identify these violations as well
+                    return Ok(IbdType::None);
+                }
+            }
+
             // The relayed block has sufficient blue score and blue work over the current header selected tip
             Ok(IbdType::DownloadHeadersProof)
         } else {
@@ -223,14 +224,14 @@ impl IbdFlow {
             return Err(ProtocolError::Other("pruning points are violating finality"));
         }
 
-        // TODO: validate pruning points before importing
-
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
         let pkg: TrustedDataPackage = msg.try_into()?;
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
         let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route);
-        let Some(pruning_point_entry) = entry_stream.next().await? else { return Err(ProtocolError::Other("got `done` message before receiving the pruning point")); };
+        let Some(pruning_point_entry) = entry_stream.next().await? else {
+            return Err(ProtocolError::Other("got `done` message before receiving the pruning point"));
+        };
 
         if pruning_point_entry.block.hash() != proof_pruning_point {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the expected trusted entry"));
