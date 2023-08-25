@@ -50,7 +50,7 @@ impl Wallet {
             }
             "hint" => {
                 if !argv.is_empty() {
-                    let re = regex::Regex::new(r#"wallet\s+hint\s+"#).unwrap();
+                    let re = regex::Regex::new(r"wallet\s+hint\s+").unwrap();
                     let hint = re.replace(cmd, "");
                     let hint = hint.trim();
                     let store = ctx.store();

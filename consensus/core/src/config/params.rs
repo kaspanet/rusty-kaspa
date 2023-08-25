@@ -268,8 +268,6 @@ impl From<NetworkId> for Params {
 
 pub const MAINNET_PARAMS: Params = Params {
     dns_seeders: &[
-        // This DNS seeder is run by Wolfie
-        "mainnet-dnsseed.kas.pa",
         // This DNS seeder is run by Denis Mashkevich
         "mainnet-dnsseed-1.kaspanet.org",
         // This DNS seeder is run by Denis Mashkevich
@@ -342,7 +340,6 @@ pub const MAINNET_PARAMS: Params = Params {
 
 pub const TESTNET_PARAMS: Params = Params {
     dns_seeders: &[
-        "testnet-10-dnsseed.kas.pa",
         // This DNS seeder is run by Tiram
         "seeder1-testnet.kaspad.net",
     ],
