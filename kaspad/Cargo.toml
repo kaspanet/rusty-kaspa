@@ -7,6 +7,9 @@ authors.workspace = true
 include.workspace = true
 license.workspace = true
 
+[lib]
+crate-type = ["cdylib", "lib"]
+
 [dependencies]
 kaspa-hashes.workspace = true
 kaspa-utils.workspace = true
@@ -42,7 +45,7 @@ workflow-log.workspace = true
 dirs = "4.0"
 num_cpus.workspace = true
 
-dhat = {version = "0.3.2", optional = true}
+dhat = { version = "0.3.2", optional = true }
 
 [features]
 heap = ["dhat"]

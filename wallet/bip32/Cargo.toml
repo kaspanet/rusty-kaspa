@@ -1,10 +1,13 @@
 [package]
 name = "kaspa-bip32"
+description = "BIP32 for Kaspa"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-include.workspace = true
 license.workspace = true
+# include *.txt files for word lists
+include = ["src/**/*.rs", "Cargo.toml", "src/**/*.txt"]
+# include.workspace = true
 
 [dependencies]
 rand_core.workspace = true
@@ -19,7 +22,11 @@ once_cell.workspace = true
 pbkdf2.workspace = true
 thiserror.workspace = true
 getrandom = { workspace = true, features = ["js"] }
-
+wasm-bindgen.workspace = true
+workflow-wasm.workspace = true
+kaspa-utils.workspace = true
+rand.workspace = true
+js-sys.workspace = true
 
 [dev-dependencies]
 faster-hex.workspace = true

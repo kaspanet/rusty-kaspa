@@ -21,11 +21,11 @@ impl<T: Shutdown + Send + Sync> Signals<T> {
         ctrlc::set_handler(move || {
             let v = signals.iterations.fetch_add(1, Ordering::SeqCst);
             if v > 1 {
-                println!("^SIGNAL - halting");
+                println!("^SIGTERM - halting");
                 std::process::exit(1);
             }
 
-            println!("^SIGNAL - shutting down... (CTRL+C again to halt)");
+            println!("^SIGTERM - shutting down...");
             if let Some(actual_target) = core.upgrade() {
                 actual_target.shutdown();
             }

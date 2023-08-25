@@ -7,11 +7,13 @@
 
 use super::bits::{Bits, Bits11};
 use std::{collections::BTreeMap, vec::Vec};
+use wasm_bindgen::prelude::*;
 
 /// Supported languages.
 ///
 /// Presently only English is specified by the BIP39 standard
 #[derive(Copy, Clone, Debug, Default)]
+#[wasm_bindgen]
 pub enum Language {
     /// English is presently the only supported language
     #[default]

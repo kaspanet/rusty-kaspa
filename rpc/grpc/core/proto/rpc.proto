@@ -752,14 +752,14 @@ message PingResponseMessage{
 }
 
 
-message GetProcessMetricsRequestMessage{
+message GetMetricsRequestMessage{
 }
 
-message GetProcessMetricsResponseMessage{
-        uint64 uptime = 1;
-        repeated uint64 memoryUsed = 2;
-        repeated uint64 storageUsed = 3;
-        repeated uint64 grpcConnections = 4;
-        repeated uint64 wrpcConnections = 5;
+message GetMetricsResponseMessage{
+        // uint64 uptime = 1;
+        // uint64 memoryUsed = 2;
+        // uint64 storageUsed = 3;
+        // uint64 grpcConnections = 4;
+        // uint64 wrpcConnections = 5;
         RPCError error = 1000;
 }

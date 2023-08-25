@@ -1,0 +1,62 @@
+
+[package]
+name = "kaspa-os"
+description = "Kaspa Node & Wallet Manager"
+# please keep this version detached from the workspace
+version = "0.0.2"
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository = "https://github.com/kaspanet/rusty-kaspa"
+
+[features]
+metrics = []
+legacy-rpc = ["kaspa-cli/legacy-rpc","kaspa-wallet-core/legacy-rpc"]
+default = ["metrics"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+js-sys.workspace = true
+kaspa-cli.workspace = true
+nw-sys.workspace = true
+wasm-bindgen.workspace = true
+workflow-core.workspace = true
+workflow-dom.workspace = true
+workflow-log.workspace = true
+workflow-nw.workspace = true
+workflow-wasm.workspace = true
+workflow-terminal.workspace = true
+workflow-d3.workspace = true
+wasm-bindgen-futures.workspace = true
+thiserror.workspace = true
+cfg-if.workspace = true
+borsh.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+kaspa-core.workspace = true
+kaspa-daemon.workspace = true
+kaspa-consensus-core.workspace = true
+futures.workspace = true
+downcast.workspace = true
+kaspa-wallet-core.workspace = true
+regex.workspace = true
+kaspa-rpc-core.workspace = true
+
+[dependencies.web-sys]
+workspace = true
+features = [
+    'console',
+    'Document',
+    'Window',
+    'HtmlElement',
+    'CustomEvent',
+    # 'DomRect',
+    # 'MouseEvent',
+    # 'HtmlCanvasElement',
+    # 'CanvasRenderingContext2d'
+]
+

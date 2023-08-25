@@ -673,34 +673,85 @@ pub struct PingRequest {}
 #[serde(rename_all = "camelCase")]
 pub struct PingResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct GetProcessMetricsRequest {}
+// TODO - custom wRPC commands (need review and implementation in gRPC)
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetProcessMetricsResponse {
-    pub uptime: u64,
-    pub memory_used: Vec<u64>,
-    pub storage_used: Vec<u64>,
-    pub grpc_connections: Vec<u64>,
-    pub wrpc_connections: Vec<u64>,
-    // TBD:
-    //  - approx bandwidth consumption
-    //  - other connection metrics
-    //  - cpu usage
+pub struct GetMetricsRequest {
+    pub process_metrics: bool,
+    pub consensus_metrics: bool,
 }
 
-impl GetProcessMetricsResponse {
-    pub fn new(
-        uptime: u64,
-        memory_used: Vec<u64>,
-        storage_used: Vec<u64>,
-        grpc_connections: Vec<u64>,
-        wrpc_connections: Vec<u64>,
-    ) -> Self {
-        Self { uptime, memory_used, storage_used, grpc_connections, wrpc_connections }
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessMetrics {
+    pub resident_set_size: u64,
+    pub virtual_memory_size: u64,
+    pub core_num: u64,
+    pub cpu_usage: f64,
+    pub fd_num: u64,
+    pub disk_io_read_bytes: u64,
+    pub disk_io_write_bytes: u64,
+    pub disk_io_read_per_sec: f64,
+    pub disk_io_write_per_sec: f64,
+
+    pub borsh_live_connections: u64,
+    pub borsh_connection_attempts: u64,
+    pub borsh_handshake_failures: u64,
+    pub json_live_connections: u64,
+    pub json_connection_attempts: u64,
+    pub json_handshake_failures: u64,
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsensusMetrics {
+    pub blocks_submitted: u64,
+    pub header_counts: u64,
+    pub dep_counts: u64,
+    pub body_counts: u64,
+    pub txs_counts: u64,
+    pub chain_block_counts: u64,
+    pub mass_counts: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMetricsResponse {
+    pub server_time: u128,
+    pub process_metrics: Option<ProcessMetrics>,
+    pub consensus_metrics: Option<ConsensusMetrics>,
+}
+
+impl GetMetricsResponse {
+    pub fn new(server_time: u128, process_metrics: Option<ProcessMetrics>, consensus_metrics: Option<ConsensusMetrics>) -> Self {
+        Self { process_metrics, consensus_metrics, server_time }
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetServerInfoRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetServerInfoResponse {
+    pub rpc_api_version: [u16; 4],
+    pub server_version: String,
+    pub network_id: RpcNetworkId,
+    pub has_utxo_index: bool,
+    pub is_synced: bool,
+    pub virtual_daa_score: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSyncStatusRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSyncStatusResponse {
+    pub is_synced: bool,
 }
 
 // ----------------------------------------------------------------------------

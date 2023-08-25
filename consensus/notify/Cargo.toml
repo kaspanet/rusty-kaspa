@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-consensus-notify"
+description = "Kaspa consensus notifier"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
