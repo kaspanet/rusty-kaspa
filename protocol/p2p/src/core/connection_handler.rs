@@ -80,7 +80,9 @@ impl ConnectionHandler {
 
     /// Connect to a new peer
     pub(crate) async fn connect(&self, peer_address: String) -> Result<Arc<Router>, ConnectionError> {
-        let Some(socket_address) = peer_address.to_socket_addrs()?.next() else { return Err(ConnectionError::NoAddress); };
+        let Some(socket_address) = peer_address.to_socket_addrs()?.next() else {
+            return Err(ConnectionError::NoAddress);
+        };
         let peer_address = format!("http://{}", peer_address); // Add scheme prefix as required by Tonic
 
         let channel = tonic::transport::Endpoint::new(peer_address)?

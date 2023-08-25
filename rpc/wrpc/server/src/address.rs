@@ -45,3 +45,19 @@ impl FromStr for WrpcNetAddress {
         }
     }
 }
+
+impl TryFrom<&str> for WrpcNetAddress {
+    type Error = AddrParseError;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        WrpcNetAddress::from_str(s)
+    }
+}
+
+impl TryFrom<String> for WrpcNetAddress {
+    type Error = AddrParseError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        WrpcNetAddress::from_str(&s)
+    }
+}

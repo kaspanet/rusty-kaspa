@@ -86,7 +86,9 @@ impl SendPingsFlow {
             let nonce = rand::thread_rng().gen::<u64>();
             let ping = make_message!(Payload::Ping, PingMessage { nonce });
             let ping_time = Instant::now();
-            let Some(router) = self.router.upgrade() else { return Err(ProtocolError::ConnectionClosed); };
+            let Some(router) = self.router.upgrade() else {
+                return Err(ProtocolError::ConnectionClosed);
+            };
             router.enqueue(ping).await?;
             let pong = dequeue_with_timeout!(self.incoming_route, Payload::Pong)?;
             if pong.nonce != nonce {

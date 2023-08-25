@@ -170,7 +170,9 @@ impl<
         let mut backward_iterator = self.reachability_service.backward_chain_iterator(high, pp, true);
         loop {
             // We loop from both directions in parallel in order to use the shorter path
-            let Some((parent, current)) = forward_iterator.next() else { break; };
+            let Some((parent, current)) = forward_iterator.next() else {
+                break;
+            };
             let status = self.statuses_store.read().get(current).unwrap();
             if status.is_header_only() {
                 // Going up, the first parent which has a header-only child is our target
@@ -178,7 +180,9 @@ impl<
                 break;
             }
 
-            let Some(backward_current) = backward_iterator.next() else { break; };
+            let Some(backward_current) = backward_iterator.next() else {
+                break;
+            };
             let status = self.statuses_store.read().get(backward_current).unwrap();
             if status.has_block_body() {
                 // Since this iterator is going down, current must be the highest with body

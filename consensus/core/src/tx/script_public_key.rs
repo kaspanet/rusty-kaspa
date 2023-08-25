@@ -221,9 +221,7 @@ impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
                 }
                 impl From<Value<'_>> for u16 {
                     fn from(value: Value<'_>) -> Self {
-                        let Value::U16(v) = value else {
-                            panic!("unexpected conversion: {value:?}")
-                        };
+                        let Value::U16(v) = value else { panic!("unexpected conversion: {value:?}") };
                         v
                     }
                 }
