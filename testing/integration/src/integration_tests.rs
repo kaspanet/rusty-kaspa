@@ -71,7 +71,7 @@ use std::{
     io::{BufRead, BufReader},
     str::{from_utf8, FromStr},
 };
-use tempfile::tempdir;
+use tempfile::{tempdir, TempDir};
 
 use crate::common;
 
@@ -1733,6 +1733,7 @@ async fn sanity_integration_test() {
 struct DaemonWithRpc {
     core: Arc<Core>,
     rpc_port: u16,
+    _appdir_tempdir: TempDir,
 }
 
 impl DaemonWithRpc {
@@ -1761,10 +1762,11 @@ impl DaemonWithRpc {
         args.listen = Some(format!("0.0.0.0:{p2p_port}").try_into().unwrap());
         args.rpclisten_json = Some(format!("0.0.0.0:{rpc_json_port}").parse().unwrap());
         args.rpclisten_borsh = Some(format!("0.0.0.0:{rpc_borsh_port}").parse().unwrap());
-        args.appdir = Some(tempdir().unwrap().path().to_str().unwrap().to_owned());
+        let appdir_tempdir = tempdir().unwrap();
+        args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
 
         let core = create_core_with_runtime(&Default::default(), &args);
-        DaemonWithRpc { core, rpc_port }
+        DaemonWithRpc { core, rpc_port, _appdir_tempdir: appdir_tempdir }
     }
 
     async fn start(&self) -> (Vec<std::thread::JoinHandle<()>>, GrpcClient) {

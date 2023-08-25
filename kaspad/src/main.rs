@@ -4,10 +4,8 @@ extern crate kaspa_hashes;
 
 use std::sync::Arc;
 
-use kaspa_core::{signals::Signals, trace};
+use kaspa_core::{info, signals::Signals};
 use kaspad::{args::parse_args, daemon::create_core};
-
-// TODO: refactor the shutdown sequence into a predefined controlled sequence
 
 pub fn main() {
     #[cfg(feature = "heap")]
@@ -20,5 +18,5 @@ pub fn main() {
     Arc::new(Signals::new(&core)).init();
 
     core.run();
-    trace!("Kaspad is finished...");
+    info!("Kaspad has stopped...");
 }
