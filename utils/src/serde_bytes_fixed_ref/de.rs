@@ -67,8 +67,8 @@ macro_rules! serde_impl_deser_fixed_bytes_ref {
                         A: serde::de::SeqAccess<'de>,
                     {
                         let Some(value): Option<[u8; $size]> = seq.next_element()? else {
-                                    return Err(serde::de::Error::invalid_length(0usize, &"tuple struct fixed array with 1 element"));
-                                } ;
+                            return Err(serde::de::Error::invalid_length(0usize, &"tuple struct fixed array with 1 element"));
+                        };
                         Ok(Self::Value::from(value))
                     }
                 }

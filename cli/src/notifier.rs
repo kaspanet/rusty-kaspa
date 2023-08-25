@@ -20,6 +20,9 @@ struct Inner {
     current: Mutex<Option<Element>>,
 }
 
+unsafe impl Send for Inner {}
+unsafe impl Sync for Inner {}
+
 #[derive(Clone)]
 pub struct Notifier {
     inner: Arc<Inner>,
