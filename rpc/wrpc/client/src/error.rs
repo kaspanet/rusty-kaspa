@@ -40,7 +40,7 @@ pub enum Error {
     ToValue(String),
 
     #[error("invalid network type: {0}")]
-    NetworkType(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
+    NetworkType(#[from] kaspa_consensus_core::network::NetworkTypeError),
 
     #[error(transparent)]
     ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),

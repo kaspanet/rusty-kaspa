@@ -4,7 +4,7 @@ pub use super::{
     genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET11_GENESIS, TESTNET_GENESIS},
 };
 use crate::{
-    networktype::{NetworkId, NetworkType},
+    network::{NetworkId, NetworkType},
     BlockLevel, KType,
 };
 use kaspa_addresses::Prefix;
@@ -223,7 +223,7 @@ impl Params {
     }
 
     pub fn network_name(&self) -> String {
-        self.net.name()
+        self.net.to_string()
     }
 
     pub fn prefix(&self) -> Prefix {

@@ -1,6 +1,6 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_addresses::Prefix;
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
@@ -138,10 +138,15 @@ pub enum NetworkIdError {
 
     #[error("Unexpected extra token: {0}.")]
     UnexpectedExtraToken(String),
+
+    #[error("Missing network suffix: '{0}'")]
+    MissingNetworkSuffix(String),
+
+    #[error("Invalid network id: '{0}'")]
+    InvalidNetworkId(String),
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Copy, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
 pub struct NetworkId {
     pub network_type: NetworkType,
     pub suffix: Option<u32>,
@@ -154,10 +159,6 @@ impl NetworkId {
 
     pub const fn with_suffix(network_type: NetworkType, suffix: u32) -> Self {
         Self { network_type, suffix: Some(suffix) }
-    }
-
-    pub fn name(&self) -> String {
-        self.to_string()
     }
 
     pub fn as_type(&self) -> &NetworkType {
@@ -195,6 +196,18 @@ impl NetworkId {
         ];
         NETWORK_IDS.iter().copied()
     }
+
+    pub fn to_prefixed(&self) -> String {
+        format!("kaspa-{}", self)
+    }
+
+    pub fn from_prefixed(prefixed: &str) -> Result<Self, NetworkIdError> {
+        if let Some(stripped) = prefixed.strip_prefix("kaspa-") {
+            Self::from_str(stripped)
+        } else {
+            Err(NetworkIdError::InvalidPrefix(prefixed.to_string()))
+        }
+    }
 }
 
 impl Deref for NetworkId {
@@ -227,12 +240,14 @@ impl FromStr for NetworkId {
     type Err = NetworkIdError;
     fn from_str(network_name: &str) -> Result<Self, Self::Err> {
         let mut parts = network_name.split('-').fuse();
-        let prefix = parts.next().unwrap_or_default();
-        if prefix != "kaspa" {
-            return Err(NetworkIdError::InvalidPrefix(prefix.to_string()));
-        }
         let network_type = NetworkType::from_str(parts.next().unwrap_or_default())?;
         let suffix = parts.next().map(|x| u32::from_str(x).map_err(|_| NetworkIdError::InvalidSuffix(x.to_string()))).transpose()?;
+        // disallow network types without suffix (other than mainnet)
+        // lack of suffix makes it impossible to distinguish between
+        // multiple testnet networks
+        if !matches!(network_type, NetworkType::Mainnet) && suffix.is_none() {
+            return Err(NetworkIdError::MissingNetworkSuffix(network_name.to_string()));
+        }
         match parts.next() {
             Some(extra_token) => Err(NetworkIdError::UnexpectedExtraToken(extra_token.to_string())),
             None => Ok(Self { network_type, suffix }),
@@ -243,10 +258,54 @@ impl FromStr for NetworkId {
 impl Display for NetworkId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if let Some(suffix) = self.suffix {
-            write!(f, "kaspa-{}-{}", self.network_type, suffix)
+            write!(f, "{}-{}", self.network_type, suffix)
         } else {
-            write!(f, "kaspa-{}", self.network_type)
+            write!(f, "{}", self.network_type)
         }
+    }
+}
+
+impl Serialize for NetworkId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+struct NetworkIdVisitor;
+
+impl<'de> de::Visitor<'de> for NetworkIdVisitor {
+    type Value = NetworkId;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a string containing network_type and optional suffix separated by a '-'")
+    }
+
+    fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        NetworkId::from_str(value).map_err(|err| de::Error::custom(err.to_string()))
+    }
+}
+
+impl<'de> Deserialize<'de> for NetworkId {
+    fn deserialize<D>(deserializer: D) -> Result<NetworkId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(NetworkIdVisitor)
+    }
+}
+
+impl TryFrom<JsValue> for NetworkId {
+    type Error = NetworkIdError;
+
+    fn try_from(value: JsValue) -> Result<Self, Self::Error> {
+        let network_name = value.as_string().ok_or_else(|| NetworkIdError::InvalidNetworkId(format!("{value:?}")))?;
+        NetworkId::from_str(&network_name)
     }
 }
 
@@ -264,7 +323,7 @@ mod tests {
             assert_eq!(nt, *NetworkId::from_str(nis.to_string().as_str()).unwrap());
             assert_eq!(nis, NetworkId::from_str(nis.to_string().as_str()).unwrap());
 
-            assert_eq!(nis, NetworkId::from_str(nis.name().as_str()).unwrap());
+            assert_eq!(nis, NetworkId::from_str(nis.to_string().as_str()).unwrap());
         }
     }
 

@@ -4,7 +4,7 @@ use clap::{arg, command, Arg, Command};
 
 use kaspa_consensus_core::{
     config::Config,
-    networktype::{NetworkId, NetworkType},
+    network::{NetworkId, NetworkType},
 };
 use kaspa_core::kaspad_env::version;
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};

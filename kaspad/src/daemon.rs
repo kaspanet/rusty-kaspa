@@ -109,7 +109,8 @@ impl Runtime {
 
         // Logs directory is usually under the application directory, unless otherwise specified
         let log_dir = args.logdir.clone().unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
-        let log_dir = if log_dir.is_empty() { app_dir.join(network.name()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
+        let log_dir =
+            if log_dir.is_empty() { app_dir.join(network.to_string()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
         let log_dir = if args.no_log_files { None } else { log_dir.to_str() };
 
         // Initialize the logger
@@ -125,10 +126,10 @@ pub fn create_core(args: Args) -> Arc<Core> {
 }
 
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> Arc<Core> {
-    let network = args.network();
+    let network_id = args.network();
 
     let config = Arc::new(
-        ConfigBuilder::new(network.into())
+        ConfigBuilder::new(network_id.into())
             .adjust_perf_params_to_consensus_params()
             .apply_args(|config| args.apply_to_config(config))
             .build(),
@@ -141,7 +142,8 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> Arc<Core> {
     }
 
     let app_dir = get_app_dir_from_args(args);
-    let db_dir = app_dir.join(network.name()).join(DEFAULT_DATA_DIR);
+    // alternatively use network.to_prefixed() for `kaspa-` prefix.
+    let db_dir = app_dir.join(network_id.to_string()).join(DEFAULT_DATA_DIR);
 
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), version());
@@ -326,7 +328,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                 &encoding,
                 wrpc_server_counters,
                 WrpcServerOptions {
-                    listen_address: listen_address.to_address(&network.network_type, &encoding).to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
+                    listen_address: listen_address.to_address(&network_id.network_type, &encoding).to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
                     verbose: args.wrpc_verbose,
                     ..WrpcServerOptions::default()
                 },

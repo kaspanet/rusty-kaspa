@@ -3,7 +3,7 @@ use crate::imports::*;
 use crate::result::Result;
 use js_sys::Array;
 use kaspa_addresses::{Address, AddressList};
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_wasm::Transaction;
 use kaspa_notify::notification::Notification as NotificationT;
 pub use kaspa_rpc_macros::{build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions};

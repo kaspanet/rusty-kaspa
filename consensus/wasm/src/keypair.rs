@@ -21,7 +21,7 @@ use crate::error::Error;
 use crate::result::Result;
 use js_sys::{Array, Uint8Array};
 use kaspa_addresses::{Address, Version as AddressVersion};
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::network::NetworkType;
 use secp256k1::{Secp256k1, XOnlyPublicKey};
 use serde_wasm_bindgen::to_value;
 use std::str::FromStr;
