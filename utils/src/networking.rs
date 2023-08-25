@@ -300,6 +300,22 @@ impl FromStr for ContextualNetAddress {
     }
 }
 
+impl TryFrom<&str> for ContextualNetAddress {
+    type Error = AddrParseError;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        ContextualNetAddress::from_str(s)
+    }
+}
+
+impl TryFrom<String> for ContextualNetAddress {
+    type Error = AddrParseError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        ContextualNetAddress::from_str(&s)
+    }
+}
+
 impl Display for ContextualNetAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.port {

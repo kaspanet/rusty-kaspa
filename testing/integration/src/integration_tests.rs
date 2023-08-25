@@ -38,6 +38,7 @@ use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::tick::TickService;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
+use kaspa_grpc_client::GrpcClient;
 use kaspa_hashes::Hash;
 
 use flate2::read::GzDecoder;
@@ -52,13 +53,17 @@ use kaspa_database::prelude::ConnBuilder;
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
+use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
+use kaspad::args::Args;
+use kaspad::daemon::create_core_with_runtime;
 use serde::{Deserialize, Serialize};
 use std::cmp::{max, Ordering};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{
     collections::HashMap,
     fs::File,
@@ -66,6 +71,7 @@ use std::{
     io::{BufRead, BufReader},
     str::{from_utf8, FromStr},
 };
+use tempfile::{tempdir, TempDir};
 
 use crate::common;
 
@@ -132,7 +138,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
     let validation_freq = usize::max(1, num_chains / 100);
 
     use rand::prelude::*;
-    let mut rng = StdRng::seed_from_u64(22322);
+    let mut rng: StdRng = StdRng::seed_from_u64(22322);
 
     for i in 0..num_chains {
         let rand_idx = rng.gen_range(0..blocks.len());
@@ -1075,7 +1081,7 @@ fn submit_body_chunk(
 }
 
 fn rpc_header_to_header(rpc_header: &RPCBlockHeader) -> Header {
-    Header::new(
+    Header::new_finalized(
         rpc_header.Version,
         rpc_header
             .Parents
@@ -1702,4 +1708,80 @@ async fn staging_consensus_test() {
 
     core.shutdown();
     core.join(joins);
+}
+
+#[tokio::test]
+async fn sanity_integration_test() {
+    let core1 = DaemonWithRpc::new_random();
+    let (workers1, rpc_client1) = core1.start().await;
+
+    let core2 = DaemonWithRpc::new_random();
+    let (workers2, rpc_client2) = core2.start().await;
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    rpc_client1.disconnect().await.unwrap();
+    drop(rpc_client1);
+    core1.core.shutdown();
+    core1.core.join(workers1);
+
+    rpc_client2.disconnect().await.unwrap();
+    drop(rpc_client2);
+    core2.core.shutdown();
+    core2.core.join(workers2);
+}
+
+struct DaemonWithRpc {
+    core: Arc<Core>,
+    rpc_port: u16,
+    _appdir_tempdir: TempDir,
+}
+
+impl DaemonWithRpc {
+    fn new_random() -> DaemonWithRpc {
+        let mut args = Args { devnet: true, ..Default::default() };
+
+        // This should ask the OS to allocate free port for socket 1 to 4.
+        let socket1 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let rpc_port = socket1.local_addr().unwrap().port();
+
+        let socket2 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let p2p_port = socket2.local_addr().unwrap().port();
+
+        let socket3 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let rpc_json_port = socket3.local_addr().unwrap().port();
+
+        let socket4 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let rpc_borsh_port = socket4.local_addr().unwrap().port();
+
+        drop(socket1);
+        drop(socket2);
+        drop(socket3);
+        drop(socket4);
+
+        args.rpclisten = Some(format!("0.0.0.0:{rpc_port}").try_into().unwrap());
+        args.listen = Some(format!("0.0.0.0:{p2p_port}").try_into().unwrap());
+        args.rpclisten_json = Some(format!("0.0.0.0:{rpc_json_port}").parse().unwrap());
+        args.rpclisten_borsh = Some(format!("0.0.0.0:{rpc_borsh_port}").parse().unwrap());
+        let appdir_tempdir = tempdir().unwrap();
+        args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
+
+        let core = create_core_with_runtime(&Default::default(), &args);
+        DaemonWithRpc { core, rpc_port, _appdir_tempdir: appdir_tempdir }
+    }
+
+    async fn start(&self) -> (Vec<std::thread::JoinHandle<()>>, GrpcClient) {
+        let workers = self.core.start();
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let rpc_client = GrpcClient::connect(
+            NotificationMode::Direct,
+            format!("grpc://localhost:{}", self.rpc_port),
+            true,
+            None,
+            false,
+            Some(500_000),
+        )
+        .await
+        .unwrap();
+        (workers, rpc_client)
+    }
 }

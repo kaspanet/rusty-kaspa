@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-muhash"
+description = "Kaspa Muhash library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

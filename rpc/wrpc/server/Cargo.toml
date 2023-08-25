@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-wrpc-server"
+description = "Kaspa wRPC server"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -21,6 +22,7 @@ kaspa-rpc-service.workspace = true
 kaspa-rpc-macros.workspace = true
 kaspa-grpc-client.workspace = true
 kaspa-utils.workspace = true
+kaspa-wrpc-core.workspace = true
 
 log.workspace = true
 paste.workspace = true

@@ -1,0 +1,65 @@
+[application]
+name = "kaspa-os"
+version = "Cargo.toml::package.version"
+title = "Kaspa OS"
+organization = "Kaspa Contributors"
+
+[description]
+short = "Kaspa Desktop OS"
+long = """
+Kaspa Desktop OS
+""""
+
+[package]
+root = ".."
+# resources = "resources/setup"
+# exclude = ["resources/setup"]
+exclude = [{ glob = ["{src/*,target/*,test/*,resources/setup/*,*.lock,*.toml,.git*,build*}"] }]
+output = "../setup"
+use-app-nw = true
+update-package-json = true
+build = [{ WASM = { name = "kaspa", outdir = "app/wasm" }}]
+
+[nwjs]
+version = "0.77.0"
+windows = "0.72.0"
+ffmpeg = false
+
+[macos-disk-image]
+# window_caption_height = 60
+# icon_size = 72
+# window_position = [200,200]
+# window_size = [485,330]
+application_icon_position = [100,178]
+system_applications_folder_position = [385,178]
+
+[windows]
+uuid = "9464f462-db23-4f78-a027-c864db698121"
+group = "Kaspa"
+# run_on_startup = "everyone"
+run_after_setup = true
+
+# [languages]
+# languages = ["english"]
+
+[firewall]
+application = { direction = "in+out" }
+rules = [
+    { name = "Kaspad", program = "bin\\kaspad.exe", direction="in+out" }
+]
+
+[[action]]
+stage = "build"
+name = "building rusty kaspa daemon (bin/kaspad)"
+items = [
+    { run = { cmd = "cargo build --release --bin kaspad", cwd = ".." } },
+    { copy = { file = "../target/release/kaspad$EXE", to = "$TARGET/bin/" } },
+]
+
+[[action]]
+stage = "build"
+name = "building kaspa CPU miner (bin/kaspa-cpu-miner)"
+items = [
+    { run = { cmd = "cargo build --release", cwd = "../../kaspa-cpu-miner" } },
+    { copy = { file = "../../kaspa-cpu-miner/target/release/kaspa-miner$EXE", to = "$TARGET/bin/kaspa-cpu-miner$EXE" } },
+]

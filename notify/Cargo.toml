@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-notify"
+description = "Kaspa notification subsystem"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -24,9 +25,10 @@ async-trait = "0.1.57"
 futures = { version = "0.3" }
 rand = "0.8"
 triggered = "0.1"
-workflow-core = "0.3"
+workflow-core.workspace = true
 paste = "1.0.11"
 parking_lot.workspace = true
+workflow-log.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }

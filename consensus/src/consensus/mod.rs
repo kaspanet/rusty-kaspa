@@ -386,8 +386,12 @@ impl ConsensusApi for Consensus {
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
         // TODO: consider saving the merge depth root as part of virtual state
         // TODO: unwrap on pruning_point and virtual state reads when staging consensus is implemented
-        let Some(pruning_point) = self.pruning_point_store.read().pruning_point().unwrap_option() else { return None; };
-        let Some(virtual_state) = self.virtual_stores.read().state.get().unwrap_option() else { return None; };
+        let Some(pruning_point) = self.pruning_point_store.read().pruning_point().unwrap_option() else {
+            return None;
+        };
+        let Some(virtual_state) = self.virtual_stores.read().state.get().unwrap_option() else {
+            return None;
+        };
         let virtual_ghostdag_data = &virtual_state.ghostdag_data;
         let root = self.services.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
         if root.is_origin() {
@@ -689,7 +693,9 @@ impl ConsensusApi for Consensus {
             // to k blocks back and then we would be able to safely unwrap here. For now we
             // just break the loop, since if the data was truly missing we wouldn't accept
             // the staging consensus in the first place
-            let Some(parent) = self.ghostdag_primary_store.get_selected_parent(current).unwrap_option() else { break; };
+            let Some(parent) = self.ghostdag_primary_store.get_selected_parent(current).unwrap_option() else {
+                break;
+            };
             current = parent;
         }
         Ok(hashes)

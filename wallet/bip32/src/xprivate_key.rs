@@ -4,7 +4,10 @@ use std::str::FromStr;
 use subtle::{Choice, ConstantTimeEq};
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::{result::Result, types::*, ChildNumber, ExtendedKey, ExtendedKeyAttrs, ExtendedPublicKey, Prefix, PrivateKey, PublicKey};
+use crate::{
+    result::Result, types::*, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPublicKey, Prefix, PrivateKey,
+    PublicKey,
+};
 
 /// Derivation domain separator for BIP39 keys.
 const BIP39_DOMAIN_SEPARATOR: [u8; 12] = [0x42, 0x69, 0x74, 0x63, 0x6f, 0x69, 0x6e, 0x20, 0x73, 0x65, 0x65, 0x64];
@@ -93,6 +96,10 @@ where
         };
 
         Ok(ExtendedPrivateKey { private_key, attrs })
+    }
+
+    pub fn derive_path(self, path: DerivationPath) -> Result<Self> {
+        path.iter().try_fold(self, |key, child_num| key.derive_child(child_num))
     }
 
     /// Borrow the derived private key value.
