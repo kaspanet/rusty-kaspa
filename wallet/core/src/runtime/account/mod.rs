@@ -4,8 +4,8 @@ pub mod variants;
 
 pub use id::*;
 use kaspa_bip32::ChildNumber;
+use kaspa_bip32::ExtendedPrivateKey;
 pub use kind::*;
-use secp256k1::ONE_KEY;
 pub use variants::*;
 
 use crate::derivation::build_derivate_paths;
@@ -403,17 +403,30 @@ pub trait DerivationCapableAccount: Account {
     async fn derivation_scan(
         self: Arc<Self>,
         wallet_secret: Secret,
-        _payment_secret: Option<Secret>,
+        payment_secret: Option<Secret>,
         extent: usize,
         window: usize,
         sweep: bool,
         abortable: &Abortable,
         notifier: Option<DeepScanNotifier>,
     ) -> Result<()> {
+        self.clone().initialize(wallet_secret.clone(), payment_secret.as_ref(), None).await?;
+
         let derivation = self.derivation();
 
-        let _prv_key_data = self.prv_key_data(wallet_secret).await?;
+        let prv_key_data = self.prv_key_data(wallet_secret).await?;
+        let payload = prv_key_data.payload.decrypt(payment_secret.as_ref())?;
+        let xkey = payload.get_xprv(payment_secret.as_ref())?;
+        // let keydata = match self.wallet.get_prv_key_data(wallet_secret, id).await? {
+        //     Some(keydata) => keydata,
+        //     None => return Err(Error::KeyId(id.to_hex())),
+        // };
         let change_address = derivation.change_address_manager().current_address()?;
+
+        let receive_address_manager = derivation.receive_address_manager();
+        let change_address_manager = derivation.change_address_manager();
+        let rpc = self.wallet().rpc();
+        let notifier = notifier.as_ref();
 
         let mut index: usize = 0;
         let mut last_notification = 0;
@@ -424,27 +437,27 @@ pub trait DerivationCapableAccount: Account {
             let last = (index + window) as u32;
             index = last as usize;
 
-            // ----
-            // - _keydata is initialized above ^
-            // - TODO - generate pairs of private keys and addresses as a (Address, secp256k1::Secret) tuple without updating address indexes
-            let mut keypairs = derivation.receive_address_manager().get_range(first..last)?;
-            let change_keypairs = derivation.change_address_manager().get_range(first..last)?;
-            keypairs.extend(change_keypairs);
-            let keypairs: Vec<(Address, secp256k1::SecretKey)> =
-                keypairs.into_iter().map(|address| (address.clone(), ONE_KEY)).collect();
+            let (keypairs, addresses) = if sweep {
+                let mut keypairs = derivation.get_range_with_keys(false, first..last, false, &xkey).await?;
+                let change_keypairs = derivation.get_range_with_keys(true, first..last, false, &xkey).await?;
+                keypairs.extend(change_keypairs);
 
-            // ----
+                let addresses = keypairs.iter().map(|(address, _)| address.clone()).collect::<Vec<_>>();
+                (keypairs, addresses)
+            } else {
+                let mut addresses = receive_address_manager.get_range_with_args(first..last, false)?;
+                let change_addresses = change_address_manager.get_range_with_args(first..last, false)?;
+                addresses.extend(change_addresses);
+                (vec![], addresses)
+            };
 
-            let addresses = keypairs.iter().map(|(address, _)| address.clone()).collect::<Vec<_>>();
-            let utxos = self.wallet().rpc().get_utxos_by_addresses(addresses).await?;
+            let utxos = rpc.get_utxos_by_addresses(addresses).await?;
             let balance = utxos.iter().map(|utxo| utxo.utxo_entry.amount).sum::<u64>();
             if balance > 0 {
                 aggregate_balance += balance;
 
                 if sweep {
-                    // TODO - populate with keypairs ^^^
-                    let keydata: Vec<(Address, secp256k1::SecretKey)> = vec![];
-                    let signer = Arc::new(KeydataSigner::new(keydata));
+                    let signer = Arc::new(KeydataSigner::new(keypairs));
 
                     let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
                     let settings = GeneratorSettings::try_new_with_iterator(
@@ -464,13 +477,13 @@ pub trait DerivationCapableAccount: Account {
                     while let Some(transaction) = stream.try_next().await? {
                         transaction.try_sign()?;
                         let id = transaction.try_submit(self.wallet().rpc()).await?;
-                        if let Some(notifier) = notifier.as_ref() {
+                        if let Some(notifier) = notifier {
                             notifier(index, balance, Some(id));
                         }
                         yield_executor().await;
                     }
                 } else {
-                    if let Some(notifier) = notifier.as_ref() {
+                    if let Some(notifier) = notifier {
                         notifier(index, aggregate_balance, None);
                     }
                     yield_executor().await;
@@ -479,12 +492,20 @@ pub trait DerivationCapableAccount: Account {
 
             if index > last_notification + 1_000 {
                 last_notification = index;
-                if let Some(notifier) = notifier.as_ref() {
+                if let Some(notifier) = notifier {
                     notifier(index, aggregate_balance, None);
                 }
                 yield_executor().await;
             }
         }
+
+        if index > last_notification {
+            if let Some(notifier) = notifier {
+                notifier(index, aggregate_balance, None);
+            }
+        }
+
+        self.clone().uninitialize().await?;
 
         Ok(())
     }
@@ -517,30 +538,29 @@ pub trait DerivationCapableAccount: Account {
 
     fn create_private_keys<'l>(
         &self,
-        keydata: &PrvKeyData,
-        payment_secret: &Option<Secret>,
+        xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
         receive: &[(&'l Address, u32)],
         change: &[(&'l Address, u32)],
     ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
-        let account_index = self.account_index();
-        let cosigner_index = self.cosigner_index();
+        // let account_index = self.account_index();
+        // let cosigner_index = self.cosigner_index();
 
-        let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
-        let xkey = payload.get_xprv(payment_secret.as_ref())?;
+        // let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
+        // let xkey = payload.get_xprv(payment_secret.as_ref())?;
 
-        let paths = build_derivate_paths(self.account_kind(), account_index, cosigner_index)?;
-        let receive_xkey = xkey.clone().derive_path(paths.0)?;
-        let change_xkey = xkey.derive_path(paths.1)?;
+        // let paths = build_derivate_paths(self.account_kind(), account_index, cosigner_index)?;
+        // let receive_xkey = xkey.clone().derive_path(paths.0)?;
+        // let change_xkey = xkey.derive_path(paths.1)?;
 
-        let mut private_keys = vec![];
-        for (address, index) in receive.iter() {
-            private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
-        }
-        for (address, index) in change.iter() {
-            private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
-        }
+        // let mut private_keys = vec![];
+        // for (address, index) in receive.iter() {
+        //     private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+        // }
+        // for (address, index) in change.iter() {
+        //     private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+        // }
 
-        create_private_keys(self.account_kind(), self.cosigner_index(), self.account_index(), keydata, payment_secret, receive, change)
+        create_private_keys(self.account_kind(), self.cosigner_index(), self.account_index(), xkey, receive, change)
     }
 }
 
@@ -550,17 +570,13 @@ pub fn create_private_keys<'l>(
     account_kind: AccountKind,
     cosigner_index: u32,
     account_index: u64,
-    keydata: &PrvKeyData,
-    payment_secret: &Option<Secret>,
+    xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
     receive: &[(&'l Address, u32)],
     change: &[(&'l Address, u32)],
 ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
-    let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
-    let xkey = payload.get_xprv(payment_secret.as_ref())?;
-
     let paths = build_derivate_paths(account_kind, account_index, cosigner_index)?;
     let receive_xkey = xkey.clone().derive_path(paths.0)?;
-    let change_xkey = xkey.derive_path(paths.1)?;
+    let change_xkey = xkey.clone().derive_path(paths.1)?;
 
     let mut private_keys = vec![];
     for (address, index) in receive.iter() {

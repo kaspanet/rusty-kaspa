@@ -25,6 +25,8 @@ use workflow_core::task::spawn;
 use workflow_log::log_error;
 use zeroize::Zeroize;
 
+const CACHE_ADDRESS_OFFSET: u32 = 2000;
+
 pub struct WalletCreateArgs {
     pub name: Option<String>,
     pub user_hint: Option<Hint>,
@@ -642,10 +644,17 @@ impl Wallet {
     }
 
     pub async fn find_accounts_by_name_or_id(&self, pat: &str) -> Result<Vec<Arc<dyn Account>>> {
-        let accounts = self.active_accounts().inner().values().cloned().collect::<Vec<_>>();
+        let mut accounts = self.active_accounts().inner().values().cloned().collect::<Vec<_>>();
+        let legacy_accounts = self.legacy_accounts().inner().values().cloned().collect::<Vec<_>>();
+        accounts.extend(legacy_accounts);
+        let mut tested = vec![];
         let matches = accounts
             .into_iter()
             .filter(|account| {
+                if tested.contains(account.id()) {
+                    return false;
+                }
+                tested.push(*account.id());
                 account.name().map(|name| name.starts_with(pat)).unwrap_or(false) || account.id().to_hex().starts_with(pat)
             })
             .collect::<Vec<_>>();
@@ -704,9 +713,16 @@ impl Wallet {
                         wallet.legacy_accounts().insert(account.clone());
                     }
                     account.clone().start().await?;
-                    // if is_legacy {
-                    //     account.clone().uninitialize().await?;
-                    // }
+                    if is_legacy {
+                        //if !wallet.is_connected() {
+                        let derivation = account.clone().as_derivation_capable()?.derivation();
+                        let m = derivation.receive_address_manager();
+                        m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+                        let m = derivation.change_address_manager();
+                        m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+                        //}
+                        account.clone().uninitialize().await?;
+                    }
                     Ok(account)
                 }
             }
@@ -743,7 +759,6 @@ impl Wallet {
 
         account.clone().initialize(wallet_secret, payment_secret, None).await?;
 
-        
         self.active_accounts().insert(account.clone().as_dyn_arc());
         self.legacy_accounts().insert(account.clone().as_dyn_arc());
 

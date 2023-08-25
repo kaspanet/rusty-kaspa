@@ -125,15 +125,53 @@ impl PubkeyDerivationManagerV0 {
         Ok(self.cache.lock()?.clone())
     }
 
+    // pub fn derive_pubkey_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
+    //     let list = indexes.map(|index| self.derive_pubkey(index)).collect::<Vec<_>>();
+    //     let keys = list.into_iter().collect::<Result<Vec<_>>>()?;
+    //     // let keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
+    //     Ok(keys)
+    // }
+
     pub fn derive_pubkey_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
-        let list = indexes.map(|index| self.derive_pubkey(index)).collect::<Vec<_>>();
+        let use_cache = self.use_cache();
+        let mut cache = self.cache.lock()?;
+        let locked = self.opt_inner();
+        let list: Vec<Result<secp256k1::PublicKey, crate::error::Error>> = if let Some(inner) = locked.as_ref() {
+            indexes
+                .map(|index| {
+                    let (key, _chain_code) = WalletDerivationManagerV0::derive_public_key_child(
+                        &inner.public_key,
+                        ChildNumber::new(index, true)?,
+                        inner.hmac.clone(),
+                    )?;
+                    //workflow_log::log_info!("use_cache: {use_cache}");
+                    if use_cache {
+                        //workflow_log::log_info!("cache insert: {:?}", key);
+                        cache.insert(index, key.clone());
+                    }
+                    Ok(key)
+                })
+                .collect::<Vec<_>>()
+        } else {
+            indexes
+                .map(|index| {
+                    if let Some(key) = cache.get(&index) {
+                        Ok(key.clone())
+                    } else {
+                        Err(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending  (Error: 102).".into()))
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+
+        //let list = indexes.map(|index| self.derive_pubkey(index)).collect::<Vec<_>>();
         let keys = list.into_iter().collect::<Result<Vec<_>>>()?;
         // let keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
         Ok(keys)
     }
 
     pub fn derive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
-        let use_cache = self.use_cache();
+        //let use_cache = self.use_cache();
         let locked = self.opt_inner();
         if let Some(inner) = locked.as_ref() {
             let (key, _chain_code) = WalletDerivationManagerV0::derive_public_key_child(
@@ -141,9 +179,9 @@ impl PubkeyDerivationManagerV0 {
                 ChildNumber::new(index, true)?,
                 inner.hmac.clone(),
             )?;
-            workflow_log::log_info!("use_cache: {use_cache}");
-            if use_cache {
-                workflow_log::log_info!("cache insert: {:?}", key);
+            //workflow_log::log_info!("use_cache: {use_cache}");
+            if self.use_cache() {
+                //workflow_log::log_info!("cache insert: {:?}", key);
                 self.cache.lock()?.insert(index, key.clone());
             }
             return Ok(key);
@@ -220,14 +258,14 @@ impl PubkeyDerivationManagerTrait for PubkeyDerivationManagerV0 {
 
     fn current_pubkey(&self) -> Result<secp256k1::PublicKey> {
         let index = self.index()?;
-        workflow_log::log_info!("current_pubkey");
+        //workflow_log::log_info!("current_pubkey");
         let key = self.derive_pubkey(index)?;
 
         Ok(key)
     }
 
     fn get_range(&self, range: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
-        workflow_log::log_info!("get_range {:?}", range);
+        //workflow_log::log_info!("gen0: get_range {:?}", range);
         self.derive_pubkey_range(range)
     }
 

@@ -11,12 +11,9 @@ use crate::imports::*;
 use crate::runtime;
 use crate::runtime::account::create_private_keys;
 use crate::runtime::AccountKind;
-use crate::secret::Secret;
-use crate::storage::PrvKeyDataId;
 use crate::Result;
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use kaspa_consensus_core::networktype::NetworkType;
-use kaspa_utils::hex::ToHex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use wasm_bindgen::prelude::*;
@@ -178,6 +175,7 @@ pub struct AddressDerivationManager {
     pub account_index: u64,
     pub cosigner_index: Option<u32>,
     pub derivators: Vec<Arc<dyn WalletDerivationManagerTrait>>,
+    #[allow(dead_code)]
     wallet: Arc<runtime::Wallet>,
     pub receive_address_manager: Arc<AddressManager>,
     pub change_address_manager: Arc<AddressManager>,
@@ -308,55 +306,43 @@ impl AddressDerivationManager {
         &self,
         indexes: std::ops::Range<u32>,
         update_indexes: bool,
-        wallet_secret: Secret,
-        payment_secret: &Option<Secret>,
-        id: &PrvKeyDataId,
+        xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
     ) -> Result<Vec<(Address, secp256k1::SecretKey)>> {
-        self.get_range_with_keys(false, indexes, update_indexes, wallet_secret, payment_secret, id).await
+        self.get_range_with_keys_impl(false, indexes, update_indexes, xkey).await
     }
 
     pub async fn get_change_range_with_keys(
         &self,
         indexes: std::ops::Range<u32>,
         update_indexes: bool,
-        wallet_secret: Secret,
-        payment_secret: &Option<Secret>,
-        id: &PrvKeyDataId,
+        xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
     ) -> Result<Vec<(Address, secp256k1::SecretKey)>> {
-        self.get_range_with_keys(true, indexes, update_indexes, wallet_secret, payment_secret, id).await
+        self.get_range_with_keys_impl(true, indexes, update_indexes, xkey).await
     }
 
-    async fn get_range_with_keys(
+    async fn get_range_with_keys_impl(
         &self,
         change_address: bool,
         indexes: std::ops::Range<u32>,
         update_indexes: bool,
-        wallet_secret: Secret,
-        payment_secret: &Option<Secret>,
-        id: &PrvKeyDataId,
+        xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
     ) -> Result<Vec<(Address, secp256k1::SecretKey)>> {
+        let start = indexes.start;
         let addresses = if change_address {
             self.change_address_manager.get_range_with_args(indexes, update_indexes)?
         } else {
             self.receive_address_manager.get_range_with_args(indexes, update_indexes)?
         };
 
-        let addresses_list = &addresses.iter().collect::<Vec<&Address>>()[..];
-        let (receive, change) = self.addresses_indexes(addresses_list)?;
-        let keydata = match self.wallet.get_prv_key_data(wallet_secret, id).await? {
-            Some(keydata) => keydata,
-            None => return Err(Error::KeyId(id.to_hex())),
-        };
+        let addresses = addresses.iter().enumerate().map(|(index, a)| (a, start + index as u32)).collect::<Vec<(&Address, u32)>>();
 
-        let private_keys = create_private_keys(
-            self.account_kind,
-            self.cosigner_index.unwrap_or(0),
-            self.account_index,
-            &keydata,
-            payment_secret,
-            &receive,
-            &change,
-        )?;
+        let (receive, change) = if change_address { (vec![], addresses) } else { (addresses, vec![]) };
+
+        //let addresses_list = &addresses.iter().collect::<Vec<&Address>>()[..];
+        //let (receive, change) = self.addresses_indexes(addresses_list)?;
+
+        let private_keys =
+            create_private_keys(self.account_kind, self.cosigner_index.unwrap_or(0), self.account_index, xkey, &receive, &change)?;
 
         let mut result = vec![];
         for (address, private_key) in private_keys {
@@ -393,9 +379,9 @@ impl AddressDerivationManager {
         let change_map = &self.change_address_manager.inner().address_to_index_map;
 
         for address in addresses {
-            if let Some(index) = receive_map.get(address) {
+            if let Some(index) = receive_map.get(*address) {
                 receive_indexes.push((*address, *index));
-            } else if let Some(index) = change_map.get(address) {
+            } else if let Some(index) = change_map.get(*address) {
                 change_indexes.push((*address, *index));
             } else {
                 return Err(Error::Custom(format!("Address ({address}) index not found.")));
@@ -443,6 +429,7 @@ impl AddressDerivationManager {
     }
 }
 
+#[async_trait]
 impl AddressDerivationManagerTrait for AddressDerivationManager {
     fn receive_address_manager(&self) -> Arc<AddressManager> {
         self.receive_address_manager.clone()
@@ -456,13 +443,31 @@ impl AddressDerivationManagerTrait for AddressDerivationManager {
     fn addresses_indexes<'l>(&self, addresses: &[&'l Address]) -> Result<(Vec<(&'l Address, u32)>, Vec<(&'l Address, u32)>)> {
         self.get_addresses_indexes(addresses)
     }
+
+    async fn get_range_with_keys(
+        &self,
+        change_address: bool,
+        indexes: std::ops::Range<u32>,
+        update_indexes: bool,
+        xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
+    ) -> Result<Vec<(Address, secp256k1::SecretKey)>> {
+        Ok(self.get_range_with_keys_impl(change_address, indexes, update_indexes, xkey).await?)
+    }
 }
 
+#[async_trait]
 pub trait AddressDerivationManagerTrait: AnySync + Send + Sync + 'static {
     fn receive_address_manager(&self) -> Arc<AddressManager>;
     fn change_address_manager(&self) -> Arc<AddressManager>;
     #[allow(clippy::type_complexity)]
     fn addresses_indexes<'l>(&self, addresses: &[&'l Address]) -> Result<(Vec<(&'l Address, u32)>, Vec<(&'l Address, u32)>)>;
+    async fn get_range_with_keys(
+        &self,
+        change_address: bool,
+        indexes: std::ops::Range<u32>,
+        update_indexes: bool,
+        xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
+    ) -> Result<Vec<(Address, secp256k1::SecretKey)>>;
 }
 
 pub fn create_multisig_address(_keys: Vec<secp256k1::PublicKey>) -> Result<Address> {
