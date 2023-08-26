@@ -207,6 +207,23 @@ impl Rpc {
                 let result = rpc.get_coin_supply_call(GetCoinSupplyRequest {}).await?;
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetDaaScoreTimestampEstimate => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Please specify a daa_score"));
+                }
+                let daa_score_result = argv.remove(0).parse::<u64>();
+
+                match daa_score_result {
+                    Ok(daa_score) => {
+                        let result =
+                            rpc.get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest { daa_score }).await?;
+                        self.println(&ctx, result);
+                    }
+                    Err(_err) => {
+                        return Err(Error::custom("Could not parse daa_score to u64"));
+                    }
+                }
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

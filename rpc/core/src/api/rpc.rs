@@ -290,6 +290,14 @@ pub trait RpcApi: Sync + Send + AnySync {
     }
     async fn get_coin_supply_call(&self, request: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse>;
 
+    async fn get_daa_score_timestamp_estimate(&self, daa_score: u64) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
+        self.get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest { daa_score }).await
+    }
+    async fn get_daa_score_timestamp_estimate_call(
+        &self,
+        request: GetDaaScoreTimestampEstimateRequest,
+    ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

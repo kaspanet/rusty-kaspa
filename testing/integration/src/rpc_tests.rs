@@ -499,6 +499,31 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::GetDaaScoreTimestampEstimate => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let results = rpc_client
+                        .get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest {
+                            daa_scores: vec![0, 500, 2000, u64::MAX],
+                        })
+                        .await
+                        .unwrap();
+
+                    for timestamp in results.timestamps.iter() {
+                        println!("Timestamp estimate is {}", timestamp);
+                    }
+
+                    let results = rpc_client
+                        .get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest { daa_scores: vec![] })
+                        .await
+                        .unwrap();
+
+                    for timestamp in results.timestamps.iter() {
+                        println!("Timestamp estimate is {}", timestamp);
+                    }
+                })
+            }
+
             KaspadPayloadOps::NotifyBlockAdded => {
                 let rpc_client = client.clone();
                 let id = listener_id;

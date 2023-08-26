@@ -537,6 +537,14 @@ impl RpcApi for RpcCoreService {
         Ok(GetCoinSupplyResponse::new(MAX_SOMPI, circulating_sompi))
     }
 
+    async fn get_daa_score_timestamp_estimate_call(
+        &self,
+        request: GetDaaScoreTimestampEstimateRequest,
+    ) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
+        // TODO: Add the logic here
+        Ok(GetDaaScoreTimestampEstimateResponse::new(request.daa_score))
+    }
+
     async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {
         Ok(PingResponse {})
     }

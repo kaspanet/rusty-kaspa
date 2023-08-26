@@ -813,3 +813,12 @@ message GetSyncStatusResponseMessage{
   bool isSynced = 1;
   RPCError error = 1000;
 }
+
+message GetDaaScoreTimestampEstimateRequestMessage {
+        uint64 daa_score = 1;
+}
+
+message GetDaaScoreTimestampEstimateResponseMessage{
+        uint64 timestamp = 1;
+        RPCError error = 1000;
+}
