@@ -342,6 +342,7 @@ impl WalletDerivationManagerV0 {
         if let Some(address_type) = address_type {
             path = format!("{path}/{}'", address_type.index());
         }
+        workflow_log::log_info!("legacy build_derivate_path() path: {path}");
         let path = path.parse::<DerivationPath>()?;
         Ok(path)
     }

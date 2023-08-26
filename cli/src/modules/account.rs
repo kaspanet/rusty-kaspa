@@ -18,7 +18,9 @@ impl Account {
             return self.display_help(ctx, argv).await;
         }
 
-        match argv.remove(0).as_str() {
+        let action = argv.remove(0);
+
+        match action.as_str() {
             "name" => {
                 if argv.len() != 1 {
                     tprintln!(ctx, "usage: 'account name <name>' or 'account name remove'");
@@ -58,35 +60,23 @@ impl Account {
                 let account_name = account_name.as_deref();
                 wizards::account::create(&ctx, prv_key_data_id, account_kind, account_name).await?;
             }
-            "scan" => {
-                let extent = if argv.is_empty() {
-                    100_000
-                } else {
-                    let extent = argv.remove(0);
-                    extent.parse::<usize>()?
-                };
-                let window = if argv.is_empty() {
-                    128
-                } else {
-                    let extent = argv.remove(0);
-                    extent.parse::<usize>()?
-                };
-                self.derivation_scan(&ctx, extent, window, false).await?;
-            }
-            "sweep" => {
-                let extent = if argv.is_empty() {
-                    100_000
-                } else {
-                    let extent = argv.remove(0);
-                    extent.parse::<usize>()?
-                };
-                let window = if argv.is_empty() {
-                    128
-                } else {
-                    let extent = argv.remove(0);
-                    extent.parse::<usize>()?
-                };
-                self.derivation_scan(&ctx, extent, window, true).await?;
+            "scan" | "sweep" => {
+                let len = argv.len();
+                let mut start = 0;
+                let mut count = 100_000;
+                let window = 128;
+                if len >= 2 {
+                    start = argv.remove(0).parse::<usize>()?;
+                    count = argv.remove(0).parse::<usize>()?;
+                } else if len == 1 {
+                    count = argv.remove(0).parse::<usize>()?;
+                }
+
+                count = count.max(1);
+
+                let sweep = action.eq("sweep");
+
+                self.derivation_scan(&ctx, start, count, window, sweep).await?;
             }
             v => {
                 tprintln!(ctx, "unknown command: '{v}'\r\n");
@@ -103,8 +93,11 @@ impl Account {
                 ("create [<type>] [<name>]", "Create a new account (types: 'bip32' (default), 'legacy')"),
                 // ("import", "Import a private key using 24 or 12 word mnemonic"),
                 ("name <name>", "Name or rename the selected account (use 'remove' to remove the name"),
-                ("scan [<derivations>]", "Scan extended address derivation chain (legacy accounts)"),
-                ("sweep [<derivations>]", "Sweep extended address derivation chain (legacy accounts)"),
+                ("scan [<derivations>] or scan [<start>] [<derivations>]", "Scan extended address derivation chain (legacy accounts)"),
+                (
+                    "sweep [<derivations>] or sweep [<start>] [<derivations>]",
+                    "Sweep extended address derivation chain (legacy accounts)",
+                ),
                 // ("purge", "Purge an account from the wallet"),
             ],
             None,
@@ -113,7 +106,14 @@ impl Account {
         Ok(())
     }
 
-    async fn derivation_scan(self: &Arc<Self>, ctx: &Arc<KaspaCli>, extent: usize, window: usize, sweep: bool) -> Result<()> {
+    async fn derivation_scan(
+        self: &Arc<Self>,
+        ctx: &Arc<KaspaCli>,
+        start: usize,
+        count: usize,
+        window: usize,
+        sweep: bool,
+    ) -> Result<()> {
         let account = ctx.account().await?;
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
         let _ = ctx.notifier().show(Notification::Processing).await;
@@ -126,7 +126,8 @@ impl Account {
             .derivation_scan(
                 wallet_secret,
                 payment_secret,
-                extent,
+                start,
+                start + count,
                 window,
                 sweep,
                 &abortable,

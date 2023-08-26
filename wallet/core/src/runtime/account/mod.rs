@@ -21,6 +21,7 @@ use crate::storage::Metadata;
 use crate::storage::{self, AccessContextT, AccountData, PrvKeyData, PrvKeyDataId};
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, KeydataSigner, PaymentDestination, PendingTransaction, Signer};
 use crate::utxo::{UtxoContext, UtxoContextBinding};
+use kaspa_bip32::PrivateKey;
 use kaspa_consensus_wasm::UtxoEntryReference;
 use kaspa_notify::listener::ListenerId;
 use separator::Separatable;
@@ -404,6 +405,7 @@ pub trait DerivationCapableAccount: Account {
         self: Arc<Self>,
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
+        start: usize,
         extent: usize,
         window: usize,
         sweep: bool,
@@ -421,45 +423,67 @@ pub trait DerivationCapableAccount: Account {
         //     Some(keydata) => keydata,
         //     None => return Err(Error::KeyId(id.to_hex())),
         // };
-        let change_address = derivation.change_address_manager().current_address()?;
 
         let receive_address_manager = derivation.receive_address_manager();
         let change_address_manager = derivation.change_address_manager();
+
+        let change_address_index = change_address_manager.index();
+        let change_address_keypair =
+            derivation.get_range_with_keys(true, change_address_index..change_address_index + 1, false, &xkey).await?;
+
         let rpc = self.wallet().rpc();
         let notifier = notifier.as_ref();
 
-        let mut index: usize = 0;
+        let mut index: usize = start;
         let mut last_notification = 0;
         let mut aggregate_balance = 0;
+
+        let change_address = change_address_keypair[0].0.clone();
+        //workflow_log::log_info!("change_address: {}", change_address.to_string());
 
         while index < extent {
             let first = index as u32;
             let last = (index + window) as u32;
             index = last as usize;
 
-            let (keypairs, addresses) = if sweep {
+            let (keys, _keypairs, addresses) = if sweep {
                 let mut keypairs = derivation.get_range_with_keys(false, first..last, false, &xkey).await?;
                 let change_keypairs = derivation.get_range_with_keys(true, first..last, false, &xkey).await?;
                 keypairs.extend(change_keypairs);
-
-                let addresses = keypairs.iter().map(|(address, _)| address.clone()).collect::<Vec<_>>();
-                (keypairs, addresses)
+                //keypairs.extend(change_address_keypair.clone());
+                let mut keys = vec![];
+                let addresses = keypairs
+                    .iter()
+                    .map(|(address, key)| {
+                        keys.push(key.to_bytes());
+                        address.clone()
+                    })
+                    .collect::<Vec<_>>();
+                keys.push(change_address_keypair[0].1.to_bytes());
+                (keys, keypairs, addresses)
             } else {
                 let mut addresses = receive_address_manager.get_range_with_args(first..last, false)?;
                 let change_addresses = change_address_manager.get_range_with_args(first..last, false)?;
+                // workflow_log::log_info!("receive address at {first}:  {}", addresses[0].to_string());
+                // workflow_log::log_info!("change address at {first}:  {}", change_addresses[0].to_string());
                 addresses.extend(change_addresses);
-                (vec![], addresses)
+                (vec![], vec![], addresses)
             };
 
-            let utxos = rpc.get_utxos_by_addresses(addresses).await?;
+            //workflow_log::log_info!("addresses: {:#?}", addresses.iter().map(|a| a.to_string()).collect::<Vec<_>>());
+
+            let utxos = rpc.get_utxos_by_addresses(addresses.clone()).await?;
             let balance = utxos.iter().map(|utxo| utxo.utxo_entry.amount).sum::<u64>();
             if balance > 0 {
                 aggregate_balance += balance;
 
                 if sweep {
-                    let signer = Arc::new(KeydataSigner::new(keypairs));
+                    //let signer = Arc::new(KeydataSigner::new(keypairs));
 
                     let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
+                    //let aa = utxos.iter().map(|u| u.as_ref().address.as_ref().unwrap().clone().to_string()).collect::<Vec<_>>();
+                    //workflow_log::log_info!("addresses 22: {:#?}", aa);
+
                     let settings = GeneratorSettings::try_new_with_iterator(
                         Box::new(utxos.into_iter()),
                         change_address.clone(),
@@ -471,12 +495,13 @@ pub trait DerivationCapableAccount: Account {
                         None,
                     )?;
 
-                    let generator = Generator::new(settings, Some(signer), abortable);
+                    let generator = Generator::new(settings, None, abortable);
 
                     let mut stream = generator.stream();
                     while let Some(transaction) = stream.try_next().await? {
-                        transaction.try_sign()?;
-                        let id = transaction.try_submit(self.wallet().rpc()).await?;
+                        transaction.try_sign_with_keys(keys.clone())?;
+                        //let id = transaction.id();
+                        let id = transaction.try_submit(rpc).await?;
                         if let Some(notifier) = notifier {
                             notifier(index, balance, Some(id));
                         }
@@ -577,13 +602,13 @@ pub fn create_private_keys<'l>(
     let paths = build_derivate_paths(account_kind, account_index, cosigner_index)?;
     let receive_xkey = xkey.clone().derive_path(paths.0)?;
     let change_xkey = xkey.clone().derive_path(paths.1)?;
-
+    let hardened = matches!(account_kind, AccountKind::Legacy);
     let mut private_keys = vec![];
     for (address, index) in receive.iter() {
-        private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+        private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, hardened)?)?.private_key()));
     }
     for (address, index) in change.iter() {
-        private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+        private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, hardened)?)?.private_key()));
     }
 
     Ok(private_keys)
