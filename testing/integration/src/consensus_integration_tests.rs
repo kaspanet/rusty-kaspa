@@ -43,7 +43,6 @@ use kaspa_hashes::Hash;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
-use kaspa_consensus::sync_state::SYNC_STATE;
 use kaspa_consensus_core::config::params::DAAWindowParams;
 use kaspa_core::core::Core;
 use kaspa_core::info;
