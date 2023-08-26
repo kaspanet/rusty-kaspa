@@ -52,6 +52,18 @@ impl Error {
     }
 }
 
+impl From<String> for Error {
+    fn from(err: String) -> Self {
+        Self::Custom(err)
+    }
+}
+
+impl From<&str> for Error {
+    fn from(err: &str) -> Self {
+        Self::Custom(err.to_string())
+    }
+}
+
 impl<T> From<ChannelError<T>> for Error {
     fn from(err: ChannelError<T>) -> Self {
         Error::ChannelError(err.to_string())
