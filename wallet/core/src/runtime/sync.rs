@@ -210,7 +210,7 @@ impl Default for StateObserver {
     fn default() -> Self {
         Self {
             proof: Regex::new(r"Validating level (\d+) from the pruning point proof").unwrap(),
-            ibd_headers: Regex::new(r"IBD]: Processed (\d+) block headers \((\d+)%\)").unwrap(),
+            ibd_headers: Regex::new(r"IBD: Processed (\d+) block headers \((\d+)%\)").unwrap(),
             ibd_blocks: Regex::new(r"IBD: Processed (\d+) blocks \((\d+)%\)").unwrap(),
             utxo_resync: Regex::new(r"Resyncing the utxoindex...").unwrap(),
             utxo_sync: Regex::new(r"Received (\d+) UTXO set chunks so far, totaling in (\d+) UTXOs").unwrap(),
