@@ -28,10 +28,8 @@ impl SyncState {
             (self.is_nearly_synced.load(Ordering::Acquire), self.has_peers.get().is_some_and(|has_peers| has_peers()));
         if !is_nearly_synced && has_peers {
             let diff = check_diff();
-            if diff > 0 {
-                if self.is_nearly_synced.compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed).is_ok() {
-                    self.watch(diff);
-                }
+            if diff > 0 && self.is_nearly_synced.compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed).is_ok() {
+                self.watch(diff);
             }
         }
         is_nearly_synced && has_peers
