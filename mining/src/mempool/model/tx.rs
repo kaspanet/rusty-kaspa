@@ -21,6 +21,11 @@ impl MempoolTransaction {
     pub(crate) fn fee_rate(&self) -> f64 {
         self.mtx.calculated_fee.unwrap() as f64 / self.mtx.calculated_mass.unwrap() as f64
     }
+
+    pub(crate) fn is_parent_of(&self, transaction: &MutableTransaction) -> bool {
+        let parent_id = self.id();
+        transaction.tx.inputs.iter().any(|x| x.previous_outpoint.transaction_id == parent_id)
+    }
 }
 
 impl Ord for MempoolTransaction {
