@@ -12,7 +12,7 @@ pub fn main() {
     let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
 
     let args = parse_args();
-    let core = create_core(args);
+    let (core, _) = create_core(args);
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();

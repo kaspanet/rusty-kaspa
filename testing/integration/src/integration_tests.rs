@@ -3,6 +3,7 @@
 //!
 
 use async_channel::unbounded;
+use kaspa_addresses::Address;
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
@@ -53,6 +54,7 @@ use kaspa_database::prelude::ConnBuilder;
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
+use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
@@ -61,8 +63,10 @@ use kaspad::daemon::create_core_with_runtime;
 use serde::{Deserialize, Serialize};
 use std::cmp::{max, Ordering};
 use std::collections::HashSet;
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
+use std::thread::JoinHandle;
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -1712,33 +1716,44 @@ async fn staging_consensus_test() {
 
 #[tokio::test]
 async fn sanity_integration_test() {
-    let core1 = DaemonWithRpc::new_random();
-    let (workers1, rpc_client1) = core1.start().await;
+    let mut kaspad1 = DaemonWithRpc::new_random();
+    let mut kaspad2 = DaemonWithRpc::new_random();
+    kaspad1.start().await;
+    kaspad2.start().await;
+    assert!(kaspad1.get_info().await.is_ok());
+    assert!(kaspad2.get_info().await.is_ok());
+}
 
-    let core2 = DaemonWithRpc::new_random();
-    let (workers2, rpc_client2) = core2.start().await;
+#[tokio::test]
+async fn mining_integration_test() {
+    kaspa_core::log::init_logger(None, "INFO");
 
+    let mut kaspad1 = DaemonWithRpc::new_random();
+    let mut kaspad2 = DaemonWithRpc::new_random();
+    kaspad1.start().await;
+    kaspad2.start().await;
+
+    kaspad2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await; // Let it connect
+    assert_eq!(kaspad2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
+    kaspad1.mine_blocks(10).await;
     tokio::time::sleep(Duration::from_secs(1)).await;
-    rpc_client1.disconnect().await.unwrap();
-    drop(rpc_client1);
-    core1.core.shutdown();
-    core1.core.join(workers1);
-
-    rpc_client2.disconnect().await.unwrap();
-    drop(rpc_client2);
-    core2.core.shutdown();
-    core2.core.join(workers2);
+    assert_eq!(kaspad2.get_block_dag_info().await.unwrap().block_count, 10);
 }
 
 struct DaemonWithRpc {
     core: Arc<Core>,
+    config: Arc<Config>,
     rpc_port: u16,
+    p2p_port: u16,
+    workers: Option<Vec<JoinHandle<()>>>,
+    rpc_client: Option<GrpcClient>,
     _appdir_tempdir: TempDir,
 }
 
 impl DaemonWithRpc {
     fn new_random() -> DaemonWithRpc {
-        let mut args = Args { devnet: true, ..Default::default() };
+        let mut args = Args { simnet: true, unsafe_rpc: true, enable_unsynced_mining: true, ..Default::default() };
 
         // This should ask the OS to allocate free port for socket 1 to 4.
         let socket1 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1765,23 +1780,46 @@ impl DaemonWithRpc {
         let appdir_tempdir = tempdir().unwrap();
         args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
 
-        let core = create_core_with_runtime(&Default::default(), &args);
-        DaemonWithRpc { core, rpc_port, _appdir_tempdir: appdir_tempdir }
+        let (core, config) = create_core_with_runtime(&Default::default(), &args);
+        DaemonWithRpc { core, config, rpc_port, p2p_port, workers: None, rpc_client: None, _appdir_tempdir: appdir_tempdir }
     }
 
-    async fn start(&self) -> (Vec<std::thread::JoinHandle<()>>, GrpcClient) {
-        let workers = self.core.start();
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        let rpc_client = GrpcClient::connect(
-            NotificationMode::Direct,
-            format!("grpc://localhost:{}", self.rpc_port),
-            true,
-            None,
-            false,
-            Some(500_000),
-        )
-        .await
-        .unwrap();
-        (workers, rpc_client)
+    async fn start(&mut self) {
+        self.workers = Some(self.core.start());
+        tokio::time::sleep(Duration::from_secs(1)).await; // Wait for the node to start before connecting to RPC
+        self.rpc_client = Some(
+            GrpcClient::connect(
+                NotificationMode::Direct,
+                format!("grpc://localhost:{}", self.rpc_port),
+                true,
+                None,
+                false,
+                Some(500_000),
+            )
+            .await
+            .unwrap(),
+        );
+    }
+
+    async fn mine_blocks(&self, num_blocks: usize) {
+        for _ in 0..num_blocks {
+            self.mine_block().await;
+        }
+    }
+
+    async fn mine_block(&self) {
+        let template = self
+            .get_block_template(Address::new(self.config.prefix(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
+            .await
+            .unwrap();
+        self.submit_block(template.block, false).await.unwrap();
+    }
+}
+
+impl Deref for DaemonWithRpc {
+    type Target = GrpcClient;
+
+    fn deref(&self) -> &Self::Target {
+        self.rpc_client.as_ref().unwrap()
     }
 }

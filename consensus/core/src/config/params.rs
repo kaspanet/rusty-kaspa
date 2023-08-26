@@ -497,7 +497,7 @@ pub const SIMNET_PARAMS: Params = Params {
     deflationary_phase_daa_score: 15778800 - 259200,
     pre_deflationary_phase_base_subsidy: 50000000000,
     coinbase_maturity: 100,
-    skip_proof_of_work: false,
+    skip_proof_of_work: true,
     max_block_level: 250,
     pruning_proof_m: 1000,
 };

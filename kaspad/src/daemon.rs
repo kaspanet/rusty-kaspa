@@ -119,12 +119,12 @@ impl Runtime {
     }
 }
 
-pub fn create_core(args: Args) -> Arc<Core> {
+pub fn create_core(args: Args) -> (Arc<Core>, Arc<Config>) {
     let rt = Runtime::from_args(&args);
     create_core_with_runtime(&rt, &args)
 }
 
-pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> Arc<Core> {
+pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> (Arc<Core>, Arc<Config>) {
     let network = args.network();
 
     let config = Arc::new(
@@ -290,7 +290,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         mining_manager,
         flow_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
-        config,
+        config.clone(),
         core.clone(),
         processing_counters,
         wrpc_borsh_counters.clone(),
@@ -339,5 +339,5 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     core.bind(consensus_manager);
     core.bind(async_runtime);
 
-    core
+    (core, config)
 }
