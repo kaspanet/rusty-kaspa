@@ -1,16 +1,18 @@
-use crate::protowire::{
-    kaspad_response::Payload, sync_state_changed_notification_message, BlockAddedNotificationMessage, KaspadResponse,
-    NewBlockTemplateNotificationMessage, RpcNotifyCommand, SyncStateChangedNotificationMessage,
+use crate::{
+    from,
+    protowire::{
+        kaspad_response::Payload, sync_state_changed_notification_message, sync_state_changed_notification_message::SyncState,
+        BlockAddedNotificationMessage, BlocksState, FinalityConflictNotificationMessage, FinalityConflictResolvedNotificationMessage,
+        HeadersState, KaspadResponse, NewBlockTemplateNotificationMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
+        NotifyPruningPointUtxoSetOverrideResponseMessage, NotifyUtxosChangedRequestMessage, NotifyUtxosChangedResponseMessage,
+        ProofState, PruningPointUtxoSetOverrideNotificationMessage, RpcNotifyCommand, SinkBlueScoreChangedNotificationMessage,
+        StopNotifyingPruningPointUtxoSetOverrideRequestMessage, StopNotifyingPruningPointUtxoSetOverrideResponseMessage,
+        StopNotifyingUtxosChangedRequestMessage, StopNotifyingUtxosChangedResponseMessage, SyncStateChangedNotificationMessage,
+        TrustSyncState, UtxoSyncState, UtxosChangedNotificationMessage, VirtualChainChangedNotificationMessage,
+        VirtualDaaScoreChangedNotificationMessage,
+    },
+    try_from,
 };
-use crate::protowire::{
-    FinalityConflictNotificationMessage, FinalityConflictResolvedNotificationMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
-    NotifyPruningPointUtxoSetOverrideResponseMessage, NotifyUtxosChangedRequestMessage, NotifyUtxosChangedResponseMessage,
-    PruningPointUtxoSetOverrideNotificationMessage, SinkBlueScoreChangedNotificationMessage,
-    StopNotifyingPruningPointUtxoSetOverrideRequestMessage, StopNotifyingPruningPointUtxoSetOverrideResponseMessage,
-    StopNotifyingUtxosChangedRequestMessage, StopNotifyingUtxosChangedResponseMessage, UtxosChangedNotificationMessage,
-    VirtualChainChangedNotificationMessage, VirtualDaaScoreChangedNotificationMessage,
-};
-use crate::{from, try_from};
 use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{Notification, RpcError, RpcHash, SyncStateChangedNotification};
 use std::str::FromStr;
@@ -160,6 +162,9 @@ try_from!(item: &Payload, kaspa_rpc_core::Notification, {
         Payload::PruningPointUtxoSetOverrideNotification(ref notification) => {
             Notification::PruningPointUtxoSetOverride(notification.try_into()?)
         }
+        Payload::SyncStateChangedNotification(ref notification) => {
+             Notification::SyncStateChanged(notification.try_into()?)
+        }
         _ => Err(RpcError::UnsupportedFeature)?,
     }
 });
@@ -226,3 +231,34 @@ from!(item: NotifyUtxosChangedResponseMessage, StopNotifyingUtxosChangedResponse
 from!(item: NotifyPruningPointUtxoSetOverrideResponseMessage, StopNotifyingPruningPointUtxoSetOverrideResponseMessage, {
     Self { error: item.error }
 });
+
+impl TryFrom<&SyncStateChangedNotificationMessage> for kaspa_rpc_core::SyncStateChangedNotification {
+    type Error = RpcError;
+
+    fn try_from(value: &SyncStateChangedNotificationMessage) -> Result<Self, Self::Error> {
+        let sync_state = value
+            .sync_state
+            .as_ref()
+            .ok_or(RpcError::MissingRpcFieldError(String::from("SyncStateChangedNotificationMessage"), String::from("syncState")))?;
+        let notification = match sync_state {
+            SyncState::Proof(ProofState { current, max }) => {
+                kaspa_rpc_core::SyncStateChangedNotification::Proof { current: *current as u8, max: *max as u8 }
+            }
+            SyncState::Headers(HeadersState { headers, progress }) => {
+                kaspa_rpc_core::SyncStateChangedNotification::Headers { headers: *headers, progress: *progress }
+            }
+            SyncState::Blocks(BlocksState { blocks, progress }) => {
+                kaspa_rpc_core::SyncStateChangedNotification::Blocks { blocks: *blocks, progress: *progress }
+            }
+            SyncState::UtxoResync(_) => kaspa_rpc_core::SyncStateChangedNotification::UtxoResync,
+            SyncState::UtxoSync(UtxoSyncState { chunks, total }) => {
+                kaspa_rpc_core::SyncStateChangedNotification::UtxoSync { chunks: *chunks, total: *total }
+            }
+            SyncState::TrustSync(TrustSyncState { processed, total }) => {
+                kaspa_rpc_core::SyncStateChangedNotification::TrustSync { processed: *processed, total: *total }
+            }
+            SyncState::Synced(_) => kaspa_rpc_core::SyncStateChangedNotification::Synced,
+        };
+        Ok(notification)
+    }
+}

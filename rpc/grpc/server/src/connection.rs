@@ -498,6 +498,19 @@ impl Connection {
                     }
                 }
 
+                Payload::NotifySyncStateChangedRequest(ref request) => {
+                    match kaspa_rpc_core::NotifySyncStateChangedRequest::try_from(request) {
+                        Ok(request) => {
+                            let listener_id = listener_id;
+                            let result = notifier
+                                .clone()
+                                .execute_subscribe_command(listener_id, Scope::SyncStateChanged(Default::default()), request.command)
+                                .await;
+                            NotifySyncStateChangedResponseMessage::from(result).into()
+                        }
+                        Err(err) => NotifySyncStateChangedResponseMessage::from(err).into(),
+                    }
+                }
                 _ => {
                     return Err(GrpcServerError::InvalidSubscriptionPayload);
                 }

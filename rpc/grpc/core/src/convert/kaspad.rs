@@ -313,6 +313,7 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_notify_response!(NotifyVirtualDaaScoreChanged);
     impl_into_kaspad_notify_response!(NotifyVirtualChainChanged);
     impl_into_kaspad_notify_response!(NotifySinkBlueScoreChanged);
+    impl_into_kaspad_notify_response!(NotifySyncStateChanged);
 
     macro_rules! impl_into_kaspad_response {
         ($name:tt) => {
