@@ -323,14 +323,17 @@ impl IbdFlow {
             let passed = now.duration_since(last_time);
             if passed > Duration::from_secs(1) {
                 info!("Processed {} trusted blocks in the last {:.2}s (total {})", i - last_index, passed.as_secs_f64(), i);
-                self.notification_root
-                    .as_ref()
-                    .unwrap()
-                    .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_trust_sync(
-                        (i - last_index) as u64,
-                        i as u64,
-                    )))
-                    .expect("expecting an open unbounded channel");
+
+                if !kaspa_consensus::sync_state::SYNC_STATE.is_synced() {
+                    self.notification_root
+                        .as_ref()
+                        .unwrap()
+                        .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_trust_sync(
+                            (i - last_index) as u64,
+                            i as u64,
+                        )))
+                        .expect("expecting an open unbounded channel");
+                }
 
                 last_time = now;
                 last_index = i;
@@ -355,11 +358,16 @@ impl IbdFlow {
             relay_block.header.daa_score,
             "block headers",
             Some(|headers: usize, progress: i32| {
-                self.notification_root
-                    .as_ref()
-                    .unwrap()
-                    .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_headers(headers as u64, progress as i64)))
-                    .expect("expecting an open unbounded channel")
+                if !kaspa_consensus::sync_state::SYNC_STATE.is_synced() {
+                    self.notification_root
+                        .as_ref()
+                        .unwrap()
+                        .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_headers(
+                            headers as u64,
+                            progress as i64,
+                        )))
+                        .expect("expecting an open unbounded channel")
+                }
             }),
         );
 
@@ -499,9 +507,14 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             high_header.daa_score,
             "blocks",
             Some(|blocks, progress| {
-                notification_root
-                    .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_blocks(blocks as u64, progress as i64)))
-                    .expect("expecting an open unbounded channel")
+                if !kaspa_consensus::sync_state::SYNC_STATE.is_synced() {
+                    notification_root
+                        .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_blocks(
+                            blocks as u64,
+                            progress as i64,
+                        )))
+                        .expect("expecting an open unbounded channel")
+                }
             }),
         );
 

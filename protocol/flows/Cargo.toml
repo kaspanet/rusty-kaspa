@@ -11,6 +11,7 @@ license.workspace = true
 
 [dependencies]
 kaspa-core.workspace = true
+kaspa-consensus.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-p2p-lib.workspace = true

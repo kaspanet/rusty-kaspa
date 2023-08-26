@@ -2574,6 +2574,7 @@ dependencies = [
  "itertools 0.10.5",
  "kaspa-addressmanager",
  "kaspa-connectionmanager",
+ "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
  "kaspa-consensusmanager",

@@ -183,12 +183,14 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
             self.utxo_count += chunk.len();
             if self.i % IBD_BATCH_SIZE == 0 {
                 info!("Received {} UTXO set chunks so far, totaling in {} UTXOs", self.i, self.utxo_count);
-                self.notification_root
-                    .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_utxo_sync(
-                        self.i as u64,
-                        self.utxo_count as u64,
-                    )))
-                    .expect("expecting an open unbounded channel");
+                if !kaspa_consensus::sync_state::SYNC_STATE.is_synced() {
+                    self.notification_root
+                        .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_utxo_sync(
+                            self.i as u64,
+                            self.utxo_count as u64,
+                        )))
+                        .expect("expecting an open unbounded channel");
+                }
                 self.router
                     .enqueue(make_message!(
                         Payload::RequestNextPruningPointUtxoSetChunk,

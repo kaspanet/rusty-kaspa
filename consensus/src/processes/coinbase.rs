@@ -481,7 +481,7 @@ mod tests {
             params.max_coinbase_payload_len,
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
-            params.target_time_per_block,
+            params.daa_window_params.target_time_per_block,
         )
     }
 

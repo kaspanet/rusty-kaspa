@@ -148,10 +148,11 @@ impl UtxoIndexApi for UtxoIndex {
         info!("Resyncing the utxoindex...");
 
         #[cfg(not(test))]
-        self.notification_root
-            .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_utxo_resync()))
-            .expect("expecting an open unbounded channel");
-
+        if !kaspa_consensus::sync_state::SYNC_STATE.is_synced() {
+            self.notification_root
+                .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_utxo_resync()))
+                .expect("expecting an open unbounded channel");
+        }
         self.store.delete_all()?;
         let consensus = self.consensus_manager.consensus();
         let session = futures::executor::block_on(consensus.session_blocking());

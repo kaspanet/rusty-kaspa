@@ -33,6 +33,7 @@ use kaspa_notify::notifier::Notify;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
 
+use crate::sync_state::SYNC_STATE;
 use crate::{
     consensus::{
         services::{DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbWindowManager},
@@ -414,10 +415,11 @@ impl PruningProofManager {
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
-            self.notification_root
-                .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_proof(level, self.max_block_level)))
-                .expect("expecting an open unbounded channel");
-
+            if !SYNC_STATE.is_synced() {
+                self.notification_root
+                    .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_proof(level, self.max_block_level)))
+                    .expect("expecting an open unbounded channel");
+            }
             info!("Validating level {level} from the pruning point proof");
             let level_idx = level as usize;
             let mut selected_tip = None;

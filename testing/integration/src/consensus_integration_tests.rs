@@ -43,6 +43,8 @@ use kaspa_hashes::Hash;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
+use kaspa_consensus::sync_state::SYNC_STATE;
+use kaspa_consensus_core::config::params::DAAWindowParams;
 use kaspa_core::core::Core;
 use kaspa_core::info;
 use kaspa_core::signals::Shutdown;
@@ -246,7 +248,7 @@ async fn ghostdag_test() {
             .edit_consensus_params(|p| {
                 p.genesis.hash = string_to_hash(&test.genesis_id);
                 p.ghostdag_k = test.k;
-                p.min_difficulty_window_len = p.legacy_difficulty_window_size;
+                p.min_difficulty_window_len = p.daa_window_params.legacy_difficulty_window_size;
             })
             .build();
         let consensus = TestConsensus::new(&config);
@@ -408,7 +410,7 @@ async fn header_in_isolation_validation_test() {
         block.header.hash = 2.into();
 
         let now = unix_now();
-        let block_ts = now + config.legacy_timestamp_deviation_tolerance * config.target_time_per_block + 2000;
+        let block_ts = now + config.legacy_timestamp_deviation_tolerance * config.daa_window_params.target_time_per_block + 2000;
         block.header.timestamp = block_ts;
         match consensus.validate_and_insert_block(block.to_immutable()).await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
@@ -532,7 +534,7 @@ async fn median_time_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.sampling_activation_daa_score = u64::MAX;
+                    p.daa_window_params.sampling_activation_daa_score = u64::MAX;
                 })
                 .build(),
         },
@@ -541,7 +543,7 @@ async fn median_time_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.sampling_activation_daa_score = 0;
+                    p.daa_window_params.sampling_activation_daa_score = 0;
                     p.new_timestamp_deviation_tolerance = 120;
                     p.past_median_time_sample_rate = 3;
                     p.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
@@ -784,14 +786,9 @@ impl KaspadGoParams {
             new_timestamp_deviation_tolerance: self.TimestampDeviationTolerance,
             past_median_time_sample_rate: 1,
             past_median_time_sampled_window_size: 2 * self.TimestampDeviationTolerance - 1,
-            target_time_per_block: self.TargetTimePerBlock / 1_000_000,
-            sampling_activation_daa_score: u64::MAX,
             max_block_parents: self.MaxBlockParents,
             max_difficulty_target: MAX_DIFFICULTY_TARGET,
             max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-            difficulty_sample_rate: 1,
-            sampled_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
-            legacy_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
             min_difficulty_window_len: self.DifficultyAdjustmentWindowSize,
             mergeset_size_limit: self.MergeSetSizeLimit,
             merge_depth: self.MergeDepth,
@@ -813,6 +810,14 @@ impl KaspadGoParams {
             skip_proof_of_work: self.SkipProofOfWork,
             max_block_level: self.MaxBlockLevel,
             pruning_proof_m: self.PruningProofM,
+
+            daa_window_params: DAAWindowParams {
+                target_time_per_block: self.TargetTimePerBlock / 1_000_000,
+                sampling_activation_daa_score: u64::MAX,
+                difficulty_sample_rate: 1,
+                sampled_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+                legacy_difficulty_window_size: self.DifficultyAdjustmentWindowSize,
+            },
         }
     }
 }
@@ -891,13 +896,13 @@ async fn json_test(file_path: &str, concurrency: bool) {
             let genesis_block = json_line_to_block(second_line);
             params.genesis = (genesis_block.header.as_ref(), DEVNET_PARAMS.genesis.coinbase_payload).into();
         }
-        params.min_difficulty_window_len = params.legacy_difficulty_window_size;
+        params.min_difficulty_window_len = params.daa_window_params.legacy_difficulty_window_size;
         params
     } else {
         let genesis_block = json_line_to_block(first_line);
         let mut params = DEVNET_PARAMS;
         params.genesis = (genesis_block.header.as_ref(), params.genesis.coinbase_payload).into();
-        params.min_difficulty_window_len = params.legacy_difficulty_window_size;
+        params.min_difficulty_window_len = params.daa_window_params.legacy_difficulty_window_size;
         params
     };
 
@@ -917,6 +922,9 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let external_block_store = DbBlockTransactionsStore::new(external_storage, config.perf.block_data_cache_size);
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default());
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
+    _ = SYNC_STATE.consensus_manager.set(consensus_manager.clone());
+    SYNC_STATE.daa_window_params.set(config.params.daa_window_params).unwrap();
+
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db, tc.notification_root()).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(UtxoIndexProxy::new(utxoindex.clone()))));
 
@@ -1348,8 +1356,8 @@ async fn difficulty_test() {
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
                     p.ghostdag_k = 1;
-                    p.legacy_difficulty_window_size = FULL_WINDOW_SIZE;
-                    p.sampling_activation_daa_score = u64::MAX;
+                    p.daa_window_params.legacy_difficulty_window_size = FULL_WINDOW_SIZE;
+                    p.daa_window_params.sampling_activation_daa_score = u64::MAX;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.legacy_timestamp_deviation_tolerance = 60;
@@ -1363,9 +1371,9 @@ async fn difficulty_test() {
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
                     p.ghostdag_k = 1;
-                    p.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
-                    p.difficulty_sample_rate = SAMPLE_RATE;
-                    p.sampling_activation_daa_score = 0;
+                    p.daa_window_params.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
+                    p.daa_window_params.difficulty_sample_rate = SAMPLE_RATE;
+                    p.daa_window_params.sampling_activation_daa_score = 0;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.past_median_time_sample_rate = PMT_SAMPLE_RATE;
@@ -1381,10 +1389,10 @@ async fn difficulty_test() {
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
                     p.ghostdag_k = 1;
-                    p.target_time_per_block /= HIGH_BPS;
-                    p.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
-                    p.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
-                    p.sampling_activation_daa_score = 0;
+                    p.daa_window_params.target_time_per_block /= HIGH_BPS;
+                    p.daa_window_params.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
+                    p.daa_window_params.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
+                    p.daa_window_params.sampling_activation_daa_score = 0;
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;
@@ -1517,7 +1525,7 @@ async fn difficulty_test() {
         for _ in 0..sample_rate {
             if (tip.daa_score + 1) % sample_rate == 0 {
                 // This block should be part of the sampled window
-                let slow_block_time = tip.timestamp + test.config.target_time_per_block * 3;
+                let slow_block_time = tip.timestamp + test.config.daa_window_params.target_time_per_block * 3;
                 let slow_block = add_block(&consensus, Some(slow_block_time), vec![tip.hash]).await;
                 tip = slow_block;
                 break;
@@ -1615,7 +1623,7 @@ async fn selected_chain_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
-            p.min_difficulty_window_len = p.legacy_difficulty_window_size;
+            p.min_difficulty_window_len = p.daa_window_params.legacy_difficulty_window_size;
         })
         .build();
     let consensus = TestConsensus::new(&config);
@@ -1695,6 +1703,8 @@ async fn staging_consensus_test() {
     let consensus_factory =
         Arc::new(ConsensusFactory::new(meta_db, &config, consensus_db_dir, 4, notification_root, counters, tx_script_cache_counters));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
+    _ = SYNC_STATE.consensus_manager.set(consensus_manager.clone());
+    SYNC_STATE.daa_window_params.set(config.params.daa_window_params).unwrap();
 
     let core = Arc::new(Core::new());
     core.bind(consensus_manager.clone());

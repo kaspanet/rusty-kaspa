@@ -3,6 +3,7 @@ use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
+use kaspa_consensus::sync_state::SYNC_STATE;
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::block::RuleError;
@@ -182,6 +183,8 @@ impl FlowContext {
         notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Self {
         let hub = Hub::new();
+        let moved_hub = hub.clone();
+        _ = SYNC_STATE.has_peers.set(Box::new(move || moved_hub.has_peers() as _));
 
         let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (config.bps() as f64).log2().min(3.0) as u32;
 
