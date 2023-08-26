@@ -223,7 +223,7 @@ impl Params {
     }
 
     pub fn network_name(&self) -> String {
-        self.net.to_string()
+        self.net.to_prefixed()
     }
 
     pub fn prefix(&self) -> Prefix {
