@@ -3,7 +3,8 @@ use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
-    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
+    num::ParseIntError,
     ops::Deref,
     str::FromStr,
 };
@@ -289,19 +290,62 @@ impl From<NetAddress> for ContextualNetAddress {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum FromStrError {
+    #[error("Lookup found no addresses associated with: {0}")]
+    LookupFoundNoAddresses(String),
+
+    #[error(transparent)]
+    AddrParseError(#[from] AddrParseError),
+
+    #[error(transparent)]
+    ParseIntError(#[from] ParseIntError),
+
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+}
+
 impl FromStr for ContextualNetAddress {
-    type Err = AddrParseError;
+    type Err = FromStrError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match SocketAddr::from_str(s) {
             Ok(socket) => Ok(Self::new(socket.ip().into(), Some(socket.port()))),
-            Err(_) => Ok(Self::new(IpAddress::from_str(s)?, None)),
+            Err(_) => {
+                match IpAddress::from_str(s) {
+                    Ok(ip_addr) => Ok(Self::new(ip_addr, None)),
+                    Err(e) => {
+                        if !hostname_validator::is_valid(s) {
+                            Err(FromStrError::AddrParseError(e))
+                        } else {
+                            let (host, port) = match s.split_once(":") {
+                                Some((host, port_str)) => match port_str.parse::<u16>() {
+                                    Ok(port) => (host, Some(port)),
+                                    Err(e) => {
+                                        return Err(FromStrError::ParseIntError(e));
+                                    }
+                                },
+                                None => (s, None),
+                            };
+                            const STUB_PORT: u16 = 80;
+                            match (host, STUB_PORT).to_socket_addrs() {
+                                Ok(mut addrs) => match addrs.next() {
+                                    Some(addr) => Ok(Self::new(addr.ip().into(), port)),
+                                    None => Err(FromStrError::LookupFoundNoAddresses(s.to_owned())),
+                                },
+                                Err(e) => Err(FromStrError::IoError(e)),
+                            }
+                        }
+                    }
+                }
+                // Ok(Self::new(IpAddress::from_str(s)?, None))
+            }
         }
     }
 }
 
 impl TryFrom<&str> for ContextualNetAddress {
-    type Error = AddrParseError;
+    type Error = FromStrError;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         ContextualNetAddress::from_str(s)
@@ -309,7 +353,7 @@ impl TryFrom<&str> for ContextualNetAddress {
 }
 
 impl TryFrom<String> for ContextualNetAddress {
-    type Error = AddrParseError;
+    type Error = FromStrError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         ContextualNetAddress::from_str(&s)

@@ -1721,6 +1721,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hostname-validator"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f558a64ac9af88b5ba400d99b579451af0d39c6d360980045b91aac966d705e2"
+
+[[package]]
 name = "http"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2814,6 +2820,7 @@ dependencies = [
  "event-listener",
  "faster-hex 0.6.1",
  "futures-util",
+ "hostname-validator",
  "ipnet",
  "itertools 0.10.5",
  "rand 0.8.5",
