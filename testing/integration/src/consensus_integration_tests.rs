@@ -922,8 +922,6 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let external_block_store = DbBlockTransactionsStore::new(external_storage, config.perf.block_data_cache_size);
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default());
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
-    _ = SYNC_STATE.consensus_manager.set(consensus_manager.clone());
-    SYNC_STATE.daa_window_params.set(config.params.daa_window_params).unwrap();
 
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db, tc.notification_root()).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(UtxoIndexProxy::new(utxoindex.clone()))));
@@ -1703,8 +1701,6 @@ async fn staging_consensus_test() {
     let consensus_factory =
         Arc::new(ConsensusFactory::new(meta_db, &config, consensus_db_dir, 4, notification_root, counters, tx_script_cache_counters));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
-    _ = SYNC_STATE.consensus_manager.set(consensus_manager.clone());
-    SYNC_STATE.daa_window_params.set(config.params.daa_window_params).unwrap();
 
     let core = Arc::new(Core::new());
     core.bind(consensus_manager.clone());

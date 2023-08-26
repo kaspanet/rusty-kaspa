@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-pub static SYNC_STATE: Lazy<SyncState> = Lazy::new(|| SyncState::default());
+pub static SYNC_STATE: Lazy<SyncState> = Lazy::new(SyncState::default);
 
 #[derive(Default)]
 pub struct SyncState {
@@ -29,7 +29,7 @@ impl SyncState {
         if !is_nearly_synced && has_peers {
             let diff = check_diff();
             if diff > 0 {
-                if let Ok(_) = self.is_nearly_synced.compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed) {
+                if self.is_nearly_synced.compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed).is_ok() {
                     self.watch(diff);
                 }
             }
@@ -39,8 +39,8 @@ impl SyncState {
 
     fn watch(&self, mut diff: i64) {
         let is_nearly_synced = Arc::clone(&self.is_nearly_synced);
-        let daa_window_params = self.daa_window_params.get().unwrap().clone();
-        let consensus_manager = Arc::clone(&self.consensus_manager.get().unwrap());
+        let daa_window_params = *self.daa_window_params.get().unwrap();
+        let consensus_manager = Arc::clone(self.consensus_manager.get().unwrap());
 
         tokio::spawn(async move {
             while diff > 0 {
