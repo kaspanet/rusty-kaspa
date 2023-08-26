@@ -3,30 +3,22 @@ globalThis.WebSocket = require("websocket").w3cwebsocket;
 
 const {
     PrivateKey,
-    Address,
     RpcClient,
-    Encoding,
-    NetworkType,
     createTransaction,
     signTransaction,
     initConsolePanicHook
 } = require('./kaspa/kaspa_wasm');
-const {parseArgs} = require("./utils");
 
 initConsolePanicHook();
 
-(async ()=>{
+// command line arguments --network=(mainnet|testnet-<number>) --encoding=borsh (default)
+const { networkId, encoding } = require("./utils").parseArgs();
 
-    const args = parseArgs({});
-
-    // Either NetworkType.Mainnet or NetworkType.Testnet
-    const networkType = args.networkType;
-    // Either Encoding.Borsh or Encoding.SerdeJson
-    const encoding = args.encoding;
+(async () => {
 
     // Create secret key from BIP0340
-    const sk = new PrivateKey('b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f');
-    const keypair = sk.toKeypair();
+    const privateKey = new PrivateKey('b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f');
+    const keypair = privateKey.toKeypair();
 
     // For example dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
     console.info(keypair.xOnlyPublicKey);
@@ -34,16 +26,14 @@ initConsolePanicHook();
     console.info(keypair.publicKey);
 
     // An address such as kaspa:qr0lr4ml9fn3chekrqmjdkergxl93l4wrk3dankcgvjq776s9wn9jkdskewva
-    const address = keypair.toAddress(networkType);
+    const address = keypair.toAddress(networkId);
     console.info(`Full kaspa address: ${address}`);
     console.info(address);
 
-    const rpcHost = "127.0.0.1";
-    // Parse the url to automatically determine the port for the given host
-    const rpcUrl = RpcClient.parseUrl(rpcHost, encoding, networkType);
-    const rpc = new RpcClient(encoding, rpcUrl, networkType);
-
+    const rpc = new RpcClient("127.0.0.1", encoding, networkId);
+    console.log(`Connecting to ${rpc.url}`);
     await rpc.connect();
+    console.log(`Connected to ${rpc.url}`);
     let { isSynced } = await rpc.getServerInfo();
     if (!isSynced) {
         console.error("Please wait for the node to sync");
@@ -53,7 +43,7 @@ initConsolePanicHook();
 
 
     try {
-        const utxos = await rpc.getUtxosByAddresses({addresses: [address]});
+        const utxos = await rpc.getUtxosByAddresses([address]);
 
         console.info(utxos);
 
@@ -80,8 +70,10 @@ initConsolePanicHook();
 
         console.info(tx);
 
-        const transaction = signTransaction(tx, [sk], true);
-        console.info(JSON.stringify(transaction, null, 4));
+        const transaction = signTransaction(tx, [privateKey], true);
+
+        console.log("Transaction:", transaction);
+        // console.info(JSON.stringify(transaction, null, 4));
 
         let result = await rpc.submitTransaction(transaction);
 

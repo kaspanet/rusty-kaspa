@@ -3,45 +3,27 @@ globalThis.WebSocket = require("websocket").w3cwebsocket;
 
 const {
     PrivateKey,
-    Address,
+    Generator,
     RpcClient,
-    Encoding,
-    NetworkType,
-    UtxoEntries,
     kaspaToSompi,
-    createTransactions,
     initConsolePanicHook
 } = require('./kaspa/kaspa_wasm');
 
 initConsolePanicHook();
 
+const { encoding, networkId } = require("./utils").parseArgs();
+
 (async () => {
 
-    let args = process.argv.slice(2);
-    let destination = args.shift() || "kaspatest:qqkl0ct62rv6dz74pff2kx5sfyasl4z28uekevau23g877r5gt6userwyrmtt";
-    console.log("using destination address:", destination);
-
-    // ---
-    // network type
-    let network = NetworkType.Testnet;
-    // RPC encoding
-    let encoding = Encoding.Borsh;
-    // ---
+    // console.log("using destination address:", destinationAddress);
 
     // From BIP0340
-    const sk = new PrivateKey('b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef');
+    const privateKey = new PrivateKey('b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef');
 
-    const kaspaAddress = sk.toKeypair().toAddress(network).toString();
-    // Full kaspa address: kaspa:qr0lr4ml9fn3chekrqmjdkergxl93l4wrk3dankcgvjq776s9wn9jkdskewva
-    console.info(`Full kaspa address: ${kaspaAddress}`);
+    const sourceAddress = privateKey.toKeypair().toAddress(networkId);
+    console.info(`Full kaspa address: ${sourceAddress}`);
 
-    const address = new Address(kaspaAddress);
-    console.info(address);
-    console.info(sk.toKeypair().xOnlyPublicKey); // dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
-    console.info(sk.toKeypair().publicKey);      // 02dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
-
-    let rpcUrl = RpcClient.parseUrl("127.0.0.1", encoding, network);
-    const rpc = new RpcClient(encoding, rpcUrl, network);
+    const rpc = new RpcClient("127.0.0.1", encoding, networkId);
     console.log(`Connecting to ${rpc.url}`);
 
     await rpc.connect();
@@ -52,10 +34,10 @@ initConsolePanicHook();
         return;
     }
 
-    let entries = await rpc.getUtxosByAddresses([address]);
+    let entries = await rpc.getUtxosByAddresses([sourceAddress]);
 
     if (!entries.length) {
-        console.error(`No UTXOs found for address ${address}`);
+        console.error(`No UTXOs found for address ${sourceAddress}`);
     } else {
         console.info(entries);
 
@@ -66,7 +48,7 @@ initConsolePanicHook();
         // entries: an array of UtxoEntry
         // outputs: an array of [address, amount]
         //
-        // priorityFee: a priodityFee value in Sompi
+        // priorityFee: a priorityFee value in Sompi
         // NOTE: The priorityFee applies only to the final transaction
         //
         // changeAddress: a change address
@@ -77,22 +59,22 @@ initConsolePanicHook();
         // to the change address.
         //
         // If the requested amount is greater than the Kaspa
-        // transactoin mass, the Generator will create multiple
+        // transaction mass, the Generator will create multiple
         // transactions where each transaction will forward
         // UTXOs to the change address, until the requested
         // amount is reached.  It will then create a final
         // transaction according to the supplied outputs.
         let generator = new Generator({
             entries,
-            outputs: [[destination, kaspaToSompi(0.2)]],
+            outputs: [[sourceAddress, kaspaToSompi(0.2)]],
             priorityFee: 0,
-            changeAddress: address,
+            changeAddress: sourceAddress,
         });
 
         // provides a generator summary by simulating
         // transaction creation and returning the
         // `GeneratorSummary` object
-        let estimate = generator.estimate();
+        let estimate = await generator.estimate();
         console.log(estimate);
 
     }
