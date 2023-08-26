@@ -129,6 +129,7 @@ impl From<&consensus_notify::SyncStateChangedNotification> for SyncStateChangedN
             consensus_notify::SyncStateChangedNotification::TrustSync { processed, total } => {
                 Self::TrustSync { processed: *processed, total: *total }
             }
+            consensus_notify::SyncStateChangedNotification::Synced => Self::Synced,
         }
     }
 }

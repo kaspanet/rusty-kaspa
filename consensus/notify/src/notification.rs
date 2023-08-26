@@ -177,12 +177,13 @@ pub struct NewBlockTemplateNotification {}
 
 #[derive(Debug, Clone)]
 pub enum SyncStateChangedNotification {
-    Proof { current: u8, max: u8 }, // todo other variants
+    Proof { current: u8, max: u8 },
     Headers { headers: u64, progress: i64 },
     Blocks { blocks: u64, progress: i64 },
     UtxoResync,
     UtxoSync { chunks: u64, total: u64 },
     TrustSync { processed: u64, total: u64 },
+    Synced,
 }
 
 impl SyncStateChangedNotification {
@@ -208,5 +209,9 @@ impl SyncStateChangedNotification {
 
     pub fn new_trust_sync(processed: u64, total: u64) -> Self {
         Self::TrustSync { processed, total }
+    }
+
+    pub fn new_synced() -> Self {
+        Self::Synced
     }
 }

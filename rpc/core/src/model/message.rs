@@ -1077,7 +1077,7 @@ pub enum SyncStateChangedNotification {
         current: u8,
         #[allow(dead_code)]
         max: u8,
-    }, // todo other variants
+    },
     Headers {
         #[allow(dead_code)]
         headers: u64,
@@ -1103,6 +1103,7 @@ pub enum SyncStateChangedNotification {
         #[allow(dead_code)]
         total: u64,
     },
+    Synced,
 }
 
 ///

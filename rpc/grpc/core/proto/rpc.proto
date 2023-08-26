@@ -780,6 +780,7 @@ message SyncStateChangedNotificationMessage {
     UtxoResyncState utxoResync = 4;
     UtxoSyncState utxoSync = 5;
     TrustSyncState trustSync = 6;
+    SyncedState synced = 7;
   }
 }
 
@@ -809,3 +810,5 @@ message TrustSyncState {
   uint64 processed = 1;
   uint64 total = 2;
 }
+
+message SyncedState {}
