@@ -49,11 +49,12 @@ jobs:
         # We're using musl to make the binaries statically linked and portable
         run: |
           cargo install cargo-zigbuild
-          cargo --verbose zigbuild --bin kaspad --bin simpa --bin rothschild --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version
+          cargo --verbose zigbuild --bin kaspad --bin simpa --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version
           mkdir bin || true
           cp target/x86_64-unknown-linux-gnu/release/kaspad bin/
           cp target/x86_64-unknown-linux-gnu/release/simpa bin/
           cp target/x86_64-unknown-linux-gnu/release/rothschild bin/
+          cp target/x86_64-unknown-linux-gnu/release/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-gnu-amd64.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-gnu-amd64.zip"
           zip -r "${archive}" ./bin/*
@@ -67,10 +68,12 @@ jobs:
           cargo build --bin kaspad --release
           cargo build --bin simpa --release
           cargo build --bin rothschild --release
+          cargo build --bin kaspa-wallet --release
           mkdir bin || true
           cp target/release/kaspad.exe bin/
           cp target/release/simpa.exe bin/
           cp target/release/rothschild.exe bin/
+          cp target/release/kaspa-wallet.exe bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
           powershell "Compress-Archive bin/* \"${archive}\""
@@ -83,10 +86,12 @@ jobs:
           cargo build --bin kaspad --release
           cargo build --bin simpa --release
           cargo build --bin rothschild --release
+          cargo build --bin kaspa-wallet --release
           mkdir bin || true
           cp target/release/kaspad bin/
           cp target/release/simpa bin/
           cp target/release/rothschild bin/
+          cp target/release/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
           zip -r "${archive}" ./bin/*
