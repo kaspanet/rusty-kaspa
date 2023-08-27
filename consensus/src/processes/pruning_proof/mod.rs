@@ -420,9 +420,13 @@ impl PruningProofManager {
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
             {
-                let sink = self.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent;
-                let CompactHeaderData { timestamp, daa_score, .. } = self.headers_store.get_compact_header_data(sink).unwrap();
-                if !self.daa_window_params.is_nearly_synced(timestamp, daa_score) {
+                let is_synced = self.virtual_stores.read().state.get().is_ok_and(|state| {
+                    let sink = state.ghostdag_data.selected_parent;
+                    let CompactHeaderData { timestamp, daa_score, .. } = self.headers_store.get_compact_header_data(sink).unwrap();
+                    self.daa_window_params.is_nearly_synced(timestamp, daa_score)
+                });
+
+                if !is_synced {
                     self.notification_root
                         .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_proof(level, self.max_block_level)))
                         .expect("expecting an open unbounded channel");

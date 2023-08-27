@@ -88,6 +88,7 @@ use rayon::{
     ThreadPool,
 };
 use rocksdb::WriteBatch;
+use std::sync::atomic::AtomicBool;
 use std::{
     cmp::min,
     collections::{BinaryHeap, HashMap, VecDeque},
@@ -155,6 +156,8 @@ pub struct VirtualStateProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
+
+    previous_synced: AtomicBool,
 }
 
 impl VirtualStateProcessor {
@@ -215,6 +218,7 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
+            previous_synced: AtomicBool::new(false),
         }
     }
 
@@ -324,12 +328,17 @@ impl VirtualStateProcessor {
 
         {
             let CompactHeaderData { timestamp, daa_score, .. } = self.headers_store.get_compact_header_data(new_sink).unwrap();
-            if self.daa_window_params.is_nearly_synced(timestamp, daa_score) {
-                self.notification_root
-                    .notify(Notification::SyncStateChanged(
-                        kaspa_consensus_notify::notification::SyncStateChangedNotification::new_synced(),
-                    ))
-                    .expect("expecting an open unbounded channel");
+            match (self.daa_window_params.is_nearly_synced(timestamp, daa_score), self.previous_synced.load(Ordering::Relaxed)) {
+                (true, false) => {
+                    self.notification_root
+                        .notify(Notification::SyncStateChanged(
+                            kaspa_consensus_notify::notification::SyncStateChangedNotification::new_synced(),
+                        ))
+                        .expect("expecting an open unbounded channel");
+                    self.previous_synced.store(true, Ordering::Relaxed);
+                }
+                (false, true) => self.previous_synced.store(false, Ordering::Relaxed),
+                _ => {}
             }
         }
     }
