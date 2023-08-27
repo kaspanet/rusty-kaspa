@@ -255,12 +255,12 @@ impl GetConnectedPeerInfoResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AddPeerRequest {
-    pub peer_address: RpcContextualPeerAddress,
+    pub peer_address: String,
     pub is_permanent: bool,
 }
 
 impl AddPeerRequest {
-    pub fn new(peer_address: RpcContextualPeerAddress, is_permanent: bool) -> Self {
+    pub fn new(peer_address: String, is_permanent: bool) -> Self {
         Self { peer_address, is_permanent }
     }
 }

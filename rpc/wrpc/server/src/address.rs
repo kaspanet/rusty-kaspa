@@ -1,7 +1,7 @@
 use crate::service::WrpcEncoding;
 use kaspa_consensus_core::networktype::NetworkType;
-use kaspa_utils::networking::{ContextualNetAddress, FromStrError};
-use std::str::FromStr;
+use kaspa_utils::networking::ContextualNetAddress;
+use std::{net::AddrParseError, str::FromStr};
 
 #[derive(Clone, Debug)]
 pub enum WrpcNetAddress {
@@ -33,7 +33,7 @@ impl WrpcNetAddress {
 }
 
 impl FromStr for WrpcNetAddress {
-    type Err = FromStrError;
+    type Err = AddrParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "default" => Ok(WrpcNetAddress::Default),
@@ -47,7 +47,7 @@ impl FromStr for WrpcNetAddress {
 }
 
 impl TryFrom<&str> for WrpcNetAddress {
-    type Error = FromStrError;
+    type Error = AddrParseError;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         WrpcNetAddress::from_str(s)
@@ -55,7 +55,7 @@ impl TryFrom<&str> for WrpcNetAddress {
 }
 
 impl TryFrom<String> for WrpcNetAddress {
-    type Error = FromStrError;
+    type Error = AddrParseError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         WrpcNetAddress::from_str(&s)

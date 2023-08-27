@@ -7,6 +7,7 @@ use std::{
     num::ParseIntError,
     ops::Deref,
     str::FromStr,
+    sync::Arc,
 };
 use uuid::Uuid;
 
@@ -282,6 +283,37 @@ impl ContextualNetAddress {
     pub fn loopback() -> Self {
         Self { ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)).into(), port: None }
     }
+
+    // resolve uses `to_socket_addrs` which is a blocking io operation, so when used in
+    // a tokio context it's best to be used inside a `tokio::task::spawn_blocking` block.
+    pub fn resolve(s: &str) -> Result<Self, ResolveError> {
+        match s.parse::<ContextualNetAddress>() {
+            Ok(addr) => Ok(addr),
+            Err(e) => {
+                if !hostname_validator::is_valid(s) {
+                    return Err(ResolveError::AddrParseError(e));
+                } else {
+                    let (host, port) = match s.split_once(":") {
+                        Some((host, port_str)) => match port_str.parse::<u16>() {
+                            Ok(port) => (host, Some(port)),
+                            Err(e) => {
+                                return Err(ResolveError::ParseIntError(e));
+                            }
+                        },
+                        None => (s, None),
+                    };
+                    const STUB_PORT: u16 = 80;
+                    match (host, STUB_PORT).to_socket_addrs() {
+                        Ok(mut addrs) => match addrs.next() {
+                            Some(addr) => Ok(Self::new(addr.ip().into(), port)),
+                            None => Err(ResolveError::LookupFoundNoAddresses(s.to_owned())),
+                        },
+                        Err(e) => Err(ResolveError::IoError(Arc::new(e))),
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl From<NetAddress> for ContextualNetAddress {
@@ -290,8 +322,8 @@ impl From<NetAddress> for ContextualNetAddress {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum FromStrError {
+#[derive(Debug, thiserror::Error, Clone)]
+pub enum ResolveError {
     #[error("Lookup found no addresses associated with: {0}")]
     LookupFoundNoAddresses(String),
 
@@ -302,50 +334,22 @@ pub enum FromStrError {
     ParseIntError(#[from] ParseIntError),
 
     #[error(transparent)]
-    IoError(#[from] std::io::Error),
+    IoError(#[from] Arc<std::io::Error>),
 }
 
 impl FromStr for ContextualNetAddress {
-    type Err = FromStrError;
+    type Err = AddrParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match SocketAddr::from_str(s) {
             Ok(socket) => Ok(Self::new(socket.ip().into(), Some(socket.port()))),
-            Err(_) => {
-                match IpAddress::from_str(s) {
-                    Ok(ip_addr) => Ok(Self::new(ip_addr, None)),
-                    Err(e) => {
-                        if !hostname_validator::is_valid(s) {
-                            Err(FromStrError::AddrParseError(e))
-                        } else {
-                            let (host, port) = match s.split_once(":") {
-                                Some((host, port_str)) => match port_str.parse::<u16>() {
-                                    Ok(port) => (host, Some(port)),
-                                    Err(e) => {
-                                        return Err(FromStrError::ParseIntError(e));
-                                    }
-                                },
-                                None => (s, None),
-                            };
-                            const STUB_PORT: u16 = 80;
-                            match (host, STUB_PORT).to_socket_addrs() {
-                                Ok(mut addrs) => match addrs.next() {
-                                    Some(addr) => Ok(Self::new(addr.ip().into(), port)),
-                                    None => Err(FromStrError::LookupFoundNoAddresses(s.to_owned())),
-                                },
-                                Err(e) => Err(FromStrError::IoError(e)),
-                            }
-                        }
-                    }
-                }
-                // Ok(Self::new(IpAddress::from_str(s)?, None))
-            }
+            Err(_) => Ok(Self::new(IpAddress::from_str(s)?, None)),
         }
     }
 }
 
 impl TryFrom<&str> for ContextualNetAddress {
-    type Error = FromStrError;
+    type Error = AddrParseError;
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         ContextualNetAddress::from_str(s)
@@ -353,7 +357,7 @@ impl TryFrom<&str> for ContextualNetAddress {
 }
 
 impl TryFrom<String> for ContextualNetAddress {
-    type Error = FromStrError;
+    type Error = AddrParseError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         ContextualNetAddress::from_str(&s)

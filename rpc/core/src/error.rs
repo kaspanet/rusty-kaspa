@@ -1,5 +1,5 @@
 use kaspa_consensus_core::tx::TransactionId;
-use kaspa_utils::networking::IpAddress;
+use kaspa_utils::networking::{IpAddress, ResolveError};
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
 
@@ -9,6 +9,9 @@ use crate::{RpcHash, RpcTransactionId};
 pub enum RpcError {
     #[error("Not implemented")]
     NotImplemented,
+
+    #[error("Couldn't resolve host: {0}")]
+    ResolveHostError(#[from] ResolveError),
 
     #[error("Integer downsize conversion error {0}")]
     IntConversionError(#[from] TryFromIntError),
