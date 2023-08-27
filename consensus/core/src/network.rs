@@ -150,6 +150,9 @@ pub enum NetworkIdError {
     #[error("Missing network suffix: '{0}'")]
     MissingNetworkSuffix(String),
 
+    #[error("Network suffix required for network type: '{0}'")]
+    NetworkSuffixRequired(String),
+
     #[error("Invalid network id: '{0}'")]
     InvalidNetworkId(String),
 }
@@ -165,7 +168,19 @@ pub struct NetworkId {
 
 impl NetworkId {
     pub const fn new(network_type: NetworkType) -> Self {
+        if !matches!(network_type, NetworkType::Mainnet | NetworkType::Devnet | NetworkType::Simnet) {
+            panic!("network suffix required for this network type");
+        }
+
         Self { network_type, suffix: None }
+    }
+
+    pub fn try_new(network_type: NetworkType) -> Result<Self, NetworkIdError> {
+        if !matches!(network_type, NetworkType::Mainnet | NetworkType::Devnet | NetworkType::Simnet) {
+            return Err(NetworkIdError::NetworkSuffixRequired(network_type.to_string()));
+        }
+
+        Ok(Self { network_type, suffix: None })
     }
 
     pub const fn with_suffix(network_type: NetworkType, suffix: u32) -> Self {
@@ -229,9 +244,10 @@ impl Deref for NetworkId {
     }
 }
 
-impl From<NetworkType> for NetworkId {
-    fn from(value: NetworkType) -> Self {
-        Self::new(value)
+impl TryFrom<NetworkType> for NetworkId {
+    type Error = NetworkIdError;
+    fn try_from(value: NetworkType) -> Result<Self, Self::Error> {
+        Self::try_new(value)
     }
 }
 
@@ -256,7 +272,7 @@ impl FromStr for NetworkId {
         // disallow network types without suffix (other than mainnet)
         // lack of suffix makes it impossible to distinguish between
         // multiple testnet networks
-        if !matches!(network_type, NetworkType::Mainnet) && suffix.is_none() {
+        if !matches!(network_type, NetworkType::Mainnet | NetworkType::Devnet | NetworkType::Simnet) && suffix.is_none() {
             return Err(NetworkIdError::MissingNetworkSuffix(network_name.to_string()));
         }
         match parts.next() {
@@ -354,11 +370,6 @@ impl TryFrom<&JsValue> for NetworkId {
     }
 }
 
-// #[wasm_bindgen(js_name = "validateNetworkId")]
-// pub fn validate_network_id_str(network_id: &str) -> Result<(), JsValue> {
-//     NetworkId::from_str(network_id).map(|_| ()).map_err(|err| JsValue::from_str(&err.to_string()))
-// }
-
 pub mod wasm {
     use super::*;
 
@@ -399,10 +410,12 @@ mod tests {
     #[test]
     fn test_network_id_parse_roundtrip() {
         for nt in NetworkType::iter() {
-            let ni = NetworkId::from(nt);
+            if matches!(nt, NetworkType::Mainnet | NetworkType::Devnet | NetworkType::Simnet) {
+                let ni = NetworkId::try_from(nt).expect("failed to create network id");
+                assert_eq!(nt, *NetworkId::from_str(ni.to_string().as_str()).unwrap());
+                assert_eq!(ni, NetworkId::from_str(ni.to_string().as_str()).unwrap());
+            }
             let nis = NetworkId::with_suffix(nt, 1);
-            assert_eq!(nt, *NetworkId::from_str(ni.to_string().as_str()).unwrap());
-            assert_eq!(ni, NetworkId::from_str(ni.to_string().as_str()).unwrap());
             assert_eq!(nt, *NetworkId::from_str(nis.to_string().as_str()).unwrap());
             assert_eq!(nis, NetworkId::from_str(nis.to_string().as_str()).unwrap());
 
@@ -419,24 +432,18 @@ mod tests {
         }
 
         let tests = vec![
-            Test { name: "Valid mainnet", expr: "kaspa-mainnet", expected: Ok(NetworkId::new(NetworkType::Mainnet)) },
-            Test { name: "Valid testnet", expr: "kaspa-testnet-88", expected: Ok(NetworkId::with_suffix(NetworkType::Testnet, 88)) },
-            Test { name: "Missing prefix", expr: "testnet", expected: Err(NetworkIdError::InvalidPrefix("testnet".to_string())) },
-            Test { name: "Invalid prefix", expr: "K-testnet", expected: Err(NetworkIdError::InvalidPrefix("K".to_string())) },
-            Test {
-                name: "Missing network",
-                expr: "kaspa-",
-                expected: Err(NetworkTypeError::InvalidNetworkType("".to_string()).into()),
-            },
+            Test { name: "Valid mainnet", expr: "mainnet", expected: Ok(NetworkId::new(NetworkType::Mainnet)) },
+            Test { name: "Valid testnet", expr: "testnet-88", expected: Ok(NetworkId::with_suffix(NetworkType::Testnet, 88)) },
+            Test { name: "Missing network", expr: "", expected: Err(NetworkTypeError::InvalidNetworkType("".to_string()).into()) },
             Test {
                 name: "Invalid network",
-                expr: "kaspa-gamenet",
+                expr: "gamenet",
                 expected: Err(NetworkTypeError::InvalidNetworkType("gamenet".to_string()).into()),
             },
-            Test { name: "Invalid suffix", expr: "kaspa-testnet-x", expected: Err(NetworkIdError::InvalidSuffix("x".to_string())) },
+            Test { name: "Invalid suffix", expr: "testnet-x", expected: Err(NetworkIdError::InvalidSuffix("x".to_string())) },
             Test {
                 name: "Unexpected extra token",
-                expr: "kaspa-testnet-10-x",
+                expr: "testnet-10-x",
                 expected: Err(NetworkIdError::UnexpectedExtraToken("x".to_string())),
             },
         ];
