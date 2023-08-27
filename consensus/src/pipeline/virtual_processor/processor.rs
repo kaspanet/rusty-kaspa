@@ -323,8 +323,7 @@ impl VirtualStateProcessor {
             .expect("expecting an open unbounded channel");
 
         {
-            let sink = self.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent;
-            let CompactHeaderData { timestamp, daa_score, .. } = self.headers_store.get_compact_header_data(sink).unwrap();
+            let CompactHeaderData { timestamp, daa_score, .. } = self.headers_store.get_compact_header_data(new_sink).unwrap();
             if self.daa_window_params.is_nearly_synced(timestamp, daa_score) {
                 self.notification_root
                     .notify(Notification::SyncStateChanged(
