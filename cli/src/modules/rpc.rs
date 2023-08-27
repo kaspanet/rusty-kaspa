@@ -211,16 +211,16 @@ impl Rpc {
                 if argv.is_empty() {
                     return Err(Error::custom("Please specify a daa_score"));
                 }
-                let daa_score_result = argv.remove(0).parse::<u64>();
+                let daa_score_result = argv.iter().map(|s| s.parse::<u64>()).collect::<std::result::Result<Vec<_>, _>>();
 
                 match daa_score_result {
-                    Ok(daa_score) => {
+                    Ok(daa_scores) => {
                         let result =
-                            rpc.get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest { daa_score }).await?;
+                            rpc.get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest { daa_scores }).await?;
                         self.println(&ctx, result);
                     }
                     Err(_err) => {
-                        return Err(Error::custom("Could not parse daa_score to u64"));
+                        return Err(Error::custom("Could not parse daa_scores to u64"));
                     }
                 }
             }

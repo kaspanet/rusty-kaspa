@@ -355,11 +355,11 @@ from!(item: RpcResult<&kaspa_rpc_core::GetCoinSupplyResponse>, protowire::GetCoi
 
 from!(item: &kaspa_rpc_core::GetDaaScoreTimestampEstimateRequest, protowire::GetDaaScoreTimestampEstimateRequestMessage, {
     Self {
-        daa_score: item.daa_score
+        daa_scores: item.daa_scores.clone()
     }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetDaaScoreTimestampEstimateResponse>, protowire::GetDaaScoreTimestampEstimateResponseMessage, {
-    Self { timestamp: item.timestamp, error: None }
+    Self { timestamps: item.timestamps.clone(), error: None }
 });
 
 from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
@@ -726,11 +726,11 @@ try_from!(item: &protowire::GetCoinSupplyResponseMessage, RpcResult<kaspa_rpc_co
 
 try_from!(item: &protowire::GetDaaScoreTimestampEstimateRequestMessage, kaspa_rpc_core::GetDaaScoreTimestampEstimateRequest , {
     Self {
-        daa_score: item.daa_score
+        daa_scores: item.daa_scores.clone()
     }
 });
 try_from!(item: &protowire::GetDaaScoreTimestampEstimateResponseMessage, RpcResult<kaspa_rpc_core::GetDaaScoreTimestampEstimateResponse>, {
-    Self { timestamp: item.timestamp }
+    Self { timestamps: item.timestamps.clone() }
 });
 
 try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);

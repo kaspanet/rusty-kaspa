@@ -60,6 +60,7 @@ use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use std::{
+    collections::HashMap,
     iter::once,
     sync::{atomic::Ordering, Arc},
     vec,
@@ -541,8 +542,57 @@ impl RpcApi for RpcCoreService {
         &self,
         request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
-        // TODO: Add the logic here
-        Ok(GetDaaScoreTimestampEstimateResponse::new(request.daa_score))
+        let session = self.consensus_manager.consensus().session().await;
+        let mut headers = session.async_get_chain_block_samples().await;
+        let mut requested_daa_scores = request.daa_scores.clone();
+        let mut daa_score_timestamp_map = HashMap::<u64, u64>::new();
+
+        headers.reverse();
+        requested_daa_scores.sort_by(|a, b| b.cmp(a));
+
+        let mut header_idx = 0;
+        let mut req_idx = 0;
+
+        // Loop runs at O(n + m) where n = # pp headers, m = # requested daa_scores
+        // Loop will always end because in the worst case the last header with daa_score = 0 (the genesis)
+        // will cause every remaining requested daa_score to be "found in range"
+        while header_idx < headers.len() && req_idx < request.daa_scores.len() {
+            let header = headers.get(header_idx).unwrap();
+            let curr_daa_score = requested_daa_scores[req_idx];
+
+            // Found daa_score in range
+            if header.daa_score <= curr_daa_score {
+                // For the last header, we estimate excess time as seconds
+                let time_adjustment = if header_idx == 0 {
+                    // Assume difference in daa_score corresponds to seconds since the basis header
+                    (curr_daa_score - header.daa_score).checked_mul(1000).unwrap_or(u64::MAX)
+                } else {
+                    // "next" header is the one that we processed last iteration
+                    let next_header = &headers[header_idx - 1];
+                    let time_between_now_and_next = next_header.timestamp - header.timestamp;
+                    let score_between_now_and_request = curr_daa_score - header.daa_score;
+                    let score_between_now_and_next = next_header.daa_score - header.daa_score;
+
+                    (time_between_now_and_next)
+                        .checked_mul(score_between_now_and_request / score_between_now_and_next)
+                        .unwrap_or(u64::MAX)
+                };
+
+                // Use higher types to catch overflows. Cast to lower type later on when confirmed within u64 range
+                let daa_score_timestamp = header.timestamp.checked_add(time_adjustment).unwrap_or(u64::MAX);
+
+                daa_score_timestamp_map.insert(curr_daa_score, daa_score_timestamp);
+
+                // Process the next daa score that's <= than current one (at earlier idx)
+                req_idx += 1;
+            } else {
+                header_idx += 1;
+            }
+        }
+
+        let timestamps = request.daa_scores.iter().map(|curr_daa_score| daa_score_timestamp_map[curr_daa_score]).collect();
+
+        Ok(GetDaaScoreTimestampEstimateResponse::new(timestamps))
     }
 
     async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {

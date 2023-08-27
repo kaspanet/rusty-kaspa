@@ -46,6 +46,7 @@ use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    daa_score_timestamp::DaaScoreTimestamp,
     errors::{
         coinbase::CoinbaseResult,
         consensus::{ConsensusError, ConsensusResult},
@@ -54,6 +55,7 @@ use kaspa_consensus_core::{
     errors::{difficulty::DifficultyError, pruning::PruningImportError},
     header::Header,
     muhash::MuHashExtensions,
+    network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
@@ -82,6 +84,10 @@ use std::{
 use tokio::sync::oneshot;
 
 use self::{services::ConsensusServices, storage::ConsensusStorage};
+
+use crate::model::stores::selected_chain::SelectedChainStoreReader;
+
+use std::cmp;
 
 pub struct Consensus {
     // DB
@@ -477,6 +483,60 @@ impl ConsensusApi for Consensus {
         let _guard = self.pruning_lock.blocking_read();
         self.validate_block_exists(hash)?;
         Ok(self.services.dag_traversal_manager.calculate_chain_path(hash, self.get_sink()))
+    }
+
+    /// Returns a Vec of header samples since genesis
+    /// Ordered ascending by daa_score, first entry is genesis
+    fn get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        // Sorted from genesis to latest pruning_point_headers
+        let pp_headers = self.pruning_point_headers();
+        let step_divisor: usize = 3; // The number of extra samples we'll get from blocks after last pp header
+        let prealloc_len = pp_headers.len() + step_divisor + 1;
+
+        let mut sample_headers;
+
+        // Part 1: Add samples from pruning point headers:
+        if self.config.net.network_type == NetworkType::Mainnet {
+            sample_headers = Vec::<DaaScoreTimestamp>::with_capacity(prealloc_len + 15);
+            // For mainnet, we add extra data (15 pp headers) from before checkpoint genesis:
+            sample_headers.push(DaaScoreTimestamp { daa_score: 0, timestamp: 1636298787842 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 87133, timestamp: 1636386662010 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 176797, timestamp: 1636473700804 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 264837, timestamp: 1636560706885 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 355974, timestamp: 1636650005662 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 445152, timestamp: 1636737841327 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 536709, timestamp: 1636828600930 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 624635, timestamp: 1636912614350 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 712234, timestamp: 1636999362832 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 801831, timestamp: 1637088292662 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 890716, timestamp: 1637174890675 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 978396, timestamp: 1637260956454 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 1068387, timestamp: 1637349078269 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 1139626, timestamp: 1637418723538 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 1218320, timestamp: 1637495941516 });
+        } else {
+            sample_headers = Vec::<DaaScoreTimestamp>::with_capacity(prealloc_len);
+        }
+
+        for header in pp_headers.iter() {
+            sample_headers.push(DaaScoreTimestamp { daa_score: header.daa_score, timestamp: header.timestamp });
+        }
+
+        // Part 2: Add samples from recent chain blocks
+        let sc_read = self.storage.selected_chain_store.read();
+        let low = pp_headers.last().unwrap().hash;
+        let high = sc_read.get_tip().unwrap().1;
+
+        let low_index = sc_read.get_by_hash(low).unwrap_option().unwrap_or(0);
+        let high_index = sc_read.get_by_hash(high).unwrap_option().unwrap_or(0);
+        let step_size = cmp::max((high_index - low_index) / (step_divisor as u64), 1);
+
+        for index in (low_index + step_size..=high_index).step_by(step_size as usize) {
+            let chain_block_header = self.storage.headers_store.get_header(sc_read.get_by_index(index).unwrap()).unwrap();
+            sample_headers.push(DaaScoreTimestamp::from(chain_block_header));
+        }
+
+        sample_headers
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {

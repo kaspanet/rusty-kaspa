@@ -815,10 +815,10 @@ message GetSyncStatusResponseMessage{
 }
 
 message GetDaaScoreTimestampEstimateRequestMessage {
-        uint64 daa_score = 1;
+        repeated uint64 daa_scores = 1;
 }
 
 message GetDaaScoreTimestampEstimateResponseMessage{
-        uint64 timestamp = 1;
+        repeated uint64 timestamps = 1;
         RPCError error = 1000;
 }
