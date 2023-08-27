@@ -1,5 +1,4 @@
 use crate::model::message::*;
-use async_channel::{Receiver, Sender};
 use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
 use kaspa_notify::{
@@ -103,14 +102,6 @@ impl NotificationTrait for Notification {
     fn event_type(&self) -> EventType {
         self.into()
     }
-}
-
-pub type NotificationSender = Sender<Notification>;
-pub type NotificationReceiver = Receiver<Notification>;
-
-pub enum NotificationHandle {
-    Existing(u64),
-    New(NotificationSender),
 }
 
 #[cfg(test)]
