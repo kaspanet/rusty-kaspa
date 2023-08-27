@@ -146,8 +146,12 @@ impl IbdFlow {
                 return Ok(IbdType::Sync(highest_known_syncer_chain_hash));
             }
 
-            // TODO: in this case we know a syncer chain block, but it violates our current finality. In some cases
-            // this info should possibly be used to reject the IBD despite having more blue work etc.
+            // If the pruning point is not in the chain of `highest_known_syncer_chain_hash`, it
+            // means it's in its antichain (because if `highest_known_syncer_chain_hash` was in
+            // the pruning point's past the pruning point itself would be
+            // `highest_known_syncer_chain_hash`). So it means there's a finality conflict.
+            // TODO: Find a better way to handle finality conflicts.
+            return Ok(IbdType::None);
         }
 
         let hst_header = consensus.async_get_header(consensus.async_get_headers_selected_tip().await).await.unwrap();
@@ -161,6 +165,7 @@ impl IbdFlow {
                     // We reject the headers proof if the node has a relatively up-to-date finality point and current
                     // consensus has matured for long enough (and not recently synced). This is mostly a spam-protector
                     // since subsequent checks identify these violations as well
+                    // TODO: Find a better way to handle finality conflicts.
                     return Ok(IbdType::None);
                 }
             }
