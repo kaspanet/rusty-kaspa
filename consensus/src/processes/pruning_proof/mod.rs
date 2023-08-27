@@ -11,6 +11,7 @@ use kaspa_math::int::SignedInteger;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 
+use kaspa_consensus_core::config::params::DAAWindowParams;
 use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     errors::{
@@ -26,6 +27,7 @@ use kaspa_consensus_notify::{
     notification::{Notification, SyncStateChangedNotification},
     root::ConsensusNotificationRoot,
 };
+use kaspa_core::time::unix_now;
 use kaspa_core::{debug, info, trace};
 use kaspa_database::prelude::{ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
@@ -33,7 +35,7 @@ use kaspa_notify::notifier::Notify;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
 
-use crate::sync_state::SYNC_STATE;
+use crate::model::stores::headers::CompactHeaderData;
 use crate::{
     consensus::{
         services::{DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbWindowManager},
@@ -109,6 +111,7 @@ pub struct PruningProofManager {
     anticone_finalization_depth: u64,
     ghostdag_k: KType,
     notification_root: Arc<ConsensusNotificationRoot>,
+    daa_window_params: DAAWindowParams,
 }
 
 impl PruningProofManager {
@@ -127,6 +130,7 @@ impl PruningProofManager {
         anticone_finalization_depth: u64,
         ghostdag_k: KType,
         notification_root: Arc<ConsensusNotificationRoot>,
+        daa_window_params: DAAWindowParams,
     ) -> Self {
         Self {
             db,
@@ -158,6 +162,7 @@ impl PruningProofManager {
             anticone_finalization_depth,
             ghostdag_k,
             notification_root,
+            daa_window_params,
         }
     }
 
@@ -415,11 +420,19 @@ impl PruningProofManager {
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
-            if !SYNC_STATE.is_synced() {
-                self.notification_root
-                    .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_proof(level, self.max_block_level)))
-                    .expect("expecting an open unbounded channel");
+            {
+                let sink = self.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent;
+                let CompactHeaderData { timestamp, daa_score, .. } = self.headers_store.get_compact_header_data(sink).unwrap();
+                let diff = -(unix_now() as i64)
+                    + timestamp as i64
+                    + self.daa_window_params.expected_daa_window_duration_in_milliseconds(daa_score) as i64;
+                if diff > 0 {
+                    self.notification_root
+                        .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_proof(level, self.max_block_level)))
+                        .expect("expecting an open unbounded channel");
+                }
             }
+
             info!("Validating level {level} from the pruning point proof");
             let level_idx = level as usize;
             let mut selected_tip = None;

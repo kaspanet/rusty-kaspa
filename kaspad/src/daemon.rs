@@ -1,7 +1,6 @@
 use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
-use kaspa_consensus::sync_state::SYNC_STATE;
 use kaspa_consensus_core::{
     config::ConfigBuilder,
     errors::config::{ConfigError, ConfigResult},
@@ -292,8 +291,6 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         tx_script_cache_counters.clone(),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
-    _ = SYNC_STATE.consensus_manager.set(consensus_manager.clone());
-    SYNC_STATE.daa_window_params.set(config.params.daa_window_params).unwrap();
 
     let consensus_monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
 

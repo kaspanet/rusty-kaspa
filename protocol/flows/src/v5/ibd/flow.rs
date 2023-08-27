@@ -14,7 +14,6 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensus_notify::notification::{Notification, SyncStateChangedNotification};
-use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy, StagingConsensus};
 use kaspa_core::{debug, info, time::unix_now, warn};
 use kaspa_hashes::Hash;
@@ -46,8 +45,6 @@ pub struct IbdFlow {
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
     relay_receiver: Receiver<Block>,
-
-    notification_root: Option<Arc<ConsensusNotificationRoot>>,
 }
 
 #[async_trait::async_trait]
@@ -70,14 +67,8 @@ pub enum IbdType {
 // TODO: define a peer banning strategy
 
 impl IbdFlow {
-    pub fn new(
-        ctx: FlowContext,
-        router: Arc<Router>,
-        incoming_route: IncomingRoute,
-        relay_receiver: Receiver<Block>,
-        notification_root: Arc<ConsensusNotificationRoot>,
-    ) -> Self {
-        Self { ctx, router, incoming_route, relay_receiver, notification_root: Some(notification_root) }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: Receiver<Block>) -> Self {
+        Self { ctx, router, incoming_route, relay_receiver }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -324,10 +315,9 @@ impl IbdFlow {
             if passed > Duration::from_secs(1) {
                 info!("Processed {} trusted blocks in the last {:.2}s (total {})", i - last_index, passed.as_secs_f64(), i);
 
-                if !kaspa_consensus::sync_state::SYNC_STATE.is_synced() {
-                    self.notification_root
-                        .as_ref()
-                        .unwrap()
+                if !self.ctx.consensus().session().await.async_is_nearly_synced().await {
+                    self.ctx
+                        .notification_root
                         .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_trust_sync(
                             (i - last_index) as u64,
                             i as u64,
@@ -358,10 +348,9 @@ impl IbdFlow {
             relay_block.header.daa_score,
             "block headers",
             Some(|headers: usize, progress: i32| {
-                if !kaspa_consensus::sync_state::SYNC_STATE.is_synced() {
-                    self.notification_root
-                        .as_ref()
-                        .unwrap()
+                if !futures::executor::block_on(self.ctx.consensus().session_blocking()).is_nearly_synced() {
+                    self.ctx
+                        .notification_root
                         .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_headers(
                             headers as u64,
                             progress as i64,
@@ -476,8 +465,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 RequestPruningPointUtxoSetMessage { pruning_point_hash: Some(pruning_point.into()) }
             ))
             .await?;
-        let mut chunk_stream =
-            PruningPointUtxosetChunkStream::new(&self.router, &mut self.incoming_route, self.notification_root.as_ref().unwrap());
+        let mut chunk_stream = PruningPointUtxosetChunkStream::new(&self.router, &mut self.incoming_route, &self.ctx);
         let mut multiset = MuHash::new();
         while let Some(chunk) = chunk_stream.next().await? {
             multiset = consensus
@@ -501,13 +489,14 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
 
         let low_header = consensus.async_get_header(*hashes.first().expect("hashes was non empty")).await?;
         let high_header = consensus.async_get_header(*hashes.last().expect("hashes was non empty")).await?;
-        let notification_root = self.notification_root.take().unwrap();
+        let notification_root = self.ctx.notification_root.clone();
+        let consensus_move = self.ctx.consensus().clone();
         let mut progress_reporter = ProgressReporter::new(
             low_header.daa_score,
             high_header.daa_score,
             "blocks",
-            Some(|blocks, progress| {
-                if !kaspa_consensus::sync_state::SYNC_STATE.is_synced() {
+            Some(move |blocks, progress| {
+                if !futures::executor::block_on(consensus_move.session_blocking()).is_nearly_synced() {
                     notification_root
                         .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_blocks(
                             blocks as u64,
@@ -536,7 +525,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         let prev_chunk_len = prev_jobs.len();
         try_join_all(prev_jobs).await?;
         progress_reporter.report_completion(prev_chunk_len);
-        self.notification_root = Some(notification_root);
         self.ctx.on_new_block_template().await?;
 
         Ok(())

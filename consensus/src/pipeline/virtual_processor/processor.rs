@@ -77,7 +77,6 @@ use kaspa_muhash::MuHash;
 use kaspa_notify::notifier::Notify;
 
 use crate::model::stores::headers::CompactHeaderData;
-use crate::sync_state::SYNC_STATE;
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
 use kaspa_consensus_core::config::params::DAAWindowParams;
@@ -323,8 +322,9 @@ impl VirtualStateProcessor {
             )))
             .expect("expecting an open unbounded channel");
 
-        SYNC_STATE.is_synced_or(|| {
-            let CompactHeaderData { timestamp, daa_score, .. } = self.headers_store.get_compact_header_data(new_sink).unwrap();
+        {
+            let sink = self.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent;
+            let CompactHeaderData { timestamp, daa_score, .. } = self.headers_store.get_compact_header_data(sink).unwrap();
             let diff = -(unix_now() as i64)
                 + timestamp as i64
                 + self.daa_window_params.expected_daa_window_duration_in_milliseconds(daa_score) as i64;
@@ -335,8 +335,7 @@ impl VirtualStateProcessor {
                     ))
                     .expect("expecting an open unbounded channel");
             }
-            diff
-        });
+        }
     }
 
     pub(crate) fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {

@@ -188,6 +188,7 @@ impl ConsensusServices {
             params.anticone_finalization_depth(),
             params.ghostdag_k,
             notification_root,
+            params.daa_window_params,
         ));
 
         let sync_manager = SyncManager::new(

@@ -9,7 +9,6 @@ license.workspace = true
 
 [dependencies]
 kaspa-hashes.workspace = true
-kaspa-consensus.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensusmanager.workspace = true
 kaspa-consensus-notify.workspace = true
