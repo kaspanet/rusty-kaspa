@@ -325,10 +325,7 @@ impl VirtualStateProcessor {
         {
             let sink = self.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent;
             let CompactHeaderData { timestamp, daa_score, .. } = self.headers_store.get_compact_header_data(sink).unwrap();
-            let diff = -(unix_now() as i64)
-                + timestamp as i64
-                + self.daa_window_params.expected_daa_window_duration_in_milliseconds(daa_score) as i64;
-            if diff > 0 {
+            if self.daa_window_params.is_nearly_synced(timestamp, daa_score) {
                 self.notification_root
                     .notify(Notification::SyncStateChanged(
                         kaspa_consensus_notify::notification::SyncStateChangedNotification::new_synced(),
