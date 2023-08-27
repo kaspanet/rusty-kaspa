@@ -1726,7 +1726,7 @@ async fn sanity_integration_test() {
 
 #[tokio::test]
 async fn mining_integration_test() {
-    kaspa_core::log::init_logger(None, "INFO");
+    kaspa_core::log::try_init_logger("INFO");
 
     let mut kaspad1 = DaemonWithRpc::new_random();
     let mut kaspad2 = DaemonWithRpc::new_random();
