@@ -1,8 +1,5 @@
-use crate::{RpcAcceptedTransactionIds, RpcError, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
-use kaspa_consensus_core::{
-    acceptance_data::MergesetBlockAcceptanceData,
-    tx::{Transaction, TransactionInput, TransactionOutput},
-};
+use crate::{RpcError, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
+use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput};
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
@@ -44,15 +41,6 @@ impl From<&TransactionInput> for RpcTransactionInput {
             sig_op_count: item.sig_op_count,
             // TODO: Implement a populating process inspired from kaspad\app\rpc\rpccontext\verbosedata.go
             verbose_data: None,
-        }
-    }
-}
-
-impl From<&MergesetBlockAcceptanceData> for RpcAcceptedTransactionIds {
-    fn from(item: &MergesetBlockAcceptanceData) -> Self {
-        Self {
-            accepting_block_hash: item.block_hash,
-            accepted_transaction_ids: item.accepted_transactions.iter().map(|tx| tx.transaction_id).collect(),
         }
     }
 }
