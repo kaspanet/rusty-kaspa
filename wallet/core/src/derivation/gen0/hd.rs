@@ -435,6 +435,19 @@ impl WalletDerivationManagerV0 {
         Ok((key, chain_code.try_into()?))
     }
 
+    pub fn derive_key_by_path(
+        xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
+        path: DerivationPath,
+    ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
+        let mut private_key = xkey.private_key().clone();
+        let mut attrs = xkey.attrs().clone();
+        for child in path {
+            (private_key, attrs) = Self::derive_private_key(&private_key, &attrs, child)?;
+        }
+
+        Ok((private_key, attrs))
+    }
+
     pub fn derive_private_key(
         private_key: &SecretKey,
         attrs: &ExtendedKeyAttrs,
