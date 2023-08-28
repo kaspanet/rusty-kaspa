@@ -2,11 +2,16 @@ use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
 
+use kaspa_addresses::Address;
 use kaspa_consensus_core::{
     config::Config,
     networktype::{NetworkId, NetworkType},
+    tx::{TransactionId, TransactionOutpoint, UtxoEntry},
+    utxo::utxo_collection::UtxoCollection,
 };
 use kaspa_core::kaspad_env::version;
+use kaspa_hashes::TransactionID;
+use kaspa_txscript::pay_to_address_script;
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 use kaspa_wrpc_server::address::WrpcNetAddress;
 
@@ -44,6 +49,9 @@ pub struct Args {
     pub externalip: Option<IpAddress>,
     pub perf_metrics: bool,
     pub perf_metrics_interval_sec: u64,
+    pub num_fake_utxos: Option<u64>,
+    pub fake_utxos_address: Option<String>,
+    pub fake_utxos_amount: u64,
 }
 
 impl Default for Args {
@@ -80,6 +88,9 @@ impl Default for Args {
             perf_metrics: false,
             perf_metrics_interval_sec: 1,
             externalip: None,
+            num_fake_utxos: None,
+            fake_utxos_address: None,
+            fake_utxos_amount: 1_000_000,
         }
     }
 }
@@ -93,6 +104,24 @@ impl Args {
         // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
         config.enable_sanity_checks = true;
         config.user_agent_comments = self.user_agent_comments.clone();
+
+        if let Some(num_fake_utxos) = self.num_fake_utxos {
+            let addr = Address::try_from(&self.fake_utxos_address.as_ref().unwrap()[..]).unwrap();
+            let spk = pay_to_address_script(&addr);
+            config.initial_utxo_set = (1..=num_fake_utxos)
+                .map(|i| {
+                    (
+                        TransactionOutpoint { transaction_id: i.into(), index: 0 },
+                        UtxoEntry {
+                            amount: self.fake_utxos_amount,
+                            script_public_key: spk.clone(),
+                            block_daa_score: 0,
+                            is_coinbase: false,
+                        },
+                    )
+                })
+                .collect();
+        }
     }
 
     pub fn network(&self) -> NetworkId {
@@ -261,6 +290,27 @@ pub fn cli() -> Command {
             .value_parser(clap::value_parser!(u64))
             .help("Interval in seconds for performance metrics collection."),
     )
+    .arg(
+        Arg::new("num-fake-utxos")
+            .long("num-fake-utxos")
+            .require_equals(true)
+            .value_parser(clap::value_parser!(u64))
+            .hide(true),
+    )
+    .arg(
+        Arg::new("fake-utxos-address")
+            .long("fake-utxos-address")
+            .require_equals(true)
+            .value_parser(clap::value_parser!(String))
+            .hide(true),
+    )
+    .arg(
+        Arg::new("fake-utxos-amount")
+            .long("fake-utxos-amount")
+            .require_equals(true)
+            .value_parser(clap::value_parser!(u64))
+            .hide(true),
+    )
 }
 
 pub fn parse_args() -> Args {
@@ -302,6 +352,9 @@ pub fn parse_args() -> Args {
             .get_one::<u64>("perf-metrics-interval-sec")
             .cloned()
             .unwrap_or(defaults.perf_metrics_interval_sec),
+        num_fake_utxos: m.get_one::<u64>("num-fake-utxos").cloned(),
+        fake_utxos_address: m.get_one::<String>("fake-utxos-address").cloned(),
+        fake_utxos_amount: m.get_one::<u64>("fake-utxos-amount").cloned().unwrap_or(defaults.fake_utxos_amount),
     }
 }
 

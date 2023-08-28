@@ -29,6 +29,8 @@ kaspa-mining.workspace = true
 kaspa-addressmanager.workspace = true
 kaspa-consensusmanager.workspace = true
 kaspa-perf-monitor.workspace = true
+kaspa-addresses.workspace = true
+kaspa-txscript.workspace = true
 
 async-channel.workspace = true
 thiserror.workspace = true

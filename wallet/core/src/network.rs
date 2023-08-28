@@ -82,7 +82,7 @@ impl FromStr for NetworkId {
         // diallow network types without suffix (other than mainnet)
         // lack of suffix makes it impossible to distinguish between
         // multiple testnet networks
-        if !matches!(network_type, NetworkType::Mainnet) && suffix.is_none() {
+        if matches!(network_type, NetworkType::Testnet) && suffix.is_none() {
             return Err(Error::MissingNetworkSuffix(network_name.to_string()));
         }
         match parts.next() {

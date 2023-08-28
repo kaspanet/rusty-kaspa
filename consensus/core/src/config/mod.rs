@@ -7,6 +7,8 @@ use std::ops::Deref;
 
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 
+use crate::utxo::utxo_collection::UtxoCollection;
+
 use {
     constants::perf::{PerfParams, PERF_PARAMS},
     params::Params,
@@ -53,6 +55,8 @@ pub struct Config {
     pub p2p_listen_address: ContextualNetAddress,
 
     pub externalip: Option<IpAddress>,
+
+    pub initial_utxo_set: UtxoCollection,
 }
 
 impl Config {
@@ -74,6 +78,7 @@ impl Config {
             user_agent_comments: Default::default(),
             externalip: None,
             p2p_listen_address: ContextualNetAddress::unspecified(),
+            initial_utxo_set: Default::default(),
         }
     }
 

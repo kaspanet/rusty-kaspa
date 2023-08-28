@@ -54,8 +54,10 @@ use kaspa_consensus_core::{
     config::genesis::GenesisBlock,
     header::Header,
     merkle::calc_hash_merkle_root,
+    muhash::MuHashExtensions,
     tx::{MutableTransaction, Transaction},
     utxo::{
+        utxo_collection::UtxoCollection,
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
     },
@@ -840,14 +842,22 @@ impl VirtualStateProcessor {
 
     /// Initializes UTXO state of genesis and points virtual at genesis.
     /// Note that pruning point-related stores are initialized by `init`
-    pub fn process_genesis(self: &Arc<Self>) {
+    pub fn process_genesis(self: &Arc<Self>, initial_utxo_set: &UtxoCollection) {
         // Write the UTXO state of genesis
-        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default());
+        let muhash = {
+            let mut muhash = MuHash::new();
+            for (outpoint, entry) in initial_utxo_set {
+                muhash.add_utxo(&outpoint, &entry);
+            }
+            muhash
+        };
+        let utxo_diff = UtxoDiff::new(initial_utxo_set.clone(), UtxoCollection::default());
+        self.commit_utxo_state(self.genesis.hash, utxo_diff.clone(), muhash, AcceptanceData::default());
         // Init virtual stores
         self.virtual_stores
             .write()
             .state
-            .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
+            .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]), utxo_diff)))
             .unwrap();
         // Init the virtual selected chain store
         let mut batch = WriteBatch::default();

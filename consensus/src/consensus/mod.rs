@@ -243,7 +243,7 @@ impl Consensus {
         if config.process_genesis {
             header_processor.process_genesis();
             body_processor.process_genesis();
-            virtual_processor.process_genesis();
+            virtual_processor.process_genesis(&config.initial_utxo_set);
         }
 
         Self {
