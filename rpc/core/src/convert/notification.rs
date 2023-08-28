@@ -1,7 +1,7 @@
 use crate::{
     convert::utxo::utxo_set_into_rpc, BlockAddedNotification, FinalityConflictNotification, FinalityConflictResolvedNotification,
-    NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification, SinkBlueScoreChangedNotification,
-    UtxosChangedNotification, VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
+    NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification, RpcAcceptedTransactionIds,
+    SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
 };
 use kaspa_consensus_notify::notification as consensus_notify;
 use kaspa_index_core::notification as index_notify;
@@ -41,11 +41,28 @@ impl From<&consensus_notify::BlockAddedNotification> for BlockAddedNotification 
 
 impl From<&consensus_notify::VirtualChainChangedNotification> for VirtualChainChangedNotification {
     fn from(item: &consensus_notify::VirtualChainChangedNotification) -> Self {
-        // TODO: solve the format discrepancy of `accepted_transaction_ids`
         Self {
             removed_chain_block_hashes: item.removed_chain_block_hashes.clone(),
             added_chain_block_hashes: item.added_chain_block_hashes.clone(),
-            accepted_transaction_ids: Arc::new(vec![]),
+            // If acceptance data array is empty, it means that the subscription was set to not
+            // include accepted_transaction_ids. Otherwise, we expect acceptance data to correlate
+            // with the added chain block hashes
+            accepted_transaction_ids: Arc::new(if item.added_chain_blocks_acceptance_data.is_empty() {
+                vec![]
+            } else {
+                item.added_chain_block_hashes
+                    .iter()
+                    .zip(item.added_chain_blocks_acceptance_data.iter())
+                    .map(|(hash, acceptance_data)| RpcAcceptedTransactionIds {
+                        accepting_block_hash: hash.to_owned(),
+                        // We collect accepted tx ids from all mergeset blocks
+                        accepted_transaction_ids: acceptance_data
+                            .iter()
+                            .flat_map(|x| x.accepted_transactions.iter().map(|tx| tx.transaction_id))
+                            .collect(),
+                    })
+                    .collect()
+            }),
         }
     }
 }
