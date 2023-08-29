@@ -231,7 +231,7 @@ impl Generator {
                 let final_tx_mass = mass_accumulator + change_output_mass + payload_mass;
                 let final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
 
-                let change_amount = transaction_amount_accumulator - final_transaction_fees;
+                change_amount = transaction_amount_accumulator - final_transaction_fees;
                 if is_standard_output_amount_dust(change_amount) {
                     return Ok(None);
                 }
