@@ -54,10 +54,8 @@ use kaspa_consensus_core::{
     config::genesis::GenesisBlock,
     header::Header,
     merkle::calc_hash_merkle_root,
-    muhash::MuHashExtensions,
     tx::{MutableTransaction, Transaction},
     utxo::{
-        utxo_collection::UtxoCollection,
         utxo_diff::UtxoDiff,
         utxo_view::{UtxoView, UtxoViewComposition},
     },
@@ -842,22 +840,14 @@ impl VirtualStateProcessor {
 
     /// Initializes UTXO state of genesis and points virtual at genesis.
     /// Note that pruning point-related stores are initialized by `init`
-    pub fn process_genesis(self: &Arc<Self>, initial_utxo_set: &UtxoCollection) {
+    pub fn process_genesis(self: &Arc<Self>) {
         // Write the UTXO state of genesis
-        let muhash = {
-            let mut muhash = MuHash::new();
-            for (outpoint, entry) in initial_utxo_set {
-                muhash.add_utxo(&outpoint, &entry);
-            }
-            muhash
-        };
-        let utxo_diff = UtxoDiff::new(initial_utxo_set.clone(), UtxoCollection::default());
-        self.commit_utxo_state(self.genesis.hash, utxo_diff.clone(), muhash, AcceptanceData::default());
+        self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default());
         // Init virtual stores
         self.virtual_stores
             .write()
             .state
-            .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]), utxo_diff)))
+            .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
             .unwrap();
         // Init the virtual selected chain store
         let mut batch = WriteBatch::default();
@@ -872,6 +862,7 @@ impl VirtualStateProcessor {
         &self,
         new_pruning_point: Hash,
         mut imported_utxo_multiset: MuHash,
+        override_existing: bool,
     ) -> PruningImportResult<()> {
         info!("Importing the UTXO set of the pruning point {}", new_pruning_point);
         let new_pruning_point_header = self.headers_store.get_header(new_pruning_point).unwrap();
@@ -921,7 +912,12 @@ impl VirtualStateProcessor {
             // Submit partial UTXO state for the pruning point.
             // Note we only have and need the multiset; acceptance data and utxo-diff are irrelevant.
             let mut batch = WriteBatch::default();
-            self.utxo_multisets_store.insert_batch(&mut batch, new_pruning_point, imported_utxo_multiset.clone()).unwrap();
+            if override_existing {
+                self.utxo_multisets_store.set_batch(&mut batch, new_pruning_point, imported_utxo_multiset.clone()).unwrap();
+            } else {
+                self.utxo_multisets_store.insert_batch(&mut batch, new_pruning_point, imported_utxo_multiset.clone()).unwrap();
+            }
+
             let statuses_write = self.statuses_store.set_batch(&mut batch, new_pruning_point, StatusUTXOValid).unwrap();
             self.db.write(batch).unwrap();
             drop(statuses_write);

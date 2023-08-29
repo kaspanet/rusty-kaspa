@@ -419,7 +419,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 })
                 .await;
         }
-        consensus.clone().spawn_blocking(move |c| c.import_pruning_point_utxo_set(pruning_point, multiset)).await?;
+        consensus.clone().spawn_blocking(move |c| c.import_pruning_point_utxo_set(pruning_point, multiset, false)).await?;
         Ok(())
     }
 

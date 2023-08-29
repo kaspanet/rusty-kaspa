@@ -6,11 +6,9 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::{
     config::Config,
     networktype::{NetworkId, NetworkType},
-    tx::{TransactionId, TransactionOutpoint, UtxoEntry},
-    utxo::utxo_collection::UtxoCollection,
+    tx::{TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::kaspad_env::version;
-use kaspa_hashes::TransactionID;
 use kaspa_txscript::pay_to_address_script;
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 use kaspa_wrpc_server::address::WrpcNetAddress;

@@ -130,7 +130,12 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: MuHash) -> PruningImportResult<()> {
+    fn import_pruning_point_utxo_set(
+        &self,
+        new_pruning_point: Hash,
+        imported_utxo_multiset: MuHash,
+        override_existing: bool,
+    ) -> PruningImportResult<()> {
         unimplemented!()
     }
 

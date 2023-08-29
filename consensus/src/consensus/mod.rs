@@ -243,7 +243,7 @@ impl Consensus {
         if config.process_genesis {
             header_processor.process_genesis();
             body_processor.process_genesis();
-            virtual_processor.process_genesis(&config.initial_utxo_set);
+            virtual_processor.process_genesis();
         }
 
         Self {
@@ -508,8 +508,13 @@ impl ConsensusApi for Consensus {
         }
     }
 
-    fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: MuHash) -> PruningImportResult<()> {
-        self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
+    fn import_pruning_point_utxo_set(
+        &self,
+        new_pruning_point: Hash,
+        imported_utxo_multiset: MuHash,
+        override_existing: bool,
+    ) -> PruningImportResult<()> {
+        self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset, override_existing)
     }
 
     fn header_exists(&self, hash: Hash) -> bool {
