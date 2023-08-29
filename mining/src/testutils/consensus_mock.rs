@@ -129,6 +129,10 @@ impl ConsensusApi for ConsensusMock {
         Ok(())
     }
 
+    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        transactions.iter_mut().map(|x| self.validate_mempool_transaction_and_populate(x)).collect()
+    }
+
     fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
         if transaction.is_coinbase() {
             0
