@@ -14,7 +14,7 @@ pub(crate) mod check_transaction_standard;
 pub mod config;
 pub mod errors;
 pub(crate) mod handle_new_block_transactions;
-mod model;
+pub(crate) mod model;
 pub(crate) mod populate_entries_and_try_validate;
 pub(crate) mod remove_transaction;
 pub(crate) mod revalidate_high_priority_transactions;

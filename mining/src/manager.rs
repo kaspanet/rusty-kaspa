@@ -8,6 +8,7 @@ use crate::{
     errors::MiningManagerResult,
     mempool::{
         config::Config,
+        model::tx::MempoolTransaction,
         populate_entries_and_try_validate::{validate_mempool_transaction_and_populate, validate_mempool_transactions_in_parallel},
         tx::{Orphan, Priority},
         Mempool,
@@ -26,7 +27,7 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy};
-use kaspa_core::error;
+use kaspa_core::{error, info};
 use parking_lot::{Mutex, RwLock};
 
 pub struct MiningManager {
@@ -146,7 +147,78 @@ impl MiningManager {
         // no lock on mempool
         let validation_result = validate_mempool_transaction_and_populate(consensus, &mut transaction);
         // write lock on mempool
-        Ok(self.mempool.write().post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan)?)
+        let mut mempool = self.mempool.write();
+        if let Some(accepted_transaction) =
+            mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan)?
+        {
+            let unorphaned_transactions = mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction);
+            drop(mempool);
+
+            // The capacity used here may be exceeded since accepted unorphaned transaction may themselves unorphan other transactions.
+            let mut accepted_transactions = Vec::with_capacity(unorphaned_transactions.len() + 1);
+            // We include the original accepted transaction as well
+            accepted_transactions.push(accepted_transaction);
+            accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
+
+            Ok(accepted_transactions)
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    fn validate_and_insert_unorphaned_transactions(
+        &self,
+        consensus: &dyn ConsensusApi,
+        mut incoming_transactions: Vec<MempoolTransaction>,
+    ) -> Vec<Arc<Transaction>> {
+        // The capacity used here may be exceeded (see next comment).
+        let mut accepted_transactions = Vec::with_capacity(incoming_transactions.len());
+        // We loop as long as incoming unorphaned transactions do unorphan other transactions when they
+        // get validated and inserted into the mempool
+        while !incoming_transactions.is_empty() {
+            let (mut transactions, priorities): (Vec<MutableTransaction>, Vec<Priority>) =
+                incoming_transactions.into_iter().map(|x| (x.mtx, x.priority)).unzip();
+
+            // no lock on mempool
+            // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
+            let mut lower_bound: usize = 0;
+            let mut validation_results = Vec::with_capacity(transactions.len());
+            while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
+                validation_results
+                    .extend(validate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
+                lower_bound = upper_bound;
+            }
+
+            // write lock on mempool
+            let mut mempool = self.mempool.write();
+            incoming_transactions = transactions
+                .into_iter()
+                .zip(priorities)
+                .zip(validation_results)
+                .flat_map(|((transaction, priority), validation_result)| {
+                    let orphan_id = transaction.id();
+                    match mempool.post_validate_and_insert_transaction(
+                        consensus,
+                        validation_result,
+                        transaction,
+                        priority,
+                        Orphan::Forbidden,
+                    ) {
+                        Ok(Some(accepted_transaction)) => {
+                            accepted_transactions.push(accepted_transaction.clone());
+                            mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
+                        }
+                        Ok(None) => vec![],
+                        Err(err) => {
+                            info!("Failed to unorphan transaction {0} due to rule error: {1}", orphan_id, err.to_string());
+                            vec![]
+                        }
+                    }
+                })
+                .collect::<Vec<_>>();
+            drop(mempool);
+        }
+        accepted_transactions
     }
 
     /// Validates a batch of transactions, handling iteratively only the independent ones, and
@@ -161,16 +233,18 @@ impl MiningManager {
         priority: Priority,
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        // The capacity used here may be exceeded since accepted transactions may unorphan other transactions.
+        let mut accepted_transactions: Vec<Arc<Transaction>> = Vec::with_capacity(transactions.len());
         let mut batch = TransactionsStagger::new(transactions);
-        let mut unorphaned_txs: Vec<Arc<Transaction>> = vec![];
         while let Some(transactions) = batch.stagger() {
             let mut transactions = transactions.into_iter().map(MutableTransaction::from_tx).collect::<Vec<_>>();
 
             // read lock on mempool
-            let mempool = self.mempool.read();
             // Here, we simply drop all erroneous transactions since the caller doesn't care about those anyway
-            transactions =
-                transactions.into_iter().filter_map(|tx| mempool.pre_validate_and_populate_transaction(consensus, tx).ok()).collect();
+            transactions = transactions
+                .into_iter()
+                .filter_map(|tx| self.mempool.read().pre_validate_and_populate_transaction(consensus, tx).ok())
+                .collect();
 
             // no lock on mempool
             // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
@@ -184,19 +258,27 @@ impl MiningManager {
 
             // write lock on mempool
             let mut mempool = self.mempool.write();
-            let txs = transactions
+            let unorphaned_transactions = transactions
                 .into_iter()
                 .zip(validation_results)
-                .flat_map(|(transaction, result)| {
-                    mempool.post_validate_and_insert_transaction(consensus, result, transaction, priority, orphan).unwrap_or_default()
+                .flat_map(|(transaction, validation_result)| {
+                    if let Ok(Some(accepted_transaction)) =
+                        mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan)
+                    {
+                        accepted_transactions.push(accepted_transaction.clone());
+                        mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
+                    } else {
+                        vec![]
+                    }
                 })
                 .collect::<Vec<_>>();
+            drop(mempool);
 
             // TODO: handle RuleError::RejectInvalid errors when a banning process gets implemented
-            unorphaned_txs.extend(txs);
+            accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
         }
 
-        Ok(unorphaned_txs)
+        Ok(accepted_transactions)
     }
 
     fn next_transaction_chunk_upper_bound(&self, transactions: &[MutableTransaction], lower_bound: usize) -> Option<usize> {
@@ -261,7 +343,17 @@ impl MiningManager {
         block_transactions: &[Transaction],
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
         // TODO: should use tx acceptance data to verify that new block txs are actually accepted into virtual state.
-        Ok(self.mempool.write().handle_new_block_transactions(consensus, block_transactions)?)
+
+        // write lock on mempool
+        let unorphaned_transactions = self.mempool.write().handle_new_block_transactions(block_transactions)?;
+
+        // alternate no & write lock on mempool
+        let accepted_transactions = self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions);
+
+        // write lock on mempool
+        self.mempool.write().expire_low_priority_transactions(consensus)?;
+
+        Ok(accepted_transactions)
     }
 
     pub fn revalidate_high_priority_transactions(&self, consensus: &dyn ConsensusApi) -> MiningManagerResult<Vec<TransactionId>> {
