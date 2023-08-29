@@ -8,7 +8,7 @@ use std::str::FromStr;
 
 /// Represents a generic mutable transaction
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 pub struct SignableTransaction {
     tx: Arc<Mutex<Transaction>>,
     /// UTXO entry data
@@ -23,9 +23,9 @@ impl SignableTransaction {
         Self { tx: Arc::new(Mutex::new(tx.clone())), entries: entries.clone() }
     }
 
-    #[wasm_bindgen(getter=id)]
-    pub fn id_string(&self) -> String {
-        self.tx.lock().unwrap().id_string()
+    #[wasm_bindgen(getter=tx)]
+    pub fn tx_getter(&self) -> Transaction {
+        self.tx.lock().unwrap().clone()
     }
 
     #[wasm_bindgen(js_name=toJSON)]
@@ -55,7 +55,7 @@ impl SignableTransaction {
             let tx = locked.as_mut().unwrap();
 
             if signatures.len() != tx.inner().inputs.len() {
-                return Err(Error::Custom("Signature counts dont match input counts".to_string()).into());
+                return Err(Error::Custom("Signature counts don't match input counts".to_string()).into());
             }
             let len = tx.inner().inputs.len();
             for (i, signature) in signatures.into_iter().enumerate().take(len) {
@@ -130,5 +130,25 @@ impl TryFrom<(tx::SignableTransaction, UtxoEntries)> for SignableTransaction {
     type Error = Error;
     fn try_from(value: (tx::SignableTransaction, UtxoEntries)) -> Result<Self, Self::Error> {
         Ok(Self { tx: Arc::new(Mutex::new(value.0.tx.into())), entries: value.1 })
+    }
+}
+
+impl From<SignableTransaction> for Transaction {
+    fn from(mtx: SignableTransaction) -> Self {
+        mtx.tx.lock().unwrap().clone()
+    }
+}
+
+impl TryFrom<JsValue> for SignableTransaction {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        SignableTransaction::try_from(&js_value)
+    }
+}
+
+impl TryFrom<&JsValue> for SignableTransaction {
+    type Error = Error;
+    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
+        Ok(ref_from_abi!(SignableTransaction, js_value)?)
     }
 }

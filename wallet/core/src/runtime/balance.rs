@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::network::NetworkType;
 
 pub enum DeltaStyle {
     Mature,

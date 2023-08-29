@@ -89,6 +89,9 @@ pub enum Error {
 
     #[error("Poison error -> {0:?}")]
     PoisonError(String),
+
+    #[error(transparent)]
+    WorkflowWasm(#[from] workflow_wasm::error::Error),
 }
 
 impl From<ErrorImpl> for Error {

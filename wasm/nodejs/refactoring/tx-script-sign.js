@@ -1,7 +1,7 @@
 globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket module shim
 
 let kaspa = require('../kaspa/kaspa_wasm');
-const {parseArgs, guardRpcIsSynced} = require("../utils");
+const { parseArgs, guardRpcIsSynced } = require("../utils");
 let {
     RpcClient, UtxoSet, Address, Encoding, UtxoOrdering,
     PaymentOutputs, PaymentOutput,
@@ -23,10 +23,7 @@ kaspa.init_console_panic_hook();
     // The kaspa address that was passed as an argument or a default one
     const address = args.address ?? "kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd";
 
-    const rpcHost = "127.0.0.1";
-    // Parse the url to automatically determine the port for the given host
-    const rpcUrl = RpcClient.parseUrl(rpcHost, encoding, networkType);
-    const rpc = new RpcClient(encoding, rpcUrl, networkType);
+    const rpc = new RpcClient("127.0.0.1", encoding, networkType);
 
     console.log(`# connecting to ${URL}`)
     await rpc.connect();
@@ -43,7 +40,7 @@ kaspa.init_console_panic_hook();
     console.log("\nJSON.stringify(addresses):", JSON.stringify(addresses));
 
     console.log("\ngetting UTXOs...");
-    const utxosByAddress = await rpc.getUtxosByAddresses({addresses});
+    const utxosByAddress = await rpc.getUtxosByAddresses({ addresses });
     console.log("Creating UtxoSet...");
     //console.log("utxos_by_address", utxos_by_address)
     const utxoSet = UtxoSet.from(utxosByAddress);
@@ -88,7 +85,7 @@ kaspa.init_console_panic_hook();
     console.log("transaction", transaction)
     //let transaction = tx.toRpcTransaction();
 
-    const result = await rpc.submitTransaction({transaction, allowOrphan: false});
+    const result = await rpc.submitTransaction(transaction);
 
     console.log("result", result)
 

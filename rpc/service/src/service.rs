@@ -9,7 +9,7 @@ use kaspa_consensus_core::{
     coinbase::MinerData,
     config::Config,
     constants::MAX_SOMPI,
-    networktype::NetworkType,
+    network::NetworkType,
     tx::{Transaction, COINBASE_TRANSACTION_INDEX},
 };
 use kaspa_consensus_notify::{

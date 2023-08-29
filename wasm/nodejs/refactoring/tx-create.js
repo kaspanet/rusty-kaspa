@@ -1,7 +1,7 @@
 globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket module shim
 
 const kaspa = require('../kaspa/kaspa_wasm');
-const {parseArgs, guardRpcIsSynced} = require("../utils");
+const { parseArgs, guardRpcIsSynced } = require("../utils");
 const {
     RpcClient, UtxoSet, Address, Encoding, UtxoOrdering,
     PaymentOutputs, PaymentOutput,
@@ -25,12 +25,9 @@ kaspa.init_console_panic_hook();
         networkType,
     } = parseArgs();
 
-    const rpcHost = "127.0.0.1";
-    // Parse the url to automatically determine the port for the given host
-    const rpcUrl = RpcClient.parseUrl(rpcHost, encoding, networkType);
-    const rpc = new RpcClient(encoding, rpcUrl, networkType);
+    const rpc = new RpcClient("127.0.0.1", encoding, networkType);
 
-    console.log(`# connecting to ${URL}`)
+    console.log(`Connecting to ${rpc.url}`)
     await rpc.connect();
     await guardRpcIsSynced(rpc);
 
@@ -141,7 +138,7 @@ kaspa.init_console_panic_hook();
     console.log("before submit mtx.id", mtx.id)
     transaction = mtx.toRpcTransaction();
 
-    let result = await rpc.submitTransaction({transaction, allowOrphan: false});
+    let result = await rpc.submitTransaction({ transaction, allowOrphan: false });
 
     console.log("result", result)
 

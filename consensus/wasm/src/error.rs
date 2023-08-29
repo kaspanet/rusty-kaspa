@@ -33,9 +33,12 @@ pub enum Error {
 
     #[error(transparent)]
     SerdeWasmBindgen(JsErrorData),
-    // SerdeWasmBindgen(String),
+
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
+
+    #[error(transparent)]
+    NetworkTypeError(#[from] kaspa_consensus_core::network::NetworkTypeError),
 }
 
 // unsafe impl Send for Error {}

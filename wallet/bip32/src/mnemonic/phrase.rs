@@ -81,8 +81,9 @@ impl Mnemonic {
     }
 
     #[wasm_bindgen(js_name = toSeed)]
-    pub fn create_seed(&self, password: &str) -> String {
-        self.to_seed(password).as_bytes().to_vec().to_hex()
+    pub fn create_seed(&self, password: Option<String>) -> String {
+        let password = password.unwrap_or_default();
+        self.to_seed(password.as_str()).as_bytes().to_vec().to_hex()
     }
 }
 

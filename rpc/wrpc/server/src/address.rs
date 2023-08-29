@@ -1,5 +1,5 @@
 use crate::service::WrpcEncoding;
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_utils::networking::ContextualNetAddress;
 use std::{net::AddrParseError, str::FromStr};
 

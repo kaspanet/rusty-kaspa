@@ -77,10 +77,10 @@ pub enum RpcError {
     AddressError(#[from] kaspa_addresses::AddressError),
 
     #[error(transparent)]
-    NetworkTypeError(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
+    NetworkTypeError(#[from] kaspa_consensus_core::network::NetworkTypeError),
 
     #[error(transparent)]
-    NetworkIdError(#[from] kaspa_consensus_core::networktype::NetworkIdError),
+    NetworkIdError(#[from] kaspa_consensus_core::network::NetworkIdError),
 
     #[error(transparent)]
     NotificationError(#[from] kaspa_notify::error::Error),

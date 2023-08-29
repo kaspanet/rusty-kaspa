@@ -22,7 +22,7 @@ pub mod header;
 pub mod mass;
 pub mod merkle;
 pub mod muhash;
-pub mod networktype;
+pub mod network;
 pub mod pruning;
 pub mod sign;
 pub mod subnets;

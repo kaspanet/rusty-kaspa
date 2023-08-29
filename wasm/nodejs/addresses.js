@@ -6,9 +6,10 @@ let {
     createAddress,
     NetworkType,
 } = kaspa;
+
 kaspa.initConsolePanicHook();
 
-(async ()=>{
+(async () => {
     /*** Common Use-cases ***/
     demoGenerateAddressFromPrivateKeyHexString();
     demoGenerateAddressFromPublicKeyHexString();
@@ -26,13 +27,13 @@ kaspa.initConsolePanicHook();
     // Generates the first 10 Receive Public keys and their addresses
     let compressedPublicKeys = await xpub.receivePubkeys(0, 10);
     console.log("receive address compressedPublicKeys", compressedPublicKeys);
-    let addresses = compressedPublicKeys.map(key=>createAddress(key, NetworkType.Mainnet).toString());
+    let addresses = compressedPublicKeys.map(key => createAddress(key, NetworkType.Mainnet).toString());
     console.log("receive addresses", addresses);
 
     // Generates the first 10 Change Public keys and their addresses
     compressedPublicKeys = await xpub.changePubkeys(0, 10);
     console.log("change address compressedPublicKeys", compressedPublicKeys)
-    addresses = compressedPublicKeys.map(key=>createAddress(key, NetworkType.Mainnet).toString());
+    addresses = compressedPublicKeys.map(key => createAddress(key, NetworkType.Mainnet).toString());
     console.log("change addresses", addresses);
 
 })();
@@ -59,9 +60,9 @@ function demoGenerateAddressFromPublicKeyHexString() {
     console.info(xOnlyPublicKey.toAddress(NetworkType.Mainnet).toString());
     console.info(xOnlyPublicKey.toAddress(NetworkType.Mainnet).toString() == 'kaspa:qr0lr4ml9fn3chekrqmjdkergxl93l4wrk3dankcgvjq776s9wn9jkdskewva');
 
-    // Given full DER public key: '0421EB0C4270128B16C93C5F0DAC48D56051A6237DAE997B58912695052818E348B0A895CBD0C93A11EE7AFAC745929D96A4642A71831F54A7377893AF71A2E2AE'
-    const fullDERPublicKey = new PublicKey('0421EB0C4270128B16C93C5F0DAC48D56051A6237DAE997B58912695052818E348B0A895CBD0C93A11EE7AFAC745929D96A4642A71831F54A7377893AF71A2E2AE');
-    console.info("Given x-only public key: '0421EB0C4270128B16C93C5F0DAC48D56051A6237DAE997B58912695052818E348B0A895CBD0C93A11EE7AFAC745929D96A4642A71831F54A7377893AF71A2E2AE'");
+    // Given full DER public key: '0421eb0c4270128b16c93c5f0dac48d56051a6237dae997b58912695052818e348b0a895cbd0c93a11ee7afac745929d96a4642a71831f54a7377893af71a2e2ae'
+    const fullDERPublicKey = new PublicKey('0421eb0c4270128b16c93c5f0dac48d56051a6237dae997b58912695052818e348b0a895cbd0c93a11ee7afac745929d96a4642a71831f54a7377893af71a2e2ae');
+    console.info("Given x-only public key: '0421eb0c4270128b16c93c5f0dac48d56051a6237dae997b58912695052818e348b0a895cbd0c93a11ee7afac745929d96a4642a71831f54a7377893af71a2e2ae'");
     console.info(fullDERPublicKey.toString());
     console.info(fullDERPublicKey.toAddress(NetworkType.Mainnet).toString());
     console.info(fullDERPublicKey.toAddress(NetworkType.Mainnet).toString() == 'kaspa:qqs7krzzwqfgk9kf830smtzg64s9rf3r0khfj76cjynf2pfgrr35saatu88xq');

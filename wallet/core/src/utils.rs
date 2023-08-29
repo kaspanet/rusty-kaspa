@@ -1,7 +1,7 @@
 use crate::result::Result;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::constants::*;
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::network::NetworkType;
 use separator::Separatable;
 use workflow_log::style;
 
