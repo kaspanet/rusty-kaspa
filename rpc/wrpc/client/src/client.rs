@@ -1,7 +1,7 @@
 use crate::error::Error;
 use crate::imports::*;
 use crate::parse::parse_host;
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_rpc_core::notify::collector::{RpcCoreCollector, RpcCoreConverter};
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
 use std::fmt::Debug;

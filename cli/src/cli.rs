@@ -474,7 +474,7 @@ impl KaspaCli {
         if matches.is_empty() {
             Err(Error::AccountNotFound(pat.to_string()))
         } else if matches.len() > 1 {
-            Err(Error::AmbigiousAccount(pat.to_string()))
+            Err(Error::AmbiguousAccount(pat.to_string()))
         } else {
             Ok(matches[0].clone())
         }

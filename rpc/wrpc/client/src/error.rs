@@ -40,7 +40,7 @@ pub enum Error {
     ToValue(String),
 
     #[error("invalid network type: {0}")]
-    NetworkType(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
+    NetworkType(#[from] kaspa_consensus_core::network::NetworkTypeError),
 
     #[error(transparent)]
     ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),
@@ -49,6 +49,18 @@ pub enum Error {
 impl Error {
     pub fn custom<T: std::fmt::Display>(msg: T) -> Self {
         Error::Custom(msg.to_string())
+    }
+}
+
+impl From<String> for Error {
+    fn from(err: String) -> Self {
+        Self::Custom(err)
+    }
+}
+
+impl From<&str> for Error {
+    fn from(err: &str) -> Self {
+        Self::Custom(err.to_string())
     }
 }
 

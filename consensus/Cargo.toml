@@ -59,4 +59,4 @@ harness = false
 
 [features]
 html_reports = []
-developer-mode = []
+developer-mode = ["kaspa-consensus-core/developer-mode"]

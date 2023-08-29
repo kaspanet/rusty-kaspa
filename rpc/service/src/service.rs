@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
     coinbase::MinerData,
     config::Config,
     constants::MAX_SOMPI,
-    networktype::NetworkType,
+    network::NetworkType,
     tx::{Transaction, COINBASE_TRANSACTION_INDEX},
 };
 use kaspa_consensus_notify::{
@@ -354,7 +354,8 @@ impl RpcApi for RpcCoreService {
             mempool_size: self.mining_manager.clone().transaction_count(true, false).await as u64,
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
-            is_synced: (![Mainnet, Testnet].contains(self.flow_context.config.net.as_type()) || self.flow_context.hub().has_peers())
+            is_synced: (![Mainnet, Testnet].contains(&self.flow_context.config.net.network_type)
+                || self.flow_context.hub().has_peers())
                 && is_nearly_synced,
             has_notify_command: true,
             has_message_id: true,

@@ -26,7 +26,7 @@ pub mod utxo_set_override {
         let utxo_slice = &initial_utxo_set.iter().map(|(op, entry)| (*op, entry.clone())).collect_vec()[..];
         let mut ms = MuHash::new();
         consensus.append_imported_pruning_point_utxos(utxo_slice, &mut ms);
-        consensus.import_pruning_point_utxo_set(genesis_hash, ms, true).unwrap();
+        consensus.import_pruning_point_utxo_set(genesis_hash, ms).unwrap();
     }
 }
 

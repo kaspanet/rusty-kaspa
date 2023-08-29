@@ -3,40 +3,29 @@ globalThis.WebSocket = require("websocket").w3cwebsocket;
 
 const {
     PrivateKey,
-    Address,
     RpcClient,
-    Encoding,
-    NetworkType,
-    UtxoEntries,
+    Generator,
     kaspaToSompi,
-    createTransactions,
     initConsolePanicHook
 } = require('./kaspa/kaspa_wasm');
 
 initConsolePanicHook();
 
+const { encoding, networkId, destinationAddress: destinationAddressArg } = require("./utils").parseArgs();
+
 (async () => {
-
-    let args = process.argv.slice(2);
-    let destination = args.shift() || "kaspatest:qqkl0ct62rv6dz74pff2kx5sfyasl4z28uekevau23g877r5gt6userwyrmtt";
-    console.log("using destination address:", destination);
-
-    // ---
-    // network type
-    let network = NetworkType.Testnet;
-    // RPC encoding
-    let encoding = Encoding.Borsh;
-    // ---
 
     // From BIP0340
     const privateKey = new PrivateKey('b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef');
 
-    const address = sk.toKeypair().toAddress(network);
-    // Full kaspa address: kaspa:qr0lr4ml9fn3chekrqmjdkergxl93l4wrk3dankcgvjq776s9wn9jkdskewva
-    console.info(`Kaspa address: ${address}`);
+    const sourceAddress = privateKey.toKeypair().toAddress(networkId);
+    console.info(`Source address: ${sourceAddress}`);
 
-    let rpcUrl = RpcClient.parseUrl("127.0.0.1", encoding, network);
-    const rpc = new RpcClient(encoding, rpcUrl, network);
+    // if not destination address is supplied, send funds to source address
+    const destinationAddress = destinationAddressArg || sourceAddress;
+    console.info(`Destination address: ${destinationAddress}`);
+
+    const rpc = new RpcClient("127.0.0.1", encoding, networkId);
     console.log(`Connecting to ${rpc.url}`);
 
     await rpc.connect();
@@ -48,10 +37,10 @@ initConsolePanicHook();
     }
 
 
-    let entries = await rpc.getUtxosByAddresses([address]);
+    let entries = await rpc.getUtxosByAddresses([sourceAddress]);
 
     if (!entries.length) {
-        console.error(`No UTXOs found for address ${address}`);
+        console.error(`No UTXOs found for address ${sourceAddress}`);
     } else {
         console.info(entries);
 
@@ -80,9 +69,9 @@ initConsolePanicHook();
         // transaction according to the supplied outputs.
         let generator = new Generator({
             entries,
-            outputs: [[destination, kaspaToSompi(0.2)]],
+            outputs: [[destinationAddress, kaspaToSompi(0.2)]],
             priorityFee: 0,
-            changeAddress: address,
+            changeAddress: sourceAddress,
         });
 
         // transaction generator creates a 

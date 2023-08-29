@@ -11,7 +11,7 @@ use kaspa_txscript::pay_to_address_script;
 
 use kaspa_consensus_core::{
     config::Config,
-    networktype::{NetworkId, NetworkType},
+    network::{NetworkId, NetworkType},
 };
 
 use kaspa_core::kaspad_env::version;
@@ -139,10 +139,10 @@ impl Args {
 
     pub fn network(&self) -> NetworkId {
         match (self.testnet, self.devnet, self.simnet) {
-            (false, false, false) => NetworkType::Mainnet.into(),
+            (false, false, false) => NetworkId::new(NetworkType::Mainnet),
             (true, false, false) => NetworkId::with_suffix(NetworkType::Testnet, self.testnet_suffix),
-            (false, true, false) => NetworkType::Devnet.into(),
-            (false, false, true) => NetworkType::Simnet.into(),
+            (false, true, false) => NetworkId::new(NetworkType::Devnet),
+            (false, false, true) => NetworkId::new(NetworkType::Simnet),
             _ => panic!("only a single net should be activated"),
         }
     }
