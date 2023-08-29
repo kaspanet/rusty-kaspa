@@ -223,6 +223,7 @@ impl NetworkId {
         NETWORK_IDS.iter().copied()
     }
 
+    /// Returns a textual description of the network prefixed with `kaspa-`
     pub fn to_prefixed(&self) -> String {
         format!("kaspa-{}", self)
     }
@@ -269,8 +270,8 @@ impl FromStr for NetworkId {
         let mut parts = network_name.split('-').fuse();
         let network_type = NetworkType::from_str(parts.next().unwrap_or_default())?;
         let suffix = parts.next().map(|x| u32::from_str(x).map_err(|_| NetworkIdError::InvalidSuffix(x.to_string()))).transpose()?;
-        // disallow network types without suffix (other than mainnet)
-        // lack of suffix makes it impossible to distinguish between
+        // Disallow testnet network without suffix.
+        // Lack of suffix makes it impossible to distinguish between
         // multiple testnet networks
         if !matches!(network_type, NetworkType::Mainnet | NetworkType::Devnet | NetworkType::Simnet) && suffix.is_none() {
             return Err(NetworkIdError::MissingNetworkSuffix(network_name.to_string()));
