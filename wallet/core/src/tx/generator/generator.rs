@@ -205,7 +205,7 @@ impl Generator {
         let final_outputs_mass = self.inner.final_transaction_outputs_mass;
         let change_output_mass = self.inner.change_output_mass;
         let mut transaction_amount_accumulator = 0;
-        let mut change_amount = 0;
+        let mut change_amount;
         let mut mass_accumulator = calc.blank_transaction_mass();
         let payload_mass = calc.calc_mass_for_payload(self.inner.final_transaction_payload.len());
 
@@ -250,6 +250,13 @@ impl Generator {
             // maximum mass reached, require additional transaction
             if mass_accumulator + mass_for_input + change_output_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
                 context.utxo_stash.push_back(utxo_entry_reference);
+                let final_tx_mass = mass_accumulator + change_output_mass + payload_mass;
+                let final_transaction_fees = calc.calc_minimum_transaction_relay_fee_from_mass(final_tx_mass);
+
+                change_amount = transaction_amount_accumulator - final_transaction_fees;
+                if is_standard_output_amount_dust(change_amount) {
+                    return Ok(None);
+                }
                 break;
             }
             mass_accumulator += mass_for_input;
