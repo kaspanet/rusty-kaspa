@@ -2,14 +2,20 @@ use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
 
+#[cfg(feature = "developer-mode")]
 use kaspa_addresses::Address;
+#[cfg(feature = "developer-mode")]
+use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
+#[cfg(feature = "developer-mode")]
+use kaspa_txscript::pay_to_address_script;
+
 use kaspa_consensus_core::{
     config::Config,
     networktype::{NetworkId, NetworkType},
-    tx::{TransactionOutpoint, UtxoEntry},
 };
+
 use kaspa_core::kaspad_env::version;
-use kaspa_txscript::pay_to_address_script;
+
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 use kaspa_wrpc_server::address::WrpcNetAddress;
 
@@ -47,8 +53,12 @@ pub struct Args {
     pub externalip: Option<IpAddress>,
     pub perf_metrics: bool,
     pub perf_metrics_interval_sec: u64,
+
+    #[cfg(feature = "developer-mode")]
     pub num_fake_utxos: Option<u64>,
+    #[cfg(feature = "developer-mode")]
     pub fake_utxos_address: Option<String>,
+    #[cfg(feature = "developer-mode")]
     pub fake_utxos_amount: u64,
 }
 
@@ -86,8 +96,12 @@ impl Default for Args {
             perf_metrics: false,
             perf_metrics_interval_sec: 1,
             externalip: None,
+
+            #[cfg(feature = "developer-mode")]
             num_fake_utxos: None,
+            #[cfg(feature = "developer-mode")]
             fake_utxos_address: None,
+            #[cfg(feature = "developer-mode")]
             fake_utxos_amount: 1_000_000,
         }
     }
@@ -103,6 +117,7 @@ impl Args {
         config.enable_sanity_checks = true;
         config.user_agent_comments = self.user_agent_comments.clone();
 
+        #[cfg(feature = "developer-mode")]
         if let Some(num_fake_utxos) = self.num_fake_utxos {
             let addr = Address::try_from(&self.fake_utxos_address.as_ref().unwrap()[..]).unwrap();
             let spk = pay_to_address_script(&addr);
@@ -135,7 +150,7 @@ impl Args {
 
 pub fn cli() -> Command {
     let defaults: Args = Default::default();
-    Command::new("kaspad")
+    let cmd = Command::new("kaspad")
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
@@ -287,28 +302,15 @@ pub fn cli() -> Command {
             .require_equals(true)
             .value_parser(clap::value_parser!(u64))
             .help("Interval in seconds for performance metrics collection."),
-    )
-    .arg(
-        Arg::new("num-fake-utxos")
-            .long("num-fake-utxos")
-            .require_equals(true)
-            .value_parser(clap::value_parser!(u64))
-            .hide(true),
-    )
-    .arg(
-        Arg::new("fake-utxos-address")
-            .long("fake-utxos-address")
-            .require_equals(true)
-            .value_parser(clap::value_parser!(String))
-            .hide(true),
-    )
-    .arg(
-        Arg::new("fake-utxos-amount")
-            .long("fake-utxos-amount")
-            .require_equals(true)
-            .value_parser(clap::value_parser!(u64))
-            .hide(true),
-    )
+    );
+
+    #[cfg(feature = "developer-mode")]
+    let cmd = cmd
+        .arg(Arg::new("num-fake-utxos").long("num-fake-utxos").require_equals(true).value_parser(clap::value_parser!(u64)))
+        .arg(Arg::new("fake-utxos-address").long("fake-utxos-address").require_equals(true).value_parser(clap::value_parser!(String)))
+        .arg(Arg::new("fake-utxos-amount").long("fake-utxos-amount").require_equals(true).value_parser(clap::value_parser!(u64)));
+
+    cmd
 }
 
 pub fn parse_args() -> Args {
@@ -350,8 +352,12 @@ pub fn parse_args() -> Args {
             .get_one::<u64>("perf-metrics-interval-sec")
             .cloned()
             .unwrap_or(defaults.perf_metrics_interval_sec),
+
+        #[cfg(feature = "developer-mode")]
         num_fake_utxos: m.get_one::<u64>("num-fake-utxos").cloned(),
+        #[cfg(feature = "developer-mode")]
         fake_utxos_address: m.get_one::<String>("fake-utxos-address").cloned(),
+        #[cfg(feature = "developer-mode")]
         fake_utxos_amount: m.get_one::<u64>("fake-utxos-amount").cloned().unwrap_or(defaults.fake_utxos_amount),
     }
 }

@@ -7,6 +7,7 @@ use std::ops::Deref;
 
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 
+#[cfg(feature = "developer-mode")]
 use crate::utxo::utxo_collection::UtxoCollection;
 
 use {
@@ -56,6 +57,7 @@ pub struct Config {
 
     pub externalip: Option<IpAddress>,
 
+    #[cfg(feature = "developer-mode")]
     pub initial_utxo_set: UtxoCollection,
 }
 
@@ -78,6 +80,8 @@ impl Config {
             user_agent_comments: Default::default(),
             externalip: None,
             p2p_listen_address: ContextualNetAddress::unspecified(),
+
+            #[cfg(feature = "developer-mode")]
             initial_utxo_set: Default::default(),
         }
     }

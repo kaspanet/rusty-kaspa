@@ -4,6 +4,9 @@ pub mod services;
 pub mod storage;
 pub mod test_consensus;
 
+#[cfg(feature = "developer-mode")]
+mod utxo_set_override;
+
 use crate::{
     config::Config,
     errors::{BlockProcessResult, RuleError},
@@ -508,13 +511,8 @@ impl ConsensusApi for Consensus {
         }
     }
 
-    fn import_pruning_point_utxo_set(
-        &self,
-        new_pruning_point: Hash,
-        imported_utxo_multiset: MuHash,
-        override_existing: bool,
-    ) -> PruningImportResult<()> {
-        self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset, override_existing)
+    fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: MuHash) -> PruningImportResult<()> {
+        self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
     fn header_exists(&self, hash: Hash) -> bool {

@@ -1,7 +1,8 @@
+#[cfg(feature = "developer-mode")]
+use super::utxo_set_override::{set_genesis_utxo_commitment_from_config, set_initial_utxo_set};
 use super::{ctl::Ctl, Consensus};
 use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
-use itertools::Itertools;
-use kaspa_consensus_core::{api::ConsensusApi, config::Config, header::Header, muhash::MuHashExtensions};
+use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
 use kaspa_core::{debug, time::unix_now};
@@ -9,7 +10,7 @@ use kaspa_database::{
     prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB},
     registry::DatabaseStorePrefixes,
 };
-use kaspa_muhash::MuHash;
+
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -195,17 +196,12 @@ impl ConsensusFactory for Factory {
             }
         };
 
+        #[cfg(feature = "developer-mode")]
         if is_new_consensus {
-            let mut genesis_ms = MuHash::new();
-            for (outpoint, entry) in self.config.initial_utxo_set.iter() {
-                genesis_ms.add_utxo(outpoint, entry);
-            }
-
-            config.params.genesis.utxo_commitment = genesis_ms.finalize();
-            let genesis_header: Header = (&config.params.genesis).into();
-            config.params.genesis.hash = genesis_header.hash;
+            set_genesis_utxo_commitment_from_config(&mut config);
         }
 
+        #[cfg(feature = "developer-mode")]
         let genesis_hash = config.params.genesis.hash;
 
         let dir = self.db_root_dir.join(entry.directory_name.clone());
@@ -223,10 +219,8 @@ impl ConsensusFactory for Factory {
         // We write the new active entry only once the instance was created successfully.
         // This way we can safely avoid processing genesis in future process runs
         if is_new_consensus {
-            let utxo_slice = &self.config.initial_utxo_set.iter().map(|(op, entry)| (*op, entry.clone())).collect_vec()[..];
-            let mut ms = MuHash::new();
-            consensus.append_imported_pruning_point_utxos(utxo_slice, &mut ms);
-            consensus.import_pruning_point_utxo_set(genesis_hash, ms, true).unwrap();
+            #[cfg(feature = "developer-mode")]
+            set_initial_utxo_set(&self.config.initial_utxo_set, consensus.clone(), genesis_hash);
             self.management_store.write().save_new_active_consensus(entry).unwrap();
         }
 

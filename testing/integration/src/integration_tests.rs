@@ -1002,7 +1002,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
             tc.append_imported_pruning_point_utxos(&outpoint_utxo_pairs, &mut multiset);
         }
 
-        tc.import_pruning_point_utxo_set(pruning_point.unwrap(), multiset, false).unwrap();
+        tc.import_pruning_point_utxo_set(pruning_point.unwrap(), multiset).unwrap();
         utxoindex.write().resync().unwrap();
         // TODO: Add consensus validation that the pruning point is actually the right block according to the rules (in pruning depth etc).
     }
