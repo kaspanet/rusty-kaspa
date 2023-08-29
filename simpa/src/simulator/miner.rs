@@ -64,7 +64,7 @@ impl Miner {
         target_blocks: Option<u64>,
     ) -> Self {
         let (schnorr_public_key, _) = pk.x_only_public_key();
-        let script_pub_key_script = once(0x20).chain(schnorr_public_key.serialize().into_iter()).chain(once(0xac)).collect_vec(); // TODO: Use script builder when available to create p2pk properly
+        let script_pub_key_script = once(0x20).chain(schnorr_public_key.serialize()).chain(once(0xac)).collect_vec(); // TODO: Use script builder when available to create p2pk properly
         let script_pub_key_script_vec = ScriptVec::from_slice(&script_pub_key_script);
         Self {
             id,
@@ -108,7 +108,9 @@ impl Miner {
             .possible_unspent_outpoints
             .iter()
             .filter_map(|&outpoint| {
-                let Some(entry) = self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score) else { return None; };
+                let Some(entry) = self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score) else {
+                    return None;
+                };
                 let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
                 Some(MutableTransaction::with_entries(unsigned_tx, vec![entry]))
             })
@@ -130,7 +132,9 @@ impl Miner {
         outpoint: TransactionOutpoint,
         virtual_daa_score: u64,
     ) -> Option<UtxoEntry> {
-        let Some(entry) = utxo_view.get(&outpoint) else { return None; };
+        let Some(entry) = utxo_view.get(&outpoint) else {
+            return None;
+        };
         if entry.amount < 2
             || (entry.is_coinbase && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity as i64)
         {

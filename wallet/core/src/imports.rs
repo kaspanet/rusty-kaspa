@@ -1,6 +1,5 @@
 pub use crate::error::Error;
 pub use crate::events::{Events, SyncState};
-pub use crate::network::NetworkId;
 pub use crate::utxo::scan::{Scan, ScanExtent};
 pub use crate::DynRpcApi;
 pub use crate::{runtime, storage, utils, utxo};
@@ -13,7 +12,7 @@ pub use futures::future::join_all;
 pub use futures::{select, stream, FutureExt, Stream, StreamExt, TryStreamExt};
 pub use js_sys::{Array, BigInt, Object};
 pub use kaspa_addresses::{Address, Prefix};
-pub use kaspa_consensus_core::networktype::NetworkType;
+pub use kaspa_consensus_core::network::{NetworkId, NetworkType};
 pub use kaspa_consensus_core::subnets;
 pub use kaspa_consensus_core::subnets::SubnetworkId;
 pub use kaspa_consensus_core::tx as cctx;

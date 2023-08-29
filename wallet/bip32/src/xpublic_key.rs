@@ -76,7 +76,7 @@ where
     }
 
     pub fn derive_path(self, path: DerivationPath) -> Result<Self> {
-        path.iter().fold(Ok(self), |maybe_key, child_num| maybe_key.and_then(|key| key.derive_child(child_num)))
+        path.iter().try_fold(self, |key, child_num| key.derive_child(child_num))
     }
 
     /// Serialize the raw public key as a byte array (e.g. SEC1-encoded).

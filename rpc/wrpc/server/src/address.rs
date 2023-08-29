@@ -1,5 +1,5 @@
 use crate::service::WrpcEncoding;
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_utils::networking::ContextualNetAddress;
 use std::{net::AddrParseError, str::FromStr};
 
@@ -43,5 +43,21 @@ impl FromStr for WrpcNetAddress {
                 Ok(Self::Custom(addr))
             }
         }
+    }
+}
+
+impl TryFrom<&str> for WrpcNetAddress {
+    type Error = AddrParseError;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        WrpcNetAddress::from_str(s)
+    }
+}
+
+impl TryFrom<String> for WrpcNetAddress {
+    type Error = AddrParseError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        WrpcNetAddress::from_str(&s)
     }
 }

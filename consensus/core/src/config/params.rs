@@ -4,7 +4,7 @@ pub use super::{
     genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET11_GENESIS, TESTNET_GENESIS},
 };
 use crate::{
-    networktype::{NetworkId, NetworkType},
+    network::{NetworkId, NetworkType},
     BlockLevel, KType,
 };
 use kaspa_addresses::Prefix;
@@ -223,7 +223,7 @@ impl Params {
     }
 
     pub fn network_name(&self) -> String {
-        self.net.name()
+        self.net.to_prefixed()
     }
 
     pub fn prefix(&self) -> Prefix {
@@ -272,8 +272,6 @@ impl From<NetworkId> for Params {
 
 pub const MAINNET_PARAMS: Params = Params {
     dns_seeders: &[
-        // This DNS seeder is run by Wolfie
-        "mainnet-dnsseed.kas.pa",
         // This DNS seeder is run by Denis Mashkevich
         "mainnet-dnsseed-1.kaspanet.org",
         // This DNS seeder is run by Denis Mashkevich
@@ -346,7 +344,6 @@ pub const MAINNET_PARAMS: Params = Params {
 
 pub const TESTNET_PARAMS: Params = Params {
     dns_seeders: &[
-        "testnet-10-dnsseed.kas.pa",
         // This DNS seeder is run by Tiram
         "seeder1-testnet.kaspad.net",
     ],

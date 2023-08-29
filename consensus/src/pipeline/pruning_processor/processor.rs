@@ -15,6 +15,7 @@ use crate::{
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::StagingRelationsStore,
             selected_chain::SelectedChainStore,
+            statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
             virtual_state::VirtualStateStoreReader,
@@ -108,7 +109,9 @@ impl PruningProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() else { return; };
+        let Ok(PruningProcessingMessage::Process { sink_ghostdag_data }) = self.receiver.recv() else {
+            return;
+        };
 
         // On start-up, check if any pruning workflows require recovery. We wait for the first processing message to arrive
         // in order to make sure the node is already connected and receiving blocks before we start background recovery operations
@@ -258,7 +261,9 @@ impl PruningProcessor {
             let mut counter = 0;
             let mut batch = WriteBatch::default();
             for kept in keep_relations.iter().copied() {
-                let Some(ghostdag) = self.ghostdag_primary_store.get_data(kept).unwrap_option() else { continue; };
+                let Some(ghostdag) = self.ghostdag_primary_store.get_data(kept).unwrap_option() else {
+                    continue;
+                };
                 if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains(&h)) {
                     let mut mutable_ghostdag: ExternalGhostdagData = ghostdag.as_ref().into();
                     mutable_ghostdag.mergeset_blues.retain(|h| keep_relations.contains(h));
@@ -356,7 +361,13 @@ impl PruningProcessor {
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
 
                 if keep_relations.contains(&current) {
-                    statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
+                    if statuses_write.get(current).unwrap_option().is_some_and(|s| s.is_valid()) {
+                        // We set the status to header-only only if it was previously set to a valid
+                        // status. This is important since some proof headers might not have their status set
+                        // and we would like to preserve this semantic (having a valid status implies that
+                        // other parts of the code assume the existence of GD data etc.)
+                        statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
+                    }
                 } else {
                     // Count only blocks which get fully pruned including DAG relations
                     counter += 1;
