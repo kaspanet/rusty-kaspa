@@ -150,6 +150,10 @@ impl Args {
 
 pub fn cli() -> Command {
     let defaults: Args = Default::default();
+
+    // Clippy doesn't see the conditional compilation below, so it thinks
+    // the `let` is redundnt.
+    #[allow(clippy::let_and_return)]
     let cmd = Command::new("kaspad")
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
