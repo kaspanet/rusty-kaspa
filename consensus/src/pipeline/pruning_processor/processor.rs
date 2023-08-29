@@ -15,6 +15,7 @@ use crate::{
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
             relations::StagingRelationsStore,
             selected_chain::SelectedChainStore,
+            statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
             virtual_state::VirtualStateStoreReader,
@@ -360,7 +361,13 @@ impl PruningProcessor {
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
 
                 if keep_relations.contains(&current) {
-                    statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
+                    if statuses_write.get(current).unwrap_option().is_some_and(|s| s.is_valid()) {
+                        // We set the status to header-only only if it was previously set to a valid
+                        // status. This is important since some proof headers might not have their status set
+                        // and we would like to preserve this semantic (having a valid status implies that
+                        // other parts of the code assume the existence of GD data etc.)
+                        statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
+                    }
                 } else {
                     // Count only blocks which get fully pruned including DAG relations
                     counter += 1;

@@ -616,7 +616,13 @@ impl ConsensusApi for Consensus {
             Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
             _ => {}
         };
-        Ok((&*self.ghostdag_primary_store.get_data(hash).unwrap()).into())
+        // Usually a valid status indicates the existence of GHOSTDAG data, however
+        // we take the less strict policy of not panicking in this case since some edge cases
+        // related to pruning might occur yet they do not indicate a logical bug
+        let Some(ghostdag) = self.ghostdag_primary_store.get_data(hash).unwrap_option() else {
+            return Err(ConsensusError::MissingData(hash));
+        };
+        Ok((&*ghostdag).into())
     }
 
     fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
