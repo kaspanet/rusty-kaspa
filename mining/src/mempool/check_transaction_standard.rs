@@ -229,7 +229,7 @@ mod tests {
     use kaspa_consensus_core::{
         config::params::Params,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
-        networktype::NetworkType,
+        network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
