@@ -1,5 +1,5 @@
 use crate::utils::*;
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_core::tx::TransactionId;
 use std::fmt;
 
