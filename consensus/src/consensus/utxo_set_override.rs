@@ -1,4 +1,4 @@
-#[cfg(feature = "developer-mode")]
+#[cfg(feature = "devnet-prealloc")]
 pub mod utxo_set_override {
     use std::sync::Arc;
 
@@ -30,5 +30,5 @@ pub mod utxo_set_override {
     }
 }
 
-#[cfg(feature = "developer-mode")]
+#[cfg(feature = "devnet-prealloc")]
 pub use utxo_set_override::*;

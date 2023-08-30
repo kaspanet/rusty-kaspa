@@ -7,7 +7,7 @@ use std::ops::Deref;
 
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 
-#[cfg(feature = "developer-mode")]
+#[cfg(feature = "devnet-prealloc")]
 use crate::utxo::utxo_collection::UtxoCollection;
 
 use {
@@ -57,7 +57,7 @@ pub struct Config {
 
     pub externalip: Option<IpAddress>,
 
-    #[cfg(feature = "developer-mode")]
+    #[cfg(feature = "devnet-prealloc")]
     pub initial_utxo_set: UtxoCollection,
 }
 
@@ -81,7 +81,7 @@ impl Config {
             externalip: None,
             p2p_listen_address: ContextualNetAddress::unspecified(),
 
-            #[cfg(feature = "developer-mode")]
+            #[cfg(feature = "devnet-prealloc")]
             initial_utxo_set: Default::default(),
         }
     }

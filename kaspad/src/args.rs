@@ -2,11 +2,11 @@ use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
 
-#[cfg(feature = "developer-mode")]
+#[cfg(feature = "devnet-prealloc")]
 use kaspa_addresses::Address;
-#[cfg(feature = "developer-mode")]
+#[cfg(feature = "devnet-prealloc")]
 use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
-#[cfg(feature = "developer-mode")]
+#[cfg(feature = "devnet-prealloc")]
 use kaspa_txscript::pay_to_address_script;
 
 use kaspa_consensus_core::{
@@ -54,11 +54,11 @@ pub struct Args {
     pub perf_metrics: bool,
     pub perf_metrics_interval_sec: u64,
 
-    #[cfg(feature = "developer-mode")]
+    #[cfg(feature = "devnet-prealloc")]
     pub num_fake_utxos: Option<u64>,
-    #[cfg(feature = "developer-mode")]
+    #[cfg(feature = "devnet-prealloc")]
     pub fake_utxos_address: Option<String>,
-    #[cfg(feature = "developer-mode")]
+    #[cfg(feature = "devnet-prealloc")]
     pub fake_utxos_amount: u64,
 }
 
@@ -97,11 +97,11 @@ impl Default for Args {
             perf_metrics_interval_sec: 1,
             externalip: None,
 
-            #[cfg(feature = "developer-mode")]
+            #[cfg(feature = "devnet-prealloc")]
             num_fake_utxos: None,
-            #[cfg(feature = "developer-mode")]
+            #[cfg(feature = "devnet-prealloc")]
             fake_utxos_address: None,
-            #[cfg(feature = "developer-mode")]
+            #[cfg(feature = "devnet-prealloc")]
             fake_utxos_amount: 1_000_000,
         }
     }
@@ -117,7 +117,7 @@ impl Args {
         config.enable_sanity_checks = true;
         config.user_agent_comments = self.user_agent_comments.clone();
 
-        #[cfg(feature = "developer-mode")]
+        #[cfg(feature = "devnet-prealloc")]
         if let Some(num_fake_utxos) = self.num_fake_utxos {
             let addr = Address::try_from(&self.fake_utxos_address.as_ref().unwrap()[..]).unwrap();
             let spk = pay_to_address_script(&addr);
@@ -308,7 +308,7 @@ pub fn cli() -> Command {
             .help("Interval in seconds for performance metrics collection."),
     );
 
-    #[cfg(feature = "developer-mode")]
+    #[cfg(feature = "devnet-prealloc")]
     let cmd = cmd
         .arg(Arg::new("num-fake-utxos").long("num-fake-utxos").require_equals(true).value_parser(clap::value_parser!(u64)))
         .arg(Arg::new("fake-utxos-address").long("fake-utxos-address").require_equals(true).value_parser(clap::value_parser!(String)))
@@ -357,11 +357,11 @@ pub fn parse_args() -> Args {
             .cloned()
             .unwrap_or(defaults.perf_metrics_interval_sec),
 
-        #[cfg(feature = "developer-mode")]
+        #[cfg(feature = "devnet-prealloc")]
         num_fake_utxos: m.get_one::<u64>("num-fake-utxos").cloned(),
-        #[cfg(feature = "developer-mode")]
+        #[cfg(feature = "devnet-prealloc")]
         fake_utxos_address: m.get_one::<String>("fake-utxos-address").cloned(),
-        #[cfg(feature = "developer-mode")]
+        #[cfg(feature = "devnet-prealloc")]
         fake_utxos_amount: m.get_one::<u64>("fake-utxos-amount").cloned().unwrap_or(defaults.fake_utxos_amount),
     }
 }

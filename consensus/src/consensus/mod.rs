@@ -4,7 +4,7 @@ pub mod services;
 pub mod storage;
 pub mod test_consensus;
 
-#[cfg(feature = "developer-mode")]
+#[cfg(feature = "devnet-prealloc")]
 mod utxo_set_override;
 
 use crate::{

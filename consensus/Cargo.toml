@@ -59,4 +59,4 @@ harness = false
 
 [features]
 html_reports = []
-developer-mode = ["kaspa-consensus-core/developer-mode"]
+devnet-prealloc = ["kaspa-consensus-core/devnet-prealloc"]

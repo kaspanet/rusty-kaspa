@@ -48,7 +48,7 @@ fn get_app_dir() -> PathBuf {
 }
 
 fn validate_config_and_args(_config: &Arc<Config>, args: &Args) -> ConfigResult<()> {
-    #[cfg(feature = "developer-mode")]
+    #[cfg(feature = "devnet-prealloc")]
     if args.num_fake_utxos.is_some() && !args.devnet {
         return Err(ConfigError::FakeUTXOsOnNonDevnet);
     }

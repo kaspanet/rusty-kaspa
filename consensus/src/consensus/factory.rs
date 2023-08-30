@@ -1,4 +1,4 @@
-#[cfg(feature = "developer-mode")]
+#[cfg(feature = "devnet-prealloc")]
 use super::utxo_set_override::{set_genesis_utxo_commitment_from_config, set_initial_utxo_set};
 use super::{ctl::Ctl, Consensus};
 use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
@@ -196,12 +196,12 @@ impl ConsensusFactory for Factory {
             }
         };
 
-        #[cfg(feature = "developer-mode")]
+        #[cfg(feature = "devnet-prealloc")]
         if is_new_consensus {
             set_genesis_utxo_commitment_from_config(&mut config);
         }
 
-        #[cfg(feature = "developer-mode")]
+        #[cfg(feature = "devnet-prealloc")]
         let genesis_hash = config.params.genesis.hash;
 
         let dir = self.db_root_dir.join(entry.directory_name.clone());
@@ -219,7 +219,7 @@ impl ConsensusFactory for Factory {
         // We write the new active entry only once the instance was created successfully.
         // This way we can safely avoid processing genesis in future process runs
         if is_new_consensus {
-            #[cfg(feature = "developer-mode")]
+            #[cfg(feature = "devnet-prealloc")]
             set_initial_utxo_set(&self.config.initial_utxo_set, consensus.clone(), genesis_hash);
             self.management_store.write().save_new_active_consensus(entry).unwrap();
         }
