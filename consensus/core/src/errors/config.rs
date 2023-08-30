@@ -11,6 +11,10 @@ pub enum ConfigError {
     #[cfg(feature = "devnet-prealloc")]
     #[error("Cannot preallocate UTXOs on any network except devnet")]
     PreallocUtxosOnNonDevnet,
+
+    #[cfg(feature = "devnet-prealloc")]
+    #[error("--num-prealloc-utxos has to appear with --prealloc-address and vice versa")]
+    MissingPreallocNumOrAddress,
 }
 
 pub type ConfigResult<T> = std::result::Result<T, ConfigError>;
