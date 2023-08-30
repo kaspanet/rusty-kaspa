@@ -8,8 +8,9 @@ pub enum ConfigError {
     #[error("Configuration: --logdir and --nologfiles cannot be used together")]
     MixedLogDirAndNoLogFiles,
 
-    #[error("Cannot set fake UTXOs on any network except devnet")]
-    FakeUTXOsOnNonDevnet,
+    #[cfg(feature = "devnet-prealloc")]
+    #[error("Cannot preallocate UTXOs on any network except devnet")]
+    PreallocUtxosOnNonDevnet,
 }
 
 pub type ConfigResult<T> = std::result::Result<T, ConfigError>;

@@ -8,6 +8,8 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_txscript::pay_to_address_script;
+#[cfg(feature = "devnet-prealloc")]
+use std::sync::Arc;
 
 use kaspa_consensus_core::{
     config::Config,
@@ -55,11 +57,11 @@ pub struct Args {
     pub perf_metrics_interval_sec: u64,
 
     #[cfg(feature = "devnet-prealloc")]
-    pub num_fake_utxos: Option<u64>,
+    pub num_prealloc_utxos: Option<u64>,
     #[cfg(feature = "devnet-prealloc")]
-    pub fake_utxos_address: Option<String>,
+    pub prealloc_address: Option<String>,
     #[cfg(feature = "devnet-prealloc")]
-    pub fake_utxos_amount: u64,
+    pub prealloc_amount: u64,
 }
 
 impl Default for Args {
@@ -98,11 +100,11 @@ impl Default for Args {
             externalip: None,
 
             #[cfg(feature = "devnet-prealloc")]
-            num_fake_utxos: None,
+            num_prealloc_utxos: None,
             #[cfg(feature = "devnet-prealloc")]
-            fake_utxos_address: None,
+            prealloc_address: None,
             #[cfg(feature = "devnet-prealloc")]
-            fake_utxos_amount: 1_000_000,
+            prealloc_amount: 1_000_000,
         }
     }
 }
@@ -118,22 +120,24 @@ impl Args {
         config.user_agent_comments = self.user_agent_comments.clone();
 
         #[cfg(feature = "devnet-prealloc")]
-        if let Some(num_fake_utxos) = self.num_fake_utxos {
-            let addr = Address::try_from(&self.fake_utxos_address.as_ref().unwrap()[..]).unwrap();
+        if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
+            let addr = Address::try_from(&self.prealloc_address.as_ref().unwrap()[..]).unwrap();
             let spk = pay_to_address_script(&addr);
-            config.initial_utxo_set = (1..=num_fake_utxos)
-                .map(|i| {
-                    (
-                        TransactionOutpoint { transaction_id: i.into(), index: 0 },
-                        UtxoEntry {
-                            amount: self.fake_utxos_amount,
-                            script_public_key: spk.clone(),
-                            block_daa_score: 0,
-                            is_coinbase: false,
-                        },
-                    )
-                })
-                .collect();
+            config.initial_utxo_set = Arc::new(
+                (1..=num_prealloc_utxos)
+                    .map(|i| {
+                        (
+                            TransactionOutpoint { transaction_id: i.into(), index: 0 },
+                            UtxoEntry {
+                                amount: self.prealloc_amount,
+                                script_public_key: spk.clone(),
+                                block_daa_score: 0,
+                                is_coinbase: false,
+                            },
+                        )
+                    })
+                    .collect(),
+            );
         }
     }
 
@@ -151,8 +155,6 @@ impl Args {
 pub fn cli() -> Command {
     let defaults: Args = Default::default();
 
-    // Clippy doesn't see the conditional compilation below, so it thinks
-    // the `let` is redundnt.
     #[allow(clippy::let_and_return)]
     let cmd = Command::new("kaspad")
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
@@ -310,9 +312,9 @@ pub fn cli() -> Command {
 
     #[cfg(feature = "devnet-prealloc")]
     let cmd = cmd
-        .arg(Arg::new("num-fake-utxos").long("num-fake-utxos").require_equals(true).value_parser(clap::value_parser!(u64)))
-        .arg(Arg::new("fake-utxos-address").long("fake-utxos-address").require_equals(true).value_parser(clap::value_parser!(String)))
-        .arg(Arg::new("fake-utxos-amount").long("fake-utxos-amount").require_equals(true).value_parser(clap::value_parser!(u64)));
+        .arg(Arg::new("num-prealloc-utxos").long("num-prealloc-utxos").require_equals(true).value_parser(clap::value_parser!(u64)))
+        .arg(Arg::new("prealloc-address").long("prealloc-address").require_equals(true).value_parser(clap::value_parser!(String)))
+        .arg(Arg::new("prealloc-amount").long("prealloc-amount").require_equals(true).value_parser(clap::value_parser!(u64)));
 
     cmd
 }
@@ -358,11 +360,11 @@ pub fn parse_args() -> Args {
             .unwrap_or(defaults.perf_metrics_interval_sec),
 
         #[cfg(feature = "devnet-prealloc")]
-        num_fake_utxos: m.get_one::<u64>("num-fake-utxos").cloned(),
+        num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
         #[cfg(feature = "devnet-prealloc")]
-        fake_utxos_address: m.get_one::<String>("fake-utxos-address").cloned(),
+        prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
         #[cfg(feature = "devnet-prealloc")]
-        fake_utxos_amount: m.get_one::<u64>("fake-utxos-amount").cloned().unwrap_or(defaults.fake_utxos_amount),
+        prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
     }
 }
 

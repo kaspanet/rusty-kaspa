@@ -3,12 +3,14 @@ pub mod constants;
 pub mod genesis;
 pub mod params;
 
-use std::ops::Deref;
-
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 
 #[cfg(feature = "devnet-prealloc")]
 use crate::utxo::utxo_collection::UtxoCollection;
+#[cfg(feature = "devnet-prealloc")]
+use std::sync::Arc;
+
+use std::ops::Deref;
 
 use {
     constants::perf::{PerfParams, PERF_PARAMS},
@@ -58,7 +60,7 @@ pub struct Config {
     pub externalip: Option<IpAddress>,
 
     #[cfg(feature = "devnet-prealloc")]
-    pub initial_utxo_set: UtxoCollection,
+    pub initial_utxo_set: Arc<UtxoCollection>,
 }
 
 impl Config {

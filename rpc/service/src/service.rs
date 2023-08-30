@@ -354,7 +354,7 @@ impl RpcApi for RpcCoreService {
             mempool_size: self.mining_manager.clone().transaction_count(true, false).await as u64,
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
-            is_synced: (![Mainnet, Testnet].contains(&self.flow_context.config.net.network_type)
+            is_synced: (!matches!(self.flow_context.config.net.network_type, Mainnet | Testnet) // Other network types can be used in an isolated environments without peers
                 || self.flow_context.hub().has_peers())
                 && is_nearly_synced,
             has_notify_command: true,

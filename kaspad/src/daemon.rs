@@ -49,8 +49,12 @@ fn get_app_dir() -> PathBuf {
 
 fn validate_config_and_args(_config: &Arc<Config>, args: &Args) -> ConfigResult<()> {
     #[cfg(feature = "devnet-prealloc")]
-    if args.num_fake_utxos.is_some() && !args.devnet {
-        return Err(ConfigError::FakeUTXOsOnNonDevnet);
+    {
+        if args.num_prealloc_utxos.is_some() && !args.devnet {
+            return Err(ConfigError::PreallocUtxosOnNonDevnet);
+        }
+
+        
     }
 
     if !args.connect_peers.is_empty() && !args.add_peers.is_empty() {

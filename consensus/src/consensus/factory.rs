@@ -165,6 +165,8 @@ impl Factory {
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         let mut config = config.clone();
+        #[cfg(feature = "devnet-prealloc")]
+        set_genesis_utxo_commitment_from_config(&mut config);
         config.process_genesis = false;
         Self {
             management_store: Arc::new(RwLock::new(MultiConsensusManagementStore::new(management_db))),
@@ -196,14 +198,6 @@ impl ConsensusFactory for Factory {
             }
         };
 
-        #[cfg(feature = "devnet-prealloc")]
-        if is_new_consensus {
-            set_genesis_utxo_commitment_from_config(&mut config);
-        }
-
-        #[cfg(feature = "devnet-prealloc")]
-        let genesis_hash = config.params.genesis.hash;
-
         let dir = self.db_root_dir.join(entry.directory_name.clone());
         let db = kaspa_database::prelude::ConnBuilder::default().with_db_path(dir).with_parallelism(self.db_parallelism).build();
 
@@ -220,7 +214,7 @@ impl ConsensusFactory for Factory {
         // This way we can safely avoid processing genesis in future process runs
         if is_new_consensus {
             #[cfg(feature = "devnet-prealloc")]
-            set_initial_utxo_set(&self.config.initial_utxo_set, consensus.clone(), genesis_hash);
+            set_initial_utxo_set(&self.config.initial_utxo_set, consensus.clone(), self.config.params.genesis.hash);
             self.management_store.write().save_new_active_consensus(entry).unwrap();
         }
 
