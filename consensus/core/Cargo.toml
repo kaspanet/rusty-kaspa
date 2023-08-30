@@ -48,3 +48,6 @@ web-sys.workspace = true
 [[bench]]
 name = "serde_benchmark"
 harness = false
+
+[features]
+devnet-prealloc = []

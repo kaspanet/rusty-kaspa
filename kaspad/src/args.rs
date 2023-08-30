@@ -2,11 +2,22 @@ use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
 
+#[cfg(feature = "devnet-prealloc")]
+use kaspa_addresses::Address;
+#[cfg(feature = "devnet-prealloc")]
+use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
+#[cfg(feature = "devnet-prealloc")]
+use kaspa_txscript::pay_to_address_script;
+#[cfg(feature = "devnet-prealloc")]
+use std::sync::Arc;
+
 use kaspa_consensus_core::{
     config::Config,
     network::{NetworkId, NetworkType},
 };
+
 use kaspa_core::kaspad_env::version;
+
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 use kaspa_wrpc_server::address::WrpcNetAddress;
 
@@ -44,6 +55,13 @@ pub struct Args {
     pub externalip: Option<IpAddress>,
     pub perf_metrics: bool,
     pub perf_metrics_interval_sec: u64,
+
+    #[cfg(feature = "devnet-prealloc")]
+    pub num_prealloc_utxos: Option<u64>,
+    #[cfg(feature = "devnet-prealloc")]
+    pub prealloc_address: Option<String>,
+    #[cfg(feature = "devnet-prealloc")]
+    pub prealloc_amount: u64,
 }
 
 impl Default for Args {
@@ -80,6 +98,13 @@ impl Default for Args {
             perf_metrics: false,
             perf_metrics_interval_sec: 1,
             externalip: None,
+
+            #[cfg(feature = "devnet-prealloc")]
+            num_prealloc_utxos: None,
+            #[cfg(feature = "devnet-prealloc")]
+            prealloc_address: None,
+            #[cfg(feature = "devnet-prealloc")]
+            prealloc_amount: 1_000_000,
         }
     }
 }
@@ -93,6 +118,27 @@ impl Args {
         // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
         config.enable_sanity_checks = true;
         config.user_agent_comments = self.user_agent_comments.clone();
+
+        #[cfg(feature = "devnet-prealloc")]
+        if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
+            let addr = Address::try_from(&self.prealloc_address.as_ref().unwrap()[..]).unwrap();
+            let spk = pay_to_address_script(&addr);
+            config.initial_utxo_set = Arc::new(
+                (1..=num_prealloc_utxos)
+                    .map(|i| {
+                        (
+                            TransactionOutpoint { transaction_id: i.into(), index: 0 },
+                            UtxoEntry {
+                                amount: self.prealloc_amount,
+                                script_public_key: spk.clone(),
+                                block_daa_score: 0,
+                                is_coinbase: false,
+                            },
+                        )
+                    })
+                    .collect(),
+            );
+        }
     }
 
     pub fn network(&self) -> NetworkId {
@@ -108,7 +154,9 @@ impl Args {
 
 pub fn cli() -> Command {
     let defaults: Args = Default::default();
-    Command::new("kaspad")
+
+    #[allow(clippy::let_and_return)]
+    let cmd = Command::new("kaspad")
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
@@ -260,7 +308,15 @@ pub fn cli() -> Command {
             .require_equals(true)
             .value_parser(clap::value_parser!(u64))
             .help("Interval in seconds for performance metrics collection."),
-    )
+    );
+
+    #[cfg(feature = "devnet-prealloc")]
+    let cmd = cmd
+        .arg(Arg::new("num-prealloc-utxos").long("num-prealloc-utxos").require_equals(true).value_parser(clap::value_parser!(u64)))
+        .arg(Arg::new("prealloc-address").long("prealloc-address").require_equals(true).value_parser(clap::value_parser!(String)))
+        .arg(Arg::new("prealloc-amount").long("prealloc-amount").require_equals(true).value_parser(clap::value_parser!(u64)));
+
+    cmd
 }
 
 pub fn parse_args() -> Args {
@@ -302,6 +358,13 @@ pub fn parse_args() -> Args {
             .get_one::<u64>("perf-metrics-interval-sec")
             .cloned()
             .unwrap_or(defaults.perf_metrics_interval_sec),
+
+        #[cfg(feature = "devnet-prealloc")]
+        num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
+        #[cfg(feature = "devnet-prealloc")]
+        prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
+        #[cfg(feature = "devnet-prealloc")]
+        prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
     }
 }
 
