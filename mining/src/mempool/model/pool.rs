@@ -127,6 +127,7 @@ pub(crate) struct PoolIndex {
 }
 
 impl PoolIndex {
+    #[allow(dead_code)]
     pub(crate) fn new(transactions: TransactionIdSet, chained_transactions: TransactionsEdges) -> Self {
         Self { transactions, chained_transactions }
     }

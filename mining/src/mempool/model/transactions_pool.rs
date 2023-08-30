@@ -239,6 +239,10 @@ impl TransactionsPool {
         self.all().values().map(|x| x.mtx.clone()).collect()
     }
 
+    pub(crate) fn all_transactions_with_priority(&self, priority: Priority) -> Vec<MutableTransaction> {
+        self.all().values().filter_map(|x| if x.priority == priority { Some(x.mtx.clone()) } else { None }).collect()
+    }
+
     pub(crate) fn get_outpoint_owner_id(&self, outpoint: &TransactionOutpoint) -> Option<&TransactionId> {
         self.utxo_set.get_outpoint_owner_id(outpoint)
     }

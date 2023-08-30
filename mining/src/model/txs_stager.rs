@@ -1,14 +1,14 @@
 use super::TransactionIdSet;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 
-pub struct TransactionsStagger {
-    txs: Vec<Transaction>,
+pub struct TransactionsStagger<T: AsRef<Transaction>> {
+    txs: Vec<T>,
     ids: TransactionIdSet,
 }
 
-impl TransactionsStagger {
-    pub fn new(txs: Vec<Transaction>) -> Self {
-        let ids = txs.iter().map(|x| x.id()).collect();
+impl<T: AsRef<Transaction>> TransactionsStagger<T> {
+    pub fn new(txs: Vec<T>) -> Self {
+        let ids = txs.iter().map(|x| x.as_ref().id()).collect();
         Self { txs, ids }
     }
 
@@ -17,7 +17,10 @@ impl TransactionsStagger {
     }
 
     /// Extract and return all independent transactions
-    pub fn stagger(&mut self) -> Option<Vec<Transaction>> {
+    pub fn stagger(&mut self) -> Option<Vec<T>> {
+        if self.is_empty() {
+            return None;
+        }
         let mut ready = Vec::with_capacity(self.txs.len());
         let mut dependent = Vec::with_capacity(self.txs.len());
         while let Some(tx) = self.txs.pop() {
@@ -28,15 +31,15 @@ impl TransactionsStagger {
             }
         }
         self.txs = dependent;
-        self.ids = self.txs.iter().map(|x| x.id()).collect();
-        (!self.is_empty()).then_some(ready)
+        self.ids = self.txs.iter().map(|x| x.as_ref().id()).collect();
+        Some(ready)
     }
 
-    pub fn has(&self, transaction_id: &TransactionId) -> bool {
+    fn has(&self, transaction_id: &TransactionId) -> bool {
         self.ids.contains(transaction_id)
     }
 
-    pub fn is_dependent(&self, tx: &Transaction) -> bool {
-        tx.inputs.iter().any(|x| self.has(&x.previous_outpoint.transaction_id))
+    fn is_dependent(&self, tx: &T) -> bool {
+        tx.as_ref().inputs.iter().any(|x| self.has(&x.previous_outpoint.transaction_id))
     }
 }

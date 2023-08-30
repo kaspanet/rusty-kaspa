@@ -6,9 +6,10 @@ use crate::model::{
 use self::{
     config::Config,
     model::{orphan_pool::OrphanPool, pool::Pool, transactions_pool::TransactionsPool},
+    tx::Priority,
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
-use std::sync::Arc;
+use std::{collections::hash_map::Entry, sync::Arc};
 
 pub(crate) mod check_transaction_standard;
 pub mod config;
@@ -17,7 +18,6 @@ pub(crate) mod handle_new_block_transactions;
 pub(crate) mod model;
 pub(crate) mod populate_entries_and_try_validate;
 pub(crate) mod remove_transaction;
-pub(crate) mod revalidate_high_priority_transactions;
 pub(crate) mod validate_and_insert_transaction;
 
 /// Mempool contains transactions intended to be inserted into a block and mined.
@@ -121,6 +121,19 @@ impl Mempool {
 
     pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
         self.transaction_pool.all_ready_transactions()
+    }
+
+    pub(crate) fn all_transactions_with_priority(&self, priority: Priority) -> Vec<MutableTransaction> {
+        self.transaction_pool.all_transactions_with_priority(priority)
+    }
+
+    pub(crate) fn update_revalidated_transaction(&mut self, transaction: MutableTransaction) -> bool {
+        if let Entry::Occupied(mut entry) = self.transaction_pool.all_mut().entry(transaction.id()) {
+            entry.get_mut().mtx = transaction;
+            true
+        } else {
+            false
+        }
     }
 }
 
