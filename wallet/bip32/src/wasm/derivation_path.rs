@@ -1,10 +1,9 @@
 use crate::{ChildNumber, Error, Result};
-use js_sys::Object;
 use std::str::FromStr;
-use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
+#[derive(Clone)]
 #[wasm_bindgen]
 pub struct DerivationPath {
     inner: crate::DerivationPath,
@@ -57,11 +56,7 @@ impl TryFrom<JsValue> for DerivationPath {
             return Self::new(&path);
         }
 
-        let api = Object::from(value).get_u64("ptr").map_err(|e| Error::String(e.to_string()))?;
-
-        let path = unsafe { Self::from_abi(api as u32) };
-
-        Ok(path)
+        Ok(ref_from_abi!(DerivationPath, &value)?)
     }
 }
 

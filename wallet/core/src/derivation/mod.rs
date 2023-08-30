@@ -15,7 +15,7 @@ use crate::secret::Secret;
 use crate::storage::PrvKeyDataId;
 use crate::Result;
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_utils::hex::ToHex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
