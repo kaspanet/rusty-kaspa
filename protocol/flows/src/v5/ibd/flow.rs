@@ -207,7 +207,13 @@ impl IbdFlow {
 
         let proof_pruning_point = proof[0].last().expect("was just ensured by validation").hash;
 
-        // TODO: verify the proof pruning point is different than current consensus pruning point
+        if proof_pruning_point == self.ctx.config.genesis.hash {
+            return Err(ProtocolError::Other("the proof pruning point is the genesis block"));
+        }
+
+        if proof_pruning_point == consensus.async_pruning_point().await {
+            return Err(ProtocolError::Other("the proof pruning point is the same as the current pruning point"));
+        }
 
         self.router
             .enqueue(make_message!(Payload::RequestPruningPointAndItsAnticone, RequestPruningPointAndItsAnticoneMessage {}))
@@ -306,9 +312,6 @@ impl IbdFlow {
             consensus.validate_and_insert_trusted_block(tb).await?;
         }
         info!("Done processing trusted blocks");
-
-        // TODO: make sure that the proof pruning point is not genesis
-
         Ok(proof_pruning_point)
     }
 
