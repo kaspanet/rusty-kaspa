@@ -13,6 +13,7 @@ use crate::model::{
     },
 };
 use kaspa_hashes::Hash;
+use kaspa_utils::option::OptionExtensions;
 use parking_lot::RwLock;
 
 #[derive(Clone)]
@@ -181,13 +182,10 @@ impl<
         pov_blue_score >= pp_bs + self.pruning_depth
     }
 
-    pub fn is_valid_pruning_point(&self, pp_candidate: Hash) -> bool {
+    pub fn is_valid_pruning_point(&self, pp_candidate: Hash, hst: Hash) -> bool {
         if pp_candidate == self.genesis_hash {
             return true;
         }
-
-        let hst = self.header_selected_tip_store.read().get().unwrap().hash;
-
         if !self.reachability_service.is_chain_ancestor_of(pp_candidate, hst) {
             return false;
         }
@@ -196,7 +194,7 @@ impl<
         self.is_pruning_point_in_pruning_depth(hst_bs, pp_candidate)
     }
 
-    pub fn are_pruning_points_in_valid_chain(&self, pruning_info: PruningPointInfo) -> bool {
+    pub fn are_pruning_points_in_valid_chain(&self, pruning_info: PruningPointInfo, hst: Hash) -> bool {
         // We want to validate that the past pruning points form a chain to genesis. Since
         // each pruning point's header doesn't point to the previous pruning point, but to
         // the pruning point from its POV, we can't just traverse from one pruning point to
@@ -213,10 +211,9 @@ impl<
         // any other pruning point in the list, so we are compelled to check if it's refereced by
         // the selected chain.
         let mut expected_pps_queue = VecDeque::new();
-        let hst = self.header_selected_tip_store.read().get().unwrap().hash;
         for current in self.reachability_service.backward_chain_iterator(hst, pruning_info.pruning_point, false) {
             let current_header = self.headers_store.get_header(current).unwrap();
-            if expected_pps_queue.is_empty() || *expected_pps_queue.back().unwrap() != current_header.pruning_point {
+            if expected_pps_queue.back().is_none_or(|&&h| h != current_header.pruning_point) {
                 expected_pps_queue.push_back(current_header.pruning_point);
             }
         }

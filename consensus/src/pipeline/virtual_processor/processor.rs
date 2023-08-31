@@ -938,10 +938,12 @@ impl VirtualStateProcessor {
         // Ideally we would want to check if the last known pruning point has the finality point
         // in its chain, but in some cases it's impossible: let `lkp` be the last known pruning
         // point from the list, and `fup` be the first unknown pruning point (the one following `lkp`).
-        // fup.blue_score - lkp.blue_score ∈ [finality_depth, finality_depth + k], so it's possible for
-        // `lkp` not to have the finality point in its past (if `fup` is close to the sink). So we have
-        // no choice but to check if `lkp` has `finality_point.finality_point` in its chain, meaning
-        // this function can only detect finality violations in depth of 2*finality_depth.
+        // fup.blue_score - lkp.blue_score ≈ finality_depth (±k), so it's possible for `lkp` not to
+        // have the finality point in its past. So we have no choice but to check if `lkp`
+        // has `finality_point.finality_point` in its chain (in the worst case `fup` is one block
+        // above the current finality point, and in this case `lkp` will be a few blocks above the
+        // finality_point.finality_point), meaning this function can only detect finality violations
+        // in depth of 2*finality_depth, and can give false negatives for smaller finality violations.
         let current_pp = self.pruning_point_store.read().pruning_point().unwrap();
         let vf = self.virtual_finality_point(&self.virtual_stores.read().state.get().unwrap().ghostdag_data, current_pp);
         let vff = self.depth_manager.calc_finality_point(&self.ghostdag_primary_store.get_data(vf).unwrap(), current_pp);

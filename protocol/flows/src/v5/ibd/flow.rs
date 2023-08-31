@@ -150,7 +150,7 @@ impl IbdFlow {
             // means it's in its antichain (because if `highest_known_syncer_chain_hash` was in
             // the pruning point's past the pruning point itself would be
             // `highest_known_syncer_chain_hash`). So it means there's a finality conflict.
-            // TODO: Find a better way to handle finality conflicts.
+            // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
             return Ok(IbdType::None);
         }
 
@@ -165,7 +165,7 @@ impl IbdFlow {
                     // We reject the headers proof if the node has a relatively up-to-date finality point and current
                     // consensus has matured for long enough (and not recently synced). This is mostly a spam-protector
                     // since subsequent checks identify these violations as well
-                    // TODO: Find a better way to handle finality conflicts.
+                    // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
                     return Ok(IbdType::None);
                 }
             }
@@ -231,7 +231,7 @@ impl IbdFlow {
         }
 
         if consensus.async_are_pruning_points_violating_finality(pruning_points.clone()).await {
-            // TODO: Find a better way to deal with finality conflicts
+            // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
             return Err(ProtocolError::Other("pruning points are violating finality"));
         }
 

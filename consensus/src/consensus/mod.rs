@@ -519,12 +519,13 @@ impl ConsensusApi for Consensus {
     }
 
     fn validate_pruning_points(&self) -> ConsensusResult<()> {
+        let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
         let pp_info = self.pruning_point_store.read().get().unwrap();
-        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point) {
+        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, hst) {
             return Err(ConsensusError::General("invalid pruning point candidate"));
         }
 
-        if !self.services.pruning_point_manager.are_pruning_points_in_valid_chain(pp_info) {
+        if !self.services.pruning_point_manager.are_pruning_points_in_valid_chain(pp_info, hst) {
             return Err(ConsensusError::General("past pruning points do not form a valid chain"));
         }
 
