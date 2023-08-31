@@ -500,7 +500,7 @@ pub const SIMNET_PARAMS: Params = Params {
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
-    
+
     skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
     max_block_level: 250,
 };
