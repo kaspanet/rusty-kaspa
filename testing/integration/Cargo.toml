@@ -21,6 +21,7 @@ kaspa-consensusmanager.workspace = true
 kaspad.workspace = true
 kaspa-grpc-client.workspace = true
 kaspa-rpc-core.workspace = true
+kaspa-notify.workspace = true
 
 faster-hex.workspace = true
 thiserror.workspace = true

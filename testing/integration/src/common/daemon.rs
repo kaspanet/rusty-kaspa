@@ -7,7 +7,7 @@ use tempfile::{tempdir, TempDir};
 
 pub struct Daemon {
     pub core: Arc<Core>,
-    rpc_port: u16,
+    pub rpc_port: u16,
     _appdir_tempdir: TempDir,
 }
 
@@ -61,5 +61,11 @@ impl Daemon {
         .await
         .unwrap();
         (workers, rpc_client)
+    }
+
+    pub async fn new_client(&self) -> GrpcClient {
+        GrpcClient::connect(NotificationMode::Direct, format!("grpc://localhost:{}", self.rpc_port), true, None, false, Some(500_000))
+            .await
+            .unwrap()
     }
 }

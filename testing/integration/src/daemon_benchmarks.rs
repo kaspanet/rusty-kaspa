@@ -1,12 +1,32 @@
 use crate::common::daemon::Daemon;
+use async_channel::Sender;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
 use kaspa_core::{debug, signals::Shutdown};
-use kaspa_rpc_core::api::rpc::RpcApi;
+use kaspa_notify::{
+    listener::ListenerId,
+    notifier::Notify,
+    scope::{NewBlockTemplateScope, Scope},
+};
+use kaspa_rpc_core::{api::rpc::RpcApi, Notification};
 use kaspad::args::Args;
+use parking_lot::Mutex;
 use rand::thread_rng;
 use rand_distr::{Distribution, Exp};
-use std::{cmp::max, time::Duration};
+use std::{cmp::max, fmt::Debug, sync::Arc, time::Duration};
+use tokio::join;
+
+#[derive(Debug)]
+struct ChannelNotify {
+    sender: Sender<Notification>,
+}
+
+impl Notify<Notification> for ChannelNotify {
+    fn notify(&self, notification: Notification) -> kaspa_notify::error::Result<()> {
+        self.sender.try_send(notification)?;
+        Ok(())
+    }
+}
 
 #[tokio::test]
 async fn bench_bbt_latency() {
@@ -20,6 +40,7 @@ async fn bench_bbt_latency() {
 
     let daemon = Daemon::new_random_with_args(args);
     let (workers, client) = daemon.start().await;
+    let miner_client = daemon.new_client().await;
 
     //
     //
@@ -33,31 +54,58 @@ async fn bench_bbt_latency() {
        5. measure bbt latency, real-time bps, real-time throughput, mempool draining rate
     */
 
-    /*
-       Goals:
-           call bbt every 1/bps on average
-           find a block in the expected time
-           submit the block with delay
-           skip pow
-           so no need for discrete event simulator since we simulate in real-time
-    */
-
+    // The time interval between Poisson(lambda) events distributes ~Exp(lambda)
     let dist: Exp<f64> = Exp::new(params.bps() as f64).unwrap();
-    // let delay = Duration::from_millis(1000);
+    let comm_delay = 1000;
 
     let (sk, pk) = &secp256k1::generate_keypair(&mut thread_rng());
     let pay_address =
         Address::new(network.network_type().into(), kaspa_addresses::Version::PubKey, &pk.x_only_public_key().0.serialize());
     debug!("Generated private key {} and address {}", sk.display_secret(), pay_address);
 
-    for _ in 0..100 {
-        let bbt = client.get_block_template(pay_address.clone(), vec![]).await.unwrap();
-        // Simulate mining time
-        let timeout = max((dist.sample(&mut thread_rng()) * 1000.0) as u64, 1);
-        tokio::time::sleep(Duration::from_millis(timeout)).await;
-        let response = client.submit_block(bbt.block, false).await.unwrap();
-        assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
-    }
+    let current_template = Arc::new(Mutex::new(miner_client.get_block_template(pay_address.clone(), vec![]).await.unwrap()));
+    let current_template_consume = current_template.clone();
+
+    let (sender, receiver) = async_channel::unbounded();
+    miner_client.start(Some(Arc::new(ChannelNotify { sender }))).await;
+    miner_client.start_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
+
+    let mcc = miner_client.clone();
+    let miner_receiver_task = tokio::spawn(async move {
+        while let Ok(notification) = receiver.recv().await {
+            match notification {
+                Notification::NewBlockTemplate(_) => {
+                    while receiver.try_recv().is_ok() {
+                        // Drain the channel
+                    }
+                    *current_template.lock() = mcc.get_block_template(pay_address.clone(), vec![]).await.unwrap();
+                }
+                _ => panic!(),
+            }
+        }
+    });
+
+    let miner_loop_task = tokio::spawn(async move {
+        for _ in 0..100 {
+            // Simulate mining time
+            let timeout = max((dist.sample(&mut thread_rng()) * 1000.0) as u64, 1);
+            tokio::time::sleep(Duration::from_millis(timeout)).await;
+
+            // The most up-to-date block template
+            let block = current_template_consume.lock().block.clone();
+
+            let mcc = miner_client.clone();
+            tokio::spawn(async move {
+                // Simulate communication delay. TODO: consider adding gaussian noise
+                tokio::time::sleep(Duration::from_millis(comm_delay)).await;
+                let response = mcc.submit_block(block, false).await.unwrap();
+                assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
+            });
+        }
+        miner_client.disconnect().await.unwrap();
+    });
+
+    let _ = join!(miner_receiver_task, miner_loop_task);
 
     //
     // Fold-up
