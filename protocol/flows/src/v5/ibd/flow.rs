@@ -107,9 +107,11 @@ impl IbdFlow {
                 .await?;
             }
             IbdType::DownloadHeadersProof => {
-                drop(session); // Avoid holding the previous consensus throughout the staging IBD
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
-                match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {
+                match self
+                    .ibd_with_headers_proof(&staging, session, negotiation_output.syncer_virtual_selected_parent, &relay_block)
+                    .await
+                {
                     Ok(()) => {
                         spawn_blocking(|| staging.commit()).await.unwrap();
                         self.ctx.on_pruning_point_utxoset_override();
@@ -180,6 +182,7 @@ impl IbdFlow {
     async fn ibd_with_headers_proof(
         &mut self,
         staging: &StagingConsensus,
+        consensus: ConsensusProxy,
         syncer_virtual_selected_parent: Hash,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
@@ -187,7 +190,7 @@ impl IbdFlow {
 
         let staging_session = staging.session().await;
 
-        let pruning_point = self.sync_and_validate_pruning_proof(&staging_session).await?;
+        let pruning_point = self.sync_and_validate_pruning_proof(&staging_session, consensus).await?;
         self.sync_headers(&staging_session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
         staging_session.async_validate_pruning_points().await?;
         self.validate_staging_timestamps(&self.ctx.consensus().session().await, &staging_session).await?;
@@ -195,7 +198,11 @@ impl IbdFlow {
         Ok(())
     }
 
-    async fn sync_and_validate_pruning_proof(&mut self, consensus: &ConsensusProxy) -> Result<Hash, ProtocolError> {
+    async fn sync_and_validate_pruning_proof(
+        &mut self,
+        staging: &ConsensusProxy,
+        consensus: ConsensusProxy,
+    ) -> Result<Hash, ProtocolError> {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
@@ -235,6 +242,8 @@ impl IbdFlow {
             return Err(ProtocolError::Other("pruning points are violating finality"));
         }
 
+        drop(consensus); // Release the session of the old consensus for the IBD
+
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
         let pkg: TrustedDataPackage = msg.try_into()?;
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
@@ -256,7 +265,7 @@ impl IbdFlow {
         let mut trusted_set = pkg.build_trusted_subdag(entries)?;
 
         if self.ctx.config.enable_sanity_checks {
-            trusted_set = consensus
+            trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
                     let ref_proof = proof.clone();
@@ -287,7 +296,7 @@ impl IbdFlow {
                 })
                 .await;
         } else {
-            trusted_set = consensus
+            trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
                     c.apply_pruning_proof(proof, &trusted_set);
@@ -309,7 +318,7 @@ impl IbdFlow {
                 last_index = i;
             }
             // TODO: queue and join in batches
-            consensus.validate_and_insert_trusted_block(tb).await?;
+            staging.validate_and_insert_trusted_block(tb).await?;
         }
         info!("Done processing trusted blocks");
         Ok(proof_pruning_point)
