@@ -175,8 +175,10 @@ impl MiningManager {
         // The capacity used here may be exceeded (see next comment).
         let mut accepted_transactions = Vec::with_capacity(incoming_transactions.len());
         // We loop as long as incoming unorphaned transactions do unorphan other transactions when they
-        // get validated and inserted into the mempool
+        // get validated and inserted into the mempool.
         while !incoming_transactions.is_empty() {
+            // Since the consensus validation requires a slice of MutableTransaction, we destructure the vector of
+            // MempoolTransaction into 2 distinct vectors holding respectively the needed MutableTransaction and priority.
             let (mut transactions, priorities): (Vec<MutableTransaction>, Vec<Priority>) =
                 incoming_transactions.into_iter().map(|x| (x.mtx, x.priority)).unzip();
 
@@ -412,18 +414,20 @@ impl MiningManager {
             assert_eq!(transactions.len(), validation_results.len(), "every transaction should have a matching validation result");
 
             // write lock on mempool
-            // According to the validation result, transactions are either accepted or removed
+            // Depending on the validation result, transactions are either accepted or removed
             let mut mempool = self.mempool.write();
             for (transaction, validation_result) in transactions.into_iter().zip(validation_results) {
                 let transaction_id = transaction.id();
-                // Only consider transactions still being in the mempool since during the validation, some might have been removed.
+                // Only consider transactions still being in the mempool since during the validation some might have been removed.
                 if mempool.update_revalidated_transaction(transaction) {
                     match validation_result {
                         Ok(()) => {
                             // A following transaction should not remove this one from the pool since we process in a topological order.
-                            // TODO: consider the (very unlikely) scenario of two high priority txs sandwiching a low one, where
-                            // in this case topology order is not guaranteed since we only considered chained dependencies of
-                            // high-priority transactions.
+                            // Still, considering the (very unlikely) scenario of two high priority txs sandwiching a low one, where
+                            // in this case topological order is not guaranteed since we only considered chained dependencies of
+                            // high-priority transactions, we might wrongfully return as valid the id of a removed transaction.
+                            // However, as only consequence, said transaction would then be advertised to registered peers and not be
+                            // provided upon request.
                             valid_ids.push(transaction_id);
                         }
                         Err(RuleError::RejectMissingOutpoint) => {
