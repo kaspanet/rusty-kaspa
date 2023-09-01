@@ -29,6 +29,7 @@ impl Notify<Notification> for ChannelNotify {
 }
 
 #[tokio::test]
+#[ignore = "bmk"]
 async fn bench_bbt_latency() {
     kaspa_core::log::try_init_logger("info");
     //
