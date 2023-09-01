@@ -1,6 +1,7 @@
 use crate::opcodes::codes::{OpCheckMultiSig, OpCheckMultiSigECDSA};
 use crate::script_builder::{ScriptBuilder, ScriptBuilderError};
 use kaspa_addresses::{Address, Version};
+use std::borrow::Borrow;
 use thiserror::Error;
 
 #[derive(Error, PartialEq, Eq, Debug, Clone)]
@@ -40,7 +41,10 @@ pub enum Error {
 /// * The number of provided keys is less than `required`.
 /// * The public keys contain an unexpected version.
 /// * There are no public keys provided.
-pub fn multisig_redeem_script_sorted<'a>(mut pub_keys: impl Iterator<Item = &'a Address>, required: usize) -> Result<Vec<u8>, Error> {
+pub fn multisig_redeem_script_sorted(
+    mut pub_keys: impl Iterator<Item = impl Borrow<Address>>,
+    required: usize,
+) -> Result<Vec<u8>, Error> {
     if pub_keys.size_hint().1.is_some_and(|upper| upper < required) {
         return Err(Error::ErrTooManyRequiredSigs);
     };
@@ -52,8 +56,8 @@ pub fn multisig_redeem_script_sorted<'a>(mut pub_keys: impl Iterator<Item = &'a 
         None => return Err(Error::EmptyKeys),
         Some(pub_key) => {
             count += 1;
-            builder.add_data(pub_key.payload.as_slice())?;
-            match pub_key.version {
+            builder.add_data(pub_key.borrow().payload.as_slice())?;
+            match pub_key.borrow().version {
                 v @ Version::PubKey => v,
                 v @ Version::PubKeyECDSA => v,
                 Version::ScriptHash => {
@@ -64,11 +68,11 @@ pub fn multisig_redeem_script_sorted<'a>(mut pub_keys: impl Iterator<Item = &'a 
     };
 
     for pub_key in pub_keys {
-        if pub_key.version != version {
+        if pub_key.borrow().version != version {
             return Err(Error::WrongVersion);
         }
         count += 1;
-        builder.add_data(pub_key.payload.as_slice())?;
+        builder.add_data(pub_key.borrow().payload.as_slice())?;
     }
     if (count as usize) < required {
         return Err(Error::ErrTooManyRequiredSigs);
@@ -160,7 +164,7 @@ mod tests {
 
     #[test]
     fn test_empty_keys() {
-        let result = multisig_redeem_script_sorted(empty(), 0);
+        let result = multisig_redeem_script_sorted(empty::<Address>(), 0);
         assert_eq!(result, Err(Error::EmptyKeys));
     }
 
@@ -179,19 +183,15 @@ mod tests {
         let prev_tx_id = TransactionId::from_str("63020db736215f8b1105a9281f7bcbb6473d965ecc45bb2fb5da59bd35e6ff84").unwrap();
         inputs.sort_by_key(|v| v.kp.public_key());
 
-        let addresses: Vec<_> = inputs
-            .iter()
-            .filter(|input| input.required)
-            .map(|input| {
-                if !is_ecdsa {
-                    Address::new(Prefix::Testnet, Version::PubKey, &input.kp.x_only_public_key().0.serialize())
-                } else {
-                    Address::new(Prefix::Testnet, Version::PubKeyECDSA, &input.kp.public_key().serialize())
-                }
-            })
-            .collect();
-
-        let script = multisig_redeem_script_sorted(addresses.iter(), required).unwrap();
+        let addresses = inputs.iter().filter(|input| input.required).map(|input| {
+            if !is_ecdsa {
+                Address::new(Prefix::Testnet, Version::PubKey, &input.kp.x_only_public_key().0.serialize())
+            } else {
+                Address::new(Prefix::Testnet, Version::PubKeyECDSA, &input.kp.public_key().serialize())
+            }
+        });
+        let mut addresses_second_iter = addresses.clone();
+        let script = multisig_redeem_script_sorted(addresses, required).unwrap();
         let tx = Transaction::new(
             0,
             vec![TransactionInput {
@@ -201,8 +201,14 @@ mod tests {
                 sig_op_count: 4,
             }],
             vec![
-                TransactionOutput { value: 10000000000000, script_public_key: pay_to_address_script(&addresses[0]) },
-                TransactionOutput { value: 2792999990000, script_public_key: pay_to_address_script(&addresses[1]) },
+                TransactionOutput {
+                    value: 10000000000000,
+                    script_public_key: pay_to_address_script(&addresses_second_iter.next().unwrap()),
+                },
+                TransactionOutput {
+                    value: 2792999990000,
+                    script_public_key: pay_to_address_script(&addresses_second_iter.next().unwrap()),
+                },
             ],
             0,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
