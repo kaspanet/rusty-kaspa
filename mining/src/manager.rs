@@ -303,7 +303,10 @@ impl MiningManager {
                 mass += tx.calculated_mass.unwrap();
                 mass >= self.block_template_builder.max_block_mass()
             })
-            .map(|relative_index| relative_index + lower_bound)
+            // Make sure the upper bound is greater than the lower bound, allowing to handle a very unlikely,
+            // (if not impossible) case where the mass of a single transaction is greater than the maximum
+            // chunk mass.
+            .map(|relative_index| relative_index.max(1) + lower_bound)
             .or(Some(transactions.len()))
     }
 
