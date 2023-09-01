@@ -1,6 +1,5 @@
 use crate::opcodes::codes::{OpCheckMultiSig, OpCheckMultiSigECDSA};
 use crate::script_builder::{ScriptBuilder, ScriptBuilderError};
-use kaspa_addresses::{Address, Version};
 use std::borrow::Borrow;
 use thiserror::Error;
 
@@ -13,36 +12,11 @@ pub enum Error {
     ErrTooManyRequiredSigs,
     #[error(transparent)]
     ScriptBuilderError(#[from] ScriptBuilderError),
-    #[error("public key address version should be the same for all provided keys")]
-    WrongVersion,
     #[error("provided public keys should not be empty")]
     EmptyKeys,
 }
-
-/// Generates a multi-signature redeem script from sorted public keys.
-///
-/// This function builds a redeem script requiring `required` out of the
-/// already sorted `pub_keys` given. It is expected that the public keys
-/// are provided in a sorted order.
-///
-/// # Parameters
-///
-/// * `pub_keys`: An iterator over sorted public key addresses.
-/// * `required`: The number of required signatures to spend the funds.
-///
-/// # Returns
-///
-/// A `Result` containing the redeem script in the form of a `Vec<u8>`
-/// or an error of type `Error`.
-///
-/// # Errors
-///
-/// This function will return an error if:
-/// * The number of provided keys is less than `required`.
-/// * The public keys contain an unexpected version.
-/// * There are no public keys provided.
 pub fn multisig_redeem_script_sorted(
-    mut pub_keys: impl Iterator<Item = impl Borrow<Address>>,
+    pub_keys: impl Iterator<Item = impl Borrow<[u8; 32]>>,
     required: usize,
 ) -> Result<Vec<u8>, Error> {
     if pub_keys.size_hint().1.is_some_and(|upper| upper < required) {
@@ -52,84 +26,79 @@ pub fn multisig_redeem_script_sorted(
     builder.add_i64(required as i64)?;
 
     let mut count = 0i64;
-    let version = match pub_keys.next() {
-        None => return Err(Error::EmptyKeys),
-        Some(pub_key) => {
-            count += 1;
-            builder.add_data(pub_key.borrow().payload.as_slice())?;
-            match pub_key.borrow().version {
-                v @ Version::PubKey => v,
-                v @ Version::PubKeyECDSA => v,
-                Version::ScriptHash => {
-                    return Err(Error::WrongVersion); // todo is it correct?
-                }
-            }
-        }
-    };
-
     for pub_key in pub_keys {
-        if pub_key.borrow().version != version {
-            return Err(Error::WrongVersion);
-        }
         count += 1;
-        builder.add_data(pub_key.borrow().payload.as_slice())?;
+        builder.add_data(pub_key.borrow().as_slice())?;
     }
+
     if (count as usize) < required {
         return Err(Error::ErrTooManyRequiredSigs);
     }
+    if count == 0 {
+        return Err(Error::EmptyKeys);
+    }
 
     builder.add_i64(count)?;
-    if version == Version::PubKeyECDSA {
-        builder.add_op(OpCheckMultiSigECDSA)?;
-    } else {
-        builder.add_op(OpCheckMultiSig)?;
-    }
+    builder.add_op(OpCheckMultiSig)?;
 
     Ok(builder.drain())
 }
 
-///
-/// This function sorts the provided public keys and then constructs
-/// a redeem script requiring `required` out of the sorted keys.
-///
-/// # Parameters
-///
-/// * `pub_keys`: A mutable slice of public key addresses. The keys can be in any order.
-/// * `required`: The number of required signatures to spend the funds.
-///
-/// # Returns
-///
-/// A `Result` containing the redeem script in the form of a `Vec<u8>`
-/// or an error of type `Error`.
-///
-/// # Errors
-///
-/// This function will return an error if:
-/// * The number of provided keys is less than `required`.
-/// * The public keys contain an unexpected version.
-/// * There are no public keys provided.
-pub fn multisig_redeem_script(pub_keys: &mut [Address], required: usize) -> Result<Vec<u8>, Error> {
+pub fn multisig_redeem_script_sorted_ecdsa(
+    pub_keys: impl Iterator<Item = impl Borrow<[u8; 33]>>,
+    required: usize,
+) -> Result<Vec<u8>, Error> {
+    if pub_keys.size_hint().1.is_some_and(|upper| upper < required) {
+        return Err(Error::ErrTooManyRequiredSigs);
+    };
+    let mut builder = ScriptBuilder::new();
+    builder.add_i64(required as i64)?;
+
+    let mut count = 0i64;
+    for pub_key in pub_keys {
+        count += 1;
+        builder.add_data(pub_key.borrow().as_slice())?;
+    }
+
+    if (count as usize) < required {
+        return Err(Error::ErrTooManyRequiredSigs);
+    }
+    if count == 0 {
+        return Err(Error::EmptyKeys);
+    }
+
+    builder.add_i64(count)?;
+    builder.add_op(OpCheckMultiSigECDSA)?;
+
+    Ok(builder.drain())
+}
+
+pub fn multisig_redeem_script(pub_keys: &mut [[u8; 32]], required: usize) -> Result<Vec<u8>, Error> {
     pub_keys.sort();
     multisig_redeem_script_sorted(pub_keys.iter(), required)
+}
+
+pub fn multisig_redeem_script_ecdsa(pub_keys: &mut [[u8; 33]], required: usize) -> Result<Vec<u8>, Error> {
+    pub_keys.sort();
+    multisig_redeem_script_sorted_ecdsa(pub_keys.iter(), required)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{caches::Cache, opcodes::codes::OpData65, pay_to_address_script, pay_to_script_hash_script, TxScriptEngine};
+    use crate::{caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script, TxScriptEngine};
     use core::str::FromStr;
-    use kaspa_addresses::Prefix;
-    use kaspa_consensus_core::hashing::sighash::calc_ecdsa_signature_hash;
     use kaspa_consensus_core::{
-        hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
-        hashing::sighash_type::SIG_HASH_ALL,
+        hashing::{
+            sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues},
+            sighash_type::SIG_HASH_ALL,
+        },
         subnets::SubnetworkId,
         tx::*,
     };
     use rand::thread_rng;
     use secp256k1::KeyPair;
-    use std::iter;
-    use std::iter::empty;
+    use std::{iter, iter::empty};
 
     struct Input {
         kp: KeyPair,
@@ -154,28 +123,16 @@ mod tests {
 
     #[test]
     fn test_too_many_required_sigs() {
-        let payload = vec![0u8; 32];
-        let address1 = Address::new(Prefix::Testnet, Version::PubKey, &payload);
-        let address2 = Address::new(Prefix::Testnet, Version::PubKey, &payload);
-        let pub_keys = vec![&address1, &address2];
-        let result = multisig_redeem_script_sorted(pub_keys.into_iter(), 3);
+        let result = multisig_redeem_script_sorted(iter::once([0u8; 32]), 2);
+        assert_eq!(result, Err(Error::ErrTooManyRequiredSigs));
+        let result = multisig_redeem_script_sorted_ecdsa(iter::once(&[0u8; 33]), 2);
         assert_eq!(result, Err(Error::ErrTooManyRequiredSigs));
     }
 
     #[test]
     fn test_empty_keys() {
-        let result = multisig_redeem_script_sorted(empty::<Address>(), 0);
+        let result = multisig_redeem_script_sorted(empty::<[u8; 32]>(), 0);
         assert_eq!(result, Err(Error::EmptyKeys));
-    }
-
-    #[test]
-    fn test_wrong_version() {
-        let payload = vec![0u8; 32];
-        let address1 = Address::new(Prefix::Testnet, Version::PubKey, &payload);
-        let address2 = Address::new(Prefix::Testnet, Version::ScriptHash, &payload);
-        let pub_keys = vec![&address1, &address2];
-        let result = multisig_redeem_script_sorted(pub_keys.into_iter(), 1);
-        assert_eq!(result, Err(Error::WrongVersion));
     }
 
     fn check_multisig_scenario(mut inputs: Vec<Input>, required: usize, is_ok: bool, is_ecdsa: bool) {
@@ -183,15 +140,15 @@ mod tests {
         let prev_tx_id = TransactionId::from_str("63020db736215f8b1105a9281f7bcbb6473d965ecc45bb2fb5da59bd35e6ff84").unwrap();
         inputs.sort_by_key(|v| v.kp.public_key());
 
-        let addresses = inputs.iter().filter(|input| input.required).map(|input| {
-            if !is_ecdsa {
-                Address::new(Prefix::Testnet, Version::PubKey, &input.kp.x_only_public_key().0.serialize())
-            } else {
-                Address::new(Prefix::Testnet, Version::PubKeyECDSA, &input.kp.public_key().serialize())
-            }
-        });
-        let mut addresses_second_iter = addresses.clone();
-        let script = multisig_redeem_script_sorted(addresses, required).unwrap();
+        let filtered = inputs.iter().filter(|input| input.required);
+        let script = if !is_ecdsa {
+            let pks = filtered.map(|input| input.kp.x_only_public_key().0.serialize());
+            multisig_redeem_script_sorted(pks, required).unwrap()
+        } else {
+            let pks = filtered.map(|input| input.kp.public_key().serialize());
+            multisig_redeem_script_sorted_ecdsa(pks, required).unwrap()
+        };
+
         let tx = Transaction::new(
             0,
             vec![TransactionInput {
@@ -200,16 +157,7 @@ mod tests {
                 sequence: 0,
                 sig_op_count: 4,
             }],
-            vec![
-                TransactionOutput {
-                    value: 10000000000000,
-                    script_public_key: pay_to_address_script(&addresses_second_iter.next().unwrap()),
-                },
-                TransactionOutput {
-                    value: 2792999990000,
-                    script_public_key: pay_to_address_script(&addresses_second_iter.next().unwrap()),
-                },
-            ],
+            vec![],
             0,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             0,
