@@ -397,6 +397,7 @@ impl MiningManager {
                 .into_iter()
                 .filter_map(|mut x| {
                     if mempool.has_transaction(&x.id(), true, false) {
+                        x.clear_entries();
                         mempool.populate_mempool_entries(&mut x);
                         Some(x)
                     } else {
