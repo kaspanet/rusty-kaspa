@@ -36,6 +36,16 @@ impl Mempool {
         priority: Priority,
         orphan: Orphan,
     ) -> RuleResult<Option<Arc<Transaction>>> {
+        let transaction_id = transaction.id();
+
+        // First check if the transaction was not already added to the mempool.
+        // The case may arise since the execution of the manager public functions is no
+        // longer atomic and different code paths may lead to inserting the same transaction
+        // concurrently.
+        if self.transaction_pool.has(&transaction_id) {
+            return Ok(None);
+        }
+
         // Re-check double spends since validate_and_insert_transaction is no longer atomic
         self.transaction_pool.check_double_spends(&transaction)?;
 
@@ -43,7 +53,7 @@ impl Mempool {
             Ok(_) => {}
             Err(RuleError::RejectMissingOutpoint) => {
                 if orphan == Orphan::Forbidden {
-                    return Err(RuleError::RejectDisallowedOrphan(transaction.id()));
+                    return Err(RuleError::RejectDisallowedOrphan(transaction_id));
                 }
                 self.orphan_pool.try_add_orphan(consensus, transaction, priority)?;
                 return Ok(None);
