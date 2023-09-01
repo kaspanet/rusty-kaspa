@@ -86,13 +86,15 @@ async fn bench_bbt_latency() {
     });
 
     let miner_loop_task = tokio::spawn(async move {
-        for _ in 0..100 {
+        for i in 0..1000 {
             // Simulate mining time
             let timeout = max((dist.sample(&mut thread_rng()) * 1000.0) as u64, 1);
             tokio::time::sleep(Duration::from_millis(timeout)).await;
 
-            // The most up-to-date block template
-            let block = current_template_consume.lock().block.clone();
+            // Read the most up-to-date block template
+            let mut block = current_template_consume.lock().block.clone();
+            // Use index as nonce to avoid duplicate blocks
+            block.header.nonce = i;
 
             let mcc = miner_client.clone();
             tokio::spawn(async move {
@@ -110,7 +112,7 @@ async fn bench_bbt_latency() {
     //
     // Fold-up
     //
-    // tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    // tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     client.disconnect().await.unwrap();
     drop(client);
     daemon.core.shutdown();
