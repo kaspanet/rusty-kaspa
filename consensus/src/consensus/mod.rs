@@ -4,6 +4,9 @@ pub mod services;
 pub mod storage;
 pub mod test_consensus;
 
+#[cfg(feature = "devnet-prealloc")]
+mod utxo_set_override;
+
 use crate::{
     config::Config,
     errors::{BlockProcessResult, RuleError},

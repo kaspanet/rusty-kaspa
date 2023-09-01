@@ -2,6 +2,7 @@
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
+use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus_core::{
@@ -353,7 +354,9 @@ impl RpcApi for RpcCoreService {
             mempool_size: self.mining_manager.clone().transaction_count(true, false).await as u64,
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
-            is_synced: self.flow_context.hub().has_peers() && is_nearly_synced,
+            is_synced: (!matches!(self.flow_context.config.net.network_type, Mainnet | Testnet) // Other network types can be used in an isolated environments without peers
+                || self.flow_context.hub().has_peers())
+                && is_nearly_synced,
             has_notify_command: true,
             has_message_id: true,
         })
