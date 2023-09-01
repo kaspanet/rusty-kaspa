@@ -175,10 +175,6 @@ impl Params {
         }
     }
 
-    fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
-        self.daa_window_params.expected_daa_window_duration_in_milliseconds(selected_parent_daa_score)
-    }
-
     /// Returns the depth at which the anticone of a chain block is final (i.e., is a permanently closed set).
     /// Based on the analysis at https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf
     /// and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
