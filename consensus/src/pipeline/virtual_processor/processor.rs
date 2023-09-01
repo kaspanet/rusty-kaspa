@@ -949,13 +949,13 @@ impl VirtualStateProcessor {
         let vf = self.virtual_finality_point(&self.virtual_stores.read().state.get().unwrap().ghostdag_data, current_pp);
         let vff = self.depth_manager.calc_finality_point(&self.ghostdag_primary_store.get_data(vf).unwrap(), current_pp);
 
-        let last_knonwn_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).unwrap_option() {
+        let last_known_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).unwrap_option() {
             Some(status) => status.is_valid(),
             None => false,
         });
 
-        if let Some(last_knonwn_pp) = last_knonwn_pp {
-            !self.reachability_service.is_chain_ancestor_of(vff, last_knonwn_pp.hash)
+        if let Some(last_known_pp) = last_known_pp {
+            !self.reachability_service.is_chain_ancestor_of(vff, last_known_pp.hash)
         } else {
             // If no pruning point is known, there's definitely a finality violation
             // (normally at least genesis should be known).
