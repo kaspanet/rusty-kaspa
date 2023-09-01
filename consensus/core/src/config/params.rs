@@ -237,6 +237,10 @@ impl Params {
     pub fn default_rpc_port(&self) -> u16 {
         self.net.default_rpc_port()
     }
+
+    pub fn finality_duration(&self) -> u64 {
+        self.target_time_per_block * self.finality_depth
+    }
 }
 
 impl From<NetworkType> for Params {

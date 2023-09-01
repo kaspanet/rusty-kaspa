@@ -37,7 +37,8 @@ pub type DbSyncManager = SyncManager<
     DbStatusesStore,
 >;
 
-pub type DbPruningPointManager = PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>;
+pub type DbPruningPointManager =
+    PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore, DbHeadersSelectedTipStore>;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 
@@ -153,6 +154,7 @@ impl ConsensusServices {
             storage.ghostdag_primary_store.clone(),
             storage.headers_store.clone(),
             storage.past_pruning_points_store.clone(),
+            storage.headers_selected_tip_store.clone(),
         );
 
         let parents_manager = ParentsManager::new(

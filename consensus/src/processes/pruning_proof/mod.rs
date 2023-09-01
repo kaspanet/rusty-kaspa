@@ -537,6 +537,12 @@ impl PruningProofManager {
             }
         }
 
+        if current_pp == self.genesis_hash {
+            // If the proof has better tips and the currnet pruning point is still
+            // genesis, we consider the proof state to be better.
+            return Ok(());
+        }
+
         for level in (0..=self.max_block_level).rev() {
             let level_idx = level as usize;
             match relations_read[level_idx].get_parents(current_pp).unwrap_option() {

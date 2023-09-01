@@ -14,7 +14,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy, StagingConsensus};
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{debug, info, time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
@@ -146,14 +146,30 @@ impl IbdFlow {
                 return Ok(IbdType::Sync(highest_known_syncer_chain_hash));
             }
 
-            // TODO: in this case we know a syncer chain block, but it violates our current finality. In some cases
-            // this info should possibly be used to reject the IBD despite having more blue work etc.
+            // If the pruning point is not in the chain of `highest_known_syncer_chain_hash`, it
+            // means it's in its antichain (because if `highest_known_syncer_chain_hash` was in
+            // the pruning point's past the pruning point itself would be
+            // `highest_known_syncer_chain_hash`). So it means there's a finality conflict.
+            // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
+            return Ok(IbdType::None);
         }
 
         let hst_header = consensus.async_get_header(consensus.async_get_headers_selected_tip().await).await.unwrap();
         if relay_header.blue_score >= hst_header.blue_score + self.ctx.config.pruning_depth
             && relay_header.blue_work > hst_header.blue_work
         {
+            if unix_now() > consensus.async_creation_timestamp().await + self.ctx.config.finality_duration() {
+                let fp = consensus.async_finality_point().await;
+                let fp_ts = consensus.async_get_header(fp).await?.timestamp;
+                if unix_now() < fp_ts + self.ctx.config.finality_duration() * 3 / 2 {
+                    // We reject the headers proof if the node has a relatively up-to-date finality point and current
+                    // consensus has matured for long enough (and not recently synced). This is mostly a spam-protector
+                    // since subsequent checks identify these violations as well
+                    // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
+                    return Ok(IbdType::None);
+                }
+            }
+
             // The relayed block has sufficient blue score and blue work over the current header selected tip
             Ok(IbdType::DownloadHeadersProof)
         } else {
@@ -169,16 +185,17 @@ impl IbdFlow {
     ) -> Result<(), ProtocolError> {
         info!("Starting IBD with headers proof with peer {}", self.router);
 
-        let session = staging.session().await;
+        let staging_session = staging.session().await;
 
-        let pruning_point = self.sync_and_validate_pruning_proof(&session).await?;
-        self.sync_headers(&session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
-        self.validate_staging_timestamps(&self.ctx.consensus().session().await, &session).await?;
-        self.sync_pruning_point_utxoset(&session, pruning_point).await?;
+        let pruning_point = self.sync_and_validate_pruning_proof(&staging_session).await?;
+        self.sync_headers(&staging_session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
+        staging_session.async_validate_pruning_points().await?;
+        self.validate_staging_timestamps(&self.ctx.consensus().session().await, &staging_session).await?;
+        self.sync_pruning_point_utxoset(&staging_session, pruning_point).await?;
         Ok(())
     }
 
-    async fn sync_and_validate_pruning_proof(&mut self, consensus: &ConsensusProxy) -> Result<Hash, ProtocolError> {
+    async fn sync_and_validate_pruning_proof(&mut self, staging: &ConsensusProxy) -> Result<Hash, ProtocolError> {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
@@ -186,11 +203,23 @@ impl IbdFlow {
         let proof: PruningPointProof = msg.try_into()?;
         debug!("received proof with overall {} headers", proof.iter().map(|l| l.len()).sum::<usize>());
 
+        // Get a new session for current consensus (non staging)
+        let consensus = self.ctx.consensus().session().await;
+
+        // The proof is validated in the context of current consensus
         let proof = consensus.clone().spawn_blocking(move |c| c.validate_pruning_proof(&proof).map(|()| proof)).await?;
 
         let proof_pruning_point = proof[0].last().expect("was just ensured by validation").hash;
 
-        // TODO: verify the proof pruning point is different than current consensus pruning point
+        if proof_pruning_point == self.ctx.config.genesis.hash {
+            return Err(ProtocolError::Other("the proof pruning point is the genesis block"));
+        }
+
+        if proof_pruning_point == consensus.async_pruning_point().await {
+            return Err(ProtocolError::Other("the proof pruning point is the same as the current pruning point"));
+        }
+
+        drop(consensus);
 
         self.router
             .enqueue(make_message!(Payload::RequestPruningPointAndItsAnticone, RequestPruningPointAndItsAnticoneMessage {}))
@@ -207,7 +236,11 @@ impl IbdFlow {
             return Err(ProtocolError::Other("the first pruning point in the list is expected to be genesis"));
         }
 
-        // TODO: validate pruning points before importing
+        // Check if past pruning points violate finality of current consensus
+        if self.ctx.consensus().session().await.async_are_pruning_points_violating_finality(pruning_points.clone()).await {
+            // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
+            return Err(ProtocolError::Other("pruning points are violating finality"));
+        }
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
         let pkg: TrustedDataPackage = msg.try_into()?;
@@ -230,7 +263,7 @@ impl IbdFlow {
         let mut trusted_set = pkg.build_trusted_subdag(entries)?;
 
         if self.ctx.config.enable_sanity_checks {
-            trusted_set = consensus
+            trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
                     let ref_proof = proof.clone();
@@ -261,7 +294,7 @@ impl IbdFlow {
                 })
                 .await;
         } else {
-            trusted_set = consensus
+            trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
                     c.apply_pruning_proof(proof, &trusted_set);
@@ -283,12 +316,9 @@ impl IbdFlow {
                 last_index = i;
             }
             // TODO: queue and join in batches
-            consensus.validate_and_insert_trusted_block(tb).await?;
+            staging.validate_and_insert_trusted_block(tb).await?;
         }
         info!("Done processing trusted blocks");
-
-        // TODO: make sure that the proof pruning point is not genesis
-
         Ok(proof_pruning_point)
     }
 
