@@ -234,21 +234,20 @@ mod tests {
         let signatures: Vec<_> = inputs
             .iter()
             .filter(|input| input.sign)
-            .map(|input| {
+            .flat_map(|input| {
                 if !is_ecdsa {
-                    let sig = *input.kp.sign_schnorr(msg.clone()).as_ref();
-                    iter::once(OpData65).chain(sig.into_iter()).chain([SIG_HASH_ALL.to_u8()])
+                    let sig = *input.kp.sign_schnorr(msg).as_ref();
+                    iter::once(OpData65).chain(sig).chain([SIG_HASH_ALL.to_u8()])
                 } else {
-                    let sig = input.kp.secret_key().sign_ecdsa(msg.clone()).serialize_compact();
-                    iter::once(OpData65).chain(sig.into_iter()).chain([SIG_HASH_ALL.to_u8()])
+                    let sig = input.kp.secret_key().sign_ecdsa(msg).serialize_compact();
+                    iter::once(OpData65).chain(sig).chain([SIG_HASH_ALL.to_u8()])
                 }
             })
-            .flatten()
             .collect();
 
         {
             tx.tx.inputs[0].signature_script =
-                signatures.into_iter().chain(ScriptBuilder::new().add_data(&script).unwrap().drain().into_iter()).collect();
+                signatures.into_iter().chain(ScriptBuilder::new().add_data(&script).unwrap().drain()).collect();
         }
 
         let tx = tx.as_verifiable();
