@@ -303,6 +303,7 @@ impl MiningManager {
                 mass += tx.calculated_mass.unwrap();
                 mass >= self.block_template_builder.max_block_mass()
             })
+            .map(|relative_index| relative_index + lower_bound)
             .or(Some(transactions.len()))
     }
 
