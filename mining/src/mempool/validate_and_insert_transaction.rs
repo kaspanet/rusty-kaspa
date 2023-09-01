@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
     constants::UNACCEPTED_DAA_SCORE,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
-use kaspa_core::info;
+use kaspa_core::{debug, info};
 
 use super::tx::{Orphan, Priority};
 
@@ -43,6 +43,7 @@ impl Mempool {
         // longer atomic and different code paths may lead to inserting the same transaction
         // concurrently.
         if self.transaction_pool.has(&transaction_id) {
+            debug!("Transaction {0} is not post validated since already in the mempool", transaction_id);
             return Ok(None);
         }
 
@@ -56,6 +57,7 @@ impl Mempool {
                     return Err(RuleError::RejectDisallowedOrphan(transaction_id));
                 }
                 self.orphan_pool.try_add_orphan(consensus, transaction, priority)?;
+                debug!("Transaction {0} added to orphans", transaction_id);
                 return Ok(None);
             }
             Err(err) => {
@@ -68,8 +70,7 @@ impl Mempool {
         // Before adding the transaction, check if there is room in the pool
         self.transaction_pool.limit_transaction_count(1, &transaction)?.iter().try_for_each(|x| self.remove_transaction(x, true))?;
 
-        // Here the accepted transaction is cloned in order to prevent having self borrowed immutably for the
-        // transaction reference and mutably for the call to process_orphans_after_accepted_transaction
+        // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
         let accepted_transaction =
             self.transaction_pool.add_transaction(transaction, consensus.get_virtual_daa_score(), priority)?.mtx.tx.clone();
         Ok(Some(accepted_transaction))
@@ -125,6 +126,7 @@ impl Mempool {
                 match self.unorphan_transaction(&orphan_id) {
                     Ok(unorphaned_tx) => {
                         unorphaned_transactions.push(unorphaned_tx);
+                        debug!("Transaction {0} unorphaned", transaction_id);
                     }
                     Err(err) => {
                         // In case of validation error, we log the problem and drop the

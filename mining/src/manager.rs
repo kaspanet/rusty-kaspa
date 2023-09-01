@@ -27,7 +27,7 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy};
-use kaspa_core::{debug, error, info, warn};
+use kaspa_core::{debug, error, warn};
 use kaspa_mining_errors::mempool::RuleError;
 use parking_lot::{Mutex, RwLock};
 
@@ -178,7 +178,7 @@ impl MiningManager {
         // get validated and inserted into the mempool.
         while !incoming_transactions.is_empty() {
             // Since the consensus validation requires a slice of MutableTransaction, we destructure the vector of
-            // MempoolTransaction into 2 distinct vectors holding respectively the needed MutableTransaction and priority.
+            // MempoolTransaction into 2 distinct vectors holding respectively the needed MutableTransaction and Priority.
             let (mut transactions, priorities): (Vec<MutableTransaction>, Vec<Priority>) =
                 incoming_transactions.into_iter().map(|x| (x.mtx, x.priority)).unzip();
 
@@ -214,7 +214,7 @@ impl MiningManager {
                         }
                         Ok(None) => vec![],
                         Err(err) => {
-                            info!("Failed to unorphan transaction {0} due to rule error: {1}", orphan_id, err.to_string());
+                            debug!("Failed to unorphan transaction {0} due to rule error: {1}", orphan_id, err);
                             vec![]
                         }
                     }
@@ -250,10 +250,21 @@ impl MiningManager {
             let mut transactions = transactions.into_iter().map(MutableTransaction::from_tx).collect::<Vec<_>>();
 
             // read lock on mempool
-            // Here, we simply drop all erroneous transactions since the caller doesn't care about those anyway
+            // Here, we simply log and drop all erroneous transactions since the caller doesn't care about those anyway
             let mempool = self.mempool.read();
-            transactions =
-                transactions.into_iter().filter_map(|tx| mempool.pre_validate_and_populate_transaction(consensus, tx).ok()).collect();
+            transactions = transactions
+                .into_iter()
+                .filter_map(|tx| {
+                    let transaction_id = tx.id();
+                    match mempool.pre_validate_and_populate_transaction(consensus, tx) {
+                        Ok(tx) => Some(tx),
+                        Err(err) => {
+                            debug!("Failed to pre validate transaction {0} due to rule error: {1}", transaction_id, err);
+                            None
+                        }
+                    }
+                })
+                .collect();
             drop(mempool);
 
             // no lock on mempool
@@ -268,18 +279,26 @@ impl MiningManager {
             assert_eq!(transactions.len(), validation_results.len(), "every transaction should have a matching validation result");
 
             // write lock on mempool
+            // Here again, transactions failing post validation are logged and dropped
             let mut mempool = self.mempool.write();
             let unorphaned_transactions = transactions
                 .into_iter()
                 .zip(validation_results)
                 .flat_map(|(transaction, validation_result)| {
-                    if let Ok(Some(accepted_transaction)) =
-                        mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan)
-                    {
-                        accepted_transactions.push(accepted_transaction.clone());
-                        mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
-                    } else {
-                        vec![]
+                    let transaction_id = transaction.id();
+                    match mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan) {
+                        Ok(Some(accepted_transaction)) => {
+                            accepted_transactions.push(accepted_transaction.clone());
+                            mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
+                        }
+                        Ok(None) => {
+                            // Either orphaned or already existing in the mempool
+                            vec![]
+                        }
+                        Err(err) => {
+                            debug!("Failed to post validate transaction {0} due to rule error: {1}", transaction_id, err);
+                            vec![]
+                        }
                     }
                 })
                 .collect::<Vec<_>>();
@@ -289,6 +308,8 @@ impl MiningManager {
             accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
         }
 
+        // Please note: the only reason this function returns a Result is the future handling of misbehaving nodes
+        // and the related RuleError::RejectInvalid
         Ok(accepted_transactions)
     }
 
@@ -373,6 +394,7 @@ impl MiningManager {
 
     pub fn revalidate_high_priority_transactions(&self, consensus: &dyn ConsensusApi) -> MiningManagerResult<Vec<TransactionId>> {
         // read lock on mempool
+        // Prepare a vector with clones of high priority transactions found in the mempool
         let transactions = self.mempool.read().all_transactions_with_priority(Priority::High);
 
         let mut valid_ids = Vec::with_capacity(transactions.len());
@@ -436,8 +458,8 @@ impl MiningManager {
                             valid_ids.push(transaction_id);
                         }
                         Err(RuleError::RejectMissingOutpoint) => {
-                            debug!(
-                                "Removing transaction {0} and its redeemers for missing outpoint during revalidation",
+                            warn!(
+                                "Removing high priority transaction {0} and its redeemers for missing outpoint during revalidation",
                                 transaction_id
                             );
                             // This call cleanly removes the invalid transaction and its redeemers.
@@ -447,7 +469,10 @@ impl MiningManager {
                             // Rust rewrite note:
                             // The behavior changes here compared to the golang version.
                             // The failed revalidation is simply logged and the process continues.
-                            warn!("Removing transaction {0} and its redeemers, it failed revalidation with {1}", transaction_id, err);
+                            warn!(
+                                "Removing high priority  transaction {0} and its redeemers, it failed revalidation with {1}",
+                                transaction_id, err
+                            );
                             // This call cleanly removes the invalid transaction and its redeemers.
                             mempool.remove_transaction(&transaction_id, true)?;
                         }
