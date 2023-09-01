@@ -107,11 +107,9 @@ impl IbdFlow {
                 .await?;
             }
             IbdType::DownloadHeadersProof => {
+                drop(session); // Avoid holding the previous consensus throughout the staging IBD
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
-                match self
-                    .ibd_with_headers_proof(&staging, session, negotiation_output.syncer_virtual_selected_parent, &relay_block)
-                    .await
-                {
+                match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {
                     Ok(()) => {
                         spawn_blocking(|| staging.commit()).await.unwrap();
                         self.ctx.on_pruning_point_utxoset_override();
@@ -182,7 +180,6 @@ impl IbdFlow {
     async fn ibd_with_headers_proof(
         &mut self,
         staging: &StagingConsensus,
-        consensus: ConsensusProxy,
         syncer_virtual_selected_parent: Hash,
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
@@ -190,7 +187,7 @@ impl IbdFlow {
 
         let staging_session = staging.session().await;
 
-        let pruning_point = self.sync_and_validate_pruning_proof(&staging_session, consensus).await?;
+        let pruning_point = self.sync_and_validate_pruning_proof(&staging_session).await?;
         self.sync_headers(&staging_session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
         staging_session.async_validate_pruning_points().await?;
         self.validate_staging_timestamps(&self.ctx.consensus().session().await, &staging_session).await?;
@@ -198,11 +195,7 @@ impl IbdFlow {
         Ok(())
     }
 
-    async fn sync_and_validate_pruning_proof(
-        &mut self,
-        staging: &ConsensusProxy,
-        consensus: ConsensusProxy,
-    ) -> Result<Hash, ProtocolError> {
+    async fn sync_and_validate_pruning_proof(&mut self, staging: &ConsensusProxy) -> Result<Hash, ProtocolError> {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
@@ -210,6 +203,10 @@ impl IbdFlow {
         let proof: PruningPointProof = msg.try_into()?;
         debug!("received proof with overall {} headers", proof.iter().map(|l| l.len()).sum::<usize>());
 
+        // Get a new session for current consensus (non staging)
+        let consensus = self.ctx.consensus().session().await;
+
+        // The proof is validated in the context of current consensus
         let proof = consensus.clone().spawn_blocking(move |c| c.validate_pruning_proof(&proof).map(|()| proof)).await?;
 
         let proof_pruning_point = proof[0].last().expect("was just ensured by validation").hash;
@@ -221,6 +218,8 @@ impl IbdFlow {
         if proof_pruning_point == consensus.async_pruning_point().await {
             return Err(ProtocolError::Other("the proof pruning point is the same as the current pruning point"));
         }
+
+        drop(consensus);
 
         self.router
             .enqueue(make_message!(Payload::RequestPruningPointAndItsAnticone, RequestPruningPointAndItsAnticoneMessage {}))
@@ -237,12 +236,11 @@ impl IbdFlow {
             return Err(ProtocolError::Other("the first pruning point in the list is expected to be genesis"));
         }
 
-        if consensus.async_are_pruning_points_violating_finality(pruning_points.clone()).await {
+        // Check if past pruning points violate finality of current consensus
+        if self.ctx.consensus().session().await.async_are_pruning_points_violating_finality(pruning_points.clone()).await {
             // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
             return Err(ProtocolError::Other("pruning points are violating finality"));
         }
-
-        drop(consensus); // Release the session of the old consensus for the IBD
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
         let pkg: TrustedDataPackage = msg.try_into()?;
