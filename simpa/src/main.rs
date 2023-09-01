@@ -19,7 +19,7 @@ use kaspa_consensus_core::{
     BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_core::{info, task::service::AsyncService, task::tick::TickService, trace, warn};
+use kaspa_core::{info, task::service::AsyncService, task::tick::TickService, time::unix_now, trace, warn};
 use kaspa_database::prelude::ConnBuilder;
 use kaspa_database::{create_temp_db, load_existing_db};
 use kaspa_hashes::Hash;
@@ -187,7 +187,8 @@ fn main() {
         };
         let (dummy_notification_sender, _) = unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-        let consensus = Arc::new(Consensus::new(db, config.clone(), Default::default(), notification_root, Default::default()));
+        let consensus =
+            Arc::new(Consensus::new(db, config.clone(), Default::default(), notification_root, Default::default(), unix_now()));
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { config.genesis.timestamp + args.sim_time * 1000 } else { u64::MAX }; // milliseconds
@@ -215,7 +216,8 @@ fn main() {
     let (_lifetime2, db2) = create_temp_db!(ConnBuilder::default().with_parallelism(num_cpus::get()));
     let (dummy_notification_sender, _) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-    let consensus2 = Arc::new(Consensus::new(db2, config.clone(), Default::default(), notification_root, Default::default()));
+    let consensus2 =
+        Arc::new(Consensus::new(db2, config.clone(), Default::default(), notification_root, Default::default(), unix_now()));
     let handles2 = consensus2.run_processors();
     rt.block_on(validate(&consensus, &consensus2, &config, args.delay, args.bps));
     consensus2.shutdown(handles2);
