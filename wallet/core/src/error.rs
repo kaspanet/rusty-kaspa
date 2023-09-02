@@ -201,6 +201,18 @@ pub enum Error {
 
     #[error(transparent)]
     ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),
+
+    #[error("Fees::Include or Fees::Exclude are not allowed in sweep transactions")]
+    GeneratorFeesInSweepTransaction,
+
+    #[error("Change address does not match supplied network type")]
+    GeneratorChangeAddressNetworkTypeMismatch,
+
+    #[error("Payment output address does not match supplied network type")]
+    GeneratorPaymentOutputNetworkTypeMismatch,
+
+    #[error("Priority fees can not be included into transactions with multiple outputs")]
+    GeneratorIncludeFeesRequiresOneOutput,
 }
 
 impl From<Aborted> for Error {

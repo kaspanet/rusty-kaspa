@@ -278,7 +278,7 @@ impl TransactionRecord {
             aggregate_input_value,
             aggregate_output_value,
             payment_value,
-            change_value,
+            change_output_value,
             ..
         } = &*pending_tx.inner;
 
@@ -292,7 +292,7 @@ impl TransactionRecord {
             aggregate_output_value: *aggregate_output_value,
             transaction,
             payment_value: *payment_value,
-            change_value: *change_value,
+            change_value: *change_output_value,
         };
 
         TransactionRecord {
