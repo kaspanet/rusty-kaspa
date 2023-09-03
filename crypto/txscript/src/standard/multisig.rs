@@ -21,7 +21,7 @@ pub fn multisig_redeem_script_sorted(
 ) -> Result<Vec<u8>, Error> {
     if pub_keys.size_hint().1.is_some_and(|upper| upper < required) {
         return Err(Error::ErrTooManyRequiredSigs);
-    };
+    }
     let mut builder = ScriptBuilder::new();
     builder.add_i64(required as i64)?;
 
@@ -50,7 +50,7 @@ pub fn multisig_redeem_script_sorted_ecdsa(
 ) -> Result<Vec<u8>, Error> {
     if pub_keys.size_hint().1.is_some_and(|upper| upper < required) {
         return Err(Error::ErrTooManyRequiredSigs);
-    };
+    }
     let mut builder = ScriptBuilder::new();
     builder.add_i64(required as i64)?;
 
