@@ -208,7 +208,7 @@ impl<
         // we expect to see it later on the list.
         // The first stage is important because the most recent pruning point is pointing to a few
         // pruning points before, so the first few pruning points on the list won't be pointed by
-        // any other pruning point in the list, so we are compelled to check if it's refereced by
+        // any other pruning point in the list, so we are compelled to check if it's referenced by
         // the selected chain.
         let mut expected_pps_queue = VecDeque::new();
         for current in self.reachability_service.backward_chain_iterator(hst, pruning_info.pruning_point, false) {
