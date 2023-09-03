@@ -1,11 +1,11 @@
 const path = require('path');
 const nodeUtil = require('node:util');
-const {parseArgs: nodeParseArgs} = nodeUtil;
+const { parseArgs: nodeParseArgs } = nodeUtil;
 
 const {
     Address,
     Encoding,
-    NetworkType,
+    NetworkId,
 } = require('./kaspa/kaspa_wasm');
 
 /**
@@ -38,10 +38,13 @@ function parseArgs(options = {
             network: {
                 type: 'string',
             },
+            encoding: {
+                type: 'string',
+            },
         }, tokens: true, allowPositionals: true
     });
     if (values.help) {
-        console.log(`Usage: node ${script} [address] [mainnet|testnet] [--destination <address>] [--network <mainnet|testnet>] [--json] ${options.additionalHelpOutput}`);
+        console.log(`Usage: node ${script} [address] [mainnet|testnet] [--destination <address>] [--network <mainnet|testnet>] [--encoding <borsh|json>] ${options.additionalHelpOutput}`);
         process.exit(0);
     }
 
@@ -49,17 +52,22 @@ function parseArgs(options = {
     const addressArg = values.address ?? positionals.find((positional) => addressRegex.test(positional)) ?? null;
     const destinationAddress = addressArg === null ? null : new Address(addressArg);
 
-    let networkType = addressArg?.startsWith('kaspa:') ? NetworkType.Mainnet : NetworkType.Testnet;
-    const networkArg = values.network ?? positionals.find((positional) => positional === 'mainnet' || positional === 'testnet') ?? null;
-    if (networkArg !== null) {
-        networkType = networkArg === 'mainnet' ? NetworkType.Mainnet : NetworkType.Testnet;
+    const networkArg = values.network ?? positionals.find((positional) => positional.match(/^(testnet|mainnet|simnet|devnet)-\d+$/)) ?? null;
+    if (!networkArg) {
+        console.error('Network id must be specified: --network=(mainnet|testnet-<number>)');
+        process.exit(1);
     }
+    const networkId = new NetworkId(networkArg);
 
-    const encoding = values.json ? Encoding.SerdeJson : Encoding.Borsh;
+    const encodingArg = values.encoding ?? positionals.find((positional) => positional.match(/^(borsh|json)$/)) ?? null;
+    let encoding = Encoding.Borsh;
+    if (encodingArg == "json") {
+        encoding = Encoding.SerdeJson;
+    }
 
     return {
         destinationAddress,
-        networkType,
+        networkId,
         encoding,
         tokens,
     };

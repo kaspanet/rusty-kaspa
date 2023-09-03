@@ -1,3 +1,5 @@
+#[cfg(feature = "devnet-prealloc")]
+use super::utxo_set_override::{set_genesis_utxo_commitment_from_config, set_initial_utxo_set};
 use super::{ctl::Ctl, Consensus};
 use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use kaspa_consensus_core::config::Config;
@@ -8,6 +10,7 @@ use kaspa_database::{
     prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB},
     registry::DatabaseStorePrefixes,
 };
+
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -162,6 +165,8 @@ impl Factory {
         counters: Arc<ProcessingCounters>,
     ) -> Self {
         let mut config = config.clone();
+        #[cfg(feature = "devnet-prealloc")]
+        set_genesis_utxo_commitment_from_config(&mut config);
         config.process_genesis = false;
         Self {
             management_store: Arc::new(RwLock::new(MultiConsensusManagementStore::new(management_db))),
@@ -192,6 +197,7 @@ impl ConsensusFactory for Factory {
                 entry
             }
         };
+
         let dir = self.db_root_dir.join(entry.directory_name.clone());
         let db = kaspa_database::prelude::ConnBuilder::default().with_db_path(dir).with_parallelism(self.db_parallelism).build();
 
@@ -202,11 +208,14 @@ impl ConsensusFactory for Factory {
             session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
+            entry.creation_timestamp,
         ));
 
         // We write the new active entry only once the instance was created successfully.
         // This way we can safely avoid processing genesis in future process runs
         if is_new_consensus {
+            #[cfg(feature = "devnet-prealloc")]
+            set_initial_utxo_set(&self.config.initial_utxo_set, consensus.clone(), self.config.params.genesis.hash);
             self.management_store.write().save_new_active_consensus(entry).unwrap();
         }
 
@@ -227,6 +236,7 @@ impl ConsensusFactory for Factory {
             session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
+            entry.creation_timestamp,
         ));
 
         (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))

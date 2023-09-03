@@ -31,8 +31,8 @@ impl Wallet {
 
         let store = Arc::new(LocalStore::try_new(resident)?);
         let rpc = RpcClient::new(
-            encoding.unwrap_or(WrpcEncoding::Borsh),
             url.unwrap_or("wrpc://127.0.0.1:17110".to_string()).as_str(),
+            encoding.unwrap_or(WrpcEncoding::Borsh),
             None,
         )?;
         let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc.client().clone()), store, network_id)?);

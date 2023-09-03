@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
 use kaspa_consensus_core::{
-    config::{Config, ConfigBuilder},
+    config::ConfigBuilder,
     errors::config::{ConfigError, ConfigResult},
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
@@ -47,7 +47,18 @@ fn get_app_dir() -> PathBuf {
     return get_home_dir().join(".rusty-kaspa");
 }
 
-fn validate_config_and_args(_config: &Arc<Config>, args: &Args) -> ConfigResult<()> {
+fn validate_args(args: &Args) -> ConfigResult<()> {
+    #[cfg(feature = "devnet-prealloc")]
+    {
+        if args.num_prealloc_utxos.is_some() && !args.devnet {
+            return Err(ConfigError::PreallocUtxosOnNonDevnet);
+        }
+
+        if args.prealloc_address.is_some() ^ args.num_prealloc_utxos.is_some() {
+            return Err(ConfigError::MissingPreallocNumOrAddress);
+        }
+    }
+
     if !args.connect_peers.is_empty() && !args.add_peers.is_empty() {
         return Err(ConfigError::MixedConnectAndAddPeers);
     }
@@ -109,7 +120,8 @@ impl Runtime {
 
         // Logs directory is usually under the application directory, unless otherwise specified
         let log_dir = args.logdir.clone().unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
-        let log_dir = if log_dir.is_empty() { app_dir.join(network.name()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
+        let log_dir =
+            if log_dir.is_empty() { app_dir.join(network.to_prefixed()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
         let log_dir = if args.no_log_files { None } else { log_dir.to_str() };
 
         // Initialize the logger
@@ -127,6 +139,12 @@ pub fn create_core(args: Args) -> Arc<Core> {
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> Arc<Core> {
     let network = args.network();
 
+    // Make sure args forms a valid set of properties
+    if let Err(err) = validate_args(args) {
+        println!("{}", err);
+        exit(1);
+    }
+
     let config = Arc::new(
         ConfigBuilder::new(network.into())
             .adjust_perf_params_to_consensus_params()
@@ -134,14 +152,10 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> Arc<Core> {
             .build(),
     );
 
-    // Make sure config and args form a valid set of properties
-    if let Err(err) = validate_config_and_args(&config, args) {
-        println!("{}", err);
-        exit(1);
-    }
+    // TODO: Validate `config` forms a valid set of properties
 
     let app_dir = get_app_dir_from_args(args);
-    let db_dir = app_dir.join(network.name()).join(DEFAULT_DATA_DIR);
+    let db_dir = app_dir.join(network.to_prefixed()).join(DEFAULT_DATA_DIR);
 
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), version());

@@ -2,6 +2,7 @@
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
+use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus_core::{
@@ -9,7 +10,7 @@ use kaspa_consensus_core::{
     coinbase::MinerData,
     config::Config,
     constants::MAX_SOMPI,
-    networktype::NetworkType,
+    network::NetworkType,
     tx::{Transaction, COINBASE_TRANSACTION_INDEX},
 };
 use kaspa_consensus_notify::{
@@ -353,7 +354,9 @@ impl RpcApi for RpcCoreService {
             mempool_size: self.mining_manager.clone().transaction_count(true, false).await as u64,
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
-            is_synced: self.flow_context.hub().has_peers() && is_nearly_synced,
+            is_synced: (!matches!(self.flow_context.config.net.network_type, Mainnet | Testnet) // Other network types can be used in an isolated environments without peers
+                || self.flow_context.hub().has_peers())
+                && is_nearly_synced,
             has_notify_command: true,
             has_message_id: true,
         })
@@ -413,6 +416,11 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn submit_transaction_call(&self, request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
+        if !self.config.unsafe_rpc && request.allow_orphan {
+            warn!("SubmitTransaction RPC command called with AllowOrphan enabled while node in safe RPC mode -- ignoring.");
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+
         let transaction: Transaction = (&request.transaction).try_into()?;
         let transaction_id = transaction.id();
         let session = self.consensus_manager.consensus().session().await;
@@ -731,8 +739,22 @@ impl RpcApi for RpcCoreService {
 
     /// Start sending notifications of some type to a listener.
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
-        self.notifier.clone().start_notify(id, scope).await?;
-        Ok(())
+        match scope {
+            Scope::UtxosChanged(ref utxos_changed_scope) if !self.config.unsafe_rpc && utxos_changed_scope.addresses.is_empty() => {
+                // The subscription to blanket UtxosChanged notifications is restricted to unsafe mode only
+                // since the notifications yielded are highly resource intensive.
+                //
+                // Please note that unsubscribing to blanket UtxosChanged is always allowed and cancels
+                // the whole subscription no matter if blanket or targeting specified addresses.
+
+                warn!("RPC subscription to blanket UtxosChanged called while node in safe RPC mode -- ignoring.");
+                Err(RpcError::UnavailableInSafeMode)
+            }
+            _ => {
+                self.notifier.clone().start_notify(id, scope).await?;
+                Ok(())
+            }
+        }
     }
 
     /// Stop sending notifications of some type to a listener.

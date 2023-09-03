@@ -86,10 +86,10 @@ pub enum Error {
     NetworkTypeConnected,
 
     #[error("{0}")]
-    NetworkType(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
+    NetworkType(#[from] kaspa_consensus_core::network::NetworkTypeError),
 
     #[error("{0}")]
-    NetworkId(#[from] kaspa_consensus_core::networktype::NetworkIdError),
+    NetworkId(#[from] kaspa_consensus_core::network::NetworkIdError),
 
     #[error("The server UTXO index is not enabled")]
     MissingUtxoIndex,

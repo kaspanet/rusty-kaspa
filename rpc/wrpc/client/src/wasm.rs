@@ -3,13 +3,12 @@ use crate::imports::*;
 use crate::result::Result;
 use js_sys::Array;
 use kaspa_addresses::{Address, AddressList};
-use kaspa_consensus_core::networktype::NetworkType;
-use kaspa_consensus_wasm::Transaction;
+use kaspa_consensus_core::network::{wasm::Network, NetworkType};
+use kaspa_consensus_wasm::{SignableTransaction, Transaction};
 use kaspa_notify::notification::Notification as NotificationT;
 pub use kaspa_rpc_macros::{build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions};
 pub use serde_wasm_bindgen::from_value;
 pub use workflow_wasm::serde::to_value;
-// use kaspa_rpc_core::wasm::*;
 
 struct NotificationSink(Function);
 unsafe impl Send for NotificationSink {}
@@ -38,7 +37,7 @@ pub struct RpcClient {
 impl RpcClient {
     /// Create a new RPC client with [`Encoding`] and a `url`.
     #[wasm_bindgen(constructor)]
-    pub fn new(encoding: Encoding, url: &str, network_type: Option<NetworkType>) -> Result<RpcClient> {
+    pub fn new(url: &str, encoding: Encoding, network_type: Option<Network>) -> Result<RpcClient> {
         let url = if let Some(network_type) = network_type { Self::parse_url(url, encoding, network_type)? } else { url.to_string() };
 
         let rpc_client = RpcClient {
@@ -170,7 +169,8 @@ impl RpcClient {
 #[wasm_bindgen]
 impl RpcClient {
     #[wasm_bindgen(js_name = "defaultPort")]
-    pub fn default_port(encoding: WrpcEncoding, network_type: NetworkType) -> Result<u16> {
+    pub fn default_port(encoding: WrpcEncoding, network: Network) -> Result<u16> {
+        let network_type = NetworkType::try_from(network)?;
         match encoding {
             WrpcEncoding::Borsh => Ok(network_type.default_borsh_rpc_port()),
             WrpcEncoding::SerdeJson => Ok(network_type.default_json_rpc_port()),
@@ -187,8 +187,8 @@ impl RpcClient {
     /// * `network_type` - Network type
     ///
     #[wasm_bindgen(js_name = parseUrl)]
-    pub fn parse_url(url: &str, encoding: Encoding, network_type: NetworkType) -> Result<String> {
-        let url_ = KaspaRpcClient::parse_url(Some(url.to_string()), encoding, network_type)?;
+    pub fn parse_url(url: &str, encoding: Encoding, network: Network) -> Result<String> {
+        let url_ = KaspaRpcClient::parse_url(Some(url.to_string()), encoding, network.try_into()?)?;
         let url_ = url_.ok_or(Error::custom(format!("received a malformed URL: {url}")))?;
         Ok(url_)
     }
@@ -333,7 +333,15 @@ build_wrpc_wasm_bindgen_interface!(
 impl RpcClient {
     #[wasm_bindgen(js_name = submitTransaction)]
     pub async fn js_submit_transaction(&self, js_value: JsValue, allow_orphan: Option<bool>) -> Result<JsValue> {
-        let transaction = RpcTransaction::from(Transaction::try_from(js_value)?);
+        let transaction = if let Ok(signable) = SignableTransaction::try_from(&js_value) {
+            Transaction::from(signable)
+        } else if let Ok(transaction) = Transaction::try_from(js_value) {
+            transaction
+        } else {
+            return Err(Error::custom("invalid transaction data"));
+        };
+
+        let transaction = RpcTransaction::from(transaction);
 
         let request = SubmitTransactionRequest { transaction, allow_orphan: allow_orphan.unwrap_or(false) };
 
