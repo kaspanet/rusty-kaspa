@@ -6,7 +6,7 @@ use crate::tx::{is_standard_output_amount_dust, Fees, MassCalculator, PaymentDes
 use crate::utxo::UtxoEntryReference;
 use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
 use kaspa_addresses::Address;
-use kaspa_consensus_core::networktype::NetworkType;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_core::tx::Transaction;
 use std::cell::RefCell;
 use std::rc::Rc;
