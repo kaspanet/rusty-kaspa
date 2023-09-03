@@ -15,10 +15,7 @@ pub enum Error {
     #[error("provided public keys should not be empty")]
     EmptyKeys,
 }
-pub fn multisig_redeem_script_sorted(
-    pub_keys: impl Iterator<Item = impl Borrow<[u8; 32]>>,
-    required: usize,
-) -> Result<Vec<u8>, Error> {
+pub fn multisig_redeem_script(pub_keys: impl Iterator<Item = impl Borrow<[u8; 32]>>, required: usize) -> Result<Vec<u8>, Error> {
     if pub_keys.size_hint().1.is_some_and(|upper| upper < required) {
         return Err(Error::ErrTooManyRequiredSigs);
     }
@@ -44,10 +41,7 @@ pub fn multisig_redeem_script_sorted(
     Ok(builder.drain())
 }
 
-pub fn multisig_redeem_script_sorted_ecdsa(
-    pub_keys: impl Iterator<Item = impl Borrow<[u8; 33]>>,
-    required: usize,
-) -> Result<Vec<u8>, Error> {
+pub fn multisig_redeem_script_ecdsa(pub_keys: impl Iterator<Item = impl Borrow<[u8; 33]>>, required: usize) -> Result<Vec<u8>, Error> {
     if pub_keys.size_hint().1.is_some_and(|upper| upper < required) {
         return Err(Error::ErrTooManyRequiredSigs);
     }
@@ -71,16 +65,6 @@ pub fn multisig_redeem_script_sorted_ecdsa(
     builder.add_op(OpCheckMultiSigECDSA)?;
 
     Ok(builder.drain())
-}
-
-pub fn multisig_redeem_script(pub_keys: &mut [[u8; 32]], required: usize) -> Result<Vec<u8>, Error> {
-    pub_keys.sort();
-    multisig_redeem_script_sorted(pub_keys.iter(), required)
-}
-
-pub fn multisig_redeem_script_ecdsa(pub_keys: &mut [[u8; 33]], required: usize) -> Result<Vec<u8>, Error> {
-    pub_keys.sort();
-    multisig_redeem_script_sorted_ecdsa(pub_keys.iter(), required)
 }
 
 #[cfg(test)]
@@ -123,30 +107,28 @@ mod tests {
 
     #[test]
     fn test_too_many_required_sigs() {
-        let result = multisig_redeem_script_sorted(iter::once([0u8; 32]), 2);
+        let result = multisig_redeem_script(iter::once([0u8; 32]), 2);
         assert_eq!(result, Err(Error::ErrTooManyRequiredSigs));
-        let result = multisig_redeem_script_sorted_ecdsa(iter::once(&[0u8; 33]), 2);
+        let result = multisig_redeem_script_ecdsa(iter::once(&[0u8; 33]), 2);
         assert_eq!(result, Err(Error::ErrTooManyRequiredSigs));
     }
 
     #[test]
     fn test_empty_keys() {
-        let result = multisig_redeem_script_sorted(empty::<[u8; 32]>(), 0);
+        let result = multisig_redeem_script(empty::<[u8; 32]>(), 0);
         assert_eq!(result, Err(Error::EmptyKeys));
     }
 
-    fn check_multisig_scenario(mut inputs: Vec<Input>, required: usize, is_ok: bool, is_ecdsa: bool) {
+    fn check_multisig_scenario(inputs: Vec<Input>, required: usize, is_ok: bool, is_ecdsa: bool) {
         // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
         let prev_tx_id = TransactionId::from_str("63020db736215f8b1105a9281f7bcbb6473d965ecc45bb2fb5da59bd35e6ff84").unwrap();
-        inputs.sort_by_key(|v| v.kp.public_key());
-
         let filtered = inputs.iter().filter(|input| input.required);
         let script = if !is_ecdsa {
             let pks = filtered.map(|input| input.kp.x_only_public_key().0.serialize());
-            multisig_redeem_script_sorted(pks, required).unwrap()
+            multisig_redeem_script(pks, required).unwrap()
         } else {
             let pks = filtered.map(|input| input.kp.public_key().serialize());
-            multisig_redeem_script_sorted_ecdsa(pks, required).unwrap()
+            multisig_redeem_script_ecdsa(pks, required).unwrap()
         };
 
         let tx = Transaction::new(

@@ -12,10 +12,7 @@ use std::iter::once;
 
 mod multisig;
 
-pub use multisig::{
-    multisig_redeem_script, multisig_redeem_script_ecdsa, multisig_redeem_script_sorted, multisig_redeem_script_sorted_ecdsa,
-    Error as MultisigCreateError,
-};
+pub use multisig::{multisig_redeem_script, multisig_redeem_script_ecdsa, Error as MultisigCreateError};
 
 /// Creates a new script to pay a transaction output to a 32-byte pubkey.
 fn pay_to_pub_key(address_payload: &[u8]) -> ScriptVec {
