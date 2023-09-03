@@ -10,20 +10,20 @@ use workflow_wasm::prelude::*;
 ///
 /// Fees can be:
 /// - `SenderPaysAll` - (standard) fees are added to outgoing transaction value
-/// - `ReceiverPaysTransfer` - aggregation fees are paid by sender, but final 
+/// - `ReceiverPaysTransfer` - aggregation fees are paid by sender, but final
 /// transaction fees, including priority fees are paid by the receiver.
 /// - `ReceiverPaysAll` - all transaction fees are paid by the receiver.
 ///
-/// NOTE: If priority fees are `0`, fee variants can be used control 
+/// NOTE: If priority fees are `0`, fee variants can be used control
 /// who pays the `relay` fees.
-/// 
+///
 /// NOTE: `ReceiverPays` variants can fail during the aggregation process
 /// if there are not enough funds to cover the final transaction.
 /// There are 2 solutions to this problem:
-/// 
+///
 /// 1. Use estimation to check that the funds are sufficient.
 /// 2. Check balance and ensure that there is a sufficient amount of funds.
-/// 
+///
 #[derive(Debug, Clone)]
 pub enum Fees {
     /// Fee management disabled (sweep transactions, pays all fees)

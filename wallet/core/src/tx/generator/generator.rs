@@ -382,22 +382,20 @@ impl Generator {
             data.aggregate_mass += self.inner.standard_change_output_mass;
             data.change_output_value = Some(data.aggregate_input_value - data.transaction_fees);
             Ok((DataKind::Edge, data))
+        } else if data.aggregate_input_value < data.transaction_fees {
+            Err(Error::InsufficientFunds)
         } else {
-            if data.aggregate_input_value < data.transaction_fees {
-                Err(Error::InsufficientFunds)
+            let change_output_value = data.aggregate_input_value - data.transaction_fees;
+            if is_standard_output_amount_dust(change_output_value) {
+                // sweep transaction resulting in dust output
+                // we add dust to fees, but the transaction will be
+                // discarded anyways due to `Exception` status.
+                // data.transaction_fees += change_output_value;
+                Ok((DataKind::NoOp, data))
             } else {
-                let change_output_value = data.aggregate_input_value - data.transaction_fees;
-                if is_standard_output_amount_dust(change_output_value) {
-                    // sweep transaction resulting in dust output
-                    // we add dust to fees, but the transaction will be
-                    // discarded anyways due to `Exception` status.
-                    // data.transaction_fees += change_output_value;
-                    Ok((DataKind::NoOp, data))
-                } else {
-                    data.aggregate_mass += self.inner.standard_change_output_mass;
-                    data.change_output_value = Some(change_output_value);
-                    Ok((DataKind::Final, data))
-                }
+                data.aggregate_mass += self.inner.standard_change_output_mass;
+                data.change_output_value = Some(change_output_value);
+                Ok((DataKind::Final, data))
             }
         }
     }
@@ -436,7 +434,6 @@ impl Generator {
                 context.aggregate_fees += data.transaction_fees;
                 Ok(Some(DataKind::Edge))
             } else {
-
                 let (mut transaction_fees, change_output_value) = match self.inner.final_transaction_priority_fee {
                     Fees::SenderPaysAll(priority_fees) => {
                         let transaction_fees = final_transaction_relay_fees + priority_fees;
@@ -445,7 +442,7 @@ impl Generator {
                     }
                     Fees::ReceiverPaysTransfer(priority_fees) => {
                         let transaction_fees = final_transaction_relay_fees + priority_fees;
-                        let change_output_value = data.aggregate_input_value - final_transaction_value_no_fees; 
+                        let change_output_value = data.aggregate_input_value - final_transaction_value_no_fees;
                         (transaction_fees, change_output_value)
                     }
                     Fees::ReceiverPaysAll(priority_fees) => {

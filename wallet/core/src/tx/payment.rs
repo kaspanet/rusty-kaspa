@@ -141,7 +141,7 @@ impl From<(&Address, u64)> for PaymentOutputs {
 
 impl From<&[(&Address, u64)]> for PaymentOutputs {
     fn from(outputs: &[(&Address, u64)]) -> Self {
-        let outputs = outputs.into_iter().map(|(address, amount)| PaymentOutput::new((*address).clone(), *amount)).collect();
+        let outputs = outputs.iter().map(|(address, amount)| PaymentOutput::new((*address).clone(), *amount)).collect();
         PaymentOutputs { outputs }
     }
 }

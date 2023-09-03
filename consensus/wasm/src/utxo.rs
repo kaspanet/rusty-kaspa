@@ -306,7 +306,7 @@ impl UtxoEntryReference {
 
     pub fn fake_with_address(amount: u64, address: &Address) -> Self {
         let outpoint = TransactionOutpoint::fake();
-        let script_public_key = kaspa_txscript::pay_to_address_script(&address);
+        let script_public_key = kaspa_txscript::pay_to_address_script(address);
         let block_daa_score = 0;
         let is_coinbase = true;
 

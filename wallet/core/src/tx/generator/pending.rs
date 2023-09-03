@@ -66,6 +66,7 @@ pub struct PendingTransaction {
 }
 
 impl PendingTransaction {
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         generator: &Generator,
         transaction: Transaction,

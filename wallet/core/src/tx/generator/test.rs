@@ -1,16 +1,15 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+#![allow(clippy::inconsistent_digit_grouping)]
 
-// #[allow(unused_imports)]
 use crate::error::Error;
 use crate::result::Result;
 use crate::tx::{is_standard_output_amount_dust, Fees, MassCalculator, PaymentDestination};
 use crate::utxo::UtxoEntryReference;
 use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
 use kaspa_addresses::Address;
-// use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::networktype::NetworkType;
 use kaspa_consensus_core::tx::Transaction;
+use std::cell::RefCell;
+use std::rc::Rc;
 use workflow_log::style;
 
 use super::*;
@@ -212,7 +211,7 @@ impl Harness {
         if LOGS {
             println!("{}", style(format!("fetch - checking transaction: {}", self.accumulator.borrow().list.len())).magenta());
         }
-        self.generator.generate_transaction().unwrap().unwrap().accumulate(&mut *self.accumulator.borrow_mut()).expect(expected);
+        self.generator.generate_transaction().unwrap().unwrap().accumulate(&mut self.accumulator.borrow_mut()).expect(expected);
         self.clone()
     }
 
@@ -224,7 +223,7 @@ impl Harness {
                     style(format!("drain checking transaction: {} ({})", _n, self.accumulator.borrow().list.len())).magenta()
                 );
             }
-            self.generator.generate_transaction().unwrap().unwrap().accumulate(&mut *self.accumulator.borrow_mut()).expect(expected);
+            self.generator.generate_transaction().unwrap().unwrap().accumulate(&mut self.accumulator.borrow_mut()).expect(expected);
         }
         self.clone()
     }
@@ -257,7 +256,7 @@ where
     T: Into<Sompi> + Clone,
 {
     let outputs = outputs
-        .into_iter()
+        .iter()
         .map(|(address, amount)| {
             let sompi: Sompi = (*amount).clone().into();
             (*address, sompi.0)
@@ -315,7 +314,7 @@ fn output_address() -> Address {
 fn test_generator_empty_utxo_noop() -> Result<()> {
     let generator = make_generator(&[], &[], Fees::None, &change_address(), PaymentDestination::Change).unwrap();
     let tx = generator.generate_transaction().unwrap();
-    assert!(matches!(tx, None));
+    assert!(tx.is_none());
     Ok(())
 }
 
@@ -324,7 +323,7 @@ fn test_generator_sweep_single_utxo_noop() -> Result<()> {
     let generator =
         make_generator(&[10.0], &[], Fees::None, &change_address(), PaymentDestination::Change).expect("single UTXO input: generator");
     let tx = generator.generate_transaction().unwrap();
-    assert!(matches!(tx, None));
+    assert!(tx.is_none());
     Ok(())
 }
 
