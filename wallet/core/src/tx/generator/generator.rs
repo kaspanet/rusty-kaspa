@@ -1,3 +1,58 @@
+//!
+//! Transaction generator module used for creating multi-stage transactions
+//! optimized for parallelized DAG processing.
+//!
+//! The [`Generator`] intakes a set of UTXO entries and accumulates them as
+//! inputs into a single transaction. If transaction hits mass boundaries
+//! before 1) desired amount is reached or 2) all UTXOs are consumed, the
+//! transaction is yielded and a "relay" transaction is created.
+//!
+//! If "relay" transactions are created, the [`Generator`] will aggregate
+//! such transactions into a single transaction and repeat the process
+//! until 1) desired amount is reached or 2) all UTXOs are consumed.
+//!
+//! This processing results in a creation of a transaction tree where
+//! each level (stage) of this tree is submitted to the network in parallel.
+//!
+//!
+//! Tx1 Tx2 Tx3 Tx4 Tx5 Tx6     | stage 0 (relays to stage 1)
+//!  |   |   |   |   |   |      |
+//!  +---+   +---+   +---+      |
+//!    |       |       |        |
+//!   Tx7     Tx8     Tx9       | stage 1 (relays to stage 2)
+//!    |       |       |        |
+//!    +-------+-------+        |
+//!            |                |
+//!           Tx10              | stage 2 (final outbound transaction)
+//!
+//! The generator will produce transactions in the following order:
+//! Tx1, Tx2, Tx3, Tx4, Tx5, Tx6, Tx7, Tx8, Tx9, Tx10
+//!
+//! Transactions within a single stage are independent of one another
+//! and as such can be processed in parallel.
+//!
+//! The [`Generator`] acts as a transaction iterator, yielding transactions
+//! for each iteration. These transactions can be obtained via an iterator
+//! interface or via an async Stream interface.
+//!
+//! Q: Why is this not implemented as a single loop?
+//! A: There are a number of requirements that need to be handled:
+//!
+//!   1. UTXO entry consumption while creating inputs may results in
+//!   additional fees, requiring additional UTXO entries to cover
+//!   the fees. Goto 1. (this is a classic issue, can be solved using padding)
+//!
+//!   2. The overall design strategy for this processor is to allow
+//!   concurrent processing of a large number of transactions and UTXOs.
+//!   This implementation avoids in-memory aggregation of all
+//!   transactions that may result in OOM conditions.
+//!
+//!   3. If used with a large UTXO set, the transaction generation process
+//!   needs to be asynchronous to avoid blocking the main thread. In the
+//!   context of WASM32 SDK, not doing that while working with large
+//!   UTXO sets will result in a browser UI freezing.
+//!
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{
@@ -15,6 +70,7 @@ use std::collections::VecDeque;
 
 use super::SignerT;
 
+/// Mutable [`Generator`] state used to track the current transaction generation process.
 struct Context {
     utxo_source_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
     /// utxo_stage_iterator: Option<Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>>,
@@ -39,12 +95,13 @@ struct Context {
     is_done: bool,
 }
 
+/// [`Generator`] stage. A "tree level" processing stage, used to track
+/// transactions processed during a stage.
 #[derive(Default)]
 struct Stage {
     utxo_iterator: Option<Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>>,
     utxo_accumulator: Vec<UtxoEntryReference>,
     aggregate_input_value: u64,
-    // aggregate_mass: u64,
     aggregate_fees: u64,
     number_of_transactions: usize,
 }
@@ -69,21 +126,51 @@ impl std::fmt::Debug for Stage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Stage")
             .field("aggregate_input_value", &self.aggregate_input_value)
-            // .field("aggregate_mass", &self.aggregate_mass)
             .field("aggregate_fees", &self.aggregate_fees)
             .field("number_of_transactions", &self.number_of_transactions)
             .finish()
     }
 }
 
-#[derive(Debug)]
-enum DataKind {
+///
+///  Indicates the type of data yielded by the generator
+///
+#[derive(Debug, Copy, Clone)]
+pub enum DataKind {
+    /// No operation should be performed (abort)
+    /// Used for handling exceptions, such as rejecting
+    /// to produce dust outputs during sweep transactions.
     NoOp,
+    /// A "tree node" or "relay" transaction meant for multi-stage
+    /// operations. This transaction combines multiple UTXOs
+    /// into a single transaction to the supplied change address.
     Node,
+    /// A "tree edge" transaction meant for multi-stage
+    /// processing. Signifies completion of the tree level (stage).
+    /// This operation will create a new tree level (stage).
     Edge,
+    /// Final transaction combining the entire aggregated UTXO set
+    /// into a single set of supplied outputs.
     Final,
 }
 
+impl DataKind {
+    pub fn is_final(&self) -> bool {
+        matches!(self, DataKind::Final)
+    }
+    pub fn is_stage_node(&self) -> bool {
+        matches!(self, DataKind::Node)
+    }
+    pub fn is_stage_edge(&self) -> bool {
+        matches!(self, DataKind::Edge)
+    }
+}
+
+///
+///  Single transaction data accumulator.  This structure is used to accumulate
+/// and track all necessary transaction data and is then used to create
+/// an actual transaction.
+///
 #[derive(Debug)]
 struct Data {
     inputs: Vec<TransactionInput>,
@@ -111,6 +198,9 @@ impl Data {
     }
 }
 
+///
+///  Internal Generator settings and references
+///
 struct Inner {
     abortable: Option<Abortable>,
     signer: Option<Arc<dyn SignerT>>,
@@ -149,6 +239,9 @@ struct Inner {
     context: Mutex<Context>,
 }
 
+///
+/// Transaction generator
+///
 #[derive(Clone)]
 pub struct Generator {
     inner: Arc<Inner>,
@@ -172,7 +265,6 @@ impl Generator {
         let mass_calculator = MassCalculator::new(&network_type.into());
 
         let (final_transaction_outputs, final_transaction_amount) = match final_transaction_destination {
-            // PaymentDestination::Address(address) => (vec![TransactionOutput::new(0, &pay_to_address_script(&address))], None),
             PaymentDestination::Change => {
                 if !final_transaction_priority_fee.is_none() {
                     return Err(Error::GeneratorFeesInSweepTransaction);
@@ -228,6 +320,12 @@ impl Generator {
         let final_transaction_payload = final_transaction_payload.unwrap_or_default();
         let final_transaction_payload_mass = mass_calculator.calc_mass_for_payload(final_transaction_payload.len());
 
+        // reject transactions where the payload and outputs are more than 2/3rds of the maximum tx mass
+        let mass_sanity_check = standard_change_output_mass + final_transaction_outputs_mass + final_transaction_payload_mass;
+        if mass_sanity_check > MAXIMUM_STANDARD_TRANSACTION_MASS / 3 * 2 {
+            return Err(Error::GeneratorTransactionIsTooHeavy);
+        }
+
         let inner = Inner {
             network_type,
             multiplexer,
@@ -249,6 +347,10 @@ impl Generator {
             final_transaction_payload_mass,
         };
         Ok(Self { inner: Arc::new(inner) })
+    }
+
+    pub fn network_type(&self) -> NetworkType {
+        self.inner.network_type
     }
 
     /// The underlying [`UtxoContext`] (if available).
@@ -300,6 +402,10 @@ impl Generator {
         PendingTransactionIterator::new(self)
     }
 
+    /// Get next UTXO entry. This function obtains UTXO in the following order:
+    /// 1. From the UTXO stash (used to store UTxOs that were not used in the previous transaction)
+    /// 2. From the current stage
+    /// 3. From the UTXO source iterator
     fn get_utxo_entry(&self, context: &mut Context, stage: &mut Stage) -> Option<UtxoEntryReference> {
         context
             .utxo_stash
@@ -308,14 +414,31 @@ impl Generator {
             .or_else(|| context.utxo_source_iterator.next())
     }
 
+    /// Calculate relay transaction mass for the current transaction `data`
     fn calc_relay_transaction_mass(&self, data: &Data) -> u64 {
         data.aggregate_mass + self.inner.standard_change_output_mass
     }
 
+    /// Calculate relay transaction fees for the current transaction `data`
     fn calc_relay_transaction_relay_fees(&self, data: &Data) -> u64 {
         self.inner.mass_calculator.calc_minimum_transaction_relay_fee_from_mass(self.calc_relay_transaction_mass(data))
     }
 
+    /// Main UTXO entry processing loop. This function sources UTXOs from [`Generator::get_utxo_entry()`] and
+    /// accumulates consumed UTXO entry data within the [`Context`], [`Stage`] and [`Data`] structures.
+    ///
+    /// The general processing pattern can be described as follows:
+    ///
+    /// loop {
+    ///   1. Obtain UTXO entry from [`Generator::get_utxo_entry()`]
+    ///   2. Check if UTXO entries have been depleted, if so, handle sweep processing.
+    ///   3. Create a new Input for the transaction from the UTXO entry.
+    ///   4. Check if the transaction mass threshold has been reached, if so, yield the transaction.
+    ///   5. Register input with the [`Data`] structures.
+    ///   6. Check if the final transaction amount has been reached, if so, yield the transaction.
+    /// }
+    ///
+    ///
     fn generate_transaction_data(&self, context: &mut Context, stage: &mut Stage) -> Result<(DataKind, Data)> {
         let calc = &self.inner.mass_calculator;
         let mut data = Data::new(calc);
@@ -371,6 +494,7 @@ impl Generator {
         }
     }
 
+    /// Check current state and either 1) initiate a new stage or 2) finish stage accumulation processing
     fn finish_relay_stage_processing(&self, context: &mut Context, stage: &mut Stage, mut data: Data) -> Result<(DataKind, Data)> {
         data.transaction_fees = self.calc_relay_transaction_relay_fees(&data);
         stage.aggregate_fees += data.transaction_fees;
@@ -400,6 +524,9 @@ impl Generator {
         }
     }
 
+    /// Check if the current state has sufficient funds for the final transaction,
+    /// initiate new stage if necessary, or finish stage processing creating the
+    /// final transaction.
     fn try_finish_standard_stage_processing(
         &self,
         context: &mut Context,
@@ -562,7 +689,7 @@ impl Generator {
                     aggregate_output_value,
                     aggregate_mass,
                     transaction_fees,
-                    true,
+                    kind,
                 )?))
             }
             (kind, data) => {
@@ -616,7 +743,7 @@ impl Generator {
                     output_value,
                     aggregate_mass,
                     transaction_fees,
-                    false,
+                    kind,
                 )?))
             }
         }

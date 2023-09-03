@@ -273,7 +273,7 @@ impl TransactionRecord {
 
         let PendingTransactionInner {
             signable_tx,
-            is_final,
+            kind,
             fees,
             aggregate_input_value,
             aggregate_output_value,
@@ -286,7 +286,7 @@ impl TransactionRecord {
         let id = transaction.id();
 
         let transaction_data = TransactionData::Outgoing {
-            is_final: *is_final,
+            is_final: kind.is_final(),
             fees: *fees,
             aggregate_input_value: *aggregate_input_value,
             aggregate_output_value: *aggregate_output_value,

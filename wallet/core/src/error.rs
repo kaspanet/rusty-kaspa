@@ -213,6 +213,9 @@ pub enum Error {
 
     #[error("Priority fees can not be included into transactions with multiple outputs")]
     GeneratorIncludeFeesRequiresOneOutput,
+
+    #[error("Requested transaction is too heavy")]
+    GeneratorTransactionIsTooHeavy,
 }
 
 impl From<Aborted> for Error {
