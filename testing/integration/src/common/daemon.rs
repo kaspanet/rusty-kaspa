@@ -1,9 +1,10 @@
 use kaspa_core::core::Core;
+use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspad::{args::Args, daemon::create_core_with_runtime};
 use std::{sync::Arc, time::Duration};
-use tempfile::{tempdir, TempDir};
+use tempfile::TempDir;
 
 pub struct Daemon {
     pub core: Arc<Core>,
@@ -40,7 +41,7 @@ impl Daemon {
         args.listen = Some(format!("0.0.0.0:{p2p_port}").try_into().unwrap());
         args.rpclisten_json = Some(format!("0.0.0.0:{rpc_json_port}").parse().unwrap());
         args.rpclisten_borsh = Some(format!("0.0.0.0:{rpc_borsh_port}").parse().unwrap());
-        let appdir_tempdir = tempdir().unwrap();
+        let appdir_tempdir = get_kaspa_tempdir();
         args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
 
         let core = create_core_with_runtime(&Default::default(), &args);
