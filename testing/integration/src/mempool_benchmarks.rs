@@ -28,7 +28,12 @@ use rand::thread_rng;
 use rand_distr::{Distribution, Exp};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use secp256k1::KeyPair;
-use std::{cmp::max, fmt::Debug, sync::Arc, time::Duration};
+use std::{
+    cmp::max,
+    fmt::Debug,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::join;
 
 #[derive(Debug)]
@@ -110,6 +115,7 @@ fn generate_tx_dag(mut utxoset: UtxoCollection, schnorr_key: KeyPair, spk: Scrip
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_bbt_latency() {
+    kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger("info");
 
     let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
@@ -176,7 +182,12 @@ async fn bench_bbt_latency() {
                     while receiver.try_recv().is_ok() {
                         // Drain the channel
                     }
+                    let start = Instant::now();
                     *current_template.lock() = mcc.get_block_template(pay_address.clone(), vec![]).await.unwrap();
+                    let elapsed = start.elapsed();
+                    if elapsed > Duration::from_millis(300) {
+                        kaspa_core::warn!("\n\n\n BBT abnormal time: {:#?}\n\n\n", elapsed);
+                    }
                 }
                 _ => panic!(),
             }
@@ -207,11 +218,17 @@ async fn bench_bbt_latency() {
 
     let cc = client.clone();
     let tx_sender_task = tokio::spawn(async move {
-        for tx in txs {
+        let total_txs = txs.len();
+        for (i, tx) in txs.into_iter().enumerate() {
             let res = cc.submit_transaction(tx.as_ref().into(), false).await;
             match res {
                 Ok(_) => {}
                 Err(RpcError::RejectedTransaction(_, msg)) if msg.contains("orphan") => {}
+                Err(RpcError::General(msg)) if msg.contains("orphan") => {
+                    kaspa_core::warn!("\n\n\n{msg}\n\n\n");
+                    kaspa_core::warn!("Submitted {} out of {}, exiting tx submit loop", i, total_txs);
+                    break;
+                }
                 Err(e) => panic!("{e}"),
             }
         }
