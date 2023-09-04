@@ -121,24 +121,22 @@ impl Args {
 
         #[cfg(feature = "devnet-prealloc")]
         if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
-            let addr = Address::try_from(&self.prealloc_address.as_ref().unwrap()[..]).unwrap();
-            let spk = pay_to_address_script(&addr);
-            config.initial_utxo_set = Arc::new(
-                (1..=num_prealloc_utxos)
-                    .map(|i| {
-                        (
-                            TransactionOutpoint { transaction_id: i.into(), index: 0 },
-                            UtxoEntry {
-                                amount: self.prealloc_amount,
-                                script_public_key: spk.clone(),
-                                block_daa_score: 0,
-                                is_coinbase: false,
-                            },
-                        )
-                    })
-                    .collect(),
-            );
+            config.initial_utxo_set = Arc::new(self.generate_prealloc_utxos(num_prealloc_utxos));
         }
+    }
+
+    #[cfg(feature = "devnet-prealloc")]
+    pub fn generate_prealloc_utxos(&self, num_prealloc_utxos: u64) -> kaspa_consensus_core::utxo::utxo_collection::UtxoCollection {
+        let addr = Address::try_from(&self.prealloc_address.as_ref().unwrap()[..]).unwrap();
+        let spk = pay_to_address_script(&addr);
+        (1..=num_prealloc_utxos)
+            .map(|i| {
+                (
+                    TransactionOutpoint { transaction_id: i.into(), index: 0 },
+                    UtxoEntry { amount: self.prealloc_amount, script_public_key: spk.clone(), block_daa_score: 0, is_coinbase: false },
+                )
+            })
+            .collect()
     }
 
     pub fn network(&self) -> NetworkId {
