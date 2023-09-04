@@ -2,7 +2,8 @@ use crate::common::daemon::Daemon;
 use async_channel::Sender;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
-use kaspa_core::{debug, signals::Shutdown};
+use kaspa_consensus_core::network::NetworkType;
+use kaspa_core::{debug, info, signals::Shutdown};
 use kaspa_notify::{
     listener::ListenerId,
     notifier::Notify,
@@ -32,10 +33,22 @@ impl Notify<Notification> for ChannelNotify {
 #[ignore = "bmk"]
 async fn bench_bbt_latency() {
     kaspa_core::log::try_init_logger("info");
+
+    let (_prealloc_sk, prealloc_pk) = &secp256k1::generate_keypair(&mut thread_rng());
+    let prealloc_address =
+        Address::new(NetworkType::Simnet.into(), kaspa_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
+
     //
     // Setup
     //
-    let args = Args { simnet: true, enable_unsynced_mining: true, ..Default::default() };
+    let args = Args {
+        simnet: true,
+        enable_unsynced_mining: true,
+        num_prealloc_utxos: Some(5),
+        prealloc_address: Some(prealloc_address.to_string()),
+        prealloc_amount: 5,
+        ..Default::default()
+    };
     let network = args.network();
     let params: Params = network.into();
 

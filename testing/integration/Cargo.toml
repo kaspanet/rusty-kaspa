@@ -63,3 +63,4 @@ port-selector = "0.1.6"
 
 [features]
 html_reports = []
+devnet-prealloc = ["kaspad/devnet-prealloc"]

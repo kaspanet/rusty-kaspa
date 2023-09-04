@@ -470,6 +470,7 @@ pub const SIMNET_PARAMS: Params = Params {
     //
     // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
     //
+    // Note we use a 10 BPS configuration for simnet
     ghostdag_k: Testnet11Bps::ghostdag_k(),
     target_time_per_block: Testnet11Bps::target_time_per_block(),
     past_median_time_sample_rate: Testnet11Bps::past_median_time_sample_rate(),
