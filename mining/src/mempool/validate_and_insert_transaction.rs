@@ -57,7 +57,6 @@ impl Mempool {
                     return Err(RuleError::RejectDisallowedOrphan(transaction_id));
                 }
                 self.orphan_pool.try_add_orphan(consensus, transaction, priority)?;
-                debug!("Transaction {0} added to orphans", transaction_id);
                 return Ok(None);
             }
             Err(err) => {
@@ -68,7 +67,10 @@ impl Mempool {
         self.validate_transaction_in_context(&transaction)?;
 
         // Before adding the transaction, check if there is room in the pool
-        self.transaction_pool.limit_transaction_count(1, &transaction)?.iter().try_for_each(|x| self.remove_transaction(x, true))?;
+        self.transaction_pool
+            .limit_transaction_count(1, &transaction)?
+            .iter()
+            .try_for_each(|x| self.remove_transaction(x, true, "making room", format!(" for {}", transaction_id).as_str()))?;
 
         // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
         let accepted_transaction =
@@ -149,7 +151,7 @@ impl Mempool {
         //   This job is delegated to a fn called later in the process (Manager::validate_and_insert_unorphaned_transactions).
 
         // Remove the transaction identified by transaction_id from the orphan pool.
-        let mut transactions = self.orphan_pool.remove_orphan(transaction_id, false)?;
+        let mut transactions = self.orphan_pool.remove_orphan(transaction_id, false, "unorphaned")?;
 
         // At this point, `transactions` contains exactly one transaction.
         // The one we just removed from the orphan pool.

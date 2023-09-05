@@ -13,7 +13,8 @@ use kaspa_consensus_core::{
     tx::MutableTransaction,
     tx::{TransactionId, TransactionOutpoint},
 };
-use kaspa_core::warn;
+use kaspa_core::{debug, warn};
+use kaspa_utils::iter::IterExtensions;
 use std::sync::Arc;
 
 use super::pool::TransactionsEdges;
@@ -95,7 +96,7 @@ impl OrphanPool {
             }
             // Don't remove redeemers in the case of a random eviction since the evicted transaction is
             // not invalid, therefore it's redeemers are as good as any orphan that just arrived.
-            self.remove_orphan(&orphan_to_remove.unwrap().id(), false)?;
+            self.remove_orphan(&orphan_to_remove.unwrap().id(), false, "making room")?;
         }
         Ok(())
     }
@@ -154,6 +155,7 @@ impl OrphanPool {
         }
 
         self.all_orphans.insert(id, transaction);
+        debug!("Added transaction to orphan pool: {}", id);
         Ok(())
     }
 
@@ -161,6 +163,7 @@ impl OrphanPool {
         &mut self,
         transaction_id: &TransactionId,
         remove_redeemers: bool,
+        reason: &str,
     ) -> RuleResult<Vec<MempoolTransaction>> {
         // Rust rewrite:
         // - the call cycle removeOrphan -> removeRedeemersOf -> removeOrphan is replaced by
@@ -175,7 +178,23 @@ impl OrphanPool {
         if remove_redeemers {
             transaction_ids_to_remove.extend(self.get_redeemer_ids_in_pool(transaction_id));
         }
-        transaction_ids_to_remove.iter().map(|x| self.remove_single_orphan(x)).collect()
+        let removed_transactions =
+            transaction_ids_to_remove.iter().map(|x| self.remove_single_orphan(x)).collect::<RuleResult<Vec<_>>>()?;
+        match removed_transactions.len() {
+            0 => (), // This is not possible
+            1 => {
+                debug!("Removed transaction from orphan pool ({}): {}", reason, removed_transactions[0].id());
+            }
+            n => {
+                debug!(
+                    "Removed {} transactions from orphan pool ({}): {}",
+                    n,
+                    reason,
+                    removed_transactions.iter().map(|x| x.id()).reusable_format(", ")
+                );
+            }
+        }
+        Ok(removed_transactions)
     }
 
     fn remove_single_orphan(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
@@ -283,7 +302,7 @@ impl Pool for OrphanPool {
             .collect();
 
         for transaction_id in expired_low_priority_transactions.iter() {
-            self.remove_orphan(transaction_id, false)?;
+            self.remove_orphan(transaction_id, false, "expired")?;
         }
 
         self.last_expire_scan = virtual_daa_score;

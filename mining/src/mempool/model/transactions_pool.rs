@@ -11,7 +11,7 @@ use kaspa_consensus_core::{
     tx::TransactionId,
     tx::{MutableTransaction, TransactionOutpoint},
 };
-use kaspa_core::{debug, time::unix_now, warn};
+use kaspa_core::{debug, time::unix_now, trace, warn};
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
     sync::Arc,
@@ -107,6 +107,7 @@ impl TransactionsPool {
 
         self.utxo_set.add_transaction(&transaction.mtx);
         self.all_transactions.insert(id, transaction);
+        trace!("Added transaction {}", id);
         Ok(())
     }
 

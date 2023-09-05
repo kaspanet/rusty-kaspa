@@ -87,8 +87,13 @@ impl MiningManager {
                 }
                 Err(BuilderError::ConsensusError(BlockRuleError::InvalidTransactionsInNewBlock(invalid_transactions))) => {
                     let mut mempool_write = self.mempool.write();
-                    invalid_transactions.iter().for_each(|(x, _)| {
-                        let removal_result = mempool_write.remove_transaction(x, true);
+                    invalid_transactions.iter().for_each(|(x, err)| {
+                        let removal_result = mempool_write.remove_transaction(
+                            x,
+                            true,
+                            "invalid in block template",
+                            format!(" error: {}", err).as_str(),
+                        );
                         if let Err(err) = removal_result {
                             // Original golang comment:
                             // mempool.remove_transactions might return errors in situations that are perfectly fine in this context.
@@ -458,23 +463,46 @@ impl MiningManager {
                             valid_ids.push(transaction_id);
                         }
                         Err(RuleError::RejectMissingOutpoint) => {
-                            warn!(
-                                "Removing high priority transaction {0} and its redeemers for missing outpoint during revalidation",
-                                transaction_id
-                            );
-                            // This call cleanly removes the invalid transaction and its redeemers.
-                            mempool.remove_transaction(&transaction_id, true)?;
+                            let transaction = mempool.get_transaction(&transaction_id, true, false).unwrap();
+                            let missing_txs = transaction
+                                .entries
+                                .iter()
+                                .zip(transaction.tx.inputs.iter())
+                                .flat_map(
+                                    |(entry, input)| if entry.is_none() { Some(input.previous_outpoint.transaction_id) } else { None },
+                                )
+                                .collect::<Vec<_>>();
+
+                            // A transaction may have missing outpoints for legitimate reasons related to concurrency, like a race condition between
+                            // an accepted block having not started yet or unfinished call to handle_new_block_transactions but already processed by
+                            // the consensus and this ongoing call to revalidate.
+                            //
+                            // So we only remove the transaction and keep its redeemers in the mempool because we cannot be sure they are invalid, in
+                            // fact in the race condition case they are valid regarding outpoints.
+                            let extra_info = match missing_txs.len() {
+                                0 => " but no missing tx!".to_string(), // this is never supposed to happen
+                                1 => format!(" missing tx {}", missing_txs[0]),
+                                n => format!(" with {} missing txs {}..{}", n, missing_txs[0], missing_txs.last().unwrap()),
+                            };
+
+                            // This call cleanly removes the invalid transaction.
+                            mempool.remove_transaction(
+                                &transaction_id,
+                                false,
+                                "high priority revalidation, missing outpoints",
+                                extra_info.as_str(),
+                            )?;
                         }
                         Err(err) => {
                             // Rust rewrite note:
                             // The behavior changes here compared to the golang version.
                             // The failed revalidation is simply logged and the process continues.
                             warn!(
-                                "Removing high priority  transaction {0} and its redeemers, it failed revalidation with {1}",
+                                "Removing high priority transaction {0} and its redeemers, it failed revalidation with {1}",
                                 transaction_id, err
                             );
                             // This call cleanly removes the invalid transaction and its redeemers.
-                            mempool.remove_transaction(&transaction_id, true)?;
+                            mempool.remove_transaction(&transaction_id, true, "", "")?;
                         }
                     }
                 }

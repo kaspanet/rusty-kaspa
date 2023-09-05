@@ -11,7 +11,7 @@ impl Mempool {
             let transaction_id = transaction.id();
             self.remove_transaction(&transaction_id, false)?;
             self.remove_double_spends(transaction)?;
-            self.orphan_pool.remove_orphan(&transaction_id, false)?;
+            self.orphan_pool.remove_orphan(&transaction_id, false, "accepted")?;
             unorphaned_transactions.append(&mut self.get_unorphaned_transactions_after_accepted_transaction(transaction));
         }
         Ok(unorphaned_transactions)
@@ -30,6 +30,8 @@ impl Mempool {
                 transactions_to_remove.insert(*redeemer_id);
             }
         }
-        transactions_to_remove.iter().try_for_each(|x| self.remove_transaction(x, true))
+        transactions_to_remove
+            .iter()
+            .try_for_each(|x| self.remove_transaction(x, true, "double spend", format!(" favouring {}", transaction.id()).as_str()))
     }
 }
