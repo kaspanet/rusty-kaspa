@@ -793,6 +793,7 @@ impl VirtualStateProcessor {
         utxo_view: &impl UtxoView,
     ) -> Result<(), RuleError> {
         // Search for invalid transactions. This can happen since the mining manager calling this function is not atomically in sync with virtual state
+        // TODO: process transactions in parallel
         let mut invalid_transactions = Vec::new();
         for tx in txs.iter() {
             if let Err(e) = self.validate_block_template_transaction(tx, virtual_state, utxo_view) {
