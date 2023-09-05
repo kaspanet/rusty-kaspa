@@ -9,7 +9,13 @@ impl Mempool {
         let mut unorphaned_transactions = vec![];
         for transaction in block_transactions[1..].iter() {
             let transaction_id = transaction.id();
-            self.remove_transaction(&transaction_id, false)?;
+            // Rust rewrite: This behavior does differ from golang implementation.
+            // If the transaction got accepted via a peer but is still an orphan here, do not remove
+            // its redeemers in the orphan pool. We give those a chance to be unorphaned and included
+            // in the next block template.
+            if !self.orphan_pool.has(&transaction_id) {
+                self.remove_transaction(&transaction_id, false, "accepted", "")?;
+            }
             self.remove_double_spends(transaction)?;
             self.orphan_pool.remove_orphan(&transaction_id, false, "accepted")?;
             unorphaned_transactions.append(&mut self.get_unorphaned_transactions_after_accepted_transaction(transaction));
