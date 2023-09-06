@@ -1,4 +1,5 @@
-use kaspa_core::core::Core;
+use kaspa_consensus_core::network::NetworkId;
+use kaspa_core::{core::Core, signals::Shutdown};
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::notify::mode::NotificationMode;
@@ -7,8 +8,16 @@ use std::{sync::Arc, time::Duration};
 use tempfile::TempDir;
 
 pub struct Daemon {
-    pub core: Arc<Core>,
+    // Type and suffix of the daemon network
+    pub network: NetworkId,
+
+    // Daemon ports
     pub rpc_port: u16,
+    pub p2p_port: u16,
+
+    core: Arc<Core>,
+    workers: Option<Vec<std::thread::JoinHandle<()>>>,
+
     _appdir_tempdir: TempDir,
 }
 
@@ -44,29 +53,34 @@ impl Daemon {
         let appdir_tempdir = get_kaspa_tempdir();
         args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
 
+        let network = args.network();
         let core = create_core_with_runtime(&Default::default(), &args);
-        Daemon { core, rpc_port, _appdir_tempdir: appdir_tempdir }
+        Daemon { network, rpc_port, p2p_port, core, workers: None, _appdir_tempdir: appdir_tempdir }
     }
 
-    pub async fn start(&self) -> (Vec<std::thread::JoinHandle<()>>, GrpcClient) {
-        let workers = self.core.start();
+    pub async fn start(&mut self) -> GrpcClient {
+        self.workers = Some(self.core.start());
+        // Wait for the node to initialize before connecting to RPC
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let rpc_client = GrpcClient::connect(
-            NotificationMode::Direct,
-            format!("grpc://localhost:{}", self.rpc_port),
-            true,
-            None,
-            false,
-            Some(500_000),
-        )
-        .await
-        .unwrap();
-        (workers, rpc_client)
+        self.new_client().await
+    }
+
+    pub fn shutdown(&mut self) {
+        if let Some(workers) = self.workers.take() {
+            self.core.shutdown();
+            self.core.join(workers);
+        }
     }
 
     pub async fn new_client(&self) -> GrpcClient {
         GrpcClient::connect(NotificationMode::Direct, format!("grpc://localhost:{}", self.rpc_port), true, None, false, Some(500_000))
             .await
             .unwrap()
+    }
+}
+
+impl Drop for Daemon {
+    fn drop(&mut self) {
+        self.shutdown()
     }
 }

@@ -14,7 +14,7 @@ use kaspa_consensus_core::{
         utxo_diff::UtxoDiff,
     },
 };
-use kaspa_core::{debug, info, signals::Shutdown, time::Stopwatch};
+use kaspa_core::{debug, info, time::Stopwatch};
 use kaspa_notify::{
     listener::ListenerId,
     notifier::Notify,
@@ -179,8 +179,8 @@ async fn bench_bbt_latency() {
     verify_tx_dag(&utxoset, &txs);
     info!("Generated overall {} txs", txs.len());
 
-    let daemon = Daemon::new_random_with_args(args);
-    let (workers, client) = daemon.start().await;
+    let mut daemon = Daemon::new_random_with_args(args);
+    let client = daemon.start().await;
     // TODO: use only a single client once grpc server-side supports concurrent requests
     let block_template_client = daemon.new_client().await;
     let submit_block_client = daemon.new_client().await;
@@ -269,6 +269,5 @@ async fn bench_bbt_latency() {
     // tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     client.disconnect().await.unwrap();
     drop(client);
-    daemon.core.shutdown();
-    daemon.core.join(workers);
+    daemon.shutdown();
 }

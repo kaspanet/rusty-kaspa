@@ -59,7 +59,6 @@ criterion.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 tokio = { workspace = true, features = ["rt", "macros"] }
 kaspa-txscript-errors.workspace = true
-port-selector = "0.1.6"
 
 [features]
 html_reports = []

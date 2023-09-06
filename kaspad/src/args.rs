@@ -21,7 +21,7 @@ use kaspa_core::kaspad_env::version;
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
 use kaspa_wrpc_server::address::WrpcNetAddress;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Args {
     // NOTE: it is best if property names match config file fields
     pub appdir: Option<String>,
