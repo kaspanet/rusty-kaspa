@@ -1,4 +1,8 @@
-use crate::mempool::{errors::RuleResult, model::pool::Pool, Mempool};
+use crate::mempool::{
+    errors::RuleResult,
+    model::{pool::Pool, tx::TxRemovalReason},
+    Mempool,
+};
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_core::debug;
 use kaspa_utils::iter::IterExtensions;
@@ -8,7 +12,7 @@ impl Mempool {
         &mut self,
         transaction_id: &TransactionId,
         remove_redeemers: bool,
-        reason: &str,
+        reason: TxRemovalReason,
         extra_info: &str,
     ) -> RuleResult<()> {
         if self.orphan_pool.has(transaction_id) {
@@ -35,7 +39,7 @@ impl Mempool {
             removed_transactions.extend(self.orphan_pool.remove_redeemers_of(transaction_id)?.iter().map(|x| x.id()));
         }
 
-        if !reason.is_empty() {
+        if reason.verbose() {
             match removed_transactions.len() {
                 0 => {}
                 1 => debug!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),

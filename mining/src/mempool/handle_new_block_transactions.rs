@@ -1,8 +1,13 @@
-use crate::mempool::{errors::RuleResult, Mempool};
+use crate::mempool::{
+    errors::RuleResult,
+    model::{
+        pool::Pool,
+        tx::{MempoolTransaction, TxRemovalReason},
+    },
+    Mempool,
+};
 use kaspa_consensus_core::{api::ConsensusApi, tx::Transaction};
 use std::collections::HashSet;
-
-use super::model::{pool::Pool, tx::MempoolTransaction};
 
 impl Mempool {
     pub(crate) fn handle_new_block_transactions(&mut self, block_transactions: &[Transaction]) -> RuleResult<Vec<MempoolTransaction>> {
@@ -14,10 +19,10 @@ impl Mempool {
             // its redeemers in the orphan pool. We give those a chance to be unorphaned and included
             // in the next block template.
             if !self.orphan_pool.has(&transaction_id) {
-                self.remove_transaction(&transaction_id, false, "accepted", "")?;
+                self.remove_transaction(&transaction_id, false, TxRemovalReason::Accepted, "")?;
             }
             self.remove_double_spends(transaction)?;
-            self.orphan_pool.remove_orphan(&transaction_id, false, "accepted")?;
+            self.orphan_pool.remove_orphan(&transaction_id, false, TxRemovalReason::Accepted)?;
             unorphaned_transactions.append(&mut self.get_unorphaned_transactions_after_accepted_transaction(transaction));
         }
         Ok(unorphaned_transactions)
@@ -36,8 +41,8 @@ impl Mempool {
                 transactions_to_remove.insert(*redeemer_id);
             }
         }
-        transactions_to_remove
-            .iter()
-            .try_for_each(|x| self.remove_transaction(x, true, "double spend", format!(" favouring {}", transaction.id()).as_str()))
+        transactions_to_remove.iter().try_for_each(|x| {
+            self.remove_transaction(x, true, TxRemovalReason::DoubleSpend, format!(" favouring {}", transaction.id()).as_str())
+        })
     }
 }

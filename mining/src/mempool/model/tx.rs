@@ -1,6 +1,9 @@
 use crate::mempool::tx::Priority;
 use kaspa_consensus_core::{tx::MutableTransaction, tx::TransactionId};
-use std::cmp::Ordering;
+use std::{
+    cmp::Ordering,
+    fmt::{Display, Formatter},
+};
 
 pub(crate) struct MempoolTransaction {
     pub(crate) mtx: MutableTransaction,
@@ -45,5 +48,42 @@ impl PartialOrd for MempoolTransaction {
 impl PartialEq for MempoolTransaction {
     fn eq(&self, other: &Self) -> bool {
         self.fee_rate() == other.fee_rate()
+    }
+}
+
+#[derive(PartialEq, Eq)]
+pub(crate) enum TxRemovalReason {
+    Muted,
+    Accepted,
+    MakingRoom,
+    Unorphaned,
+    Expired,
+    DoubleSpend,
+    InvalidInBlockTemplate,
+    RevalidationWithMissingOutpoints,
+}
+
+impl TxRemovalReason {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            TxRemovalReason::Muted => "",
+            TxRemovalReason::Accepted => "accepted",
+            TxRemovalReason::MakingRoom => "making room",
+            TxRemovalReason::Unorphaned => "unorphaned",
+            TxRemovalReason::Expired => "expired",
+            TxRemovalReason::DoubleSpend => "double spend",
+            TxRemovalReason::InvalidInBlockTemplate => "invalid in block template",
+            TxRemovalReason::RevalidationWithMissingOutpoints => "revalidation with missing outpoints",
+        }
+    }
+
+    pub(crate) fn verbose(&self) -> bool {
+        matches!(self, TxRemovalReason::Muted)
+    }
+}
+
+impl Display for TxRemovalReason {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }

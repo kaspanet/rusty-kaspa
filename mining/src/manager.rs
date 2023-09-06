@@ -8,7 +8,7 @@ use crate::{
     errors::MiningManagerResult,
     mempool::{
         config::Config,
-        model::tx::MempoolTransaction,
+        model::tx::{MempoolTransaction, TxRemovalReason},
         populate_entries_and_try_validate::{validate_mempool_transaction_and_populate, validate_mempool_transactions_in_parallel},
         tx::{Orphan, Priority},
         Mempool,
@@ -101,7 +101,7 @@ impl MiningManager {
                         let removal_result = mempool_write.remove_transaction(
                             x,
                             *err != TxRuleError::MissingTxOutpoints,
-                            "invalid in block template",
+                            TxRemovalReason::InvalidInBlockTemplate,
                             format!(" error: {}", err).as_str(),
                         );
                         if let Err(err) = removal_result {
@@ -499,7 +499,7 @@ impl MiningManager {
                             mempool.remove_transaction(
                                 &transaction_id,
                                 false,
-                                "high priority revalidation, missing outpoints",
+                                TxRemovalReason::RevalidationWithMissingOutpoints,
                                 extra_info.as_str(),
                             )?;
                         }
@@ -512,7 +512,7 @@ impl MiningManager {
                                 transaction_id, err
                             );
                             // This call cleanly removes the invalid transaction and its redeemers.
-                            mempool.remove_transaction(&transaction_id, true, "", "")?;
+                            mempool.remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "")?;
                         }
                     }
                 }

@@ -3,8 +3,8 @@ use crate::mempool::{
     errors::{RuleError, RuleResult},
     model::{
         map::{MempoolTransactionCollection, OutpointIndex},
-        pool::Pool,
-        tx::MempoolTransaction,
+        pool::{Pool, TransactionsEdges},
+        tx::{MempoolTransaction, TxRemovalReason},
     },
     tx::Priority,
 };
@@ -16,8 +16,6 @@ use kaspa_consensus_core::{
 use kaspa_core::{debug, warn};
 use kaspa_utils::iter::IterExtensions;
 use std::sync::Arc;
-
-use super::pool::TransactionsEdges;
 
 /// Pool of orphan transactions depending on some missing utxo entries
 ///
@@ -96,7 +94,7 @@ impl OrphanPool {
             }
             // Don't remove redeemers in the case of a random eviction since the evicted transaction is
             // not invalid, therefore it's redeemers are as good as any orphan that just arrived.
-            self.remove_orphan(&orphan_to_remove.unwrap().id(), false, "making room")?;
+            self.remove_orphan(&orphan_to_remove.unwrap().id(), false, TxRemovalReason::MakingRoom)?;
         }
         Ok(())
     }
@@ -163,7 +161,7 @@ impl OrphanPool {
         &mut self,
         transaction_id: &TransactionId,
         remove_redeemers: bool,
-        reason: &str,
+        reason: TxRemovalReason,
     ) -> RuleResult<Vec<MempoolTransaction>> {
         // Rust rewrite:
         // - the call cycle removeOrphan -> removeRedeemersOf -> removeOrphan is replaced by
@@ -302,7 +300,7 @@ impl Pool for OrphanPool {
             .collect();
 
         for transaction_id in expired_low_priority_transactions.iter() {
-            self.remove_orphan(transaction_id, false, "expired")?;
+            self.remove_orphan(transaction_id, false, TxRemovalReason::Expired)?;
         }
 
         self.last_expire_scan = virtual_daa_score;
