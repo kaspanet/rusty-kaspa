@@ -142,11 +142,16 @@ async fn bench_bbt_latency() {
 
     /*
     Logic:
-       1. use the new feature for preallocating utxos
-       2. set up a dataset with a DAG of signed txs over the preallocated utxoset
-       3. create constant mempool pressure by submitting txs (via rpc for now)
-       4. mine to the node
-       5. measure bbt latency, real-time bps, real-time throughput, mempool draining rate (tbd)
+       1. Use the new feature for preallocating utxos
+       2. Set up a dataset with a DAG of signed txs over the preallocated utxoset
+       3. Create constant mempool pressure by submitting txs (via rpc for now)
+       4. Mine to the node (simulated)
+       5. Measure bbt latency, real-time bps, real-time throughput, mempool draining rate (tbd)
+
+    TODO:
+        1. More measurements with statistical aggregation
+        2. Save TX DAG dataset in a file for benchmark replication and stability
+        3. Add P2P TX traffic by implementing a custom P2P peer which only broadcasts txs
     */
 
     //
