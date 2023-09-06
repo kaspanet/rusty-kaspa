@@ -122,7 +122,7 @@ impl GrpcClient {
     pub async fn start(&self, notify: Option<GrpcClientNotify>) {
         match &self.notification_mode {
             NotificationMode::MultiListeners => {
-                // TODO: should we assert notify is None?
+                assert!(notify.is_none(), "client is on multi-listeners mode");
                 self.notifier.clone().unwrap().start();
             }
             NotificationMode::Direct => {
