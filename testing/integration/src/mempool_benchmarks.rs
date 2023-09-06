@@ -8,13 +8,13 @@ use kaspa_consensus_core::{
     network::NetworkType,
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{ScriptPublicKey, SignableTransaction, Transaction, TransactionInput, TransactionOutput},
+    tx::{ScriptPublicKey, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
     utxo::{
         utxo_collection::{UtxoCollection, UtxoCollectionExtensions},
         utxo_diff::UtxoDiff,
     },
 };
-use kaspa_core::{debug, info, signals::Shutdown};
+use kaspa_core::{debug, info, signals::Shutdown, time::Stopwatch};
 use kaspa_notify::{
     listener::ListenerId,
     notifier::Notify,
@@ -30,9 +30,10 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use secp256k1::KeyPair;
 use std::{
     cmp::max,
+    collections::{hash_map::Entry::Occupied, HashMap, HashSet},
     fmt::Debug,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::join;
 
@@ -58,8 +59,10 @@ fn estimated_mass(num_inputs: usize, num_outputs: u64) -> u64 {
     200 + 34 * num_outputs + 1000 * (num_inputs as u64)
 }
 
+/// Builds a TX DAG based on the initial UTXO set and on constant params
 fn generate_tx_dag(mut utxoset: UtxoCollection, schnorr_key: KeyPair, spk: ScriptPublicKey) -> Vec<Arc<Transaction>> {
     /*
+    Algo:
        perform level by level:
            for target txs per level:
                select random utxos (distinctly)
@@ -112,25 +115,53 @@ fn generate_tx_dag(mut utxoset: UtxoCollection, schnorr_key: KeyPair, spk: Scrip
     txs
 }
 
+/// Sanity test verifying that the generated TX DAG is valid, topologically ordered and has no double spends
+fn verify_tx_dag(initial_utxoset: &UtxoCollection, txs: &Vec<Arc<Transaction>>) {
+    let mut prev_txs: HashMap<TransactionId, Arc<Transaction>> = HashMap::new();
+    let mut used_outpoints = HashSet::with_capacity(txs.len() * 2);
+    for tx in txs.iter() {
+        for input in tx.inputs.iter() {
+            assert!(used_outpoints.insert(input.previous_outpoint));
+            if let Occupied(e) = prev_txs.entry(input.previous_outpoint.transaction_id) {
+                assert!(e.get().outputs.len() > input.previous_outpoint.index as usize);
+            } else {
+                assert!(initial_utxoset.contains_key(&input.previous_outpoint));
+            }
+        }
+        assert!(prev_txs.insert(tx.id(), tx.clone()).is_none());
+    }
+}
+
+/// Run this benchmark with the following command line:
+/// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- mempool_benchmarks::bench_bbt_latency --exact --nocapture --ignored`
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_bbt_latency() {
     kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger("info");
 
+    /*
+    Logic:
+       1. use the new feature for preallocating utxos
+       2. set up a dataset with a DAG of signed txs over the preallocated utxoset
+       3. create constant mempool pressure by submitting txs (via rpc for now)
+       4. mine to the node
+       5. measure bbt latency, real-time bps, real-time throughput, mempool draining rate (tbd)
+    */
+
+    //
+    // Setup
+    //
     let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let prealloc_address =
         Address::new(NetworkType::Simnet.into(), kaspa_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
     let schnorr_key = secp256k1::KeyPair::from_secret_key(secp256k1::SECP256K1, &prealloc_sk);
     let spk = pay_to_address_script(&prealloc_address);
 
-    //
-    // Setup
-    //
     let args = Args {
         simnet: true,
         enable_unsynced_mining: true,
-        num_prealloc_utxos: Some(500_000),
+        num_prealloc_utxos: Some(1_000),
         prealloc_address: Some(prealloc_address.to_string()),
         prealloc_amount: 500 * SOMPI_PER_KASPA,
         ..Default::default()
@@ -139,29 +170,21 @@ async fn bench_bbt_latency() {
     let params: Params = network.into();
 
     let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
-    let txs = generate_tx_dag(utxoset, schnorr_key, spk);
+    let txs = generate_tx_dag(utxoset.clone(), schnorr_key, spk);
+    verify_tx_dag(&utxoset, &txs);
     info!("Generated overall {} txs", txs.len());
 
     let daemon = Daemon::new_random_with_args(args);
     let (workers, client) = daemon.start().await;
+    // TODO: use only a single client once grpc server-side supports concurrent requests
     let miner_client = daemon.new_client().await;
-
-    //
-    //
-    //
-
-    /*
-       1. use the new feature for preallocating utxos
-       2. set up a dataset with a DAG of signed txs over the preallocated utxoset
-       3. create constant mempool pressure by submitting txs (via rpc for now)
-       4. mine to the node
-       5. measure bbt latency, real-time bps, real-time throughput, mempool draining rate
-    */
+    let miner_client2 = daemon.new_client().await;
 
     // The time interval between Poisson(lambda) events distributes ~Exp(lambda)
     let dist: Exp<f64> = Exp::new(params.bps() as f64).unwrap();
     let comm_delay = 1000;
 
+    // Mining key and address
     let (sk, pk) = &secp256k1::generate_keypair(&mut thread_rng());
     let pay_address =
         Address::new(network.network_type().into(), kaspa_addresses::Version::PubKey, &pk.x_only_public_key().0.serialize());
@@ -182,12 +205,8 @@ async fn bench_bbt_latency() {
                     while receiver.try_recv().is_ok() {
                         // Drain the channel
                     }
-                    let start = Instant::now();
+                    let _sw = Stopwatch::<500>::with_threshold("BBT");
                     *current_template.lock() = mcc.get_block_template(pay_address.clone(), vec![]).await.unwrap();
-                    let elapsed = start.elapsed();
-                    if elapsed > Duration::from_millis(300) {
-                        kaspa_core::warn!("\n\n\n BBT abnormal time: {:#?}\n\n\n", elapsed);
-                    }
                 }
                 _ => panic!(),
             }
@@ -205,7 +224,7 @@ async fn bench_bbt_latency() {
             // Use index as nonce to avoid duplicate blocks
             block.header.nonce = i;
 
-            let mcc = miner_client.clone();
+            let mcc = miner_client2.clone();
             tokio::spawn(async move {
                 // Simulate communication delay. TODO: consider adding gaussian noise
                 tokio::time::sleep(Duration::from_millis(comm_delay)).await;
@@ -214,6 +233,7 @@ async fn bench_bbt_latency() {
             });
         }
         miner_client.disconnect().await.unwrap();
+        miner_client2.disconnect().await.unwrap();
     });
 
     let cc = client.clone();
@@ -223,15 +243,15 @@ async fn bench_bbt_latency() {
             let res = cc.submit_transaction(tx.as_ref().into(), false).await;
             match res {
                 Ok(_) => {}
-                Err(RpcError::RejectedTransaction(_, msg)) if msg.contains("orphan") => {}
                 Err(RpcError::General(msg)) if msg.contains("orphan") => {
-                    kaspa_core::warn!("\n\n\n{msg}\n\n\n");
+                    kaspa_core::error!("\n\n\n{msg}\n\n");
                     kaspa_core::warn!("Submitted {} out of {}, exiting tx submit loop", i, total_txs);
                     break;
                 }
                 Err(e) => panic!("{e}"),
             }
         }
+        kaspa_core::warn!("Tx submit task exited");
     });
 
     let _ = join!(miner_receiver_task, miner_loop_task, tx_sender_task);
