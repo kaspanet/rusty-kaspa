@@ -182,8 +182,8 @@ async fn bench_bbt_latency() {
     let daemon = Daemon::new_random_with_args(args);
     let (workers, client) = daemon.start().await;
     // TODO: use only a single client once grpc server-side supports concurrent requests
-    let miner_client = daemon.new_client().await;
-    let miner_client2 = daemon.new_client().await;
+    let block_template_client = daemon.new_client().await;
+    let submit_block_client = daemon.new_client().await;
 
     // The time interval between Poisson(lambda) events distributes ~Exp(lambda)
     let dist: Exp<f64> = Exp::new(params.bps() as f64).unwrap();
@@ -195,14 +195,14 @@ async fn bench_bbt_latency() {
         Address::new(network.network_type().into(), kaspa_addresses::Version::PubKey, &pk.x_only_public_key().0.serialize());
     debug!("Generated private key {} and address {}", sk.display_secret(), pay_address);
 
-    let current_template = Arc::new(Mutex::new(miner_client.get_block_template(pay_address.clone(), vec![]).await.unwrap()));
+    let current_template = Arc::new(Mutex::new(block_template_client.get_block_template(pay_address.clone(), vec![]).await.unwrap()));
     let current_template_consume = current_template.clone();
 
     let (sender, receiver) = async_channel::unbounded();
-    miner_client.start(Some(Arc::new(ChannelNotify { sender }))).await;
-    miner_client.start_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
+    block_template_client.start(Some(Arc::new(ChannelNotify { sender }))).await;
+    block_template_client.start_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
 
-    let mcc = miner_client.clone();
+    let cc = block_template_client.clone();
     let miner_receiver_task = tokio::spawn(async move {
         while let Ok(notification) = receiver.recv().await {
             match notification {
@@ -211,7 +211,7 @@ async fn bench_bbt_latency() {
                         // Drain the channel
                     }
                     let _sw = Stopwatch::<500>::with_threshold("get_block_template");
-                    *current_template.lock() = mcc.get_block_template(pay_address.clone(), vec![]).await.unwrap();
+                    *current_template.lock() = cc.get_block_template(pay_address.clone(), vec![]).await.unwrap();
                 }
                 _ => panic!(),
             }
@@ -229,7 +229,7 @@ async fn bench_bbt_latency() {
             // Use index as nonce to avoid duplicate blocks
             block.header.nonce = i;
 
-            let mcc = miner_client2.clone();
+            let mcc = submit_block_client.clone();
             tokio::spawn(async move {
                 // Simulate communication delay. TODO: consider adding gaussian noise
                 tokio::time::sleep(Duration::from_millis(comm_delay)).await;
@@ -238,8 +238,8 @@ async fn bench_bbt_latency() {
                 assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
             });
         }
-        miner_client.disconnect().await.unwrap();
-        miner_client2.disconnect().await.unwrap();
+        block_template_client.disconnect().await.unwrap();
+        submit_block_client.disconnect().await.unwrap();
     });
 
     let cc = client.clone();
