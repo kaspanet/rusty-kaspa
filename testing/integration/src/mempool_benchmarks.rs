@@ -210,7 +210,7 @@ async fn bench_bbt_latency() {
                     while receiver.try_recv().is_ok() {
                         // Drain the channel
                     }
-                    let _sw = Stopwatch::<500>::with_threshold("BBT");
+                    let _sw = Stopwatch::<500>::with_threshold("get_block_template");
                     *current_template.lock() = mcc.get_block_template(pay_address.clone(), vec![]).await.unwrap();
                 }
                 _ => panic!(),
@@ -233,6 +233,7 @@ async fn bench_bbt_latency() {
             tokio::spawn(async move {
                 // Simulate communication delay. TODO: consider adding gaussian noise
                 tokio::time::sleep(Duration::from_millis(comm_delay)).await;
+                // let _sw = Stopwatch::<500>::with_threshold("submit_block");
                 let response = mcc.submit_block(block, false).await.unwrap();
                 assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
             });
@@ -245,6 +246,7 @@ async fn bench_bbt_latency() {
     let tx_sender_task = tokio::spawn(async move {
         let total_txs = txs.len();
         for (i, tx) in txs.into_iter().enumerate() {
+            let _sw = Stopwatch::<500>::with_threshold("submit_transaction");
             let res = cc.submit_transaction(tx.as_ref().into(), false).await;
             match res {
                 Ok(_) => {}
