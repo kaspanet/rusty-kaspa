@@ -457,24 +457,34 @@ pub const SIMNET_PARAMS: Params = Params {
     dns_seeders: &[],
     net: NetworkId::new(NetworkType::Simnet),
     genesis: SIMNET_GENESIS,
-    ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
     new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
-    past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    target_time_per_block: 1000,
-    sampling_activation_daa_score: u64::MAX,
+    sampling_activation_daa_score: 0, // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
     sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
-    max_block_parents: 10,
-    mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
-    merge_depth: 3600,
-    finality_depth: 86400,
-    pruning_depth: 185798,
+
+    //
+    // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
+    //
+    // Note we use a 10 BPS configuration for simnet
+    ghostdag_k: Testnet11Bps::ghostdag_k(),
+    target_time_per_block: Testnet11Bps::target_time_per_block(),
+    past_median_time_sample_rate: Testnet11Bps::past_median_time_sample_rate(),
+    difficulty_sample_rate: Testnet11Bps::difficulty_adjustment_sample_rate(),
+    max_block_parents: Testnet11Bps::max_block_parents(),
+    mergeset_size_limit: Testnet11Bps::mergeset_size_limit(),
+    merge_depth: Testnet11Bps::merge_depth_bound(),
+    finality_depth: Testnet11Bps::finality_depth(),
+    pruning_depth: Testnet11Bps::pruning_depth(),
+    pruning_proof_m: Testnet11Bps::pruning_proof_m(),
+    deflationary_phase_daa_score: Testnet11Bps::deflationary_phase_daa_score(),
+    pre_deflationary_phase_base_subsidy: Testnet11Bps::pre_deflationary_phase_base_subsidy(),
+    coinbase_maturity: Testnet11Bps::coinbase_maturity(),
+
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -492,18 +502,8 @@ pub const SIMNET_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
 
-    // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
-    // switches to the deflationary period. This number is calculated as follows:
-    // We define a year as 365.25 days
-    // Half a year in seconds = 365.25 / 2 * 24 * 60 * 60 = 15778800
-    // The network was down for three days shortly after launch
-    // Three days in seconds = 3 * 24 * 60 * 60 = 259200
-    deflationary_phase_daa_score: 15778800 - 259200,
-    pre_deflationary_phase_base_subsidy: 50000000000,
-    coinbase_maturity: 100,
-    skip_proof_of_work: false,
+    skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
     max_block_level: 250,
-    pruning_proof_m: 1000,
 };
 
 pub const DEVNET_PARAMS: Params = Params {
