@@ -1,5 +1,5 @@
 #[cfg(feature = "devnet-prealloc")]
-pub mod utxo_set_override {
+mod utxo_set_override_inner {
     use std::sync::Arc;
 
     use itertools::Itertools;
@@ -31,4 +31,4 @@ pub mod utxo_set_override {
 }
 
 #[cfg(feature = "devnet-prealloc")]
-pub use utxo_set_override::*;
+pub use utxo_set_override_inner::*;
