@@ -23,7 +23,7 @@ use kaspa_consensus_core::{
     api::ConsensusApi,
     block::BlockTemplate,
     coinbase::MinerData,
-    errors::block::RuleError as BlockRuleError,
+    errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
 };
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy};
@@ -88,9 +88,19 @@ impl MiningManager {
                 Err(BuilderError::ConsensusError(BlockRuleError::InvalidTransactionsInNewBlock(invalid_transactions))) => {
                     let mut mempool_write = self.mempool.write();
                     invalid_transactions.iter().for_each(|(x, err)| {
+                        // On missing outpoints, the most likely is that the tx was already in a block accepted by
+                        // the consensus but not yet processed by handle_new_block_transactions(). Another possibility
+                        // is a double spend. In both cases, we simply remove the transaction but keep its redeemers.
+                        // Those will either be valid in a next block template or invalidated if it's a double spend.
+                        //
+                        // If the redeemers of a transaction accepted in consensus but not yet handled in mempool were
+                        // removed, it would lead to having subsequently submitted children transactions of the removed
+                        // redeemers being unexpectedly either orphaned or rejected in case orphans are disallowed.
+                        //
+                        // For all other errors, we do remove the redeemers.
                         let removal_result = mempool_write.remove_transaction(
                             x,
-                            true,
+                            *err != TxRuleError::MissingTxOutpoints,
                             "invalid in block template",
                             format!(" error: {}", err).as_str(),
                         );
