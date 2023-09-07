@@ -33,8 +33,8 @@ impl AcceptedTransactions {
         self.transactions.contains_key(transaction_id)
     }
 
-    pub(crate) fn unaccepted(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
-        transactions.into_iter().filter(|transaction_id| !self.has(transaction_id)).collect()
+    pub(crate) fn unaccepted(&self, transactions: &mut impl Iterator<Item = TransactionId>) -> Vec<TransactionId> {
+        transactions.filter(|transaction_id| !self.has(transaction_id)).collect()
     }
 
     pub(crate) fn expire(&mut self, virtual_daa_score: u64) {

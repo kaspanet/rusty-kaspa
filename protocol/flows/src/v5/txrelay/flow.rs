@@ -104,13 +104,11 @@ impl RelayTransactionsFlow {
     ) -> Result<Vec<RequestScope<TransactionId>>, ProtocolError> {
         // Build a vector with the transaction ids unknown in the mempool and not already requested
         // by another peer
-        let transaction_ids = self.ctx.mining_manager().clone().unaccepted_transactions(transaction_ids).await;
+        let transaction_ids = self.ctx.mining_manager().clone().unknown_transactions(transaction_ids).await;
         let mut requests = Vec::new();
         for transaction_id in transaction_ids {
-            if !self.is_known_transaction(transaction_id).await {
-                if let Some(req) = self.ctx.try_adding_transaction_request(transaction_id) {
-                    requests.push(req);
-                }
+            if let Some(req) = self.ctx.try_adding_transaction_request(transaction_id) {
+                requests.push(req);
             }
         }
 
@@ -127,12 +125,6 @@ impl RelayTransactionsFlow {
         }
 
         Ok(requests)
-    }
-
-    async fn is_known_transaction(&self, transaction_id: TransactionId) -> bool {
-        // Ask the transaction memory pool if the transaction is known
-        // to it in any form (main pool or orphan).
-        self.ctx.mining_manager().clone().has_transaction(transaction_id, true, true).await
     }
 
     /// Returns the next Transaction or TransactionNotFound message in msg_route,

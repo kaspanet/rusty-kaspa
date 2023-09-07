@@ -551,6 +551,10 @@ impl MiningManager {
     pub fn unaccepted_transactions(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
         self.mempool.read().unaccepted_transactions(transactions)
     }
+
+    pub fn unknown_transactions(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
+        self.mempool.read().unknown_transactions(transactions)
+    }
 }
 
 /// Async proxy for the mining manager
@@ -692,5 +696,11 @@ impl MiningManagerProxy {
     /// For more details, see [`Self::has_accepted_transaction()`].
     pub async fn unaccepted_transactions(self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
         spawn_blocking(move || self.inner.unaccepted_transactions(transactions)).await.unwrap()
+    }
+
+    /// Returns a vector with all transaction ids that are neither in the mempool, nor in the orphan pool
+    /// nor accepted.
+    pub async fn unknown_transactions(self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
+        spawn_blocking(move || self.inner.unknown_transactions(transactions)).await.unwrap()
     }
 }

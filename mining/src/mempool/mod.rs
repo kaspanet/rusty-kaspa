@@ -143,7 +143,14 @@ impl Mempool {
     }
 
     pub(crate) fn unaccepted_transactions(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
-        self.accepted_transactions.unaccepted(transactions)
+        self.accepted_transactions.unaccepted(&mut transactions.into_iter())
+    }
+
+    pub(crate) fn unknown_transactions(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
+        let mut not_in_pools_txs = transactions
+            .into_iter()
+            .filter(|transaction_id| !(self.transaction_pool.has(transaction_id) || self.orphan_pool.has(transaction_id)));
+        self.accepted_transactions.unaccepted(&mut not_in_pools_txs)
     }
 }
 
