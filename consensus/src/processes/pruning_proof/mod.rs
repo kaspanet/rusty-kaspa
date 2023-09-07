@@ -7,6 +7,7 @@ use std::{
 };
 
 use itertools::Itertools;
+use kaspa_math::int::SignedInteger;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 
@@ -524,10 +525,12 @@ impl PruningProofManager {
             };
 
             if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = common_ancestor_data {
-                let selected_tip_blue_work_diff = proof_selected_tip_gd.blue_work - proof_common_ancestor_gd.blue_work;
+                let selected_tip_blue_work_diff =
+                    SignedInteger::from(proof_selected_tip_gd.blue_work) - SignedInteger::from(proof_common_ancestor_gd.blue_work);
                 for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
                     let parent_blue_work = self.ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
-                    let parent_blue_work_diff = parent_blue_work - common_ancestor_gd.blue_work;
+                    let parent_blue_work_diff =
+                        SignedInteger::from(parent_blue_work) - SignedInteger::from(common_ancestor_gd.blue_work);
                     if parent_blue_work_diff >= selected_tip_blue_work_diff {
                         return Err(PruningImportError::PruningProofInsufficientBlueWork);
                     }
@@ -538,7 +541,7 @@ impl PruningProofManager {
         }
 
         if current_pp == self.genesis_hash {
-            // If the proof has better tips and the currnet pruning point is still
+            // If the proof has better tips and the current pruning point is still
             // genesis, we consider the proof state to be better.
             return Ok(());
         }
