@@ -77,3 +77,14 @@ impl<T: Div<Output = T>> Div for SignedInteger<T> {
         Self { negative: self.negative ^ rhs.negative, abs: self.abs / rhs.abs }
     }
 }
+
+impl<T: PartialOrd> PartialOrd for SignedInteger<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self.negative, other.negative) {
+            (false, false) => self.abs.partial_cmp(&other.abs),
+            (true, true) => other.abs.partial_cmp(&self.abs),
+            (true, false) => Some(std::cmp::Ordering::Less),
+            (false, true) => Some(std::cmp::Ordering::Greater),
+        }
+    }
+}
