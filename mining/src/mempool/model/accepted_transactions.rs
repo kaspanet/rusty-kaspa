@@ -1,6 +1,6 @@
 use crate::mempool::config::Config;
 use kaspa_consensus_core::tx::TransactionId;
-use kaspa_core::time::unix_now;
+use kaspa_core::{debug, time::unix_now};
 use std::{collections::HashMap, sync::Arc};
 
 pub(crate) struct AcceptedTransactions {
@@ -33,6 +33,10 @@ impl AcceptedTransactions {
         self.transactions.contains_key(transaction_id)
     }
 
+    pub(crate) fn len(&self) -> usize {
+        self.transactions.len()
+    }
+
     pub(crate) fn unaccepted(&self, transactions: &mut impl Iterator<Item = TransactionId>) -> Vec<TransactionId> {
         transactions.filter(|transaction_id| !self.has(transaction_id)).collect()
     }
@@ -60,6 +64,12 @@ impl AcceptedTransactions {
         for transaction_id in expired_transactions.iter() {
             self.remove(transaction_id);
         }
+
+        debug!(
+            "Removed {} accepted transactions from mempool cache. Currently containing {}",
+            expired_transactions.len(),
+            self.transactions.len()
+        );
 
         self.last_expire_scan_daa_score = virtual_daa_score;
         self.last_expire_scan_time = now;

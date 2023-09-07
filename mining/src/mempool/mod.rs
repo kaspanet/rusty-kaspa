@@ -9,6 +9,7 @@ use self::{
     tx::Priority,
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
+use kaspa_core::debug;
 use std::{collections::hash_map::Entry, sync::Arc};
 
 pub(crate) mod check_transaction_standard;
@@ -151,6 +152,10 @@ impl Mempool {
             .into_iter()
             .filter(|transaction_id| !(self.transaction_pool.has(transaction_id) || self.orphan_pool.has(transaction_id)));
         self.accepted_transactions.unaccepted(&mut not_in_pools_txs)
+    }
+
+    pub(crate) fn log_stats(&self) {
+        debug!("Mempool stats: {} txs, {} orphans, {} accepted", self.transaction_pool.len(), self.orphan_pool.len(), self.accepted_transactions.len());
     }
 }
 

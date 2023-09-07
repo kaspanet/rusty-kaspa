@@ -37,6 +37,7 @@ impl Mempool {
         self.orphan_pool.expire_low_priority_transactions(consensus.get_virtual_daa_score())?;
         self.transaction_pool.expire_low_priority_transactions(consensus.get_virtual_daa_score())?;
         self.accepted_transactions.expire(consensus.get_virtual_daa_score());
+        self.log_stats();
         Ok(())
     }
 

@@ -3,7 +3,7 @@ use crate::{block_template::selector::TransactionsSelector, model::candidate_tx:
 use kaspa_consensus_core::{
     api::ConsensusApi, block::BlockTemplate, coinbase::MinerData, merkle::calc_hash_merkle_root, tx::COINBASE_TRANSACTION_INDEX,
 };
-use kaspa_core::{time::unix_now, trace};
+use kaspa_core::{time::unix_now, debug};
 
 pub(crate) struct BlockTemplateBuilder {
     policy: Policy,
@@ -84,7 +84,7 @@ impl BlockTemplateBuilder {
         miner_data: &MinerData,
         transactions: Vec<CandidateTransaction>,
     ) -> BuilderResult<BlockTemplate> {
-        trace!("Considering {} transactions for inclusion into a new block", transactions.len());
+        debug!("Considering {} transactions for a new block template", transactions.len());
         let mut selector = TransactionsSelector::new(self.policy.clone(), transactions);
         let block_txs = selector.select_transactions();
         Ok(consensus.build_block_template(miner_data.clone(), block_txs)?)

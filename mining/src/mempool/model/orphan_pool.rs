@@ -183,11 +183,11 @@ impl OrphanPool {
             match removed_transactions.len() {
                 0 => (), // This is not possible
                 1 => {
-                    debug!("Removed transaction from orphan pool ({}): {}{}", reason, removed_transactions[0].id(), extra_info);
+                    debug!("Removed orphan transaction ({}): {}{}", reason, removed_transactions[0].id(), extra_info);
                 }
                 n => {
                     debug!(
-                        "Removed {} transactions from orphan pool ({}): {}{}",
+                        "Removed {} orphan transactions ({}): {}{}",
                         n,
                         reason,
                         removed_transactions.iter().map(|x| x.id()).reusable_format(", "),

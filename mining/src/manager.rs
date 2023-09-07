@@ -277,6 +277,14 @@ impl MiningManager {
                             debug!("Ignoring already accepted transaction {}", transaction_id);
                             None
                         }
+                        Err(RuleError::RejectDuplicate(transaction_id)) => {
+                            debug!("Ignoring transaction already in the mempool {}", transaction_id);
+                            None
+                        }
+                        Err(RuleError::RejectDuplicateOrphan(transaction_id)) => {
+                            debug!("Ignoring transaction already in the orphan pool {}", transaction_id);
+                            None
+                        }
                         Err(err) => {
                             debug!("Failed to pre validate transaction {0} due to rule error: {1}", transaction_id, err);
                             None
@@ -321,6 +329,7 @@ impl MiningManager {
                     }
                 })
                 .collect::<Vec<_>>();
+            mempool.log_stats();
             drop(mempool);
 
             // TODO: handle RuleError::RejectInvalid errors when a banning process gets implemented
@@ -527,6 +536,7 @@ impl MiningManager {
                     }
                 }
             }
+            mempool.log_stats();
             drop(mempool);
         }
         // Return the successfully processed high priority transaction ids
