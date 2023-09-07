@@ -252,7 +252,7 @@ mod tests {
         let block_with_first_part = build_block_transactions(first_part.iter().map(|mtx| mtx.tx.as_ref()));
         let block_with_rest = build_block_transactions(rest.iter().map(|mtx| mtx.tx.as_ref()));
 
-        let result = mining_manager.handle_new_block_transactions(consensus.as_ref(), &block_with_first_part);
+        let result = mining_manager.handle_new_block_transactions(consensus.as_ref(), 2, &block_with_first_part);
         assert!(
             result.is_ok(),
             "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {result:?}"
@@ -273,7 +273,7 @@ mod tests {
         }
 
         // Handle all the other transactions.
-        let result = mining_manager.handle_new_block_transactions(consensus.as_ref(), &block_with_rest);
+        let result = mining_manager.handle_new_block_transactions(consensus.as_ref(), 3, &block_with_rest);
         assert!(
             result.is_ok(),
             "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {result:?}"            
@@ -307,7 +307,7 @@ mod tests {
             transaction_in_the_mempool.tx.inputs[0].previous_outpoint;
         let block_transactions = build_block_transactions(std::iter::once(double_spend_transaction_in_the_block.tx.as_ref()));
 
-        let result = mining_manager.handle_new_block_transactions(consensus.as_ref(), &block_transactions);
+        let result = mining_manager.handle_new_block_transactions(consensus.as_ref(), 2, &block_transactions);
         assert!(result.is_ok());
 
         assert!(
@@ -368,7 +368,7 @@ mod tests {
         let added_parent_txs = parent_txs.iter().skip(SKIPPED_TXS).cloned().collect::<Vec<_>>();
         added_parent_txs.iter().for_each(|x| consensus.add_transaction(x.clone(), 1));
         let result =
-            mining_manager.handle_new_block_transactions(consensus.as_ref(), &build_block_transactions(added_parent_txs.iter()));
+            mining_manager.handle_new_block_transactions(consensus.as_ref(), 2, &build_block_transactions(added_parent_txs.iter()));
         assert!(result.is_ok(), "mining manager should handle new block transactions successfully but returns {result:?}");
         let unorphaned_txs = result.unwrap();
         let (populated_txs, orphans) = mining_manager.get_all_transactions(true, true);
@@ -453,7 +453,7 @@ mod tests {
         let added_child_txs = child_txs.iter().skip(SKIPPED_TXS).cloned().collect::<Vec<_>>();
         added_child_txs.iter().for_each(|x| consensus.add_transaction(x.clone(), 2));
         let result =
-            mining_manager.handle_new_block_transactions(consensus.as_ref(), &build_block_transactions(added_child_txs.iter()));
+            mining_manager.handle_new_block_transactions(consensus.as_ref(), 4, &build_block_transactions(added_child_txs.iter()));
         assert!(result.is_ok(), "mining manager should handle new block transactions successfully but returns {result:?}");
 
         let unorphaned_txs = result.unwrap();

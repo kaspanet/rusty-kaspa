@@ -10,7 +10,11 @@ use kaspa_consensus_core::{api::ConsensusApi, tx::Transaction};
 use std::collections::HashSet;
 
 impl Mempool {
-    pub(crate) fn handle_new_block_transactions(&mut self, block_transactions: &[Transaction]) -> RuleResult<Vec<MempoolTransaction>> {
+    pub(crate) fn handle_new_block_transactions(
+        &mut self,
+        block_daa_score: u64,
+        block_transactions: &[Transaction],
+    ) -> RuleResult<Vec<MempoolTransaction>> {
         let mut unorphaned_transactions = vec![];
         for transaction in block_transactions[1..].iter() {
             let transaction_id = transaction.id();
@@ -22,7 +26,8 @@ impl Mempool {
                 self.remove_transaction(&transaction_id, false, TxRemovalReason::Accepted, "")?;
             }
             self.remove_double_spends(transaction)?;
-            self.orphan_pool.remove_orphan(&transaction_id, false, TxRemovalReason::Accepted)?;
+            self.orphan_pool.remove_orphan(&transaction_id, false, TxRemovalReason::Accepted, "")?;
+            self.accepted_transactions.add(transaction_id, block_daa_score);
             unorphaned_transactions.append(&mut self.get_unorphaned_transactions_after_accepted_transaction(transaction));
         }
         Ok(unorphaned_transactions)
@@ -31,6 +36,7 @@ impl Mempool {
     pub(crate) fn expire_low_priority_transactions(&mut self, consensus: &dyn ConsensusApi) -> RuleResult<()> {
         self.orphan_pool.expire_low_priority_transactions(consensus.get_virtual_daa_score())?;
         self.transaction_pool.expire_low_priority_transactions(consensus.get_virtual_daa_score())?;
+        self.accepted_transactions.expire(consensus.get_virtual_daa_score());
         Ok(())
     }
 

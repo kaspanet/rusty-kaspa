@@ -273,6 +273,10 @@ impl MiningManager {
                     let transaction_id = tx.id();
                     match mempool.pre_validate_and_populate_transaction(consensus, tx) {
                         Ok(tx) => Some(tx),
+                        Err(RuleError::RejectAlreadyAccepted(transaction_id)) => {
+                            debug!("Ignoring already accepted transaction {}", transaction_id);
+                            None
+                        }
                         Err(err) => {
                             debug!("Failed to pre validate transaction {0} due to rule error: {1}", transaction_id, err);
                             None
@@ -391,12 +395,13 @@ impl MiningManager {
     pub fn handle_new_block_transactions(
         &self,
         consensus: &dyn ConsensusApi,
+        block_daa_score: u64,
         block_transactions: &[Transaction],
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
         // TODO: should use tx acceptance data to verify that new block txs are actually accepted into virtual state.
 
         // write lock on mempool
-        let unorphaned_transactions = self.mempool.write().handle_new_block_transactions(block_transactions)?;
+        let unorphaned_transactions = self.mempool.write().handle_new_block_transactions(block_daa_score, block_transactions)?;
 
         // alternate no & write lock on mempool
         let accepted_transactions = self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions);
@@ -433,10 +438,15 @@ impl MiningManager {
             let mut transactions = transactions
                 .into_iter()
                 .filter_map(|mut x| {
-                    if mempool.has_transaction(&x.id(), true, false) {
-                        x.clear_entries();
-                        mempool.populate_mempool_entries(&mut x);
-                        Some(x)
+                    let transaction_id = x.id();
+                    if mempool.has_transaction(&transaction_id, true, false) {
+                        if mempool.has_accepted_transaction(&transaction_id) {
+                            None
+                        } else {
+                            x.clear_entries();
+                            mempool.populate_mempool_entries(&mut x);
+                            Some(x)
+                        }
                     } else {
                         None
                     }
@@ -533,6 +543,14 @@ impl MiningManager {
     pub fn is_transaction_output_dust(&self, transaction_output: &TransactionOutput) -> bool {
         self.mempool.read().is_transaction_output_dust(transaction_output)
     }
+
+    pub fn has_accepted_transaction(&self, transaction_id: &TransactionId) -> bool {
+        self.mempool.read().has_accepted_transaction(transaction_id)
+    }
+
+    pub fn unaccepted_transactions(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
+        self.mempool.read().unaccepted_transactions(transactions)
+    }
 }
 
 /// Async proxy for the mining manager
@@ -590,9 +608,13 @@ impl MiningManagerProxy {
     pub async fn handle_new_block_transactions(
         self,
         consensus: &ConsensusProxy,
+        block_daa_score: u64,
         block_transactions: Arc<Vec<Transaction>>,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        consensus.clone().spawn_blocking(move |c| self.inner.handle_new_block_transactions(c, &block_transactions)).await
+        consensus
+            .clone()
+            .spawn_blocking(move |c| self.inner.handle_new_block_transactions(c, block_daa_score, &block_transactions))
+            .await
     }
 
     pub async fn revalidate_high_priority_transactions(self, consensus: &ConsensusProxy) -> MiningManagerResult<Vec<TransactionId>> {
@@ -652,5 +674,23 @@ impl MiningManagerProxy {
         })
         .await
         .unwrap()
+    }
+
+    /// Returns whether a transaction id was registered as accepted in the mempool, meaning
+    /// that the consensus accepted a block containing it and said block was handled by the
+    /// mempool.
+    ///
+    /// Registered transaction ids expire after a delay and are unregistered from the mempool.
+    /// So a returned value of true means with certitude that the transaction was accepted and
+    /// a false means either the transaction was never accepted or it was but beyond the expiration
+    /// delay.
+    pub async fn has_accepted_transaction(self, transaction_id: TransactionId) -> bool {
+        spawn_blocking(move || self.inner.has_accepted_transaction(&transaction_id)).await.unwrap()
+    }
+
+    /// Returns a vector of unaccepted transactions.
+    /// For more details, see [`Self::has_accepted_transaction()`].
+    pub async fn unaccepted_transactions(self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
+        spawn_blocking(move || self.inner.unaccepted_transactions(transactions)).await.unwrap()
     }
 }

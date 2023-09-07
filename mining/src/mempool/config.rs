@@ -4,6 +4,8 @@ pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: u64 = 1_000_000;
 
 pub(crate) const DEFAULT_TRANSACTION_EXPIRE_INTERVAL_SECONDS: u64 = 60;
 pub(crate) const DEFAULT_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS: u64 = 10;
+pub(crate) const DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_INTERVAL_SECONDS: u64 = 120;
+pub(crate) const DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS: u64 = 10;
 pub(crate) const DEFAULT_ORPHAN_EXPIRE_INTERVAL_SECONDS: u64 = 60;
 pub(crate) const DEFAULT_ORPHAN_EXPIRE_SCAN_INTERVAL_SECONDS: u64 = 10;
 
@@ -29,6 +31,9 @@ pub struct Config {
     pub transaction_expire_interval_daa_score: u64,
     pub transaction_expire_scan_interval_daa_score: u64,
     pub transaction_expire_scan_interval_milliseconds: u64,
+    pub accepted_transaction_expire_interval_daa_score: u64,
+    pub accepted_transaction_expire_scan_interval_daa_score: u64,
+    pub accepted_transaction_expire_scan_interval_milliseconds: u64,
     pub orphan_expire_interval_daa_score: u64,
     pub orphan_expire_scan_interval_daa_score: u64,
     pub maximum_orphan_transaction_mass: u64,
@@ -46,7 +51,10 @@ impl Config {
         maximum_transaction_count: u64,
         transaction_expire_interval_daa_score: u64,
         transaction_expire_scan_interval_daa_score: u64,
-        transaction_expire_scan_interval_seconds: u64,
+        transaction_expire_scan_interval_milliseconds: u64,
+        accepted_transaction_expire_interval_daa_score: u64,
+        accepted_transaction_expire_scan_interval_daa_score: u64,
+        accepted_transaction_expire_scan_interval_milliseconds: u64,
         orphan_expire_interval_daa_score: u64,
         orphan_expire_scan_interval_daa_score: u64,
         maximum_orphan_transaction_mass: u64,
@@ -61,7 +69,10 @@ impl Config {
             maximum_transaction_count,
             transaction_expire_interval_daa_score,
             transaction_expire_scan_interval_daa_score,
-            transaction_expire_scan_interval_milliseconds: transaction_expire_scan_interval_seconds,
+            transaction_expire_scan_interval_milliseconds,
+            accepted_transaction_expire_interval_daa_score,
+            accepted_transaction_expire_scan_interval_daa_score,
+            accepted_transaction_expire_scan_interval_milliseconds,
             orphan_expire_interval_daa_score,
             orphan_expire_scan_interval_daa_score,
             maximum_orphan_transaction_mass,
@@ -83,6 +94,11 @@ impl Config {
             transaction_expire_scan_interval_daa_score: DEFAULT_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000
                 / target_milliseconds_per_block,
             transaction_expire_scan_interval_milliseconds: DEFAULT_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000,
+            accepted_transaction_expire_interval_daa_score: DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_INTERVAL_SECONDS * 1000
+                / target_milliseconds_per_block,
+            accepted_transaction_expire_scan_interval_daa_score: DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000
+                / target_milliseconds_per_block,
+            accepted_transaction_expire_scan_interval_milliseconds: DEFAULT_ACCEPTED_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000,
             orphan_expire_interval_daa_score: DEFAULT_ORPHAN_EXPIRE_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
             orphan_expire_scan_interval_daa_score: DEFAULT_ORPHAN_EXPIRE_SCAN_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
             maximum_orphan_transaction_mass: DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_MASS,

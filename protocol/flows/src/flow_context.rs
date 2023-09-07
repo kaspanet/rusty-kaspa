@@ -361,7 +361,7 @@ impl FlowContext {
             transactions_to_broadcast.enqueue_chunk(
                 self.mining_manager()
                     .clone()
-                    .handle_new_block_transactions(consensus, block.transactions.clone())
+                    .handle_new_block_transactions(consensus, block.header.daa_score, block.transactions.clone())
                     .await?
                     .iter()
                     .map(|x| x.id()),

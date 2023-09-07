@@ -104,6 +104,7 @@ impl RelayTransactionsFlow {
     ) -> Result<Vec<RequestScope<TransactionId>>, ProtocolError> {
         // Build a vector with the transaction ids unknown in the mempool and not already requested
         // by another peer
+        let transaction_ids = self.ctx.mining_manager().clone().unaccepted_transactions(transaction_ids).await;
         let mut requests = Vec::new();
         for transaction_id in transaction_ids {
             if !self.is_known_transaction(transaction_id).await {

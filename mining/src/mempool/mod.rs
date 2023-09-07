@@ -5,7 +5,7 @@ use crate::model::{
 
 use self::{
     config::Config,
-    model::{orphan_pool::OrphanPool, pool::Pool, transactions_pool::TransactionsPool},
+    model::{accepted_transactions::AcceptedTransactions, orphan_pool::OrphanPool, pool::Pool, transactions_pool::TransactionsPool},
     tx::Priority,
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
@@ -40,6 +40,7 @@ pub(crate) struct Mempool {
     config: Arc<Config>,
     transaction_pool: TransactionsPool,
     orphan_pool: OrphanPool,
+    accepted_transactions: AcceptedTransactions,
 }
 
 impl Mempool {
@@ -47,7 +48,8 @@ impl Mempool {
         let config = Arc::new(config);
         let transaction_pool = TransactionsPool::new(config.clone());
         let orphan_pool = OrphanPool::new(config.clone());
-        Self { config, transaction_pool, orphan_pool }
+        let accepted_transactions = AcceptedTransactions::new(config.clone());
+        Self { config, transaction_pool, orphan_pool, accepted_transactions }
     }
 
     pub(crate) fn get_transaction(
@@ -134,6 +136,14 @@ impl Mempool {
         } else {
             false
         }
+    }
+
+    pub(crate) fn has_accepted_transaction(&self, transaction_id: &TransactionId) -> bool {
+        self.accepted_transactions.has(transaction_id)
+    }
+
+    pub(crate) fn unaccepted_transactions(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
+        self.accepted_transactions.unaccepted(transactions)
     }
 }
 

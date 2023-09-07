@@ -21,6 +21,7 @@ impl Mempool {
         consensus: &dyn ConsensusApi,
         mut transaction: MutableTransaction,
     ) -> RuleResult<MutableTransaction> {
+        self.validate_transaction_acceptance(&transaction)?;
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
         transaction.calculated_mass = Some(consensus.calculate_transaction_mass(&transaction.tx));
         self.validate_transaction_in_isolation(&transaction)?;
@@ -66,6 +67,7 @@ impl Mempool {
         }
 
         self.validate_transaction_in_context(&transaction)?;
+        self.validate_transaction_acceptance(&transaction)?;
 
         // Before adding the transaction, check if there is room in the pool
         self.transaction_pool.limit_transaction_count(1, &transaction)?.iter().try_for_each(|x| {
@@ -76,6 +78,15 @@ impl Mempool {
         let accepted_transaction =
             self.transaction_pool.add_transaction(transaction, consensus.get_virtual_daa_score(), priority)?.mtx.tx.clone();
         Ok(Some(accepted_transaction))
+    }
+
+    fn validate_transaction_acceptance(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+        // Reject if the transaction is registered as an accepted transaction
+        let transaction_id = transaction.id();
+        match self.accepted_transactions.has(&transaction_id) {
+            true => Err(RuleError::RejectAlreadyAccepted(transaction_id)),
+            false => Ok(()),
+        }
     }
 
     fn validate_transaction_in_isolation(&self, transaction: &MutableTransaction) -> RuleResult<()> {
@@ -130,6 +141,9 @@ impl Mempool {
                         unorphaned_transactions.push(unorphaned_tx);
                         debug!("Transaction {0} unorphaned", transaction_id);
                     }
+                    Err(RuleError::RejectAlreadyAccepted(transaction_id)) => {
+                        debug!("Ignoring already accepted transaction {}", transaction_id);
+                    }
                     Err(err) => {
                         // In case of validation error, we log the problem and drop the
                         // erroneous transaction.
@@ -151,13 +165,14 @@ impl Mempool {
         //   This job is delegated to a fn called later in the process (Manager::validate_and_insert_unorphaned_transactions).
 
         // Remove the transaction identified by transaction_id from the orphan pool.
-        let mut transactions = self.orphan_pool.remove_orphan(transaction_id, false, TxRemovalReason::Unorphaned)?;
+        let mut transactions = self.orphan_pool.remove_orphan(transaction_id, false, TxRemovalReason::Unorphaned, "")?;
 
         // At this point, `transactions` contains exactly one transaction.
         // The one we just removed from the orphan pool.
         assert_eq!(transactions.len(), 1, "the list returned by remove_orphan is expected to contain exactly one transaction");
         let transaction = transactions.pop().unwrap();
 
+        self.validate_transaction_acceptance(&transaction.mtx)?;
         self.transaction_pool.check_double_spends(&transaction.mtx)?;
         Ok(transaction)
     }

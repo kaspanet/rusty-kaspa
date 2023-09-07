@@ -18,6 +18,9 @@ pub enum RuleError {
     #[error("at least one outpoint of transaction is lacking a matching UTXO entry")]
     RejectMissingOutpoint,
 
+    #[error("transaction {0} was already accepted by the consensus")]
+    RejectAlreadyAccepted(TransactionId),
+
     #[error("transaction {0} is already in the mempool")]
     RejectDuplicate(TransactionId),
 
