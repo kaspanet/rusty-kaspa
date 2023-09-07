@@ -253,6 +253,10 @@ impl MassCalculator {
         calc_minimum_required_transaction_relay_fee(mass)
     }
 
+    pub fn calc_mass_for_signed_transaction(&self, tx: &Transaction, minimum_signatures: u16) -> u64 {
+        self.calc_mass_for_transaction(tx) + self.calc_signature_mass_for_inputs(tx.inputs.len(), minimum_signatures)
+    }
+
     pub fn calc_minium_transaction_relay_fee(&self, tx: &Transaction, minimum_signatures: u16) -> u64 {
         let mass = self.calc_mass_for_transaction(tx) + self.calc_signature_mass_for_inputs(tx.inputs.len(), minimum_signatures);
         calc_minimum_required_transaction_relay_fee(mass)

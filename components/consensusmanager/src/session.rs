@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
     blockstatus::BlockStatus,
     errors::consensus::ConsensusResult,
     header::Header,
-    pruning::{PruningPointProof, PruningPointTrustedData},
+    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, ChainPath, Hash,
@@ -349,6 +349,22 @@ impl ConsensusSessionOwned {
         window_size: usize,
     ) -> ConsensusResult<u64> {
         self.clone().spawn_blocking(move |c| c.estimate_network_hashes_per_second(start_hash, window_size)).await
+    }
+
+    pub async fn async_validate_pruning_points(&self) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.validate_pruning_points()).await
+    }
+
+    pub async fn async_are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
+        self.clone().spawn_blocking(move |c| c.are_pruning_points_violating_finality(pp_list)).await
+    }
+
+    pub async fn async_creation_timestamp(&self) -> u64 {
+        self.clone().spawn_blocking(move |c| c.creation_timestamp()).await
+    }
+
+    pub async fn async_finality_point(&self) -> Hash {
+        self.clone().spawn_blocking(move |c| c.finality_point()).await
     }
 }
 

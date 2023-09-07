@@ -7,6 +7,7 @@ use std::{
 };
 
 use itertools::Itertools;
+use kaspa_math::int::SignedInteger;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 
@@ -488,7 +489,7 @@ impl PruningProofManager {
         let pruning_read = self.pruning_point_store.read();
         let relations_read = self.relations_stores.read();
         let current_pp = pruning_read.get().unwrap().pruning_point;
-        let current_pp_header = headers_store.get_header(current_pp).unwrap();
+        let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
         for (level_idx, selected_tip) in selected_tip_by_level.into_iter().enumerate() {
             let level = level_idx as BlockLevel;
@@ -524,10 +525,12 @@ impl PruningProofManager {
             };
 
             if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = common_ancestor_data {
-                let selected_tip_blue_work_diff = proof_selected_tip_gd.blue_work - proof_common_ancestor_gd.blue_work;
+                let selected_tip_blue_work_diff =
+                    SignedInteger::from(proof_selected_tip_gd.blue_work) - SignedInteger::from(proof_common_ancestor_gd.blue_work);
                 for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
                     let parent_blue_work = self.ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
-                    let parent_blue_work_diff = parent_blue_work - common_ancestor_gd.blue_work;
+                    let parent_blue_work_diff =
+                        SignedInteger::from(parent_blue_work) - SignedInteger::from(common_ancestor_gd.blue_work);
                     if parent_blue_work_diff >= selected_tip_blue_work_diff {
                         return Err(PruningImportError::PruningProofInsufficientBlueWork);
                     }
@@ -535,6 +538,12 @@ impl PruningProofManager {
 
                 return Ok(());
             }
+        }
+
+        if current_pp == self.genesis_hash {
+            // If the proof has better tips and the current pruning point is still
+            // genesis, we consider the proof state to be better.
+            return Ok(());
         }
 
         for level in (0..=self.max_block_level).rev() {

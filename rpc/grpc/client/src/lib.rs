@@ -56,7 +56,7 @@ pub type GrpcClientNotifier = Notifier<Notification, ChannelConnection>;
 
 type DirectSubscriptions = Mutex<EventArray<SingleSubscription>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GrpcClient {
     inner: Arc<Inner>,
     /// In multi listener mode, a full-featured Notifier
@@ -122,6 +122,7 @@ impl GrpcClient {
     pub async fn start(&self, notify: Option<GrpcClientNotify>) {
         match &self.notification_mode {
             NotificationMode::MultiListeners => {
+                assert!(notify.is_none(), "client is on multi-listeners mode");
                 self.notifier.clone().unwrap().start();
             }
             NotificationMode::Direct => {
