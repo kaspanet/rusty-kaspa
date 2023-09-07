@@ -94,7 +94,7 @@ impl OrphanPool {
             }
             // Don't remove redeemers in the case of a random eviction since the evicted transaction is
             // not invalid, therefore it's redeemers are as good as any orphan that just arrived.
-            self.remove_orphan(&orphan_to_remove.unwrap().id(), false, TxRemovalReason::MakingRoom)?;
+            self.remove_orphan(&orphan_to_remove.unwrap().id(), false, TxRemovalReason::MakingRoom, "")?;
         }
         Ok(())
     }
@@ -162,6 +162,7 @@ impl OrphanPool {
         transaction_id: &TransactionId,
         remove_redeemers: bool,
         reason: TxRemovalReason,
+        extra_info: &str,
     ) -> RuleResult<Vec<MempoolTransaction>> {
         // Rust rewrite:
         // - the call cycle removeOrphan -> removeRedeemersOf -> removeOrphan is replaced by
@@ -178,18 +179,21 @@ impl OrphanPool {
         }
         let removed_transactions =
             transaction_ids_to_remove.iter().map(|x| self.remove_single_orphan(x)).collect::<RuleResult<Vec<_>>>()?;
-        match removed_transactions.len() {
-            0 => (), // This is not possible
-            1 => {
-                debug!("Removed transaction from orphan pool ({}): {}", reason, removed_transactions[0].id());
-            }
-            n => {
-                debug!(
-                    "Removed {} transactions from orphan pool ({}): {}",
-                    n,
-                    reason,
-                    removed_transactions.iter().map(|x| x.id()).reusable_format(", ")
-                );
+        if reason.verbose() {
+            match removed_transactions.len() {
+                0 => (), // This is not possible
+                1 => {
+                    debug!("Removed transaction from orphan pool ({}): {}{}", reason, removed_transactions[0].id(), extra_info);
+                }
+                n => {
+                    debug!(
+                        "Removed {} transactions from orphan pool ({}): {}{}",
+                        n,
+                        reason,
+                        removed_transactions.iter().map(|x| x.id()).reusable_format(", "),
+                        extra_info
+                    );
+                }
             }
         }
         Ok(removed_transactions)
@@ -235,11 +239,10 @@ impl OrphanPool {
         &mut self,
         removed_transaction: &MempoolTransaction,
         remove_redeemers: bool,
-    ) -> RuleResult<()> {
+    ) -> RuleResult<Vec<MempoolTransaction>> {
         let removed_transaction_id = removed_transaction.id();
         if remove_redeemers {
-            self.remove_redeemers_of(&removed_transaction_id)?;
-            return Ok(());
+            return self.remove_redeemers_of(&removed_transaction_id);
         }
 
         let mut outpoint = TransactionOutpoint::new(removed_transaction_id, 0);
@@ -253,7 +256,7 @@ impl OrphanPool {
                 }
             }
         }
-        Ok(())
+        Ok(vec![])
     }
 
     fn get_random_low_priority_orphan(&self) -> Option<&MempoolTransaction> {
@@ -300,7 +303,7 @@ impl Pool for OrphanPool {
             .collect();
 
         for transaction_id in expired_low_priority_transactions.iter() {
-            self.remove_orphan(transaction_id, false, TxRemovalReason::Expired)?;
+            self.remove_orphan(transaction_id, false, TxRemovalReason::Expired, "")?;
         }
 
         self.last_expire_scan = virtual_daa_score;

@@ -2,7 +2,12 @@ use crate::{
     mempool::{
         config::Config,
         errors::{RuleError, RuleResult},
-        model::{map::MempoolTransactionCollection, pool::Pool, tx::MempoolTransaction, utxo_set::MempoolUtxoSet},
+        model::{
+            map::MempoolTransactionCollection,
+            pool::{Pool, TransactionsEdges},
+            tx::{MempoolTransaction, TxRemovalReason},
+            utxo_set::MempoolUtxoSet,
+        },
         tx::Priority,
     },
     model::{candidate_tx::CandidateTransaction, topological_index::TopologicalIndex},
@@ -12,12 +17,11 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, TransactionOutpoint},
 };
 use kaspa_core::{debug, time::unix_now, trace, warn};
+use kaspa_utils::iter::IterExtensions;
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
     sync::Arc,
 };
-
-use super::pool::TransactionsEdges;
 
 /// Pool of transactions to be included in a block template
 ///
@@ -309,12 +313,6 @@ impl Pool for TransactionsPool {
                 if (x.priority == Priority::Low)
                     && virtual_daa_score > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
                 {
-                    debug!(
-                        "Removing transaction {}, because it expired, virtual DAA score is {} and expire limit is {}",
-                        x.id(),
-                        virtual_daa_score,
-                        x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
-                    );
                     Some(x.id())
                 } else {
                     None
@@ -324,6 +322,16 @@ impl Pool for TransactionsPool {
 
         for transaction_id in expired_low_priority_transactions.iter() {
             self.remove_transaction(transaction_id)?;
+        }
+        match expired_low_priority_transactions.len() {
+            0 => {}
+            1 => debug!("Removed transaction ({}) {}", TxRemovalReason::Expired, expired_low_priority_transactions[0]),
+            n => debug!(
+                "Removed {} transactions ({}): {}",
+                n,
+                TxRemovalReason::Expired,
+                expired_low_priority_transactions.iter().reusable_format(", ")
+            ),
         }
 
         self.last_expire_scan_daa_score = virtual_daa_score;

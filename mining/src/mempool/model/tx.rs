@@ -78,7 +78,7 @@ impl TxRemovalReason {
     }
 
     pub(crate) fn verbose(&self) -> bool {
-        matches!(self, TxRemovalReason::Muted)
+        !matches!(self, TxRemovalReason::Muted)
     }
 }
 
