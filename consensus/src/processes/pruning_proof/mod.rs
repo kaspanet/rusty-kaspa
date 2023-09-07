@@ -488,7 +488,7 @@ impl PruningProofManager {
         let pruning_read = self.pruning_point_store.read();
         let relations_read = self.relations_stores.read();
         let current_pp = pruning_read.get().unwrap().pruning_point;
-        let current_pp_header = headers_store.get_header(current_pp).unwrap();
+        let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
         for (level_idx, selected_tip) in selected_tip_by_level.into_iter().enumerate() {
             let level = level_idx as BlockLevel;
