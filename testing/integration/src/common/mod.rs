@@ -4,6 +4,8 @@ use std::{
     path::Path,
 };
 
+pub mod daemon;
+
 pub fn open_file(file_path: &Path) -> File {
     let file_res = File::open(file_path);
     match file_res {

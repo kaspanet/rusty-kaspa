@@ -50,7 +50,7 @@ fn get_app_dir() -> PathBuf {
 fn validate_args(args: &Args) -> ConfigResult<()> {
     #[cfg(feature = "devnet-prealloc")]
     {
-        if args.num_prealloc_utxos.is_some() && !args.devnet {
+        if args.num_prealloc_utxos.is_some() && !(args.devnet || args.simnet) {
             return Err(ConfigError::PreallocUtxosOnNonDevnet);
         }
 
@@ -256,7 +256,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         let cb = move |counters| {
             trace!("[{}] metrics: {:?}", kaspa_perf_monitor::SERVICE_NAME, counters);
             #[cfg(feature = "heap")]
-            trace!("heap stats: {:?}", dhat::HeapStats::get());
+            trace!("[{}] heap stats: {:?}", kaspa_perf_monitor::SERVICE_NAME, dhat::HeapStats::get());
         };
         Arc::new(perf_monitor_builder.with_fetch_cb(cb).build())
     } else {
