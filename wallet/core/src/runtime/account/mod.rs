@@ -302,7 +302,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
         let settings =
             GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), PaymentDestination::Change, Fees::None, None)?;
-        let generator = Generator::new(settings, Some(signer), abortable);
+        let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
 
         let mut stream = generator.stream();
         let mut ids = vec![];
@@ -336,7 +336,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
         let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
 
-        let generator = Generator::new(settings, Some(signer), abortable);
+        let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
 
         let mut stream = generator.stream();
         let mut ids = vec![];
@@ -364,7 +364,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
     ) -> Result<GeneratorSummary> {
         let settings = GeneratorSettings::try_new_with_account(self.as_dyn_arc(), destination, priority_fee_sompi, payload)?;
 
-        let generator = Generator::new(settings, None, abortable);
+        let generator = Generator::try_new(settings, None, Some(abortable))?;
 
         let mut stream = generator.stream();
         while let Some(_transaction) = stream.try_next().await? {
@@ -448,7 +448,7 @@ pub trait DerivationCapableAccount: Account {
                         None,
                     )?;
 
-                    let generator = Generator::new(settings, Some(signer), abortable);
+                    let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
 
                     let mut stream = generator.stream();
                     while let Some(transaction) = stream.try_next().await? {

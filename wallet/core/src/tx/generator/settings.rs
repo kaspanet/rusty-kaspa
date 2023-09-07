@@ -24,7 +24,7 @@ pub struct GeneratorSettings {
     // change address
     pub change_address: Address,
     // applies only to the final transaction
-    pub final_priority_fee: Fees,
+    pub final_transaction_priority_fee: Fees,
     // final transaction outputs
     pub final_transaction_destination: PaymentDestination,
     // payload
@@ -55,7 +55,7 @@ impl GeneratorSettings {
             utxo_iterator: Box::new(utxo_iterator),
             utxo_context: Some(account.utxo_context().clone()),
 
-            final_priority_fee,
+            final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
         };
@@ -85,7 +85,7 @@ impl GeneratorSettings {
             utxo_iterator: Box::new(utxo_iterator),
             utxo_context: Some(utxo_context),
 
-            final_priority_fee,
+            final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
         };
@@ -114,7 +114,7 @@ impl GeneratorSettings {
             utxo_iterator: Box::new(utxo_iterator),
             utxo_context: None,
 
-            final_priority_fee,
+            final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
         };

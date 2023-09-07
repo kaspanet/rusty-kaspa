@@ -111,7 +111,7 @@ impl Generator {
         };
 
         let abortable = Abortable::default();
-        let generator = native::Generator::new(settings, None, &abortable);
+        let generator = native::Generator::try_new(settings, None, Some(&abortable))?;
 
         Ok(Self { inner: Arc::new(generator) })
     }

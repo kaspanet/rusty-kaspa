@@ -127,9 +127,28 @@ impl From<PaymentOutputs> for Vec<TransactionOutput> {
     }
 }
 
-impl TryFrom<(Address, u64)> for PaymentOutputs {
-    type Error = Error;
-    fn try_from((address, amount): (Address, u64)) -> Result<Self, Self::Error> {
-        Ok(PaymentOutputs { outputs: vec![PaymentOutput::new(address, amount)] })
+impl From<(Address, u64)> for PaymentOutputs {
+    fn from((address, amount): (Address, u64)) -> Self {
+        PaymentOutputs { outputs: vec![PaymentOutput::new(address, amount)] }
+    }
+}
+
+impl From<(&Address, u64)> for PaymentOutputs {
+    fn from((address, amount): (&Address, u64)) -> Self {
+        PaymentOutputs { outputs: vec![PaymentOutput::new(address.clone(), amount)] }
+    }
+}
+
+impl From<&[(Address, u64)]> for PaymentOutputs {
+    fn from(outputs: &[(Address, u64)]) -> Self {
+        let outputs = outputs.iter().map(|(address, amount)| PaymentOutput::new(address.clone(), *amount)).collect();
+        PaymentOutputs { outputs }
+    }
+}
+
+impl From<&[(&Address, u64)]> for PaymentOutputs {
+    fn from(outputs: &[(&Address, u64)]) -> Self {
+        let outputs = outputs.iter().map(|(address, amount)| PaymentOutput::new((*address).clone(), *amount)).collect();
+        PaymentOutputs { outputs }
     }
 }

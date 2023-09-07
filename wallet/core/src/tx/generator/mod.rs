@@ -14,3 +14,6 @@ pub use settings::*;
 pub use signer::*;
 pub use stream::*;
 pub use summary::*;
+
+#[cfg(test)]
+mod test;

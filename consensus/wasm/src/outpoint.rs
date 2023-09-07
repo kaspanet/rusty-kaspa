@@ -141,3 +141,9 @@ impl From<TransactionOutpoint> for cctx::TransactionOutpoint {
         cctx::TransactionOutpoint::new(transaction_id, index)
     }
 }
+
+impl TransactionOutpoint {
+    pub fn fake() -> Self {
+        Self::new(TransactionId::from_slice(&[0; kaspa_hashes::HASH_SIZE]), 0)
+    }
+}

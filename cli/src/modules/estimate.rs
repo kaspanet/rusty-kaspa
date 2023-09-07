@@ -22,7 +22,7 @@ impl Estimate {
 
         // just use any address for an estimate (change address)
         let change_address = account.change_address()?;
-        let destination = PaymentDestination::PaymentOutputs(PaymentOutputs::try_from((change_address.clone(), amount_sompi))?);
+        let destination = PaymentDestination::PaymentOutputs(PaymentOutputs::from((change_address.clone(), amount_sompi)));
         let estimate = account.estimate(destination, priority_fee_sompi.into(), None, &abortable).await?;
 
         tprintln!(ctx, "Estimate - {estimate}");

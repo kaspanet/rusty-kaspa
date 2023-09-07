@@ -26,7 +26,7 @@ impl Transfer {
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
 
         let abortable = Abortable::default();
-        let outputs = PaymentOutputs::try_from((target_address.clone(), amount_sompi))?;
+        let outputs = PaymentOutputs::from((target_address.clone(), amount_sompi));
 
         // let ctx_ = ctx.clone();
         let (summary, _ids) = account
