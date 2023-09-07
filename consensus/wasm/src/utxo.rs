@@ -296,3 +296,26 @@ impl TryFrom<&JsValue> for UtxoEntryReference {
         }
     }
 }
+
+impl UtxoEntryReference {
+    pub fn fake(amount: u64) -> Self {
+        use kaspa_addresses::{Prefix, Version};
+        let address = Address::new(Prefix::Testnet, Version::PubKey, &[0; 32]);
+        Self::fake_with_address(amount, &address)
+    }
+
+    pub fn fake_with_address(amount: u64, address: &Address) -> Self {
+        let outpoint = TransactionOutpoint::fake();
+        let script_public_key = kaspa_txscript::pay_to_address_script(address);
+        let block_daa_score = 0;
+        let is_coinbase = true;
+
+        let utxo_entry = UtxoEntry {
+            address: Some(address.clone()),
+            outpoint,
+            entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
+        };
+
+        UtxoEntryReference::from(utxo_entry)
+    }
+}
