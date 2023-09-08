@@ -48,7 +48,7 @@ impl SyncMonitor {
                     log_trace!("sync monitor: stopping sync monitor task");
                     self.stop_task().await?;
                 }
-                self.notify(Events::SyncState(SyncState::Synced)).await?;
+                self.notify(Events::SyncState { sync_state: SyncState::Synced }).await?;
             } else {
                 self.inner.is_synced.store(false, Ordering::SeqCst);
                 log_trace!("sync monitor: node is not synced");
@@ -56,7 +56,7 @@ impl SyncMonitor {
                     log_trace!("sync monitor: starting sync monitor task");
                     self.start_task().await?;
                 }
-                self.notify(Events::SyncState(SyncState::NotSynced)).await?;
+                self.notify(Events::SyncState { sync_state: SyncState::NotSynced }).await?;
             }
         }
 
@@ -133,7 +133,7 @@ impl SyncMonitor {
                             if is_synced {
                                 if is_synced != this.is_synced() {
                                     this.inner.is_synced.store(true, Ordering::SeqCst);
-                                    this.notify(Events::SyncState(SyncState::Synced)).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
+                                    this.notify(Events::SyncState { sync_state : SyncState::Synced }).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
                                     // this.notify(Events::NodeSync { is_synced }).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
                                 }
 
@@ -181,8 +181,8 @@ impl SyncMonitor {
                 }
             }
         }
-        if let Some(state) = state {
-            self.notify(Events::SyncState(state)).await?;
+        if let Some(sync_state) = state {
+            self.notify(Events::SyncState { sync_state }).await?;
         }
 
         Ok(())

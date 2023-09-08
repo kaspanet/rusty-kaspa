@@ -14,6 +14,7 @@ use crate::storage::*;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use workflow_core::runtime::is_web;
+use workflow_store::fs;
 
 pub enum Store {
     Resident,
@@ -225,6 +226,21 @@ impl Interface for LocalStore {
         let inner = Arc::new(LocalStoreInner::try_load(ctx, &location.folder, args).await?);
         self.inner.lock().unwrap().replace(inner);
         Ok(())
+    }
+
+    async fn wallet_list(&self) -> Result<Vec<String>> {
+        let location = self.location.lock().unwrap().clone().unwrap();
+
+        let folder = fs::resolve_path(&location.folder)?;
+        let files = fs::readdir(folder, false).await?;
+        let wallets = files
+            .iter()
+            .filter_map(|de| {
+                let file_name = de.file_name();
+                file_name.ends_with(".wallet").then(|| file_name.trim_end_matches(".wallet").to_string())
+            })
+            .collect::<Vec<_>>();
+        Ok(wallets)
     }
 
     fn is_open(&self) -> bool {

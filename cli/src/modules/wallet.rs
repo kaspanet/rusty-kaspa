@@ -14,6 +14,17 @@ impl Wallet {
         }
 
         match argv.remove(0).as_str() {
+            "list" => {
+                let wallets = ctx.store().wallet_list().await?;
+                if wallets.is_empty() {
+                    tprintln!(ctx, "No wallets found");
+                } else {
+                    tprintln!(ctx, "Wallets:");
+                    for wallet in wallets {
+                        tprintln!(ctx, "  {}", wallet);
+                    }
+                }
+            }
             "create" => {
                 let wallet_name = if argv.is_empty() {
                     None

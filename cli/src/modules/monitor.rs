@@ -109,7 +109,7 @@ impl Monitor {
 
         let events = events.lock().unwrap();
         events.iter().for_each(|event| match event {
-            Events::DAAScoreChange(..) => {}
+            Events::DAAScoreChange { .. } => {}
             Events::Balance { balance, id, mature_utxo_size, pending_utxo_size } => {
                 let network_id = wallet.network_id().expect("missing network type");
                 let network_type = NetworkType::from(network_id);

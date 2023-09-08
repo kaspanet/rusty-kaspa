@@ -283,8 +283,8 @@ impl KaspaCli {
                             match msg {
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},
-                                Events::UtxoProcError(err) => {
-                                    terrorln!(this,"{err}");
+                                Events::UtxoProcError { message } => {
+                                    terrorln!(this,"{message}");
                                 },
                                 #[allow(unused_variables)]
                                 Events::Connect{ url, network_id } => {
@@ -298,8 +298,8 @@ impl KaspaCli {
                                 Events::UtxoIndexNotEnabled => {
                                     tprintln!(this, "Error: Kaspa node UTXO index is not enabled...")
                                 },
-                                Events::SyncState(state) => {
-                                    this.sync_state.lock().unwrap().replace(state);
+                                Events::SyncState { sync_state } => {
+                                    this.sync_state.lock().unwrap().replace(sync_state);
                                     this.term().refresh_prompt();
                                 }
                                 Events::ServerStatus {
@@ -334,11 +334,15 @@ impl KaspaCli {
                                     }
 
                                 },
+                                Events::AccountSelection { .. } => { },
+                                Events::WalletError { .. } => { },
                                 Events::WalletOpen |
                                 Events::WalletReload => {
 
                                     // load all accounts
-                                    this.wallet().activate_all_stored_accounts().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
+                                    if let Err(err) = this.wallet().activate_all_stored_accounts().await {
+                                        terrorln!(this, "{err}");
+                                    }
 
                                     // list all accounts
                                     this.list().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
@@ -351,9 +355,9 @@ impl KaspaCli {
                                 Events::WalletClose => {
                                     this.term().refresh_prompt();
                                 },
-                                Events::DAAScoreChange(daa) => {
+                                Events::DAAScoreChange { daa_score } => {
                                     if this.is_mutted() && this.flags.get(Track::Daa) {
-                                        tprintln!(this, "{NOTIFY} DAA: {daa}");
+                                        tprintln!(this, "{NOTIFY} DAA: {daa_score}");
                                     }
                                 },
                                 Events::Reorg {

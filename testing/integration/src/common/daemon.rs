@@ -54,7 +54,7 @@ impl Daemon {
         args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
 
         let network = args.network();
-        let core = create_core_with_runtime(&Default::default(), &args);
+        let (core, _) = create_core_with_runtime(&Default::default(), &args);
         Daemon { network, rpc_port, p2p_port, core, workers: None, _appdir_tempdir: appdir_tempdir }
     }
 

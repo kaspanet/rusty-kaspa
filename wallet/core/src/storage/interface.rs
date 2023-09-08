@@ -123,6 +123,10 @@ impl OpenArgs {
 
 #[async_trait]
 pub trait Interface: Send + Sync + AnySync {
+    /// enumerate all wallets available in the storage
+    async fn wallet_list(&self) -> Result<Vec<String>>;
+
+    /// check if a wallet is currently open
     fn is_open(&self) -> bool;
 
     /// return storage information string (file location)

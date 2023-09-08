@@ -220,9 +220,8 @@ impl Wallet {
 
             /// For end-user wallets only - activates all accounts in the wallet
             /// storage.
-            pub async fn activate_all_stored_accounts(self: &Arc<Wallet>) -> Result<()> {
-                self.accounts(None).await?.try_collect::<Vec<_>>().await?;
-                Ok(())
+            pub async fn activate_all_stored_accounts(self: &Arc<Wallet>) -> Result<Vec<Arc<dyn Account>>> {
+                Ok(self.accounts(None).await?.try_collect::<Vec<_>>().await?)
             }
 
             /// Select an account as 'active'. Supply `None` to remove active selection.
@@ -231,6 +230,9 @@ impl Wallet {
                 if let Some(account) = account {
                     // log_info!("selecting account: {}", account.name_or_id());
                     account.clone().start().await?;
+                    self.notify(Events::AccountSelection{ id : Some(*account.id()) }).await?;
+                } else {
+                    self.notify(Events::AccountSelection{ id : None }).await?;
                 }
                 Ok(())
             }
@@ -246,7 +248,7 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+    async fn load_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
         self.reset().await?;
 
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
@@ -258,6 +260,16 @@ impl Wallet {
         self.notify(Events::WalletOpen).await?;
 
         Ok(())
+    }
+
+    /// Loads a wallet from storage. Accounts are not activated by this call.
+    pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+        if let Err(err) = self.load_impl(secret, name).await {
+            self.notify(Events::WalletError { message: err.to_string() }).await?;
+            Err(err)
+        } else {
+            Ok(())
+        }
     }
 
     pub async fn get_prv_key_data(&self, wallet_secret: Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
@@ -541,8 +553,8 @@ impl Wallet {
             Events::Reorg { record } | Events::External { record } | Events::Outgoing { record } => {
                 self.store().as_transaction_record_store()?.store(&[record]).await?;
             }
-            Events::SyncState(state) => {
-                if state.is_synced() && self.is_open() {
+            Events::SyncState { sync_state } => {
+                if sync_state.is_synced() && self.is_open() {
                     self.reload().await?;
                 }
             }
