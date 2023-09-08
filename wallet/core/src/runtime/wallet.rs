@@ -102,7 +102,7 @@ pub struct Inner {
     settings: SettingsStore<WalletSettings>,
     utxo_processor: Arc<UtxoProcessor>,
     rpc: Arc<DynRpcApi>,
-    multiplexer: Multiplexer<Events>,
+    multiplexer: Multiplexer<Box<Events>>,
 }
 
 /// `Wallet` data structure
@@ -131,7 +131,7 @@ impl Wallet {
             Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, NotificationMode::MultiListeners, "wrpc://127.0.0.1:17110")?)
         };
 
-        let multiplexer = Multiplexer::new();
+        let multiplexer = Multiplexer::<Box<Events>>::new();
         let utxo_processor = Arc::new(UtxoProcessor::new(&rpc, network_id, Some(multiplexer.clone())));
 
         let wallet = Wallet {
@@ -293,7 +293,7 @@ impl Wallet {
         &self.inner.rpc
     }
 
-    pub fn multiplexer(&self) -> &Multiplexer<Events> {
+    pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
         &self.inner.multiplexer
     }
 
@@ -527,7 +527,7 @@ impl Wallet {
 
     pub async fn notify(&self, event: Events) -> Result<()> {
         self.multiplexer()
-            .try_broadcast(event)
+            .try_broadcast(Box::new(event))
             .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
         Ok(())
     }
@@ -540,8 +540,8 @@ impl Wallet {
         self.utxo_processor().is_connected()
     }
 
-    async fn handle_event(self: &Arc<Self>, event: Events) -> Result<()> {
-        match &event {
+    async fn handle_event(self: &Arc<Self>, event: Box<Events>) -> Result<()> {
+        match &*event {
             Events::Pending { record, is_outgoing } | Events::Maturity { record, is_outgoing } => {
                 // if `is_outgoint` is set, this means that this pending and maturity
                 // event is for the change UTXOs of the outgoing transaction.

@@ -91,7 +91,7 @@ impl Monitor {
         Ok(())
     }
 
-    async fn redraw(self: &Arc<Self>, ctx: &Arc<KaspaCli>, events: &Arc<Mutex<VecDeque<Events>>>) -> Result<()> {
+    async fn redraw(self: &Arc<Self>, ctx: &Arc<KaspaCli>, events: &Arc<Mutex<VecDeque<Box<Events>>>>) -> Result<()> {
         tprint!(ctx, "{}", ClearScreen);
         tprint!(ctx, "{}", Goto(1, 1));
 
@@ -108,7 +108,7 @@ impl Monitor {
         ctx.list().await?;
 
         let events = events.lock().unwrap();
-        events.iter().for_each(|event| match event {
+        events.iter().for_each(|event| match event.deref() {
             Events::DAAScoreChange { .. } => {}
             Events::Balance { balance, id, mature_utxo_size, pending_utxo_size } => {
                 let network_id = wallet.network_id().expect("missing network type");

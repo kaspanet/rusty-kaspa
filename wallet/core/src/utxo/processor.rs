@@ -37,11 +37,11 @@ pub struct Inner {
     task_ctl: DuplexChannel,
     notification_channel: Channel<Notification>,
     sync_proc: SyncMonitor,
-    multiplexer: Multiplexer<Events>,
+    multiplexer: Multiplexer<Box<Events>>,
 }
 
 impl Inner {
-    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: Multiplexer<Events>) -> Self {
+    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: Multiplexer<Box<Events>>) -> Self {
         Self {
             pending: DashMap::new(),
             address_to_utxo_context_map: DashMap::new(),
@@ -65,7 +65,7 @@ pub struct UtxoProcessor {
 }
 
 impl UtxoProcessor {
-    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: Option<Multiplexer<Events>>) -> Self {
+    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: Option<Multiplexer<Box<Events>>>) -> Self {
         let multiplexer = multiplexer.unwrap_or_else(Multiplexer::new);
         UtxoProcessor { inner: Arc::new(Inner::new(rpc, network_id, multiplexer)) }
     }
@@ -78,7 +78,7 @@ impl UtxoProcessor {
         self.rpc().clone().downcast_arc::<KaspaRpcClient>().expect("unable to downcast DynRpcApi to KaspaRpcClient")
     }
 
-    pub fn multiplexer(&self) -> &Multiplexer<Events> {
+    pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
         &self.inner.multiplexer
     }
 
@@ -154,13 +154,15 @@ impl UtxoProcessor {
     }
 
     pub async fn notify(&self, event: Events) -> Result<()> {
-        self.multiplexer().try_broadcast(event).map_err(|_| Error::Custom("multiplexer channel error during notify".to_string()))?;
+        self.multiplexer()
+            .try_broadcast(Box::new(event))
+            .map_err(|_| Error::Custom("multiplexer channel error during notify".to_string()))?;
         Ok(())
     }
 
     pub fn try_notify(&self, event: Events) -> Result<()> {
         self.multiplexer()
-            .try_broadcast(event)
+            .try_broadcast(Box::new(event))
             .map_err(|_| Error::Custom("multiplexer channel error during try_notify".to_string()))?;
         Ok(())
     }
@@ -401,17 +403,17 @@ impl UtxoProcessor {
                             Ok(msg) => {
                                 match msg {
                                     Ctl::Open => {
-                                        this.inner.multiplexer.try_broadcast(Events::Connect {
+                                        this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
                                             network_id : this.network_id().expect("network id expected during connection"),
                                             url : this.rpc_client().url().to_string()
-                                        }).unwrap_or_else(|err| log_error!("{err}"));
+                                        })).unwrap_or_else(|err| log_error!("{err}"));
                                         this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
                                     },
                                     Ctl::Close => {
-                                        this.inner.multiplexer.try_broadcast(Events::Disconnect {
+                                        this.inner.multiplexer.try_broadcast(Box::new(Events::Disconnect {
                                             network_id : this.network_id().expect("network id expected during connection"),
                                             url : this.rpc_client().url().to_string()
-                                        }).unwrap_or_else(|err| log_error!("{err}"));
+                                        })).unwrap_or_else(|err| log_error!("{err}"));
                                         this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
                                     }
                                 }

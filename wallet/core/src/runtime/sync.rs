@@ -6,7 +6,7 @@ use regex::Regex;
 struct Inner {
     task_ctl: DuplexChannel,
     rpc: Arc<DynRpcApi>,
-    multiplexer: Multiplexer<Events>,
+    multiplexer: Multiplexer<Box<Events>>,
     running: AtomicBool,
     is_synced: AtomicBool,
     state_observer: StateObserver,
@@ -18,7 +18,7 @@ pub struct SyncMonitor {
 }
 
 impl SyncMonitor {
-    pub fn new(rpc: &Arc<DynRpcApi>, multiplexer: &Multiplexer<Events>) -> Self {
+    pub fn new(rpc: &Arc<DynRpcApi>, multiplexer: &Multiplexer<Box<Events>>) -> Self {
         Self {
             inner: Arc::new(Inner {
                 rpc: rpc.clone(),
@@ -74,19 +74,19 @@ impl SyncMonitor {
         &self.inner.rpc
     }
 
-    pub fn multiplexer(&self) -> &Multiplexer<Events> {
+    pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
         &self.inner.multiplexer
     }
 
     pub async fn notify(&self, event: Events) -> Result<()> {
         self.multiplexer()
-            .try_broadcast(event)
+            .try_broadcast(Box::new(event))
             .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
         Ok(())
     }
 
-    async fn handle_event(&self, event: Events) -> Result<()> {
-        match &event {
+    async fn handle_event(&self, event: Box<Events>) -> Result<()> {
+        match *event {
             Events::UtxoProcStart { .. } => {}
             Events::UtxoProcStop { .. } => {}
             _ => {}

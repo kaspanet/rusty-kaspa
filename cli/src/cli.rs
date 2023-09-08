@@ -280,7 +280,7 @@ impl KaspaCli {
                     msg = multiplexer.receiver.recv().fuse() => {
 
                         if let Ok(msg) = msg {
-                            match msg {
+                            match *msg {
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},
                                 Events::UtxoProcError { message } => {
