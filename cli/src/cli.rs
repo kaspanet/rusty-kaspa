@@ -355,9 +355,9 @@ impl KaspaCli {
                                 Events::WalletClose => {
                                     this.term().refresh_prompt();
                                 },
-                                Events::DAAScoreChange { daa_score } => {
+                                Events::DAAScoreChange { current_daa_score } => {
                                     if this.is_mutted() && this.flags.get(Track::Daa) {
-                                        tprintln!(this, "{NOTIFY} DAA: {daa_score}");
+                                        tprintln!(this, "{NOTIFY} DAA: {current_daa_score}");
                                     }
                                 },
                                 Events::Reorg {

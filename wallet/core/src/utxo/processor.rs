@@ -165,20 +165,20 @@ impl UtxoProcessor {
         Ok(())
     }
 
-    pub async fn handle_daa_score_change(&self, daa_score: u64) -> Result<()> {
-        self.inner.current_daa_score.store(daa_score, Ordering::SeqCst);
-        self.notify(Events::DAAScoreChange { daa_score }).await?;
-        self.handle_pending(daa_score).await?;
-        self.handle_recoverable(daa_score).await?;
+    pub async fn handle_daa_score_change(&self, current_daa_score: u64) -> Result<()> {
+        self.inner.current_daa_score.store(current_daa_score, Ordering::SeqCst);
+        self.notify(Events::DAAScoreChange { current_daa_score }).await?;
+        self.handle_pending(current_daa_score).await?;
+        self.handle_recoverable(current_daa_score).await?;
         Ok(())
     }
 
-    pub async fn handle_pending(&self, daa_score: u64) -> Result<()> {
+    pub async fn handle_pending(&self, current_daa_score: u64) -> Result<()> {
         let mature_entries = {
             let mut mature_entries = vec![];
             let pending_entries = &self.inner.pending;
             pending_entries.retain(|_, pending| {
-                if pending.is_mature(daa_score) {
+                if pending.is_mature(current_daa_score) {
                     mature_entries.push(pending.clone());
                     false
                 } else {

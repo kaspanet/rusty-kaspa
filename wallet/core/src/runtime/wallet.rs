@@ -221,7 +221,7 @@ impl Wallet {
             /// For end-user wallets only - activates all accounts in the wallet
             /// storage.
             pub async fn activate_all_stored_accounts(self: &Arc<Wallet>) -> Result<Vec<Arc<dyn Account>>> {
-                Ok(self.accounts(None).await?.try_collect::<Vec<_>>().await?)
+                self.accounts(None).await?.try_collect::<Vec<_>>().await
             }
 
             /// Select an account as 'active'. Supply `None` to remove active selection.

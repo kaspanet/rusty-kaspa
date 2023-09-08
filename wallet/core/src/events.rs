@@ -105,7 +105,7 @@ pub enum Events {
     /// for an unknown reason. (general error trap)
     UtxoProcError { message: String },
     /// DAA score change
-    DAAScoreChange { daa_score: u64 },
+    DAAScoreChange { current_daa_score: u64 },
     /// New incoming pending UTXO/transaction
     Pending {
         record: TransactionRecord,
