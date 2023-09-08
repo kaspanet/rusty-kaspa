@@ -131,12 +131,12 @@ impl Runtime {
     }
 }
 
-pub fn create_core(args: Args) -> Arc<Core> {
+pub fn create_core(args: Args) -> (Arc<Core>,Arc<RpcCoreService>) {
     let rt = Runtime::from_args(&args);
     create_core_with_runtime(&rt, &args)
 }
 
-pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> Arc<Core> {
+pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> (Arc<Core>,Arc<RpcCoreService>) {
     let network = args.network();
 
     // Make sure args forms a valid set of properties
@@ -353,5 +353,5 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     core.bind(consensus_manager);
     core.bind(async_runtime);
 
-    core
+    (core,rpc_core_service)
 }
