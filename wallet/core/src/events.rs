@@ -64,7 +64,11 @@ pub enum Events {
     },
     /// A special event emitted if the connected node
     /// does not have UTXO index enabled
-    UtxoIndexNotEnabled,
+    UtxoIndexNotEnabled {
+        /// Kaspa node RPC url on which connection
+        /// has been established
+        url: String,
+    },
     /// [`SyncState`] notification posted
     /// when the node sync state changes
     SyncState { sync_state: SyncState },

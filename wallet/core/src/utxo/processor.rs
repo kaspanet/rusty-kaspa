@@ -257,7 +257,7 @@ impl UtxoProcessor {
                 let kaspa_rpc_core::GetInfoResponse { is_synced, is_utxo_indexed: has_utxo_index, server_version, .. } = self.rpc().get_info().await?;
 
                 if !has_utxo_index {
-                    self.notify(Events::UtxoIndexNotEnabled).await?;
+                    self.notify(Events::UtxoIndexNotEnabled { url: self.rpc_client().url().to_string() }).await?;
                     return Err(Error::MissingUtxoIndex);
                 }
 
@@ -286,7 +286,7 @@ impl UtxoProcessor {
                 self.rpc().get_server_info().await?;
 
                 if !has_utxo_index {
-                    self.notify(Events::UtxoIndexNotEnabled).await?;
+                    self.notify(Events::UtxoIndexNotEnabled { url: self.rpc_client().url().to_string() }).await?;
                     return Err(Error::MissingUtxoIndex);
                 }
 

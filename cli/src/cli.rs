@@ -295,7 +295,7 @@ impl KaspaCli {
                                     tprintln!(this, "Disconnected from {url}");
                                     this.term().refresh_prompt();
                                 },
-                                Events::UtxoIndexNotEnabled => {
+                                Events::UtxoIndexNotEnabled { .. } => {
                                     tprintln!(this, "Error: Kaspa node UTXO index is not enabled...")
                                 },
                                 Events::SyncState { sync_state } => {
