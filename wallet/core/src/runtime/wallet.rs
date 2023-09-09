@@ -18,7 +18,6 @@ use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
-use kaspa_rpc_core::api::ctl::RpcCtl;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use std::sync::Arc;
@@ -102,8 +101,7 @@ pub struct Inner {
     store: Arc<dyn Interface>,
     settings: SettingsStore<WalletSettings>,
     utxo_processor: Arc<UtxoProcessor>,
-    rpc_api: Arc<DynRpcApi>,
-    rpc_ctl: RpcCtl,
+    rpc: Mutex<Option<Rpc>>,
     multiplexer: Multiplexer<Box<Events>>,
 }
 
@@ -123,34 +121,29 @@ impl Wallet {
     }
 
     pub fn try_new(storage: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
-        Wallet::try_with_rpc(None, storage, network_id)
+        Wallet::try_with_wrpc(storage, network_id)
+    }
+
+    pub fn try_with_wrpc(store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
+        let rpc_client =
+            Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, NotificationMode::MultiListeners, "wrpc://127.0.0.1:17110")?);
+        let rpc_ctl = rpc_client.ctl().clone();
+        let rpc_api: Arc<DynRpcApi> = rpc_client;
+        let rpc = Rpc::new(rpc_api, rpc_ctl);
+        Self::try_with_rpc(Some(rpc), store, network_id)
     }
 
     pub fn try_with_rpc(
-        rpc: Option<(Arc<DynRpcApi>, RpcCtl)>,
+        rpc: Option<Rpc>,
         store: Arc<dyn Interface>,
         network_id: Option<NetworkId>,
     ) -> Result<Wallet> {
-        let (rpc_api, rpc_ctl) = if let Some((rpc_api, rpc_ctl)) = rpc {
-            (rpc_api, rpc_ctl)
-        } else {
-            let rpc_client = Arc::new(KaspaRpcClient::new_with_args(
-                WrpcEncoding::Borsh,
-                NotificationMode::MultiListeners,
-                "wrpc://127.0.0.1:17110",
-            )?);
-            let rpc_ctl = rpc_client.ctl().clone();
-            let rpc_api: Arc<DynRpcApi> = rpc_client;
-            (rpc_api, rpc_ctl)
-        };
-
         let multiplexer = Multiplexer::<Box<Events>>::new();
-        let utxo_processor = Arc::new(UtxoProcessor::new(&rpc_api, &rpc_ctl, network_id, Some(multiplexer.clone())));
+        let utxo_processor = Arc::new(UtxoProcessor::new(rpc.clone(), network_id, Some(multiplexer.clone())));
 
         let wallet = Wallet {
             inner: Arc::new(Inner {
-                rpc_api,
-                rpc_ctl,
+                rpc: Mutex::new(rpc),
                 multiplexer,
                 store,
                 active_accounts: ActiveAccountMap::default(),
@@ -303,12 +296,21 @@ impl Wallet {
         self.rpc_api().clone().downcast_arc::<KaspaRpcClient>().ok()
     }
 
-    pub fn rpc_api(&self) -> &Arc<DynRpcApi> {
-        &self.inner.rpc_api
+    pub fn rpc_api(&self) -> Arc<DynRpcApi> {
+        self.inner.rpc.lock().unwrap().as_ref().expect("Wallet RPC not initialized").rpc_api().clone()
     }
 
-    pub fn rpc_ctl(&self) -> &RpcCtl {
-        &self.inner.rpc_ctl
+    pub fn rpc_ctl(&self) -> RpcCtl {
+        self.inner.rpc.lock().unwrap().as_ref().expect("Wallet RPC not initialized").rpc_ctl().clone()
+    }
+
+    pub fn has_rpc(&self) -> bool {
+        self.inner.rpc.lock().unwrap().is_some()
+    }
+
+    pub async fn bind_rpc(self: &Arc<Self>, rpc: Option<Rpc>) -> Result<()> {
+        self.utxo_processor().bind_rpc(rpc).await?;
+        Ok(())
     }
 
     pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {

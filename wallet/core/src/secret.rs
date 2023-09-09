@@ -53,8 +53,6 @@ impl Drop for Secret {
 
 impl std::fmt::Debug for Secret {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Secret")
-            .field("secret", &"********")
-            .finish()
+        f.debug_struct("Secret").field("secret", &"********").finish()
     }
 }

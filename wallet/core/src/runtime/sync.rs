@@ -5,7 +5,7 @@ use futures::{pin_mut, TryFutureExt};
 use regex::Regex;
 struct Inner {
     task_ctl: DuplexChannel,
-    rpc: Arc<DynRpcApi>,
+    rpc: Mutex<Option<Rpc>>,
     multiplexer: Multiplexer<Box<Events>>,
     running: AtomicBool,
     is_synced: AtomicBool,
@@ -18,10 +18,10 @@ pub struct SyncMonitor {
 }
 
 impl SyncMonitor {
-    pub fn new(rpc: &Arc<DynRpcApi>, multiplexer: &Multiplexer<Box<Events>>) -> Self {
+    pub fn new(rpc: Option<Rpc>, multiplexer: &Multiplexer<Box<Events>>) -> Self {
         Self {
             inner: Arc::new(Inner {
-                rpc: rpc.clone(),
+                rpc: Mutex::new(rpc.clone()),
                 multiplexer: multiplexer.clone(),
                 task_ctl: DuplexChannel::oneshot(),
                 running: AtomicBool::new(false),
@@ -70,8 +70,13 @@ impl SyncMonitor {
         Ok(())
     }
 
-    pub fn rpc(&self) -> &Arc<DynRpcApi> {
-        &self.inner.rpc
+    pub fn rpc_api(&self) -> Arc<DynRpcApi> {
+        self.inner.rpc.lock().unwrap().as_ref().expect("SyncMonitor RPC not initialized").rpc_api().clone()
+    }
+
+    pub async fn bind_rpc(&self, rpc: Option<Rpc>) -> Result<()> {
+        *self.inner.rpc.lock().unwrap() = rpc;
+        Ok(())
     }
 
     pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
@@ -98,7 +103,7 @@ impl SyncMonitor {
     async fn get_sync_status(&self) -> Result<bool> {
         cfg_if! {
             if #[cfg(feature = "legacy-rpc")] {
-                Ok(self.rpc().get_info().map_ok(|info| info.is_synced).await?)
+                Ok(self.rpc_api().get_info().map_ok(|info| info.is_synced).await?)
             } else {
                 Ok(self.rpc().get_sync_status().await?)
             }

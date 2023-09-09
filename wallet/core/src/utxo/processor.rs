@@ -1,4 +1,4 @@
-use futures::{select, FutureExt};
+use futures::{select_biased, FutureExt};
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
@@ -33,31 +33,31 @@ pub struct Inner {
     // ---
     current_daa_score: Arc<AtomicU64>,
     network_id: Arc<Mutex<Option<NetworkId>>>,
-    rpc_api: Arc<DynRpcApi>,
-    rpc_ctl: RpcCtl,
+    rpc: Mutex<Option<Rpc>>,
     is_connected: AtomicBool,
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
+    task_is_running: AtomicBool,
     notification_channel: Channel<Notification>,
     sync_proc: SyncMonitor,
     multiplexer: Multiplexer<Box<Events>>,
 }
 
 impl Inner {
-    pub fn new(rpc: &Arc<DynRpcApi>, rpc_ctl: &RpcCtl, network_id: Option<NetworkId>, multiplexer: Multiplexer<Box<Events>>) -> Self {
+    pub fn new(rpc: Option<Rpc>, network_id: Option<NetworkId>, multiplexer: Multiplexer<Box<Events>>) -> Self {
         Self {
             pending: DashMap::new(),
             address_to_utxo_context_map: DashMap::new(),
             recoverable_contexts: DashSet::new(),
             current_daa_score: Arc::new(AtomicU64::new(0)),
             network_id: Arc::new(Mutex::new(network_id)),
-            rpc_api: rpc.clone(),
-            rpc_ctl: rpc_ctl.clone(),
+            rpc: Mutex::new(rpc.clone()),
             is_connected: AtomicBool::new(false),
             listener_id: Mutex::new(None),
             task_ctl: DuplexChannel::oneshot(),
+            task_is_running: AtomicBool::new(false),
             notification_channel: Channel::<Notification>::unbounded(),
-            sync_proc: SyncMonitor::new(rpc, &multiplexer),
+            sync_proc: SyncMonitor::new(rpc.clone(), &multiplexer),
             multiplexer,
         }
     }
@@ -69,22 +69,17 @@ pub struct UtxoProcessor {
 }
 
 impl UtxoProcessor {
-    pub fn new(
-        rpc: &Arc<DynRpcApi>,
-        rpc_ctl: &RpcCtl,
-        network_id: Option<NetworkId>,
-        multiplexer: Option<Multiplexer<Box<Events>>>,
-    ) -> Self {
+    pub fn new(rpc: Option<Rpc>, network_id: Option<NetworkId>, multiplexer: Option<Multiplexer<Box<Events>>>) -> Self {
         let multiplexer = multiplexer.unwrap_or_else(Multiplexer::new);
-        UtxoProcessor { inner: Arc::new(Inner::new(rpc, rpc_ctl, network_id, multiplexer)) }
+        UtxoProcessor { inner: Arc::new(Inner::new(rpc, network_id, multiplexer)) }
     }
 
-    pub fn rpc_api(&self) -> &Arc<DynRpcApi> {
-        &self.inner.rpc_api
+    pub fn rpc_api(&self) -> Arc<DynRpcApi> {
+        self.inner.rpc.lock().unwrap().as_ref().expect("UtxoProcessor RPC not initialized").rpc_api().clone()
     }
 
-    pub fn rpc_ctl(&self) -> &RpcCtl {
-        &self.inner.rpc_ctl
+    pub fn rpc_ctl(&self) -> RpcCtl {
+        self.inner.rpc.lock().unwrap().as_ref().expect("UtxoProcessor RPC not initialized").rpc_ctl().clone()
     }
 
     pub fn rpc_url(&self) -> Option<String> {
@@ -93,6 +88,12 @@ impl UtxoProcessor {
 
     pub fn rpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
         self.rpc_api().clone().downcast_arc::<KaspaRpcClient>().ok()
+    }
+
+    pub async fn bind_rpc(&self, rpc: Option<Rpc>) -> Result<()> {
+        *self.inner.rpc.lock().unwrap() = rpc.clone();
+        self.sync_proc().bind_rpc(rpc).await?;
+        Ok(())
     }
 
     pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
@@ -400,17 +401,18 @@ impl UtxoProcessor {
 
     pub async fn start(&self) -> Result<()> {
         let this = self.clone();
-        let rpc_ctl_channel = this.inner.rpc_ctl.multiplexer().channel();
+        if this.inner.task_is_running.load(Ordering::SeqCst) {
+            return Err(Error::custom("UtxoProcessor::start() called while task is already running"));
+        }
+        this.inner.task_is_running.store(true, Ordering::SeqCst);
+        let rpc_ctl_channel = this.rpc_ctl().multiplexer().channel();
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
         let notification_receiver = self.inner.notification_channel.receiver.clone();
 
         spawn(async move {
             loop {
-                select! {
-                    _ = task_ctl_receiver.recv().fuse() => {
-                        break;
-                    },
+                select_biased! {
                     msg = rpc_ctl_channel.receiver.recv().fuse() => {
                         match msg {
                             Ok(msg) => {
@@ -452,10 +454,17 @@ impl UtxoProcessor {
                             }
                         }
                     },
+                    // we use select_biased to drain rpc_ctl
+                    // and notifications before shutting down
+                    // as such task_ctl is last in the poll order
+                    _ = task_ctl_receiver.recv().fuse() => {
+                        break;
+                    },
 
                 }
             }
 
+            this.inner.task_is_running.store(false, Ordering::SeqCst);
             task_ctl_sender.send(()).await.unwrap();
         });
         Ok(())
