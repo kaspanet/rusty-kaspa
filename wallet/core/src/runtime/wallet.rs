@@ -133,11 +133,7 @@ impl Wallet {
         Self::try_with_rpc(Some(rpc), store, network_id)
     }
 
-    pub fn try_with_rpc(
-        rpc: Option<Rpc>,
-        store: Arc<dyn Interface>,
-        network_id: Option<NetworkId>,
-    ) -> Result<Wallet> {
+    pub fn try_with_rpc(rpc: Option<Rpc>, store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
         let multiplexer = Multiplexer::<Box<Events>>::new();
         let utxo_processor = Arc::new(UtxoProcessor::new(rpc.clone(), network_id, Some(multiplexer.clone())));
 

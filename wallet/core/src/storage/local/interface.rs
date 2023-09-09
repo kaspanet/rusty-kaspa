@@ -4,6 +4,7 @@ use crate::storage::interface::AddressBookStore;
 use crate::storage::interface::CreateArgs;
 use crate::storage::interface::OpenArgs;
 use crate::storage::interface::StorageStream;
+use crate::storage::interface::WalletDescriptor;
 use crate::storage::local::cache::*;
 use crate::storage::local::streams::*;
 use crate::storage::local::transaction::*;
@@ -228,11 +229,11 @@ impl Interface for LocalStore {
         Ok(())
     }
 
-    async fn wallet_list(&self) -> Result<Vec<String>> {
+    async fn wallet_list(&self) -> Result<Vec<WalletDescriptor>> {
         let location = self.location.lock().unwrap().clone().unwrap();
 
         let folder = fs::resolve_path(&location.folder)?;
-        let files = fs::readdir(folder, false).await?;
+        let files = fs::readdir(folder.clone(), false).await?;
         let wallets = files
             .iter()
             .filter_map(|de| {
@@ -240,7 +241,19 @@ impl Interface for LocalStore {
                 file_name.ends_with(".wallet").then(|| file_name.trim_end_matches(".wallet").to_string())
             })
             .collect::<Vec<_>>();
-        Ok(wallets)
+
+        let mut descriptors = vec![];
+        for filename in wallets.into_iter() {
+            let path = folder.join(format!("{}.wallet", filename));
+            let title = fs::read_to_string(&path)
+                .await
+                .ok()
+                .and_then(|json| serde_json::Value::from_str(json.as_str()).ok())
+                .and_then(|data| data.get("name").and_then(|v| v.as_str()).map(|v| v.to_string()));
+            descriptors.push(WalletDescriptor { title, filename });
+        }
+
+        Ok(descriptors)
     }
 
     fn is_open(&self) -> bool {

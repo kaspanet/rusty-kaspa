@@ -46,6 +46,18 @@ impl Drop for AccessContext {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct WalletDescriptor {
+    pub title: Option<String>,
+    pub filename: String,
+}
+
+impl WalletDescriptor {
+    pub fn new(title: Option<String>, filename: String) -> Self {
+        Self { title, filename }
+    }
+}
+
 pub type StorageStream<T> = Pin<Box<dyn Stream<Item = Result<T>> + Send>>;
 
 #[async_trait]
@@ -124,7 +136,7 @@ impl OpenArgs {
 #[async_trait]
 pub trait Interface: Send + Sync + AnySync {
     /// enumerate all wallets available in the storage
-    async fn wallet_list(&self) -> Result<Vec<String>>;
+    async fn wallet_list(&self) -> Result<Vec<WalletDescriptor>>;
 
     /// check if a wallet is currently open
     fn is_open(&self) -> bool;

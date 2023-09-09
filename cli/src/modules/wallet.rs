@@ -21,7 +21,11 @@ impl Wallet {
                 } else {
                     tprintln!(ctx, "Wallets:");
                     for wallet in wallets {
-                        tprintln!(ctx, "  {}", wallet);
+                        if let Some(title) = wallet.title {
+                            tprintln!(ctx, "  {}: {}", wallet.filename, title);
+                        } else {
+                            tprintln!(ctx, "  {}", wallet.filename);
+                        }
                     }
                 }
             }
