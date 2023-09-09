@@ -35,7 +35,9 @@ impl Wallet {
             encoding.unwrap_or(WrpcEncoding::Borsh),
             None,
         )?;
-        let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc.client().clone()), store, network_id)?);
+        let rpc_api: Arc<DynRpcApi> = rpc.client().rpc_api().clone();
+        let rpc_ctl = rpc.client().rpc_ctl().clone();
+        let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some((rpc_api, rpc_ctl)), store, network_id)?);
         let events = EventDispatcher::default();
 
         Ok(Self { wallet, events, rpc })

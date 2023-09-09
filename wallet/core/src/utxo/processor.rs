@@ -3,11 +3,13 @@ use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
 };
-use kaspa_rpc_core::message::UtxosChangedNotification;
+use kaspa_rpc_core::{
+    api::ctl::{RpcCtl, RpcCtlOp},
+    message::UtxosChangedNotification,
+};
 use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::{Channel, DuplexChannel};
 use workflow_core::task::spawn;
-use workflow_rpc::client::Ctl;
 
 use crate::imports::*;
 use crate::result::Result;
@@ -31,7 +33,8 @@ pub struct Inner {
     // ---
     current_daa_score: Arc<AtomicU64>,
     network_id: Arc<Mutex<Option<NetworkId>>>,
-    rpc: Arc<DynRpcApi>,
+    rpc_api: Arc<DynRpcApi>,
+    rpc_ctl: RpcCtl,
     is_connected: AtomicBool,
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
@@ -41,14 +44,15 @@ pub struct Inner {
 }
 
 impl Inner {
-    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: Multiplexer<Box<Events>>) -> Self {
+    pub fn new(rpc: &Arc<DynRpcApi>, rpc_ctl: &RpcCtl, network_id: Option<NetworkId>, multiplexer: Multiplexer<Box<Events>>) -> Self {
         Self {
             pending: DashMap::new(),
             address_to_utxo_context_map: DashMap::new(),
             recoverable_contexts: DashSet::new(),
             current_daa_score: Arc::new(AtomicU64::new(0)),
             network_id: Arc::new(Mutex::new(network_id)),
-            rpc: rpc.clone(),
+            rpc_api: rpc.clone(),
+            rpc_ctl: rpc_ctl.clone(),
             is_connected: AtomicBool::new(false),
             listener_id: Mutex::new(None),
             task_ctl: DuplexChannel::oneshot(),
@@ -65,17 +69,30 @@ pub struct UtxoProcessor {
 }
 
 impl UtxoProcessor {
-    pub fn new(rpc: &Arc<DynRpcApi>, network_id: Option<NetworkId>, multiplexer: Option<Multiplexer<Box<Events>>>) -> Self {
+    pub fn new(
+        rpc: &Arc<DynRpcApi>,
+        rpc_ctl: &RpcCtl,
+        network_id: Option<NetworkId>,
+        multiplexer: Option<Multiplexer<Box<Events>>>,
+    ) -> Self {
         let multiplexer = multiplexer.unwrap_or_else(Multiplexer::new);
-        UtxoProcessor { inner: Arc::new(Inner::new(rpc, network_id, multiplexer)) }
+        UtxoProcessor { inner: Arc::new(Inner::new(rpc, rpc_ctl, network_id, multiplexer)) }
     }
 
-    pub fn rpc(&self) -> &Arc<DynRpcApi> {
-        &self.inner.rpc
+    pub fn rpc_api(&self) -> &Arc<DynRpcApi> {
+        &self.inner.rpc_api
     }
 
-    pub fn rpc_client(&self) -> Arc<KaspaRpcClient> {
-        self.rpc().clone().downcast_arc::<KaspaRpcClient>().expect("unable to downcast DynRpcApi to KaspaRpcClient")
+    pub fn rpc_ctl(&self) -> &RpcCtl {
+        &self.inner.rpc_ctl
+    }
+
+    pub fn rpc_url(&self) -> Option<String> {
+        self.rpc_ctl().descriptor()
+    }
+
+    pub fn rpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
+        self.rpc_api().clone().downcast_arc::<KaspaRpcClient>().ok()
     }
 
     pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
@@ -128,7 +145,7 @@ impl UtxoProcessor {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
                 let utxos_changed_scope = UtxosChangedScope { addresses };
-                self.rpc().start_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
+                self.rpc_api().start_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
             } else {
                 log_info!("registering empty address list!");
             }
@@ -145,7 +162,7 @@ impl UtxoProcessor {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
                 let utxos_changed_scope = UtxosChangedScope { addresses };
-                self.rpc().stop_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
+                self.rpc_api().stop_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
             } else {
                 log_info!("unregistering empty address list!");
             }
@@ -256,14 +273,14 @@ impl UtxoProcessor {
 
             pub async fn init_state_from_server(&self) -> Result<()> {
 
-                let kaspa_rpc_core::GetInfoResponse { is_synced, is_utxo_indexed: has_utxo_index, server_version, .. } = self.rpc().get_info().await?;
+                let kaspa_rpc_core::GetInfoResponse { is_synced, is_utxo_indexed: has_utxo_index, server_version, .. } = self.rpc_api().get_info().await?;
 
                 if !has_utxo_index {
-                    self.notify(Events::UtxoIndexNotEnabled { url: self.rpc_client().url().to_string() }).await?;
+                    self.notify(Events::UtxoIndexNotEnabled { url: self.rpc_url() }).await?;
                     return Err(Error::MissingUtxoIndex);
                 }
 
-                let kaspa_rpc_core::GetBlockDagInfoResponse { virtual_daa_score, network: server_network_id, .. } = self.rpc().get_block_dag_info().await?;
+                let kaspa_rpc_core::GetBlockDagInfoResponse { virtual_daa_score, network: server_network_id, .. } = self.rpc_api().get_block_dag_info().await?;
 
                 let network_id = self.network_id()?;
                 if network_id != server_network_id {
@@ -275,7 +292,7 @@ impl UtxoProcessor {
                 log_trace!("Connected to kaspad: '{server_version}' on '{server_network_id}';  SYNC: {is_synced}  DAA: {virtual_daa_score}");
 
                 self.sync_proc().track(is_synced).await?;
-                self.notify(Events::ServerStatus { server_version, is_synced, network_id, url: self.rpc_client().url().to_string() }).await?;
+                self.notify(Events::ServerStatus { server_version, is_synced, network_id, url: self.rpc_url() }).await?;
 
                 Ok(())
             }
@@ -288,7 +305,7 @@ impl UtxoProcessor {
                 self.rpc().get_server_info().await?;
 
                 if !has_utxo_index {
-                    self.notify(Events::UtxoIndexNotEnabled { url: self.rpc_client().url().to_string() }).await?;
+                    self.notify(Events::UtxoIndexNotEnabled { url: self.rpc_url() }).await?;
                     return Err(Error::MissingUtxoIndex);
                 }
 
@@ -302,7 +319,7 @@ impl UtxoProcessor {
 
                 log_trace!("Connected to kaspad: '{server_version}' on '{server_network_id}';  SYNC: {is_synced}  DAA: {virtual_daa_score}");
                 self.sync_proc().track(is_synced).await?;
-                self.notify(Events::ServerStatus { server_version, is_synced, network_id, url: self.rpc_client().url().to_string() }).await?;
+                self.notify(Events::ServerStatus { server_version, is_synced, network_id, url: self.rpc_url() }).await?;
 
                 Ok(())
             }
@@ -320,8 +337,11 @@ impl UtxoProcessor {
 
     pub async fn handle_connect(&self) -> Result<()> {
         if let Err(err) = self.handle_connect_impl().await {
+            log_error!("UtxoProcessor: error while connecting to node: {err}");
             self.notify(Events::UtxoProcError { message: err.to_string() }).await?;
-            self.rpc_client().disconnect().await?;
+            if let Some(client) = self.rpc_client() {
+                client.disconnect().await?;
+            }
         }
         Ok(())
     }
@@ -336,11 +356,11 @@ impl UtxoProcessor {
 
     async fn register_notification_listener(&self) -> Result<()> {
         let listener_id = self
-            .rpc()
+            .rpc_api()
             .register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone(), ChannelType::Persistent));
         *self.inner.listener_id.lock().unwrap() = Some(listener_id);
 
-        self.rpc().start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        self.rpc_api().start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
 
         Ok(())
     }
@@ -349,7 +369,7 @@ impl UtxoProcessor {
         let listener_id = self.inner.listener_id.lock().unwrap().take();
         if let Some(id) = listener_id {
             // we do not need this as we are unregister the entire listener here...
-            self.rpc().unregister_listener(id).await?;
+            self.rpc_api().unregister_listener(id).await?;
         }
         Ok(())
     }
@@ -380,14 +400,7 @@ impl UtxoProcessor {
 
     pub async fn start(&self) -> Result<()> {
         let this = self.clone();
-        let rpc_ctl_channel = this
-            .rpc()
-            .clone()
-            .downcast_arc::<KaspaRpcClient>()
-            .expect("unable to downcast DynRpcApi to KaspaRpcClient")
-            .ctl_multiplexer()
-            .channel();
-
+        let rpc_ctl_channel = this.inner.rpc_ctl.multiplexer().channel();
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
         let notification_receiver = self.inner.notification_channel.receiver.clone();
@@ -402,17 +415,17 @@ impl UtxoProcessor {
                         match msg {
                             Ok(msg) => {
                                 match msg {
-                                    Ctl::Open => {
+                                    RpcCtlOp::Open => {
                                         this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
                                             network_id : this.network_id().expect("network id expected during connection"),
-                                            url : this.rpc_client().url().to_string()
+                                            url : this.rpc_url()
                                         })).unwrap_or_else(|err| log_error!("{err}"));
                                         this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
                                     },
-                                    Ctl::Close => {
+                                    RpcCtlOp::Close => {
                                         this.inner.multiplexer.try_broadcast(Box::new(Events::Disconnect {
                                             network_id : this.network_id().expect("network id expected during connection"),
-                                            url : this.rpc_client().url().to_string()
+                                            url : this.rpc_url()
                                         })).unwrap_or_else(|err| log_error!("{err}"));
                                         this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
                                     }

@@ -159,12 +159,12 @@ impl KaspaCli {
         self.wallet.is_connected()
     }
 
-    pub fn rpc(&self) -> Arc<DynRpcApi> {
-        self.wallet.rpc().clone()
+    pub fn rpc_api(&self) -> Arc<DynRpcApi> {
+        self.wallet.rpc_api().clone()
     }
 
-    pub fn rpc_client(&self) -> Arc<KaspaRpcClient> {
-        self.wallet.rpc_client().clone()
+    pub fn rpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
+        self.wallet.wrpc_client().clone()
     }
 
     pub fn store(&self) -> Arc<dyn Interface> {
@@ -292,7 +292,7 @@ impl KaspaCli {
                                 },
                                 #[allow(unused_variables)]
                                 Events::Disconnect{ url, network_id } => {
-                                    tprintln!(this, "Disconnected from {url}");
+                                    tprintln!(this, "Disconnected from {}",url.unwrap_or("N/A".to_string()));
                                     this.term().refresh_prompt();
                                 },
                                 Events::UtxoIndexNotEnabled { .. } => {
@@ -309,7 +309,7 @@ impl KaspaCli {
                                     ..
                                 } => {
 
-                                    tprintln!(this, "Connected to Kaspa node version {server_version} at {url}");
+                                    tprintln!(this, "Connected to Kaspa node version {server_version} at {}", url.unwrap_or("N/A".to_string()));
 
                                     let is_open = this.wallet.is_open();
 

@@ -18,6 +18,7 @@ use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
+use kaspa_rpc_core::api::ctl::RpcCtl;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use std::sync::Arc;
@@ -101,7 +102,8 @@ pub struct Inner {
     store: Arc<dyn Interface>,
     settings: SettingsStore<WalletSettings>,
     utxo_processor: Arc<UtxoProcessor>,
-    rpc: Arc<DynRpcApi>,
+    rpc_api: Arc<DynRpcApi>,
+    rpc_ctl: RpcCtl,
     multiplexer: Multiplexer<Box<Events>>,
 }
 
@@ -124,19 +126,31 @@ impl Wallet {
         Wallet::try_with_rpc(None, storage, network_id)
     }
 
-    pub fn try_with_rpc(rpc: Option<Arc<KaspaRpcClient>>, store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
-        let rpc: Arc<DynRpcApi> = if let Some(rpc) = rpc {
-            rpc
+    pub fn try_with_rpc(
+        rpc: Option<(Arc<DynRpcApi>, RpcCtl)>,
+        store: Arc<dyn Interface>,
+        network_id: Option<NetworkId>,
+    ) -> Result<Wallet> {
+        let (rpc_api, rpc_ctl) = if let Some((rpc_api, rpc_ctl)) = rpc {
+            (rpc_api, rpc_ctl)
         } else {
-            Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, NotificationMode::MultiListeners, "wrpc://127.0.0.1:17110")?)
+            let rpc_client = Arc::new(KaspaRpcClient::new_with_args(
+                WrpcEncoding::Borsh,
+                NotificationMode::MultiListeners,
+                "wrpc://127.0.0.1:17110",
+            )?);
+            let rpc_ctl = rpc_client.ctl().clone();
+            let rpc_api: Arc<DynRpcApi> = rpc_client;
+            (rpc_api, rpc_ctl)
         };
 
         let multiplexer = Multiplexer::<Box<Events>>::new();
-        let utxo_processor = Arc::new(UtxoProcessor::new(&rpc, network_id, Some(multiplexer.clone())));
+        let utxo_processor = Arc::new(UtxoProcessor::new(&rpc_api, &rpc_ctl, network_id, Some(multiplexer.clone())));
 
         let wallet = Wallet {
             inner: Arc::new(Inner {
-                rpc,
+                rpc_api,
+                rpc_ctl,
                 multiplexer,
                 store,
                 active_accounts: ActiveAccountMap::default(),
@@ -285,12 +299,16 @@ impl Wallet {
         Ok(self.get_prv_key_info(account).await?.map(|info| info.is_encrypted()))
     }
 
-    pub fn rpc_client(&self) -> Arc<KaspaRpcClient> {
-        self.rpc().clone().downcast_arc::<KaspaRpcClient>().expect("unable to downcast DynRpcApi to KaspaRpcClient")
+    pub fn wrpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
+        self.rpc_api().clone().downcast_arc::<KaspaRpcClient>().ok()
     }
 
-    pub fn rpc(&self) -> &Arc<DynRpcApi> {
-        &self.inner.rpc
+    pub fn rpc_api(&self) -> &Arc<DynRpcApi> {
+        &self.inner.rpc_api
+    }
+
+    pub fn rpc_ctl(&self) -> &RpcCtl {
+        &self.inner.rpc_ctl
     }
 
     pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
@@ -315,7 +333,9 @@ impl Wallet {
         }
 
         if let Some(url) = settings.get::<String>(WalletSettings::Server) {
-            self.rpc_client().set_url(url.as_str()).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
+            if let Some(wrpc_client) = self.wrpc_client() {
+                wrpc_client.set_url(url.as_str()).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
+            }
         }
 
         Ok(())
@@ -328,7 +348,9 @@ impl Wallet {
         self.start_task().await?;
         self.utxo_processor().start().await?;
         // rpc services (notifier)
-        self.rpc_client().start().await?;
+        if let Some(rpc_client) = self.wrpc_client() {
+            rpc_client.start().await?;
+        }
 
         Ok(())
     }
@@ -337,8 +359,10 @@ impl Wallet {
     pub async fn stop(&self) -> Result<()> {
         self.utxo_processor().stop().await?;
         self.stop_task().await?;
-        self.rpc_client().stop().await?;
-        self.rpc_client().disconnect().await?;
+        if let Some(rpc_client) = self.wrpc_client() {
+            rpc_client.stop().await?;
+            rpc_client.disconnect().await?;
+        }
         Ok(())
     }
 
@@ -347,22 +371,22 @@ impl Wallet {
     }
 
     pub async fn get_info(&self) -> Result<String> {
-        let v = self.rpc().get_info().await?;
+        let v = self.rpc_api().get_info().await?;
         Ok(format!("{v:#?}").replace('\n', "\r\n"))
     }
 
     pub async fn subscribe_daa_score(&self) -> Result<()> {
-        self.rpc().start_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        self.rpc_api().start_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
 
     pub async fn unsubscribe_daa_score(&self) -> Result<()> {
-        self.rpc().stop_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        self.rpc_api().stop_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
 
     pub async fn ping(&self) -> bool {
-        self.rpc().ping().await.is_ok()
+        self.rpc_api().ping().await.is_ok()
     }
 
     pub async fn broadcast(&self) -> Result<()> {
@@ -385,13 +409,17 @@ impl Wallet {
         Ok(self.network_id()?.into())
     }
 
-    pub fn default_port(&self) -> Result<u16> {
+    pub fn default_port(&self) -> Result<Option<u16>> {
         let network_type = self.network_id()?;
-        let port = match self.rpc_client().encoding() {
-            WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
-            WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
-        };
-        Ok(port)
+        if let Some(wrpc_client) = self.wrpc_client() {
+            let port = match wrpc_client.encoding() {
+                WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
+                WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
+            };
+            Ok(Some(port))
+        } else {
+            Ok(None)
+        }
     }
 
     // pub async fn create_private_key_impl(self: &Arc<Wallet>, wallet_secret: Secret, payment_secret: Option<Secret>, save : ) -> Result<Mnemonic> {
@@ -770,7 +798,6 @@ mod test {
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
     use kaspa_consensus_wasm::{sign_transaction, SignableTransaction, Transaction, TransactionInput, TransactionOutput};
-    use kaspa_rpc_core::api::rpc::RpcApi;
     use kaspa_txscript::pay_to_address_script;
     use workflow_rpc::client::ConnectOptions;
 
@@ -804,16 +831,16 @@ mod test {
         // let utxo_db_ctx = wallet.utxo_db_core().ctx(self)
         // wallet.load_accounts(stored_accounts);
 
-        let rpc = wallet.rpc();
+        let rpc_api = wallet.rpc_api();
         // let utxo_processor = UtxoProcessor::new(rpc, None);
         let utxo_processor = wallet.utxo_processor();
 
-        let rpc_client = wallet.rpc_client();
+        let wrpc_client = wallet.wrpc_client().expect("Unable to obtain wRPC client");
 
-        let info = rpc_client.get_block_dag_info().await?;
+        let info = rpc_api.get_block_dag_info().await?;
         let current_daa_score = info.virtual_daa_score;
 
-        let _connect_result = rpc_client.connect(ConnectOptions::fallback()).await;
+        let _connect_result = wrpc_client.connect(ConnectOptions::fallback()).await;
         //println!("connect_result: {_connect_result:?}");
 
         let _result = wallet.start().await;
@@ -824,7 +851,8 @@ mod test {
         let address = Address::try_from("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")?;
 
         let utxo_context =
-            self::create_utxos_context_with_addresses(rpc.clone(), vec![address.clone()], current_daa_score, utxo_processor).await?;
+            self::create_utxos_context_with_addresses(rpc_api.clone(), vec![address.clone()], current_daa_score, utxo_processor)
+                .await?;
 
         let utxo_set_balance = utxo_context.calculate_balance().await;
         println!("get_utxos_by_addresses: {utxo_set_balance:?}");
@@ -903,18 +931,18 @@ mod test {
         //println!("mtx: {mtx:?}");
 
         let utxo_context =
-            self::create_utxos_context_with_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)
+            self::create_utxos_context_with_addresses(rpc_api.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)
                 .await?;
         let to_balance = utxo_context.calculate_balance().await;
         println!("to address balance before tx submit: {to_balance:?}");
 
-        let result = rpc.submit_transaction(mtx.into(), false).await?;
+        let result = rpc_api.submit_transaction(mtx.into(), false).await?;
 
         println!("tx submit result, {:?}", result);
         println!("sleep for 5s...");
         sleep(time::Duration::from_millis(5000));
         let utxo_context =
-            self::create_utxos_context_with_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)
+            self::create_utxos_context_with_addresses(rpc_api.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)
                 .await?;
         let to_balance = utxo_context.calculate_balance().await;
         println!("to address balance after tx submit: {to_balance:?}");

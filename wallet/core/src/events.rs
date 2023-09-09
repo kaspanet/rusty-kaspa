@@ -54,20 +54,20 @@ pub enum Events {
         network_id: NetworkId,
         /// Kaspa node RPC url on which connection
         /// has been established
-        url: String,
+        url: Option<String>,
     },
     /// RPC disconnection
     Disconnect {
         #[serde(rename = "networkId")]
         network_id: NetworkId,
-        url: String,
+        url: Option<String>,
     },
     /// A special event emitted if the connected node
     /// does not have UTXO index enabled
     UtxoIndexNotEnabled {
         /// Kaspa node RPC url on which connection
         /// has been established
-        url: String,
+        url: Option<String>,
     },
     /// [`SyncState`] notification posted
     /// when the node sync state changes
@@ -96,7 +96,7 @@ pub enum Events {
         is_synced: bool,
         /// Kaspa node RPC url on which connection
         /// has been established
-        url: String,
+        url: Option<String>,
     },
 
     /// Successful start of [`UtxoProcessor`](crate::utxo::processor::UtxoProcessor).
