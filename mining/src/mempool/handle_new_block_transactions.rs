@@ -7,6 +7,7 @@ use crate::mempool::{
     Mempool,
 };
 use kaspa_consensus_core::{api::ConsensusApi, tx::Transaction};
+use kaspa_core::time::Stopwatch;
 use std::collections::HashSet;
 
 impl Mempool {
@@ -15,6 +16,7 @@ impl Mempool {
         block_daa_score: u64,
         block_transactions: &[Transaction],
     ) -> RuleResult<Vec<MempoolTransaction>> {
+        let _sw = Stopwatch::<400>::with_threshold("handle_new_block_transactions op");
         let mut unorphaned_transactions = vec![];
         for transaction in block_transactions[1..].iter() {
             let transaction_id = transaction.id();

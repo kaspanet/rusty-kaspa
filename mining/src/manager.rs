@@ -77,15 +77,19 @@ impl MiningManager {
         // We avoid passing a mempool ref to blockTemplateBuilder by calling
         // mempool.BlockCandidateTransactions and mempool.RemoveTransactions here.
         // We remove recursion seen in blockTemplateBuilder.BuildBlockTemplate here.
+        debug!("Building a new block template...");
         loop {
             let transactions = self.block_candidate_transactions();
             match self.block_template_builder.build_block_template(consensus, miner_data, transactions) {
                 Ok(block_template) => {
                     let block_template = cache_lock.set_immutable_cached_template(block_template);
+                    debug!("Built a new block template with {} transactions", block_template.block.transactions.len());
                     return Ok(block_template.as_ref().clone());
                 }
                 Err(BuilderError::ConsensusError(BlockRuleError::InvalidTransactionsInNewBlock(invalid_transactions))) => {
                     let mut mempool_write = self.mempool.write();
+                    let mut missing_outpoint: usize = 0;
+                    let mut invalid: usize = 0;
                     invalid_transactions.iter().for_each(|(x, err)| {
                         // On missing outpoints, the most likely is that the tx was already in a block accepted by
                         // the consensus but not yet processed by handle_new_block_transactions(). Another possibility
@@ -97,12 +101,18 @@ impl MiningManager {
                         // redeemers being unexpectedly either orphaned or rejected in case orphans are disallowed.
                         //
                         // For all other errors, we do remove the redeemers.
-                        let removal_result = mempool_write.remove_transaction(
-                            x,
-                            *err != TxRuleError::MissingTxOutpoints,
-                            TxRemovalReason::InvalidInBlockTemplate,
-                            format!(" error: {}", err).as_str(),
-                        );
+                        let removal_result = if *err == TxRuleError::MissingTxOutpoints {
+                            missing_outpoint += 1;
+                            mempool_write.remove_transaction(x, false, TxRemovalReason::Muted, "")
+                        } else {
+                            invalid += 1;
+                            mempool_write.remove_transaction(
+                                x,
+                                true,
+                                TxRemovalReason::InvalidInBlockTemplate,
+                                format!(" error: {}", err).as_str(),
+                            )
+                        };
                         if let Err(err) = removal_result {
                             // Original golang comment:
                             // mempool.remove_transactions might return errors in situations that are perfectly fine in this context.
@@ -112,8 +122,13 @@ impl MiningManager {
                             error!("Error from mempool.remove_transactions: {:?}", err);
                         }
                     });
+                    debug!(
+                        "Building a new block template failed for {} txs missing outpoint and {} invalid txs",
+                        missing_outpoint, invalid
+                    )
                 }
                 Err(err) => {
+                    warn!("Building a new block template failed: {}", err);
                     return Err(err)?;
                 }
             }
@@ -121,6 +136,7 @@ impl MiningManager {
     }
 
     pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
+        let _sw = Stopwatch::<100>::with_threshold("block_candidate_transactions lock");
         self.mempool.read().block_candidate_transactions()
     }
 
@@ -157,6 +173,7 @@ impl MiningManager {
         priority: Priority,
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        let _sw = Stopwatch::<200>::with_threshold("validate_and_insert_mutable_transaction lock");
         // read lock on mempool
         let mut transaction = self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction)?;
         // no lock on mempool
@@ -167,6 +184,7 @@ impl MiningManager {
             mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan)?
         {
             let unorphaned_transactions = mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction);
+            mempool.log_stats();
             drop(mempool);
 
             // The capacity used here may be exceeded since accepted unorphaned transaction may themselves unorphan other transactions.
@@ -186,6 +204,7 @@ impl MiningManager {
         consensus: &dyn ConsensusApi,
         mut incoming_transactions: Vec<MempoolTransaction>,
     ) -> Vec<Arc<Transaction>> {
+        let _sw = Stopwatch::<200>::with_threshold("validate_and_insert_unorphaned_transactions lock");
         // The capacity used here may be exceeded (see next comment).
         let mut accepted_transactions = Vec::with_capacity(incoming_transactions.len());
         // We loop as long as incoming unorphaned transactions do unorphan other transactions when they
@@ -201,6 +220,7 @@ impl MiningManager {
             let mut lower_bound: usize = 0;
             let mut validation_results = Vec::with_capacity(transactions.len());
             while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
+                assert!(lower_bound < upper_bound, "the chunk is never empty");
                 validation_results
                     .extend(validate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
                 lower_bound = upper_bound;
@@ -234,6 +254,7 @@ impl MiningManager {
                     }
                 })
                 .collect::<Vec<_>>();
+            mempool.log_stats();
             drop(mempool);
         }
         accepted_transactions
@@ -251,6 +272,7 @@ impl MiningManager {
         priority: Priority,
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        let _sw = Stopwatch::<500>::with_threshold("validate_and_insert_transaction_batch lock");
         // The capacity used here may be exceeded since accepted transactions may unorphan other transactions.
         let mut accepted_transactions: Vec<Arc<Transaction>> = Vec::with_capacity(transactions.len());
         let mut batch = TransactionsStagger::new(transactions);
@@ -298,6 +320,7 @@ impl MiningManager {
             let mut lower_bound: usize = 0;
             let mut validation_results = Vec::with_capacity(transactions.len());
             while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
+                assert!(lower_bound < upper_bound, "the chunk is never empty");
                 validation_results
                     .extend(validate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
                 lower_bound = upper_bound;
@@ -406,6 +429,7 @@ impl MiningManager {
         block_daa_score: u64,
         block_transactions: &[Transaction],
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        let _sw = Stopwatch::<500>::with_threshold("handle_new_block_transactions lock");
         // TODO: should use tx acceptance data to verify that new block txs are actually accepted into virtual state.
 
         // write lock on mempool

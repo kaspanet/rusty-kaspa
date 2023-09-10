@@ -1,5 +1,6 @@
 use super::TransactionIdSet;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
+use kaspa_core::time::Stopwatch;
 
 pub struct TransactionsStagger<T: AsRef<Transaction>> {
     txs: Vec<T>,
@@ -18,6 +19,7 @@ impl<T: AsRef<Transaction>> TransactionsStagger<T> {
 
     /// Extract and return all independent transactions
     pub fn stagger(&mut self) -> Option<Vec<T>> {
+        let _sw = Stopwatch::<50>::with_threshold("stagger op");
         if self.is_empty() {
             return None;
         }

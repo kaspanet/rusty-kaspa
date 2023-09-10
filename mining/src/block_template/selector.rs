@@ -1,4 +1,4 @@
-use kaspa_core::trace;
+use kaspa_core::{time::Stopwatch, trace};
 use rand::Rng;
 use std::{collections::HashMap, vec};
 
@@ -39,6 +39,7 @@ pub(crate) struct TransactionsSelector {
 
 impl TransactionsSelector {
     pub(crate) fn new(policy: Policy, mut transactions: Vec<CandidateTransaction>) -> Self {
+        let _sw = Stopwatch::<100>::with_threshold("TransactionsSelector::new op");
         // Sort the transactions by subnetwork_id.
         transactions.sort_by(|a, b| a.tx.subnetwork_id.cmp(&b.tx.subnetwork_id));
 
@@ -73,6 +74,7 @@ impl TransactionsSelector {
     /// and appends the ones that will be included in the next block into
     /// selected_txs.
     pub(crate) fn select_transactions(&mut self) -> Vec<Transaction> {
+        let _sw = Stopwatch::<100>::with_threshold("select_transaction op");
         let mut rng = rand::thread_rng();
 
         self.reset();
