@@ -353,11 +353,14 @@ impl FlowContext {
     ///
     /// _GO-KASPAD: OnNewBlock + broadcastTransactionsAfterBlockAdded_
     pub async fn on_new_block(&self, consensus: &ConsensusProxy, block: Block) -> Result<(), ProtocolError> {
+        let _sw = Stopwatch::<500>::with_threshold("on_new_block lock");
         let hash = block.hash();
-        let blocks = self.unorphan_blocks(consensus, hash).await;
+        let mut blocks = self.unorphan_blocks(consensus, hash).await;
+        // Process blocks in topological order
+        blocks.sort_by(|a, b| a.header.blue_work.partial_cmp(&b.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
-        for block in once(block).chain(blocks.into_iter()) {
+        for block in blocks.into_iter().chain(once(block)) {
             transactions_to_broadcast.enqueue_chunk(
                 self.mining_manager()
                     .clone()
