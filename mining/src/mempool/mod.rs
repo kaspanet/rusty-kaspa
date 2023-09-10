@@ -132,6 +132,7 @@ impl Mempool {
     }
 
     pub(crate) fn all_transactions_with_priority(&self, priority: Priority) -> Vec<MutableTransaction> {
+        let _sw = Stopwatch::<50>::with_threshold("all_transactions_with_priority op");
         self.transaction_pool.all_transactions_with_priority(priority)
     }
 

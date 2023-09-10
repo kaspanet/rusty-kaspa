@@ -6,7 +6,10 @@ use crate::mempool::{
     },
     Mempool,
 };
-use kaspa_consensus_core::{api::ConsensusApi, tx::Transaction};
+use kaspa_consensus_core::{
+    api::ConsensusApi,
+    tx::{Transaction, TransactionId},
+};
 use kaspa_core::time::Stopwatch;
 use std::collections::HashSet;
 
@@ -30,17 +33,21 @@ impl Mempool {
             self.remove_double_spends(transaction)?;
             self.orphan_pool.remove_orphan(&transaction_id, false, TxRemovalReason::Accepted, "")?;
             self.accepted_transactions.add(transaction_id, block_daa_score);
-            unorphaned_transactions.append(&mut self.get_unorphaned_transactions_after_accepted_transaction(transaction));
+            unorphaned_transactions.extend(self.get_unorphaned_transactions_after_accepted_transaction(transaction));
         }
         Ok(unorphaned_transactions)
     }
 
-    pub(crate) fn expire_low_priority_transactions(&mut self, consensus: &dyn ConsensusApi) -> RuleResult<()> {
-        self.orphan_pool.expire_low_priority_transactions(consensus.get_virtual_daa_score())?;
-        self.transaction_pool.expire_low_priority_transactions(consensus.get_virtual_daa_score())?;
+    pub(crate) fn expire_orphan_low_priority_transactions(&mut self, consensus: &dyn ConsensusApi) -> RuleResult<()> {
+        self.orphan_pool.expire_low_priority_transactions(consensus.get_virtual_daa_score())
+    }
+
+    pub(crate) fn expire_accepted_transactions(&mut self, consensus: &dyn ConsensusApi) {
         self.accepted_transactions.expire(consensus.get_virtual_daa_score());
-        self.log_stats();
-        Ok(())
+    }
+
+    pub(crate) fn collect_expired_low_priority_transactions(&mut self, consensus: &dyn ConsensusApi) -> Vec<TransactionId> {
+        self.transaction_pool.collect_expired_low_priority_transactions(consensus.get_virtual_daa_score())
     }
 
     fn remove_double_spends(&mut self, transaction: &Transaction) -> RuleResult<()> {

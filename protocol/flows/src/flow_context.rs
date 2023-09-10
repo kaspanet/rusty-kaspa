@@ -397,6 +397,22 @@ impl FlowContext {
             });
         }
 
+        // TODO: refactor this adding a worker and a scheduler to FlowContext
+        if self.should_expire_transactions().await {
+            // Spawn a task expiring concurrently the low priority transactions.
+            // The TransactionSpread instance ensures at most one expire running at any
+            // given time.
+            let mining_manager = self.mining_manager().clone();
+            let consensus_clone = consensus.clone();
+            let context = self.clone();
+            tokio::spawn(async move {
+                tokio::spawn(async move {
+                    mining_manager.expire_low_priority_transactions(&consensus_clone).await;
+                });
+                context.expire_done().await;
+            });
+        }
+
         self.broadcast_transactions(transactions_to_broadcast).await
     }
 
@@ -447,6 +463,15 @@ impl FlowContext {
 
     pub async fn rebroadcast_done(&self) {
         self.transactions_spread.write().await.rebroadcast_done();
+    }
+
+    /// Returns true if the time for expiring the mempool low priority transactions has come.
+    pub async fn should_expire_transactions(&self) -> bool {
+        self.transactions_spread.write().await.should_expire_transactions()
+    }
+
+    pub async fn expire_done(&self) {
+        self.transactions_spread.write().await.expire_done();
     }
 
     /// Add the given transactions IDs to a set of IDs to broadcast. The IDs will be broadcasted to all peers

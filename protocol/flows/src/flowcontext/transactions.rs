@@ -11,6 +11,7 @@ use kaspa_p2p_lib::{
 use std::time::{Duration, Instant};
 
 const REBROADCAST_INTERVAL: Duration = Duration::from_secs(30);
+const EXPIRE_INTERVAL: Duration = Duration::from_secs(10);
 const BROADCAST_INTERVAL: Duration = Duration::from_millis(500);
 pub(crate) const MAX_INV_PER_TX_INV_MSG: usize = 131_072;
 
@@ -18,6 +19,8 @@ pub struct TransactionsSpread {
     hub: Hub,
     last_rebroadcast_time: Instant,
     executing_rebroadcast: bool,
+    last_expire_time: Instant,
+    executing_expire: bool,
     transaction_ids: ProcessQueue<TransactionId>,
     last_broadcast_time: Instant,
 }
@@ -28,14 +31,14 @@ impl TransactionsSpread {
             hub,
             last_rebroadcast_time: Instant::now(),
             executing_rebroadcast: false,
+            last_expire_time: Instant::now(),
+            executing_expire: false,
             transaction_ids: ProcessQueue::new(),
             last_broadcast_time: Instant::now(),
         }
     }
 
     /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
-    ///
-    /// If true, the instant of the call is registered as the last rebroadcast time.
     pub fn should_rebroadcast_transactions(&mut self) -> bool {
         if self.executing_rebroadcast || Instant::now() < self.last_rebroadcast_time + REBROADCAST_INTERVAL {
             return false;
@@ -48,6 +51,22 @@ impl TransactionsSpread {
         if self.executing_rebroadcast {
             self.executing_rebroadcast = false;
             self.last_rebroadcast_time = Instant::now();
+        }
+    }
+
+    /// Returns true if the time for expiring the mempool low priority transactions has come.
+    pub fn should_expire_transactions(&mut self) -> bool {
+        if self.executing_expire || Instant::now() < self.last_expire_time + EXPIRE_INTERVAL {
+            return false;
+        }
+        self.executing_expire = true;
+        true
+    }
+
+    pub fn expire_done(&mut self) {
+        if self.executing_expire {
+            self.executing_expire = false;
+            self.last_expire_time = Instant::now();
         }
     }
 

@@ -5,7 +5,7 @@ use crate::{
         model::{
             map::MempoolTransactionCollection,
             pool::{Pool, TransactionsEdges},
-            tx::{MempoolTransaction, TxRemovalReason},
+            tx::MempoolTransaction,
             utxo_set::MempoolUtxoSet,
         },
         tx::Priority,
@@ -16,8 +16,7 @@ use kaspa_consensus_core::{
     tx::TransactionId,
     tx::{MutableTransaction, TransactionOutpoint},
 };
-use kaspa_core::{debug, time::unix_now, trace, warn};
-use kaspa_utils::iter::IterExtensions;
+use kaspa_core::{time::unix_now, trace, warn};
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
     sync::Arc,
@@ -264,6 +263,30 @@ impl TransactionsPool {
         let parent_ids = self.get_parent_transaction_ids_in_pool(transaction);
         self.utxo_set.remove_transaction(transaction, &parent_ids)
     }
+
+    pub(crate) fn collect_expired_low_priority_transactions(&mut self, virtual_daa_score: u64) -> Vec<TransactionId> {
+        let now = unix_now();
+        if virtual_daa_score < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score
+            || now < self.last_expire_scan_time + self.config.transaction_expire_scan_interval_milliseconds
+        {
+            return vec![];
+        }
+
+        // Never expire high priority transactions
+        // Remove all transactions whose added_at_daa_score is older then transaction_expire_interval_daa_score
+        self.all_transactions
+            .values()
+            .filter_map(|x| {
+                if (x.priority == Priority::Low)
+                    && virtual_daa_score > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
+                {
+                    Some(x.id())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
 type IterTxId<'a> = Iter<'a, TransactionId>;
@@ -301,45 +324,8 @@ impl Pool for TransactionsPool {
     }
 
     fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {
-        let now = unix_now();
-        if virtual_daa_score < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score
-            || now < self.last_expire_scan_time + self.config.transaction_expire_scan_interval_milliseconds
-        {
-            return Ok(());
-        }
-
-        // Never expire high priority transactions
-        // Remove all transactions whose added_at_daa_score is older then transaction_expire_interval_daa_score
-        let expired_low_priority_transactions: Vec<TransactionId> = self
-            .all_transactions
-            .values()
-            .filter_map(|x| {
-                if (x.priority == Priority::Low)
-                    && virtual_daa_score > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
-                {
-                    Some(x.id())
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        for transaction_id in expired_low_priority_transactions.iter() {
-            self.remove_transaction(transaction_id)?;
-        }
-        match expired_low_priority_transactions.len() {
-            0 => {}
-            1 => debug!("Removed transaction ({}) {}", TxRemovalReason::Expired, expired_low_priority_transactions[0]),
-            n => debug!(
-                "Removed {} transactions ({}): {}",
-                n,
-                TxRemovalReason::Expired,
-                expired_low_priority_transactions.iter().reusable_format(", ")
-            ),
-        }
-
         self.last_expire_scan_daa_score = virtual_daa_score;
-        self.last_expire_scan_time = now;
+        self.last_expire_scan_time = unix_now();
         Ok(())
     }
 }

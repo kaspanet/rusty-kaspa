@@ -439,9 +439,39 @@ impl MiningManager {
         let accepted_transactions = self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions);
 
         // write lock on mempool
-        self.mempool.write().expire_low_priority_transactions(consensus)?;
+        self.mempool.write().log_stats();
 
         Ok(accepted_transactions)
+    }
+
+    pub fn expire_low_priority_transactions(&self, consensus: &dyn ConsensusApi) {
+        // very fine-grained write locks on mempool
+
+        // orphan pool
+        if let Err(err) = self.mempool.write().expire_orphan_low_priority_transactions(consensus) {
+            warn!("Failed to expire transactions from orphan pool: {}", err);
+        }
+
+        // accepted transaction cache
+        self.mempool.write().expire_accepted_transactions(consensus);
+
+        // mempool
+        let expired_low_priority_transactions = self.mempool.write().collect_expired_low_priority_transactions(consensus);
+        for chunk in &expired_low_priority_transactions.iter().chunks(24) {
+            let mut mempool = self.mempool.write();
+            chunk.into_iter().for_each(|tx| {
+                if let Err(err) = mempool.remove_transaction(tx, false, TxRemovalReason::Muted, "") {
+                    warn!("Failed to remove transaction {} from mempool: {}", tx, err);
+                }
+            });
+        }
+        match expired_low_priority_transactions.len() {
+            0 => {}
+            1 => debug!("Removed transaction ({}) {}", TxRemovalReason::Expired, expired_low_priority_transactions[0]),
+            n => debug!("Removed {} transactions ({}): {}...", n, TxRemovalReason::Expired, expired_low_priority_transactions[0]),
+        }
+
+        self.mempool.write().log_stats();
     }
 
     pub fn revalidate_high_priority_transactions(
@@ -460,9 +490,7 @@ impl MiningManager {
             debug!("Revalidating high priority transactions found no transactions");
             return;
         }
-        let _swo = Stopwatch::<50>::with_threshold("revalidate all_transactions_with_priority op");
         let transactions = mempool.all_transactions_with_priority(Priority::High);
-        drop(_swo);
         drop(mempool);
 
         let mut valid: usize = 0;
@@ -718,6 +746,10 @@ impl MiningManagerProxy {
             .clone()
             .spawn_blocking(move |c| self.inner.handle_new_block_transactions(c, block_daa_score, &block_transactions))
             .await
+    }
+
+    pub async fn expire_low_priority_transactions(self, consensus: &ConsensusProxy) {
+        consensus.clone().spawn_blocking(move |c| self.inner.expire_low_priority_transactions(c)).await;
     }
 
     pub async fn revalidate_high_priority_transactions(
