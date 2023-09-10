@@ -9,7 +9,10 @@ use self::{
     tx::Priority,
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
-use kaspa_core::debug;
+use kaspa_core::{
+    info,
+    time::{unix_now, Stopwatch},
+};
 use std::{collections::hash_map::Entry, sync::Arc};
 
 pub(crate) mod check_transaction_standard;
@@ -42,6 +45,7 @@ pub(crate) struct Mempool {
     transaction_pool: TransactionsPool,
     orphan_pool: OrphanPool,
     accepted_transactions: AcceptedTransactions,
+    last_stat_report_time: u64,
 }
 
 impl Mempool {
@@ -50,7 +54,7 @@ impl Mempool {
         let transaction_pool = TransactionsPool::new(config.clone());
         let orphan_pool = OrphanPool::new(config.clone());
         let accepted_transactions = AcceptedTransactions::new(config.clone());
-        Self { config, transaction_pool, orphan_pool, accepted_transactions }
+        Self { config, transaction_pool, orphan_pool, accepted_transactions, last_stat_report_time: unix_now() }
     }
 
     pub(crate) fn get_transaction(
@@ -123,11 +127,16 @@ impl Mempool {
     }
 
     pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
+        let _sw = Stopwatch::<80>::with_threshold("block_candidate_transactions op");
         self.transaction_pool.all_ready_transactions()
     }
 
     pub(crate) fn all_transactions_with_priority(&self, priority: Priority) -> Vec<MutableTransaction> {
         self.transaction_pool.all_transactions_with_priority(priority)
+    }
+
+    pub(crate) fn has_transactions_with_priority(&self, priority: Priority) -> bool {
+        self.transaction_pool.has_transactions_with_priority(priority)
     }
 
     pub(crate) fn update_revalidated_transaction(&mut self, transaction: MutableTransaction) -> bool {
@@ -154,8 +163,18 @@ impl Mempool {
         self.accepted_transactions.unaccepted(&mut not_in_pools_txs)
     }
 
-    pub(crate) fn log_stats(&self) {
-        debug!("Mempool stats: {} txs, {} orphans, {} accepted", self.transaction_pool.len(), self.orphan_pool.len(), self.accepted_transactions.len());
+    pub(crate) fn log_stats(&mut self) {
+        const LOG_STATS_REPORT_INTERVAL_MILLISECONDS: u64 = 2000;
+        let now = unix_now();
+        if now >= self.last_stat_report_time + LOG_STATS_REPORT_INTERVAL_MILLISECONDS {
+            info!(
+                "Mempool stats: {} txs, {} orphans, {} accepted",
+                self.transaction_pool.len(),
+                self.orphan_pool.len(),
+                self.accepted_transactions.len()
+            );
+            self.last_stat_report_time = now;
+        }
     }
 }
 

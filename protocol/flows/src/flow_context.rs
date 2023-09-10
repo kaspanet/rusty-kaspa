@@ -12,6 +12,7 @@ use kaspa_consensus_notify::{
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager, ConsensusProxy};
+use kaspa_core::time::Stopwatch;
 use kaspa_core::{
     debug, info,
     kaspad_env::{name, version},
@@ -376,9 +377,24 @@ impl FlowContext {
             return Ok(());
         }
 
+        // TODO: refactor this adding a worker and a scheduler to FlowContext
         if self.should_rebroadcast_transactions().await {
-            transactions_to_broadcast
-                .enqueue_chunk(self.mining_manager().clone().revalidate_high_priority_transactions(consensus).await?.into_iter());
+            // Spawn a task revalidating concurrently the high priority transactions.
+            // The TransactionSpread instance ensures at most one rebroadcast running at any
+            // given time.
+            let mining_manager = self.mining_manager().clone();
+            let consensus_clone = consensus.clone();
+            let context = self.clone();
+            tokio::spawn(async move {
+                let (tx, mut rx) = unbounded_channel();
+                tokio::spawn(async move {
+                    mining_manager.revalidate_high_priority_transactions(&consensus_clone, tx).await;
+                });
+                while let Some(transactions) = rx.recv().await {
+                    let _ = context.broadcast_transactions(transactions).await;
+                }
+                context.rebroadcast_done().await;
+            });
         }
 
         self.broadcast_transactions(transactions_to_broadcast).await
@@ -429,6 +445,10 @@ impl FlowContext {
         self.transactions_spread.write().await.should_rebroadcast_transactions()
     }
 
+    pub async fn rebroadcast_done(&self) {
+        self.transactions_spread.write().await.rebroadcast_done();
+    }
+
     /// Add the given transactions IDs to a set of IDs to broadcast. The IDs will be broadcasted to all peers
     /// within transaction Inv messages.
     ///
@@ -438,6 +458,7 @@ impl FlowContext {
         &self,
         transaction_ids: I,
     ) -> Result<(), ProtocolError> {
+        let _sw = Stopwatch::<100>::with_threshold("broadcast_transactions lock");
         self.transactions_spread.write().await.broadcast_transactions(transaction_ids).await
     }
 }

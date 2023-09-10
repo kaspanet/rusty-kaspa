@@ -17,25 +17,38 @@ pub(crate) const MAX_INV_PER_TX_INV_MSG: usize = 131_072;
 pub struct TransactionsSpread {
     hub: Hub,
     last_rebroadcast_time: Instant,
+    executing_rebroadcast: bool,
     transaction_ids: ProcessQueue<TransactionId>,
     last_broadcast_time: Instant,
 }
 
 impl TransactionsSpread {
     pub fn new(hub: Hub) -> Self {
-        Self { hub, last_rebroadcast_time: Instant::now(), transaction_ids: ProcessQueue::new(), last_broadcast_time: Instant::now() }
+        Self {
+            hub,
+            last_rebroadcast_time: Instant::now(),
+            executing_rebroadcast: false,
+            transaction_ids: ProcessQueue::new(),
+            last_broadcast_time: Instant::now(),
+        }
     }
 
     /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
     ///
     /// If true, the instant of the call is registered as the last rebroadcast time.
     pub fn should_rebroadcast_transactions(&mut self) -> bool {
-        let now = Instant::now();
-        if now - self.last_rebroadcast_time < REBROADCAST_INTERVAL {
+        if self.executing_rebroadcast || Instant::now() < self.last_rebroadcast_time + REBROADCAST_INTERVAL {
             return false;
         }
-        self.last_rebroadcast_time = now;
+        self.executing_rebroadcast = true;
         true
+    }
+
+    pub fn rebroadcast_done(&mut self) {
+        if self.executing_rebroadcast {
+            self.executing_rebroadcast = false;
+            self.last_rebroadcast_time = Instant::now();
+        }
     }
 
     /// Add the given transactions IDs to a set of IDs to broadcast. The IDs will be broadcasted to all peers
@@ -53,7 +66,7 @@ impl TransactionsSpread {
         self.transaction_ids.enqueue_chunk(transaction_ids);
 
         let now = Instant::now();
-        if now - self.last_broadcast_time < BROADCAST_INTERVAL && self.transaction_ids.len() < MAX_INV_PER_TX_INV_MSG {
+        if now < self.last_broadcast_time + BROADCAST_INTERVAL && self.transaction_ids.len() < MAX_INV_PER_TX_INV_MSG {
             return Ok(());
         }
 

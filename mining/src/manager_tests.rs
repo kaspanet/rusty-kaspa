@@ -31,6 +31,7 @@ mod tests {
         test_helpers::{create_transaction, op_true_script},
     };
     use std::sync::Arc;
+    use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel};
 
     const TARGET_TIME_PER_BLOCK: u64 = 1_000;
     const MAX_BLOCK_MASS: u64 = 500_000;
@@ -675,8 +676,15 @@ mod tests {
         assert!(result.is_ok(), "the insertion in the mempool of the spending transaction failed");
 
         // Revalidate, to make sure spending_tx is still valid
-        let result = mining_manager.revalidate_high_priority_transactions(consensus.as_ref());
-        assert!(result.is_ok(), "the revalidation of high-priority transactions should succeed");
+        let (tx, mut rx) = unbounded_channel();
+        mining_manager.revalidate_high_priority_transactions(consensus.as_ref(), tx);
+        let result = rx.blocking_recv();
+        assert!(result.is_some(), "the revalidation of high-priority transactions must yield one message");
+        assert_eq!(
+            Err(TryRecvError::Disconnected),
+            rx.try_recv(),
+            "the revalidation of high-priority transactions must yield exactly one message"
+        );
         let valid_txs = result.unwrap();
         assert_eq!(1, valid_txs.len(), "the revalidated transaction count is wrong: expected: {}, got: {}", 1, valid_txs.len());
         assert_eq!(spending_tx.id(), valid_txs[0], "the revalidated transaction is not the right one");
@@ -692,10 +700,13 @@ mod tests {
         );
 
         // Revalidate again, this time valid_txs should be empty
-        let result = mining_manager.revalidate_high_priority_transactions(consensus.as_ref());
-        assert!(result.is_ok(), "the revalidation of high-priority transactions should succeed");
-        let valid_txs = result.unwrap();
-        assert!(valid_txs.is_empty(), "the revalidated transaction count is wrong: expected: {}, got: {}", 0, valid_txs.len());
+        let (tx, mut rx) = unbounded_channel();
+        mining_manager.revalidate_high_priority_transactions(consensus.as_ref(), tx);
+        assert_eq!(
+            Err(TryRecvError::Disconnected),
+            rx.try_recv(),
+            "the revalidation of high-priority transactions must yield no message"
+        );
 
         // And the mempool should be empty too
         let (populated_txs, orphan_txs) = mining_manager.get_all_transactions(true, true);

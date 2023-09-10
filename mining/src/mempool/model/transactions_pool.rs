@@ -248,6 +248,10 @@ impl TransactionsPool {
         self.all().values().filter_map(|x| if x.priority == priority { Some(x.mtx.clone()) } else { None }).collect()
     }
 
+    pub(crate) fn has_transactions_with_priority(&self, priority: Priority) -> bool {
+        self.all().values().any(|x| x.priority == priority)
+    }
+
     pub(crate) fn get_outpoint_owner_id(&self, outpoint: &TransactionOutpoint) -> Option<&TransactionId> {
         self.utxo_set.get_outpoint_owner_id(outpoint)
     }
