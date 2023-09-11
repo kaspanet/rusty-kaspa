@@ -64,6 +64,9 @@ pub(crate) trait Pool {
 
     /// Returns the ids of all transactions being directly and indirectly chained to `transaction_id`
     /// and existing in the pool.
+    ///
+    /// NOTE: this operation's complexity might become linear in the size of the mempool if the mempool
+    /// contains deeply chained transactions
     fn get_redeemer_ids_in_pool(&self, transaction_id: &TransactionId) -> TransactionIdSet {
         let mut redeemers = TransactionIdSet::new();
         if let Some(transaction) = self.get(transaction_id) {
@@ -72,7 +75,7 @@ pub(crate) trait Pool {
                 if let Some(chains) = self.chained().get(&transaction.id()) {
                     for redeemer_id in chains {
                         if let Some(redeemer) = self.get(redeemer_id) {
-                            // Do no revisit transactions
+                            // Do not revisit transactions
                             if redeemers.insert(*redeemer_id) {
                                 stack.push(redeemer);
                             }
@@ -82,6 +85,17 @@ pub(crate) trait Pool {
             }
         }
         redeemers
+    }
+
+    /// Returns the ids of all transactions which directly chained to `transaction_id`
+    /// and exist in the pool.
+    fn get_direct_redeemer_ids_in_pool(&self, transaction_id: &TransactionId) -> TransactionIdSet {
+        if let Some(transaction) = self.get(transaction_id) {
+            if let Some(chains) = self.chained().get(&transaction.id()) {
+                return chains.clone();
+            }
+        }
+        Default::default()
     }
 
     /// Returns a vector with clones of all the transactions in the pool.

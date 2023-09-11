@@ -27,11 +27,15 @@ impl Mempool {
         }
 
         let mut removed_transactions = vec![*transaction_id];
-        let redeemers = self.transaction_pool.get_redeemer_ids_in_pool(transaction_id);
         if remove_redeemers {
+            let redeemers = self.transaction_pool.get_redeemer_ids_in_pool(transaction_id);
             removed_transactions.extend(redeemers);
         } else {
-            redeemers.iter().for_each(|x| {
+            // Note: when `remove_redeemers=false` we avoid calling `get_redeemer_ids_in_pool` which might
+            // have linear complexity (in mempool size) in the worst-case. Instead, we only obtain the direct
+            // tx children since only for these txs we need to update the parent/chain relation to the removed tx
+            let direct_redeemers = self.transaction_pool.get_direct_redeemer_ids_in_pool(transaction_id);
+            direct_redeemers.iter().for_each(|x| {
                 self.transaction_pool.remove_parent_chained_relation_in_pool(x, transaction_id);
             });
         }
