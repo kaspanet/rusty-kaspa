@@ -1,7 +1,10 @@
 use kaspa_consensus_core::block::BlockTemplate;
 use kaspa_core::time::unix_now;
 use parking_lot::{Mutex, MutexGuard};
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering::SeqCst},
+    Arc,
+};
 
 /// CACHE_LIFETIME indicates the default duration in milliseconds after which the cached data expires.
 const DEFAULT_CACHE_LIFETIME: u64 = 1_000;
@@ -23,9 +26,8 @@ impl Inner {
         Self { last_update_time: 0, block_template: None, cache_lifetime }
     }
 
-    pub(crate) fn clear(&mut self) {
+    fn clear(&mut self) {
         // The cache timer is reset to 0 so its lifetime is expired.
-        // TODO
         self.last_update_time = 0;
         self.block_template = None;
     }
@@ -36,27 +38,40 @@ impl Inner {
         if now < self.last_update_time || now - self.last_update_time > self.cache_lifetime {
             None
         } else {
-            Some(self.block_template.as_ref().unwrap().clone())
+            Some(self.block_template.as_ref().expect("last_update_time would be 0").clone())
         }
     }
 
     pub(crate) fn set_immutable_cached_template(&mut self, block_template: BlockTemplate) -> Arc<BlockTemplate> {
         self.last_update_time = unix_now();
-        self.block_template = Some(Arc::new(block_template));
-        self.block_template.as_ref().unwrap().clone()
+        let block_template = Arc::new(block_template);
+        self.block_template = Some(block_template.clone());
+        block_template
     }
 }
 
 pub(crate) struct BlockTemplateCache {
     inner: Mutex<Inner>,
+    clear_flag: AtomicBool,
 }
 
 impl BlockTemplateCache {
     pub(crate) fn new(cache_lifetime: Option<u64>) -> Self {
-        Self { inner: Mutex::new(Inner::new(cache_lifetime)) }
+        Self { inner: Mutex::new(Inner::new(cache_lifetime)), clear_flag: AtomicBool::new(false) }
+    }
+
+    pub(crate) fn clear(&self) {
+        // We avoid blocking on the mutex for clear but rather signal to the next
+        // thread acquiring the lock to clear the template
+        self.clear_flag.store(true, SeqCst)
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<Inner> {
-        self.inner.lock()
+        let mut guard = self.inner.lock();
+        if self.clear_flag.swap(false, SeqCst) {
+            // If clear was signaled, perform the actual clear
+            guard.clear();
+        }
+        guard
     }
 }
