@@ -26,13 +26,13 @@ use kaspa_consensus_core::{
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy};
 use kaspa_core::{debug, error, info, time::Stopwatch, warn};
 use kaspa_mining_errors::mempool::RuleError;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
 pub struct MiningManager {
     block_template_builder: BlockTemplateBuilder,
-    block_template_cache: Mutex<BlockTemplateCache>,
+    block_template_cache: BlockTemplateCache,
     pub(crate) mempool: RwLock<Mempool>,
 }
 
@@ -50,7 +50,7 @@ impl MiningManager {
     pub(crate) fn with_config(config: Config, cache_lifetime: Option<u64>) -> Self {
         let block_template_builder = BlockTemplateBuilder::new(config.maximum_mass_per_block);
         let mempool = RwLock::new(Mempool::new(config));
-        let block_template_cache = Mutex::new(BlockTemplateCache::new(cache_lifetime));
+        let block_template_cache = BlockTemplateCache::new(cache_lifetime);
         Self { block_template_builder, block_template_cache, mempool }
     }
 
