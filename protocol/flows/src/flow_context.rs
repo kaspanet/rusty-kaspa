@@ -12,7 +12,6 @@ use kaspa_consensus_notify::{
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager, ConsensusProxy};
-use kaspa_core::time::Stopwatch;
 use kaspa_core::{
     debug, info,
     kaspad_env::{name, version},
@@ -354,14 +353,13 @@ impl FlowContext {
     ///
     /// _GO-KASPAD: OnNewBlock + broadcastTransactionsAfterBlockAdded_
     pub async fn on_new_block(&self, consensus: &ConsensusProxy, block: Block) -> Result<(), ProtocolError> {
-        let _sw = Stopwatch::<500>::with_threshold("on_new_block lock");
         let hash = block.hash();
         let mut blocks = self.unorphan_blocks(consensus, hash).await;
         // Process blocks in topological order
         blocks.sort_by(|a, b| a.header.blue_work.partial_cmp(&b.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
-        for block in blocks.into_iter().chain(once(block)) {
+        for block in once(block).chain(blocks.into_iter()) {
             transactions_to_broadcast.enqueue_chunk(
                 self.mining_manager()
                     .clone()
@@ -375,6 +373,20 @@ impl FlowContext {
         // Don't relay transactions when in IBD
         if self.is_ibd_running() {
             return Ok(());
+        }
+
+        // TODO: refactor this adding a worker and a scheduler to FlowContext
+        if self.should_expire_transactions().await {
+            // Spawn a task expiring concurrently the low priority transactions.
+            // The TransactionSpread instance ensures at most one expire running at any
+            // given time.
+            let mining_manager = self.mining_manager().clone();
+            let consensus_clone = consensus.clone();
+            let context = self.clone();
+            tokio::spawn(async move {
+                mining_manager.expire_low_priority_transactions(&consensus_clone).await;
+                context.expire_done().await;
+            });
         }
 
         // TODO: refactor this adding a worker and a scheduler to FlowContext
@@ -394,22 +406,6 @@ impl FlowContext {
                     let _ = context.broadcast_transactions(transactions).await;
                 }
                 context.rebroadcast_done().await;
-            });
-        }
-
-        // TODO: refactor this adding a worker and a scheduler to FlowContext
-        if self.should_expire_transactions().await {
-            // Spawn a task expiring concurrently the low priority transactions.
-            // The TransactionSpread instance ensures at most one expire running at any
-            // given time.
-            let mining_manager = self.mining_manager().clone();
-            let consensus_clone = consensus.clone();
-            let context = self.clone();
-            tokio::spawn(async move {
-                tokio::spawn(async move {
-                    mining_manager.expire_low_priority_transactions(&consensus_clone).await;
-                });
-                context.expire_done().await;
             });
         }
 
@@ -483,7 +479,6 @@ impl FlowContext {
         &self,
         transaction_ids: I,
     ) -> Result<(), ProtocolError> {
-        let _sw = Stopwatch::<100>::with_threshold("broadcast_transactions lock");
         self.transactions_spread.write().await.broadcast_transactions(transaction_ids).await
     }
 }
