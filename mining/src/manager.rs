@@ -136,7 +136,6 @@ impl MiningManager {
     }
 
     pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
-        let _sw = Stopwatch::<100>::with_threshold("block_candidate_transactions lock");
         self.mempool.read().block_candidate_transactions()
     }
 
@@ -173,7 +172,6 @@ impl MiningManager {
         priority: Priority,
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        let _sw = Stopwatch::<200>::with_threshold("validate_and_insert_mutable_transaction lock");
         // read lock on mempool
         let mut transaction = self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction)?;
         // no lock on mempool
@@ -204,7 +202,6 @@ impl MiningManager {
         consensus: &dyn ConsensusApi,
         mut incoming_transactions: Vec<MempoolTransaction>,
     ) -> Vec<Arc<Transaction>> {
-        let _sw = Stopwatch::<200>::with_threshold("validate_and_insert_unorphaned_transactions lock");
         // The capacity used here may be exceeded (see next comment).
         let mut accepted_transactions = Vec::with_capacity(incoming_transactions.len());
         // We loop as long as incoming unorphaned transactions do unorphan other transactions when they
@@ -272,7 +269,6 @@ impl MiningManager {
         priority: Priority,
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        let _sw = Stopwatch::<500>::with_threshold("validate_and_insert_transaction_batch lock");
         // The capacity used here may be exceeded since accepted transactions may unorphan other transactions.
         let mut accepted_transactions: Vec<Arc<Transaction>> = Vec::with_capacity(transactions.len());
         let mut batch = TransactionsStagger::new(transactions);
@@ -429,7 +425,6 @@ impl MiningManager {
         block_daa_score: u64,
         block_transactions: &[Transaction],
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        let _sw = Stopwatch::<500>::with_threshold("handle_new_block_transactions lock");
         // TODO: should use tx acceptance data to verify that new block txs are actually accepted into virtual state.
 
         // write lock on mempool
@@ -479,8 +474,6 @@ impl MiningManager {
         consensus: &dyn ConsensusApi,
         transaction_ids_sender: UnboundedSender<Vec<TransactionId>>,
     ) {
-        let _sw = Stopwatch::<1000>::with_threshold("revalidate_high_priority_transactions lock");
-
         // read lock on mempool
         // Prepare a vector with clones of high priority transactions found in the mempool
         let mempool = self.mempool.read();
