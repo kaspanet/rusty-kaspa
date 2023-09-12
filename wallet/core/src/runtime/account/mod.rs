@@ -65,7 +65,8 @@ pub async fn try_from_storage(
         AccountData::Bip32(bip32) => Ok(Arc::new(Bip32::try_new(wallet, prv_key_data_id.unwrap(), settings, bip32, meta).await?)),
         AccountData::Legacy(legacy) => Ok(Arc::new(Legacy::try_new(wallet, prv_key_data_id.unwrap(), settings, legacy, meta).await?)),
         AccountData::MultiSig(multisig) => {
-            Ok(Arc::new(MultiSig::try_new(wallet, prv_key_data_id.unwrap(), settings, multisig, meta).await?))
+            todo!()
+            // Ok(Arc::new(MultiSig::try_new(wallet, prv_key_data_id.unwrap(), settings, multisig, meta).await?))
         }
         AccountData::Keypair(keypair) => {
             Ok(Arc::new(Keypair::try_new(wallet, prv_key_data_id.unwrap(), settings, keypair, meta).await?))

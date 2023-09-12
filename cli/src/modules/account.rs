@@ -53,10 +53,9 @@ impl Account {
                 };
 
                 let prv_key_data_info = ctx.select_private_key().await?;
-                let prv_key_data_id = prv_key_data_info.id;
 
                 let account_name = account_name.as_deref();
-                wizards::account::create(&ctx, prv_key_data_id, account_kind, account_name).await?;
+                wizards::account::create(&ctx, prv_key_data_info, account_kind, account_name).await?;
             }
             "scan" => {
                 let extent = if argv.is_empty() {

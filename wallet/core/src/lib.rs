@@ -1,4 +1,5 @@
 extern crate alloc;
+extern crate core;
 extern crate self as kaspa_wallet_core;
 
 pub mod derivation;

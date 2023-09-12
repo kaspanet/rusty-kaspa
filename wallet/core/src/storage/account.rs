@@ -52,18 +52,11 @@ const MULTISIG_ACCOUNT_VERSION: u16 = 0;
 pub struct MultiSig {
     #[serde(default)]
     pub version: u16,
-
-    pub account_index: u64,
     pub xpub_keys: Arc<Vec<String>>,
-    pub cosigner_index: u8,
+    pub prv_key_data_ids: Option<Arc<Vec<PrvKeyDataId>>>,
+    pub cosigner_index: Option<u8>,
     pub minimum_signatures: u16,
     pub ecdsa: bool,
-}
-
-impl MultiSig {
-    pub fn new(account_index: u64, xpub_keys: Arc<Vec<String>>, cosigner_index: u8, minimum_signatures: u16, ecdsa: bool) -> Self {
-        Self { version: MULTISIG_ACCOUNT_VERSION, account_index, xpub_keys, cosigner_index, minimum_signatures, ecdsa }
-    }
 }
 
 const KEYPAIR_ACCOUNT_VERSION: u16 = 0;
