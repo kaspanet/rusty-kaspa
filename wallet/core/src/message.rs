@@ -10,7 +10,7 @@ impl AsRef<[u8]> for PersonalMessage<'_> {
     }
 }
 
-pub fn sign_message(msg: PersonalMessage, privkey: &[u8; 32]) -> Result<Vec<u8>, Error> {
+pub fn sign_message(msg: &PersonalMessage, privkey: &[u8; 32]) -> Result<Vec<u8>, Error> {
     let hash = calc_personal_message_hash(msg);
 
     let msg = secp256k1::Message::from_slice(hash.as_bytes().as_slice())?;
@@ -20,7 +20,7 @@ pub fn sign_message(msg: PersonalMessage, privkey: &[u8; 32]) -> Result<Vec<u8>,
     Ok(sig.to_vec())
 }
 
-pub fn sign_message_with_aux_rand(msg: PersonalMessage, privkey: &[u8; 32], aux_rand: &[u8; 32]) -> Result<Vec<u8>, Error> {
+pub fn sign_message_with_aux_rand(msg: &PersonalMessage, privkey: &[u8; 32], aux_rand: &[u8; 32]) -> Result<Vec<u8>, Error> {
     let hash = calc_personal_message_hash(msg);
 
     let msg = secp256k1::Message::from_slice(hash.as_bytes().as_slice())?;
@@ -31,19 +31,16 @@ pub fn sign_message_with_aux_rand(msg: PersonalMessage, privkey: &[u8; 32], aux_
     Ok(sig.to_vec())
 }
 
-pub fn verify_message(msg: PersonalMessage, signature: Vec<u8>, pubkey: &XOnlyPublicKey) -> Result<bool, Error> {
+/// Ok(()) if the signature matches the given message and pubkey
+/// Error if any of the inputs are incorrect, or the signature is invalid
+pub fn verify_message(msg: &PersonalMessage, signature: &Vec<u8>, pubkey: &XOnlyPublicKey) -> Result<(), Error> {
     let hash = calc_personal_message_hash(msg);
     let msg = secp256k1::Message::from_slice(hash.as_bytes().as_slice())?;
     let sig = secp256k1::schnorr::Signature::from_slice(signature.as_slice())?;
-    let sig_res = sig.verify(&msg, pubkey);
-
-    match sig_res {
-        Ok(_) => Ok(true),
-        Err(e) => Err(e),
-    }
+    sig.verify(&msg, pubkey)
 }
 
-fn calc_personal_message_hash(msg: PersonalMessage) -> Hash {
+fn calc_personal_message_hash(msg: &PersonalMessage) -> Hash {
     let mut hasher = PersonalMessageSigningHash::new();
     hasher.write(msg);
     hasher.finalize()
@@ -65,14 +62,12 @@ mod tests {
             0x83, 0x6F, 0x99, 0xB0, 0x86, 0x01, 0xF1, 0x13, 0xBC, 0xE0, 0x36, 0xF9,
         ])
         .unwrap();
-        let sig_result = sign_message(pm.clone(), &privkey);
+        let sig_result = sign_message(&pm, &privkey);
 
         assert!(sig_result.is_ok());
 
-        if let Ok(sig_result) = sig_result {
-            let verify_result = verify_message(pm, sig_result, &pubkey);
-            assert!(verify_result.is_ok());
-        }
+        let verify_result = verify_message(&pm, &sig_result.unwrap(), &pubkey);
+        assert!(verify_result.is_ok());
     }
 
     #[test]
@@ -87,14 +82,12 @@ mod tests {
             0xA2, 0xDE, 0xCE, 0xD8, 0x43, 0x24, 0x0F, 0x7B, 0x50, 0x2B, 0xA6, 0x59,
         ])
         .unwrap();
-        let sig_result = sign_message(pm.clone(), &privkey);
+        let sig_result = sign_message(&pm, &privkey);
 
         assert!(sig_result.is_ok());
 
-        if let Ok(sig_result) = sig_result {
-            let verify_result = verify_message(pm, sig_result, &pubkey);
-            assert!(verify_result.is_ok());
-        }
+        let verify_result = verify_message(&pm, &sig_result.unwrap(), &pubkey);
+        assert!(verify_result.is_ok());
     }
 
     #[test]
@@ -113,14 +106,32 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
             0xA2, 0xDE, 0xCE, 0xD8, 0x43, 0x24, 0x0F, 0x7B, 0x50, 0x2B, 0xA6, 0x59,
         ])
         .unwrap();
-        let sig_result = sign_message(pm.clone(), &privkey);
+        let sig_result = sign_message(&pm, &privkey);
 
         assert!(sig_result.is_ok());
 
-        if let Ok(sig_result) = sig_result {
-            let verify_result = verify_message(pm, sig_result, &pubkey);
-            assert!(verify_result.is_ok());
-        }
+        let verify_result = verify_message(&pm, &sig_result.unwrap(), &pubkey);
+        assert!(verify_result.is_ok());
+    }
+
+    #[test]
+    fn test_fail_verify() {
+        let pm = PersonalMessage("Not Hello Kaspa!");
+        let pubkey = XOnlyPublicKey::from_slice(&[
+            0xF9, 0x30, 0x8A, 0x01, 0x92, 0x58, 0xC3, 0x10, 0x49, 0x34, 0x4F, 0x85, 0xF8, 0x9D, 0x52, 0x29, 0xB5, 0x31, 0xC8, 0x45,
+            0x83, 0x6F, 0x99, 0xB0, 0x86, 0x01, 0xF1, 0x13, 0xBC, 0xE0, 0x36, 0xF9,
+        ])
+        .unwrap();
+        let fake_sig: Vec<u8> = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ]
+        .to_vec();
+
+        let verify_result = verify_message(&pm, &fake_sig, &pubkey);
+        assert!(verify_result.is_err());
     }
 
     #[test]
@@ -146,15 +157,15 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
             0xA4, 0x8E, 0xF5, 0x22,
         ]
         .to_vec();
-        let sig_result = sign_message_with_aux_rand(pm.clone(), &privkey, &aux_rand);
+        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand);
 
         assert!(sig_result.is_ok());
 
-        if let Ok(sig_result) = sig_result {
-            assert_eq!(expected_sig, sig_result);
-            let verify_result = verify_message(pm, sig_result, &pubkey);
-            assert!(verify_result.is_ok());
-        }
+        let sig_result = sig_result.unwrap();
+        assert_eq!(expected_sig, sig_result);
+
+        let verify_result = verify_message(&pm, &sig_result, &pubkey);
+        assert!(verify_result.is_ok());
     }
 
     #[test]
@@ -180,15 +191,15 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
             0xE2, 0x06, 0xB4, 0xC6,
         ]
         .to_vec();
-        let sig_result = sign_message_with_aux_rand(pm.clone(), &privkey, &aux_rand);
+        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand);
 
         assert!(sig_result.is_ok());
 
-        if let Ok(sig_result) = sig_result {
-            assert_eq!(expected_sig, sig_result);
-            let verify_result = verify_message(pm, sig_result, &pubkey);
-            assert!(verify_result.is_ok());
-        }
+        let sig_result = sig_result.unwrap();
+        assert_eq!(expected_sig, sig_result);
+
+        let verify_result = verify_message(&pm, &sig_result, &pubkey);
+        assert!(verify_result.is_ok());
     }
 
     #[test]
@@ -214,15 +225,15 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
             0xFA, 0xFB, 0x59, 0xBC,
         ]
         .to_vec();
-        let sig_result = sign_message_with_aux_rand(pm.clone(), &privkey, &aux_rand);
+        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand);
 
         assert!(sig_result.is_ok());
 
-        if let Ok(sig_result) = sig_result {
-            assert_eq!(expected_sig, sig_result);
-            let verify_result = verify_message(pm, sig_result, &pubkey);
-            assert!(verify_result.is_ok());
-        }
+        let sig_result = sig_result.unwrap();
+        assert_eq!(expected_sig, sig_result);
+
+        let verify_result = verify_message(&pm, &sig_result, &pubkey);
+        assert!(verify_result.is_ok());
     }
 
     #[test]
@@ -252,14 +263,14 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
             0xD2, 0xA4, 0x98, 0x3A,
         ]
         .to_vec();
-        let sig_result = sign_message_with_aux_rand(pm.clone(), &privkey, &aux_rand);
+        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand);
 
         assert!(sig_result.is_ok());
 
-        if let Ok(sig_result) = sig_result {
-            assert_eq!(expected_sig, sig_result);
-            let verify_result = verify_message(pm, sig_result, &pubkey);
-            assert!(verify_result.is_ok());
-        }
+        let sig_result = sig_result.unwrap();
+        assert_eq!(expected_sig, sig_result);
+
+        let verify_result = verify_message(&pm, &sig_result, &pubkey);
+        assert!(verify_result.is_ok());
     }
 }
