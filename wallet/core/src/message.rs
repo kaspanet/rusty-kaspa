@@ -31,11 +31,11 @@ pub fn sign_message_with_aux_rand(msg: PersonalMessage, privkey: &[u8; 32], aux_
     Ok(sig.to_vec())
 }
 
-pub fn verify_message(msg: PersonalMessage, signature: Vec<u8>, pubkey: XOnlyPublicKey) -> Result<bool, Error> {
+pub fn verify_message(msg: PersonalMessage, signature: Vec<u8>, pubkey: &XOnlyPublicKey) -> Result<bool, Error> {
     let hash = calc_personal_message_hash(msg);
     let msg = secp256k1::Message::from_slice(hash.as_bytes().as_slice())?;
     let sig = secp256k1::schnorr::Signature::from_slice(signature.as_slice())?;
-    let sig_res = sig.verify(&msg, &pubkey);
+    let sig_res = sig.verify(&msg, pubkey);
 
     match sig_res {
         Ok(_) => Ok(true),
@@ -70,7 +70,7 @@ mod tests {
         assert!(sig_result.is_ok());
 
         if let Ok(sig_result) = sig_result {
-            let verify_result = verify_message(pm, sig_result, pubkey);
+            let verify_result = verify_message(pm, sig_result, &pubkey);
             assert!(verify_result.is_ok());
         }
     }
@@ -92,7 +92,7 @@ mod tests {
         assert!(sig_result.is_ok());
 
         if let Ok(sig_result) = sig_result {
-            let verify_result = verify_message(pm, sig_result, pubkey);
+            let verify_result = verify_message(pm, sig_result, &pubkey);
             assert!(verify_result.is_ok());
         }
     }
@@ -118,7 +118,7 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
         assert!(sig_result.is_ok());
 
         if let Ok(sig_result) = sig_result {
-            let verify_result = verify_message(pm, sig_result, pubkey);
+            let verify_result = verify_message(pm, sig_result, &pubkey);
             assert!(verify_result.is_ok());
         }
     }
@@ -152,7 +152,7 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
 
         if let Ok(sig_result) = sig_result {
             assert_eq!(expected_sig, sig_result);
-            let verify_result = verify_message(pm, sig_result, pubkey);
+            let verify_result = verify_message(pm, sig_result, &pubkey);
             assert!(verify_result.is_ok());
         }
     }
@@ -186,7 +186,7 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
 
         if let Ok(sig_result) = sig_result {
             assert_eq!(expected_sig, sig_result);
-            let verify_result = verify_message(pm, sig_result, pubkey);
+            let verify_result = verify_message(pm, sig_result, &pubkey);
             assert!(verify_result.is_ok());
         }
     }
@@ -220,7 +220,7 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
 
         if let Ok(sig_result) = sig_result {
             assert_eq!(expected_sig, sig_result);
-            let verify_result = verify_message(pm, sig_result, pubkey);
+            let verify_result = verify_message(pm, sig_result, &pubkey);
             assert!(verify_result.is_ok());
         }
     }
@@ -258,7 +258,7 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
 
         if let Ok(sig_result) = sig_result {
             assert_eq!(expected_sig, sig_result);
-            let verify_result = verify_message(pm, sig_result, pubkey);
+            let verify_result = verify_message(pm, sig_result, &pubkey);
             assert!(verify_result.is_ok());
         }
     }
