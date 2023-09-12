@@ -78,12 +78,30 @@ impl MiningManager {
         // mempool.BlockCandidateTransactions and mempool.RemoveTransactions here.
         // We remove recursion seen in blockTemplateBuilder.BuildBlockTemplate here.
         debug!("Building a new block template...");
+        let mut retries: usize = 0;
         loop {
             let transactions = self.block_candidate_transactions();
             match self.block_template_builder.build_block_template(consensus, miner_data, transactions) {
                 Ok(block_template) => {
                     let block_template = cache_lock.set_immutable_cached_template(block_template);
-                    debug!("Built a new block template with {} transactions", block_template.block.transactions.len());
+                    match retries {
+                        0 => {
+                            debug!("Built a new block template with {} transactions", block_template.block.transactions.len());
+                        }
+                        1 => {
+                            debug!(
+                                "Built a new block template with {} transactions after one retry",
+                                block_template.block.transactions.len()
+                            );
+                        }
+                        n => {
+                            debug!(
+                                "Built a new block template with {} transactions after {} retries",
+                                block_template.block.transactions.len(),
+                                n
+                            );
+                        }
+                    }
                     return Ok(block_template.as_ref().clone());
                 }
                 Err(BuilderError::ConsensusError(BlockRuleError::InvalidTransactionsInNewBlock(invalid_transactions))) => {
@@ -132,6 +150,7 @@ impl MiningManager {
                     return Err(err)?;
                 }
             }
+            retries += 1;
         }
     }
 
