@@ -62,12 +62,8 @@ mod tests {
             0x83, 0x6F, 0x99, 0xB0, 0x86, 0x01, 0xF1, 0x13, 0xBC, 0xE0, 0x36, 0xF9,
         ])
         .unwrap();
-        let sig_result = sign_message(&pm, &privkey);
 
-        assert!(sig_result.is_ok());
-
-        let verify_result = verify_message(&pm, &sig_result.unwrap(), &pubkey);
-        assert!(verify_result.is_ok());
+        verify_message(&pm, &sign_message(&pm, &privkey).expect("sign_message failed"), &pubkey).expect("verify_message failed");
     }
 
     #[test]
@@ -82,12 +78,8 @@ mod tests {
             0xA2, 0xDE, 0xCE, 0xD8, 0x43, 0x24, 0x0F, 0x7B, 0x50, 0x2B, 0xA6, 0x59,
         ])
         .unwrap();
-        let sig_result = sign_message(&pm, &privkey);
 
-        assert!(sig_result.is_ok());
-
-        let verify_result = verify_message(&pm, &sig_result.unwrap(), &pubkey);
-        assert!(verify_result.is_ok());
+        verify_message(&pm, &sign_message(&pm, &privkey).expect("sign_message failed"), &pubkey).expect("verify_message failed");
     }
 
     #[test]
@@ -106,12 +98,8 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
             0xA2, 0xDE, 0xCE, 0xD8, 0x43, 0x24, 0x0F, 0x7B, 0x50, 0x2B, 0xA6, 0x59,
         ])
         .unwrap();
-        let sig_result = sign_message(&pm, &privkey);
 
-        assert!(sig_result.is_ok());
-
-        let verify_result = verify_message(&pm, &sig_result.unwrap(), &pubkey);
-        assert!(verify_result.is_ok());
+        verify_message(&pm, &sign_message(&pm, &privkey).expect("sign_message failed"), &pubkey).expect("verify_message failed");
     }
 
     #[test]
@@ -157,15 +145,11 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
             0xA4, 0x8E, 0xF5, 0x22,
         ]
         .to_vec();
-        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand);
 
-        assert!(sig_result.is_ok());
-
-        let sig_result = sig_result.unwrap();
+        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand).expect("sign_message failed");
         assert_eq!(expected_sig, sig_result);
 
-        let verify_result = verify_message(&pm, &sig_result, &pubkey);
-        assert!(verify_result.is_ok());
+        verify_message(&pm, &sig_result, &pubkey).expect("verify_message failed");
     }
 
     #[test]
@@ -191,15 +175,11 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
             0xE2, 0x06, 0xB4, 0xC6,
         ]
         .to_vec();
-        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand);
 
-        assert!(sig_result.is_ok());
-
-        let sig_result = sig_result.unwrap();
+        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand).expect("sign_message failed");
         assert_eq!(expected_sig, sig_result);
 
-        let verify_result = verify_message(&pm, &sig_result, &pubkey);
-        assert!(verify_result.is_ok());
+        verify_message(&pm, &sig_result, &pubkey).expect("verify_message failed");
     }
 
     #[test]
@@ -225,15 +205,11 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
             0xFA, 0xFB, 0x59, 0xBC,
         ]
         .to_vec();
-        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand);
 
-        assert!(sig_result.is_ok());
-
-        let sig_result = sig_result.unwrap();
+        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand).expect("sign_message failed");
         assert_eq!(expected_sig, sig_result);
 
-        let verify_result = verify_message(&pm, &sig_result, &pubkey);
-        assert!(verify_result.is_ok());
+        verify_message(&pm, &sig_result, &pubkey).expect("verify_message failed");
     }
 
     #[test]
@@ -263,14 +239,10 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
             0xD2, 0xA4, 0x98, 0x3A,
         ]
         .to_vec();
-        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand);
 
-        assert!(sig_result.is_ok());
-
-        let sig_result = sig_result.unwrap();
+        let sig_result = sign_message_with_aux_rand(&pm, &privkey, &aux_rand).expect("sign_message failed");
         assert_eq!(expected_sig, sig_result);
 
-        let verify_result = verify_message(&pm, &sig_result, &pubkey);
-        assert!(verify_result.is_ok());
+        verify_message(&pm, &sig_result, &pubkey).expect("verify_message failed");
     }
 }
