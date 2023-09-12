@@ -514,8 +514,7 @@ impl MiningManager {
         let mut invalid: usize = 0;
 
         // We process the transactions by level of dependency inside the batch.
-        // Doing so allows to remove all chained dependencies of rejected transactions before actually trying
-        // to revalidate those, saving potentially a lot of computing resources.
+        // Doing so allows to remove all chained dependencies of rejected transactions.
         let mut batch = TransactionsStagger::new(transactions);
         while let Some(transactions) = batch.stagger() {
             if transactions.is_empty() {
@@ -534,15 +533,13 @@ impl MiningManager {
                 .into_iter()
                 .filter_map(|mut x| {
                     let transaction_id = x.id();
-                    if mempool.has_transaction(&transaction_id, true, false) {
-                        if mempool.has_accepted_transaction(&transaction_id) {
-                            accepted += 1;
-                            None
-                        } else {
-                            x.clear_entries();
-                            mempool.populate_mempool_entries(&mut x);
-                            Some(x)
-                        }
+                    if mempool.has_accepted_transaction(&transaction_id) {
+                        accepted += 1;
+                        None
+                    } else if mempool.has_transaction(&transaction_id, true, false) {
+                        x.clear_entries();
+                        mempool.populate_mempool_entries(&mut x);
+                        Some(x)
                     } else {
                         other += 1;
                         None
