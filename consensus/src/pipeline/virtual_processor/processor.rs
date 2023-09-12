@@ -708,7 +708,7 @@ impl VirtualStateProcessor {
         (virtual_parents, ghostdag_data)
     }
 
-    fn validate_mempool_transaction_and_populate_impl(
+    fn validate_mempool_transaction_impl(
         &self,
         mutable_tx: &mut MutableTransaction,
         virtual_utxo_view: &impl UtxoView,
@@ -716,23 +716,18 @@ impl VirtualStateProcessor {
         virtual_past_median_time: u64,
     ) -> TxResult<()> {
         self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx)?;
-
         self.transaction_validator.utxo_free_tx_validation(&mutable_tx.tx, virtual_daa_score, virtual_past_median_time)?;
         self.validate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view, virtual_daa_score)?;
-
         Ok(())
     }
 
-    pub fn validate_mempool_transaction_and_populate(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
-        self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx)?;
-
+    pub fn validate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
         let virtual_read = self.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
         let virtual_daa_score = virtual_state.daa_score;
         let virtual_past_median_time = virtual_state.past_median_time;
-
-        self.validate_mempool_transaction_and_populate_impl(mutable_tx, virtual_utxo_view, virtual_daa_score, virtual_past_median_time)
+        self.validate_mempool_transaction_impl(mutable_tx, virtual_utxo_view, virtual_daa_score, virtual_past_median_time)
     }
 
     pub fn validate_mempool_transactions_in_parallel(&self, mutable_txs: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
@@ -746,13 +741,34 @@ impl VirtualStateProcessor {
             mutable_txs
                 .par_iter_mut()
                 .map(|mtx| {
-                    self.validate_mempool_transaction_and_populate_impl(
-                        mtx,
-                        &virtual_utxo_view,
-                        virtual_daa_score,
-                        virtual_past_median_time,
-                    )
+                    self.validate_mempool_transaction_impl(mtx, &virtual_utxo_view, virtual_daa_score, virtual_past_median_time)
                 })
+                .collect::<Vec<TxResult<()>>>()
+        })
+    }
+
+    fn populate_mempool_transaction_impl(
+        &self,
+        mutable_tx: &mut MutableTransaction,
+        virtual_utxo_view: &impl UtxoView,
+    ) -> TxResult<()> {
+        self.populate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view)?;
+        Ok(())
+    }
+
+    pub fn populate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
+        let virtual_read = self.virtual_stores.read();
+        let virtual_utxo_view = &virtual_read.utxo_set;
+        self.populate_mempool_transaction_impl(mutable_tx, virtual_utxo_view)
+    }
+
+    pub fn populate_mempool_transactions_in_parallel(&self, mutable_txs: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        let virtual_read = self.virtual_stores.read();
+        let virtual_utxo_view = &virtual_read.utxo_set;
+        self.thread_pool.install(|| {
+            mutable_txs
+                .par_iter_mut()
+                .map(|mtx| self.populate_mempool_transaction_impl(mtx, &virtual_utxo_view))
                 .collect::<Vec<TxResult<()>>>()
         })
     }

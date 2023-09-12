@@ -5,7 +5,9 @@ use crate::{
     mempool::{
         config::Config,
         model::tx::{MempoolTransaction, TxRemovalReason},
-        populate_entries_and_try_validate::{validate_mempool_transaction_and_populate, validate_mempool_transactions_in_parallel},
+        populate_entries_and_try_validate::{
+            populate_mempool_transactions_in_parallel, validate_mempool_transaction, validate_mempool_transactions_in_parallel,
+        },
         tx::{Orphan, Priority},
         Mempool,
     },
@@ -194,7 +196,7 @@ impl MiningManager {
         // read lock on mempool
         let mut transaction = self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction)?;
         // no lock on mempool
-        let validation_result = validate_mempool_transaction_and_populate(consensus, &mut transaction);
+        let validation_result = validate_mempool_transaction(consensus, &mut transaction);
         // write lock on mempool
         let mut mempool = self.mempool.write();
         if let Some(accepted_transaction) =
@@ -558,7 +560,7 @@ impl MiningManager {
                 assert!(lower_bound < upper_bound, "the chunk is never empty");
                 let _swo = Stopwatch::<60>::with_threshold("revalidate validate_mempool_transactions_in_parallel op");
                 validation_results
-                    .extend(validate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
+                    .extend(populate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
                 drop(_swo);
                 lower_bound = upper_bound;
             }

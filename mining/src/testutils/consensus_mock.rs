@@ -97,7 +97,7 @@ impl ConsensusApi for ConsensusMock {
         Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now, 0))
     }
 
-    fn validate_mempool_transaction_and_populate(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
+    fn validate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
         // If a predefined status was registered to simulate an error, return it right away
         if let Some(status) = self.statuses.read().get(&mutable_tx.id()) {
             if status.is_err() {
@@ -130,7 +130,11 @@ impl ConsensusApi for ConsensusMock {
     }
 
     fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
-        transactions.iter_mut().map(|x| self.validate_mempool_transaction_and_populate(x)).collect()
+        transactions.iter_mut().map(|x| self.validate_mempool_transaction(x)).collect()
+    }
+
+    fn populate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        transactions.iter_mut().map(|x| self.validate_mempool_transaction(x)).collect()
     }
 
     fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {

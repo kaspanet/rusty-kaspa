@@ -14,11 +14,8 @@ impl Mempool {
     }
 }
 
-pub(crate) fn validate_mempool_transaction_and_populate(
-    consensus: &dyn ConsensusApi,
-    transaction: &mut MutableTransaction,
-) -> RuleResult<()> {
-    Ok(consensus.validate_mempool_transaction_and_populate(transaction)?)
+pub(crate) fn validate_mempool_transaction(consensus: &dyn ConsensusApi, transaction: &mut MutableTransaction) -> RuleResult<()> {
+    Ok(consensus.validate_mempool_transaction(transaction)?)
 }
 
 pub(crate) fn validate_mempool_transactions_in_parallel(
@@ -26,4 +23,11 @@ pub(crate) fn validate_mempool_transactions_in_parallel(
     transactions: &mut [MutableTransaction],
 ) -> Vec<RuleResult<()>> {
     consensus.validate_mempool_transactions_in_parallel(transactions).into_iter().map(|x| x.map_err(RuleError::from)).collect()
+}
+
+pub(crate) fn populate_mempool_transactions_in_parallel(
+    consensus: &dyn ConsensusApi,
+    transactions: &mut [MutableTransaction],
+) -> Vec<RuleResult<()>> {
+    consensus.populate_mempool_transactions_in_parallel(transactions).into_iter().map(|x| x.map_err(RuleError::from)).collect()
 }

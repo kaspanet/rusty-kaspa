@@ -367,13 +367,22 @@ impl ConsensusApi for Consensus {
         Box::pin(result)
     }
 
-    fn validate_mempool_transaction_and_populate(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
-        self.virtual_processor.validate_mempool_transaction_and_populate(transaction)?;
+    fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
+        self.virtual_processor.validate_mempool_transaction(transaction)?;
         Ok(())
     }
 
     fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
         self.virtual_processor.validate_mempool_transactions_in_parallel(transactions)
+    }
+
+    fn populate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
+        self.virtual_processor.populate_mempool_transaction(transaction)?;
+        Ok(())
+    }
+
+    fn populate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        self.virtual_processor.populate_mempool_transactions_in_parallel(transactions)
     }
 
     fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
