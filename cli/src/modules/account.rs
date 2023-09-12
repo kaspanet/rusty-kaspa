@@ -99,7 +99,7 @@ impl Account {
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
         ctx.term().help(
             &[
-                ("create [<type>] [<name>]", "Create a new account (types: 'bip32' (default), 'legacy')"),
+                ("create [<type>] [<name>]", "Create a new account (types: 'bip32' (default), 'legacy', 'multisig')"),
                 // ("import", "Import a private key using 24 or 12 word mnemonic"),
                 ("name <name>", "Name or rename the selected account (use 'remove' to remove the name"),
                 ("scan [<derivations>]", "Scan extended address derivation chain (legacy accounts)"),

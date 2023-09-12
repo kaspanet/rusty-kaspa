@@ -54,24 +54,24 @@ async fn create_multisig(ctx: &Arc<KaspaCli>, title: Option<String>, name: Optio
     let term = ctx.term();
     let wallet = ctx.wallet();
     let (wallet_secret, _) = ctx.ask_wallet_secret(None).await?;
-    let n_required: u16 = term.ask(true, "Enter the minimum number of signatures required: ").await?.parse()?;
+    let n_required: u16 = term.ask(false, "Enter the minimum number of signatures required: ").await?.parse()?;
 
-    let prv_keys_len: usize = term.ask(true, "Enter the number of private keys to generate: ").await?.parse()?;
+    let prv_keys_len: usize = term.ask(false, "Enter the number of private keys to generate: ").await?.parse()?;
 
     let mut prv_key_data_ids_payment_secret = Vec::with_capacity(prv_keys_len);
     let mut mnemonics = Vec::with_capacity(prv_keys_len);
-    for _ in 0..prv_keys_len {
-        tprintln!(ctx, "");
-        tpara!(
-            ctx,
-            "\
+    tprintln!(ctx, "");
+    tpara!(
+        ctx,
+        "\
         PLEASE NOTE: The optional payment password, if provided, will be required to \
         issue transactions. This password will also be required when recovering your wallet \
         in addition to your private key or mnemonic. If you loose this password, you will not \
         be able to use mnemonic to recover your wallet! \
         ",
-        );
-        let payment_secret = term.ask(true, "Enter payment password (optional): ").await?;
+    );
+    for i in 0..prv_keys_len {
+        let payment_secret = term.ask(true, &format!("Enter payment password (optional) for {} key: ", i + 1)).await?;
         let payment_secret = {
             let trimmed = payment_secret.trim();
             trimmed.is_not_empty().then_some(Secret::new(trimmed.as_bytes().to_vec()))
@@ -83,10 +83,10 @@ async fn create_multisig(ctx: &Arc<KaspaCli>, title: Option<String>, name: Optio
         mnemonics.push(mnemonic);
     }
 
-    let additional_xpub_keys_len: usize = term.ask(true, "Enter the number of additional extended public keys: ").await?.parse()?;
+    let additional_xpub_keys_len: usize = term.ask(false, "Enter the number of additional extended public keys: ").await?.parse()?;
     let mut xpub_keys = Vec::with_capacity(additional_xpub_keys_len + prv_keys_len);
     for i in 1..=additional_xpub_keys_len {
-        let xpub_key = term.ask(true, &format!("Enter extended public {i} key: ")).await?;
+        let xpub_key = term.ask(false, &format!("Enter extended public {i} key: ")).await?;
         xpub_keys.push(xpub_key.trim().to_owned());
     }
     let account = wallet

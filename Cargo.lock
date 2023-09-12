@@ -2910,6 +2910,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-txscript",
+ "kaspa-txscript-errors",
  "kaspa-utils",
  "kaspa-wrpc-client",
  "md-5",

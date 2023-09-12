@@ -15,7 +15,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::storage::{AccountKind, Encryptable};
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, BorshSerialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, BorshSerialize, Ord, PartialOrd)]
 pub struct KeyDataId(pub(crate) [u8; 8]);
 
 impl KeyDataId {

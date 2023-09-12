@@ -59,8 +59,7 @@ impl Account for MultiSig {
     }
 
     fn prv_key_data_id(&self) -> Result<&PrvKeyDataId> {
-        todo!()
-        // Ok(&self.prv_key_data_id)
+        Err(Error::AccountKindFeature)
     }
 
     fn as_dyn_arc(self: Arc<Self>) -> Arc<dyn Account> {

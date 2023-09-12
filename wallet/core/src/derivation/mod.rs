@@ -16,6 +16,9 @@ use crate::storage::PrvKeyDataId;
 use crate::Result;
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use kaspa_consensus_core::network::NetworkType;
+use kaspa_txscript::{
+    extract_script_pub_key_address, multisig_redeem_script, multisig_redeem_script_ecdsa, pay_to_script_hash_script,
+};
 use kaspa_utils::hex::ToHex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -421,8 +424,20 @@ pub trait AddressDerivationManagerTrait: AnySync + Send + Sync + 'static {
     fn addresses_indexes<'l>(&self, addresses: &[&'l Address]) -> Result<(Vec<(&'l Address, u32)>, Vec<(&'l Address, u32)>)>;
 }
 
-pub fn create_multisig_address(_keys: Vec<secp256k1::PublicKey>) -> Result<Address> {
-    Err("TODO: multisig_address".to_string().into())
+pub fn create_multisig_address(
+    minimum_signatures: usize,
+    keys: Vec<secp256k1::PublicKey>,
+    prefix: Prefix,
+    ecdsa: bool,
+) -> Result<Address> {
+    let script = if !ecdsa {
+        multisig_redeem_script(keys.iter().map(|pk| pk.x_only_public_key().0.serialize()), minimum_signatures)
+    } else {
+        multisig_redeem_script_ecdsa(keys.iter().map(|pk| pk.serialize()), minimum_signatures)
+    }?;
+    let script_pub_key = pay_to_script_hash_script(&script);
+    let address = extract_script_pub_key_address(&script_pub_key, prefix)?;
+    Ok(address)
 }
 
 #[wasm_bindgen]
@@ -467,7 +482,7 @@ pub fn create_address(
     }
 
     if length > 1 {
-        return create_multisig_address(keys);
+        return create_multisig_address(minimum_signatures, keys, prefix, ecdsa);
     }
 
     if matches!(account_kind, Some(AccountKind::Legacy)) {
