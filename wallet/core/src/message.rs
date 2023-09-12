@@ -2,7 +2,7 @@ use kaspa_hashes::{Hash, PersonalMessageSigningHash};
 use secp256k1::{Error, XOnlyPublicKey};
 
 #[derive(Clone)]
-pub struct PersonalMessage<'a>(&'a str);
+pub struct PersonalMessage<'a>(pub &'a str);
 
 impl AsRef<[u8]> for PersonalMessage<'_> {
     fn as_ref(&self) -> &[u8] {
