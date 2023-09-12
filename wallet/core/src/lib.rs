@@ -6,6 +6,7 @@ pub mod encryption;
 pub mod error;
 pub mod events;
 mod imports;
+pub mod message;
 pub mod result;
 pub mod runtime;
 pub mod secret;
