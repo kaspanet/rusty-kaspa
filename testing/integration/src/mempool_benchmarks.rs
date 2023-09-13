@@ -1,5 +1,6 @@
 use crate::common::daemon::Daemon;
 use async_channel::Sender;
+use futures_util::future::join_all;
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
@@ -14,7 +15,7 @@ use kaspa_consensus_core::{
         utxo_diff::UtxoDiff,
     },
 };
-use kaspa_core::{debug, info, time::Stopwatch};
+use kaspa_core::{debug, info};
 use kaspa_notify::{
     listener::ListenerId,
     notifier::Notify,
@@ -32,7 +33,10 @@ use std::{
     cmp::max,
     collections::{hash_map::Entry::Occupied, HashMap, HashSet},
     fmt::Debug,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 use tokio::join;
@@ -49,9 +53,8 @@ impl Notify<Notification> for ChannelNotify {
     }
 }
 
-const FEE_PER_MASS: u64 = 10;
-
 fn required_fee(num_inputs: usize, num_outputs: u64) -> u64 {
+    const FEE_PER_MASS: u64 = 10;
     FEE_PER_MASS * estimated_mass(num_inputs, num_outputs)
 }
 
@@ -59,8 +62,17 @@ fn estimated_mass(num_inputs: usize, num_outputs: u64) -> u64 {
     200 + 34 * num_outputs + 1000 * (num_inputs as u64)
 }
 
+const EXPAND_FACTOR: u64 = 2;
+const CONTRACT_FACTOR: u64 = 2;
+
 /// Builds a TX DAG based on the initial UTXO set and on constant params
-fn generate_tx_dag(mut utxoset: UtxoCollection, schnorr_key: KeyPair, spk: ScriptPublicKey) -> Vec<Arc<Transaction>> {
+fn generate_tx_dag(
+    mut utxoset: UtxoCollection,
+    schnorr_key: KeyPair,
+    spk: ScriptPublicKey,
+    target_levels: usize,
+    target_width: usize,
+) -> Vec<Arc<Transaction>> {
     /*
     Algo:
        perform level by level:
@@ -72,10 +84,8 @@ fn generate_tx_dag(mut utxoset: UtxoCollection, schnorr_key: KeyPair, spk: Scrip
            apply level utxo diff to the utxo collection
     */
 
-    let target_levels = 1_000;
-    let target_width = 500;
-    let num_inputs = 2;
-    let num_outputs = 2;
+    let num_inputs = CONTRACT_FACTOR as usize;
+    let num_outputs = EXPAND_FACTOR;
 
     let mut txs = Vec::with_capacity(target_levels * target_width);
 
@@ -138,7 +148,14 @@ fn verify_tx_dag(initial_utxoset: &UtxoCollection, txs: &Vec<Arc<Transaction>>) 
 #[ignore = "bmk"]
 async fn bench_bbt_latency() {
     kaspa_core::panic::configure_panic();
-    kaspa_core::log::try_init_logger("info");
+    kaspa_core::log::try_init_logger("info,kaspa_core::time=trace");
+
+    // Constants
+    const BLOCK_COUNT: usize = 20_000;
+    const TX_COUNT: usize = 600_000;
+    const TX_LEVEL_WIDTH: usize = 1000;
+    const SUBMIT_BLOCK_CLIENTS: usize = 20;
+    const SUBMIT_TX_CLIENTS: usize = 1;
 
     /*
     Logic:
@@ -166,7 +183,7 @@ async fn bench_bbt_latency() {
     let args = Args {
         simnet: true,
         enable_unsynced_mining: true,
-        num_prealloc_utxos: Some(1_000),
+        num_prealloc_utxos: Some(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR),
         prealloc_address: Some(prealloc_address.to_string()),
         prealloc_amount: 500 * SOMPI_PER_KASPA,
         ..Default::default()
@@ -175,15 +192,13 @@ async fn bench_bbt_latency() {
     let params: Params = network.into();
 
     let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
-    let txs = generate_tx_dag(utxoset.clone(), schnorr_key, spk);
+    let txs = generate_tx_dag(utxoset.clone(), schnorr_key, spk, TX_COUNT / TX_LEVEL_WIDTH, TX_LEVEL_WIDTH);
     verify_tx_dag(&utxoset, &txs);
     info!("Generated overall {} txs", txs.len());
 
     let mut daemon = Daemon::new_random_with_args(args);
     let client = daemon.start().await;
-    // TODO: use only a single client once grpc server-side supports concurrent requests
-    let block_template_client = daemon.new_client().await;
-    let submit_block_client = daemon.new_client().await;
+    let bbt_client = daemon.new_client().await;
 
     // The time interval between Poisson(lambda) events distributes ~Exp(lambda)
     let dist: Exp<f64> = Exp::new(params.bps() as f64).unwrap();
@@ -195,31 +210,64 @@ async fn bench_bbt_latency() {
         Address::new(network.network_type().into(), kaspa_addresses::Version::PubKey, &pk.x_only_public_key().0.serialize());
     debug!("Generated private key {} and address {}", sk.display_secret(), pay_address);
 
-    let current_template = Arc::new(Mutex::new(block_template_client.get_block_template(pay_address.clone(), vec![]).await.unwrap()));
+    let current_template = Arc::new(Mutex::new(bbt_client.get_block_template(pay_address.clone(), vec![]).await.unwrap()));
     let current_template_consume = current_template.clone();
 
+    let executing = Arc::new(AtomicBool::new(true));
     let (sender, receiver) = async_channel::unbounded();
-    block_template_client.start(Some(Arc::new(ChannelNotify { sender }))).await;
-    block_template_client.start_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
+    bbt_client.start(Some(Arc::new(ChannelNotify { sender }))).await;
+    bbt_client.start_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
 
-    let cc = block_template_client.clone();
+    let submit_block_pool = daemon
+        .new_client_pool(SUBMIT_BLOCK_CLIENTS, 100, |c, block| async move {
+            let response = c.submit_block(block, false).await.unwrap();
+            assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
+            false
+        })
+        .await;
+
+    let submit_tx_pool = daemon
+        .new_client_pool::<(usize, Arc<Transaction>), _, _>(SUBMIT_TX_CLIENTS, 100, |c, (i, tx)| async move {
+            match c.submit_transaction(tx.as_ref().into(), false).await {
+                Ok(_) => {}
+                Err(RpcError::General(msg)) if msg.contains("orphan") => {
+                    kaspa_core::warn!("\n\n\n{msg}\n\n");
+                    kaspa_core::warn!("Submitted {} transactions, exiting tx submit loop", i);
+                    return true;
+                }
+                Err(e) => panic!("{e}"),
+            }
+            false
+        })
+        .await;
+
+    let cc = bbt_client.clone();
+    let exec = executing.clone();
+    let notification_rx = receiver.clone();
     let miner_receiver_task = tokio::spawn(async move {
-        while let Ok(notification) = receiver.recv().await {
+        while let Ok(notification) = notification_rx.recv().await {
             match notification {
                 Notification::NewBlockTemplate(_) => {
-                    while receiver.try_recv().is_ok() {
+                    while notification_rx.try_recv().is_ok() {
                         // Drain the channel
                     }
-                    let _sw = Stopwatch::<500>::with_threshold("get_block_template");
+                    // let _sw = Stopwatch::<500>::with_threshold("get_block_template");
                     *current_template.lock() = cc.get_block_template(pay_address.clone(), vec![]).await.unwrap();
                 }
                 _ => panic!(),
             }
+            if !exec.load(Ordering::Relaxed) {
+                kaspa_core::warn!("Test is over, stopping miner receiver loop");
+                break;
+            }
         }
+        kaspa_core::warn!("Miner receiver loop task exited");
     });
 
+    let block_sender = submit_block_pool.sender();
+    let exec = executing.clone();
     let miner_loop_task = tokio::spawn(async move {
-        for i in 0..10000 {
+        for i in 0..BLOCK_COUNT {
             // Simulate mining time
             let timeout = max((dist.sample(&mut thread_rng()) * 1000.0) as u64, 1);
             tokio::time::sleep(Duration::from_millis(timeout)).await;
@@ -227,46 +275,63 @@ async fn bench_bbt_latency() {
             // Read the most up-to-date block template
             let mut block = current_template_consume.lock().block.clone();
             // Use index as nonce to avoid duplicate blocks
-            block.header.nonce = i;
+            block.header.nonce = i as u64;
 
-            let mcc = submit_block_client.clone();
+            let bs = block_sender.clone();
             tokio::spawn(async move {
                 // Simulate communication delay. TODO: consider adding gaussian noise
                 tokio::time::sleep(Duration::from_millis(comm_delay)).await;
-                // let _sw = Stopwatch::<500>::with_threshold("submit_block");
-                let response = mcc.submit_block(block, false).await.unwrap();
-                assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
+                let _ = bs.send(block).await;
             });
-        }
-        block_template_client.disconnect().await.unwrap();
-        submit_block_client.disconnect().await.unwrap();
-    });
-
-    let cc = client.clone();
-    let tx_sender_task = tokio::spawn(async move {
-        let total_txs = txs.len();
-        for (i, tx) in txs.into_iter().enumerate() {
-            let _sw = Stopwatch::<500>::with_threshold("submit_transaction");
-            let res = cc.submit_transaction(tx.as_ref().into(), false).await;
-            match res {
-                Ok(_) => {}
-                Err(RpcError::General(msg)) if msg.contains("orphan") => {
-                    kaspa_core::error!("\n\n\n{msg}\n\n");
-                    kaspa_core::warn!("Submitted {} out of {}, exiting tx submit loop", i, total_txs);
-                    break;
-                }
-                Err(e) => panic!("{e}"),
+            if !exec.load(Ordering::Relaxed) {
+                kaspa_core::warn!("Test is over, stopping miner loop");
+                break;
             }
         }
-        kaspa_core::warn!("Tx submit task exited");
+        exec.store(false, Ordering::Relaxed);
+        bbt_client.stop_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
+        bbt_client.disconnect().await.unwrap();
+        kaspa_core::warn!("Miner loop task exited");
+    });
+
+    let tx_sender = submit_tx_pool.sender();
+    let exec = executing.clone();
+    let cc = client.clone();
+    let tx_sender_task = tokio::spawn(async move {
+        for (i, tx) in txs.into_iter().enumerate() {
+            match tx_sender.send((i, tx)).await {
+                Ok(_) => {}
+                Err(_) => {
+                    break;
+                }
+            }
+            if !exec.load(Ordering::Relaxed) {
+                break;
+            }
+        }
+
+        kaspa_core::warn!("Tx sender task, waiting for mempool to drain..");
+        while cc.get_info().await.unwrap().mempool_size > 0 {
+            if !exec.load(Ordering::Relaxed) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+        exec.store(false, Ordering::Relaxed);
+        kaspa_core::warn!("Tx sender task exited");
     });
 
     let _ = join!(miner_receiver_task, miner_loop_task, tx_sender_task);
 
+    submit_block_pool.close();
+    submit_tx_pool.close();
+
+    join_all(submit_block_pool.join_handles).await;
+    join_all(submit_tx_pool.join_handles).await;
+
     //
     // Fold-up
     //
-    // tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     client.disconnect().await.unwrap();
     drop(client);
     daemon.shutdown();
