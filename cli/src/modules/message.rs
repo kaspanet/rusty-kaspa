@@ -128,19 +128,30 @@ impl Message {
 
     async fn get_address_private_key(self: Arc<Self>, ctx: &Arc<KaspaCli>, kaspa_address: Address) -> Result<[u8; 32]> {
         let account = ctx.wallet().account()?;
-        let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
-        let keydata = account.prv_key_data(wallet_secret).await?;
 
-        let mut keys = HashMap::new();
-        let account = account.clone().as_derivation_capable().expect("expecting derivation capable");
-        let (receive, change) = account.derivation().addresses_indexes(&[&kaspa_address])?;
-        let private_keys = account.create_private_keys(&keydata, &payment_secret, &receive, &change)?;
-        for (address, private_key) in private_keys {
-            keys.insert(address.clone(), private_key.secret_bytes());
+        match account.account_kind() {
+            AccountKind::Bip32 => {
+                let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
+                let keydata = account.prv_key_data(wallet_secret).await?;
+                let mut keys = HashMap::new();
+                let account = account.clone().as_derivation_capable().expect("expecting derivation capable");
+
+                let (receive, change) = account.derivation().addresses_indexes(&[&kaspa_address])?;
+                let private_keys = account.create_private_keys(&keydata, &payment_secret, &receive, &change)?;
+                for (address, private_key) in private_keys {
+                    keys.insert(address.clone(), private_key.secret_bytes());
+                }
+
+                Ok(*keys.get(&kaspa_address).unwrap())
+            }
+            AccountKind::Keypair => {
+                let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
+                let keydata = account.prv_key_data(wallet_secret).await?;
+                let decrypted_privkey = keydata.payload.decrypt(payment_secret.as_ref()).unwrap();
+                let secretkey = decrypted_privkey.as_secret_key()?.unwrap();
+                Ok(secretkey.secret_bytes())
+            }
+            _ => Err(Error::custom("Unsupported account kind")),
         }
-
-        let private_key = keys.get(&kaspa_address).unwrap();
-
-        Ok(*private_key)
     }
 }
