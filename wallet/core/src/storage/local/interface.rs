@@ -27,54 +27,56 @@ pub(crate) struct LocalStoreInner {
     pub store: Store,
     pub transactions: Arc<dyn TransactionRecordStore>,
     pub is_modified: AtomicBool,
-    pub name: String,
+    pub filename: String,
 }
 
 impl LocalStoreInner {
     pub async fn try_create(ctx: &Arc<dyn AccessContextT>, folder: &str, args: CreateArgs, is_resident: bool) -> Result<Self> {
-        let (store, name) = if is_resident {
-            (Store::Resident, "resident".to_string())
+        let (store, wallet_title, filename) = if is_resident {
+            (Store::Resident, Some("Resident Wallet".to_string()), "resident".to_string())
         } else {
             // log_info!("LocalStoreInner::try_create: folder: {}, args: {:?}, is_resident: {}", folder, args, is_resident);
 
-            let name = args.name.clone().unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
+            let title = args.title.clone();
 
-            let storage = Storage::new_with_folder(folder, &format!("{name}.wallet"))?;
+            let filename = args.filename.clone().unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
+
+            let storage = Storage::new_with_folder(folder, &format!("{filename}.wallet"))?;
             if storage.exists().await? && !args.overwrite_wallet {
                 return Err(Error::WalletAlreadyExists);
             }
-            (Store::Storage(storage), name)
+            (Store::Storage(storage), title, filename)
         };
 
         let secret = ctx.wallet_secret().await;
         let payload = Payload::default();
-        let cache = Arc::new(Mutex::new(Cache::try_from((args.user_hint, payload, &secret))?));
-        let modified = AtomicBool::new(false);
+        let cache = Arc::new(Mutex::new(Cache::try_from((wallet_title, args.user_hint, payload, &secret))?));
+        let is_modified = AtomicBool::new(false);
         let transactions: Arc<dyn TransactionRecordStore> = if !is_web() {
-            Arc::new(fsio::TransactionStore::new(folder, &name))
+            Arc::new(fsio::TransactionStore::new(folder, &filename))
         } else {
-            Arc::new(indexdb::TransactionStore::new(&name))
+            Arc::new(indexdb::TransactionStore::new(&filename))
         };
 
-        Ok(Self { cache, store, is_modified: modified, name, transactions })
+        Ok(Self { cache, store, is_modified, filename, transactions })
     }
 
     pub async fn try_load(ctx: &Arc<dyn AccessContextT>, folder: &str, args: OpenArgs) -> Result<Self> {
-        let name = args.name.unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
-        let storage = Storage::new_with_folder(folder, &format!("{name}.wallet"))?;
+        let filename = args.filename.unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
+        let storage = Storage::new_with_folder(folder, &format!("{filename}.wallet"))?;
 
         let secret = ctx.wallet_secret().await;
         let wallet = Wallet::try_load(&storage).await?;
         let cache = Arc::new(Mutex::new(Cache::try_from((wallet, &secret))?));
-        let modified = AtomicBool::new(false);
+        let is_modified = AtomicBool::new(false);
 
         let transactions: Arc<dyn TransactionRecordStore> = if !is_web() {
-            Arc::new(fsio::TransactionStore::new(folder, &name))
+            Arc::new(fsio::TransactionStore::new(folder, &filename))
         } else {
-            Arc::new(indexdb::TransactionStore::new(&name))
+            Arc::new(indexdb::TransactionStore::new(&filename))
         };
 
-        Ok(Self { cache, store: Store::Storage(storage), is_modified: modified, name, transactions })
+        Ok(Self { cache, store: Store::Storage(storage), is_modified, filename, transactions })
     }
 
     pub async fn update_stored_metadata(&self) -> Result<()> {
@@ -204,7 +206,7 @@ impl Interface for LocalStore {
     }
 
     fn name(&self) -> Option<String> {
-        self.inner.lock().unwrap().as_ref().map(|inner| inner.name.clone())
+        self.inner.lock().unwrap().as_ref().map(|inner| inner.filename.clone())
     }
 
     async fn exists(&self, name: Option<&str>) -> Result<bool> {

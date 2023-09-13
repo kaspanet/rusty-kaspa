@@ -77,7 +77,7 @@ mod tests {
         let payload_json = serde_json::to_string(&payload).unwrap();
         // let settings = WalletSettings::new(account_id);
 
-        let w1 = Wallet::try_new(None, &wallet_secret, payload, vec![])?;
+        let w1 = Wallet::try_new(None, None, &wallet_secret, payload, vec![])?;
         w1.try_store(&store).await?;
         // Wallet::try_store_payload(&store, &wallet_secret, payload).await?;
 

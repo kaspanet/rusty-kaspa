@@ -26,21 +26,28 @@ use workflow_log::log_error;
 use zeroize::Zeroize;
 
 pub struct WalletCreateArgs {
-    pub name: Option<String>,
+    pub title: Option<String>,
+    pub filename: Option<String>,
     pub user_hint: Option<Hint>,
     pub wallet_secret: Secret,
     pub overwrite_wallet_storage: bool,
 }
 
 impl WalletCreateArgs {
-    pub fn new(name: Option<String>, user_hint: Option<Hint>, secret: Secret, overwrite_wallet_storage: bool) -> Self {
-        Self { name, user_hint, wallet_secret: secret, overwrite_wallet_storage }
+    pub fn new(
+        title: Option<String>,
+        filename: Option<String>,
+        user_hint: Option<Hint>,
+        secret: Secret,
+        overwrite_wallet_storage: bool,
+    ) -> Self {
+        Self { title, filename, user_hint, wallet_secret: secret, overwrite_wallet_storage }
     }
 }
 
 impl From<WalletCreateArgs> for CreateArgs {
     fn from(args: WalletCreateArgs) -> Self {
-        CreateArgs::new(args.name, args.user_hint, args.overwrite_wallet_storage)
+        CreateArgs::new(args.title, args.filename, args.user_hint, args.overwrite_wallet_storage)
     }
 }
 
