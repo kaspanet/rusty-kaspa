@@ -4,6 +4,7 @@ use std::{
     path::Path,
 };
 
+pub mod client_pool;
 pub mod daemon;
 
 pub fn open_file(file_path: &Path) -> File {

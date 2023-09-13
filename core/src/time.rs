@@ -28,7 +28,7 @@ impl<const TR: u64> Drop for Stopwatch<TR> {
     fn drop(&mut self) {
         let elapsed = self.start.elapsed();
         if elapsed > Duration::from_millis(TR) {
-            kaspa_core::warn!("[{}] Abnormal time: {:#?}", self.name, elapsed);
+            kaspa_core::trace!("[{}] Abnormal time: {:#?}", self.name, elapsed);
         }
     }
 }

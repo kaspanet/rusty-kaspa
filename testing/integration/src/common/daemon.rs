@@ -1,3 +1,4 @@
+use futures_util::Future;
 use kaspa_consensus_core::network::NetworkId;
 use kaspa_core::{core::Core, signals::Shutdown};
 use kaspa_database::utils::get_kaspa_tempdir;
@@ -6,6 +7,8 @@ use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspad::{args::Args, daemon::create_core_with_runtime};
 use std::{sync::Arc, time::Duration};
 use tempfile::TempDir;
+
+use super::client_pool::ClientPool;
 
 pub struct Daemon {
     // Type and suffix of the daemon network
@@ -76,6 +79,23 @@ impl Daemon {
         GrpcClient::connect(NotificationMode::Direct, format!("grpc://localhost:{}", self.rpc_port), true, None, false, Some(500_000))
             .await
             .unwrap()
+    }
+
+    pub async fn new_client_pool<T: Send + 'static, F, R>(
+        &self,
+        pool_size: usize,
+        distribution_channel_capacity: usize,
+        client_op: F,
+    ) -> ClientPool<T>
+    where
+        F: Fn(Arc<GrpcClient>, T) -> R + Sync + Send + Copy + 'static,
+        R: Future<Output = bool> + Send,
+    {
+        let mut clients = Vec::with_capacity(pool_size);
+        for _ in 0..pool_size {
+            clients.push(Arc::new(self.new_client().await));
+        }
+        ClientPool::new(clients, distribution_channel_capacity, client_op)
     }
 }
 
