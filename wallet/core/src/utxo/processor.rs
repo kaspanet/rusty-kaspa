@@ -471,8 +471,10 @@ impl UtxoProcessor {
     }
 
     pub async fn stop(&self) -> Result<()> {
-        self.inner.sync_proc.stop().await?;
-        self.inner.task_ctl.signal(()).await.expect("UtxoProcessor::stop_task() `signal` error");
+        if self.inner.task_is_running.load(Ordering::SeqCst) {
+            self.inner.sync_proc.stop().await?;
+            self.inner.task_ctl.signal(()).await.expect("UtxoProcessor::stop_task() `signal` error");
+        }
         Ok(())
     }
 }
