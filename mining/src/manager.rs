@@ -14,7 +14,7 @@ use crate::{
     model::{
         candidate_tx::CandidateTransaction,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
-        txs_stager::TransactionsStagger,
+        topological_sort::IntoIterTopologically,
     },
 };
 use itertools::Itertools;
@@ -290,90 +290,83 @@ impl MiningManager {
         priority: Priority,
         orphan: Orphan,
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        const TRANSACTION_CHUNK_SIZE: usize = 250;
+
         // The capacity used here may be exceeded since accepted transactions may unorphan other transactions.
         let mut accepted_transactions: Vec<Arc<Transaction>> = Vec::with_capacity(transactions.len());
-        let mut batch = TransactionsStagger::new(transactions);
-        while let Some(transactions) = batch.stagger() {
-            if transactions.is_empty() {
-                panic!(
-                    "The mempool got a batch of transactions for validation with cyclic dependencies: {:?}",
-                    transactions.iter().map(|x| x.id()).collect::<Vec<_>>()
-                );
-            }
-            let mut transactions = transactions.into_iter().map(MutableTransaction::from_tx).collect::<Vec<_>>();
+        let mut unorphaned_transactions = vec![];
+        let _swo = Stopwatch::<80>::with_threshold("validate_and_insert_transaction_batch topological_sort op");
+        let sorted_transactions = transactions.into_iter().map(MutableTransaction::from_tx).topological_into_iter();
+        drop(_swo);
 
-            // read lock on mempool
-            // Here, we simply log and drop all erroneous transactions since the caller doesn't care about those anyway
+        // read lock on mempool
+        // Here, we simply log and drop all erroneous transactions since the caller doesn't care about those anyway
+        let mut transactions = Vec::with_capacity(sorted_transactions.len());
+        for chunk in &sorted_transactions.chunks(TRANSACTION_CHUNK_SIZE) {
             let mempool = self.mempool.read();
-            transactions = transactions
-                .into_iter()
-                .filter_map(|tx| {
-                    let transaction_id = tx.id();
-                    match mempool.pre_validate_and_populate_transaction(consensus, tx) {
-                        Ok(tx) => Some(tx),
-                        Err(RuleError::RejectAlreadyAccepted(transaction_id)) => {
-                            debug!("Ignoring already accepted transaction {}", transaction_id);
-                            None
-                        }
-                        Err(RuleError::RejectDuplicate(transaction_id)) => {
-                            debug!("Ignoring transaction already in the mempool {}", transaction_id);
-                            None
-                        }
-                        Err(RuleError::RejectDuplicateOrphan(transaction_id)) => {
-                            debug!("Ignoring transaction already in the orphan pool {}", transaction_id);
-                            None
-                        }
-                        Err(err) => {
-                            debug!("Failed to pre validate transaction {0} due to rule error: {1}", transaction_id, err);
-                            None
-                        }
+            let txs = chunk.filter_map(|tx| {
+                let transaction_id = tx.id();
+                match mempool.pre_validate_and_populate_transaction(consensus, tx) {
+                    Ok(tx) => Some(tx),
+                    Err(RuleError::RejectAlreadyAccepted(transaction_id)) => {
+                        debug!("Ignoring already accepted transaction {}", transaction_id);
+                        None
                     }
-                })
-                .collect();
-            drop(mempool);
-
-            // no lock on mempool
-            // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
-            let mut lower_bound: usize = 0;
-            let mut validation_results = Vec::with_capacity(transactions.len());
-            while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
-                assert!(lower_bound < upper_bound, "the chunk is never empty");
-                validation_results
-                    .extend(validate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
-                lower_bound = upper_bound;
-            }
-            assert_eq!(transactions.len(), validation_results.len(), "every transaction should have a matching validation result");
-
-            // write lock on mempool
-            // Here again, transactions failing post validation are logged and dropped
-            let mut mempool = self.mempool.write();
-            let unorphaned_transactions = transactions
-                .into_iter()
-                .zip(validation_results)
-                .flat_map(|(transaction, validation_result)| {
-                    let transaction_id = transaction.id();
-                    match mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan) {
-                        Ok(Some(accepted_transaction)) => {
-                            accepted_transactions.push(accepted_transaction.clone());
-                            mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
-                        }
-                        Ok(None) => {
-                            // Either orphaned or already existing in the mempool
-                            vec![]
-                        }
-                        Err(err) => {
-                            debug!("Failed to post validate transaction {0} due to rule error: {1}", transaction_id, err);
-                            vec![]
-                        }
+                    Err(RuleError::RejectDuplicate(transaction_id)) => {
+                        debug!("Ignoring transaction already in the mempool {}", transaction_id);
+                        None
                     }
-                })
-                .collect::<Vec<_>>();
-            mempool.log_stats();
-            drop(mempool);
-
-            // TODO: handle RuleError::RejectInvalid errors when a banning process gets implemented
-            accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
+                    Err(RuleError::RejectDuplicateOrphan(transaction_id)) => {
+                        debug!("Ignoring transaction already in the orphan pool {}", transaction_id);
+                        None
+                    }
+                    Err(err) => {
+                        debug!("Failed to pre validate transaction {0} due to rule error: {1}", transaction_id, err);
+                        None
+                    }
+                }
+            });
+            transactions.extend(txs);
         }
+
+        // no lock on mempool
+        // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
+        let mut lower_bound: usize = 0;
+        let mut validation_results = Vec::with_capacity(transactions.len());
+        while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
+            assert!(lower_bound < upper_bound, "the chunk is never empty");
+            validation_results
+                .extend(validate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
+            lower_bound = upper_bound;
+        }
+        assert_eq!(transactions.len(), validation_results.len(), "every transaction should have a matching validation result");
+
+        // write lock on mempool
+        // Here again, transactions failing post validation are logged and dropped
+        for chunk in &transactions.into_iter().zip(validation_results).chunks(TRANSACTION_CHUNK_SIZE) {
+            let mut mempool = self.mempool.write();
+            let txs = chunk.flat_map(|(transaction, validation_result)| {
+                let transaction_id = transaction.id();
+                match mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan) {
+                    Ok(Some(accepted_transaction)) => {
+                        accepted_transactions.push(accepted_transaction.clone());
+                        mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
+                    }
+                    Ok(None) => {
+                        // Either orphaned or already existing in the mempool
+                        vec![]
+                    }
+                    Err(err) => {
+                        debug!("Failed to post validate transaction {0} due to rule error: {1}", transaction_id, err);
+                        vec![]
+                    } // TODO: handle RuleError::RejectInvalid errors when a banning process gets implemented
+                }
+            });
+            unorphaned_transactions.extend(txs);
+            mempool.log_stats();
+        }
+
+        accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
 
         // Please note: the only reason this function returns a Result is the future handling of misbehaving nodes
         // and the related RuleError::RejectInvalid
@@ -495,6 +488,8 @@ impl MiningManager {
         consensus: &dyn ConsensusApi,
         transaction_ids_sender: UnboundedSender<Vec<TransactionId>>,
     ) {
+        const TRANSACTION_CHUNK_SIZE: usize = 1000;
+
         // read lock on mempool
         // Prepare a vector with clones of high priority transactions found in the mempool
         let mempool = self.mempool.read();
@@ -515,144 +510,144 @@ impl MiningManager {
 
         // We process the transactions by level of dependency inside the batch.
         // Doing so allows to remove all chained dependencies of rejected transactions.
-        let mut batch = TransactionsStagger::new(transactions);
-        while let Some(transactions) = batch.stagger() {
-            if transactions.is_empty() {
-                panic!(
-                    "The mempool high priorities transactions have cyclic dependencies: {:?}",
-                    transactions.iter().map(|x| x.id()).collect::<Vec<_>>()
-                );
-            }
+        let _swo = Stopwatch::<200>::with_threshold("revalidate topological_sort op");
+        let sorted_transactions = transactions.topological_into_iter();
+        drop(_swo);
 
-            // read lock on mempool
-            // As the revalidation process is no longer atomic, we filter the transactions ready for revalidation,
-            // keeping only the ones actually present in the mempool (see comment above).
+        // read lock on mempool by transaction chunks
+        // As the revalidation process is no longer atomic, we filter the transactions ready for revalidation,
+        // keeping only the ones actually present in the mempool (see comment above).
+        let _swo = Stopwatch::<50>::with_threshold("revalidate populate_mempool_entries op");
+        let mut transactions = Vec::with_capacity(sorted_transactions.len());
+        for chunk in &sorted_transactions.chunks(TRANSACTION_CHUNK_SIZE) {
             let mempool = self.mempool.read();
-            let _swo = Stopwatch::<100>::with_threshold("revalidate populate_mempool_entries op");
-            let mut transactions = transactions
-                .into_iter()
-                .filter_map(|mut x| {
-                    let transaction_id = x.id();
-                    if mempool.has_accepted_transaction(&transaction_id) {
-                        accepted += 1;
-                        None
-                    } else if mempool.has_transaction(&transaction_id, true, false) {
-                        x.clear_entries();
-                        mempool.populate_mempool_entries(&mut x);
-                        Some(x)
-                    } else {
-                        other += 1;
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-            drop(_swo);
-            drop(mempool);
-
-            // no lock on mempool
-            // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
-            let mut lower_bound: usize = 0;
-            let mut validation_results = Vec::with_capacity(transactions.len());
-            while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
-                assert!(lower_bound < upper_bound, "the chunk is never empty");
-                let _swo = Stopwatch::<60>::with_threshold("revalidate validate_mempool_transactions_in_parallel op");
-                validation_results
-                    .extend(populate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
-                drop(_swo);
-                lower_bound = upper_bound;
-            }
-            assert_eq!(transactions.len(), validation_results.len(), "every transaction should have a matching validation result");
-
-            // write lock on mempool
-            // Depending on the validation result, transactions are either accepted or removed
-            const TRANSACTION_CHUNK_SIZE: usize = 246 * 4;
-            for chunk in &transactions.into_iter().zip(validation_results).chunks(TRANSACTION_CHUNK_SIZE) {
-                let mut valid_ids = Vec::with_capacity(TRANSACTION_CHUNK_SIZE);
-                let mut mempool = self.mempool.write();
-                let _swo = Stopwatch::<60>::with_threshold("revalidate update_revalidated_transaction op");
-                for (transaction, validation_result) in chunk {
-                    let transaction_id = transaction.id();
-                    // Only consider transactions still being in the mempool since during the validation some might have been removed.
-                    if mempool.update_revalidated_transaction(transaction) {
-                        match validation_result {
-                            Ok(()) => {
-                                // A following transaction should not remove this one from the pool since we process in a topological order.
-                                // Still, considering the (very unlikely) scenario of two high priority txs sandwiching a low one, where
-                                // in this case topological order is not guaranteed since we only considered chained dependencies of
-                                // high-priority transactions, we might wrongfully return as valid the id of a removed transaction.
-                                // However, as only consequence, said transaction would then be advertised to registered peers and not be
-                                // provided upon request.
-                                valid_ids.push(transaction_id);
-                                valid += 1;
-                            }
-                            Err(RuleError::RejectMissingOutpoint) => {
-                                let transaction = mempool.get_transaction(&transaction_id, true, false).unwrap();
-                                let missing_txs = transaction
-                                    .entries
-                                    .iter()
-                                    .zip(transaction.tx.inputs.iter())
-                                    .flat_map(
-                                        |(entry, input)| {
-                                            if entry.is_none() {
-                                                Some(input.previous_outpoint.transaction_id)
-                                            } else {
-                                                None
-                                            }
-                                        },
-                                    )
-                                    .collect::<Vec<_>>();
-
-                                // A transaction may have missing outpoints for legitimate reasons related to concurrency, like a race condition between
-                                // an accepted block having not started yet or unfinished call to handle_new_block_transactions but already processed by
-                                // the consensus and this ongoing call to revalidate.
-                                //
-                                // So we only remove the transaction and keep its redeemers in the mempool because we cannot be sure they are invalid, in
-                                // fact in the race condition case they are valid regarding outpoints.
-                                let extra_info = match missing_txs.len() {
-                                    0 => " but no missing tx!".to_string(), // this is never supposed to happen
-                                    1 => format!(" missing tx {}", missing_txs[0]),
-                                    n => format!(" with {} missing txs {}..{}", n, missing_txs[0], missing_txs.last().unwrap()),
-                                };
-
-                                // This call cleanly removes the invalid transaction.
-                                let result = mempool.remove_transaction(
-                                    &transaction_id,
-                                    false,
-                                    TxRemovalReason::RevalidationWithMissingOutpoints,
-                                    extra_info.as_str(),
-                                );
-                                if let Err(err) = result {
-                                    warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
-                                }
-                                missing_outpoint += 1;
-                            }
-                            Err(err) => {
-                                // Rust rewrite note:
-                                // The behavior changes here compared to the golang version.
-                                // The failed revalidation is simply logged and the process continues.
-                                warn!(
-                                    "Removing high priority transaction {0} and its redeemers, it failed revalidation with {1}",
-                                    transaction_id, err
-                                );
-                                // This call cleanly removes the invalid transaction and its redeemers.
-                                let result = mempool.remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "");
-                                if let Err(err) = result {
-                                    warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
-                                }
-                                invalid += 1;
-                            }
+            let txs = chunk.filter_map(|mut x| {
+                let transaction_id = x.id();
+                if mempool.has_accepted_transaction(&transaction_id) {
+                    accepted += 1;
+                    None
+                } else if mempool.has_transaction(&transaction_id, true, false) {
+                    x.clear_entries();
+                    mempool.populate_mempool_entries(&mut x);
+                    match x.is_fully_populated() {
+                        false => Some(x),
+                        true => {
+                            // If all entries are populated with mempool UTXOs, we already know the transaction is valid
+                            valid += 1;
+                            None
                         }
-                    } else {
-                        other += 1;
                     }
+                } else {
+                    other += 1;
+                    None
                 }
-                if !valid_ids.is_empty() {
-                    assert!(transaction_ids_sender.send(valid_ids).is_ok(), "the channel expected to have a receiver and be opened");
+            });
+            transactions.extend(txs);
+        }
+        drop(_swo);
+
+        // no lock on mempool
+        // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
+        let mut lower_bound: usize = 0;
+        let mut validation_results = Vec::with_capacity(transactions.len());
+        while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
+            assert!(lower_bound < upper_bound, "the chunk is never empty");
+            let _swo = Stopwatch::<60>::with_threshold("revalidate validate_mempool_transactions_in_parallel op");
+            validation_results
+                .extend(populate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
+            drop(_swo);
+            lower_bound = upper_bound;
+        }
+        assert_eq!(transactions.len(), validation_results.len(), "every transaction should have a matching validation result");
+
+        // write lock on mempool
+        // Depending on the validation result, transactions are either accepted or removed
+        for chunk in &transactions.into_iter().zip(validation_results).chunks(TRANSACTION_CHUNK_SIZE) {
+            let mut valid_ids = Vec::with_capacity(TRANSACTION_CHUNK_SIZE);
+            let mut mempool = self.mempool.write();
+            let _swo = Stopwatch::<60>::with_threshold("revalidate update_revalidated_transaction op");
+            for (transaction, validation_result) in chunk {
+                let transaction_id = transaction.id();
+                // Only consider transactions still being in the mempool since during the validation some might have been removed.
+                if mempool.update_revalidated_transaction(transaction) {
+                    match validation_result {
+                        Ok(()) => {
+                            // A following transaction should not remove this one from the pool since we process in a topological order.
+                            // Still, considering the (very unlikely) scenario of two high priority txs sandwiching a low one, where
+                            // in this case topological order is not guaranteed since we only considered chained dependencies of
+                            // high-priority transactions, we might wrongfully return as valid the id of a removed transaction.
+                            // However, as only consequence, said transaction would then be advertised to registered peers and not be
+                            // provided upon request.
+                            valid_ids.push(transaction_id);
+                            valid += 1;
+                        }
+                        Err(RuleError::RejectMissingOutpoint) => {
+                            let transaction = mempool.get_transaction(&transaction_id, true, false).unwrap();
+                            let missing_txs = transaction
+                                .entries
+                                .iter()
+                                .zip(transaction.tx.inputs.iter())
+                                .flat_map(
+                                    |(entry, input)| {
+                                        if entry.is_none() {
+                                            Some(input.previous_outpoint.transaction_id)
+                                        } else {
+                                            None
+                                        }
+                                    },
+                                )
+                                .collect::<Vec<_>>();
+
+                            // A transaction may have missing outpoints for legitimate reasons related to concurrency, like a race condition between
+                            // an accepted block having not started yet or unfinished call to handle_new_block_transactions but already processed by
+                            // the consensus and this ongoing call to revalidate.
+                            //
+                            // So we only remove the transaction and keep its redeemers in the mempool because we cannot be sure they are invalid, in
+                            // fact in the race condition case they are valid regarding outpoints.
+                            let extra_info = match missing_txs.len() {
+                                0 => " but no missing tx!".to_string(), // this is never supposed to happen
+                                1 => format!(" missing tx {}", missing_txs[0]),
+                                n => format!(" with {} missing txs {}..{}", n, missing_txs[0], missing_txs.last().unwrap()),
+                            };
+
+                            // This call cleanly removes the invalid transaction.
+                            let result = mempool.remove_transaction(
+                                &transaction_id,
+                                false,
+                                TxRemovalReason::RevalidationWithMissingOutpoints,
+                                extra_info.as_str(),
+                            );
+                            if let Err(err) = result {
+                                warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
+                            }
+                            missing_outpoint += 1;
+                        }
+                        Err(err) => {
+                            // Rust rewrite note:
+                            // The behavior changes here compared to the golang version.
+                            // The failed revalidation is simply logged and the process continues.
+                            warn!(
+                                "Removing high priority transaction {0} and its redeemers, it failed revalidation with {1}",
+                                transaction_id, err
+                            );
+                            // This call cleanly removes the invalid transaction and its redeemers.
+                            let result = mempool.remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "");
+                            if let Err(err) = result {
+                                warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
+                            }
+                            invalid += 1;
+                        }
+                    }
+                } else {
+                    other += 1;
                 }
-                drop(_swo);
-                mempool.log_stats();
-                drop(mempool);
             }
+            if !valid_ids.is_empty() {
+                assert!(transaction_ids_sender.send(valid_ids).is_ok(), "the channel is expected to have a receiver and be opened");
+            }
+            drop(_swo);
+            mempool.log_stats();
+            drop(mempool);
         }
         match accepted + missing_outpoint + invalid {
             0 => {

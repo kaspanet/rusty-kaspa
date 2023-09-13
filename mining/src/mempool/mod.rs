@@ -127,12 +127,12 @@ impl Mempool {
     }
 
     pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
-        let _sw = Stopwatch::<80>::with_threshold("block_candidate_transactions op");
+        let _sw = Stopwatch::<120>::with_threshold("block_candidate_transactions op");
         self.transaction_pool.all_ready_transactions()
     }
 
     pub(crate) fn all_transactions_with_priority(&self, priority: Priority) -> Vec<MutableTransaction> {
-        let _sw = Stopwatch::<50>::with_threshold("all_transactions_with_priority op");
+        let _sw = Stopwatch::<100>::with_threshold("all_transactions_with_priority op");
         self.transaction_pool.all_transactions_with_priority(priority)
     }
 
