@@ -7,12 +7,13 @@ use crate::storage::{Decrypted, Encrypted, Hint, Metadata, PrvKeyData, PrvKeyDat
 use serde_json::{from_str, from_value, Value};
 use workflow_store::fs;
 
-pub const WALLET_VERSION: [u16; 3] = [0, 0, 1];
+pub const WALLET_VERSION: [u16; 3] = [1, 0, 0];
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Wallet {
     #[serde(default)]
     pub version: [u16; 3],
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_hint: Option<Hint>,
     pub payload: Encrypted,

@@ -61,7 +61,7 @@ impl TryFrom<(&Cache, &Secret)> for Wallet {
         let accounts: Vec<Account> = (&cache.accounts).try_into()?;
         let metadata: Vec<Metadata> = (&cache.metadata).try_into()?;
         let address_book = cache.address_book.clone();
-        let payload = Payload { prv_key_data, accounts, address_book };
+        let payload = Payload::new(prv_key_data, accounts, address_book);
         let payload = Decrypted::new(payload).encrypt(secret)?;
 
         Ok(Wallet { version: WALLET_VERSION, payload, metadata, user_hint: cache.user_hint.clone() })

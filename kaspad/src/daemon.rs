@@ -145,12 +145,29 @@ impl Runtime {
 /// This function will automatically create a [`Runtime`]
 /// instance with the supplied [`Args`] and then
 /// call [`create_core_with_runtime`].
+///
+/// Usage semantics:
+/// `let (core, rpc_core_service) = create_core(args);`
+///
+/// The instance of the [`RpcCoreService`] needs to be released
+/// (dropped) before the `Core` is shut down.
+///
 pub fn create_core(args: Args) -> (Arc<Core>, Arc<RpcCoreService>) {
     let rt = Runtime::from_args(&args);
     create_core_with_runtime(&rt, &args)
 }
 
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
+///
+/// Usage semantics:
+/// ```
+/// let Runtime = Runtime::from_args(&args); // or create your own
+/// let (core, rpc_core_service) = create_core(&runtime, &args);
+/// ```
+///
+/// The instance of the [`RpcCoreService`] needs to be released
+/// (dropped) before the `Core` is shut down.
+///
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
 

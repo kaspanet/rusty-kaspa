@@ -63,13 +63,13 @@ mod tests {
         payload.prv_key_data.push(prv_key_data2.clone());
 
         let settings = Settings { name: Some("Wallet-A".to_string()), title: Some("Wallet A".to_string()), is_visible: false };
-        let bip32 = Bip32 { account_index: 0, xpub_keys: pub_key_data1.clone(), ecdsa: false };
+        let bip32 = Bip32::new(0, pub_key_data1.clone(), false);
         let id = AccountId::from_bip32(&prv_key_data1.id, &bip32);
         let account1 = Account::new(id, Some(prv_key_data1.id), settings, AccountData::Bip32(bip32));
         payload.accounts.push(account1);
 
         let settings = Settings { name: Some("Wallet-B".to_string()), title: Some("Wallet B".to_string()), is_visible: false };
-        let bip32 = Bip32 { account_index: 0, xpub_keys: pub_key_data2.clone(), ecdsa: false };
+        let bip32 = Bip32::new(0, pub_key_data2.clone(), false);
         let id = AccountId::from_bip32(&prv_key_data2.id, &bip32);
         let account2 = Account::new(id, Some(prv_key_data2.id), settings, AccountData::Bip32(bip32));
         payload.accounts.push(account2);

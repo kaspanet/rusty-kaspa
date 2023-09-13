@@ -459,7 +459,7 @@ impl Wallet {
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
         let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(xpub_prefix))]);
 
-        let bip32 = storage::Bip32 { account_index, xpub_keys, ecdsa: false };
+        let bip32 = storage::Bip32::new(account_index, xpub_keys, false);
 
         let settings = storage::Settings { is_visible: false, name: None, title: None };
         let account: Arc<dyn Account> = Arc::new(runtime::Bip32::try_new(self, prv_key_data.id, settings, bip32, None).await?);
@@ -516,7 +516,7 @@ impl Wallet {
             prv_key_data.create_xpub(account_args.payment_secret.as_ref(), account_args.account_kind, account_index).await?;
         let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(xpub_prefix))]);
 
-        let bip32 = storage::Bip32 { account_index, xpub_keys, ecdsa: false };
+        let bip32 = storage::Bip32::new(account_index, xpub_keys, false);
 
         let settings = storage::Settings { is_visible: false, name: None, title: None };
         let account: Arc<dyn Account> = Arc::new(runtime::Bip32::try_new(self, prv_key_data.id, settings, bip32, None).await?);
@@ -696,7 +696,7 @@ impl Wallet {
 
         // TODO: xpub_keys
         let xpub_keys = Arc::new(vec![]);
-        let data = storage::Legacy { xpub_keys };
+        let data = storage::Legacy::new(xpub_keys);
         let settings = storage::Settings::default();
         let account = Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?);
 
@@ -743,7 +743,7 @@ impl Wallet {
                 let ecdsa = false;
                 // ---
 
-                let data = storage::Bip32 { xpub_keys, account_index, ecdsa };
+                let data = storage::Bip32::new(account_index, xpub_keys, ecdsa);
                 let settings = storage::Settings::default();
                 Arc::new(runtime::account::Bip32::try_new(self, prv_key_data.id, settings, data, None).await?)
                 // account
@@ -753,7 +753,7 @@ impl Wallet {
                 let xpub_keys = Arc::new(vec![]);
                 // ---
 
-                let data = storage::Legacy { xpub_keys };
+                let data = storage::Legacy::new(xpub_keys);
                 let settings = storage::Settings::default();
                 Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?)
             }
@@ -765,7 +765,7 @@ impl Wallet {
                 let minimum_signatures = 1;
                 // ---
 
-                let data = storage::MultiSig { xpub_keys, account_index, ecdsa, cosigner_index, minimum_signatures };
+                let data = storage::MultiSig::new(account_index, xpub_keys, cosigner_index, minimum_signatures, ecdsa);
                 let settings = storage::Settings::default();
                 Arc::new(runtime::account::MultiSig::try_new(self, prv_key_data.id, settings, data, None).await?)
             }
