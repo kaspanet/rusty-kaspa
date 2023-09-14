@@ -46,7 +46,7 @@ impl Drop for AccessContext {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
 pub struct WalletDescriptor {
     pub title: Option<String>,
     pub filename: String,
