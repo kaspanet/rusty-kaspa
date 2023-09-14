@@ -42,22 +42,27 @@ impl TransactionsSpread {
         if self.cleaning_task_running || Instant::now() < self.last_cleaning_time + CLEANING_TASK_INTERVAL {
             return false;
         }
+        // Keep the launching times aligned to exact intervals
+        let call_time = Instant::now();
+        while self.last_cleaning_time + CLEANING_TASK_INTERVAL < call_time {
+            self.last_cleaning_time += CLEANING_TASK_INTERVAL;
+        }
+        self.cleaning_count += 1;
         self.cleaning_task_running = true;
         true
     }
 
     /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
     pub fn should_rebroadcast(&self) -> bool {
-        Instant::now() >= self.last_cleaning_time + CLEANING_TASK_INTERVAL && self.cleaning_count % REBROADCAST_FREQUENCY == 0
+        self.cleaning_count % REBROADCAST_FREQUENCY == 0
+    }
+
+    pub fn cleaning_count(&self) -> u64 {
+        self.cleaning_count
     }
 
     pub fn cleaning_is_done(&mut self) {
         assert!(self.cleaning_task_running, "no stop without a matching start");
-        // Keep launching the cleaning task respecting the exact intervals
-        while self.last_cleaning_time <= Instant::now() {
-            self.last_cleaning_time += CLEANING_TASK_INTERVAL;
-        }
-        self.cleaning_count += 1;
         self.cleaning_task_running = false;
     }
 

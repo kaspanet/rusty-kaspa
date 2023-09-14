@@ -384,6 +384,7 @@ impl FlowContext {
             let mining_manager = self.mining_manager().clone();
             let consensus_clone = consensus.clone();
             let context = self.clone();
+            debug!("<> Starting cleaning task #{}...", self.cleaning_count().await);
             tokio::spawn(async move {
                 mining_manager.clone().expire_low_priority_transactions(&consensus_clone).await;
                 if context.should_rebroadcast().await {
@@ -396,6 +397,7 @@ impl FlowContext {
                     }
                 }
                 context.cleaning_is_done().await;
+                debug!("<> Cleaning task is done");
             });
         }
 
@@ -447,7 +449,11 @@ impl FlowContext {
 
     /// Returns true if the time has come for a rebroadcast of the mempool high priority transactions.
     async fn should_rebroadcast(&self) -> bool {
-        self.transactions_spread.write().await.should_rebroadcast()
+        self.transactions_spread.read().await.should_rebroadcast()
+    }
+
+    async fn cleaning_count(&self) -> u64 {
+        self.transactions_spread.read().await.cleaning_count()
     }
 
     async fn cleaning_is_done(&self) {

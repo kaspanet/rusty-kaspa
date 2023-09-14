@@ -455,6 +455,7 @@ impl MiningManager {
 
     pub fn expire_low_priority_transactions(&self, consensus: &dyn ConsensusApi) {
         // very fine-grained write locks on mempool
+        debug!("<> Expiring low priority transactions...");
 
         // orphan pool
         if let Err(err) = self.mempool.write().expire_orphan_low_priority_transactions(consensus) {
@@ -494,9 +495,9 @@ impl MiningManager {
         // Prepare a vector with clones of high priority transactions found in the mempool
         let mempool = self.mempool.read();
         if mempool.has_transactions_with_priority(Priority::High) {
-            info!("Revalidating high priority transactions...");
+            debug!("<> Revalidating high priority transactions...");
         } else {
-            debug!("Revalidating high priority transactions found no transactions");
+            debug!("<> Revalidating high priority transactions found no transactions");
             return;
         }
         let transactions = mempool.all_transactions_with_priority(Priority::High);
