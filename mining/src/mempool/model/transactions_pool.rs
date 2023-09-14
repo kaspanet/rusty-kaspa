@@ -103,9 +103,7 @@ impl TransactionsPool {
         self.parent_transactions.insert(id, parents.clone());
         for parent_id in parents {
             let entry = self.chained_mut().entry(parent_id).or_default();
-            if !entry.contains(&id) {
-                entry.insert(id);
-            }
+            entry.insert(id);
         }
 
         self.utxo_set.add_transaction(&transaction.mtx);

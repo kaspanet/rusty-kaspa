@@ -139,9 +139,7 @@ impl OrphanPool {
         // ... incoming
         for parent_id in self.get_parent_transaction_ids_in_pool(&transaction.mtx) {
             let entry = self.chained_mut().entry(parent_id).or_default();
-            if !entry.contains(&id) {
-                entry.insert(id);
-            }
+            entry.insert(id);
         }
         // ... outgoing
         let mut outpoint = TransactionOutpoint::new(id, 0);
