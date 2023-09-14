@@ -375,37 +375,27 @@ impl FlowContext {
             return Ok(());
         }
 
-        // TODO: refactor this adding a worker and a scheduler to FlowContext
-        if self.should_expire_transactions().await {
-            // Spawn a task expiring concurrently the low priority transactions.
-            // The TransactionSpread instance ensures at most one expire running at any
+        if self.should_run_cleaning_task().await {
+            // Spawn a task executing the removal of expired low priority transactions and, if time has come too,
+            // the revalidation of high priority transactions.
+            //
+            // The TransactionSpread member ensures at most one instance of this task is running at any
             // given time.
             let mining_manager = self.mining_manager().clone();
             let consensus_clone = consensus.clone();
             let context = self.clone();
             tokio::spawn(async move {
-                mining_manager.expire_low_priority_transactions(&consensus_clone).await;
-                context.expire_done().await;
-            });
-        }
-
-        // TODO: refactor this adding a worker and a scheduler to FlowContext
-        if self.should_rebroadcast_transactions().await {
-            // Spawn a task revalidating concurrently the high priority transactions.
-            // The TransactionSpread instance ensures at most one rebroadcast running at any
-            // given time.
-            let mining_manager = self.mining_manager().clone();
-            let consensus_clone = consensus.clone();
-            let context = self.clone();
-            tokio::spawn(async move {
-                let (tx, mut rx) = unbounded_channel();
-                tokio::spawn(async move {
-                    mining_manager.revalidate_high_priority_transactions(&consensus_clone, tx).await;
-                });
-                while let Some(transactions) = rx.recv().await {
-                    let _ = context.broadcast_transactions(transactions).await;
+                mining_manager.clone().expire_low_priority_transactions(&consensus_clone).await;
+                if context.should_rebroadcast().await {
+                    let (tx, mut rx) = unbounded_channel();
+                    tokio::spawn(async move {
+                        mining_manager.revalidate_high_priority_transactions(&consensus_clone, tx).await;
+                    });
+                    while let Some(transactions) = rx.recv().await {
+                        let _ = context.broadcast_transactions(transactions).await;
+                    }
                 }
-                context.rebroadcast_done().await;
+                context.cleaning_is_done().await;
             });
         }
 
@@ -450,24 +440,18 @@ impl FlowContext {
         self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await
     }
 
-    /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
-    ///
-    /// If true, the instant of the call is registered as the last rebroadcast time.
-    pub async fn should_rebroadcast_transactions(&self) -> bool {
-        self.transactions_spread.write().await.should_rebroadcast_transactions()
+    /// Returns true if the time has come for running the task cleaning mempool transactions.
+    async fn should_run_cleaning_task(&self) -> bool {
+        self.transactions_spread.write().await.should_run_cleaning_task()
     }
 
-    pub async fn rebroadcast_done(&self) {
-        self.transactions_spread.write().await.rebroadcast_done();
+    /// Returns true if the time has come for a rebroadcast of the mempool high priority transactions.
+    async fn should_rebroadcast(&self) -> bool {
+        self.transactions_spread.write().await.should_rebroadcast()
     }
 
-    /// Returns true if the time for expiring the mempool low priority transactions has come.
-    pub async fn should_expire_transactions(&self) -> bool {
-        self.transactions_spread.write().await.should_expire_transactions()
-    }
-
-    pub async fn expire_done(&self) {
-        self.transactions_spread.write().await.expire_done();
+    async fn cleaning_is_done(&self) {
+        self.transactions_spread.write().await.cleaning_is_done()
     }
 
     /// Add the given transactions IDs to a set of IDs to broadcast. The IDs will be broadcasted to all peers

@@ -10,17 +10,16 @@ use kaspa_p2p_lib::{
 };
 use std::time::{Duration, Instant};
 
-const REBROADCAST_INTERVAL: Duration = Duration::from_secs(30);
-const EXPIRE_INTERVAL: Duration = Duration::from_secs(10);
+const CLEANING_TASK_INTERVAL: Duration = Duration::from_secs(10);
+const REBROADCAST_FREQUENCY: u64 = 3;
 const BROADCAST_INTERVAL: Duration = Duration::from_millis(500);
 pub(crate) const MAX_INV_PER_TX_INV_MSG: usize = 131_072;
 
 pub struct TransactionsSpread {
     hub: Hub,
-    last_rebroadcast_time: Instant,
-    executing_rebroadcast: bool,
-    last_expire_time: Instant,
-    executing_expire: bool,
+    last_cleaning_time: Instant,
+    cleaning_task_running: bool,
+    cleaning_count: u64,
     transaction_ids: ProcessQueue<TransactionId>,
     last_broadcast_time: Instant,
 }
@@ -29,45 +28,37 @@ impl TransactionsSpread {
     pub fn new(hub: Hub) -> Self {
         Self {
             hub,
-            last_rebroadcast_time: Instant::now(),
-            executing_rebroadcast: false,
-            last_expire_time: Instant::now(),
-            executing_expire: false,
+            last_cleaning_time: Instant::now(),
+            cleaning_task_running: false,
+            cleaning_count: 0,
             transaction_ids: ProcessQueue::new(),
             last_broadcast_time: Instant::now(),
         }
     }
 
+    /// Returns true if the time has come for running the task cleaning mempool transactions
+    /// and if so, mark the task as running.
+    pub fn should_run_cleaning_task(&mut self) -> bool {
+        if self.cleaning_task_running || Instant::now() < self.last_cleaning_time + CLEANING_TASK_INTERVAL {
+            return false;
+        }
+        self.cleaning_task_running = true;
+        true
+    }
+
     /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
-    pub fn should_rebroadcast_transactions(&mut self) -> bool {
-        if self.executing_rebroadcast || Instant::now() < self.last_rebroadcast_time + REBROADCAST_INTERVAL {
-            return false;
-        }
-        self.executing_rebroadcast = true;
-        true
+    pub fn should_rebroadcast(&self) -> bool {
+        Instant::now() >= self.last_cleaning_time + CLEANING_TASK_INTERVAL && self.cleaning_count % REBROADCAST_FREQUENCY == 0
     }
 
-    pub fn rebroadcast_done(&mut self) {
-        if self.executing_rebroadcast {
-            self.executing_rebroadcast = false;
-            self.last_rebroadcast_time = Instant::now();
+    pub fn cleaning_is_done(&mut self) {
+        assert!(self.cleaning_task_running, "no stop without a matching start");
+        // Keep launching the cleaning task respecting the exact intervals
+        while self.last_cleaning_time <= Instant::now() {
+            self.last_cleaning_time += CLEANING_TASK_INTERVAL;
         }
-    }
-
-    /// Returns true if the time for expiring the mempool low priority transactions has come.
-    pub fn should_expire_transactions(&mut self) -> bool {
-        if self.executing_expire || Instant::now() < self.last_expire_time + EXPIRE_INTERVAL {
-            return false;
-        }
-        self.executing_expire = true;
-        true
-    }
-
-    pub fn expire_done(&mut self) {
-        if self.executing_expire {
-            self.executing_expire = false;
-            self.last_expire_time = Instant::now();
-        }
+        self.cleaning_count += 1;
+        self.cleaning_task_running = false;
     }
 
     /// Add the given transactions IDs to a set of IDs to broadcast. The IDs will be broadcasted to all peers
