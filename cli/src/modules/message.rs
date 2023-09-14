@@ -133,16 +133,17 @@ impl Message {
             AccountKind::Bip32 => {
                 let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
                 let keydata = account.prv_key_data(wallet_secret).await?;
-                let mut keys = HashMap::new();
                 let account = account.clone().as_derivation_capable().expect("expecting derivation capable");
 
                 let (receive, change) = account.derivation().addresses_indexes(&[&kaspa_address])?;
                 let private_keys = account.create_private_keys(&keydata, &payment_secret, &receive, &change)?;
                 for (address, private_key) in private_keys {
-                    keys.insert(address.clone(), private_key.secret_bytes());
+                    if kaspa_address == *address {
+                        return Ok(private_key.secret_bytes());
+                    }
                 }
 
-                Ok(*keys.get(&kaspa_address).unwrap())
+                Err(Error::custom("Could not find address in any derivation path in account"))
             }
             AccountKind::Keypair => {
                 let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
