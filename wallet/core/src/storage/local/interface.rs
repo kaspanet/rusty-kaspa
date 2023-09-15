@@ -41,7 +41,7 @@ impl LocalStoreInner {
 
             let filename = args.filename.clone().unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
 
-            let storage = Storage::new_with_folder(folder, &format!("{filename}.wallet"))?;
+            let storage = Storage::try_new_with_folder(folder, &format!("{filename}.wallet"))?;
             if storage.exists().await? && !args.overwrite_wallet {
                 return Err(Error::WalletAlreadyExists);
             }
@@ -63,7 +63,7 @@ impl LocalStoreInner {
 
     pub async fn try_load(ctx: &Arc<dyn AccessContextT>, folder: &str, args: OpenArgs) -> Result<Self> {
         let filename = args.filename.unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
-        let storage = Storage::new_with_folder(folder, &format!("{filename}.wallet"))?;
+        let storage = Storage::try_new_with_folder(folder, &format!("{filename}.wallet"))?;
 
         let secret = ctx.wallet_secret().await;
         let wallet = Wallet::try_load(&storage).await?;
@@ -211,7 +211,7 @@ impl Interface for LocalStore {
 
     async fn exists(&self, name: Option<&str>) -> Result<bool> {
         let location = self.location.lock().unwrap().clone().unwrap();
-        let store = Storage::new_with_folder(&location.folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
+        let store = Storage::try_new_with_folder(&location.folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
         store.exists().await
     }
 

@@ -40,7 +40,7 @@ mod tests {
         // loading of account references and a wallet instance and confirms
         // that the serialized data is as expected.
 
-        let store = local::Storage::new("test-wallet-store")?;
+        let store = local::Storage::try_new("test-wallet-store")?;
 
         let mut payload = Payload::default();
 
