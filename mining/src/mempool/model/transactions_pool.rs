@@ -18,7 +18,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::{time::unix_now, trace, warn};
 use std::{
-    collections::{hash_map::Keys, hash_set::Iter},
+    collections::{hash_map::Keys, hash_set::Iter, HashSet},
     sync::Arc,
 };
 
@@ -53,6 +53,8 @@ pub(crate) struct TransactionsPool {
     parent_transactions: TransactionsEdges,
     /// Transactions dependencies formed by outputs present in pool - successor relations.
     chained_transactions: TransactionsEdges,
+    /// Transactions with no parents in the mempool -- ready to be inserted into a block template
+    ready_transactions: HashSet<TransactionId>,
 
     last_expire_scan_daa_score: u64,
     /// last expire scan time in milliseconds
@@ -69,6 +71,7 @@ impl TransactionsPool {
             all_transactions: MempoolTransactionCollection::default(),
             parent_transactions: TransactionsEdges::default(),
             chained_transactions: TransactionsEdges::default(),
+            ready_transactions: Default::default(),
             last_expire_scan_daa_score: 0,
             last_expire_scan_time: unix_now(),
             utxo_set: MempoolUtxoSet::new(),
@@ -101,6 +104,9 @@ impl TransactionsPool {
         // here yet since, by definition, they would have been orphans.
         let parents = self.get_parent_transaction_ids_in_pool(&transaction.mtx);
         self.parent_transactions.insert(id, parents.clone());
+        if parents.is_empty() {
+            self.ready_transactions.insert(id);
+        }
         for parent_id in parents {
             let entry = self.chained_mut().entry(parent_id).or_default();
             entry.insert(id);
@@ -121,6 +127,9 @@ impl TransactionsPool {
         // Remove the bijective parent/chained relation
         if let Some(parents) = self.parent_transactions.get_mut(transaction_id) {
             found = parents.remove(parent_id);
+            if parents.is_empty() {
+                self.ready_transactions.insert(*transaction_id);
+            }
         }
         if let Some(chains) = self.chained_transactions.get_mut(parent_id) {
             found = chains.remove(transaction_id) || found;
@@ -141,34 +150,40 @@ impl TransactionsPool {
             for chain in chains.iter() {
                 if let Some(parents) = self.parent_transactions.get_mut(chain) {
                     parents.remove(transaction_id);
+                    if parents.is_empty() {
+                        self.ready_transactions.insert(*chain);
+                    }
                 }
             }
         }
         self.parent_transactions.remove(transaction_id);
         self.chained_transactions.remove(transaction_id);
+        self.ready_transactions.remove(transaction_id);
 
         // Remove the transaction itself
         self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))
     }
 
     /// Is the mempool transaction identified by `transaction_id` ready for being inserted into a block template?
-    pub(crate) fn is_transaction_ready(&self, transaction_id: &TransactionId) -> bool {
-        if self.all_transactions.contains_key(transaction_id) {
-            if let Some(parents) = self.parent_transactions.get(transaction_id) {
-                return parents.is_empty();
-            }
-            return true;
-        }
-        false
-    }
+    // fn is_transaction_ready(&self, transaction_id: &TransactionId) -> bool {
+    //     if let Some(parents) = self.parent_transactions.get(transaction_id) {
+    //         return parents.is_empty();
+    //     }
+    //     true
+    // }
 
     /// all_ready_transactions returns all fully populated mempool transactions having no parents in the mempool.
     /// These transactions are ready for being inserted in a block template.
     pub(crate) fn all_ready_transactions(&self) -> Vec<CandidateTransaction> {
         // The returned transactions are leaving the mempool so they are cloned
-        self.all_transactions
-            .values()
-            .filter_map(|x| if self.is_transaction_ready(&x.id()) { Some(CandidateTransaction::from_mutable(&x.mtx)) } else { None })
+        // self.all_transactions
+        //     .values()
+        //     .filter_map(|x| if self.is_transaction_ready(&x.id()) { Some(CandidateTransaction::from_mutable(&x.mtx)) } else { None })
+        //     .collect()
+
+        self.ready_transactions
+            .iter()
+            .map(|id| CandidateTransaction::from_mutable(&self.all_transactions.get(id).unwrap().mtx))
             .collect()
     }
 
@@ -262,7 +277,7 @@ impl TransactionsPool {
         self.utxo_set.remove_transaction(transaction, &parent_ids)
     }
 
-    pub(crate) fn collect_expired_low_priority_transactions(&mut self, virtual_daa_score: u64) -> Vec<TransactionId> {
+    pub(crate) fn collect_expired_low_priority_transactions(&self, virtual_daa_score: u64) -> Vec<TransactionId> {
         let now = unix_now();
         if virtual_daa_score < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score
             || now < self.last_expire_scan_time + self.config.transaction_expire_scan_interval_milliseconds
