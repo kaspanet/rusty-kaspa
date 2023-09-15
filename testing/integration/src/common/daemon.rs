@@ -3,7 +3,7 @@ use kaspa_core::{core::Core, signals::Shutdown};
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::notify::mode::NotificationMode;
-use kaspad::{args::Args, daemon::create_core_with_runtime};
+use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
 use std::{sync::Arc, time::Duration};
 use tempfile::TempDir;
 

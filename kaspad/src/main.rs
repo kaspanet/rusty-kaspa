@@ -5,7 +5,7 @@ extern crate kaspa_hashes;
 use std::sync::Arc;
 
 use kaspa_core::{info, signals::Signals};
-use kaspad::{args::parse_args, daemon::create_core};
+use kaspad_lib::{args::parse_args, daemon::create_core};
 
 #[cfg(feature = "heap")]
 #[global_allocator]

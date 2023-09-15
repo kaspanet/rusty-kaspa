@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_cli::metrics::{metrics::MetricsSinkFn, Metrics as Inner};
+use kaspa_cli_lib::metrics::{metrics::MetricsSinkFn, Metrics as Inner};
 
 pub struct Metrics {
     inner: Arc<Inner>,

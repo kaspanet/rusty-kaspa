@@ -1,6 +1,6 @@
 use kaspa_addresses::Address;
 use kaspa_rpc_core::api::rpc::RpcApi;
-use kaspad::args::Args;
+use kaspad_lib::args::Args;
 
 use crate::common::daemon::Daemon;
 use std::time::Duration;
