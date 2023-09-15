@@ -164,25 +164,13 @@ impl TransactionsPool {
         self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))
     }
 
-    /// Is the mempool transaction identified by `transaction_id` ready for being inserted into a block template?
-    // fn is_transaction_ready(&self, transaction_id: &TransactionId) -> bool {
-    //     if let Some(parents) = self.parent_transactions.get(transaction_id) {
-    //         return parents.is_empty();
-    //     }
-    //     true
-    // }
-
     /// all_ready_transactions returns all fully populated mempool transactions having no parents in the mempool.
     /// These transactions are ready for being inserted in a block template.
     pub(crate) fn all_ready_transactions(&self) -> Vec<CandidateTransaction> {
         // The returned transactions are leaving the mempool so they are cloned
-        // self.all_transactions
-        //     .values()
-        //     .filter_map(|x| if self.is_transaction_ready(&x.id()) { Some(CandidateTransaction::from_mutable(&x.mtx)) } else { None })
-        //     .collect()
-
         self.ready_transactions
             .iter()
+            .take(self.config.maximum_ready_transaction_count as usize)
             .map(|id| CandidateTransaction::from_mutable(&self.all_transactions.get(id).unwrap().mtx))
             .collect()
     }
