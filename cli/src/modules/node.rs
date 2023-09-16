@@ -122,7 +122,7 @@ impl Node {
                                 block_async_connect: true,
                                 strategy: ConnectStrategy::Fallback,
                                 url: Some(url),
-                                timeout: None,
+                                ..Default::default()
                             };
                             for _ in 0..5 {
                                 sleep(Duration::from_millis(1000)).await;
