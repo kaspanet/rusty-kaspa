@@ -352,7 +352,7 @@ opcode_list! {
         let mut cond = OpCond::Skip;
         if vm.is_executing() {
             // This code seems identical to pop_bool, but was written this way to preserve
-            // the similar flow of kaspad
+            // the similar flow of go-kaspad
             if let Some(mut cond_buf) = vm.dstack.pop() {
                 if cond_buf.len() > 1 {
                     return Err(TxScriptError::InvalidState("expected boolean".to_string()));
