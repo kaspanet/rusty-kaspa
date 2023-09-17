@@ -843,18 +843,6 @@ impl Wallet {
                 let settings = storage::Settings::default();
                 Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?)
             }
-            // AccountKind::MultiSig => {
-            //     let xpub_keys = Arc::new(vec![]);
-            //     let account_index = 0;
-            //     let ecdsa = false;
-            //     let cosigner_index = 0;
-            //     let minimum_signatures = 1;
-            //     // ---
-            //
-            //     let data = storage::MultiSig::new(account_index, xpub_keys, cosigner_index, minimum_signatures, ecdsa);
-            //     let settings = storage::Settings::default();
-            //     Arc::new(runtime::account::MultiSig::try_new(self, prv_key_data.id, settings, data, None).await?)
-            // }
             _ => {
                 return Err(Error::AccountKindFeature);
             }
@@ -865,6 +853,61 @@ impl Wallet {
         prv_key_data_store.store(&ctx, prv_key_data).await?;
         account_store.store_single(&stored_account, None).await?;
         self.inner.store.commit(&ctx).await?;
+        account.clone().start().await?;
+
+        Ok(account)
+    }
+
+    pub async fn import_multisig_with_mnemonic(
+        self: &Arc<Wallet>,
+        wallet_secret: Secret,
+        mnemonics_secrets: Vec<(Mnemonic, Option<Secret>)>,
+        minimum_signatures: u16,
+        mut additional_xpub_keys: Vec<String>,
+    ) -> Result<Arc<dyn Account>> {
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+
+        let mut generated_xpubs = Vec::with_capacity(mnemonics_secrets.len());
+        let mut prv_key_data_ids = Vec::with_capacity(mnemonics_secrets.len());
+        let prv_key_data_store = self.store().as_prv_key_data_store()?;
+
+        for (mnemonic, payment_secret) in mnemonics_secrets {
+            let prv_key_data = storage::PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret.as_ref())?;
+            if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
+                return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
+            }
+            let xpub_key = prv_key_data.create_xpub(payment_secret.as_ref(), AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
+            let xpub_prefix = kaspa_bip32::Prefix::XPUB;
+            generated_xpubs.push(xpub_key.to_string(Some(xpub_prefix)));
+            prv_key_data_ids.push(prv_key_data.id);
+            prv_key_data_store.store(&ctx, prv_key_data).await?;
+        }
+
+        generated_xpubs.sort_unstable();
+        additional_xpub_keys.extend_from_slice(generated_xpubs.as_slice());
+        let mut xpub_keys = additional_xpub_keys;
+        xpub_keys.sort_unstable();
+        let min_cosigner_index = xpub_keys.binary_search(generated_xpubs.first().unwrap()).unwrap() as u8;
+
+        let account: Arc<dyn Account> = Arc::new(
+            runtime::MultiSig::try_new(
+                self,
+                storage::Settings::default(),
+                MultiSig {
+                    xpub_keys: Arc::new(xpub_keys),
+                    prv_key_data_ids: Some(Arc::new(prv_key_data_ids)),
+                    cosigner_index: Some(min_cosigner_index),
+                    minimum_signatures,
+                    ecdsa: false,
+                },
+                None,
+            )
+            .await?,
+        );
+
+        let stored_account = account.as_storable()?;
+        self.inner.store.clone().as_account_store()?.store_single(&stored_account, None).await?;
+        self.inner.store.clone().commit(&ctx).await?;
         account.clone().start().await?;
 
         Ok(account)
