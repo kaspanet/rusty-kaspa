@@ -1,6 +1,9 @@
 use kaspa_core::{time::Stopwatch, trace};
 use rand::Rng;
-use std::{collections::HashMap, vec};
+use std::{
+    collections::{HashMap, HashSet},
+    vec,
+};
 
 use crate::model::candidate_tx::CandidateTransaction;
 
@@ -8,7 +11,10 @@ use super::{
     model::tx::{CandidateList, SelectableTransaction, SelectableTransactions, TransactionIndex},
     policy::Policy,
 };
-use kaspa_consensus_core::{subnets::SubnetworkId, tx::Transaction};
+use kaspa_consensus_core::{
+    subnets::SubnetworkId,
+    tx::{Transaction, TransactionId},
+};
 
 /// ALPHA is a coefficient that defines how uniform the distribution of
 /// candidate transactions should be. A smaller alpha makes the distribution
@@ -31,6 +37,9 @@ pub(crate) struct TransactionsSelector {
     /// Selectable transactions store
     selectable_txs: SelectableTransactions,
 
+    /// Indexes of transactions keys in stores
+    rejected_txs: HashSet<TransactionId>,
+
     /// Indexes of selected transactions in stores
     selected_txs: Vec<TransactionIndex>,
     total_mass: u64,
@@ -44,13 +53,25 @@ impl TransactionsSelector {
         transactions.sort_by(|a, b| a.tx.subnetwork_id.cmp(&b.tx.subnetwork_id));
 
         // Create the object without selectable transactions
-        let mut selector = Self { policy, transactions, selectable_txs: vec![], selected_txs: vec![], total_mass: 0, total_fees: 0 };
+        let mut selector = Self {
+            policy,
+            transactions,
+            selectable_txs: vec![],
+            rejected_txs: Default::default(),
+            selected_txs: vec![],
+            total_mass: 0,
+            total_fees: 0,
+        };
 
         // Create the selectable transactions
         selector.selectable_txs =
             selector.transactions.iter().map(|x| SelectableTransaction::new(selector.calc_tx_value(x), 0, ALPHA)).collect();
 
         selector
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.transactions.len() - self.rejected_txs.len()
     }
 
     /// select_transactions implements a probabilistic transaction selection algorithm.
@@ -74,7 +95,7 @@ impl TransactionsSelector {
     /// and appends the ones that will be included in the next block into
     /// selected_txs.
     pub(crate) fn select_transactions(&mut self) -> Vec<Transaction> {
-        let _sw = Stopwatch::<100>::with_threshold("select_transaction op");
+        let _sw = Stopwatch::<15>::with_threshold("select_transaction op");
         let mut rng = rand::thread_rng();
 
         self.reset();
@@ -178,9 +199,29 @@ impl TransactionsSelector {
         self.selected_txs.iter().map(|x| self.transactions[*x].tx.as_ref().clone()).collect()
     }
 
+    pub(crate) fn reject(&mut self, transaction_id: TransactionId) {
+        self.rejected_txs.insert(transaction_id);
+    }
+
+    fn commit_rejections(&mut self) {
+        let _sw = Stopwatch::<5>::with_threshold("commit_rejections op");
+        if self.rejected_txs.is_empty() {
+            return;
+        }
+        for (index, tx) in self.transactions.iter().enumerate() {
+            if !self.selectable_txs[index].is_rejected && self.rejected_txs.remove(&tx.tx.id()) {
+                self.selectable_txs[index].is_rejected = true;
+                if self.rejected_txs.is_empty() {
+                    break;
+                }
+            }
+        }
+    }
+
     fn reset(&mut self) {
         assert_eq!(self.transactions.len(), self.selectable_txs.len());
         self.selected_txs = Vec::with_capacity(self.transactions.len());
+        self.commit_rejections();
     }
 
     /// calc_tx_value calculates a value to be used in transaction selection.

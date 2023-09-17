@@ -750,12 +750,7 @@ mod tests {
         });
 
         // Test modify block template
-        sweep_compare_modified_template_to_built(
-            consensus.as_ref(),
-            Prefix::Testnet,
-            mining_manager.block_template_builder(),
-            transactions,
-        );
+        sweep_compare_modified_template_to_built(consensus.as_ref(), Prefix::Testnet, &mining_manager, transactions);
 
         // TODO: extend the test according to the golang scenario
     }
@@ -763,26 +758,75 @@ mod tests {
     fn sweep_compare_modified_template_to_built(
         consensus: &dyn ConsensusApi,
         address_prefix: Prefix,
-        builder: &BlockTemplateBuilder,
+        mining_manager: &MiningManager,
         transactions: Vec<CandidateTransaction>,
     ) {
         for _ in 0..4 {
             // Run a few times to get more randomness
-            compare_modified_template_to_built(consensus, address_prefix, builder, transactions.clone(), OpType::Usual, OpType::Usual);
-            compare_modified_template_to_built(consensus, address_prefix, builder, transactions.clone(), OpType::Edcsa, OpType::Edcsa);
+            compare_modified_template_to_built(
+                consensus,
+                address_prefix,
+                mining_manager,
+                transactions.clone(),
+                OpType::Usual,
+                OpType::Usual,
+            );
+            compare_modified_template_to_built(
+                consensus,
+                address_prefix,
+                mining_manager,
+                transactions.clone(),
+                OpType::Edcsa,
+                OpType::Edcsa,
+            );
         }
-        compare_modified_template_to_built(consensus, address_prefix, builder, transactions.clone(), OpType::True, OpType::Usual);
-        compare_modified_template_to_built(consensus, address_prefix, builder, transactions.clone(), OpType::Usual, OpType::True);
-        compare_modified_template_to_built(consensus, address_prefix, builder, transactions.clone(), OpType::Edcsa, OpType::Usual);
-        compare_modified_template_to_built(consensus, address_prefix, builder, transactions.clone(), OpType::Usual, OpType::Edcsa);
-        compare_modified_template_to_built(consensus, address_prefix, builder, transactions.clone(), OpType::Empty, OpType::Usual);
-        compare_modified_template_to_built(consensus, address_prefix, builder, transactions, OpType::Usual, OpType::Empty);
+        compare_modified_template_to_built(
+            consensus,
+            address_prefix,
+            mining_manager,
+            transactions.clone(),
+            OpType::True,
+            OpType::Usual,
+        );
+        compare_modified_template_to_built(
+            consensus,
+            address_prefix,
+            mining_manager,
+            transactions.clone(),
+            OpType::Usual,
+            OpType::True,
+        );
+        compare_modified_template_to_built(
+            consensus,
+            address_prefix,
+            mining_manager,
+            transactions.clone(),
+            OpType::Edcsa,
+            OpType::Usual,
+        );
+        compare_modified_template_to_built(
+            consensus,
+            address_prefix,
+            mining_manager,
+            transactions.clone(),
+            OpType::Usual,
+            OpType::Edcsa,
+        );
+        compare_modified_template_to_built(
+            consensus,
+            address_prefix,
+            mining_manager,
+            transactions.clone(),
+            OpType::Empty,
+            OpType::Usual,
+        );
+        compare_modified_template_to_built(consensus, address_prefix, mining_manager, transactions, OpType::Usual, OpType::Empty);
     }
 
     fn compare_modified_template_to_built(
         consensus: &dyn ConsensusApi,
         address_prefix: Prefix,
-        builder: &BlockTemplateBuilder,
+        mining_manager: &MiningManager,
         transactions: Vec<CandidateTransaction>,
         first_op: OpType,
         second_op: OpType,
@@ -791,12 +835,13 @@ mod tests {
         let miner_data_2 = generate_new_coinbase(address_prefix, second_op);
 
         // Build a fresh template for coinbase2 as a reference
-        let result = builder.build_block_template(consensus, &miner_data_2, transactions);
+        let mut builder = mining_manager.block_template_builder(transactions);
+        let result = builder.build_block_template(consensus, &miner_data_2);
         assert!(result.is_ok(), "build block template failed for miner data 2");
         let expected_template = result.unwrap();
 
         // Modify to miner_data_1
-        let result = builder.modify_block_template(consensus, &miner_data_1, &expected_template);
+        let result = BlockTemplateBuilder::modify_block_template(consensus, &miner_data_1, &expected_template);
         assert!(result.is_ok(), "modify block template failed for miner data 1");
         let mut modified_template = result.unwrap();
         // Make sure timestamps are equal before comparing the hash
@@ -815,7 +860,7 @@ mod tests {
         assert_ne!(expected_block.hash(), modified_block.hash(), "built and modified blocks should have different hashes");
 
         // And modify back to miner_data_2
-        let result = builder.modify_block_template(consensus, &miner_data_2, &modified_template);
+        let result = BlockTemplateBuilder::modify_block_template(consensus, &miner_data_2, &modified_template);
         assert!(result.is_ok(), "modify block template failed for miner data 2");
         let mut modified_template_2 = result.unwrap();
         // Make sure timestamps are equal before comparing the hash

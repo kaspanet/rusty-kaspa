@@ -49,8 +49,7 @@ pub(crate) struct Mempool {
 }
 
 impl Mempool {
-    pub(crate) fn new(config: Config) -> Self {
-        let config = Arc::new(config);
+    pub(crate) fn new(config: Arc<Config>) -> Self {
         let transaction_pool = TransactionsPool::new(config.clone());
         let orphan_pool = OrphanPool::new(config.clone());
         let accepted_transactions = AcceptedTransactions::new(config.clone());
@@ -127,17 +126,13 @@ impl Mempool {
     }
 
     pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
-        let _sw = Stopwatch::<120>::with_threshold("block_candidate_transactions op");
+        let _sw = Stopwatch::<10>::with_threshold("block_candidate_transactions op");
         self.transaction_pool.all_ready_transactions()
     }
 
-    pub(crate) fn all_transactions_with_priority(&self, priority: Priority) -> Vec<MutableTransaction> {
-        let _sw = Stopwatch::<100>::with_threshold("all_transactions_with_priority op");
-        self.transaction_pool.all_transactions_with_priority(priority)
-    }
-
-    pub(crate) fn has_transactions_with_priority(&self, priority: Priority) -> bool {
-        self.transaction_pool.has_transactions_with_priority(priority)
+    pub(crate) fn all_transaction_ids_with_priority(&self, priority: Priority) -> Vec<TransactionId> {
+        let _sw = Stopwatch::<15>::with_threshold("all_transaction_ids_with_priority op");
+        self.transaction_pool.all_transaction_ids_with_priority(priority)
     }
 
     pub(crate) fn update_revalidated_transaction(&mut self, transaction: MutableTransaction) -> bool {

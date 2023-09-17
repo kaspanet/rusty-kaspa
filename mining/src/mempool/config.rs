@@ -2,6 +2,9 @@ use kaspa_consensus_core::constants::TX_VERSION;
 
 pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: u64 = 1_000_000;
 pub(crate) const DEFAULT_MAXIMUM_READY_TRANSACTION_COUNT: u64 = 100_000;
+pub(crate) const DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS: u64 = 3;
+// TODO: revisit this value
+pub(crate) const DEFAULT_READY_TRANSACTIONS_REFETCH_LIMIT: usize = 2_500;
 
 pub(crate) const DEFAULT_TRANSACTION_EXPIRE_INTERVAL_SECONDS: u64 = 60;
 pub(crate) const DEFAULT_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS: u64 = 10;
@@ -30,6 +33,8 @@ pub(crate) const DEFAULT_MAXIMUM_STANDARD_TRANSACTION_VERSION: u16 = TX_VERSION;
 pub struct Config {
     pub maximum_transaction_count: u64,
     pub maximum_ready_transaction_count: u64,
+    pub maximum_build_block_template_attempts: u64,
+    pub ready_transactions_refetch_limit: usize,
     pub transaction_expire_interval_daa_score: u64,
     pub transaction_expire_scan_interval_daa_score: u64,
     pub transaction_expire_scan_interval_milliseconds: u64,
@@ -51,7 +56,9 @@ impl Config {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         maximum_transaction_count: u64,
-        maximum_candidate_transaction_count: u64,
+        maximum_ready_transaction_count: u64,
+        maximum_build_block_template_attempts: u64,
+        ready_transactions_refetch_limit: usize,
         transaction_expire_interval_daa_score: u64,
         transaction_expire_scan_interval_daa_score: u64,
         transaction_expire_scan_interval_milliseconds: u64,
@@ -70,7 +77,9 @@ impl Config {
     ) -> Self {
         Self {
             maximum_transaction_count,
-            maximum_ready_transaction_count: maximum_candidate_transaction_count,
+            maximum_ready_transaction_count,
+            maximum_build_block_template_attempts,
+            ready_transactions_refetch_limit,
             transaction_expire_interval_daa_score,
             transaction_expire_scan_interval_daa_score,
             transaction_expire_scan_interval_milliseconds,
@@ -95,6 +104,8 @@ impl Config {
         Self {
             maximum_transaction_count: DEFAULT_MAXIMUM_TRANSACTION_COUNT,
             maximum_ready_transaction_count: DEFAULT_MAXIMUM_READY_TRANSACTION_COUNT,
+            maximum_build_block_template_attempts: DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS,
+            ready_transactions_refetch_limit: DEFAULT_READY_TRANSACTIONS_REFETCH_LIMIT,
             transaction_expire_interval_daa_score: DEFAULT_TRANSACTION_EXPIRE_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
             transaction_expire_scan_interval_daa_score: DEFAULT_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000
                 / target_milliseconds_per_block,

@@ -1,7 +1,11 @@
 use super::{errors::BuilderResult, policy::Policy};
 use crate::{block_template::selector::TransactionsSelector, model::candidate_tx::CandidateTransaction};
 use kaspa_consensus_core::{
-    api::ConsensusApi, block::BlockTemplate, coinbase::MinerData, merkle::calc_hash_merkle_root, tx::COINBASE_TRANSACTION_INDEX,
+    api::ConsensusApi,
+    block::BlockTemplate,
+    coinbase::MinerData,
+    merkle::calc_hash_merkle_root,
+    tx::{TransactionId, COINBASE_TRANSACTION_INDEX},
 };
 use kaspa_core::{
     debug,
@@ -10,12 +14,15 @@ use kaspa_core::{
 
 pub(crate) struct BlockTemplateBuilder {
     policy: Policy,
+    selector: TransactionsSelector,
 }
 
 impl BlockTemplateBuilder {
-    pub(crate) fn new(max_block_mass: u64) -> Self {
+    pub(crate) fn new(max_block_mass: u64, transactions: Vec<CandidateTransaction>) -> Self {
+        let _sw = Stopwatch::<50>::with_threshold("BlockTemplateBuilder::new");
         let policy = Policy::new(max_block_mass);
-        Self { policy }
+        let selector = TransactionsSelector::new(policy.clone(), transactions);
+        Self { policy, selector }
     }
 
     /// BuildBlockTemplate creates a block template for a miner to consume
@@ -82,21 +89,31 @@ impl BlockTemplateBuilder {
     ///  |  <= policy.BlockMinSize)          |   |
     ///   -----------------------------------  --
     pub(crate) fn build_block_template(
-        &self,
+        &mut self,
         consensus: &dyn ConsensusApi,
         miner_data: &MinerData,
-        transactions: Vec<CandidateTransaction>,
     ) -> BuilderResult<BlockTemplate> {
-        let _sw = Stopwatch::<200>::with_threshold("build_block_template op");
-        debug!("Considering {} transactions for a new block template", transactions.len());
-        let mut selector = TransactionsSelector::new(self.policy.clone(), transactions);
-        let block_txs = selector.select_transactions();
+        let _sw = Stopwatch::<20>::with_threshold("build_block_template op");
+        debug!("Considering {} transactions for a new block template", self.selector.len());
+        let block_txs = self.selector.select_transactions();
         Ok(consensus.build_block_template(miner_data.clone(), block_txs)?)
+    }
+
+    pub(crate) fn update_transactions(&mut self, transactions: Vec<CandidateTransaction>) {
+        let selector = TransactionsSelector::new(self.policy.clone(), transactions);
+        self.selector = selector;
+    }
+
+    pub(crate) fn reject_transaction(&mut self, transaction_id: TransactionId) {
+        self.selector.reject(transaction_id);
+    }
+
+    pub(crate) fn candidates_len(&self) -> usize {
+        self.selector.len()
     }
 
     /// modify_block_template clones an existing block template, modifies it to the requested coinbase data and updates the timestamp
     pub(crate) fn modify_block_template(
-        &self,
         consensus: &dyn ConsensusApi,
         new_miner_data: &MinerData,
         block_template_to_modify: &BlockTemplate,
@@ -122,10 +139,5 @@ impl BlockTemplateBuilder {
         block_template.block.header.finalize();
         block_template.miner_data = new_miner_data.clone();
         Ok(block_template)
-    }
-
-    #[inline(always)]
-    pub fn max_block_mass(&self) -> u64 {
-        self.policy.max_block_mass
     }
 }

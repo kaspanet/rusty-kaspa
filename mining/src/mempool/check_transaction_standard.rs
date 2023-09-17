@@ -238,6 +238,7 @@ mod tests {
         script_builder::ScriptBuilder,
     };
     use smallvec::smallvec;
+    use std::sync::Arc;
 
     #[test]
     fn test_calc_min_required_tx_relay_fee() {
@@ -281,7 +282,7 @@ mod tests {
                 let params: Params = net.into();
                 let mut config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-                let mempool = Mempool::new(config);
+                let mempool = Mempool::new(Arc::new(config));
 
                 let got = mempool.minimum_required_transaction_relay_fee(test.size);
                 if got != test.want {
@@ -365,7 +366,7 @@ mod tests {
                 let params: Params = net.into();
                 let mut config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-                let mempool = Mempool::new(config);
+                let mempool = Mempool::new(Arc::new(config));
 
                 println!("test_is_transaction_output_dust test '{}' ", test.name);
                 let res = mempool.is_transaction_output_dust(&test.tx_out);
@@ -543,7 +544,7 @@ mod tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
                 let config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
-                let mempool = Mempool::new(config);
+                let mempool = Mempool::new(Arc::new(config));
 
                 // Ensure standard-ness is as expected.
                 println!("test_check_transaction_standard_in_isolation test '{}' ", test.name);

@@ -6,8 +6,9 @@ use std::sync::{
     Arc,
 };
 
+// TODO: revisit this value
 /// CACHE_LIFETIME indicates the default duration in milliseconds after which the cached data expires.
-const DEFAULT_CACHE_LIFETIME: u64 = 1_000;
+const DEFAULT_CACHE_LIFETIME: u64 = 15;
 
 pub(crate) struct Inner {
     /// Time, in milliseconds, at which the cache was last updated
