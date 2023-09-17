@@ -88,7 +88,7 @@ impl MiningManager {
             attempts += 1;
 
             // TODO: consider a parameter forcing the consensus to build a template with the remaining successfully validated transactions
-            // 
+            //
             // let force_build = attempts == self.config.maximum_build_block_template_attempts;
             // match block_template_builder.build_block_template(consensus, miner_data, force_build) {
 
