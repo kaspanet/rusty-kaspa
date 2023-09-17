@@ -121,5 +121,43 @@ macro_rules! opcode_list {
                 _ => None
             }
         }
+
+        #[cfg(test)]
+        use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
+
+        #[cfg(test)]
+        #[allow(unused_comparisons)]
+        pub(crate) fn parse_short_form(test: String) -> ScriptBuilderResult<Vec<u8>>
+        {
+            let mut builder = ScriptBuilder::new();
+            for token in test.split_whitespace() {
+                if let Ok(value) = token.parse::<i64>() {
+                    builder.add_i64(value)?;
+                }
+                else if let Ok(value) = token.strip_prefix("0x").and_then(|trimmed| Some(hex::decode(trimmed))).unwrap_or_else(|| Err(hex::FromHexError::InvalidStringLength)) {
+                    //builder.add_data_unchecked(&value);
+                    builder.extend(&value);
+                }
+                else if token.len() >= 2 && token.chars().nth(0) == Some('\'') && token.chars().last() == Some('\'') {
+                    builder.add_data(token[1..token.len()-1].as_bytes())?;
+                }
+                // TODO: this for loop slows down the test. Can be improved with procedural macro
+                // (very low priority)
+                $(
+                    else if token.replace("_", "") == stringify!($name).to_uppercase() || (
+                        (
+                            stringify!($name) == "OpFalse" ||
+                            stringify!($name) == "OpTrue" || ($num != codes::Op0 && ($num < codes::Op1 || $num > codes::Op16))
+                        ) && token.replace("_", "") == (&stringify!($name)[2..]).to_uppercase()
+                    ){
+                        builder.add_op($num)?;
+                    }
+                )*
+                else {
+                    panic!("Cannot parse {}", token);
+                }
+            }
+            Ok(builder.drain())
+        }
     };
 }
