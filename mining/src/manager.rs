@@ -429,11 +429,13 @@ impl MiningManager {
         include_transaction_pool: bool,
         include_orphan_pool: bool,
     ) -> Option<MutableTransaction> {
+        assert!(include_transaction_pool || include_orphan_pool, "at least one of either transactions or orphans must be included");
         self.mempool.read().get_transaction(transaction_id, include_transaction_pool, include_orphan_pool)
     }
 
     /// Returns whether the mempool holds this transaction in any form.
     pub fn has_transaction(&self, transaction_id: &TransactionId, include_transaction_pool: bool, include_orphan_pool: bool) -> bool {
+        assert!(include_transaction_pool || include_orphan_pool, "at least one of either transactions or orphans must be included");
         self.mempool.read().has_transaction(transaction_id, include_transaction_pool, include_orphan_pool)
     }
 
@@ -442,8 +444,23 @@ impl MiningManager {
         include_transaction_pool: bool,
         include_orphan_pool: bool,
     ) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
-        // TODO: break the monolithic lock
-        self.mempool.read().get_all_transactions(include_transaction_pool, include_orphan_pool)
+        const TRANSACTION_CHUNK_SIZE: usize = 1000;
+        assert!(include_transaction_pool || include_orphan_pool, "at least one of either transactions or orphans must be included");
+        // read lock on mempool by transaction chunks
+        let transactions = if include_transaction_pool {
+            let transaction_ids = self.mempool.read().get_all_transaction_ids(true, false).0;
+            let mut transactions = Vec::with_capacity(self.mempool.read().transaction_count(true, false));
+            for chunks in transaction_ids.chunks(TRANSACTION_CHUNK_SIZE) {
+                let mempool = self.mempool.read();
+                transactions.extend(chunks.iter().filter_map(|x| mempool.get_transaction(x, true, false)));
+            }
+            transactions
+        } else {
+            vec![]
+        };
+        // read lock on mempool
+        let orphans = if include_orphan_pool { self.mempool.read().get_all_transactions(false, true).1 } else { vec![] };
+        (transactions, orphans)
     }
 
     /// get_transactions_by_addresses returns the sending and receiving transactions for
@@ -456,11 +473,13 @@ impl MiningManager {
         include_transaction_pool: bool,
         include_orphan_pool: bool,
     ) -> GroupedOwnerTransactions {
+        assert!(include_transaction_pool || include_orphan_pool, "at least one of either transactions or orphans must be included");
         // TODO: break the monolithic lock
         self.mempool.read().get_transactions_by_addresses(script_public_keys, include_transaction_pool, include_orphan_pool)
     }
 
     pub fn transaction_count(&self, include_transaction_pool: bool, include_orphan_pool: bool) -> usize {
+        assert!(include_transaction_pool || include_orphan_pool, "at least one of either transactions or orphans must be included");
         self.mempool.read().transaction_count(include_transaction_pool, include_orphan_pool)
     }
 

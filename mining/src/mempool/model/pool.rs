@@ -110,6 +110,11 @@ pub(crate) trait Pool {
         self.all().values().map(|x| x.mtx.clone()).collect()
     }
 
+    /// Returns a vector with ids of all the transactions in the pool.
+    fn get_all_transaction_ids(&self) -> Vec<TransactionId> {
+        self.all().keys().cloned().collect()
+    }
+
     /// Fills owner transactions for a set of script public keys.
     fn fill_owner_set_transactions(&self, script_public_keys: &ScriptPublicKeySet, owner_set: &mut GroupedOwnerTransactions) {
         script_public_keys.iter().for_each(|script_public_key| {

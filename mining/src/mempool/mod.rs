@@ -87,14 +87,18 @@ impl Mempool {
         include_transaction_pool: bool,
         include_orphan_pool: bool,
     ) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
-        let mut transactions = vec![];
-        let mut orphans = vec![];
-        if include_transaction_pool {
-            transactions = self.transaction_pool.get_all_transactions()
-        }
-        if include_orphan_pool {
-            orphans = self.orphan_pool.get_all_transactions()
-        }
+        let transactions = if include_transaction_pool { self.transaction_pool.get_all_transactions() } else { vec![] };
+        let orphans = if include_orphan_pool { self.orphan_pool.get_all_transactions() } else { vec![] };
+        (transactions, orphans)
+    }
+
+    pub(crate) fn get_all_transaction_ids(
+        &self,
+        include_transaction_pool: bool,
+        include_orphan_pool: bool,
+    ) -> (Vec<TransactionId>, Vec<TransactionId>) {
+        let transactions = if include_transaction_pool { self.transaction_pool.get_all_transaction_ids() } else { vec![] };
+        let orphans = if include_orphan_pool { self.orphan_pool.get_all_transaction_ids() } else { vec![] };
         (transactions, orphans)
     }
 

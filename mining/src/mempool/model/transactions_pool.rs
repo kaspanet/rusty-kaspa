@@ -240,10 +240,6 @@ impl TransactionsPool {
         Ok(transactions_to_remove.iter().map(|x| x.id()).collect())
     }
 
-    pub(crate) fn get_all_transactions(&self) -> Vec<MutableTransaction> {
-        self.all().values().map(|x| x.mtx.clone()).collect()
-    }
-
     pub(crate) fn all_transaction_ids_with_priority(&self, priority: Priority) -> Vec<TransactionId> {
         self.all().values().filter_map(|x| if x.priority == priority { Some(x.id()) } else { None }).collect()
     }
