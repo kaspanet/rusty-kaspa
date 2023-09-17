@@ -186,6 +186,7 @@ async fn bench_bbt_latency() {
         num_prealloc_utxos: Some(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR),
         prealloc_address: Some(prealloc_address.to_string()),
         prealloc_amount: 500 * SOMPI_PER_KASPA,
+        block_template_cache_lifetime: Some(5),
         ..Default::default()
     };
     let network = args.network();

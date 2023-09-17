@@ -62,6 +62,8 @@ pub struct Args {
     pub prealloc_address: Option<String>,
     #[cfg(feature = "devnet-prealloc")]
     pub prealloc_amount: u64,
+    #[cfg(feature = "devnet-prealloc")]
+    pub block_template_cache_lifetime: Option<u64>,
 }
 
 impl Default for Args {
@@ -105,6 +107,8 @@ impl Default for Args {
             prealloc_address: None,
             #[cfg(feature = "devnet-prealloc")]
             prealloc_amount: 1_000_000,
+            #[cfg(feature = "devnet-prealloc")]
+            block_template_cache_lifetime: None,
         }
     }
 }
@@ -122,6 +126,10 @@ impl Args {
         #[cfg(feature = "devnet-prealloc")]
         if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
             config.initial_utxo_set = Arc::new(self.generate_prealloc_utxos(num_prealloc_utxos));
+        }
+        #[cfg(feature = "devnet-prealloc")]
+        if self.block_template_cache_lifetime.is_some() {
+            config.block_template_cache_lifetime = self.block_template_cache_lifetime;
         }
     }
 
@@ -363,6 +371,8 @@ pub fn parse_args() -> Args {
         prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
         #[cfg(feature = "devnet-prealloc")]
         prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
+        #[cfg(feature = "devnet-prealloc")]
+        block_template_cache_lifetime: m.get_one::<u64>("block-template-cache-lifetime").cloned(),
     }
 }
 
