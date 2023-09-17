@@ -2745,7 +2745,7 @@ mod test {
 
         let code = opcodes::OpCheckLockTimeVerify::empty().expect("Should accept empty");
 
-        for (tx_lock_time, lock_time, should_fail) in vec![
+        for (tx_lock_time, lock_time, should_fail) in [
             (1u64, vec![], false),                                // Case 1: 0 = locktime < txLockTime
             (0x800000, vec![0x7f, 0, 0], false),                  // Case 2: 0 < locktime < txLockTime
             (0x800000, vec![0x7f, 0, 0, 0, 0, 0, 0, 0, 0], true), // Case 3: locktime too big
@@ -2787,7 +2787,7 @@ mod test {
 
         let code = opcodes::OpCheckSequenceVerify::empty().expect("Should accept empty");
 
-        for (tx_sequence, sequence, should_fail) in vec![
+        for (tx_sequence, sequence, should_fail) in [
             (1u64, vec![], false),                                // Case 1: 0 = sequence < tx_sequence
             (0x800000, vec![0x7f, 0, 0], false),                  // Case 2: 0 < sequence < tx_sequence
             (0x800000, vec![0x7f, 0, 0, 0, 0, 0, 0, 0, 0], true), // Case 3: sequence too big
