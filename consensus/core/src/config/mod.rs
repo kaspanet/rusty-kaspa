@@ -61,6 +61,9 @@ pub struct Config {
 
     #[cfg(feature = "devnet-prealloc")]
     pub initial_utxo_set: Arc<UtxoCollection>,
+
+    #[cfg(feature = "devnet-prealloc")]
+    pub block_template_cache_lifetime: Option<u64>,
 }
 
 impl Config {
@@ -85,6 +88,8 @@ impl Config {
 
             #[cfg(feature = "devnet-prealloc")]
             initial_utxo_set: Default::default(),
+            #[cfg(feature = "devnet-prealloc")]
+            block_template_cache_lifetime: None,
         }
     }
 

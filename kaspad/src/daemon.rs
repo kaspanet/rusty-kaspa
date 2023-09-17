@@ -275,8 +275,17 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     };
 
     let address_manager = AddressManager::new(config.clone(), meta_db);
-    let mining_manager =
-        MiningManagerProxy::new(Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None)));
+
+    #[cfg(not(feature = "devnet-prealloc"))]
+    let cache_lifetime: Option<u64> = None;
+    #[cfg(feature = "devnet-prealloc")]
+    let cache_lifetime = config.block_template_cache_lifetime;
+    let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new(
+        config.target_time_per_block,
+        false,
+        config.max_block_mass,
+        cache_lifetime,
+    )));
 
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
