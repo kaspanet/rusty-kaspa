@@ -328,6 +328,8 @@ impl KaspaRpcClient {
                 Ok("ws")
             } else if protocol == "https:" {
                 Ok("wss")
+            } else if protocol == "chrome-extension:" {
+                Ok("wss")
             } else {
                 Err(Error::Custom(format!("Unsupported protocol: {}", protocol)))
             }
