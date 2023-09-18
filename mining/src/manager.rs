@@ -97,19 +97,25 @@ impl MiningManager {
                     let block_template = cache_lock.set_immutable_cached_template(block_template);
                     match attempts {
                         1 => {
-                            debug!("Built a new block template with {} transactions", block_template.block.transactions.len());
+                            debug!(
+                                "Built a new block template with {} transactions in {:#?}",
+                                block_template.block.transactions.len(),
+                                _swo.elapsed()
+                            );
                         }
                         2 => {
                             debug!(
-                                "Built a new block template with {} transactions at second attempt",
-                                block_template.block.transactions.len()
+                                "Built a new block template with {} transactions at second attempt in {:#?}",
+                                block_template.block.transactions.len(),
+                                _swo.elapsed()
                             );
                         }
                         n => {
                             debug!(
-                                "Built a new block template with {} transactions in {} attempts",
+                                "Built a new block template with {} transactions in {} attempts totaling {:#?}",
                                 block_template.block.transactions.len(),
-                                n
+                                n,
+                                _swo.elapsed()
                             );
                         }
                     }

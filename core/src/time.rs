@@ -22,6 +22,10 @@ impl<const TR: u64> Stopwatch<TR> {
     pub fn with_threshold(name: &'static str) -> Self {
         Self { name, start: Instant::now() }
     }
+
+    pub fn elapsed(&self) -> Duration {
+        self.start.elapsed()
+    }
 }
 
 impl<const TR: u64> Drop for Stopwatch<TR> {

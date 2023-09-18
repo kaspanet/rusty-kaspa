@@ -2,7 +2,7 @@ use kaspa_consensus_core::constants::TX_VERSION;
 
 pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: u64 = 1_000_000;
 pub(crate) const DEFAULT_MAXIMUM_READY_TRANSACTION_COUNT: u64 = 100_000;
-pub(crate) const DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS: u64 = 3;
+pub(crate) const DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS: u64 = 5;
 // TODO: revisit this value
 pub(crate) const DEFAULT_READY_TRANSACTIONS_REFETCH_LIMIT: usize = 2_500;
 
