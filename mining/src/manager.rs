@@ -16,6 +16,7 @@ use crate::{
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
         topological_sort::IntoIterTopologically,
     },
+    MiningCounters,
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
@@ -36,6 +37,7 @@ pub struct MiningManager {
     config: Arc<Config>,
     block_template_cache: BlockTemplateCache,
     mempool: RwLock<Mempool>,
+    counters: Arc<MiningCounters>,
 }
 
 impl MiningManager {
@@ -44,16 +46,17 @@ impl MiningManager {
         relay_non_std_transactions: bool,
         max_block_mass: u64,
         cache_lifetime: Option<u64>,
+        counters: Arc<MiningCounters>,
     ) -> Self {
         let config = Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass);
-        Self::with_config(config, cache_lifetime)
+        Self::with_config(config, cache_lifetime, counters)
     }
 
-    pub(crate) fn with_config(config: Config, cache_lifetime: Option<u64>) -> Self {
+    pub(crate) fn with_config(config: Config, cache_lifetime: Option<u64>, counters: Arc<MiningCounters>) -> Self {
         let config = Arc::new(config);
-        let mempool = RwLock::new(Mempool::new(config.clone()));
+        let mempool = RwLock::new(Mempool::new(config.clone(), counters.clone()));
         let block_template_cache = BlockTemplateCache::new(cache_lifetime);
-        Self { config, block_template_cache, mempool }
+        Self { config, block_template_cache, mempool, counters }
     }
 
     pub fn get_block_template(&self, consensus: &dyn ConsensusApi, miner_data: &MinerData) -> MiningManagerResult<BlockTemplate> {
@@ -246,6 +249,7 @@ impl MiningManager {
             // We include the original accepted transaction as well
             accepted_transactions.push(accepted_transaction);
             accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
+            self.counters.increase_tx_counts(1, priority);
 
             Ok(accepted_transactions)
         } else {
@@ -297,6 +301,7 @@ impl MiningManager {
                     ) {
                         Ok(Some(accepted_transaction)) => {
                             accepted_transactions.push(accepted_transaction.clone());
+                            self.counters.increase_tx_counts(1, priority);
                             mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
                         }
                         Ok(None) => vec![],
@@ -385,6 +390,7 @@ impl MiningManager {
                 match mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan) {
                     Ok(Some(accepted_transaction)) => {
                         accepted_transactions.push(accepted_transaction.clone());
+                        self.counters.increase_tx_counts(1, priority);
                         mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
                     }
                     Ok(None) => {

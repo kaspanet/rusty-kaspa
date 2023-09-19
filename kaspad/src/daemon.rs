@@ -18,7 +18,11 @@ use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline:
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
-use kaspa_mining::manager::{MiningManager, MiningManagerProxy};
+use kaspa_mining::{
+    manager::{MiningManager, MiningManagerProxy},
+    monitor::MiningMonitor,
+    MiningCounters,
+};
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
 use kaspa_perf_monitor::builder::Builder as PerfMonitorBuilder;
@@ -233,6 +237,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let (notification_send, notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
     let processing_counters = Arc::new(ProcessingCounters::default());
+    let mining_counters = Arc::new(MiningCounters::default());
     let wrpc_borsh_counters = Arc::new(WrpcServerCounters::default());
     let wrpc_json_counters = Arc::new(WrpcServerCounters::default());
 
@@ -280,11 +285,13 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let cache_lifetime: Option<u64> = None;
     #[cfg(feature = "devnet-prealloc")]
     let cache_lifetime = config.block_template_cache_lifetime;
+    let mining_monitor = Arc::new(MiningMonitor::new(mining_counters.clone(), tick_service.clone()));
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new(
         config.target_time_per_block,
         false,
         config.max_block_mass,
         cache_lifetime,
+        mining_counters,
     )));
 
     let flow_context = Arc::new(FlowContext::new(
@@ -333,6 +340,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     async_runtime.register(grpc_service);
     async_runtime.register(p2p_service);
     async_runtime.register(consensus_monitor);
+    async_runtime.register(mining_monitor);
     async_runtime.register(perf_monitor);
     let wrpc_service_tasks: usize = 2; // num_cpus::get() / 2;
                                        // Register wRPC servers based on command line arguments

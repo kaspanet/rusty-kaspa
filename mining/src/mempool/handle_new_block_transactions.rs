@@ -11,7 +11,7 @@ use kaspa_consensus_core::{
     tx::{Transaction, TransactionId},
 };
 use kaspa_core::time::Stopwatch;
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::atomic::Ordering};
 
 impl Mempool {
     pub(crate) fn handle_new_block_transactions(
@@ -32,7 +32,12 @@ impl Mempool {
             }
             self.remove_double_spends(transaction)?;
             self.orphan_pool.remove_orphan(&transaction_id, false, TxRemovalReason::Accepted, "")?;
-            self.accepted_transactions.add(transaction_id, block_daa_score);
+            self.counters.block_tx_counts.fetch_add(1, Ordering::SeqCst);
+            if self.accepted_transactions.add(transaction_id, block_daa_score) {
+                self.counters.tx_accepted_counts.fetch_add(1, Ordering::SeqCst);
+                self.counters.input_counts.fetch_add(transaction.inputs.len() as u64, Ordering::SeqCst);
+                self.counters.output_counts.fetch_add(transaction.outputs.len() as u64, Ordering::SeqCst);
+            }
             unorphaned_transactions.extend(self.get_unorphaned_transactions_after_accepted_transaction(transaction));
         }
         Ok(unorphaned_transactions)

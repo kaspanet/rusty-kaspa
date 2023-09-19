@@ -1,6 +1,9 @@
-use crate::model::{
-    candidate_tx::CandidateTransaction,
-    owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
+use crate::{
+    model::{
+        candidate_tx::CandidateTransaction,
+        owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
+    },
+    MiningCounters,
 };
 
 use self::{
@@ -46,14 +49,15 @@ pub(crate) struct Mempool {
     orphan_pool: OrphanPool,
     accepted_transactions: AcceptedTransactions,
     last_stat_report_time: u64,
+    counters: Arc<MiningCounters>,
 }
 
 impl Mempool {
-    pub(crate) fn new(config: Arc<Config>) -> Self {
+    pub(crate) fn new(config: Arc<Config>, counters: Arc<MiningCounters>) -> Self {
         let transaction_pool = TransactionsPool::new(config.clone());
         let orphan_pool = OrphanPool::new(config.clone());
         let accepted_transactions = AcceptedTransactions::new(config.clone());
-        Self { config, transaction_pool, orphan_pool, accepted_transactions, last_stat_report_time: unix_now() }
+        Self { config, transaction_pool, orphan_pool, accepted_transactions, last_stat_report_time: unix_now(), counters }
     }
 
     pub(crate) fn get_transaction(
