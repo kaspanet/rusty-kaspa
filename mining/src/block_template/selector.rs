@@ -40,6 +40,9 @@ pub(crate) struct TransactionsSelector {
     /// Indexes of transactions keys in stores
     rejected_txs: HashSet<TransactionId>,
 
+    /// Number of transactions marked as rejected
+    committed_rejects: usize,
+
     /// Indexes of selected transactions in stores
     selected_txs: Vec<TransactionIndex>,
     total_mass: u64,
@@ -58,6 +61,7 @@ impl TransactionsSelector {
             transactions,
             selectable_txs: vec![],
             rejected_txs: Default::default(),
+            committed_rejects: 0,
             selected_txs: vec![],
             total_mass: 0,
             total_fees: 0,
@@ -71,7 +75,7 @@ impl TransactionsSelector {
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.transactions.len() - self.rejected_txs.len()
+        self.transactions.len() - self.rejected_txs.len() - self.committed_rejects
     }
 
     /// select_transactions implements a probabilistic transaction selection algorithm.
@@ -203,25 +207,29 @@ impl TransactionsSelector {
         self.rejected_txs.insert(transaction_id);
     }
 
-    fn commit_rejections(&mut self) {
-        let _sw = Stopwatch::<5>::with_threshold("commit_rejections op");
+    fn commit_rejects(&mut self) {
+        let _sw = Stopwatch::<5>::with_threshold("commit_rejects op");
         if self.rejected_txs.is_empty() {
             return;
         }
         for (index, tx) in self.transactions.iter().enumerate() {
             if !self.selectable_txs[index].is_rejected && self.rejected_txs.remove(&tx.tx.id()) {
                 self.selectable_txs[index].is_rejected = true;
+                self.committed_rejects += 1;
                 if self.rejected_txs.is_empty() {
                     break;
                 }
             }
         }
+        assert!(self.rejected_txs.is_empty());
     }
 
     fn reset(&mut self) {
         assert_eq!(self.transactions.len(), self.selectable_txs.len());
         self.selected_txs = Vec::with_capacity(self.transactions.len());
-        self.commit_rejections();
+        self.total_fees = 0;
+        self.total_mass = 0;
+        self.commit_rejects();
     }
 
     /// calc_tx_value calculates a value to be used in transaction selection.
@@ -243,5 +251,55 @@ impl TransactionsSelector {
 
 #[cfg(test)]
 mod tests {
-    // TODO: add unit-tests for select_transactions
+    use super::*;
+    use itertools::Itertools;
+    use kaspa_consensus_core::{
+        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+        mass::transaction_estimated_serialized_size,
+        subnets::SUBNETWORK_ID_NATIVE,
+        tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+    };
+    use kaspa_txscript::{pay_to_script_hash_signature_script, test_helpers::op_true_script};
+    use std::sync::Arc;
+
+    use crate::{mempool::config::DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE, model::candidate_tx::CandidateTransaction};
+
+    #[test]
+    fn test_reject_transaction() {
+        const TX_INITIAL_COUNT: usize = 1_000;
+        const REJECT_COUNT: usize = 10;
+
+        // Create a vector of transactions differing by output value so they have unique ids
+        let transactions = (0..TX_INITIAL_COUNT).map(|i| create_transaction(SOMPI_PER_KASPA * (i + 1) as u64)).collect_vec();
+        let policy = Policy::new(100_000);
+        let mut selector = TransactionsSelector::new(policy, transactions);
+        assert_eq!(selector.len(), TX_INITIAL_COUNT, "selector length matches initial transaction vector length");
+
+        let mut remaining_count = TX_INITIAL_COUNT;
+        for i in 0..3 {
+            let selected_txs = selector.select_transactions();
+            selected_txs.iter().skip((i + 1) * 100).take(REJECT_COUNT).for_each(|x| selector.reject(x.id()));
+            remaining_count -= REJECT_COUNT;
+            assert_eq!(selector.len(), remaining_count, "selector length matches remaining transaction count");
+            selector.commit_rejects();
+            assert_eq!(selector.len(), remaining_count, "selector length matches remaining transaction count");
+            let selected_txs_2 = selector.select_transactions();
+            assert_eq!(selector.len(), remaining_count, "selector length matches remaining transaction count");
+            assert_eq!(selected_txs.len(), selected_txs_2.len());
+        }
+    }
+
+    fn create_transaction(value: u64) -> CandidateTransaction {
+        let previous_outpoint = TransactionOutpoint::new(TransactionId::default(), 0);
+        let (script_public_key, redeem_script) = op_true_script();
+        let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("the redeem script is canonical");
+
+        let input = TransactionInput::new(previous_outpoint, signature_script, MAX_TX_IN_SEQUENCE_NUM, 1);
+        let output = TransactionOutput::new(value - DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE, script_public_key);
+        let tx = Arc::new(Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]));
+        let calculated_mass = transaction_estimated_serialized_size(&tx);
+        let calculated_fee = DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE;
+
+        CandidateTransaction { tx, calculated_fee, calculated_mass }
+    }
 }
