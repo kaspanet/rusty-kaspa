@@ -101,7 +101,7 @@ mod tests {
         assert!(result.is_ok(), "inserting the child transaction {} into the mempool failed", transaction_not_an_orphan.id());
         let (transactions_from_pool, _) = mining_manager.get_all_transactions(true, false);
         assert!(
-            contained_by_mtxs(transaction_not_an_orphan.id(), &transactions_from_pool),
+            contained_by(transaction_not_an_orphan.id(), &transactions_from_pool),
             "missing transaction {} in the mempool",
             transaction_not_an_orphan.id()
         );
@@ -339,13 +339,13 @@ mod tests {
         assert!(populated_txs.is_empty(), "the mempool should have no populated transaction since only orphans were submitted");
         for orphan in orphans.iter() {
             assert!(
-                contained_by_txs(orphan.id(), &child_txs),
+                contained_by(orphan.id(), &child_txs),
                 "orphan transaction {} should exist in the child transactions",
                 orphan.id()
             );
         }
         for child in child_txs.iter() {
-            assert!(contained_by_mtxs(child.id(), &orphans), "child transaction {} should exist in the orphan pool", child.id());
+            assert!(contained_by(child.id(), &orphans), "child transaction {} should exist in the orphan pool", child.id());
         }
 
         // Try to build a block template.
@@ -357,7 +357,7 @@ mod tests {
         let template = result.unwrap();
         for block_tx in template.block.transactions.iter().skip(1) {
             assert!(
-                !contained_by_txs(block_tx.id(), &child_txs),
+                !contained_by(block_tx.id(), &child_txs),
                 "transaction {} is an orphan and is found in a built block template",
                 block_tx.id()
             );
@@ -385,23 +385,23 @@ mod tests {
         );
         for populated in populated_txs.iter() {
             assert!(
-                contained_by_tx_arcs(populated.id(), &unorphaned_txs),
+                contained_by(populated.id(), &unorphaned_txs),
                 "mempool transaction {} should exist in the unorphaned transactions",
                 populated.id()
             );
             assert!(
-                contained_by_txs(populated.id(), &child_txs),
+                contained_by(populated.id(), &child_txs),
                 "mempool transaction {} should exist in the child transactions",
                 populated.id()
             );
         }
         for child in child_txs.iter().skip(SKIPPED_TXS) {
             assert!(
-                contained_by_tx_arcs(child.id(), &unorphaned_txs),
+                contained_by(child.id(), &unorphaned_txs),
                 "child transaction {} should exist in the unorphaned transactions",
                 child.id()
             );
-            assert!(contained_by_mtxs(child.id(), &populated_txs), "child transaction {} should exist in the mempool", child.id());
+            assert!(contained_by(child.id(), &populated_txs), "child transaction {} should exist in the mempool", child.id());
         }
         assert_eq!(
             SKIPPED_TXS, orphans.len(),
@@ -410,13 +410,13 @@ mod tests {
         );
         for orphan in orphans.iter() {
             assert!(
-                contained_by_txs(orphan.id(), &child_txs),
+                contained_by(orphan.id(), &child_txs),
                 "orphan transaction {} should exist in the child transactions",
                 orphan.id()
             );
         }
         for child in child_txs.iter().take(SKIPPED_TXS) {
-            assert!(contained_by_mtxs(child.id(), &orphans), "child transaction {} should exist in the orphan pool", child.id());
+            assert!(contained_by(child.id(), &orphans), "child transaction {} should exist in the orphan pool", child.id());
         }
 
         // Build a new block template with all ready transactions, meaning all child transactions but one.
@@ -436,14 +436,14 @@ mod tests {
         );
         for block_tx in template.block.transactions.iter().skip(1) {
             assert!(
-                contained_by_txs(block_tx.id(), &child_txs),
+                contained_by(block_tx.id(), &child_txs),
                 "transaction {} in the built block template does not exist in ready child transactions",
                 block_tx.id()
             );
         }
         for child in child_txs.iter().skip(SKIPPED_TXS) {
             assert!(
-                contained_by_txs(child.id(), &template.block.transactions),
+                contained_by(child.id(), &template.block.transactions),
                 "child transaction {} in the mempool was ready but is not found in the built block template",
                 child.id()
             )
@@ -495,14 +495,14 @@ mod tests {
         );
         for parent in parent_txs.iter().take(SKIPPED_TXS) {
             assert!(
-                contained_by_mtxs(parent.id(), &populated_txs),
+                contained_by(parent.id(), &populated_txs),
                 "mempool transaction {} should exist in the remaining parent transactions",
                 parent.id()
             );
         }
         for child in child_txs.iter().take(SKIPPED_TXS) {
             assert!(
-                contained_by_mtxs(child.id(), &populated_txs),
+                contained_by(child.id(), &populated_txs),
                 "mempool transaction {} should exist in the remaining child transactions",
                 child.id()
             );
@@ -958,16 +958,8 @@ mod tests {
         Transaction::new(TX_VERSION, vec![], outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![])
     }
 
-    fn contained_by_mtxs(transaction_id: TransactionId, transactions: &[MutableTransaction]) -> bool {
-        transactions.iter().any(|x| x.id() == transaction_id)
-    }
-
-    fn contained_by_txs(transaction_id: TransactionId, transactions: &[Transaction]) -> bool {
-        transactions.iter().any(|x| x.id() == transaction_id)
-    }
-
-    fn contained_by_tx_arcs(transaction_id: TransactionId, transactions: &[Arc<Transaction>]) -> bool {
-        transactions.iter().any(|x| x.id() == transaction_id)
+    fn contained_by<T: AsRef<Transaction>>(transaction_id: TransactionId, transactions: &[T]) -> bool {
+        transactions.iter().any(|x| x.as_ref().id() == transaction_id)
     }
 
     fn into_status<T>(result: MiningManagerResult<T>) -> TxResult<()> {
