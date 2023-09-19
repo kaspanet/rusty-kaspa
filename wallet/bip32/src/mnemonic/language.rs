@@ -22,7 +22,7 @@ pub enum Language {
 
 impl Language {
     /// Get the word list for this language
-    pub(crate) fn wordlist(&self) -> &'static WordList {
+    pub fn wordlist(&self) -> &'static WordList {
         match *self {
             Language::English => &lazy::WORDLIST_ENGLISH,
         }
@@ -40,7 +40,7 @@ pub(crate) struct WordMap {
     inner: BTreeMap<&'static str, Bits11>,
 }
 
-pub(crate) struct WordList {
+pub struct WordList {
     inner: Vec<&'static str>,
 }
 
