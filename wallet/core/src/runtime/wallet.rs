@@ -108,7 +108,6 @@ pub struct Inner {
     store: Arc<dyn Interface>,
     settings: SettingsStore<WalletSettings>,
     utxo_processor: Arc<UtxoProcessor>,
-    rpc: Mutex<Option<Rpc>>,
     multiplexer: Multiplexer<Box<Events>>,
 }
 
@@ -146,7 +145,6 @@ impl Wallet {
 
         let wallet = Wallet {
             inner: Arc::new(Inner {
-                rpc: Mutex::new(rpc),
                 multiplexer,
                 store,
                 active_accounts: ActiveAccountMap::default(),
@@ -300,15 +298,15 @@ impl Wallet {
     }
 
     pub fn rpc_api(&self) -> Arc<DynRpcApi> {
-        self.inner.rpc.lock().unwrap().as_ref().expect("Wallet RPC not initialized").rpc_api().clone()
+        self.utxo_processor().rpc_api()
     }
 
     pub fn rpc_ctl(&self) -> RpcCtl {
-        self.inner.rpc.lock().unwrap().as_ref().expect("Wallet RPC not initialized").rpc_ctl().clone()
+        self.utxo_processor().rpc_ctl()
     }
 
     pub fn has_rpc(&self) -> bool {
-        self.inner.rpc.lock().unwrap().is_some()
+        self.utxo_processor().has_rpc()
     }
 
     pub async fn bind_rpc(self: &Arc<Self>, rpc: Option<Rpc>) -> Result<()> {
@@ -348,7 +346,8 @@ impl Wallet {
 
     // intended for starting async management tasks
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        self.load_settings().await.unwrap_or_else(|_| log_error!("Unable to load settings, discarding..."));
+        // self.load_settings().await.unwrap_or_else(|_| log_error!("Unable to load settings, discarding..."));
+
         // internal event loop
         self.start_task().await?;
         self.utxo_processor().start().await?;
@@ -362,12 +361,12 @@ impl Wallet {
 
     // intended for stopping async management task
     pub async fn stop(&self) -> Result<()> {
-        self.utxo_processor().stop().await?;
-        self.stop_task().await?;
         if let Some(rpc_client) = self.wrpc_client() {
             rpc_client.stop().await?;
             rpc_client.disconnect().await?;
         }
+        self.utxo_processor().stop().await?;
+        self.stop_task().await?;
         Ok(())
     }
 
