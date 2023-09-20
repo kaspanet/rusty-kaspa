@@ -324,9 +324,9 @@ impl KaspaRpcClient {
             let location = window().location();
             let protocol =
                 location.protocol().map_err(|_| Error::AddressError("Unable to obtain window location protocol".to_string()))?;
-            if protocol == "http:" {
+            if protocol == "http:" || protocol == "chrome-extension:" {
                 Ok("ws")
-            } else if protocol == "https:" || protocol == "chrome-extension:" {
+            } else if protocol == "https:" {
                 Ok("wss")
             } else {
                 Err(Error::Custom(format!("Unsupported protocol: {}", protocol)))
