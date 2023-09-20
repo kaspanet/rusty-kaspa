@@ -3,18 +3,21 @@ use std::sync::{Arc, Mutex};
 use workflow_core::channel::Multiplexer;
 
 /// RPC channel control operations
-#[derive(Debug, Clone)]
-pub enum RpcCtlOp {
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RpcState {
     /// RpcApi channel open (connected)
-    Open,
+    Opened,
     /// RpcApi channel close (disconnected)
-    Close,
+    #[default]
+    Closed,
 }
 
 #[derive(Default)]
 struct Inner {
+    // Current channel state
+    state: Mutex<RpcState>,
     // MPMC channel for [`RpcCtlOp`] operations.
-    multiplexer: Multiplexer<RpcCtlOp>,
+    multiplexer: Multiplexer<RpcState>,
     // Optional Connection descriptor such as a connection URL.
     descriptor: Mutex<Option<String>>,
 }
@@ -38,28 +41,40 @@ impl RpcCtl {
     }
 
     /// Obtain internal multiplexer (MPMC channel for [`RpcCtlOp`] operations)
-    pub fn multiplexer(&self) -> &Multiplexer<RpcCtlOp> {
+    pub fn multiplexer(&self) -> &Multiplexer<RpcState> {
         &self.inner.multiplexer
+    }
+
+    pub fn is_connected(&self) -> bool {
+        *self.inner.state.lock().unwrap() == RpcState::Opened
+    }
+
+    pub fn state(&self) -> RpcState {
+        *self.inner.state.lock().unwrap()
     }
 
     /// Signal open to all listeners (async)
     pub async fn signal_open(&self) -> RpcResult<()> {
-        Ok(self.inner.multiplexer.broadcast(RpcCtlOp::Open).await?)
+        *self.inner.state.lock().unwrap() = RpcState::Opened;
+        Ok(self.inner.multiplexer.broadcast(RpcState::Opened).await?)
     }
 
     /// Signal close to all listeners (async)
     pub async fn signal_close(&self) -> RpcResult<()> {
-        Ok(self.inner.multiplexer.broadcast(RpcCtlOp::Close).await?)
+        *self.inner.state.lock().unwrap() = RpcState::Closed;
+        Ok(self.inner.multiplexer.broadcast(RpcState::Closed).await?)
     }
 
     /// Try signal open to all listeners (sync)
     pub fn try_signal_open(&self) -> RpcResult<()> {
-        Ok(self.inner.multiplexer.try_broadcast(RpcCtlOp::Open)?)
+        *self.inner.state.lock().unwrap() = RpcState::Opened;
+        Ok(self.inner.multiplexer.try_broadcast(RpcState::Opened)?)
     }
 
     /// Try signal close to all listeners (sync)
     pub fn try_signal_close(&self) -> RpcResult<()> {
-        Ok(self.inner.multiplexer.try_broadcast(RpcCtlOp::Close)?)
+        *self.inner.state.lock().unwrap() = RpcState::Closed;
+        Ok(self.inner.multiplexer.try_broadcast(RpcState::Closed)?)
     }
 
     /// Set the connection descriptor (URL, peer address, etc.)

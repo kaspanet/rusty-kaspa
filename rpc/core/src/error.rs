@@ -4,7 +4,7 @@ use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
 use workflow_core::channel::ChannelError;
 
-use crate::{api::ctl::RpcCtlOp, RpcHash, RpcTransactionId};
+use crate::{api::ctl::RpcState, RpcHash, RpcTransactionId};
 
 #[derive(Clone, Debug, Error)]
 pub enum RpcError {
@@ -120,8 +120,8 @@ impl From<&str> for RpcError {
     }
 }
 
-impl From<ChannelError<RpcCtlOp>> for RpcError {
-    fn from(_: ChannelError<RpcCtlOp>) -> Self {
+impl From<ChannelError<RpcState>> for RpcError {
+    fn from(_: ChannelError<RpcState>) -> Self {
         RpcError::RpcCtlDispatchError
     }
 }
