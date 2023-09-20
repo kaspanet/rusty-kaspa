@@ -160,7 +160,7 @@ pub fn create_core(args: Args) -> (Arc<Core>, Arc<RpcCoreService>) {
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
 ///
 /// Usage semantics:
-/// ```
+/// ```ignore
 /// let Runtime = Runtime::from_args(&args); // or create your own
 /// let (core, rpc_core_service) = create_core(&runtime, &args);
 /// ```
