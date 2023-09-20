@@ -4,7 +4,7 @@ use kaspa_notify::{
     scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
 };
 use kaspa_rpc_core::{
-    api::ctl::{RpcCtl, RpcCtlOp},
+    api::ctl::{RpcCtl, RpcState},
     message::UtxosChangedNotification,
 };
 use kaspa_wrpc_client::KaspaRpcClient;
@@ -96,6 +96,10 @@ impl UtxoProcessor {
         Ok(())
     }
 
+    pub fn has_rpc(&self) -> bool {
+        self.inner.rpc.lock().unwrap().is_some()
+    }
+
     pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
         &self.inner.multiplexer
     }
@@ -109,6 +113,7 @@ impl UtxoProcessor {
     }
 
     pub fn set_network_id(&self, network_id: NetworkId) {
+        println!("**********************>>> UTXO PROCESSOR SETTING NETWORK ID: {:?}", network_id);
         self.inner.network_id.lock().unwrap().replace(network_id);
     }
 
@@ -410,26 +415,40 @@ impl UtxoProcessor {
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
         let notification_receiver = self.inner.notification_channel.receiver.clone();
 
+        // handle power up on an already connected rpc channel
+        // clients relying on UtxoProcessor state should monitor 
+        // for and handle `UtxoProcStart` and `UtxoProcStop` events.
+        if this.rpc_ctl().is_connected() {
+            this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
+        }
+
         spawn(async move {
             loop {
                 select_biased! {
                     msg = rpc_ctl_channel.receiver.recv().fuse() => {
                         match msg {
                             Ok(msg) => {
+
+                                // handle RPC channel connection and disconnection events
+
                                 match msg {
-                                    RpcCtlOp::Open => {
-                                        this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
-                                            network_id : this.network_id().expect("network id expected during connection"),
-                                            url : this.rpc_url()
-                                        })).unwrap_or_else(|err| log_error!("{err}"));
-                                        this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
+                                    RpcState::Opened => {
+                                        if !this.is_connected() {
+                                            this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
+                                                network_id : this.network_id().expect("network id expected during connection"),
+                                                url : this.rpc_url()
+                                            })).unwrap_or_else(|err| log_error!("{err}"));
+                                            this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
+                                        }
                                     },
-                                    RpcCtlOp::Close => {
-                                        this.inner.multiplexer.try_broadcast(Box::new(Events::Disconnect {
-                                            network_id : this.network_id().expect("network id expected during connection"),
-                                            url : this.rpc_url()
-                                        })).unwrap_or_else(|err| log_error!("{err}"));
-                                        this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
+                                    RpcState::Closed => {
+                                        if this.is_connected() {
+                                            this.inner.multiplexer.try_broadcast(Box::new(Events::Disconnect {
+                                                network_id : this.network_id().expect("network id expected during connection"),
+                                                url : this.rpc_url()
+                                            })).unwrap_or_else(|err| log_error!("{err}"));
+                                            this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
+                                        }
                                     }
                                 }
                             }
@@ -454,6 +473,7 @@ impl UtxoProcessor {
                             }
                         }
                     },
+
                     // we use select_biased to drain rpc_ctl
                     // and notifications before shutting down
                     // as such task_ctl is last in the poll order
@@ -462,6 +482,11 @@ impl UtxoProcessor {
                     },
 
                 }
+            }
+
+            // handle power down on rpc channel that remains connected
+            if this.is_connected() {
+                this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
             }
 
             this.inner.task_is_running.store(false, Ordering::SeqCst);
@@ -478,3 +503,4 @@ impl UtxoProcessor {
         Ok(())
     }
 }
+
