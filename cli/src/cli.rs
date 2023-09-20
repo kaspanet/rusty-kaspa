@@ -241,6 +241,7 @@ impl KaspaCli {
         self.start_notification_pipe_task();
         self.handlers.start(self).await?;
         // wallet starts rpc and notifier
+        self.wallet.load_settings().await.unwrap_or_else(|_| log_error!("Unable to load settings, discarding..."));
         self.wallet.start().await?;
         Ok(())
     }
