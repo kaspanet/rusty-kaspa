@@ -361,10 +361,6 @@ impl Wallet {
 
     // intended for stopping async management task
     pub async fn stop(&self) -> Result<()> {
-        if let Some(rpc_client) = self.wrpc_client() {
-            rpc_client.stop().await?;
-            rpc_client.disconnect().await?;
-        }
         self.utxo_processor().stop().await?;
         self.stop_task().await?;
         Ok(())
