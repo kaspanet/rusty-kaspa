@@ -29,7 +29,6 @@ blake2b_hasher! {
     struct MerkleBranchHash => b"MerkleBranchHash",
     struct MuHashElementHash => b"MuHashElement",
     struct MuHashFinalizeHash => b"MuHashFinalize",
-    struct PersonalMessageSigningHash => b"PersonalMessageSigningHash",
 }
 
 sha256_hasher! {
