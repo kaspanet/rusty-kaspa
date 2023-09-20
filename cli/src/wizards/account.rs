@@ -58,28 +58,13 @@ async fn create_multisig(ctx: &Arc<KaspaCli>, title: Option<String>, name: Optio
 
     let prv_keys_len: usize = term.ask(false, "Enter the number of private keys to generate: ").await?.parse()?;
 
-    let mut prv_key_data_ids_payment_secret = Vec::with_capacity(prv_keys_len);
+    let mut prv_key_data_ids = Vec::with_capacity(prv_keys_len);
     let mut mnemonics = Vec::with_capacity(prv_keys_len);
-    tprintln!(ctx, "");
-    tpara!(
-        ctx,
-        "\
-        PLEASE NOTE: The optional payment password, if provided, will be required to \
-        issue transactions. This password will also be required when recovering your wallet \
-        in addition to your private key or mnemonic. If you loose this password, you will not \
-        be able to use mnemonic to recover your wallet! \
-        ",
-    );
-    for i in 0..prv_keys_len {
-        let payment_secret = term.ask(true, &format!("Enter payment password (optional) for {} key: ", i + 1)).await?;
-        let payment_secret = {
-            let trimmed = payment_secret.trim();
-            trimmed.is_not_empty().then_some(Secret::new(trimmed.as_bytes().to_vec()))
-        };
-        let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone()); // can be optimized with Rc<WalletSecret>
+    for _ in 0..prv_keys_len {
+        let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), None); // can be optimized with Rc<WalletSecret>
         let (prv_key_data_id, mnemonic) = wallet.create_prv_key_data(prv_key_data_args).await?;
 
-        prv_key_data_ids_payment_secret.push((prv_key_data_id, payment_secret));
+        prv_key_data_ids.push(prv_key_data_id);
         mnemonics.push(mnemonic);
     }
 
@@ -91,7 +76,7 @@ async fn create_multisig(ctx: &Arc<KaspaCli>, title: Option<String>, name: Optio
     }
     let account = wallet
         .create_multisig_account(MultisigCreateArgs {
-            prv_key_data_ids_payment_secret,
+            prv_key_data_ids,
             name,
             title,
             wallet_secret,

@@ -82,7 +82,7 @@ impl Zeroize for PrvKeyDataCreateArgs {
 
 #[derive(Clone, Debug)]
 pub struct MultisigCreateArgs {
-    pub prv_key_data_ids_payment_secret: Vec<(PrvKeyDataId, Option<Secret>)>,
+    pub prv_key_data_ids: Vec<PrvKeyDataId>,
     pub name: Option<String>,
     pub title: Option<String>,
     pub wallet_secret: Secret,
@@ -460,10 +460,10 @@ impl Wallet {
         let settings = storage::Settings { is_visible: false, name: args.name, title: args.title };
         let mut xpub_keys = args.additional_xpub_keys;
 
-        let account: Arc<dyn Account> = if args.prv_key_data_ids_payment_secret.is_not_empty() {
-            let mut generated_xpubs = Vec::with_capacity(args.prv_key_data_ids_payment_secret.len());
-            let mut prv_key_data_ids = Vec::with_capacity(args.prv_key_data_ids_payment_secret.len());
-            for (prv_key_data_id, payment_secret) in args.prv_key_data_ids_payment_secret {
+        let account: Arc<dyn Account> = if args.prv_key_data_ids.is_not_empty() {
+            let mut generated_xpubs = Vec::with_capacity(args.prv_key_data_ids.len());
+            let mut prv_key_data_ids = Vec::with_capacity(args.prv_key_data_ids.len());
+            for prv_key_data_id in args.prv_key_data_ids {
                 let prv_key_data = self
                     .inner
                     .store
@@ -471,7 +471,7 @@ impl Wallet {
                     .load_key_data(&ctx, &prv_key_data_id)
                     .await?
                     .ok_or(Error::PrivateKeyNotFound(prv_key_data_id.to_hex()))?;
-                let xpub_key = prv_key_data.create_xpub(payment_secret.as_ref(), AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
+                let xpub_key = prv_key_data.create_xpub(None, AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
                 let xpub_prefix = kaspa_bip32::Prefix::XPUB;
                 generated_xpubs.push(xpub_key.to_string(Some(xpub_prefix)));
                 prv_key_data_ids.push(prv_key_data_id);
