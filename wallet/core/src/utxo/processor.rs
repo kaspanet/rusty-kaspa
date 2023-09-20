@@ -416,7 +416,7 @@ impl UtxoProcessor {
         let notification_receiver = self.inner.notification_channel.receiver.clone();
 
         // handle power up on an already connected rpc channel
-        // clients relying on UtxoProcessor state should monitor 
+        // clients relying on UtxoProcessor state should monitor
         // for and handle `UtxoProcStart` and `UtxoProcStop` events.
         if this.rpc_ctl().is_connected() {
             this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
@@ -503,4 +503,3 @@ impl UtxoProcessor {
         Ok(())
     }
 }
-
