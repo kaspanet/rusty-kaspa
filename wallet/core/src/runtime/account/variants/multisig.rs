@@ -10,12 +10,12 @@ use crate::{imports::*, AddressDerivationManagerTrait};
 
 pub struct MultiSig {
     inner: Arc<Inner>,
-    xpub_keys: Arc<Vec<String>>,
+    pub xpub_keys: Arc<Vec<String>>,
     cosigner_index: Option<u8>,
-    minimum_signatures: u16,
+    pub minimum_signatures: u16,
     ecdsa: bool,
     derivation: Arc<AddressDerivationManager>,
-    prv_key_data_ids: Option<Arc<Vec<PrvKeyDataId>>>,
+    pub prv_key_data_ids: Option<Arc<Vec<PrvKeyDataId>>>,
 }
 
 impl MultiSig {
