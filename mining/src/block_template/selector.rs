@@ -249,10 +249,13 @@ impl TemplateTransactionSelector for TransactionsSelector {
     }
 
     fn is_successful(&self) -> bool {
-        // TODO: comment + constants
+        const SUFFICIENT_MASS_THRESHOLD: f64 = 0.8;
+        const LOW_REJECTION_FRACTION: f64 = 0.2;
+
+        // We consider the operation successful if either mass occupation is above 80% or rejection rate is below 20%
         self.overall_rejections == 0
-            || (self.total_mass as f64) > self.policy.max_block_mass as f64 * 0.8
-            || (self.overall_rejections as f64) < self.transactions.len() as f64 * 0.2
+            || (self.total_mass as f64) > self.policy.max_block_mass as f64 * SUFFICIENT_MASS_THRESHOLD
+            || (self.overall_rejections as f64) < self.transactions.len() as f64 * LOW_REJECTION_FRACTION
     }
 }
 
