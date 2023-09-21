@@ -1,4 +1,4 @@
-use super::{errors::BuilderResult, policy::Policy};
+use super::{errors::BuilderResult, policy::Policy, selector::TxSelector};
 use crate::{block_template::selector::TransactionsSelector, model::candidate_tx::CandidateTransaction};
 use kaspa_consensus_core::{
     api::ConsensusApi,
@@ -105,7 +105,7 @@ impl BlockTemplateBuilder {
     }
 
     pub(crate) fn reject_transaction(&mut self, transaction_id: TransactionId) {
-        self.selector.reject(transaction_id);
+        self.selector.reject_selection(transaction_id);
     }
 
     pub(crate) fn candidates_len(&self) -> usize {

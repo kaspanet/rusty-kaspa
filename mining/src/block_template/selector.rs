@@ -1,9 +1,6 @@
 use kaspa_core::{time::Stopwatch, trace};
 use rand::Rng;
-use std::{
-    collections::{HashMap, HashSet},
-    vec,
-};
+use std::collections::HashMap;
 
 use crate::model::candidate_tx::CandidateTransaction;
 
@@ -30,6 +27,11 @@ const ALPHA: i32 = 3;
 /// if REBALANCE_THRESHOLD is 0.95, there's a 1-in-20 chance of collision.
 const REBALANCE_THRESHOLD: f64 = 0.95;
 
+pub trait TxSelector {
+    fn select_transactions(&mut self) -> Vec<Transaction>;
+    fn reject_selection(&mut self, invalid_tx_id: TransactionId);
+}
+
 pub(crate) struct TransactionsSelector {
     policy: Policy,
     /// Transaction store
@@ -37,16 +39,20 @@ pub(crate) struct TransactionsSelector {
     /// Selectable transactions store
     selectable_txs: SelectableTransactions,
 
-    /// Indexes of transactions keys in stores
-    rejected_txs: HashSet<TransactionId>,
-
-    /// Number of transactions marked as rejected
-    committed_rejects: usize,
-
     /// Indexes of selected transactions in stores
     selected_txs: Vec<TransactionIndex>,
+
+    /// Optional state for handling selection rejections. Maps from a selected tx id
+    /// to the index of the tx in the `transactions` vec
+    selected_txs_map: Option<HashMap<TransactionId, TransactionIndex>>,
+
+    // Inner state of the selection process
+    candidate_list: CandidateList,
+    used_count: usize,
+    used_p: f64,
     total_mass: u64,
     total_fees: u64,
+    gas_usage_map: HashMap<SubnetworkId, u64>,
 }
 
 impl TransactionsSelector {
@@ -59,23 +65,28 @@ impl TransactionsSelector {
         let mut selector = Self {
             policy,
             transactions,
-            selectable_txs: vec![],
-            rejected_txs: Default::default(),
-            committed_rejects: 0,
-            selected_txs: vec![],
+            selectable_txs: Default::default(),
+            selected_txs: Default::default(),
+            selected_txs_map: None,
+            candidate_list: Default::default(),
+            used_count: 0,
+            used_p: 0.0,
             total_mass: 0,
             total_fees: 0,
+            gas_usage_map: Default::default(),
         };
 
         // Create the selectable transactions
         selector.selectable_txs =
             selector.transactions.iter().map(|x| SelectableTransaction::new(selector.calc_tx_value(x), 0, ALPHA)).collect();
+        // Prepare the initial candidate list
+        selector.candidate_list = CandidateList::new(&selector.selectable_txs);
 
         selector
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.transactions.len() - self.rejected_txs.len() - self.committed_rejects
+        self.transactions.len()
     }
 
     /// select_transactions implements a probabilistic transaction selection algorithm.
@@ -102,29 +113,25 @@ impl TransactionsSelector {
         let _sw = Stopwatch::<15>::with_threshold("select_transaction op");
         let mut rng = rand::thread_rng();
 
-        self.reset();
-        let mut candidate_list = CandidateList::new(&self.selectable_txs);
-        let mut used_count = 0;
-        let mut used_p = 0.0;
-        let mut gas_usage_map: HashMap<SubnetworkId, u64> = HashMap::new();
+        self.reset_selection();
 
-        while candidate_list.candidates.len() - used_count > 0 {
+        while self.candidate_list.candidates.len() - self.used_count > 0 {
             // Rebalance the candidates if it's required
-            if used_p >= REBALANCE_THRESHOLD * candidate_list.total_p {
-                candidate_list = candidate_list.rebalanced(&self.selectable_txs);
-                used_count = 0;
-                used_p = 0.0;
+            if self.used_p >= REBALANCE_THRESHOLD * self.candidate_list.total_p {
+                self.candidate_list = self.candidate_list.rebalanced(&self.selectable_txs);
+                self.used_count = 0;
+                self.used_p = 0.0;
 
                 // Break if we now ran out of transactions
-                if candidate_list.is_empty() {
+                if self.candidate_list.is_empty() {
                     break;
                 }
             }
 
             // Select a candidate tx at random
-            let r = rng.gen::<f64>() * candidate_list.total_p;
-            let selected_candidate_idx = candidate_list.find(r);
-            let selected_candidate = candidate_list.candidates.get_mut(selected_candidate_idx).unwrap();
+            let r = rng.gen::<f64>() * self.candidate_list.total_p;
+            let selected_candidate_idx = self.candidate_list.find(r);
+            let selected_candidate = self.candidate_list.candidates.get_mut(selected_candidate_idx).unwrap();
 
             // If is_marked_for_deletion is set, it means we got a collision.
             // Ignore and select another Tx.
@@ -145,7 +152,7 @@ impl TransactionsSelector {
             // Also check for overflow.
             if !selected_tx.tx.subnetwork_id.is_builtin_or_native() {
                 let subnetwork_id = selected_tx.tx.subnetwork_id.clone();
-                let gas_usage = gas_usage_map.entry(subnetwork_id.clone()).or_insert(0);
+                let gas_usage = self.gas_usage_map.entry(subnetwork_id.clone()).or_insert(0);
                 let tx_gas = selected_tx.tx.gas;
                 let next_gas_usage = (*gas_usage).checked_add(tx_gas);
                 if next_gas_usage.is_none() || next_gas_usage.unwrap() > self.selectable_txs[selected_candidate.index].gas_limit {
@@ -154,19 +161,19 @@ impl TransactionsSelector {
                         selected_tx.tx.id(),
                         subnetwork_id
                     );
-                    for i in selected_candidate_idx..candidate_list.candidates.len() {
-                        let transaction_index = candidate_list.candidates[i].index;
-                        // candidateTxs are ordered by subnetwork, so we can safely assume
-                        // that transactions after subnetworkID will not be relevant.
+                    for i in selected_candidate_idx..self.candidate_list.candidates.len() {
+                        let transaction_index = self.candidate_list.candidates[i].index;
+                        // Candidate txs are ordered by subnetwork, so we can safely assume
+                        // that transactions after subnetwork_id will not be relevant.
                         if subnetwork_id < self.transactions[transaction_index].tx.subnetwork_id {
                             break;
                         }
-                        let current = candidate_list.candidates.get_mut(i).unwrap();
+                        let current = self.candidate_list.candidates.get_mut(i).unwrap();
 
                         // Mark for deletion
                         current.is_marked_for_deletion = true;
-                        used_count += 1;
-                        used_p += self.selectable_txs[transaction_index].p;
+                        self.used_count += 1;
+                        self.used_p += self.selectable_txs[transaction_index].p;
                     }
                     continue;
                 }
@@ -182,15 +189,15 @@ impl TransactionsSelector {
             self.total_fees += selected_tx.calculated_fee;
 
             trace!(
-                "Adding tx {0} (feePerMegaGram {1})",
+                "Adding tx {0} (fee per megagram: {1})",
                 selected_tx.tx.id(),
                 selected_tx.calculated_fee * 1_000_000 / selected_tx.calculated_mass
             );
 
             // Mark for deletion
             selected_candidate.is_marked_for_deletion = true;
-            used_count += 1;
-            used_p += self.selectable_txs[selected_candidate.index].p;
+            self.used_count += 1;
+            self.used_p += self.selectable_txs[selected_candidate.index].p;
         }
 
         self.selected_txs.sort();
@@ -203,33 +210,11 @@ impl TransactionsSelector {
         self.selected_txs.iter().map(|x| self.transactions[*x].tx.as_ref().clone()).collect()
     }
 
-    pub(crate) fn reject(&mut self, transaction_id: TransactionId) {
-        self.rejected_txs.insert(transaction_id);
-    }
-
-    fn commit_rejects(&mut self) {
-        let _sw = Stopwatch::<5>::with_threshold("commit_rejects op");
-        if self.rejected_txs.is_empty() {
-            return;
-        }
-        for (index, tx) in self.transactions.iter().enumerate() {
-            if !self.selectable_txs[index].is_rejected && self.rejected_txs.remove(&tx.tx.id()) {
-                self.selectable_txs[index].is_rejected = true;
-                self.committed_rejects += 1;
-                if self.rejected_txs.is_empty() {
-                    break;
-                }
-            }
-        }
-        assert!(self.rejected_txs.is_empty());
-    }
-
-    fn reset(&mut self) {
+    fn reset_selection(&mut self) {
         assert_eq!(self.transactions.len(), self.selectable_txs.len());
+        // TODO: consider to min with the approximated amount of txs which fit into max block mass
         self.selected_txs = Vec::with_capacity(self.transactions.len());
-        self.total_fees = 0;
-        self.total_mass = 0;
-        self.commit_rejects();
+        self.selected_txs_map = None;
     }
 
     /// calc_tx_value calculates a value to be used in transaction selection.
@@ -245,6 +230,25 @@ impl TransactionsSelector {
             // TODO: Replace with real gas once implemented
             let gas_limit = u64::MAX as f64;
             fee / mass / mass_limit + transaction.tx.gas as f64 / gas_limit
+        }
+    }
+}
+
+impl TxSelector for TransactionsSelector {
+    fn select_transactions(&mut self) -> Vec<Transaction> {
+        self.select_transactions()
+    }
+
+    fn reject_selection(&mut self, invalid_tx_id: TransactionId) {
+        let selected_txs_map = self
+            .selected_txs_map
+            .get_or_insert_with(|| self.selected_txs.iter().map(|&x| (self.transactions[x].tx.id(), x)).collect());
+        let tx_index = *selected_txs_map.get(&invalid_tx_id).expect("only previously selected txs can be rejected");
+        let tx = &self.transactions[tx_index];
+        self.total_mass -= tx.calculated_mass;
+        self.total_fees -= tx.calculated_fee;
+        if !tx.tx.subnetwork_id.is_builtin_or_native() {
+            *self.gas_usage_map.get_mut(&tx.tx.subnetwork_id).expect("previously selected txs have an entry") -= tx.tx.gas;
         }
     }
 }
@@ -278,10 +282,9 @@ mod tests {
         let mut remaining_count = TX_INITIAL_COUNT;
         for i in 0..3 {
             let selected_txs = selector.select_transactions();
-            selected_txs.iter().skip((i + 1) * 100).take(REJECT_COUNT).for_each(|x| selector.reject(x.id()));
+            selected_txs.iter().skip((i + 1) * 100).take(REJECT_COUNT).for_each(|x| selector.reject_selection(x.id()));
             remaining_count -= REJECT_COUNT;
             assert_eq!(selector.len(), remaining_count, "selector length matches remaining transaction count");
-            selector.commit_rejects();
             assert_eq!(selector.len(), remaining_count, "selector length matches remaining transaction count");
             let selected_txs_2 = selector.select_transactions();
             assert_eq!(selector.len(), remaining_count, "selector length matches remaining transaction count");

@@ -1,14 +1,11 @@
 pub(crate) struct SelectableTransaction {
     pub(crate) gas_limit: u64,
     pub(crate) p: f64,
-
-    /// Has this candidate been rejected by the consensus?
-    pub(crate) is_rejected: bool,
 }
 
 impl SelectableTransaction {
     pub(crate) fn new(tx_value: f64, gas_limit: u64, alpha: i32) -> Self {
-        Self { gas_limit, p: tx_value.powi(alpha), is_rejected: false }
+        Self { gas_limit, p: tx_value.powi(alpha) }
     }
 }
 
@@ -22,6 +19,7 @@ pub(crate) struct Candidate {
 
     /// Range start in the candidate list total_p space
     pub(crate) start: f64,
+
     /// Range end in the candidate list total_p space
     pub(crate) end: f64,
 
@@ -35,6 +33,7 @@ impl Candidate {
     }
 }
 
+#[derive(Default)]
 pub(crate) struct CandidateList {
     pub(crate) candidates: Vec<Candidate>,
     pub(crate) total_p: f64,
@@ -45,12 +44,10 @@ impl CandidateList {
         let mut candidates = Vec::with_capacity(selectable_txs.len());
         let mut total_p = 0.0;
         selectable_txs.iter().enumerate().for_each(|(i, tx)| {
-            if !tx.is_rejected {
-                let current_p = tx.p;
-                let candidate = Candidate::new(i, total_p, total_p + current_p);
-                candidates.push(candidate);
-                total_p += current_p;
-            }
+            let current_p = tx.p;
+            let candidate = Candidate::new(i, total_p, total_p + current_p);
+            candidates.push(candidate);
+            total_p += current_p;
         });
         Self { candidates, total_p }
     }
