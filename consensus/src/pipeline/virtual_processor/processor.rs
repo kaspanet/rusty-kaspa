@@ -88,7 +88,7 @@ use rayon::{
 use rocksdb::WriteBatch;
 use std::{
     cmp::min,
-    collections::{BinaryHeap, VecDeque},
+    collections::{BinaryHeap, HashMap, VecDeque},
     ops::Deref,
     sync::{atomic::Ordering, Arc},
 };
@@ -795,13 +795,37 @@ impl VirtualStateProcessor {
         // TODO: tests
         //
 
-        let txs = tx_selector.select_transactions();
+        // We call for the initial tx batch out of the virtual read lock
+        let mut txs = tx_selector.select_transactions();
+
         let virtual_read = self.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
 
-        // Validate the transactions in virtual's utxo context
-        self.validate_block_template_transactions(&txs, &virtual_state, virtual_utxo_view)?;
+        let mut invalid_transactions = HashMap::new();
+        for tx in txs.iter() {
+            if let Err(e) = self.validate_block_template_transaction(tx, &virtual_state, virtual_utxo_view) {
+                invalid_transactions.insert(tx.id(), e);
+                tx_selector.reject_selection(tx.id());
+            }
+        }
+
+        if !invalid_transactions.is_empty() {
+            txs.retain(|tx| !invalid_transactions.contains_key(&tx.id()));
+        }
+
+        while !invalid_transactions.is_empty() {
+            invalid_transactions.clear();
+            let next_batch = tx_selector.select_transactions();
+            for tx in next_batch {
+                if let Err(e) = self.validate_block_template_transaction(&tx, &virtual_state, virtual_utxo_view) {
+                    invalid_transactions.insert(tx.id(), e);
+                    tx_selector.reject_selection(tx.id());
+                } else {
+                    txs.push(tx);
+                }
+            }
+        }
 
         // At this point we can safely drop the read lock
         drop(virtual_read);

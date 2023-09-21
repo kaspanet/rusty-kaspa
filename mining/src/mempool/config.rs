@@ -104,8 +104,8 @@ impl Config {
         Self {
             maximum_transaction_count: DEFAULT_MAXIMUM_TRANSACTION_COUNT,
             maximum_ready_transaction_count: DEFAULT_MAXIMUM_READY_TRANSACTION_COUNT,
-            maximum_build_block_template_attempts: DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS,
-            ready_transactions_refetch_limit: DEFAULT_READY_TRANSACTIONS_REFETCH_LIMIT,
+            maximum_build_block_template_attempts: DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS, // TODO
+            ready_transactions_refetch_limit: DEFAULT_READY_TRANSACTIONS_REFETCH_LIMIT,           // TODO
             transaction_expire_interval_daa_score: DEFAULT_TRANSACTION_EXPIRE_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
             transaction_expire_scan_interval_daa_score: DEFAULT_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000
                 / target_milliseconds_per_block,
