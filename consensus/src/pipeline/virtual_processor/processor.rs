@@ -792,10 +792,13 @@ impl VirtualStateProcessor {
         miner_data: MinerData,
         mut tx_selector: Box<dyn TemplateTransactionSelector>,
     ) -> Result<BlockTemplate, RuleError> {
+        //
         // TODO: tests
         //
 
-        // We call for the initial tx batch out of the virtual read lock
+        // We call for the initial tx batch before acquiring the virtual read lock,
+        // optimizing for the common case where all txs are valid. Following selection calls
+        // are called within the lock in order to preserve validness of already validated txs
         let mut txs = tx_selector.select_transactions();
 
         let virtual_read = self.virtual_stores.read();
@@ -814,17 +817,26 @@ impl VirtualStateProcessor {
             txs.retain(|tx| !invalid_transactions.contains_key(&tx.id()));
         }
 
-        while !invalid_transactions.is_empty() {
-            invalid_transactions.clear();
-            let next_batch = tx_selector.select_transactions();
+        let mut has_rejections = !invalid_transactions.is_empty();
+        while has_rejections {
+            has_rejections = false;
+            let next_batch = tx_selector.select_transactions(); // Note that once next_batch is empty the loop will exit
             for tx in next_batch {
                 if let Err(e) = self.validate_block_template_transaction(&tx, &virtual_state, virtual_utxo_view) {
                     invalid_transactions.insert(tx.id(), e);
                     tx_selector.reject_selection(tx.id());
+                    has_rejections = true;
                 } else {
                     txs.push(tx);
                 }
             }
+        }
+
+        // Check whether this was an overall successful selection episode. We pass this decision
+        // to the selector implementation which has the broadest picture and can use mempool config
+        // and context
+        if !tx_selector.is_successful() {
+            return Err(RuleError::InvalidTransactionsInNewBlock(invalid_transactions));
         }
 
         // At this point we can safely drop the read lock
@@ -842,10 +854,10 @@ impl VirtualStateProcessor {
     ) -> Result<(), RuleError> {
         // Search for invalid transactions. This can happen since the mining manager calling this function is not atomically in sync with virtual state
         // TODO: process transactions in parallel
-        let mut invalid_transactions = Vec::new();
+        let mut invalid_transactions = HashMap::new();
         for tx in txs.iter() {
             if let Err(e) = self.validate_block_template_transaction(tx, virtual_state, utxo_view) {
-                invalid_transactions.push((tx.id(), e))
+                invalid_transactions.insert(tx.id(), e);
             }
         }
         if !invalid_transactions.is_empty() {

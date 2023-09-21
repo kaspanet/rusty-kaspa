@@ -44,6 +44,7 @@ pub(crate) struct TransactionsSelector {
 
     // Inner state of the selection process
     candidate_list: CandidateList,
+    overall_rejections: usize,
     used_count: usize,
     used_p: f64,
     total_mass: u64,
@@ -65,6 +66,7 @@ impl TransactionsSelector {
             selected_txs: Default::default(),
             selected_txs_map: None,
             candidate_list: Default::default(),
+            overall_rejections: 0,
             used_count: 0,
             used_p: 0.0,
             total_mass: 0,
@@ -234,14 +236,23 @@ impl TemplateTransactionSelector for TransactionsSelector {
     fn reject_selection(&mut self, tx_id: TransactionId) {
         let selected_txs_map = self
             .selected_txs_map
+            // We lazy-create the map only when there are actual rejections
             .get_or_insert_with(|| self.selected_txs.iter().map(|&x| (self.transactions[x].tx.id(), x)).collect());
-        let tx_index = *selected_txs_map.get(&tx_id).expect("only previously selected txs can be rejected");
+        let tx_index = selected_txs_map.remove(&tx_id).expect("only previously selected txs can be rejected (and only once)");
         let tx = &self.transactions[tx_index];
         self.total_mass -= tx.calculated_mass;
         self.total_fees -= tx.calculated_fee;
         if !tx.tx.subnetwork_id.is_builtin_or_native() {
             *self.gas_usage_map.get_mut(&tx.tx.subnetwork_id).expect("previously selected txs have an entry") -= tx.tx.gas;
         }
+        self.overall_rejections += 1;
+    }
+
+    fn is_successful(&self) -> bool {
+        // TODO: comment + constants
+        self.transactions.is_empty()
+            || (self.total_mass as f64) > self.policy.max_block_mass as f64 * 0.8
+            || (self.overall_rejections as f64) < self.transactions.len() as f64 * 0.2
     }
 }
 

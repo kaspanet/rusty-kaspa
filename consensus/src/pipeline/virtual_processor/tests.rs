@@ -30,6 +30,10 @@ impl TemplateTransactionSelector for OnetimeTxSelector {
     fn reject_selection(&mut self, _tx_id: kaspa_consensus_core::tx::TransactionId) {
         unimplemented!()
     }
+
+    fn is_successful(&self) -> bool {
+        true
+    }
 }
 
 struct TestContext {

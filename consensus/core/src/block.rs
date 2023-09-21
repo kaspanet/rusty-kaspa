@@ -68,9 +68,20 @@ impl Block {
     }
 }
 
+/// An abstraction for a recallable transaction selector with persistent state
 pub trait TemplateTransactionSelector {
+    /// Expected to return a batch of transactions which were not previously selected.
+    /// The batch will typically contain sufficient transactions to fill the block
+    /// mass (along with the previously unrejected txs), or will drain the selector    
     fn select_transactions(&mut self) -> Vec<Transaction>;
+
+    /// Should be used to report invalid transactions obtained from the *most recent*
+    /// `select_transactions` call. Implementors should use this call to internally
+    /// track the selection state and discard the rejected tx from internal occupation calculations
     fn reject_selection(&mut self, tx_id: TransactionId);
+
+    /// Determine whether this was an overall successful selection episode
+    fn is_successful(&self) -> bool;
 }
 
 /// A block template for miners.
