@@ -50,14 +50,14 @@ impl MiningMonitor {
             let now = Instant::now();
             let elapsed = (now - last_log_time).as_secs_f64();
 
-            info!("Processed {} unique transactions in the last {:.2}s ({:.2} avg txs/s, in: {} via RPC, {} via P2P, out: {} via accepted blocks, {:.2}% collisions)",
+            info!("Processed {} unique transactions in the last {:.2}s ({:.2} avg txs/s, in: {} via RPC, {} via P2P, out: {} via accepted blocks, {:.2}% e-tps)",
                 delta.tx_accepted_counts,
                 elapsed,
                 delta.tx_accepted_counts as f64 / elapsed,
                 delta.high_priority_tx_counts,
                 delta.low_priority_tx_counts,
                 delta.block_tx_counts,
-                delta.collision_ratio() * 100.0,
+                delta.e_tps() * 100.0,
             );
 
             last_snapshot = snapshot;

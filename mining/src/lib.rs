@@ -22,6 +22,7 @@ pub struct MiningCounters {
     pub tx_accepted_counts: AtomicU64,
     pub input_counts: AtomicU64,
     pub output_counts: AtomicU64,
+    pub mempool_sample: AtomicU64,
 }
 
 impl MiningCounters {
@@ -33,6 +34,7 @@ impl MiningCounters {
             tx_accepted_counts: self.tx_accepted_counts.load(Ordering::Relaxed),
             input_counts: self.input_counts.load(Ordering::Relaxed),
             output_counts: self.output_counts.load(Ordering::Relaxed),
+            mempool_sample: self.mempool_sample.load(Ordering::Relaxed),
         }
     }
 
@@ -56,6 +58,7 @@ pub struct MempoolCountersSnapshot {
     pub tx_accepted_counts: u64,
     pub input_counts: u64,
     pub output_counts: u64,
+    pub mempool_sample: u64,
 }
 
 impl MempoolCountersSnapshot {
@@ -63,9 +66,11 @@ impl MempoolCountersSnapshot {
         self.high_priority_tx_counts + self.low_priority_tx_counts
     }
 
-    pub fn collision_ratio(&self) -> f64 {
-        if self.block_tx_counts > 0 {
-            (self.block_tx_counts - self.tx_accepted_counts) as f64 / self.block_tx_counts as f64
+    pub fn e_tps(&self) -> f64 {
+        let accepted_txs = u64::min(self.mempool_sample, self.tx_accepted_counts);
+        let total_txs = u64::min(self.mempool_sample, self.block_tx_counts);
+        if total_txs > 0 {
+            accepted_txs as f64 / total_txs as f64
         } else {
             0f64
         }
@@ -83,6 +88,7 @@ impl core::ops::Sub for &MempoolCountersSnapshot {
             tx_accepted_counts: self.tx_accepted_counts.checked_sub(rhs.tx_accepted_counts).unwrap_or_default(),
             input_counts: self.input_counts.checked_sub(rhs.input_counts).unwrap_or_default(),
             output_counts: self.output_counts.checked_sub(rhs.output_counts).unwrap_or_default(),
+            mempool_sample: (self.mempool_sample + rhs.mempool_sample) / 2,
         }
     }
 }
