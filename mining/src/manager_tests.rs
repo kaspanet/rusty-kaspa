@@ -846,8 +846,8 @@ mod tests {
         let miner_data_2 = generate_new_coinbase(address_prefix, second_op);
 
         // Build a fresh template for coinbase2 as a reference
-        let mut builder = mining_manager.block_template_builder(transactions);
-        let result = builder.build_block_template(consensus, &miner_data_2);
+        let builder = mining_manager.block_template_builder();
+        let result = builder.build_block_template(consensus, &miner_data_2, transactions);
         assert!(result.is_ok(), "build block template failed for miner data 2");
         let expected_template = result.unwrap();
 

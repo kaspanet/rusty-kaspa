@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use crate::{coinbase::MinerData, header::Header, tx::Transaction};
+use crate::{
+    coinbase::MinerData,
+    header::Header,
+    tx::{Transaction, TransactionId},
+};
 use kaspa_hashes::Hash;
 
 /// A mutable block structure where header and transactions within can still be mutated.
@@ -62,6 +66,11 @@ impl Block {
     pub fn from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Block {
         Block::from_header(Header::from_precomputed_hash(hash, parents))
     }
+}
+
+pub trait TemplateTransactionSelector {
+    fn select_transactions(&mut self) -> Vec<Transaction>;
+    fn reject_selection(&mut self, tx_id: TransactionId);
 }
 
 /// A block template for miners.

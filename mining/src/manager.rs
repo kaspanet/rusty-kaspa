@@ -85,17 +85,12 @@ impl MiningManager {
         debug!("Building a new block template...");
         let _swo = Stopwatch::<22>::with_threshold("build_block_template full loop");
         let mut attempts: u64 = 0;
-        let transactions = self.block_candidate_transactions();
-        let mut block_template_builder = BlockTemplateBuilder::new(self.config.maximum_mass_per_block, transactions);
         loop {
             attempts += 1;
 
-            // TODO: consider a parameter forcing the consensus to build a template with the remaining successfully validated transactions
-            //
-            // let force_build = attempts == self.config.maximum_build_block_template_attempts;
-            // match block_template_builder.build_block_template(consensus, miner_data, force_build) {
-
-            match block_template_builder.build_block_template(consensus, miner_data) {
+            let transactions = self.block_candidate_transactions();
+            let block_template_builder = BlockTemplateBuilder::new(self.config.maximum_mass_per_block);
+            match block_template_builder.build_block_template(consensus, miner_data, transactions) {
                 Ok(block_template) => {
                     let block_template = cache_lock.set_immutable_cached_template(block_template);
                     match attempts {
@@ -125,21 +120,11 @@ impl MiningManager {
                     return Ok(block_template.as_ref().clone());
                 }
                 Err(BuilderError::ConsensusError(BlockRuleError::InvalidTransactionsInNewBlock(invalid_transactions))) => {
-                    // Do not refetch candidates if not absolutely necessary so we do not lock the mempool
-                    // and optimize for the quickest possible resolution
-                    let keep_candidates = block_template_builder.candidates_len()
-                        > self.config.ready_transactions_refetch_limit + invalid_transactions.len()
-                        || attempts + 1 >= self.config.maximum_build_block_template_attempts;
-
                     let mut missing_outpoint: usize = 0;
                     let mut invalid: usize = 0;
 
                     let mut mempool_write = self.mempool.write();
                     invalid_transactions.iter().for_each(|(x, err)| {
-                        if keep_candidates {
-                            block_template_builder.reject_transaction(*x);
-                        }
-
                         // On missing outpoints, the most likely is that the tx was already in a block accepted by
                         // the consensus but not yet processed by handle_new_block_transactions(). Another possibility
                         // is a double spend. In both cases, we simply remove the transaction but keep its redeemers.
@@ -179,12 +164,6 @@ impl MiningManager {
                         "Building a new block template failed for {} txs missing outpoint and {} invalid txs",
                         missing_outpoint, invalid
                     );
-
-                    // Refetch candidates if asked to
-                    if !keep_candidates {
-                        let transactions = self.block_candidate_transactions();
-                        block_template_builder.update_transactions(transactions);
-                    }
                 }
                 Err(err) => {
                     warn!("Building a new block template failed: {}", err);
@@ -204,8 +183,8 @@ impl MiningManager {
     }
 
     #[cfg(test)]
-    pub(crate) fn block_template_builder(&self, transactions: Vec<CandidateTransaction>) -> BlockTemplateBuilder {
-        BlockTemplateBuilder::new(self.config.maximum_mass_per_block, transactions)
+    pub(crate) fn block_template_builder(&self) -> BlockTemplateBuilder {
+        BlockTemplateBuilder::new(self.config.maximum_mass_per_block)
     }
 
     /// validate_and_insert_transaction validates the given transaction, and
