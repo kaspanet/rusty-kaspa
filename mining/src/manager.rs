@@ -21,7 +21,7 @@ use crate::{
 use itertools::Itertools;
 use kaspa_consensus_core::{
     api::ConsensusApi,
-    block::BlockTemplate,
+    block::{BlockTemplate, TemplateBuildMode},
     coinbase::MinerData,
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
@@ -90,7 +90,12 @@ impl MiningManager {
 
             let transactions = self.block_candidate_transactions();
             let block_template_builder = BlockTemplateBuilder::new(self.config.maximum_mass_per_block);
-            match block_template_builder.build_block_template(consensus, miner_data, transactions) {
+            let build_mode = if attempts < self.config.maximum_build_block_template_attempts {
+                TemplateBuildMode::Standard
+            } else {
+                TemplateBuildMode::Infallible
+            };
+            match block_template_builder.build_block_template(consensus, miner_data, transactions, build_mode) {
                 Ok(block_template) => {
                     let block_template = cache_lock.set_immutable_cached_template(block_template);
                     match attempts {

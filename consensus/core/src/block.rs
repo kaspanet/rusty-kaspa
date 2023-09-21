@@ -84,6 +84,18 @@ pub trait TemplateTransactionSelector {
     fn is_successful(&self) -> bool;
 }
 
+/// Block template build mode
+#[derive(Clone, Copy, Debug)]
+pub enum TemplateBuildMode {
+    /// Block template build can possibly fail if `TemplateTransactionSelector::is_successful` deems the operation unsuccessful.
+    ///
+    /// In such a case, the build fails with `BlockRuleError::InvalidTransactionsInNewBlock`.
+    Standard,
+
+    /// Block template build always succeeds. The built block contains only the validated transactions.
+    Infallible,
+}
+
 /// A block template for miners.
 #[derive(Debug, Clone)]
 pub struct BlockTemplate {

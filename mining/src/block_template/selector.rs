@@ -250,7 +250,7 @@ impl TemplateTransactionSelector for TransactionsSelector {
 
     fn is_successful(&self) -> bool {
         // TODO: comment + constants
-        self.transactions.is_empty()
+        self.overall_rejections == 0
             || (self.total_mass as f64) > self.policy.max_block_mass as f64 * 0.8
             || (self.overall_rejections as f64) < self.transactions.len() as f64 * 0.2
     }

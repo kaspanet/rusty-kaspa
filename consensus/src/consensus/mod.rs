@@ -41,7 +41,7 @@ use crate::{
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{BlockValidationFuture, ConsensusApi},
-    block::{Block, BlockTemplate, TemplateTransactionSelector},
+    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     block_count::BlockCount,
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
@@ -357,8 +357,9 @@ impl ConsensusApi for Consensus {
         &self,
         miner_data: MinerData,
         tx_selector: Box<dyn TemplateTransactionSelector>,
+        build_mode: TemplateBuildMode,
     ) -> Result<BlockTemplate, RuleError> {
-        self.virtual_processor.build_block_template(miner_data, tx_selector)
+        self.virtual_processor.build_block_template(miner_data, tx_selector, build_mode)
     }
 
     fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {

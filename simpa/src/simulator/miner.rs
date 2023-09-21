@@ -4,7 +4,7 @@ use kaspa_consensus::consensus::Consensus;
 use kaspa_consensus::model::stores::virtual_state::VirtualStateStoreReader;
 use kaspa_consensus::params::Params;
 use kaspa_consensus_core::api::ConsensusApi;
-use kaspa_consensus_core::block::{Block, TemplateTransactionSelector};
+use kaspa_consensus_core::block::{Block, TemplateBuildMode, TemplateTransactionSelector};
 use kaspa_consensus_core::coinbase::MinerData;
 use kaspa_consensus_core::sign::sign;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
@@ -113,7 +113,7 @@ impl Miner {
         let session = self.consensus.acquire_session();
         let mut block_template = self
             .consensus
-            .build_block_template(self.miner_data.clone(), Box::new(OnetimeTxSelector::new(txs)))
+            .build_block_template(self.miner_data.clone(), Box::new(OnetimeTxSelector::new(txs)), TemplateBuildMode::Standard)
             .expect("simulation txs are selected in sync with virtual state and are expected to be valid");
         drop(session);
         block_template.block.header.timestamp = timestamp; // Use simulation time rather than real time

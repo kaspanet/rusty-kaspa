@@ -48,7 +48,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    block::{BlockTemplate, MutableBlock, TemplateTransactionSelector},
+    block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::MinerData,
     config::genesis::GenesisBlock,
@@ -791,6 +791,7 @@ impl VirtualStateProcessor {
         &self,
         miner_data: MinerData,
         mut tx_selector: Box<dyn TemplateTransactionSelector>,
+        build_mode: TemplateBuildMode,
     ) -> Result<BlockTemplate, RuleError> {
         //
         // TODO: tests
@@ -835,8 +836,9 @@ impl VirtualStateProcessor {
         // Check whether this was an overall successful selection episode. We pass this decision
         // to the selector implementation which has the broadest picture and can use mempool config
         // and context
-        if !tx_selector.is_successful() {
-            return Err(RuleError::InvalidTransactionsInNewBlock(invalid_transactions));
+        match (build_mode, tx_selector.is_successful()) {
+            (TemplateBuildMode::Standard, false) => return Err(RuleError::InvalidTransactionsInNewBlock(invalid_transactions)),
+            (TemplateBuildMode::Standard, true) | (TemplateBuildMode::Infallible, _) => {}
         }
 
         // At this point we can safely drop the read lock

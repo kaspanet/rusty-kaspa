@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     acceptance_data::AcceptanceData,
-    block::{Block, BlockTemplate, TemplateTransactionSelector},
+    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     block_count::BlockCount,
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -31,6 +31,7 @@ pub trait ConsensusApi: Send + Sync {
         &self,
         miner_data: MinerData,
         tx_selector: Box<dyn TemplateTransactionSelector>,
+        build_mode: TemplateBuildMode,
     ) -> Result<BlockTemplate, RuleError> {
         unimplemented!()
     }
