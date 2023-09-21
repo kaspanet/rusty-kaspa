@@ -206,8 +206,9 @@ impl TransactionsSelector {
 
     fn reset_selection(&mut self) {
         assert_eq!(self.transactions.len(), self.selectable_txs.len());
+        self.selected_txs.clear();
         // TODO: consider to min with the approximated amount of txs which fit into max block mass
-        self.selected_txs = Vec::with_capacity(self.transactions.len());
+        self.selected_txs.reserve_exact(self.transactions.len());
         self.selected_txs_map = None;
     }
 
