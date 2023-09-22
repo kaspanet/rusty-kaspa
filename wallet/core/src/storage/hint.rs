@@ -1,7 +1,8 @@
 use crate::imports::*;
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use std::fmt::{Display, Formatter};
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Hint {
     pub text: String,
 }

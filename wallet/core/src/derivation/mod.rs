@@ -14,6 +14,7 @@ use crate::runtime::AccountKind;
 use crate::secret::Secret;
 use crate::storage::PrvKeyDataId;
 use crate::Result;
+use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_utils::hex::ToHex;
@@ -22,7 +23,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::serde::from_value;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AddressDerivationMeta([u32; 2]);
 
 impl Default for AddressDerivationMeta {

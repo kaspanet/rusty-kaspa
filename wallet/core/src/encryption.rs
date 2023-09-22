@@ -13,9 +13,11 @@ use sha2::{Digest, Sha256};
 use std::ops::{Deref, DerefMut};
 use zeroize::Zeroize;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(tag = "encryptable", content = "payload")]
-pub enum Encryptable<T> {
+pub enum Encryptable<T>
+// where T : Serialize + DeserializeOwned + Zeroize + BorshDeserialize + BorshSerialize
+{
     #[serde(rename = "plain")]
     Plain(T),
     #[serde(rename = "xchacha20poly1305")]
@@ -36,7 +38,7 @@ where
 
 impl<T> Encryptable<T>
 where
-    T: Clone + Serialize + DeserializeOwned + Zeroize,
+    T: Clone + Serialize + DeserializeOwned + Zeroize + BorshDeserialize + BorshSerialize,
 {
     pub fn is_encrypted(&self) -> bool {
         !matches!(self, Self::Plain(_))
@@ -72,7 +74,8 @@ where
     pub fn into_decrypted(self, secret: &Secret) -> Result<Self> {
         match self {
             Self::Plain(v) => Ok(Self::Plain(v)),
-            Self::XChaCha20Poly1305(v) => Ok(Self::Plain(v.decrypt::<T>(secret)?.clone())),
+            // Self::XChaCha20Poly1305(v) => Ok(Self::Plain(v.decrypt::<T>(secret)?.clone())),
+            Self::XChaCha20Poly1305(v) => Ok(Self::Plain(v.decrypt::<T>(secret)?.unwrap())),
         }
     }
 }
@@ -83,28 +86,43 @@ impl<T> From<T> for Encryptable<T> {
     }
 }
 
-pub struct Decrypted<T>(pub(crate) T);
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
+pub struct Decrypted<T>(pub(crate) T)
+where
+    T: Serialize + DeserializeOwned + BorshSerialize + BorshDeserialize;
 
-impl<T> AsRef<T> for Decrypted<T> {
+impl<T> AsRef<T> for Decrypted<T>
+where
+    T: Serialize + DeserializeOwned + BorshSerialize + BorshDeserialize,
+{
     fn as_ref(&self) -> &T {
         &self.0
     }
 }
 
-impl<T> Deref for Decrypted<T> {
+impl<T> Deref for Decrypted<T>
+where
+    T: Serialize + DeserializeOwned + BorshSerialize + BorshDeserialize,
+{
     type Target = T;
     fn deref(&self) -> &T {
         &self.0
     }
 }
 
-impl<T> DerefMut for Decrypted<T> {
+impl<T> DerefMut for Decrypted<T>
+where
+    T: Serialize + DeserializeOwned + BorshSerialize + BorshDeserialize,
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<T> AsMut<T> for Decrypted<T> {
+impl<T> AsMut<T> for Decrypted<T>
+where
+    T: Serialize + DeserializeOwned + BorshSerialize + BorshDeserialize,
+{
     fn as_mut(&mut self) -> &mut T {
         &mut self.0
     }
@@ -112,7 +130,7 @@ impl<T> AsMut<T> for Decrypted<T> {
 
 impl<T> Decrypted<T>
 where
-    T: Serialize,
+    T: Serialize + DeserializeOwned + BorshSerialize + BorshDeserialize,
 {
     pub fn new(value: T) -> Self {
         Self(value)
@@ -123,9 +141,13 @@ where
         let encrypted = encrypt_xchacha20poly1305(json.as_bytes(), secret)?;
         Ok(Encrypted::new(encrypted))
     }
+
+    pub fn unwrap(self) -> T {
+        self.0
+    }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize)]
 pub struct Encrypted {
     payload: Vec<u8>,
 }
@@ -147,7 +169,7 @@ impl Encrypted {
 
     pub fn decrypt<T>(&self, secret: &Secret) -> Result<Decrypted<T>>
     where
-        T: DeserializeOwned,
+        T: Serialize + DeserializeOwned + BorshSerialize + BorshDeserialize,
     {
         let t: T = serde_json::from_slice(decrypt_xchacha20poly1305(&self.payload, secret)?.as_ref())?;
         Ok(Decrypted(t))

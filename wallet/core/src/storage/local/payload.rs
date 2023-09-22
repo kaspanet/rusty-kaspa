@@ -7,7 +7,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub const PAYLOAD_VERSION: [u16; 3] = [1, 0, 0];
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct Payload {
     #[serde(default)]
     pub version: [u16; 3],

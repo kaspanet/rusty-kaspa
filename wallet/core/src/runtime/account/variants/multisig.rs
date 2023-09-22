@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::result::Result;
+use crate::runtime::account::descriptor::Descriptor;
 use crate::runtime::account::Inner;
 use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount};
 use crate::runtime::Wallet;
@@ -97,6 +98,12 @@ impl Account for MultiSig {
     fn metadata(&self) -> Result<Option<Metadata>> {
         let metadata = Metadata::new(self.inner.id, self.derivation.address_derivation_meta());
         Ok(Some(metadata))
+    }
+
+    fn descriptor(&self) -> Result<Descriptor> {
+        let descriptor = Descriptor::MultiSig { account_id: *self.id() };
+
+        Ok(descriptor)
     }
 
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {

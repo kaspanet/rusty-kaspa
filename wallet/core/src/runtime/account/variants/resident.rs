@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
+use crate::runtime::account::descriptor::Descriptor;
 use crate::runtime::account::{Account, AccountId, AccountKind, Inner};
 use crate::runtime::Wallet;
 use crate::storage::{self, Metadata, PrvKeyDataId};
@@ -57,5 +58,11 @@ impl Account for Resident {
 
     fn metadata(&self) -> Result<Option<Metadata>> {
         Err(Error::ResidentAccount)
+    }
+
+    fn descriptor(&self) -> Result<Descriptor> {
+        let descriptor = Descriptor::Resident { account_id: *self.id(), public_key: self.public_key.to_string() };
+
+        Ok(descriptor)
     }
 }

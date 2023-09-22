@@ -1,6 +1,7 @@
 use crate::derivation::AddressDerivationManager;
 use crate::imports::*;
 use crate::result::Result;
+use crate::runtime::account::descriptor::Descriptor;
 use crate::runtime::account::Inner;
 use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount};
 use crate::runtime::Wallet;
@@ -81,6 +82,21 @@ impl Account for Bip32 {
     fn metadata(&self) -> Result<Option<Metadata>> {
         let metadata = Metadata::new(self.inner.id, self.derivation.address_derivation_meta());
         Ok(Some(metadata))
+    }
+
+    fn descriptor(&self) -> Result<Descriptor> {
+        let descriptor = Descriptor::Bip32 {
+            account_id: *self.id(),
+            prv_key_data_id: self.prv_key_data_id,
+            account_index: self.account_index,
+            xpub_keys: self.xpub_keys.clone(),
+            ecdsa: self.ecdsa,
+            receive_address: self.receive_address()?,
+            change_address: self.change_address()?,
+            meta: self.derivation.address_derivation_meta(),
+        };
+
+        Ok(descriptor)
     }
 
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {

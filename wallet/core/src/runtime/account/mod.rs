@@ -1,3 +1,4 @@
+pub mod descriptor;
 pub mod id;
 pub mod kind;
 pub mod variants;
@@ -52,6 +53,10 @@ impl Inner {
         let context = Context { listener_id: None, settings };
         Inner { context: Mutex::new(context), id, wallet: wallet.clone(), utxo_context: utxo_context.clone() }
     }
+
+    // pub fn account_id(&self) -> &AccountId {
+    //     &self.id
+    // }
 }
 
 pub async fn try_from_storage(
@@ -197,6 +202,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
     fn as_storable(&self) -> Result<storage::Account>;
     fn metadata(&self) -> Result<Option<Metadata>>;
+    fn descriptor(&self) -> Result<descriptor::Descriptor>;
 
     async fn scan(self: Arc<Self>, window_size: Option<usize>, extent: Option<u32>) -> Result<()> {
         self.utxo_context().clear().await?;

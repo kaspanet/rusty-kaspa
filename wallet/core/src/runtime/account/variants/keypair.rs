@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
+use crate::runtime::account::descriptor::Descriptor;
 use crate::runtime::account::{Account, AccountId, AccountKind, Inner};
 use crate::runtime::Wallet;
 use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
@@ -25,7 +26,7 @@ impl Keypair {
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
         let storage::account::Keypair { public_key, ecdsa, .. } = data;
-        Ok(Self { inner, prv_key_data_id, public_key, ecdsa })
+        Ok(Self { inner, prv_key_data_id, public_key: PublicKey::from_str(public_key.as_str())?, ecdsa })
     }
 }
 
@@ -66,5 +67,17 @@ impl Account for Keypair {
 
     fn metadata(&self) -> Result<Option<Metadata>> {
         Ok(None)
+    }
+
+    fn descriptor(&self) -> Result<Descriptor> {
+        let descriptor = Descriptor::Keypair {
+            account_id: *self.id(),
+            prv_key_data_id: self.prv_key_data_id,
+            public_key: self.public_key.to_string(),
+            ecdsa: self.ecdsa,
+            address: self.receive_address()?,
+        };
+
+        Ok(descriptor)
     }
 }

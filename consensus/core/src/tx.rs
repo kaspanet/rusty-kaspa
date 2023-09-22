@@ -99,7 +99,7 @@ impl TransactionOutput {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub version: u16,

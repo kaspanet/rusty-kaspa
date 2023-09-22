@@ -46,7 +46,7 @@ impl Drop for AccessContext {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct WalletDescriptor {
     pub title: Option<String>,
     pub filename: String,
@@ -95,7 +95,14 @@ pub trait AddressBookStore: Send + Sync {
 #[async_trait]
 pub trait TransactionRecordStore: Send + Sync {
     async fn transaction_id_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<Arc<TransactionId>>>;
-    // async fn transaction_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionRecord>>;
+    async fn transaction_data_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<Arc<TransactionRecord>>>;
+    async fn load_range(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        filter: Option<Vec<TransactionType>>,
+        range: std::ops::Range<usize>,
+    ) -> Result<Vec<Arc<TransactionRecord>>>;
     async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>>;
     async fn load_multiple(
         &self,

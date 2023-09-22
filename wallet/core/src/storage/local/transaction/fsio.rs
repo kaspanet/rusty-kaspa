@@ -1,7 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::interface::StorageStream;
-use crate::storage::{Binding, TransactionRecordStore};
+use crate::storage::{Binding, TransactionRecordStore, TransactionType};
 use crate::storage::{TransactionMetadata, TransactionRecord};
 use kaspa_utils::hex::ToHex;
 use std::{
@@ -94,6 +94,10 @@ impl TransactionRecordStore for TransactionStore {
         Ok(Box::pin(TransactionIdStream::try_new(self, binding, network_id).await?))
     }
 
+    async fn transaction_data_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<Arc<TransactionRecord>>> {
+        Ok(Box::pin(TransactionRecordStream::try_new(self, binding, network_id).await?))
+    }
+
     // async fn transaction_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionRecord>> {
     //     Ok(Box::pin(TransactionRecordStream::try_new(&self.transactions, binding, network_id).await?))
     // }
@@ -117,6 +121,48 @@ impl TransactionRecordStore for TransactionStore {
             let path = folder.join(&id.to_hex());
             let tx: TransactionRecord = fs::read_json(&path).await?;
             transactions.push(Arc::new(tx));
+        }
+
+        Ok(transactions)
+    }
+
+    async fn load_range(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        filter: Option<Vec<TransactionType>>,
+        range: std::ops::Range<usize>,
+    ) -> Result<Vec<Arc<TransactionRecord>>> {
+        let folder = self.ensure_folder(binding, network_id).await?;
+        let ids = self.enumerate(binding, network_id).await?;
+        let mut transactions = vec![];
+
+        if let Some(filter) = filter {
+            let length = range.end - range.start;
+            let mut located = 0;
+
+            for id in ids {
+                let path = folder.join(&id.to_hex());
+                let tx: TransactionRecord = fs::read_json(&path).await?;
+                if filter.contains(&tx.transaction_type()) {
+                    if located >= range.start {
+                        transactions.push(Arc::new(tx));
+                        if transactions.len() >= length {
+                            break;
+                        }
+                    }
+
+                    located += 1;
+                }
+            }
+        } else {
+            let iter = ids.iter().skip(range.start).take(range.len());
+
+            for id in iter {
+                let path = folder.join(&id.to_hex());
+                let tx: TransactionRecord = fs::read_json(&path).await?;
+                transactions.push(Arc::new(tx));
+            }
         }
 
         Ok(transactions)
@@ -167,6 +213,41 @@ impl Stream for TransactionIdStream {
             Poll::Ready(None)
         } else {
             Poll::Ready(Some(Ok(self.transactions.pop_front().map(Arc::new).unwrap())))
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.transactions.len(), Some(self.transactions.len()))
+    }
+}
+
+#[derive(Clone)]
+pub struct TransactionRecordStream {
+    transactions: VecDeque<TransactionId>,
+    folder: PathBuf,
+}
+
+impl TransactionRecordStream {
+    pub(crate) async fn try_new(store: &TransactionStore, binding: &Binding, network_id: &NetworkId) -> Result<Self> {
+        let folder = store.make_folder(binding, network_id);
+        let transactions = store.enumerate(binding, network_id).await?;
+        Ok(Self { transactions, folder })
+    }
+}
+
+impl Stream for TransactionRecordStream {
+    type Item = Result<Arc<TransactionRecord>>;
+
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if self.transactions.is_empty() {
+            Poll::Ready(None)
+        } else {
+            let id = self.transactions.pop_front().unwrap();
+            let path = self.folder.join(id.to_hex());
+            match fs::read_json_sync::<TransactionRecord>(&path) {
+                Ok(transaction_data) => Poll::Ready(Some(Ok(Arc::new(transaction_data)))),
+                Err(err) => Poll::Ready(Some(Err(err.into()))),
+            }
         }
     }
 

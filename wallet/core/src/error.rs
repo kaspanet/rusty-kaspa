@@ -14,6 +14,8 @@ use workflow_wasm::printable::*;
 
 use thiserror::Error;
 
+use crate::storage::AccountId;
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("{0}")]
@@ -163,6 +165,9 @@ pub enum Error {
     #[error("{0}")]
     TryFromEnum(#[from] workflow_core::enums::TryFromError),
 
+    #[error("Account not found: {0}")]
+    AccountNotFound(AccountId),
+
     #[error("Invalid account type (must be one of: bip32|multisig|legacy")]
     InvalidAccountKind,
 
@@ -216,6 +221,9 @@ pub enum Error {
 
     #[error("Requested transaction is too heavy")]
     GeneratorTransactionIsTooHeavy,
+
+    #[error("Invalid range {0}..{1}")]
+    InvalidRange(u64, u64),
 }
 
 impl From<Aborted> for Error {

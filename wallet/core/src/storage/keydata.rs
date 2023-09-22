@@ -15,7 +15,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::storage::{AccountKind, Encryptable};
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, BorshSerialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, BorshSerialize, BorshDeserialize)]
 pub struct KeyDataId(pub(crate) [u8; 8]);
 
 impl KeyDataId {
@@ -82,7 +82,7 @@ pub type PrvKeyDataMap = HashMap<PrvKeyDataId, PrvKeyData>;
 /// Indicates key capabilities in the context of Kaspa
 /// core (kaspa-wallet) or legacy (KDX/PWA) wallets.
 /// The setting is based on the type of key import.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum KeyCaps {
     // 24 word mnemonic, bip39 seed accounts
@@ -102,7 +102,7 @@ impl KeyCaps {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "key-variant", content = "key-data")]
 pub enum PrvKeyVariant {
@@ -174,7 +174,7 @@ impl Drop for PrvKeyVariant {
 
 impl ZeroizeOnDrop for PrvKeyVariant {}
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrvKeyDataPayload {
     prv_key_variant: PrvKeyVariant,
@@ -248,7 +248,7 @@ impl Drop for PrvKeyDataPayload {
 
 impl ZeroizeOnDrop for PrvKeyDataPayload {}
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrvKeyData {
     pub id: PrvKeyDataId,

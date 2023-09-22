@@ -2,7 +2,7 @@ use crate::imports::*;
 use crate::storage::{AccountId, AccountKind, PrvKeyDataId};
 use secp256k1::PublicKey;
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Settings {
     pub is_visible: bool,
@@ -13,7 +13,7 @@ pub struct Settings {
 }
 
 const LEGACY_ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Legacy {
     #[serde(default)]
@@ -29,7 +29,7 @@ impl Legacy {
 }
 
 const BIP32_ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Bip32 {
     #[serde(default)]
@@ -47,7 +47,7 @@ impl Bip32 {
 }
 
 const MULTISIG_ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct MultiSig {
     #[serde(default)]
@@ -67,24 +67,24 @@ impl MultiSig {
 }
 
 const KEYPAIR_ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Keypair {
     #[serde(default)]
     pub version: u16,
 
-    pub public_key: PublicKey,
+    pub public_key: String, //PublicKey,
     pub ecdsa: bool,
 }
 
 impl Keypair {
     pub fn new(public_key: PublicKey, ecdsa: bool) -> Self {
-        Self { version: KEYPAIR_ACCOUNT_VERSION, public_key, ecdsa }
+        Self { version: KEYPAIR_ACCOUNT_VERSION, public_key: public_key.to_string(), ecdsa }
     }
 }
 
 const HARDWARE_ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Hardware {
     #[serde(default)]
@@ -99,7 +99,7 @@ impl Hardware {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "lowercase")]
 pub enum AccountData {
@@ -123,7 +123,7 @@ impl AccountData {
 }
 
 const ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct Account {
     #[serde(default)]
     pub version: u16,

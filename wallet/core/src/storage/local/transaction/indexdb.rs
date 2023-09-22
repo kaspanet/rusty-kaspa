@@ -1,7 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::interface::StorageStream;
-use crate::storage::{Binding, TransactionRecordStore};
+use crate::storage::{Binding, TransactionRecordStore, TransactionType};
 use crate::storage::{TransactionMetadata, TransactionRecord};
 
 pub struct Inner {
@@ -71,9 +71,9 @@ impl TransactionRecordStore for TransactionStore {
         Ok(Box::pin(TransactionIdStream::try_new(self, binding, network_id).await?))
     }
 
-    // async fn transaction_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionRecord>> {
-    //     Ok(Box::pin(TransactionRecordStream::try_new(&self.transactions, binding, network_id).await?))
-    // }
+    async fn transaction_data_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<Arc<TransactionRecord>>> {
+        Ok(Box::pin(TransactionRecordStream::try_new(self, binding, network_id).await?))
+    }
 
     async fn load_single(&self, _binding: &Binding, _network_id: &NetworkId, _id: &TransactionId) -> Result<Arc<TransactionRecord>> {
         Err(Error::NotImplemented)
@@ -84,6 +84,16 @@ impl TransactionRecordStore for TransactionStore {
         _binding: &Binding,
         _network_id: &NetworkId,
         _ids: &[TransactionId],
+    ) -> Result<Vec<Arc<TransactionRecord>>> {
+        Ok(vec![])
+    }
+
+    async fn load_range(
+        &self,
+        _binding: &Binding,
+        _network_id: &NetworkId,
+        _filter: Option<Vec<TransactionType>>,
+        _range: std::ops::Range<usize>,
     ) -> Result<Vec<Arc<TransactionRecord>>> {
         Ok(vec![])
     }
@@ -112,6 +122,24 @@ impl TransactionIdStream {
 
 impl Stream for TransactionIdStream {
     type Item = Result<Arc<TransactionId>>;
+
+    #[allow(unused_mut)]
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Poll::Ready(None)
+    }
+}
+
+#[derive(Clone)]
+pub struct TransactionRecordStream {}
+
+impl TransactionRecordStream {
+    pub(crate) async fn try_new(_store: &TransactionStore, _binding: &Binding, _network_id: &NetworkId) -> Result<Self> {
+        Ok(Self {})
+    }
+}
+
+impl Stream for TransactionRecordStream {
+    type Item = Result<Arc<TransactionRecord>>;
 
     #[allow(unused_mut)]
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

@@ -1,15 +1,17 @@
 use crate::imports::*;
 use crate::result::Result;
+use crate::runtime::api::{message::*, traits::WalletApi};
 use crate::runtime::{try_from_storage, Account, AccountId, ActiveAccountMap};
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
-use crate::storage::{self, AccessContextT, AccountKind, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
+use crate::storage::{self, AccessContextT, AccountKind, Binding, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
 use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
 use crate::{derivation::gen0, derivation::gen0::import::*, derivation::gen1, derivation::gen1::import::*};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use futures::future::join_all;
 use futures::stream::StreamExt;
 use futures::{select, FutureExt, Stream};
@@ -25,6 +27,8 @@ use workflow_core::task::spawn;
 use workflow_log::log_error;
 use zeroize::Zeroize;
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct WalletCreateArgs {
     pub title: Option<String>,
     pub filename: Option<String>,
@@ -51,6 +55,7 @@ impl From<WalletCreateArgs> for CreateArgs {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PrvKeyDataCreateArgs {
     pub name: Option<String>,
     pub wallet_secret: Secret,
@@ -79,13 +84,13 @@ impl Zeroize for PrvKeyDataCreateArgs {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct AccountCreateArgs {
     pub name: Option<String>,
     pub title: Option<String>,
     pub account_kind: storage::AccountKind,
-    pub wallet_secret: Secret,
     pub payment_secret: Option<Secret>,
+    pub wallet_secret: Secret,
 }
 
 impl AccountCreateArgs {
@@ -256,11 +261,11 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    async fn load_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+    async fn load_impl(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
         self.reset().await?;
 
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
 
         let hint = self.store().get_user_hint().await?;
@@ -271,8 +276,8 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
-        if let Err(err) = self.load_impl(secret, name).await {
+    pub async fn load(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
+        if let Err(err) = self.load_impl(wallet_secret, name).await {
             self.notify(Events::WalletError { message: err.to_string() }).await?;
             Err(err)
         } else {
@@ -784,6 +789,189 @@ impl Wallet {
         account.clone().start().await?;
 
         Ok(account)
+    }
+}
+
+use workflow_core::channel::Receiver;
+#[async_trait]
+impl WalletApi for Wallet {
+    async fn register_notifications(self: Arc<Self>, _channel: Receiver<WalletNotification>) -> Result<u64> {
+        todo!()
+    }
+    async fn unregister_notifications(self: Arc<Self>, _channel_id: u64) -> Result<()> {
+        todo!()
+    }
+
+    async fn connection_status_call(self: Arc<Self>, _request: ConnectionStatusRequest) -> Result<ConnectionStatusResponse> {
+        todo!()
+    }
+
+    // -------------------------------------------------------------------------------------
+
+    async fn connection_settings_get_call(
+        self: Arc<Self>,
+        _request: ConnectionSettingsGetRequest,
+    ) -> Result<ConnectionSettingsGetResponse> {
+        todo!()
+    }
+
+    async fn connection_settings_set_call(
+        self: Arc<Self>,
+        _request: ConnectionSettingsSetRequest,
+    ) -> Result<ConnectionSettingsSetResponse> {
+        todo!()
+    }
+
+    // -------------------------------------------------------------------------------------
+
+    async fn wallet_enumerate_call(self: Arc<Self>, _request: WalletEnumerateRequest) -> Result<WalletEnumerateResponse> {
+        let wallet_list = self.store().wallet_list().await?;
+        Ok(WalletEnumerateResponse { wallet_list })
+    }
+
+    async fn wallet_create_call(self: Arc<Self>, request: WalletCreateRequest) -> Result<WalletCreateResponse> {
+        let WalletCreateRequest { wallet_args, prv_key_data_args, account_args } = request;
+
+        // suspend commits for multiple operations
+        self.store().batch().await?;
+
+        let wallet_secret = wallet_args.wallet_secret.clone();
+
+        let descriptor = self.create_wallet(wallet_args).await?;
+        let (prv_key_data_id, mnemonic) = self.create_prv_key_data(prv_key_data_args).await?;
+        let _account = self.create_bip32_account(prv_key_data_id, account_args).await?;
+
+        // flush data to storage
+        let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        self.store().flush(&access_ctx).await?;
+
+        Ok(WalletCreateResponse {
+            mnemonic: mnemonic.phrase_string(),
+            descriptor,
+            // - TODO account info serialization
+            // account: Some(account.as_storable()?),
+        })
+    }
+
+    async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
+        let WalletOpenRequest { wallet_secret, file_name } = request;
+
+        self.load(wallet_secret, file_name).await?;
+        Ok(WalletOpenResponse {})
+    }
+
+    async fn wallet_close_call(self: Arc<Self>, _request: WalletCloseRequest) -> Result<WalletCloseResponse> {
+        self.close().await?;
+        Ok(WalletCloseResponse {})
+    }
+
+    async fn prv_key_data_create_call(self: Arc<Self>, request: PrvKeyDataCreateRequest) -> Result<PrvKeyDataCreateResponse> {
+        let PrvKeyDataCreateRequest { prv_key_data_args, fetch_mnemonic } = request;
+
+        let (prv_key_data_id, mnemonic) = self.create_prv_key_data(prv_key_data_args).await?;
+
+        Ok(PrvKeyDataCreateResponse { mnemonic: fetch_mnemonic.then_some(mnemonic.phrase_string()), prv_key_data_id })
+    }
+
+    async fn prv_key_data_remove_call(self: Arc<Self>, _request: PrvKeyDataRemoveRequest) -> Result<PrvKeyDataRemoveResponse> {
+        return Err(Error::NotImplemented);
+    }
+
+    async fn prv_key_data_get_call(self: Arc<Self>, request: PrvKeyDataGetRequest) -> Result<PrvKeyDataGetResponse> {
+        let PrvKeyDataGetRequest { prv_key_data_id, wallet_secret } = request;
+
+        let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        let prv_key_data = self.store().as_prv_key_data_store()?.load_key_data(&access_ctx, &prv_key_data_id).await?;
+
+        Ok(PrvKeyDataGetResponse { prv_key_data })
+    }
+
+    async fn account_enumerate_call(self: Arc<Self>, _request: AccountEnumerateRequest) -> Result<AccountEnumerateResponse> {
+        let accounts = self.accounts(None).await?.try_collect::<Vec<_>>().await?;
+        let descriptors = accounts.iter().map(|account| account.descriptor().unwrap()).collect::<Vec<_>>();
+        Ok(AccountEnumerateResponse { descriptors })
+    }
+
+    async fn account_create_call(self: Arc<Self>, request: AccountCreateRequest) -> Result<AccountCreateResponse> {
+        let AccountCreateRequest { prv_key_data_id, account_args } = request;
+
+        if !matches!(account_args.account_kind, AccountKind::Bip32) {
+            return Err(Error::NotImplemented);
+        }
+
+        let _account = self.create_bip32_account(prv_key_data_id, account_args).await?;
+        // - TODO account info serialization
+        Ok(AccountCreateResponse {})
+    }
+
+    async fn account_import_call(self: Arc<Self>, _request: AccountImportRequest) -> Result<AccountImportResponse> {
+        // TODO handle account imports
+        return Err(Error::NotImplemented);
+    }
+
+    async fn account_get_call(self: Arc<Self>, request: AccountGetRequest) -> Result<AccountGetResponse> {
+        let AccountGetRequest { account_id } = request;
+        let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let descriptor = account.descriptor().unwrap();
+        Ok(AccountGetResponse { descriptor })
+    }
+
+    async fn account_create_new_address_call(
+        self: Arc<Self>,
+        request: AccountCreateNewAddressRequest,
+    ) -> Result<AccountCreateNewAddressResponse> {
+        let AccountCreateNewAddressRequest { account_id } = request;
+
+        let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let address = account.as_derivation_capable()?.new_receive_address().await?;
+        Ok(AccountCreateNewAddressResponse { address })
+    }
+
+    async fn account_send_call(self: Arc<Self>, request: AccountSendRequest) -> Result<AccountSendResponse> {
+        let AccountSendRequest { task_id: _, account_id, wallet_secret, payment_secret, destination, priority_fee_sompi, payload } =
+            request;
+
+        let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
+
+        let abortable = Abortable::new();
+        let (generator_summary, transaction_ids) =
+            account.send(destination, priority_fee_sompi, payload, wallet_secret, payment_secret, &abortable, None).await?;
+
+        Ok(AccountSendResponse { generator_summary, transaction_ids })
+    }
+
+    async fn account_estimate_call(self: Arc<Self>, request: AccountEstimateRequest) -> Result<AccountEstimateResponse> {
+        let AccountEstimateRequest { task_id: _, account_id, destination, priority_fee_sompi, payload } = request;
+
+        let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
+
+        let abortable = Abortable::new();
+        let generator_summary = account.estimate(destination, priority_fee_sompi, payload, &abortable).await?;
+
+        Ok(AccountEstimateResponse { generator_summary })
+    }
+
+    async fn transaction_data_get_call(self: Arc<Self>, request: TransactionDataGetRequest) -> Result<TransactionDataGetResponse> {
+        let TransactionDataGetRequest { account_id, network_id, filter, start, end } = request;
+
+        if start > end {
+            return Err(Error::InvalidRange(start, end));
+        }
+
+        let binding = Binding::Account(account_id);
+        let store = self.store().as_transaction_record_store()?;
+        let start = start as usize;
+        let end = end as usize;
+        let transactions = store.load_range(&binding, &network_id, filter, std::ops::Range { start, end }).await?;
+
+        Ok(TransactionDataGetResponse { transactions })
+    }
+
+    async fn address_book_enumerate_call(
+        self: Arc<Self>,
+        _request: AddressBookEnumerateRequest,
+    ) -> Result<AddressBookEnumerateResponse> {
+        return Err(Error::NotImplemented);
     }
 }
 

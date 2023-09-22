@@ -2,6 +2,7 @@ use crate::imports::*;
 use kaspa_consensus_wasm::{TransactionOutput, TransactionOutputInner};
 use kaspa_txscript::pay_to_address_script;
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum PaymentDestination {
     Change,
     PaymentOutputs(PaymentOutputs),
@@ -16,7 +17,7 @@ impl PaymentDestination {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct PaymentOutput {
     #[wasm_bindgen(getter_with_clone)]
@@ -66,7 +67,7 @@ impl From<PaymentOutput> for PaymentDestination {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[wasm_bindgen]
 pub struct PaymentOutputs {
     #[wasm_bindgen(skip)]

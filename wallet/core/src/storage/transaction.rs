@@ -11,7 +11,7 @@ use workflow_log::style;
 
 const TRANSACTION_VERSION: u16 = 1;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionType {
     /// Incoming transaction
@@ -82,7 +82,7 @@ impl std::fmt::Display for TransactionType {
 
 /// [`UtxoRecord`] represents an incoming transaction UTXO entry
 /// stored within [`TransactionRecord`].
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct UtxoRecord {
     pub address: Option<Address>,
     pub index: TransactionIndexType,
@@ -106,12 +106,12 @@ impl From<UtxoEntryReference> for UtxoRecord {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum TransactionMetadata {
     Custom(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(tag = "type", content = "transaction")]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionData {
@@ -166,7 +166,7 @@ impl TransactionData {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct TransactionRecord {
     version: u16,
     id: TransactionId,

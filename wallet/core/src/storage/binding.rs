@@ -2,7 +2,7 @@ use crate::imports::*;
 use crate::runtime::{Account, AccountId};
 use crate::utxo::{UtxoContextBinding as UtxoProcessorBinding, UtxoContextId};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type", content = "id")]
 pub enum Binding {

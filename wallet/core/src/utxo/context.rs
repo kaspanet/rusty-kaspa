@@ -17,7 +17,7 @@ fn next_processor_id() -> Hash {
     Hash::from_slice(sha256_hash(id.to_le_bytes().as_slice()).as_ref())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct UtxoContextId(pub(crate) Hash);
 
 impl Default for UtxoContextId {
