@@ -693,7 +693,7 @@ impl MiningManager {
                 }
             }
             if !valid_ids.is_empty() {
-                assert!(transaction_ids_sender.send(valid_ids).is_ok(), "the channel is expected to have a receiver and be opened");
+                let _ = transaction_ids_sender.send(valid_ids);
             }
             drop(_swo);
             mempool.log_stats();
