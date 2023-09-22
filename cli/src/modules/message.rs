@@ -31,22 +31,22 @@ impl Message {
 
         match argv.get(0).unwrap().as_str() {
             "sign" => {
-                if argv.len() < 2 {
+                if argv.len() != 2 {
                     return self.display_help(ctx, argv).await;
                 }
 
-                let kaspa_address = argv.get(1).unwrap().as_str();
+                let kaspa_address = argv[1].as_str();
                 let asked_message = ctx.term().ask(false, "Message: ").await?;
                 let message = asked_message.as_str();
 
                 self.sign(ctx, kaspa_address, message).await?;
             }
             "verify" => {
-                if argv.len() < 3 {
+                if argv.len() != 3 {
                     return self.display_help(ctx, argv).await;
                 }
-                let kaspa_address = argv.get(1).unwrap().as_str();
-                let signature = argv.get(2).unwrap().as_str();
+                let kaspa_address = argv[1].as_str();
+                let signature = argv[2].as_str();
                 let asked_message = ctx.term().ask(false, "Message: ").await?;
                 let message = asked_message.as_str();
 
