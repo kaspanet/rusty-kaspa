@@ -4,6 +4,7 @@ members = [
     "daemon",
     "cli",
     "core",
+    "wallet/macros",
     "wallet/core",
     "wallet/native",
     "wallet/wasm",
@@ -110,6 +111,7 @@ kaspa-wallet = { version = "0.1.6", path = "wallet/native" }
 kaspa-cli = { version = "0.1.6", path = "cli" }
 kaspa-wallet-cli-wasm = { version = "0.1.6", path = "wallet/wasm" }
 kaspa-wallet-core = { version = "0.1.6", path = "wallet/core" }
+kaspa-wallet-macros = { version = "0.1.6", path = "wallet/macros" }
 kaspa-wasm = { version = "0.1.6", path = "wasm" }
 kaspa-wrpc-core = { version = "0.1.6", path = "rpc/wrpc/core" }
 kaspa-wrpc-client = { version = "0.1.6", path = "rpc/wrpc/client" }

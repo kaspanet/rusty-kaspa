@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::account::descriptor::Descriptor;
+use crate::runtime::account::descriptor::{self, Descriptor};
 use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount, Inner};
 use crate::runtime::Wallet;
 use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
@@ -79,7 +79,7 @@ impl Account for Legacy {
     }
 
     fn descriptor(&self) -> Result<Descriptor> {
-        let descriptor = Descriptor::Legacy {
+        let descriptor = descriptor::Legacy {
             account_id: *self.id(),
             prv_key_data_id: self.prv_key_data_id,
             xpub_keys: self.xpub_keys.clone(),
@@ -88,7 +88,7 @@ impl Account for Legacy {
             meta: self.derivation.address_derivation_meta(),
         };
 
-        Ok(descriptor)
+        Ok(descriptor.into())
     }
 
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {

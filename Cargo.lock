@@ -2907,6 +2907,7 @@ dependencies = [
  "kaspa-rpc-core",
  "kaspa-txscript",
  "kaspa-utils",
+ "kaspa-wallet-macros",
  "kaspa-wrpc-client",
  "md-5",
  "pad",
@@ -2935,6 +2936,19 @@ dependencies = [
  "workflow-wasm",
  "xxhash-rust",
  "zeroize",
+]
+
+[[package]]
+name = "kaspa-wallet-macros"
+version = "0.1.6"
+dependencies = [
+ "convert_case 0.5.0",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "syn 1.0.109",
+ "xxhash-rust",
 ]
 
 [[package]]
