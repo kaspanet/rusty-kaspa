@@ -30,7 +30,7 @@ use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy};
 use kaspa_core::{debug, error, info, time::Stopwatch, warn};
 use kaspa_mining_errors::mempool::RuleError;
 use parking_lot::RwLock;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
 pub struct MiningManager {
@@ -492,12 +492,6 @@ impl MiningManager {
 
         // alternate no & write lock on mempool
         let accepted_transactions = self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions);
-
-        // read lock on mempool
-        self.counters.mempool_sample.store(self.mempool.read().transaction_count(true, false) as u64, Ordering::SeqCst);
-
-        // write lock on mempool
-        self.mempool.write().log_stats();
 
         Ok(accepted_transactions)
     }

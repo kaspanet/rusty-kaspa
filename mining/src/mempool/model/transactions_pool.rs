@@ -164,6 +164,10 @@ impl TransactionsPool {
         self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))
     }
 
+    pub(crate) fn ready_transaction_count(&self) -> usize {
+        self.ready_transactions.len()
+    }
+
     /// all_ready_transactions returns all fully populated mempool transactions having no parents in the mempool.
     /// These transactions are ready for being inserted in a block template.
     pub(crate) fn all_ready_transactions(&self) -> Vec<CandidateTransaction> {

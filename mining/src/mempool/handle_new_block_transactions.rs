@@ -40,6 +40,11 @@ impl Mempool {
             }
             unorphaned_transactions.extend(self.get_unorphaned_transactions_after_accepted_transaction(transaction));
         }
+
+        // Update the sample of number of ready transactions in the mempool and log the stats
+        self.counters.ready_txs_sample.store(self.transaction_pool.ready_transaction_count() as u64, Ordering::SeqCst);
+        self.log_stats();
+
         Ok(unorphaned_transactions)
     }
 
