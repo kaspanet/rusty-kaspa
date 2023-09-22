@@ -91,13 +91,10 @@ impl Message {
             Ok(signature) => {
                 let sig_hex = faster_hex::hex_string(signature.as_slice());
                 tprintln!(ctx, "Signature: {}", sig_hex);
+                Ok(())
             }
-            Err(_) => {
-                return Err(Error::custom("Message signing failed"));
-            }
+            Err(_) => Err(Error::custom("Message signing failed")),
         }
-
-        Ok(())
     }
 
     async fn verify(self: Arc<Self>, ctx: Arc<KaspaCli>, kaspa_address: &str, signature: &str, message: &str) -> Result<()> {
