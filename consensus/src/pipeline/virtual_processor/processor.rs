@@ -814,11 +814,11 @@ impl VirtualStateProcessor {
             }
         }
 
-        if !invalid_transactions.is_empty() {
+        let mut has_rejections = !invalid_transactions.is_empty();
+        if has_rejections {
             txs.retain(|tx| !invalid_transactions.contains_key(&tx.id()));
         }
 
-        let mut has_rejections = !invalid_transactions.is_empty();
         while has_rejections {
             has_rejections = false;
             let next_batch = tx_selector.select_transactions(); // Note that once next_batch is empty the loop will exit
@@ -848,14 +848,13 @@ impl VirtualStateProcessor {
         self.build_block_template_from_virtual_state(virtual_state, miner_data, txs)
     }
 
-    pub fn validate_block_template_transactions(
+    pub(crate) fn validate_block_template_transactions(
         &self,
         txs: &[Transaction],
         virtual_state: &VirtualState,
         utxo_view: &impl UtxoView,
     ) -> Result<(), RuleError> {
-        // Search for invalid transactions. This can happen since the mining manager calling this function is not atomically in sync with virtual state
-        // TODO: process transactions in parallel
+        // Search for invalid transactions
         let mut invalid_transactions = HashMap::new();
         for tx in txs.iter() {
             if let Err(e) = self.validate_block_template_transaction(tx, virtual_state, utxo_view) {
