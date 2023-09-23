@@ -7,7 +7,7 @@ use crate::mempool::{
     Mempool,
 };
 use kaspa_consensus_core::tx::TransactionId;
-use kaspa_core::debug;
+use kaspa_core::{debug, warn};
 use kaspa_utils::iter::IterExtensions;
 
 impl Mempool {
@@ -52,17 +52,31 @@ impl Mempool {
             removed_transactions.extend(self.orphan_pool.remove_redeemers_of(transaction_id)?.iter().map(|x| x.id()));
         }
 
-        if reason.verbose() {
-            match removed_transactions.len() {
-                0 => {}
-                1 => debug!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),
-                n => debug!(
-                    "Removed {} transactions ({}): {}{}",
-                    n,
-                    reason,
-                    removed_transactions.iter().reusable_format(", "),
-                    extra_info
-                ),
+        if !removed_transactions.is_empty() {
+            match reason {
+                TxRemovalReason::Muted => {}
+                TxRemovalReason::DoubleSpend => match removed_transactions.len() {
+                    0 => {}
+                    1 => warn!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),
+                    n => warn!(
+                        "Removed {} transactions ({}): {}{}",
+                        n,
+                        reason,
+                        removed_transactions.iter().reusable_format(", "),
+                        extra_info
+                    ),
+                },
+                _ => match removed_transactions.len() {
+                    0 => {}
+                    1 => debug!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),
+                    n => debug!(
+                        "Removed {} transactions ({}): {}{}",
+                        n,
+                        reason,
+                        removed_transactions.iter().reusable_format(", "),
+                        extra_info
+                    ),
+                },
             }
         }
 
