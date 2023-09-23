@@ -45,6 +45,8 @@ pub trait WalletApi: Send + Sync + 'static {
         self.wallet_create_call(WalletCreateRequest { wallet_args, prv_key_data_args, account_args }).await
     }
 
+    async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
+
     async fn wallet_create_call(self: Arc<Self>, request: WalletCreateRequest) -> Result<WalletCreateResponse>;
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse>;
     async fn wallet_close_call(self: Arc<Self>, request: WalletCloseRequest) -> Result<WalletCloseResponse>;

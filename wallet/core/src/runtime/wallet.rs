@@ -824,6 +824,10 @@ impl WalletApi for Wallet {
 
     // -------------------------------------------------------------------------------------
 
+    async fn ping_call(self: Arc<Self>, _request: PingRequest) -> Result<PingResponse> {
+        Ok(PingResponse { })
+    }
+
     async fn wallet_enumerate_call(self: Arc<Self>, _request: WalletEnumerateRequest) -> Result<WalletEnumerateResponse> {
         let wallet_list = self.store().wallet_list().await?;
         Ok(WalletEnumerateResponse { wallet_list })

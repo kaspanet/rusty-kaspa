@@ -25,6 +25,7 @@ pub struct WalletServer {
 impl Transport for WalletServer {
     async fn call(&self, op: u64, request: &[u8]) -> Result<Vec<u8>> {
         build_wallet_server_transport_interface! {[
+            Ping,
             WalletEnumerate,
             WalletCreate,
             WalletOpen,
@@ -88,6 +89,7 @@ impl WalletApi for WalletClient {
     // -------------------------------------------------------------------------------------
 
     build_wallet_client_transport_interface! {[
+        Ping,
         WalletEnumerate,
         WalletCreate,
         WalletOpen,

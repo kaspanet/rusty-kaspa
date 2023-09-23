@@ -113,7 +113,6 @@ impl UtxoProcessor {
     }
 
     pub fn set_network_id(&self, network_id: NetworkId) {
-        println!("**********************>>> UTXO PROCESSOR SETTING NETWORK ID: {:?}", network_id);
         self.inner.network_id.lock().unwrap().replace(network_id);
     }
 
