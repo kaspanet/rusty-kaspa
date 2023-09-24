@@ -10,6 +10,7 @@ use kaspa_core::{core::Core, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_rpc_service::service::RpcCoreService;
+use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::networking::ContextualNetAddress;
 
 use kaspa_addressmanager::AddressManager;
@@ -240,6 +241,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let mining_counters = Arc::new(MiningCounters::default());
     let wrpc_borsh_counters = Arc::new(WrpcServerCounters::default());
     let wrpc_json_counters = Arc::new(WrpcServerCounters::default());
+    let tx_script_cache_counters = Arc::new(TxScriptCacheCounters::default());
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db_parallelism = num_cpus::get();
@@ -250,6 +252,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         consensus_db_parallelism,
         notification_root.clone(),
         processing_counters.clone(),
+        tx_script_cache_counters.clone(),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
     let consensus_monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
@@ -285,7 +288,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let cache_lifetime: Option<u64> = None;
     #[cfg(feature = "devnet-prealloc")]
     let cache_lifetime = config.block_template_cache_lifetime;
-    let mining_monitor = Arc::new(MiningMonitor::new(mining_counters.clone(), tick_service.clone()));
+    let mining_monitor = Arc::new(MiningMonitor::new(mining_counters.clone(), tx_script_cache_counters.clone(), tick_service.clone()));
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new(
         config.target_time_per_block,
         false,

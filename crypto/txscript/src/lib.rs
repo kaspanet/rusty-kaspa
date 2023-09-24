@@ -529,7 +529,7 @@ mod tests {
     }
 
     fn run_test_script_cases(test_cases: Vec<ScriptTestCase>) {
-        let sig_cache = Cache::new(10_000);
+        let sig_cache = Cache::new(10_000, Default::default());
         let mut reused_values = SigHashReusedValues::new();
 
         for test in test_cases {

@@ -142,6 +142,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         let prev_tx_id = TransactionId::from_str("746915c8dfc5e1550eacbe1d87625a105750cf1a65aaddd1baa60f8bcf7e953c").unwrap();
@@ -202,6 +203,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         // Taken from: 3f582463d73c77d93f278b7bf649bd890e75fe9bb8a1edd7a6854df1a2a2bfc1
@@ -263,6 +265,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
@@ -324,6 +327,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
@@ -386,6 +390,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
@@ -448,6 +453,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
@@ -510,6 +516,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         let prev_tx_id = TransactionId::from_str("1111111111111111111111111111111111111111111111111111111111111111").unwrap();
@@ -563,6 +570,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         let secp = Secp256k1::new();

@@ -961,7 +961,7 @@ mod test {
     }
 
     fn run_test_cases(tests: Vec<TestCase>) {
-        let cache = Cache::new(10_000);
+        let cache = Cache::new(10_000, Default::default());
         let mut reused_values = SigHashReusedValues::new();
         for TestCase { init, code, dstack } in tests {
             let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
@@ -990,7 +990,7 @@ mod test {
             opcodes::OpRShift::empty().expect("Should accept empty"),
         ];
 
-        let cache = Cache::new(10_000);
+        let cache = Cache::new(10_000, Default::default());
         let mut reused_values = SigHashReusedValues::new();
         let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
 
@@ -1013,7 +1013,7 @@ mod test {
             opcodes::OpReserved2::empty().expect("Should accept empty"),
         ];
 
-        let cache = Cache::new(10_000);
+        let cache = Cache::new(10_000, Default::default());
         let mut reused_values = SigHashReusedValues::new();
         let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
 
@@ -1104,7 +1104,7 @@ mod test {
             opcodes::OpUnknown249::empty().expect("Should accept empty"),
         ];
 
-        let cache = Cache::new(10_000);
+        let cache = Cache::new(10_000, Default::default());
         let mut reused_values = SigHashReusedValues::new();
         let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
 

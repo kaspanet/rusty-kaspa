@@ -70,6 +70,7 @@ use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_txscript::caches::TxScriptCacheCounters;
 
 use std::thread::{self, JoinHandle};
 use std::{
@@ -132,6 +133,7 @@ impl Consensus {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         creation_timestamp: u64,
     ) -> Self {
         let params = &config.params;
@@ -147,7 +149,7 @@ impl Consensus {
         // Services and managers
         //
 
-        let services = ConsensusServices::new(db.clone(), storage.clone(), config.clone());
+        let services = ConsensusServices::new(db.clone(), storage.clone(), config.clone(), tx_script_cache_counters);
 
         //
         // Processor channels

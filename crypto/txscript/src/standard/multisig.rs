@@ -183,7 +183,7 @@ mod tests {
         let tx = tx.as_verifiable();
         let (input, entry) = tx.populated_inputs().next().unwrap();
 
-        let cache = Cache::new(10_000);
+        let cache = Cache::new(10_000, Default::default());
         let mut engine = TxScriptEngine::from_transaction_input(&tx, input, 0, entry, &mut reused_values, &cache).unwrap();
         assert_eq!(engine.execute().is_ok(), is_ok);
     }
