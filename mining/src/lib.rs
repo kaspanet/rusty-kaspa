@@ -41,10 +41,10 @@ impl MiningCounters {
     pub fn increase_tx_counts(&self, value: u64, priority: Priority) {
         match priority {
             Priority::Low => {
-                self.low_priority_tx_counts.fetch_add(value, Ordering::SeqCst);
+                self.low_priority_tx_counts.fetch_add(value, Ordering::Relaxed);
             }
             Priority::High => {
-                self.high_priority_tx_counts.fetch_add(value, Ordering::SeqCst);
+                self.high_priority_tx_counts.fetch_add(value, Ordering::Relaxed);
             }
         }
     }

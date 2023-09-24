@@ -21,6 +21,9 @@ impl Mempool {
     ) -> RuleResult<Vec<MempoolTransaction>> {
         let _sw = Stopwatch::<400>::with_threshold("handle_new_block_transactions op");
         let mut unorphaned_transactions = vec![];
+        let mut tx_accepted_counts = 0;
+        let mut input_counts = 0;
+        let mut output_counts = 0;
         for transaction in block_transactions[1..].iter() {
             let transaction_id = transaction.id();
             // Rust rewrite: This behavior does differ from golang implementation.
@@ -32,17 +35,18 @@ impl Mempool {
             }
             self.remove_double_spends(transaction)?;
             self.orphan_pool.remove_orphan(&transaction_id, false, TxRemovalReason::Accepted, "")?;
-            self.counters.block_tx_counts.fetch_add(1, Ordering::SeqCst);
             if self.accepted_transactions.add(transaction_id, block_daa_score) {
-                self.counters.tx_accepted_counts.fetch_add(1, Ordering::SeqCst);
-                self.counters.input_counts.fetch_add(transaction.inputs.len() as u64, Ordering::SeqCst);
-                self.counters.output_counts.fetch_add(transaction.outputs.len() as u64, Ordering::SeqCst);
+                tx_accepted_counts += 1;
+                input_counts += transaction.inputs.len();
+                output_counts += transaction.outputs.len();
             }
             unorphaned_transactions.extend(self.get_unorphaned_transactions_after_accepted_transaction(transaction));
         }
-
-        // Update the sample of number of ready transactions in the mempool and log the stats
-        self.counters.ready_txs_sample.store(self.transaction_pool.ready_transaction_count() as u64, Ordering::SeqCst);
+        self.counters.block_tx_counts.fetch_add(block_transactions.len() as u64 - 1, Ordering::Relaxed);
+        self.counters.tx_accepted_counts.fetch_add(tx_accepted_counts, Ordering::Relaxed);
+        self.counters.input_counts.fetch_add(input_counts as u64, Ordering::Relaxed);
+        self.counters.output_counts.fetch_add(output_counts as u64, Ordering::Relaxed);
+        self.counters.ready_txs_sample.store(self.transaction_pool.ready_transaction_count() as u64, Ordering::Relaxed);
         self.log_stats();
 
         Ok(unorphaned_transactions)
