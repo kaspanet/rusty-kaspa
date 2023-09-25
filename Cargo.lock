@@ -2308,6 +2308,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-fd-budget-pool"
+version = "0.1.6"
+dependencies = [
+ "cfg-if 1.0.0",
+ "rlimit",
+]
+
+[[package]]
 name = "kaspa-grpc-client"
 version = "0.1.7"
 dependencies = [
