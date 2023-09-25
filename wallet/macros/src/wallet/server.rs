@@ -11,10 +11,6 @@ use syn::{
 
 #[derive(Debug)]
 struct RpcTable {
-    // server_ctx: Expr,
-    // server_ctx_type: Expr,
-    // connection_ctx_type: Expr,
-    // rpc_api_ops: Expr,
     handlers: ExprArray,
 }
 
@@ -26,67 +22,64 @@ impl Parse for RpcTable {
         }
 
         let mut iter = parsed.iter();
-        // let server_ctx = iter.next().unwrap().clone();
-        // let server_ctx_type = iter.next().unwrap().clone();
-        // let connection_ctx_type = iter.next().unwrap().clone();
-        // let rpc_api_ops = iter.next().unwrap().clone();
         let handlers = get_handlers(iter.next().unwrap().clone())?;
 
-        // Ok(RpcTable { server_ctx, server_ctx_type, connection_ctx_type, rpc_api_ops, handlers })
         Ok(RpcTable { handlers })
     }
 }
 
 impl ToTokens for RpcTable {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let mut targets = Vec::new();
-        // let server_ctx = &self.server_ctx;
-        // let server_ctx_type = &self.server_ctx_type;
-        // let connection_ctx_type = &self.connection_ctx_type;
-        // let rpc_api_ops = &self.rpc_api_ops;
+        let mut targets_borsh = Vec::new();
+        let mut targets_serde = Vec::new();
 
         for handler in self.handlers.elems.iter() {
-            // let Handler { hash, fn_call, request_type, response_type, .. } = Handler::new(handler);
-            let Handler { hash, fn_call, request_type, .. } = Handler::new(handler);
+            let Handler { hash_64, ident, fn_call, request_type, .. } = Handler::new(handler);
 
-            targets.push(quote! {
-                #hash => {
-
+            targets_borsh.push(quote! {
+                #hash_64 => {
                     Ok(self.wallet_api.clone().#fn_call(#request_type::try_from_slice(&request)?).await?.try_to_vec()?)
-
-                    // Ok(response.try_to_vec()?)
-                        // .map_err(|e|ServerError::Text(e.to_string()))?
-
-                    // interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: #request_type| async move {
-                    //     let verbose = server_ctx.verbose();
-                    //     if verbose { workflow_log::log_info!("request: {:?}",request); }
-                    //     let response: #response_type = server_ctx.rpc_service(&connection_ctx).#fn_call(request).await
-                    //         .map_err(|e|ServerError::Text(e.to_string()))?;
-                    //     if verbose { workflow_log::log_info!("response: {:?}",response); }
-                    //     Ok(response)
-                    // }));
                 }
             });
+
+            targets_serde.push(quote! {
+                #ident => {
+                    let request: #request_type = serde_json::from_str(request)?;
+                    let response = self.wallet_api.clone().#fn_call(request).await?;
+                    Ok(serde_json::to_string(&response)?)
+                }
+            });
+
+            // targets_serde_wasm.push(quote! {
+            //     #ident => {
+            //         Ok(self.wallet_api.clone().#fn_call(#request_type::try_from_slice(&request)?).await?.try_to_vec()?)
+            //     }
+            // });
         }
 
         quote! {
 
-            // {
-                // let mut interface = workflow_rpc::server::Interface::<
-                //     #server_ctx_type,
-                //     #connection_ctx_type,
-                //     #rpc_api_ops
-                // >::new(#server_ctx);
-
-                // for op in #rpc_api_ops::list() {
+                pub async fn call_with_borsh(&self, op: u64, request: &[u8]) -> Result<Vec<u8>> {
                     match op {
-                        #(#targets)*
+                        #(#targets_borsh)*
                         _ => { Err(Error::NotImplemented) }
                     }
+                }
+
+                pub async fn call_with_serde(&self, op: &str, request: &str) -> Result<String> {
+                    match op {
+                        #(#targets_serde)*
+                        _ => { Err(Error::NotImplemented) }
+                    }
+                }
+
+                // async fn call_with_serde_wasm(&self, op: &str, request : &JsValue) -> Result<JsValue> {
+                //     match op {
+                //         #(#targets_serde_wasm)*
+                //         _ => { Err(Error::NotImplemented) }
+                //     }
                 // }
 
-                // interface
-            // }
         }
         .to_tokens(tokens);
     }

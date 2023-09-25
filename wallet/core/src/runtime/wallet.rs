@@ -824,8 +824,9 @@ impl WalletApi for Wallet {
 
     // -------------------------------------------------------------------------------------
 
-    async fn ping_call(self: Arc<Self>, _request: PingRequest) -> Result<PingResponse> {
-        Ok(PingResponse { })
+    async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse> {
+        log_info!("Wallet received ping request '{}' (should be 1)...", request.v);
+        Ok(PingResponse { v: request.v + 1 })
     }
 
     async fn wallet_enumerate_call(self: Arc<Self>, _request: WalletEnumerateRequest) -> Result<WalletEnumerateResponse> {

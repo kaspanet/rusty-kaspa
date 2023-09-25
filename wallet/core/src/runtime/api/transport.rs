@@ -7,12 +7,22 @@ use crate::result::Result;
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_wallet_macros::{build_wallet_client_transport_interface, build_wallet_server_transport_interface};
-// use serde::de::DeserializeOwned;
-// use serde::{Deserialize, Serialize};
 
 #[async_trait]
-pub trait Transport {
-    async fn call(&self, op: u64, request: &[u8]) -> Result<Vec<u8>>;
+pub trait BorshTransport: Send + Sync {
+    async fn call(&self, op: u64, request: Vec<u8>) -> Result<Vec<u8>>;
+}
+
+#[async_trait]
+pub trait SerdeTransport: Send + Sync {
+    async fn call(&self, op: &str, request: &str) -> Result<String>;
+}
+
+#[derive(Clone)]
+pub enum Transport {
+    Borsh(Arc<dyn BorshTransport>),
+    Serde(Arc<dyn SerdeTransport>),
+    // SerdeWasm(Arc<dyn SerdeWasmTransport>),
 }
 
 // - TODO - WALLET SERVER
@@ -21,38 +31,45 @@ pub struct WalletServer {
     pub wallet_api: Arc<dyn WalletApi>,
 }
 
-#[async_trait]
-impl Transport for WalletServer {
-    async fn call(&self, op: u64, request: &[u8]) -> Result<Vec<u8>> {
-        build_wallet_server_transport_interface! {[
-            Ping,
-            WalletEnumerate,
-            WalletCreate,
-            WalletOpen,
-            WalletClose,
-            PrvKeyDataCreate,
-            PrvKeyDataRemove,
-            PrvKeyDataGet,
-            AccountEnumerate,
-            AccountCreate,
-            AccountImport,
-            AccountGet,
-            AccountCreateNewAddress,
-            AccountSend,
-            AccountEstimate,
-            TransactionDataGet,
-            AddressBookEnumerate,
-        ]}
+impl WalletServer {
+    pub fn new(wallet_api: Arc<dyn WalletApi>) -> Self {
+        Self { wallet_api }
+    }
+
+    pub fn wallet_api(&self) -> &Arc<dyn WalletApi> {
+        &self.wallet_api
     }
 }
 
+impl WalletServer {
+    build_wallet_server_transport_interface! {[
+        Ping,
+        WalletEnumerate,
+        WalletCreate,
+        WalletOpen,
+        WalletClose,
+        PrvKeyDataCreate,
+        PrvKeyDataRemove,
+        PrvKeyDataGet,
+        AccountEnumerate,
+        AccountCreate,
+        AccountImport,
+        AccountGet,
+        AccountCreateNewAddress,
+        AccountSend,
+        AccountEstimate,
+        TransactionDataGet,
+        AddressBookEnumerate,
+    ]}
+}
+
 pub struct WalletClient {
-    pub client_sender: Arc<dyn Transport + Send + Sync>,
+    pub transport: Transport,
 }
 
 impl WalletClient {
-    pub fn new(client_sender: Arc<dyn Transport + Send + Sync>) -> Self {
-        Self { client_sender }
+    pub fn new(transport: Transport) -> Self {
+        Self { transport }
     }
 }
 

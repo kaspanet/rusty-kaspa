@@ -1,23 +1,12 @@
 use crate::imports::*;
-// use crate::runtime::Wallet;
 use crate::result::Result;
 use crate::runtime::api::message::*;
 use crate::runtime::{AccountCreateArgs, PrvKeyDataCreateArgs, WalletCreateArgs};
 use crate::storage::WalletDescriptor;
 use workflow_core::channel::Receiver;
-// use ;
-
-// - TODO
-//
-
-// Id
-
-// fn generate_task_id() -> TaskId {
-//     TaskId::generate()
-// }
 
 #[async_trait]
-pub trait WalletApi: Send + Sync + 'static {
+pub trait WalletApi: Send + Sync + AnySync {
     async fn register_notifications(self: Arc<Self>, channel: Receiver<WalletNotification>) -> Result<u64>;
     async fn unregister_notifications(self: Arc<Self>, channel_id: u64) -> Result<()>;
 
@@ -45,6 +34,9 @@ pub trait WalletApi: Send + Sync + 'static {
         self.wallet_create_call(WalletCreateRequest { wallet_args, prv_key_data_args, account_args }).await
     }
 
+    async fn ping(self: Arc<Self>, v: u32) -> Result<u32> {
+        Ok(self.ping_call(PingRequest { v }).await?.v)
+    }
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
 
     async fn wallet_create_call(self: Arc<Self>, request: WalletCreateRequest) -> Result<WalletCreateResponse>;
@@ -72,3 +64,5 @@ pub trait WalletApi: Send + Sync + 'static {
 }
 
 pub type DynWalletApi = Arc<dyn WalletApi + Send + Sync + 'static>;
+
+downcast_sync!(dyn WalletApi);

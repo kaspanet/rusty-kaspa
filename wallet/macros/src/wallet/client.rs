@@ -38,41 +38,7 @@ impl ToTokens for RpcTable {
         // let rpc_api_ops = &self.rpc_api_ops;
 
         for handler in self.handlers.elems.iter() {
-            let Handler { hash, fn_call, request_type, response_type, .. } = Handler::new(handler);
-
-            // async fn #fn_call(&self, request : #request_type) -> RpcResult<#response_type> {
-            //     let response: ClientResult<#response_type> = self.inner.rpc.call(#rpc_api_ops::#handler, request).await;
-            //     Ok(response.map_err(|e| e.to_string())?)
-            // }
-
-            // Due to conflicts between #[async_trait] macro and other macros,
-            // the async implementation of the RPC caller is inlined
-            // targets.push(quote! {
-
-            //     fn #fn_call<'life0, 'async_trait>(
-            //         &'life0 self,
-            //         request: #request_type,
-            //     ) -> ::core::pin::Pin<Box<dyn ::core::future::Future<Output = RpcResult<#response_type>> + ::core::marker::Send + 'async_trait>>
-            //     where
-            //         'life0: 'async_trait,
-            //         Self: 'async_trait,
-            //     {
-            //         Box::pin(async move {
-            //             if let ::core::option::Option::Some(__ret) = ::core::option::Option::None::<RpcResult<#response_type>> {
-            //                 return __ret;
-            //             }
-            //             let __self = self;
-            //             //let request = request;
-            //             let __ret: RpcResult<#response_type> = {
-            //                 let resp: ClientResult<#response_type> = __self.inner.rpc_client.call(#rpc_api_ops::#handler, request).await;
-            //                 Ok(resp.map_err(|e| kaspa_rpc_core::error::RpcError::RpcSubsystem(e.to_string()))?)
-            //             };
-            //             #[allow(unreachable_code)]
-            //             __ret
-            //         })
-            //     }
-
-            // });
+            let Handler { hash_64, ident, fn_call, request_type, response_type, .. } = Handler::new(handler);
 
             targets.push(quote! {
                 fn #fn_call<'async_trait>(
@@ -88,11 +54,23 @@ impl ToTokens for RpcTable {
                         if let ::core::option::Option::Some(__ret) = ::core::option::Option::None::<Result<#response_type>> {
                             return __ret;
                         }
-                        let op: u64 = #hash;
+                        let op: u64 = #hash_64;
                         let __self = self;
                         let request = request;
                         let __ret: Result<#response_type> =
-                            { Ok(#response_type::try_from_slice(&__self.client_sender.call(op, &request.try_to_vec()?).await?)?) };
+                            {
+                                match __self.transport {
+                                    Transport::Borsh(ref transport) => {
+                                        Ok(#response_type::try_from_slice(&transport.call(op, request.try_to_vec()?).await?)?)
+                                    },
+                                    Transport::Serde(ref transport) => {
+                                        let request = serde_json::to_string(&request)?;
+                                        let response = transport.call(#ident, request.as_str()).await?;
+                                        Ok(serde_json::from_str::<#response_type>(response.as_str())?)
+                                    },
+                                }
+                                // Ok(#response_type::try_from_slice(&__self.transport.call(op, &request.try_to_vec()?).await?)?)
+                            };
                         #[allow(unreachable_code)]
                         __ret
                     })
