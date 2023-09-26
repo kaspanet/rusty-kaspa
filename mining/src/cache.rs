@@ -27,18 +27,16 @@ impl Inner {
     }
 
     fn clear(&mut self) {
-        // The cache timer is reset to 0 so its lifetime is expired.
-        self.last_update_time = 0;
         self.block_template = None;
     }
 
     pub(crate) fn get_immutable_cached_template(&self) -> Option<Arc<BlockTemplate>> {
         let now = unix_now();
         // We verify that `now > last update` in order to avoid theoretic clock change bugs
-        if now < self.last_update_time || now - self.last_update_time > self.cache_lifetime {
+        if now > self.last_update_time + self.cache_lifetime || now < self.last_update_time {
             None
         } else {
-            Some(self.block_template.as_ref().expect("last_update_time would be 0").clone())
+            self.block_template.clone()
         }
     }
 
