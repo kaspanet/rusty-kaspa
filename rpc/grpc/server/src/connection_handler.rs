@@ -30,6 +30,7 @@ use tokio::sync::mpsc::channel as mpsc_channel;
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{codec::CompressionEncoding, transport::Server as TonicServer, Request, Response};
+use uuid::Uuid;
 
 /// A protowire gRPC connections handler.
 pub struct ConnectionHandler {
@@ -151,6 +152,7 @@ impl Rpc for ConnectionHandler {
 
         // Build the connection object & register it
         let connection = Connection::new(
+            Uuid::new_v4(),
             remote_address,
             self.core_service.clone(),
             self.manager.clone(),

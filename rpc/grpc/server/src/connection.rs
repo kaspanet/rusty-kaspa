@@ -26,12 +26,16 @@ use tokio::sync::{
     oneshot::{channel as oneshot_channel, Sender as OneshotSender},
 };
 use tonic::Streaming;
+use uuid::Uuid;
 
 pub type GrpcSender = MpscSender<StatusResult<KaspadResponse>>;
 pub type StatusResult<T> = Result<T, tonic::Status>;
+pub type ConnectionId = Uuid;
 
 #[derive(Debug)]
 struct Inner {
+    connection_id: ConnectionId,
+
     /// The socket address of this client
     net_address: SocketAddr,
 
@@ -52,12 +56,13 @@ pub struct Connection {
 
 impl Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.inner.net_address)
+        write!(f, "{}@{}", self.inner.connection_id, self.inner.net_address)
     }
 }
 
 impl Connection {
     pub fn new(
+        connection_id: ConnectionId,
         net_address: SocketAddr,
         core_service: DynRpcService,
         manager: Manager,
@@ -67,7 +72,13 @@ impl Connection {
     ) -> Self {
         let (shutdown_sender, mut shutdown_receiver) = oneshot_channel();
         let connection = Self {
-            inner: Arc::new(Inner { net_address, outgoing_route, manager, shutdown_signal: Mutex::new(Some(shutdown_sender)) }),
+            inner: Arc::new(Inner {
+                connection_id,
+                net_address,
+                outgoing_route,
+                manager,
+                shutdown_signal: Mutex::new(Some(shutdown_sender)),
+            }),
         };
         let connection_clone = connection.clone();
         let outgoing_route = connection.inner.outgoing_route.clone();
@@ -150,8 +161,8 @@ impl Connection {
         self.inner.net_address
     }
 
-    pub fn identity(&self) -> SocketAddr {
-        self.inner.net_address
+    pub fn identity(&self) -> ConnectionId {
+        self.inner.connection_id
     }
 
     async fn handle_request(request: KaspadRequest, core_service: &DynRpcService) -> GrpcServerResult<KaspadResponse> {

@@ -2357,6 +2357,7 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "triggered",
+ "uuid 1.4.1",
 ]
 
 [[package]]
