@@ -4,6 +4,8 @@ This repository contains the implementation of the Kaspa full-node and related l
 
 ## Getting started
 
+- General prerequisites:
+  - Linux: `sudo apt install libssl-dev pkg-config`
 - Install Protobuf (required for grpc)
   - Linux: `sudo apt install protobuf-compiler libprotobuf-dev`
   - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` dir to `Path`
