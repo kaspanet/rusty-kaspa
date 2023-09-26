@@ -225,7 +225,6 @@ impl MiningManager {
             mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan)?
         {
             let unorphaned_transactions = mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction);
-            mempool.log_stats();
             drop(mempool);
 
             // The capacity used here may be exceeded since accepted unorphaned transaction may themselves unorphan other transactions.
@@ -296,7 +295,6 @@ impl MiningManager {
                     }
                 })
                 .collect::<Vec<_>>();
-            mempool.log_stats();
             drop(mempool);
         }
         accepted_transactions
@@ -388,7 +386,6 @@ impl MiningManager {
                 }
             });
             unorphaned_transactions.extend(txs);
-            mempool.log_stats();
         }
 
         accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
@@ -523,8 +520,6 @@ impl MiningManager {
             1 => debug!("Removed transaction ({}) {}", TxRemovalReason::Expired, expired_low_priority_transactions[0]),
             n => debug!("Removed {} transactions ({}): {}...", n, TxRemovalReason::Expired, expired_low_priority_transactions[0]),
         }
-
-        self.mempool.write().log_stats();
     }
 
     pub fn revalidate_high_priority_transactions(
@@ -696,7 +691,6 @@ impl MiningManager {
                 let _ = transaction_ids_sender.send(valid_ids);
             }
             drop(_swo);
-            mempool.log_stats();
             drop(mempool);
         }
         match accepted + missing_outpoint + invalid {

@@ -12,10 +12,7 @@ use self::{
     tx::Priority,
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
-use kaspa_core::{
-    info,
-    time::{unix_now, Stopwatch},
-};
+use kaspa_core::time::Stopwatch;
 use std::{collections::hash_map::Entry, sync::Arc};
 
 pub(crate) mod check_transaction_standard;
@@ -48,7 +45,6 @@ pub(crate) struct Mempool {
     transaction_pool: TransactionsPool,
     orphan_pool: OrphanPool,
     accepted_transactions: AcceptedTransactions,
-    last_stat_report_time: u64,
     counters: Arc<MiningCounters>,
 }
 
@@ -57,7 +53,7 @@ impl Mempool {
         let transaction_pool = TransactionsPool::new(config.clone());
         let orphan_pool = OrphanPool::new(config.clone());
         let accepted_transactions = AcceptedTransactions::new(config.clone());
-        Self { config, transaction_pool, orphan_pool, accepted_transactions, last_stat_report_time: unix_now(), counters }
+        Self { config, transaction_pool, orphan_pool, accepted_transactions, counters }
     }
 
     pub(crate) fn get_transaction(
@@ -165,20 +161,6 @@ impl Mempool {
             .into_iter()
             .filter(|transaction_id| !(self.transaction_pool.has(transaction_id) || self.orphan_pool.has(transaction_id)));
         self.accepted_transactions.unaccepted(&mut not_in_pools_txs)
-    }
-
-    pub(crate) fn log_stats(&mut self) {
-        const LOG_STATS_REPORT_INTERVAL_MILLISECONDS: u64 = 2000;
-        let now = unix_now();
-        if now >= self.last_stat_report_time + LOG_STATS_REPORT_INTERVAL_MILLISECONDS {
-            info!(
-                "Mempool stats: {} txs, {} orphans, {} accepted",
-                self.transaction_pool.len(),
-                self.orphan_pool.len(),
-                self.accepted_transactions.len()
-            );
-            self.last_stat_report_time = now;
-        }
     }
 }
 

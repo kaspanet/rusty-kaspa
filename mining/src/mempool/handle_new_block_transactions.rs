@@ -47,7 +47,9 @@ impl Mempool {
         self.counters.input_counts.fetch_add(input_counts as u64, Ordering::Relaxed);
         self.counters.output_counts.fetch_add(output_counts as u64, Ordering::Relaxed);
         self.counters.ready_txs_sample.store(self.transaction_pool.ready_transaction_count() as u64, Ordering::Relaxed);
-        self.log_stats();
+        self.counters.txs_sample.store(self.transaction_pool.len() as u64, Ordering::Relaxed);
+        self.counters.orphans_sample.store(self.orphan_pool.len() as u64, Ordering::Relaxed);
+        self.counters.accepted_sample.store(self.accepted_transactions.len() as u64, Ordering::Relaxed);
 
         Ok(unorphaned_transactions)
     }

@@ -19,13 +19,20 @@ pub mod testutils;
 
 pub struct MiningCounters {
     pub creation_time: Instant,
+
+    // Counters
     pub high_priority_tx_counts: AtomicU64,
     pub low_priority_tx_counts: AtomicU64,
     pub block_tx_counts: AtomicU64,
     pub tx_accepted_counts: AtomicU64,
     pub input_counts: AtomicU64,
     pub output_counts: AtomicU64,
+
+    // Samples
     pub ready_txs_sample: AtomicU64,
+    pub txs_sample: AtomicU64,
+    pub orphans_sample: AtomicU64,
+    pub accepted_sample: AtomicU64,
 }
 
 impl Default for MiningCounters {
@@ -39,6 +46,9 @@ impl Default for MiningCounters {
             input_counts: Default::default(),
             output_counts: Default::default(),
             ready_txs_sample: Default::default(),
+            txs_sample: Default::default(),
+            orphans_sample: Default::default(),
+            accepted_sample: Default::default(),
         }
     }
 }
@@ -54,6 +64,9 @@ impl MiningCounters {
             input_counts: self.input_counts.load(Ordering::Relaxed),
             output_counts: self.output_counts.load(Ordering::Relaxed),
             ready_txs_sample: self.ready_txs_sample.load(Ordering::Relaxed),
+            txs_sample: self.txs_sample.load(Ordering::Relaxed),
+            orphans_sample: self.orphans_sample.load(Ordering::Relaxed),
+            accepted_sample: self.accepted_sample.load(Ordering::Relaxed),
         }
     }
 
@@ -79,6 +92,9 @@ pub struct MempoolCountersSnapshot {
     pub input_counts: u64,
     pub output_counts: u64,
     pub ready_txs_sample: u64,
+    pub txs_sample: u64,
+    pub orphans_sample: u64,
+    pub accepted_sample: u64,
 }
 
 impl MempoolCountersSnapshot {
@@ -119,6 +135,9 @@ impl core::ops::Sub for &MempoolCountersSnapshot {
             input_counts: self.input_counts.checked_sub(rhs.input_counts).unwrap_or_default(),
             output_counts: self.output_counts.checked_sub(rhs.output_counts).unwrap_or_default(),
             ready_txs_sample: (self.ready_txs_sample + rhs.ready_txs_sample) / 2,
+            txs_sample: (self.txs_sample + rhs.txs_sample) / 2,
+            orphans_sample: (self.orphans_sample + rhs.orphans_sample) / 2,
+            accepted_sample: (self.accepted_sample + rhs.accepted_sample) / 2,
         }
     }
 }

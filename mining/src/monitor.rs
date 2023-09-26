@@ -61,15 +61,22 @@ impl MiningMonitor {
                 delta.low_priority_tx_counts,
                 delta.tx_accepted_counts,
             );
-            // FIXME: (wip) decide if the log level should be debug and what info should be kept or formulated differently
+            // FIXME: (wip) change the log level to debug and decide what info should be kept or formulated differently
             if tx_script_cache_snapshot != last_tx_script_cache_snapshot {
                 info!(
-                    "UTXOs stats: {} spent, {} created ({} signatures validated, {} cache hits, {:.2} hit ratio)",
+                    "UTXO set stats: {} spent, {} created ({} signatures validated, {} cache hits, {:.2} hit ratio)",
                     delta.input_counts,
                     delta.output_counts,
                     tx_script_cache_delta.insert_counts,
                     tx_script_cache_delta.get_counts,
                     tx_script_cache_delta.hit_ratio()
+                );
+            }
+            // FIXME: change to debug
+            if delta.txs_sample + delta.orphans_sample > 0 {
+                info!(
+                    "Mempool sample: {} ready out of {} txs, {} orphans, {} cached as accepted",
+                    delta.ready_txs_sample, delta.txs_sample, delta.orphans_sample, delta.accepted_sample
                 );
             }
 
