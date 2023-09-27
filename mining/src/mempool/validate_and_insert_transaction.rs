@@ -88,7 +88,7 @@ impl Mempool {
         let has_coinbase_input = transaction.entries.iter().any(|e| e.as_ref().unwrap().is_coinbase);
         let num_extra_outs = transaction.tx.outputs.len() as i64 - transaction.tx.inputs.len() as i64;
         if !has_coinbase_input && num_extra_outs > 2 && transaction.calculated_fee.unwrap() < num_extra_outs as u64 * SOMPI_PER_KASPA {
-            kaspa_core::warn!("Rejected spam tx {} from mempool ({} outputs)", transaction.id(), transaction.tx.outputs.len());
+            kaspa_core::trace!("Rejected spam tx {} from mempool ({} outputs)", transaction.id(), transaction.tx.outputs.len());
             return Err(RuleError::RejectSpamTransaction(transaction.id()));
         }
 
