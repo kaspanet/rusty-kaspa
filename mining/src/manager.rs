@@ -44,6 +44,22 @@ impl MiningManager {
         Self::with_config(config, cache_lifetime)
     }
 
+    pub fn new_with_spam_blocking_option(
+        block_spam_txs: bool,
+        target_time_per_block: u64,
+        relay_non_std_transactions: bool,
+        max_block_mass: u64,
+        cache_lifetime: Option<u64>,
+    ) -> Self {
+        let config = Config::build_default_with_spam_blocking_option(
+            block_spam_txs,
+            target_time_per_block,
+            relay_non_std_transactions,
+            max_block_mass,
+        );
+        Self::with_config(config, cache_lifetime)
+    }
+
     pub(crate) fn with_config(config: Config, cache_lifetime: Option<u64>) -> Self {
         let block_template_builder = BlockTemplateBuilder::new(config.maximum_mass_per_block);
         let mempool = RwLock::new(Mempool::new(config));

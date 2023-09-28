@@ -16,6 +16,7 @@ kaspa-grpc-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-core.workspace = true
 
+uuid.workspace = true
 faster-hex.workspace = true
 async-channel.workspace = true
 parking_lot.workspace = true

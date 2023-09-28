@@ -44,6 +44,9 @@ pub struct RelayTransactionsFlow {
     invs_route: IncomingRoute,
     /// A route for other messages such as Transaction and TransactionNotFound
     msg_route: IncomingRoute,
+
+    /// Track the number of spam txs coming from this peer
+    spam_counter: u64,
 }
 
 #[async_trait::async_trait]
@@ -59,7 +62,7 @@ impl Flow for RelayTransactionsFlow {
 
 impl RelayTransactionsFlow {
     pub fn new(ctx: FlowContext, router: Arc<Router>, invs_route: IncomingRoute, msg_route: IncomingRoute) -> Self {
-        Self { ctx, router, invs_route, msg_route }
+        Self { ctx, router, invs_route, msg_route, spam_counter: 0 }
     }
 
     pub fn invs_channel_size() -> usize {
@@ -190,9 +193,18 @@ impl RelayTransactionsFlow {
                     self.ctx.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await?;
                 }
                 Err(MiningManagerError::MempoolError(err)) => {
-                    if let RuleError::RejectInvalid(_) = err {
-                        // TODO: discuss a banning process
-                        return Err(ProtocolError::MisbehavingPeer(format!("rejected invalid transaction {}", transaction_id)));
+                    match err {
+                        RuleError::RejectInvalid(_) => {
+                            // TODO: discuss a banning process
+                            return Err(ProtocolError::MisbehavingPeer(format!("rejected invalid transaction {}", transaction_id)));
+                        }
+                        RuleError::RejectSpamTransaction(_) => {
+                            self.spam_counter += 1;
+                            if self.spam_counter % 100 == 0 {
+                                kaspa_core::warn!("Peer {} has shared {} spam txs", self.router, self.spam_counter);
+                            }
+                        }
+                        _ => (),
                     }
                     continue;
                 }
