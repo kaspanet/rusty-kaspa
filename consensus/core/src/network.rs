@@ -191,6 +191,10 @@ impl NetworkId {
         self.network_type
     }
 
+    pub fn is_mainnet(&self) -> bool {
+        self.network_type == NetworkType::Mainnet
+    }
+
     pub fn suffix(&self) -> Option<u32> {
         self.suffix
     }

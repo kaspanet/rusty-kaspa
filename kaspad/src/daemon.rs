@@ -275,8 +275,13 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     };
 
     let address_manager = AddressManager::new(config.clone(), meta_db);
-    let mining_manager =
-        MiningManagerProxy::new(Arc::new(MiningManager::new(config.target_time_per_block, false, config.max_block_mass, None)));
+    let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_spam_blocking_option(
+        network.is_mainnet(),
+        config.target_time_per_block,
+        false,
+        config.max_block_mass,
+        None,
+    )));
 
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),

@@ -45,6 +45,7 @@ pub struct RelayTransactionsFlow {
     /// A route for other messages such as Transaction and TransactionNotFound
     msg_route: IncomingRoute,
 
+    /// Track the number of spam txs coming from this peer
     spam_counter: u64,
 }
 
