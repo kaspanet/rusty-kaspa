@@ -200,6 +200,7 @@ pub struct Factory {
     notification_root: Arc<ConsensusNotificationRoot>,
     counters: Arc<ProcessingCounters>,
     tx_script_cache_counters: Arc<TxScriptCacheCounters>,
+    pub fd_total_budget: i32,
 }
 
 impl Factory {
@@ -211,6 +212,7 @@ impl Factory {
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
+        fd_total_budget: i32,
     ) -> Self {
         let mut config = config.clone();
         #[cfg(feature = "devnet-prealloc")]
@@ -218,8 +220,16 @@ impl Factory {
         config.process_genesis = false;
         let management_store = Arc::new(RwLock::new(MultiConsensusManagementStore::new(management_db)));
         management_store.write().set_is_archival_node(config.is_archival);
-        let factory =
-            Self { management_store, config, db_root_dir, db_parallelism, notification_root, counters, tx_script_cache_counters };
+        let factory = Self {
+            management_store,
+            config,
+            db_root_dir,
+            db_parallelism,
+            notification_root,
+            counters,
+            tx_script_cache_counters,
+            fd_total_budget,
+        };
         factory.delete_inactive_consensus_entries();
         factory
     }
@@ -245,7 +255,12 @@ impl ConsensusFactory for Factory {
         };
 
         let dir = self.db_root_dir.join(entry.directory_name.clone());
-        let db = kaspa_database::prelude::ConnBuilder::default().with_db_path(dir).with_parallelism(self.db_parallelism).build();
+        let db = kaspa_database::prelude::ConnBuilder::default()
+            .with_db_path(dir)
+            .with_parallelism(self.db_parallelism)
+            .with_files_limit(200.max(self.fd_total_budget * 70 / 100))
+            .build()
+            .unwrap();
 
         let session_lock = SessionLock::new();
         let consensus = Arc::new(Consensus::new(
@@ -274,7 +289,12 @@ impl ConsensusFactory for Factory {
 
         let entry = self.management_store.write().new_staging_consensus_entry().unwrap();
         let dir = self.db_root_dir.join(entry.directory_name);
-        let db = kaspa_database::prelude::ConnBuilder::default().with_db_path(dir).with_parallelism(self.db_parallelism).build();
+        let db = kaspa_database::prelude::ConnBuilder::default()
+            .with_db_path(dir)
+            .with_parallelism(self.db_parallelism)
+            .with_files_limit(10.max(self.fd_total_budget * 10 / 100))
+            .build()
+            .unwrap();
 
         let session_lock = SessionLock::new();
         let consensus = Arc::new(Consensus::new(

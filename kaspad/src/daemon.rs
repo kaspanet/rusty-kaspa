@@ -159,9 +159,9 @@ impl Runtime {
 /// The instance of the [`RpcCoreService`] needs to be released
 /// (dropped) before the `Core` is shut down.
 ///
-pub fn create_core(args: Args) -> (Arc<Core>, Arc<RpcCoreService>) {
+pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let rt = Runtime::from_args(&args);
-    create_core_with_runtime(&rt, &args)
+    create_core_with_runtime(&rt, &args, fd_total_budget)
 }
 
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
@@ -175,7 +175,7 @@ pub fn create_core(args: Args) -> (Arc<Core>, Arc<RpcCoreService>) {
 /// The instance of the [`RpcCoreService`] needs to be released
 /// (dropped) before the `Core` is shut down.
 ///
-pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> (Arc<Core>, Arc<RpcCoreService>) {
+pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
 
     // Make sure args forms a valid set of properties
@@ -231,8 +231,12 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     }
 
     // DB used for addresses store and for multi-consensus management
-    let mut meta_db =
-        kaspa_database::prelude::ConnBuilder::default().with_files_limit(META_DB_FILE_LIMIT).with_db_path(meta_db_dir.clone()).build();
+    let mut meta_db = kaspa_database::prelude::ConnBuilder::default()
+        .with_files_limit(META_DB_FILE_LIMIT)
+        .with_db_path(meta_db_dir.clone())
+        .with_files_limit(5.max(fd_total_budget * 5 / 100))
+        .build()
+        .unwrap();
 
     // TEMP: upgrade from Alpha version or any version before this one
     if meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
@@ -253,8 +257,12 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
 
         // Reopen the DB
-        meta_db =
-            kaspa_database::prelude::ConnBuilder::default().with_files_limit(META_DB_FILE_LIMIT).with_db_path(meta_db_dir).build();
+        meta_db = kaspa_database::prelude::ConnBuilder::default()
+            .with_files_limit(META_DB_FILE_LIMIT)
+            .with_db_path(meta_db_dir)
+            .with_files_limit(5.max(fd_total_budget * 5 / 100))
+            .build()
+            .unwrap();
     }
 
     if !args.archival && MultiConsensusManagementStore::new(meta_db.clone()).is_archival_node().unwrap() {
@@ -293,6 +301,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         notification_root.clone(),
         processing_counters.clone(),
         tx_script_cache_counters.clone(),
+        fd_total_budget,
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
     let consensus_monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
@@ -317,7 +326,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
             .with_files_limit(UTXO_INDEX_DB_FILE_LIMIT)
             .with_db_path(utxoindex_db_dir)
-            .build();
+            .with_files_limit(10.max(fd_total_budget * 15 / 100))
+            .build()
+            .unwrap();
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
         let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
         Some(index_service)

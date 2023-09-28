@@ -1,21 +1,21 @@
 use std::{
     ops::Deref,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicI32, Ordering},
 };
 use thiserror::Error;
 
-static ACQUIRED_FD: AtomicU64 = AtomicU64::new(0);
+static ACQUIRED_FD: AtomicI32 = AtomicI32::new(0);
 #[derive(Debug)]
-pub struct FDGuard(u64);
+pub struct FDGuard(i32);
 
 impl FDGuard {
-    pub fn acquired(&self) -> u64 {
+    pub fn acquired(&self) -> i32 {
         self.0
     }
 }
 
 impl Deref for FDGuard {
-    type Target = u64;
+    type Target = i32;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -31,11 +31,11 @@ impl Drop for FDGuard {
 #[derive(Copy, Clone, Debug, PartialEq, Error)]
 #[error("Exceeded upper bound, acquired: {acquired}, limit: {limit}")]
 pub struct Error {
-    pub acquired: u64,
-    pub limit: u64,
+    pub acquired: i32,
+    pub limit: i32,
 }
 
-pub fn acquire_guard(value: u64) -> Result<FDGuard, Error> {
+pub fn acquire_guard(value: i32) -> Result<FDGuard, Error> {
     loop {
         let acquired = ACQUIRED_FD.load(Ordering::SeqCst); // todo ordering??
         let limit = get_limit();
@@ -50,16 +50,16 @@ pub fn acquire_guard(value: u64) -> Result<FDGuard, Error> {
     }
 }
 
-pub fn get_limit() -> u64 {
+pub fn get_limit() -> i32 {
     cfg_if::cfg_if! {
         if #[cfg(test)] {
             100
         }
         else if #[cfg(target_os = "windows")] {
-            rlimit::getmaxstdio() as u64
+            rlimit::getmaxstdio() as i32
         }
         else if #[cfg(any(target_os = "macos", target_os = "linux"))] {
-            rlimit::getrlimit(rlimit::Resource::NOFILE).unwrap().0 as u64
+            rlimit::getrlimit(rlimit::Resource::NOFILE).unwrap().0 as i32
         }
         else {
             panic!("unsupported OS")

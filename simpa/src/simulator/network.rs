@@ -53,7 +53,7 @@ impl KaspaNetworkSimulator {
         let secp = secp256k1::Secp256k1::new();
         let mut rng = rand::thread_rng();
         for i in 0..num_miners {
-            let mut builder = ConnBuilder::default();
+            let mut builder = ConnBuilder::default().with_files_limit(200);
             if let Some(rocksdb_files_limit) = rocksdb_files_limit {
                 builder = builder.with_files_limit(rocksdb_files_limit);
             }

@@ -21,6 +21,7 @@ cfg-if.workspace = true
 triggered = "0.1"
 event-listener = "2.5.3"
 ipnet = "2.8.0"
+rlimit = "0.10.1"
 
 [dev-dependencies]
 bincode.workspace = true

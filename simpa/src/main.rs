@@ -169,7 +169,7 @@ fn main() {
         builder = builder.set_archival();
     }
     let config = Arc::new(builder.build());
-    let mut conn_builder = ConnBuilder::default().with_parallelism(num_cpus::get());
+    let mut conn_builder = ConnBuilder::default().with_parallelism(num_cpus::get()).with_files_limit(200);
     if let Some(rocksdb_files_limit) = args.rocksdb_files_limit {
         conn_builder = conn_builder.with_files_limit(rocksdb_files_limit);
     }
@@ -220,7 +220,7 @@ fn main() {
     }
 
     // Benchmark the DAG validation time
-    let (_lifetime2, db2) = create_temp_db!(ConnBuilder::default().with_parallelism(num_cpus::get()));
+    let (_lifetime2, db2) = create_temp_db!(ConnBuilder::default().with_parallelism(num_cpus::get()).with_files_limit(200));
     let (dummy_notification_sender, _) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
     let consensus2 = Arc::new(Consensus::new(
