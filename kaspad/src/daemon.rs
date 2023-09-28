@@ -232,9 +232,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     // DB used for addresses store and for multi-consensus management
     let mut meta_db = kaspa_database::prelude::ConnBuilder::default()
-        .with_files_limit(META_DB_FILE_LIMIT)
         .with_db_path(meta_db_dir.clone())
-        .with_files_limit(5.max(fd_total_budget * 5 / 100))
+        .with_files_limit(META_DB_FILE_LIMIT.max(fd_total_budget * 5 / 100))
         .build()
         .unwrap();
 
@@ -258,9 +257,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
         // Reopen the DB
         meta_db = kaspa_database::prelude::ConnBuilder::default()
-            .with_files_limit(META_DB_FILE_LIMIT)
             .with_db_path(meta_db_dir)
-            .with_files_limit(5.max(fd_total_budget * 5 / 100))
+            .with_files_limit(META_DB_FILE_LIMIT.max(fd_total_budget * 5 / 100))
             .build()
             .unwrap();
     }
@@ -324,9 +322,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
-            .with_files_limit(UTXO_INDEX_DB_FILE_LIMIT)
             .with_db_path(utxoindex_db_dir)
-            .with_files_limit(10.max(fd_total_budget * 15 / 100))
+            .with_files_limit(UTXO_INDEX_DB_FILE_LIMIT.max(fd_total_budget * 15 / 100))
             .build()
             .unwrap();
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
