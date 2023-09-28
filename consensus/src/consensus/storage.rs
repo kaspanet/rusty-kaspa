@@ -160,23 +160,6 @@ impl ConsensusStorage {
         // Virtual stores
         let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(db.clone(), noise(perf_params.utxo_set_cache_size))));
 
-        {
-            let mut overall_entries = 0;
-            let mut overall_bytes = 0;
-            let virtual_read = virtual_stores.read();
-            for (_, entry) in virtual_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()) {
-                overall_entries += 1;
-                overall_bytes += size_of::<kaspa_consensus_core::tx::TransactionOutpoint>()
-                    + 8
-                    + 8
-                    + 1
-                    + size_of::<kaspa_consensus_core::tx::ScriptPublicKeyVersion>()
-                    + 8
-                    + entry.script_public_key.script().len();
-            }
-            kaspa_core::info!("UTXO set has {} entries consuming overall {} bytes", overall_entries, overall_bytes);
-        }
-
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
         relations::init(reachability_relations_store.write().deref_mut());
