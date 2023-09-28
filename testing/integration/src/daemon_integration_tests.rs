@@ -3,12 +3,12 @@ use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspad_lib::args::Args;
 
 use crate::common::daemon::Daemon;
-use kaspa_utils::fd_budget::get_limit;
 use std::time::Duration;
 
 #[tokio::test]
 async fn daemon_sanity_test() {
-    let total_fd_limit = get_limit() / 2 - 128;
+    // let total_fd_limit =  kaspa_utils::fd_budget::get_limit() / 2 - 128;
+    let total_fd_limit = 10;
     let mut kaspad1 = Daemon::new_random(total_fd_limit);
     let rpc_client1 = kaspad1.start().await;
 
@@ -36,7 +36,8 @@ async fn daemon_mining_test() {
         disable_upnp: true, // UPnP registration might take some time and is not needed for this test
         ..Default::default()
     };
-    let total_fd_limit = get_limit() / 2 - 128;
+    // let total_fd_limit = kaspa_utils::fd_budget::get_limit() / 2 - 128;
+    let total_fd_limit = 10;
 
     let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
     let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
