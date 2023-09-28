@@ -9,7 +9,6 @@ use crate::mempool::{
     tx::Priority,
 };
 use kaspa_consensus_core::{
-    api::ConsensusApi,
     tx::MutableTransaction,
     tx::{TransactionId, TransactionOutpoint},
 };
@@ -62,7 +61,7 @@ impl OrphanPool {
 
     pub(crate) fn try_add_orphan(
         &mut self,
-        consensus: &dyn ConsensusApi,
+        virtual_daa_score: u64,
         transaction: MutableTransaction,
         priority: Priority,
     ) -> RuleResult<()> {
@@ -76,7 +75,7 @@ impl OrphanPool {
         self.check_orphan_double_spend(&transaction)?;
         // Make sure there is room in the pool for the new transaction
         self.limit_orphan_pool_size(1)?;
-        self.add_orphan(consensus, transaction, priority)?;
+        self.add_orphan(virtual_daa_score, transaction, priority)?;
         Ok(())
     }
 
@@ -127,9 +126,9 @@ impl OrphanPool {
         Ok(())
     }
 
-    fn add_orphan(&mut self, consensus: &dyn ConsensusApi, transaction: MutableTransaction, priority: Priority) -> RuleResult<()> {
+    fn add_orphan(&mut self, virtual_daa_score: u64, transaction: MutableTransaction, priority: Priority) -> RuleResult<()> {
         let id = transaction.id();
-        let transaction = MempoolTransaction::new(transaction, priority, consensus.get_virtual_daa_score());
+        let transaction = MempoolTransaction::new(transaction, priority, virtual_daa_score);
         // Add all entries in outpoint_owner_id
         for input in transaction.mtx.tx.inputs.iter() {
             self.outpoint_owner_id.insert(input.previous_outpoint, id);

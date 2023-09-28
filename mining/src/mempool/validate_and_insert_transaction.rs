@@ -58,7 +58,7 @@ impl Mempool {
                 if orphan == Orphan::Forbidden {
                     return Err(RuleError::RejectDisallowedOrphan(transaction_id));
                 }
-                self.orphan_pool.try_add_orphan(consensus, transaction, priority)?;
+                self.orphan_pool.try_add_orphan(consensus.get_virtual_daa_score(), transaction, priority)?;
                 return Ok(None);
             }
             Err(err) => {
