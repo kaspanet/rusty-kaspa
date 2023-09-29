@@ -10,3 +10,4 @@ analyzer-target
 .DS_Store
 *.code-workspace
 /setup
+testing/integration/perflogs*
