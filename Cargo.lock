@@ -2459,7 +2459,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-metrics"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "async-trait",
  "borsh",
@@ -2957,7 +2957,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-macros"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "convert_case 0.5.0",
  "proc-macro-error",
