@@ -33,3 +33,7 @@ workflow-core.workspace = true
 workflow-log.workspace = true
 workflow-rpc.workspace = true
 num_cpus.workspace = true
+
+# Adding explicitely the openssl dependency here is needed for a successful build with zigbuild
+# as used in the release deployment in GitHub CI
+openssl = { version = "0.10", features = ["vendored"] }
