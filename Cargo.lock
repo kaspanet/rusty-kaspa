@@ -2031,6 +2031,7 @@ dependencies = [
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-daemon",
+ "kaspa-metrics",
  "kaspa-rpc-core",
  "kaspa-utils",
  "kaspa-wallet-core",
@@ -2456,6 +2457,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-metrics"
+version = "0.1.6"
+dependencies = [
+ "async-trait",
+ "borsh",
+ "futures",
+ "kaspa-rpc-core",
+ "separator",
+ "serde",
+ "thiserror",
+ "workflow-core",
+]
+
+[[package]]
 name = "kaspa-mining"
 version = "0.1.6"
 dependencies = [
@@ -2542,6 +2557,7 @@ dependencies = [
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-daemon",
+ "kaspa-metrics",
  "kaspa-rpc-core",
  "kaspa-wallet-core",
  "nw-sys",

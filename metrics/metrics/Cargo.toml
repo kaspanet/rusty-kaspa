@@ -1,0 +1,23 @@
+[package]
+name = "kaspa-metrics"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+include.workspace = true
+
+[dependencies]
+workflow-core.workspace = true
+thiserror.workspace = true
+kaspa-rpc-core.workspace = true
+async-trait.workspace = true
+
+futures.workspace = true
+
+
+serde.workspace = true
+
+borsh.workspace = true
+
+separator.workspace = true
+

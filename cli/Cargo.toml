@@ -53,6 +53,7 @@ dashmap.workspace = true
 faster-hex.workspace = true
 kaspa-bip32.workspace = true
 # web-sys.workspace = true
+kaspa-metrics.workspace = true
 
 [dependencies.web-sys]
 workspace = true

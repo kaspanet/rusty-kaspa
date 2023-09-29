@@ -45,6 +45,7 @@ downcast.workspace = true
 kaspa-wallet-core.workspace = true
 regex.workspace = true
 kaspa-rpc-core.workspace = true
+kaspa-metrics.workspace = true
 
 [dependencies.web-sys]
 workspace = true

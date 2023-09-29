@@ -52,6 +52,7 @@ members = [
     "utils",
     "rothschild",
     "metrics/perf_monitor",
+    "metrics/metrics",
 ]
 
 [workspace.package]
@@ -120,6 +121,7 @@ kaspa-wrpc-server = { version = "0.1.6", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.1.6", path = "rpc/wrpc/wasm" }
 kaspad = { version = "0.1.6", path = "kaspad" }
 kaspa-perf-monitor = { path = "metrics/perf_monitor" }
+kaspa-metrics = { path = "metrics/metrics" }
 
 # external
 thiserror = "1"
