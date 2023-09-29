@@ -2,8 +2,9 @@ pub mod data;
 pub mod error;
 pub mod result;
 
+pub use data::{Metric, MetricsData, MetricsSnapshot};
+
 use crate::result::Result;
-use data::*;
 use futures::{future::join_all, pin_mut, select, FutureExt, StreamExt};
 use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse};
 use std::{

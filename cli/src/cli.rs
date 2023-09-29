@@ -1,7 +1,7 @@
 use crate::error::Error;
 use crate::helpers::*;
 use crate::imports::*;
-pub use crate::metrics;
+// pub use crate::metrics;
 use crate::modules::miner::Miner;
 use crate::modules::node::Node;
 use crate::notifier::{Notification, Notifier};
@@ -192,6 +192,7 @@ impl KaspaCli {
     }
 
     pub fn register_metrics(self: &Arc<Self>) -> Result<()> {
+        use crate::modules::metrics;
         register_handlers!(self, self.handlers(), [metrics]);
         Ok(())
     }

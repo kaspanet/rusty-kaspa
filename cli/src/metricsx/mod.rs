@@ -1,4 +1,3 @@
-//pub mod data;
 #[allow(clippy::module_inception)]
 pub mod metrics;
 

@@ -18,6 +18,7 @@ pub mod help;
 pub mod history;
 pub mod import;
 pub mod list;
+pub mod metrics;
 pub mod miner;
 pub mod monitor;
 pub mod mute;

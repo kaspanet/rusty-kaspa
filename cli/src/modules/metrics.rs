@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_metrics::{Metrics, MetricsSinkFn};
+use kaspa_metrics::{Metrics as MetricsProcessor, MetricsSinkFn};
 use workflow_core::runtime::is_nw;
 
 #[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
@@ -16,24 +16,24 @@ impl DefaultSettings for MetricsSettings {
     }
 }
 
-pub struct MetricsHandler {
+pub struct Metrics {
     settings: SettingsStore<MetricsSettings>,
     mute: Arc<AtomicBool>,
-    metrics: Arc<Metrics>,
+    metrics: Arc<MetricsProcessor>,
 }
 
-impl Default for MetricsHandler {
+impl Default for Metrics {
     fn default() -> Self {
-        MetricsHandler {
+        Metrics {
             settings: SettingsStore::try_new("metrics").expect("Failed to create miner settings store"),
             mute: Arc::new(AtomicBool::new(true)),
-            metrics: Arc::new(Metrics::default()),
+            metrics: Arc::new(MetricsProcessor::default()),
         }
     }
 }
 
 #[async_trait]
-impl Handler for MetricsHandler {
+impl Handler for Metrics {
     fn verb(&self, _ctx: &Arc<dyn Context>) -> Option<&'static str> {
         Some("metrics")
     }
@@ -66,7 +66,7 @@ impl Handler for MetricsHandler {
     }
 }
 
-impl MetricsHandler {
+impl Metrics {
     pub fn register_sink(&self, target: MetricsSinkFn) {
         self.metrics.register_sink(target);
     }
