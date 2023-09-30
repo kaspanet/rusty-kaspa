@@ -108,11 +108,11 @@ jobs:
           asset_name: "${{ env.asset_name }}"
           asset_content_type: application/zip
 
-  wasm:
+  build-wasm:
     runs-on: ubuntu-latest
     name: Building WASM32 SDK
     steps:
-          - name: Checkout sources
+      - name: Checkout sources
         uses: actions/checkout@v3
 
       - name: Install Protoc
