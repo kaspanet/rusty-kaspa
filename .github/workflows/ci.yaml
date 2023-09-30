@@ -315,3 +315,40 @@ jobs:
 
       - name: Build wasm pack for nodejs
         run: cd wasm && wasm-pack build --target nodejs --out-dir nodejs/kaspa --features full
+
+  build-release:
+    name: Build Ubuntu Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install zig
+        if: runner.os == 'Linux'
+        uses: goto-bus-stop/setup-zig@v2 # needed for cargo-zigbuild
+
+      - name: Build on Linux
+        if: runner.os == 'Linux'
+        # We're using musl to make the binaries statically linked and portable
+        run: |
+          cargo install cargo-zigbuild
+          cargo --verbose zigbuild --bin kaspad --bin simpa --bin rothschild --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version
