@@ -63,6 +63,7 @@ pub struct Config {
 
     #[cfg(feature = "devnet-prealloc")]
     pub initial_utxo_set: Arc<UtxoCollection>,
+    pub upnp: bool,
 }
 
 impl Config {
@@ -88,6 +89,7 @@ impl Config {
 
             #[cfg(feature = "devnet-prealloc")]
             initial_utxo_set: Default::default(),
+            upnp: false,
         }
     }
 

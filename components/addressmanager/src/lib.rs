@@ -2,8 +2,11 @@ mod stores;
 
 extern crate self as address_manager;
 
+use std::net::{IpAddr, SocketAddr};
 use std::{collections::HashSet, sync::Arc};
 
+use igd_next as igd;
+use igd_next::AddPortError;
 use itertools::Itertools;
 use kaspa_consensus_core::config::Config;
 use kaspa_core::{debug, info, time::unix_now, warn};
@@ -11,7 +14,6 @@ use kaspa_database::prelude::{StoreResultExtensions, DB};
 use kaspa_utils::networking::IpAddress;
 use local_ip_address::list_afinet_netifas;
 use parking_lot::Mutex;
-
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
 
 pub use stores::NetAddress;
@@ -41,49 +43,86 @@ impl AddressManager {
     }
 
     fn init_local_addresses(&mut self) {
-        match self.config.externalip {
-            Some(local_net_address) => {
-                // An external IP was passed, we will try to bind that if it's valid
-                if local_net_address.is_publicly_routable() {
-                    info!("External ip {} added to store", local_net_address);
-                    self.local_net_addresses.push(NetAddress { ip: local_net_address, port: self.config.default_p2p_port() });
-                } else {
-                    debug!("Non-publicly routable external ip {} not added to store", local_net_address);
-                }
-            }
-            None => {
-                // If listen_address === 0.0.0.0, bind all interfaces
-                // else, bind whatever was passed as listen address (if routable)
-                let listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
-
-                if listen_address.ip.is_unspecified() {
-                    let network_interfaces = list_afinet_netifas();
-
-                    if let Ok(network_interfaces) = network_interfaces {
-                        for (_, ip) in network_interfaces.iter() {
-                            let curr_ip = IpAddress::new(*ip);
-
-                            // TODO: Add Check IPv4 or IPv6 match from Go code
-                            if curr_ip.is_publicly_routable() {
-                                info!("Publicly routable local address {} added to store", curr_ip);
-                                self.local_net_addresses.push(NetAddress { ip: curr_ip, port: self.config.default_p2p_port() });
-                            } else {
-                                debug!("Non-publicly routable interface address {} not added to store", curr_ip);
-                            }
-                        }
-                    } else {
-                        warn!("Error getting network interfaces: {:?}", network_interfaces);
-                    }
-                } else if listen_address.ip.is_publicly_routable() {
-                    info!("Publicly routable P2P listen address {} added to store", listen_address.ip);
-                    self.local_net_addresses.push(listen_address);
-                } else {
-                    debug!("Non-publicly routable listen address {} not added to store.", listen_address.ip);
-                }
-            }
+        if let Some(net_addr) = self.configured_address() {
+            self.local_net_addresses.push(net_addr);
+        } else {
+            self.add_routable_addresses_from_net_interfaces()
         }
     }
 
+    fn configured_address(&self) -> Option<NetAddress> {
+        match self.config.externalip {
+            // An external IP was passed, we will try to bind that if it's valid
+            Some(local_net_address) if local_net_address.is_publicly_routable() => {
+                info!("External ip {} added to store", local_net_address);
+                Some(NetAddress { ip: local_net_address, port: self.config.default_p2p_port() })
+            }
+            Some(local_net_address) => {
+                info!("Non-publicly routable external ip {} not added to store", local_net_address);
+                None
+            }
+            None if self.config.upnp => {
+                let gateway = igd::search_gateway(Default::default()).ok()?;
+                let ip = IpAddress::new(gateway.get_external_ip().ok()?);
+                info!("Get external ip from gateway using upnp: {ip}");
+                let default_port = self.config.default_p2p_port();
+
+                let normalized_p2p_listen_address = self.config.p2p_listen_address.normalize(default_port);
+                let local_addr = if normalized_p2p_listen_address.ip == IpAddress(IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0))) {
+                    SocketAddr::new(local_ip_address::local_ip().unwrap(), default_port)
+                } else {
+                    normalized_p2p_listen_address.into()
+                };
+
+                match gateway.add_port(igd::PortMappingProtocol::TCP, default_port, local_addr, 0, "Kaspad-rusty") {
+                    Ok(_) => {
+                        info!("Add port mapping to default external port: {ip}:{default_port}");
+                        Some(NetAddress { ip, port: default_port })
+                    }
+                    Err(AddPortError::PortInUse {}) => {
+                        let port = gateway.add_any_port(igd::PortMappingProtocol::TCP, local_addr, 0, "Kaspad-rusty").ok()?;
+                        info!("Add port mapping to random external port: {ip}:{port}");
+                        Some(NetAddress { ip, port })
+                    }
+                    Err(err) => {
+                        warn!("error adding port: {err}");
+                        None
+                    }
+                }
+            }
+            None => None,
+        }
+    }
+    fn add_routable_addresses_from_net_interfaces(&mut self) {
+        // If listen_address === 0.0.0.0, bind all interfaces
+        // else, bind whatever was passed as listen address (if routable)
+        let listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
+
+        if listen_address.ip.is_unspecified() {
+            let network_interfaces = list_afinet_netifas();
+
+            if let Ok(network_interfaces) = network_interfaces {
+                for (_, ip) in network_interfaces.iter() {
+                    let curr_ip = IpAddress::new(*ip);
+
+                    // TODO: Add Check IPv4 or IPv6 match from Go code
+                    if curr_ip.is_publicly_routable() {
+                        info!("Publicly routable local address {} added to store", curr_ip);
+                        self.local_net_addresses.push(NetAddress { ip: curr_ip, port: self.config.default_p2p_port() });
+                    } else {
+                        debug!("Non-publicly routable interface address {} not added to store", curr_ip);
+                    }
+                }
+            } else {
+                warn!("Error getting network interfaces: {:?}", network_interfaces);
+            }
+        } else if listen_address.ip.is_publicly_routable() {
+            info!("Publicly routable P2P listen address {} added to store", listen_address.ip);
+            self.local_net_addresses.push(listen_address);
+        } else {
+            debug!("Non-publicly routable listen address {} not added to store.", listen_address.ip);
+        }
+    }
     pub fn best_local_address(&mut self) -> Option<NetAddress> {
         if self.local_net_addresses.is_empty() {
             None

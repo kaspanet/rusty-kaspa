@@ -63,6 +63,8 @@ pub struct Args {
     pub prealloc_address: Option<String>,
     #[cfg(feature = "devnet-prealloc")]
     pub prealloc_amount: u64,
+
+    pub upnp: bool,
 }
 
 impl Default for Args {
@@ -107,6 +109,8 @@ impl Default for Args {
             prealloc_address: None,
             #[cfg(feature = "devnet-prealloc")]
             prealloc_amount: 1_000_000,
+
+            upnp: false,
         }
     }
 }
@@ -114,6 +118,7 @@ impl Default for Args {
 impl Args {
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
+        config.upnp = self.upnp;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
         config.is_archival = self.archival;
@@ -309,7 +314,7 @@ pub fn cli() -> Command {
             .require_equals(true)
             .value_parser(clap::value_parser!(u64))
             .help("Interval in seconds for performance metrics collection."),
-    );
+    ).arg(arg!(--upnp "Enable upnp"));
 
     #[cfg(feature = "devnet-prealloc")]
     let cmd = cmd
@@ -368,6 +373,7 @@ pub fn parse_args() -> Args {
         prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
         #[cfg(feature = "devnet-prealloc")]
         prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
+        upnp: m.get_one::<bool>("upnp").cloned().unwrap_or(defaults.upnp),
     }
 }
 
