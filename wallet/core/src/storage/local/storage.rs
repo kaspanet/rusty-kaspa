@@ -68,10 +68,11 @@ impl Storage {
     }
 
     pub async fn ensure_dir(&self) -> Result<()> {
-        let file = self.filename();
-        if file.exists() {
+        if self.exists().await? {
             return Ok(());
         }
+
+        let file = self.filename();
 
         if let Some(dir) = file.parent() {
             fs::create_dir_all(dir).await?;
@@ -80,11 +81,11 @@ impl Storage {
     }
 
     pub fn ensure_dir_sync(&self) -> Result<()> {
-        let file = self.filename();
-        if file.exists() {
+        if self.exists_sync()? {
             return Ok(());
         }
 
+        let file = self.filename();
         if let Some(dir) = file.parent() {
             fs::create_dir_all_sync(dir)?;
         }
