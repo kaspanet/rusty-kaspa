@@ -38,6 +38,10 @@ impl DbUtxoMultisetsStore {
         if self.access.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
+        self.set_batch(batch, hash, multiset)
+    }
+
+    pub fn set_batch(&self, batch: &mut WriteBatch, hash: Hash, multiset: MuHash) -> Result<(), StoreError> {
         self.access.write(BatchDbWriter::new(batch), hash, multiset.try_into().expect("multiset is expected to be finalized"))?;
         Ok(())
     }

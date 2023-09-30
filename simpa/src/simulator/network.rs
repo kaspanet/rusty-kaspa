@@ -1,5 +1,6 @@
 use async_channel::unbounded;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
+use kaspa_core::time::unix_now;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
@@ -75,8 +76,14 @@ impl KaspaNetworkSimulator {
 
             let (dummy_notification_sender, _) = unbounded();
             let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-            let consensus =
-                Arc::new(Consensus::new(db, self.config.clone(), Default::default(), notification_root, Default::default()));
+            let consensus = Arc::new(Consensus::new(
+                db,
+                self.config.clone(),
+                Default::default(),
+                notification_root,
+                Default::default(),
+                unix_now(),
+            ));
             let handles = consensus.run_processors();
             let (sk, pk) = secp.generate_keypair(&mut rng);
             let miner_process = Box::new(Miner::new(

@@ -263,7 +263,6 @@ impl UtxoProcessor {
 
                 let kaspa_rpc_core::GetBlockDagInfoResponse { virtual_daa_score, network: server_network_id, .. } = self.rpc().get_block_dag_info().await?;
 
-                let server_network_id = NetworkId::from(server_network_id);
                 let network_id = self.network_id()?;
                 if network_id != server_network_id {
                     return Err(Error::InvalidNetworkType(network_id.to_string(), server_network_id.to_string()));

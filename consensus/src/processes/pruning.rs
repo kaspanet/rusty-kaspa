@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
 use super::reachability::ReachabilityResultExtensions;
 use crate::model::{
@@ -6,12 +6,15 @@ use crate::model::{
     stores::{
         ghostdag::{CompactGhostdagData, GhostdagStoreReader},
         headers::HeaderStoreReader,
+        headers_selected_tip::HeadersSelectedTipStoreReader,
         past_pruning_points::PastPruningPointsStoreReader,
         pruning::PruningPointInfo,
         reachability::ReachabilityStoreReader,
     },
 };
 use kaspa_hashes::Hash;
+use kaspa_utils::option::OptionExtensions;
+use parking_lot::RwLock;
 
 #[derive(Clone)]
 pub struct PruningPointManager<
@@ -19,6 +22,7 @@ pub struct PruningPointManager<
     T: ReachabilityStoreReader,
     U: HeaderStoreReader,
     V: PastPruningPointsStoreReader,
+    W: HeadersSelectedTipStoreReader,
 > {
     pruning_depth: u64,
     finality_depth: u64,
@@ -28,10 +32,16 @@ pub struct PruningPointManager<
     ghostdag_store: Arc<S>,
     headers_store: Arc<U>,
     past_pruning_points_store: Arc<V>,
+    header_selected_tip_store: Arc<RwLock<W>>,
 }
 
-impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V: PastPruningPointsStoreReader>
-    PruningPointManager<S, T, U, V>
+impl<
+        S: GhostdagStoreReader,
+        T: ReachabilityStoreReader,
+        U: HeaderStoreReader,
+        V: PastPruningPointsStoreReader,
+        W: HeadersSelectedTipStoreReader,
+    > PruningPointManager<S, T, U, V, W>
 {
     pub fn new(
         pruning_depth: u64,
@@ -41,6 +51,7 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
         ghostdag_store: Arc<S>,
         headers_store: Arc<U>,
         past_pruning_points_store: Arc<V>,
+        header_selected_tip_store: Arc<RwLock<W>>,
     ) -> Self {
         Self {
             pruning_depth,
@@ -50,6 +61,7 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
             ghostdag_store,
             headers_store,
             past_pruning_points_store,
+            header_selected_tip_store,
         }
     }
 
@@ -168,6 +180,82 @@ impl<S: GhostdagStoreReader, T: ReachabilityStoreReader, U: HeaderStoreReader, V
     fn is_pruning_point_in_pruning_depth(&self, pov_blue_score: u64, pruning_point: Hash) -> bool {
         let pp_bs = self.headers_store.get_blue_score(pruning_point).unwrap();
         pov_blue_score >= pp_bs + self.pruning_depth
+    }
+
+    pub fn is_valid_pruning_point(&self, pp_candidate: Hash, hst: Hash) -> bool {
+        if pp_candidate == self.genesis_hash {
+            return true;
+        }
+        if !self.reachability_service.is_chain_ancestor_of(pp_candidate, hst) {
+            return false;
+        }
+
+        let hst_bs = self.ghostdag_store.get_blue_score(hst).unwrap();
+        self.is_pruning_point_in_pruning_depth(hst_bs, pp_candidate)
+    }
+
+    pub fn are_pruning_points_in_valid_chain(&self, pruning_info: PruningPointInfo, hst: Hash) -> bool {
+        // We want to validate that the past pruning points form a chain to genesis. Since
+        // each pruning point's header doesn't point to the previous pruning point, but to
+        // the pruning point from its POV, we can't just traverse from one pruning point to
+        // the next one by merely relying on the current pruning point header, but instead
+        // we rely on the fact that each pruning point is pointed by another known block or
+        // pruning point.
+        // So in the first stage we go over the selected chain and add to the queue of expected
+        // pruning points all the pruning points from the POV of some chain block. In the second
+        // stage we go over the past pruning points from recent to older, check that it's the head
+        // of the queue (by popping the queue), and add its header pruning point to the queue since
+        // we expect to see it later on the list.
+        // The first stage is important because the most recent pruning point is pointing to a few
+        // pruning points before, so the first few pruning points on the list won't be pointed by
+        // any other pruning point in the list, so we are compelled to check if it's referenced by
+        // the selected chain.
+        let mut expected_pps_queue = VecDeque::new();
+        for current in self.reachability_service.backward_chain_iterator(hst, pruning_info.pruning_point, false) {
+            let current_header = self.headers_store.get_header(current).unwrap();
+            if expected_pps_queue.back().is_none_or(|&&h| h != current_header.pruning_point) {
+                expected_pps_queue.push_back(current_header.pruning_point);
+            }
+        }
+
+        for idx in (0..=pruning_info.index).rev() {
+            let pp = self.past_pruning_points_store.get(idx).unwrap();
+            let pp_header = self.headers_store.get_header(pp).unwrap();
+            let Some(expected_pp) = expected_pps_queue.pop_front() else {
+                // If we have less than expected pruning points.
+                return false;
+            };
+
+            if expected_pp != pp {
+                return false;
+            }
+
+            if idx == 0 {
+                // The 0th pruning point should always be genesis, and no
+                // more pruning points should be expected below it.
+                if !expected_pps_queue.is_empty() || pp != self.genesis_hash {
+                    return false;
+                }
+                break;
+            }
+
+            // Add the pruning point from the POV of the current one if it's
+            // not already added.
+            match expected_pps_queue.back() {
+                Some(last_added_pp) => {
+                    if *last_added_pp != pp_header.pruning_point {
+                        expected_pps_queue.push_back(pp_header.pruning_point);
+                    }
+                }
+                None => {
+                    // expected_pps_queue should always have one block in the queue
+                    // until we reach genesis.
+                    return false;
+                }
+            }
+        }
+
+        true
     }
 }
 

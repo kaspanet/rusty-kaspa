@@ -86,10 +86,10 @@ pub enum Error {
     NetworkTypeConnected,
 
     #[error("{0}")]
-    NetworkType(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
+    NetworkType(#[from] kaspa_consensus_core::network::NetworkTypeError),
 
     #[error("{0}")]
-    NetworkId(#[from] kaspa_consensus_core::networktype::NetworkIdError),
+    NetworkId(#[from] kaspa_consensus_core::network::NetworkIdError),
 
     #[error("The server UTXO index is not enabled")]
     MissingUtxoIndex,
@@ -201,6 +201,21 @@ pub enum Error {
 
     #[error(transparent)]
     ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),
+
+    #[error("Fees::Include or Fees::Exclude are not allowed in sweep transactions")]
+    GeneratorFeesInSweepTransaction,
+
+    #[error("Change address does not match supplied network type")]
+    GeneratorChangeAddressNetworkTypeMismatch,
+
+    #[error("Payment output address does not match supplied network type")]
+    GeneratorPaymentOutputNetworkTypeMismatch,
+
+    #[error("Priority fees can not be included into transactions with multiple outputs")]
+    GeneratorIncludeFeesRequiresOneOutput,
+
+    #[error("Requested transaction is too heavy")]
+    GeneratorTransactionIsTooHeavy,
 }
 
 impl From<Aborted> for Error {

@@ -183,49 +183,43 @@ impl Transaction {
 impl TryFrom<JsValue> for Transaction {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(&js_value) {
-            let version = object.get_u16("version")?;
-            // workflow_log::log_trace!("JsValue->Transaction: version: {version:?}");
-            let lock_time = object.get_u64("lockTime")?;
-            let gas = object.get_u64("gas")?;
-            let payload = object.get_vec_u8("payload")?;
-            let subnetwork_id = object.get_vec_u8("subnetworkId")?;
-            if subnetwork_id.len() != subnets::SUBNETWORK_ID_SIZE {
-                return Err(Error::Custom("subnetworkId must be 20 bytes long".into()));
+        Transaction::try_from(&js_value)
+    }
+}
+
+impl TryFrom<&JsValue> for Transaction {
+    type Error = Error;
+    fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
+        if let Ok(tx) = ref_from_abi!(Transaction, js_value) {
+            Ok(tx)
+        } else if let Some(object) = Object::try_from(js_value) {
+            if let Some(tx) = object.try_get_value("tx")? {
+                Transaction::try_from(&tx)
+            } else {
+                let version = object.get_u16("version")?;
+                let lock_time = object.get_u64("lockTime")?;
+                let gas = object.get_u64("gas")?;
+                let payload = object.get_vec_u8("payload")?;
+                let subnetwork_id = object.get_vec_u8("subnetworkId")?;
+                if subnetwork_id.len() != subnets::SUBNETWORK_ID_SIZE {
+                    return Err(Error::Custom("subnetworkId must be 20 bytes long".into()));
+                }
+                let subnetwork_id: SubnetworkId = subnetwork_id
+                    .as_slice()
+                    .try_into()
+                    .map_err(|err| Error::Custom(format!("`subnetworkId` property error: `{err}`")))?;
+                let inputs = object
+                    .get_vec("inputs")?
+                    .into_iter()
+                    .map(|jsv| jsv.try_into())
+                    .collect::<std::result::Result<Vec<TransactionInput>, Error>>()?;
+                let outputs: Vec<TransactionOutput> = object
+                    .get_vec("outputs")?
+                    .into_iter()
+                    .map(|jsv| jsv.try_into())
+                    .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
+                Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload)
             }
-            let subnetwork_id: SubnetworkId =
-                subnetwork_id.as_slice().try_into().map_err(|err| Error::Custom(format!("`subnetworkId` property error: `{err}`")))?;
-            // workflow_log::log_trace!("JsValue->Transaction: subnetwork_id: {subnetwork_id:?}");
-            let inputs = object
-                .get_vec("inputs")?
-                .into_iter()
-                .map(|jsv| jsv.try_into())
-                .collect::<std::result::Result<Vec<TransactionInput>, Error>>()?;
-            // workflow_log::log_trace!("JsValue->Transaction: inputs.len(): {:?}", inputs.len());
-            // let jsv_outputs = object.get("outputs")?;
-            // let outputs: Vec<TransactionOutput> = if !jsv_outputs.is_array() {
-            //     let outputs: PaymentOutputs = jsv_outputs.try_into()?;
-            //     outputs.into()
-            // } else {
-            //     object
-            //         .get_vec("outputs")?
-            //         .into_iter()
-            //         .map(|jsv| {
-            //             // workflow_log::log_trace!("JsValue->Transaction: output : {jsv:?}");
-            //             jsv.try_into()
-            //         })
-            //         .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?
-            //     };
-            let outputs: Vec<TransactionOutput> = object
-                .get_vec("outputs")?
-                .into_iter()
-                .map(|jsv| {
-                    // workflow_log::log_trace!("JsValue->Transaction: output : {jsv:?}");
-                    jsv.try_into()
-                })
-                .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
-            // workflow_log::log_trace!("JsValue->Transaction: outputs: {outputs:?}");
-            Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload)
         } else {
             Err("Transaction must be an object".into())
         }

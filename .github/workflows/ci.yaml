@@ -63,11 +63,15 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Run cargo build with devnet-prealloc feature
+        run: cargo build --features devnet-prealloc --workspace
+        
       - name: Run cargo test regular features
         run: cargo test --workspace
 
       - name: Run cargo test on kaspa-hashes without asm
         run: cargo test -p kaspa-hashes --features=no-asm --benches
+
 
   # test-release:
   #   name: Test Suite Release

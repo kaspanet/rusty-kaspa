@@ -51,8 +51,8 @@ pub enum Error {
     #[error("account '{0}' not found")]
     AccountNotFound(String),
 
-    #[error("ambigious selection, pattern '{0}' matches too many accounts, please be more specific")]
-    AmbigiousAccount(String),
+    #[error("ambiguous selection, pattern '{0}' matches too many accounts, please be more specific")]
+    AmbiguousAccount(String),
 
     #[error("please create a wallet")]
     WalletDoesNotExist,
@@ -109,7 +109,7 @@ pub enum Error {
     Dom(#[from] workflow_dom::error::Error),
 
     #[error(transparent)]
-    NetworkId(#[from] kaspa_consensus_core::networktype::NetworkIdError),
+    NetworkId(#[from] kaspa_consensus_core::network::NetworkIdError),
 
     #[error(transparent)]
     Bip32(#[from] kaspa_bip32::Error),

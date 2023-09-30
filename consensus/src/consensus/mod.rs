@@ -4,6 +4,9 @@ pub mod services;
 pub mod storage;
 pub mod test_consensus;
 
+#[cfg(feature = "devnet-prealloc")]
+mod utxo_set_override;
+
 use crate::{
     config::Config,
     errors::{BlockProcessResult, RuleError},
@@ -63,6 +66,7 @@ use crossbeam_channel::{
 };
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
+
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -108,6 +112,9 @@ pub struct Consensus {
 
     // Config
     config: Arc<Config>,
+
+    // Other
+    creation_timestamp: u64,
 }
 
 impl Deref for Consensus {
@@ -125,6 +132,7 @@ impl Consensus {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        creation_timestamp: u64,
     ) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
@@ -259,6 +267,7 @@ impl Consensus {
             notification_root,
             counters,
             config,
+            creation_timestamp,
         }
     }
 
@@ -512,6 +521,20 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.import_pruning_point_utxo_set(new_pruning_point, imported_utxo_multiset)
     }
 
+    fn validate_pruning_points(&self) -> ConsensusResult<()> {
+        let hst = self.storage.headers_selected_tip_store.read().get().unwrap().hash;
+        let pp_info = self.pruning_point_store.read().get().unwrap();
+        if !self.services.pruning_point_manager.is_valid_pruning_point(pp_info.pruning_point, hst) {
+            return Err(ConsensusError::General("invalid pruning point candidate"));
+        }
+
+        if !self.services.pruning_point_manager.are_pruning_points_in_valid_chain(pp_info, hst) {
+            return Err(ConsensusError::General("past pruning points do not form a valid chain"));
+        }
+
+        Ok(())
+    }
+
     fn header_exists(&self, hash: Hash) -> bool {
         match self.statuses_store.read().get(hash).unwrap_option() {
             Some(status) => status.has_block_header(),
@@ -616,7 +639,13 @@ impl ConsensusApi for Consensus {
             Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
             _ => {}
         };
-        Ok((&*self.ghostdag_primary_store.get_data(hash).unwrap()).into())
+        // Usually a valid status indicates the existence of GHOSTDAG data, however
+        // we take the less strict policy of not panicking in this case since some edge cases
+        // related to pruning might occur yet they do not indicate a logical bug
+        let Some(ghostdag) = self.ghostdag_primary_store.get_data(hash).unwrap_option() else {
+            return Err(ConsensusError::MissingData(hash));
+        };
+        Ok((&*ghostdag).into())
     }
 
     fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
@@ -717,5 +746,18 @@ impl ConsensusApi for Consensus {
                 self.estimate_network_hashes_per_second_impl(&virtual_state.ghostdag_data, window_size)
             }
         }
+    }
+
+    fn are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
+        self.virtual_processor.are_pruning_points_violating_finality(pp_list)
+    }
+
+    fn creation_timestamp(&self) -> u64 {
+        self.creation_timestamp
+    }
+
+    fn finality_point(&self) -> Hash {
+        self.virtual_processor
+            .virtual_finality_point(&self.virtual_stores.read().state.get().unwrap().ghostdag_data, self.pruning_point())
     }
 }
