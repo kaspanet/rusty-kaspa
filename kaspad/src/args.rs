@@ -64,7 +64,7 @@ pub struct Args {
     #[cfg(feature = "devnet-prealloc")]
     pub prealloc_amount: u64,
 
-    pub upnp: bool,
+    pub disable_upnp: bool,
 }
 
 impl Default for Args {
@@ -110,7 +110,7 @@ impl Default for Args {
             #[cfg(feature = "devnet-prealloc")]
             prealloc_amount: 1_000_000,
 
-            upnp: false,
+            disable_upnp: false,
         }
     }
 }
@@ -118,7 +118,7 @@ impl Default for Args {
 impl Args {
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
-        config.upnp = self.upnp;
+        config.disable_upnp = self.disable_upnp;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
         config.is_archival = self.archival;
@@ -307,14 +307,15 @@ pub fn cli() -> Command {
                 .value_parser(clap::value_parser!(IpAddress))
                 .help("Add an ip to the list of local addresses we claim to listen on to peers"),
         )
-    .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
-    .arg(
-        Arg::new("perf-metrics-interval-sec")
-            .long("perf-metrics-interval-sec")
-            .require_equals(true)
-            .value_parser(clap::value_parser!(u64))
-            .help("Interval in seconds for performance metrics collection."),
-    ).arg(arg!(--upnp "Enable upnp"));
+        .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
+        .arg(
+            Arg::new("perf-metrics-interval-sec")
+                .long("perf-metrics-interval-sec")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u64))
+                .help("Interval in seconds for performance metrics collection."),
+        )
+        .arg(arg!(--"disable-upnp" "Disable upnp"));
 
     #[cfg(feature = "devnet-prealloc")]
     let cmd = cmd
@@ -373,7 +374,7 @@ pub fn parse_args() -> Args {
         prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
         #[cfg(feature = "devnet-prealloc")]
         prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
-        upnp: m.get_one::<bool>("upnp").cloned().unwrap_or(defaults.upnp),
+        disable_upnp: m.get_one::<bool>("disable-upnp").cloned().unwrap_or(defaults.disable_upnp),
     }
 }
 

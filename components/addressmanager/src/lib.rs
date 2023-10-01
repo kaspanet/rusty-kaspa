@@ -61,10 +61,15 @@ impl AddressManager {
                 info!("Non-publicly routable external ip {} not added to store", local_net_address);
                 None
             }
-            None if self.config.upnp => {
+            None if !self.config.disable_upnp => {
                 let gateway = igd::search_gateway(Default::default()).ok()?;
                 let ip = IpAddress::new(gateway.get_external_ip().ok()?);
+                if !ip.is_publicly_routable() {
+                    info!("Non-publicly routable external ip from gateway using upnp {} not added to store", ip);
+                    return None;
+                }
                 info!("Get external ip from gateway using upnp: {ip}");
+
                 let default_port = self.config.default_p2p_port();
 
                 let normalized_p2p_listen_address = self.config.p2p_listen_address.normalize(default_port);
