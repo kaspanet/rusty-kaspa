@@ -62,7 +62,6 @@ impl Display for Connection {
 
 impl Connection {
     pub fn new(
-        connection_id: ConnectionId,
         net_address: SocketAddr,
         core_service: DynRpcService,
         manager: Manager,
@@ -73,7 +72,7 @@ impl Connection {
         let (shutdown_sender, mut shutdown_receiver) = oneshot_channel();
         let connection = Self {
             inner: Arc::new(Inner {
-                connection_id,
+                connection_id: Uuid::new_v4(),
                 net_address,
                 outgoing_route,
                 manager,
