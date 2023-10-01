@@ -99,7 +99,7 @@ jobs:
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
       - name: Upload release asset
-        uses: shogo82148/actions-upload-release-asset@v1
+        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -183,7 +183,7 @@ jobs:
           echo "asset_name_web=${asset_name_web}" >> $GITHUB_ENV
 
       - name: Upload WASM32 NODEJS SDK
-        uses: shogo82148/actions-upload-release-asset@v1
+        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -193,7 +193,7 @@ jobs:
           asset_content_type: application/zip
 
       - name: Upload WASM WEB SDK
-        uses: shogo82148/actions-upload-release-asset@v1
+        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
