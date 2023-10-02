@@ -24,7 +24,7 @@ impl Legacy {
         let id = AccountId::from_legacy(&prv_key_data_id, &data);
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
-        let storage::account::Legacy { xpub_keys } = data;
+        let storage::account::Legacy { xpub_keys, .. } = data;
 
         let address_derivation_indexes = meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or_default();
 
@@ -65,7 +65,7 @@ impl Account for Legacy {
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
 
-        let legacy = storage::Legacy { xpub_keys: self.xpub_keys.clone() };
+        let legacy = storage::Legacy::new(self.xpub_keys.clone());
 
         let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Legacy(legacy));
 

@@ -210,7 +210,7 @@ struct Inner {
     // Utxo Context
     utxo_context: Option<UtxoContext>,
     // Event multiplexer
-    multiplexer: Option<Multiplexer<Events>>,
+    multiplexer: Option<Multiplexer<Box<Events>>>,
     // typically a number of keys required to sign the transaction
     sig_op_count: u8,
     // number of minimum signatures required to sign the transaction
@@ -359,7 +359,7 @@ impl Generator {
     }
 
     /// Core [`Multiplexer<Events>`] (if available)
-    pub fn multiplexer(&self) -> &Option<Multiplexer<Events>> {
+    pub fn multiplexer(&self) -> &Option<Multiplexer<Box<Events>>> {
         &self.inner.multiplexer
     }
 

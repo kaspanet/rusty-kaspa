@@ -313,7 +313,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
             transaction.try_sign()?;
             transaction.log().await?;
-            let id = transaction.try_submit(self.wallet().rpc()).await?;
+            let id = transaction.try_submit(&self.wallet().rpc_api()).await?;
             ids.push(id);
             yield_executor().await;
         }
@@ -347,7 +347,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
             transaction.try_sign()?;
             transaction.log().await?;
-            let id = transaction.try_submit(self.wallet().rpc()).await?;
+            let id = transaction.try_submit(&self.wallet().rpc_api()).await?;
             ids.push(id);
             yield_executor().await;
         }
@@ -426,7 +426,7 @@ pub trait DerivationCapableAccount: Account {
             // ----
 
             let addresses = keypairs.iter().map(|(address, _)| address.clone()).collect::<Vec<_>>();
-            let utxos = self.wallet().rpc().get_utxos_by_addresses(addresses).await?;
+            let utxos = self.wallet().rpc_api().get_utxos_by_addresses(addresses).await?;
             let balance = utxos.iter().map(|utxo| utxo.utxo_entry.amount).sum::<u64>();
             if balance > 0 {
                 aggregate_balance += balance;
@@ -453,7 +453,7 @@ pub trait DerivationCapableAccount: Account {
                     let mut stream = generator.stream();
                     while let Some(transaction) = stream.try_next().await? {
                         transaction.try_sign()?;
-                        let id = transaction.try_submit(self.wallet().rpc()).await?;
+                        let id = transaction.try_submit(&self.wallet().rpc_api()).await?;
                         if let Some(notifier) = notifier.as_ref() {
                             notifier(index, balance, Some(id));
                         }
@@ -483,7 +483,7 @@ pub trait DerivationCapableAccount: Account {
         let address = self.derivation().receive_address_manager().new_address()?;
         self.utxo_context().register_addresses(&[address.clone()]).await?;
 
-        let metadata = self.metadata()?.expect("derivation accounds must provide metadata");
+        let metadata = self.metadata()?.expect("derivation accounts must provide metadata");
         let store = self.wallet().store().as_account_store()?;
         store.update_metadata(&[&metadata]).await?;
 
@@ -494,7 +494,7 @@ pub trait DerivationCapableAccount: Account {
         let address = self.derivation().change_address_manager().new_address()?;
         self.utxo_context().register_addresses(&[address.clone()]).await?;
 
-        let metadata = self.metadata()?.expect("derivation accounds must provide metadata");
+        let metadata = self.metadata()?.expect("derivation accounts must provide metadata");
         let store = self.wallet().store().as_account_store()?;
         store.update_metadata(&[&metadata]).await?;
 
