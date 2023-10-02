@@ -28,6 +28,7 @@ impl Manager {
         // Release the write lock to prevent a deadlock if a previous connection exists and must be closed
         drop(connections_write);
 
+        // A previous connection with the same id is VERY unlikely to occur but just in case, we close it cleanly
         if let Some(previous_connection) = previous_connection {
             previous_connection.close();
             warn!("GRPC: removing connection with duplicate identity: {}", previous_connection.identity());

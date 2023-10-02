@@ -1,36 +1,50 @@
 use crate::{
     error::{GrpcServerError, GrpcServerResult},
     manager::Manager,
+    request_handler::handler_factory::HandlerFactory,
 };
-use kaspa_core::debug;
-use kaspa_grpc_core::protowire::{kaspad_request::Payload, *};
+use kaspa_core::{debug, error, info, trace};
+use kaspa_grpc_core::protowire::{KaspadRequest, KaspadResponse};
 use kaspa_notify::{
-    connection::Connection as ConnectionT,
-    error::Error as NotificationError,
-    listener::ListenerId,
-    notifier::Notifier,
-    scope::{
-        BlockAddedScope, FinalityConflictResolvedScope, FinalityConflictScope, NewBlockTemplateScope,
-        PruningPointUtxoSetOverrideScope, Scope, SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope,
-        VirtualDaaScoreChangedScope,
-    },
-    subscriber::SubscriptionManager,
+    connection::Connection as ConnectionT, error::Error as NotificationError, listener::ListenerId, notifier::Notifier,
 };
-use kaspa_rpc_core::{api::rpc::DynRpcService, Notification};
-use once_cell::unsync::Lazy;
-use parking_lot::Mutex;
-use std::{fmt::Display, io::ErrorKind, net::SocketAddr, sync::Arc};
+use kaspa_rpc_core::{
+    api::{ops::RpcApiOps, rpc::DynRpcService},
+    Notification,
+};
+use parking_lot::{Mutex, RwLock};
+use std::{collections::HashMap, fmt::Display, net::SocketAddr, sync::Arc};
 use tokio::select;
-use tokio::sync::{
-    mpsc::Sender as MpscSender,
-    oneshot::{channel as oneshot_channel, Sender as OneshotSender},
-};
+use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
+use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use tonic::Streaming;
 use uuid::Uuid;
 
-pub type GrpcSender = MpscSender<StatusResult<KaspadResponse>>;
+pub type IncomingRoute = MpscReceiver<KaspadRequest>;
+pub type GrpcNotifier = Notifier<Notification, Connection>;
+pub type GrpcSender = MpscSender<KaspadResponse>;
 pub type StatusResult<T> = Result<T, tonic::Status>;
 pub type ConnectionId = Uuid;
+
+type RequestSender = MpscSender<KaspadRequest>;
+type RoutingMap = HashMap<RpcApiOps, RequestSender>;
+
+#[derive(Debug, Default)]
+struct InnerMutableState {
+    /// Used on connection close to signal the connection receive loop to exit
+    shutdown_signal: Option<OneshotSender<()>>,
+
+    /// Notification listener Id
+    ///
+    /// Registered when handling the first subscription to any notifications
+    listener_id: Option<ListenerId>,
+}
+
+impl InnerMutableState {
+    fn new(shutdown_signal: Option<OneshotSender<()>>) -> Self {
+        Self { shutdown_signal, ..Default::default() }
+    }
+}
 
 #[derive(Debug)]
 struct Inner {
@@ -42,12 +56,24 @@ struct Inner {
     /// The outgoing route for sending messages to this client
     outgoing_route: GrpcSender,
 
+    /// Routing map for mapping messages to RPC op handlers
+    routing_map: RwLock<RoutingMap>,
+
     /// The manager of active connections
     manager: Manager,
 
-    /// Used on connection close to signal the connection receive loop to exit
-    shutdown_signal: Mutex<Option<OneshotSender<()>>>,
+    /// The notifier relaying consensus notifications to connections
+    notifier: Arc<GrpcNotifier>,
+
+    /// Used for managing connection mutable state
+    mutable_state: Mutex<InnerMutableState>,
 }
+
+// impl Drop for Inner {
+//     fn drop(&mut self) {
+//         debug!("GRPC: dropping connection for client {}", self.connection_id);
+//     }
+// }
 
 #[derive(Clone, Debug)]
 pub struct Connection {
@@ -75,78 +101,59 @@ impl Connection {
                 connection_id: Uuid::new_v4(),
                 net_address,
                 outgoing_route,
+                routing_map: Default::default(),
                 manager,
-                shutdown_signal: Mutex::new(Some(shutdown_sender)),
+                notifier: notifier.clone(),
+                mutable_state: Mutex::new(InnerMutableState::new(Some(shutdown_sender))),
             }),
         };
         let connection_clone = connection.clone();
-        let outgoing_route = connection.inner.outgoing_route.clone();
         // Start the connection receive loop
-        debug!("GRPC: Connection receive loop - starting for client {}", connection);
+        debug!("GRPC: Connection starting for client {}", connection);
         tokio::spawn(async move {
-            let listener_id: Lazy<ListenerId, _> = Lazy::new(|| notifier.clone().register_new_listener(connection.clone()));
+            // Do not preallocate some capacity because we do not expect so many different ops to be called
             loop {
                 select! {
                     biased; // We use biased polling so that the shutdown signal is always checked first
 
                     _ = &mut shutdown_receiver => {
-                        debug!("GRPC: Connection receive loop - shutdown signal received, exiting connection receive loop, client-id: {}", connection.identity());
+                        debug!("GRPC: Connection receive loop - shutdown signal received, exiting connection receive loop, client: {}", connection.identity());
                         break;
                     }
 
                     res = incoming_stream.message() => match res {
                         Ok(Some(request)) => {
-                            //trace!("GRPC: request: {:?}, client-id: {}", request, connection.identity());
-
-                            let response = match request.is_subscription() {
-                                true => {
-                                    // Initialize the listener id locally to ensure thread safety
-                                    let listener_id = *listener_id;
-                                    Self::handle_subscription(request, listener_id, &notifier).await
-                                },
-                                false => Self::handle_request(request, &core_service).await,
-                            };
-                            match response {
-                                Ok(response) => {
-                                    match outgoing_route.send(Ok(response)).await {
-                                        Ok(()) => {},
-                                        Err(e) => {
-                                            debug!("GRPC: Connection receive loop - send error {} for client: {}", e, connection);
-                                            break;
-                                        },
-                                    }
-                                }
+                            trace!("GRPC: request: {:?}, client: {}", request, connection.identity());
+                            match connection.route_to_handler(&core_service, request).await {
+                                Ok(()) => {},
                                 Err(e) => {
-                                    debug!("GRPC: Connection receive loop - request handling error {} for client: {}", e, connection);
+                                    debug!("GRPC: Connection receive loop - route error: {} for client: {}", e, connection);
                                     break;
                                 }
                             }
-
                         }
                         Ok(None) => {
-                            debug!("GRPC: Connection receive loop - incoming stream ended from client {}", connection);
+                            info!("GRPC, incoming stream ended from client {}", connection);
                             break;
                         }
-                        Err(err) => {
-                            {
-                                if let Some(io_err) = match_for_io_error(&err) {
-                                    if io_err.kind() == ErrorKind::BrokenPipe {
-                                        debug!("GRPC: Connection receive loop - client {} disconnected, broken pipe", connection);
-                                        break;
-                                    }
-                                }
-                                debug!("GRPC: Connection receive loop - network error: {} from client {}", err, connection);
+                        Err(status) => {
+                            if let Some(err) = match_for_io_error(&status) {
+                                info!("GRPC, network error: {} from client {}", err, connection);
+                            } else {
+                                info!("GRPC, network error: {} from client {}", status, connection);
                             }
                             break;
                         }
                     }
                 }
             }
-            debug!("GRPC: Connection receive loop - terminated for client {}", connection);
-            if let Ok(listener_id) = Lazy::into_value(listener_id) {
-                let _ = notifier.unregister_listener(listener_id);
-            }
+            connection.unregister_listener();
             connection.close();
+            debug!(
+                "GRPC: Connection receive loop - exited, client: {}, client refs: {}",
+                connection,
+                Arc::strong_count(&connection.inner)
+            );
         });
 
         connection_clone
@@ -164,360 +171,62 @@ impl Connection {
         self.inner.connection_id
     }
 
-    async fn handle_request(request: KaspadRequest, core_service: &DynRpcService) -> GrpcServerResult<KaspadResponse> {
-        let mut response: KaspadResponse = if let Some(payload) = request.payload {
-            match payload {
-                Payload::GetMetricsRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_metrics_call(request).await.into(),
-                    Err(err) => GetMetricsResponseMessage::from(err).into(),
-                },
-                Payload::PingRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.ping_call(request).await.into(),
-                    Err(err) => PingResponseMessage::from(err).into(),
-                },
-                Payload::GetCoinSupplyRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_coin_supply_call(request).await.into(),
-                    Err(err) => GetCoinSupplyResponseMessage::from(err).into(),
-                },
-                Payload::GetMempoolEntriesByAddressesRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_mempool_entries_by_addresses_call(request).await.into(),
-                    Err(err) => GetMempoolEntriesByAddressesResponseMessage::from(err).into(),
-                },
-                Payload::GetBalancesByAddressesRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_balances_by_addresses_call(request).await.into(),
-                    Err(err) => GetBalancesByAddressesResponseMessage::from(err).into(),
-                },
-                Payload::GetBalanceByAddressRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_balance_by_address_call(request).await.into(),
-                    Err(err) => GetBalanceByAddressResponseMessage::from(err).into(),
-                },
-                Payload::EstimateNetworkHashesPerSecondRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.estimate_network_hashes_per_second_call(request).await.into(),
-                    Err(err) => EstimateNetworkHashesPerSecondResponseMessage::from(err).into(),
-                },
-                Payload::UnbanRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.unban_call(request).await.into(),
-                    Err(err) => UnbanResponseMessage::from(err).into(),
-                },
-                Payload::BanRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.ban_call(request).await.into(),
-                    Err(err) => BanResponseMessage::from(err).into(),
-                },
-                Payload::GetSinkBlueScoreRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_sink_blue_score_call(request).await.into(),
-                    Err(err) => GetSinkBlueScoreResponseMessage::from(err).into(),
-                },
-                Payload::GetUtxosByAddressesRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_utxos_by_addresses_call(request).await.into(),
-                    Err(err) => GetUtxosByAddressesResponseMessage::from(err).into(),
-                },
-                Payload::GetHeadersRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_headers_call(request).await.into(),
-                    Err(err) => ShutdownResponseMessage::from(err).into(),
-                },
-                Payload::ShutdownRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.shutdown_call(request).await.into(),
-                    Err(err) => ShutdownResponseMessage::from(err).into(),
-                },
-                Payload::GetMempoolEntriesRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_mempool_entries_call(request).await.into(),
-                    Err(err) => GetMempoolEntriesResponseMessage::from(err).into(),
-                },
-                Payload::ResolveFinalityConflictRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.resolve_finality_conflict_call(request).await.into(),
-                    Err(err) => ResolveFinalityConflictResponseMessage::from(err).into(),
-                },
-                Payload::GetBlockDagInfoRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_block_dag_info_call(request).await.into(),
-                    Err(err) => GetBlockDagInfoResponseMessage::from(err).into(),
-                },
-                Payload::GetBlockCountRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_block_count_call(request).await.into(),
-                    Err(err) => GetBlockCountResponseMessage::from(err).into(),
-                },
-                Payload::GetBlocksRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_blocks_call(request).await.into(),
-                    Err(err) => GetBlocksResponseMessage::from(err).into(),
-                },
-                Payload::GetVirtualChainFromBlockRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_virtual_chain_from_block_call(request).await.into(),
-                    Err(err) => GetVirtualChainFromBlockResponseMessage::from(err).into(),
-                },
-                Payload::GetSubnetworkRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_subnetwork_call(request).await.into(),
-                    Err(err) => GetSubnetworkResponseMessage::from(err).into(),
-                },
-                Payload::SubmitTransactionRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.submit_transaction_call(request).await.into(),
-                    Err(err) => SubmitTransactionResponseMessage::from(err).into(),
-                },
-                Payload::AddPeerRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.add_peer_call(request).await.into(),
-                    Err(err) => AddPeerResponseMessage::from(err).into(),
-                },
-                Payload::GetConnectedPeerInfoRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_connected_peer_info_call(request).await.into(),
-                    Err(err) => GetConnectedPeerInfoResponseMessage::from(err).into(),
-                },
-                Payload::GetMempoolEntryRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_mempool_entry_call(request).await.into(),
-                    Err(err) => GetMempoolEntryResponseMessage::from(err).into(),
-                },
-                Payload::GetSelectedTipHashRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_selected_tip_hash_call(request).await.into(),
-                    Err(err) => GetSelectedTipHashResponseMessage::from(err).into(),
-                },
-                Payload::GetPeerAddressesRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_peer_addresses_call(request).await.into(),
-                    Err(err) => GetPeerAddressesResponseMessage::from(err).into(),
-                },
-                Payload::GetCurrentNetworkRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_current_network_call(request).await.into(),
-                    Err(err) => GetCurrentNetworkResponseMessage::from(err).into(),
-                },
-                Payload::SubmitBlockRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.submit_block_call(request).await.into(),
-                    Err(err) => SubmitBlockResponseMessage::from(err).into(),
-                },
-                Payload::GetBlockTemplateRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_block_template_call(request).await.into(),
-                    Err(err) => GetBlockTemplateResponseMessage::from(err).into(),
-                },
-
-                Payload::GetBlockRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_block_call(request).await.into(),
-                    Err(err) => GetBlockResponseMessage::from(err).into(),
-                },
-
-                Payload::GetInfoRequest(ref request) => match request.try_into() {
-                    Ok(request) => core_service.get_info_call(request).await.into(),
-                    Err(err) => GetInfoResponseMessage::from(err).into(),
-                },
-
-                _ => {
-                    return Err(GrpcServerError::InvalidRequestPayload);
-                }
-            }
-        } else {
-            return Err(GrpcServerError::InvalidRequestPayload);
-        };
-        response.id = request.id;
-
-        Ok(response)
+    pub fn notifier(&self) -> Arc<GrpcNotifier> {
+        self.inner.notifier.clone()
     }
 
-    async fn handle_subscription(
-        request: KaspadRequest,
-        listener_id: ListenerId,
-        notifier: &Arc<Notifier<Notification, Connection>>,
-    ) -> GrpcServerResult<KaspadResponse> {
-        let mut response: KaspadResponse = if let Some(payload) = request.payload {
-            match payload {
-                Payload::NotifyBlockAddedRequest(ref request) => match kaspa_rpc_core::NotifyBlockAddedRequest::try_from(request) {
-                    Ok(request) => {
-                        let listener_id = listener_id;
-                        let result = notifier
-                            .clone()
-                            .execute_subscribe_command(listener_id, Scope::BlockAdded(BlockAddedScope::default()), request.command)
-                            .await;
-                        NotifyBlockAddedResponseMessage::from(result).into()
-                    }
-                    Err(err) => NotifyBlockAddedResponseMessage::from(err).into(),
-                },
+    fn register_listener(&self) -> ListenerId {
+        self.inner.notifier.as_ref().register_new_listener(self.clone())
+    }
 
-                Payload::NotifyVirtualChainChangedRequest(ref request) => {
-                    match kaspa_rpc_core::NotifyVirtualChainChangedRequest::try_from(request) {
-                        Ok(request) => {
-                            let listener_id = listener_id;
-                            let result = notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    listener_id,
-                                    Scope::VirtualChainChanged(VirtualChainChangedScope::new(
-                                        request.include_accepted_transaction_ids,
-                                    )),
-                                    request.command,
-                                )
-                                .await;
-                            NotifyVirtualChainChangedResponseMessage::from(result).into()
-                        }
-                        Err(err) => NotifyVirtualChainChangedResponseMessage::from(err).into(),
-                    }
-                }
+    pub fn listener_id(&self) -> ListenerId {
+        *self.inner.mutable_state.lock().listener_id.get_or_insert_with(|| self.register_listener())
+    }
 
-                Payload::NotifyFinalityConflictRequest(ref request) => {
-                    match kaspa_rpc_core::NotifyFinalityConflictRequest::try_from(request) {
-                        Ok(request) => {
-                            let listener_id = listener_id;
-                            let result = notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    listener_id,
-                                    Scope::FinalityConflict(FinalityConflictScope::default()),
-                                    request.command,
-                                )
-                                .await
-                                .and(
-                                    notifier
-                                        .clone()
-                                        .execute_subscribe_command(
-                                            listener_id,
-                                            Scope::FinalityConflictResolved(FinalityConflictResolvedScope::default()),
-                                            request.command,
-                                        )
-                                        .await,
-                                );
-                            NotifyFinalityConflictResponseMessage::from(result).into()
-                        }
-                        Err(err) => NotifyFinalityConflictResponseMessage::from(err).into(),
-                    }
-                }
+    fn unregister_listener(&self) {
+        self.inner.mutable_state.lock().listener_id.take().map(|listener_id| self.inner.notifier.unregister_listener(listener_id));
+    }
 
-                Payload::NotifyUtxosChangedRequest(ref request) => {
-                    match kaspa_rpc_core::NotifyUtxosChangedRequest::try_from(request) {
-                        Ok(request) => {
-                            let listener_id = listener_id;
-                            let result = notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    listener_id,
-                                    Scope::UtxosChanged(UtxosChangedScope::new(request.addresses)),
-                                    request.command,
-                                )
-                                .await;
-                            NotifyUtxosChangedResponseMessage::from(result).into()
-                        }
-                        Err(err) => NotifyUtxosChangedResponseMessage::from(err).into(),
-                    }
-                }
+    pub fn request_channel_size() -> usize {
+        256
+    }
 
-                Payload::NotifySinkBlueScoreChangedRequest(ref request) => {
-                    match kaspa_rpc_core::NotifySinkBlueScoreChangedRequest::try_from(request) {
-                        Ok(request) => {
-                            let listener_id = listener_id;
-                            let result = notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    listener_id,
-                                    Scope::SinkBlueScoreChanged(SinkBlueScoreChangedScope::default()),
-                                    request.command,
-                                )
-                                .await;
-                            NotifySinkBlueScoreChangedResponseMessage::from(result).into()
-                        }
-                        Err(err) => NotifySinkBlueScoreChangedResponseMessage::from(err).into(),
-                    }
-                }
-
-                Payload::NotifyVirtualDaaScoreChangedRequest(ref request) => {
-                    match kaspa_rpc_core::NotifyVirtualDaaScoreChangedRequest::try_from(request) {
-                        Ok(request) => {
-                            let listener_id = listener_id;
-                            let result = notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    listener_id,
-                                    Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope::default()),
-                                    request.command,
-                                )
-                                .await;
-                            NotifyVirtualDaaScoreChangedResponseMessage::from(result).into()
-                        }
-                        Err(err) => NotifyVirtualDaaScoreChangedResponseMessage::from(err).into(),
-                    }
-                }
-
-                Payload::NotifyPruningPointUtxoSetOverrideRequest(ref request) => {
-                    match kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(request) {
-                        Ok(request) => {
-                            let listener_id = listener_id;
-                            let result = notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    listener_id,
-                                    Scope::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideScope::default()),
-                                    request.command,
-                                )
-                                .await;
-                            NotifyPruningPointUtxoSetOverrideResponseMessage::from(result).into()
-                        }
-                        Err(err) => NotifyPruningPointUtxoSetOverrideResponseMessage::from(err).into(),
-                    }
-                }
-
-                Payload::NotifyNewBlockTemplateRequest(ref request) => {
-                    match kaspa_rpc_core::NotifyNewBlockTemplateRequest::try_from(request) {
-                        Ok(request) => {
-                            let listener_id = listener_id;
-                            let result = notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    listener_id,
-                                    Scope::NewBlockTemplate(NewBlockTemplateScope::default()),
-                                    request.command,
-                                )
-                                .await;
-                            NotifyNewBlockTemplateResponseMessage::from(result).into()
-                        }
-                        Err(err) => NotifyNewBlockTemplateResponseMessage::from(err).into(),
-                    }
-                }
-
-                Payload::StopNotifyingUtxosChangedRequest(ref request) => {
-                    let notify_request = NotifyUtxosChangedRequestMessage::from(request);
-                    let response: StopNotifyingUtxosChangedResponseMessage =
-                        match kaspa_rpc_core::NotifyUtxosChangedRequest::try_from(&notify_request) {
-                            Ok(request) => {
-                                let listener_id = listener_id;
-                                let result = notifier
-                                    .clone()
-                                    .execute_subscribe_command(
-                                        listener_id,
-                                        Scope::UtxosChanged(UtxosChangedScope::new(request.addresses)),
-                                        request.command,
-                                    )
-                                    .await;
-                                NotifyUtxosChangedResponseMessage::from(result).into()
-                            }
-                            Err(err) => NotifyUtxosChangedResponseMessage::from(err).into(),
-                        };
-                    KaspadResponse { id: 0, payload: Some(kaspad_response::Payload::StopNotifyingUtxosChangedResponse(response)) }
-                }
-
-                Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(ref request) => {
-                    let notify_request = NotifyPruningPointUtxoSetOverrideRequestMessage::from(request);
-                    let response: StopNotifyingPruningPointUtxoSetOverrideResponseMessage =
-                        match kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(&notify_request) {
-                            Ok(request) => {
-                                let listener_id = listener_id;
-                                let result = notifier
-                                    .clone()
-                                    .execute_subscribe_command(
-                                        listener_id,
-                                        Scope::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideScope::default()),
-                                        request.command,
-                                    )
-                                    .await;
-                                NotifyPruningPointUtxoSetOverrideResponseMessage::from(result).into()
-                            }
-                            Err(err) => NotifyPruningPointUtxoSetOverrideResponseMessage::from(err).into(),
-                        };
-                    KaspadResponse {
-                        id: 0,
-                        payload: Some(kaspad_response::Payload::StopNotifyingPruningPointUtxoSetOverrideResponse(response)),
-                    }
-                }
-
-                _ => {
-                    return Err(GrpcServerError::InvalidSubscriptionPayload);
-                }
+    fn subscribe(&self, core_service: &DynRpcService, rpc_op: RpcApiOps) -> RequestSender {
+        let (sender, receiver) = mpsc_channel(Self::request_channel_size());
+        let handler = HandlerFactory::new_handler(rpc_op, self.clone(), core_service, self.inner.notifier.clone(), receiver);
+        handler.launch();
+        match self.inner.routing_map.write().insert(rpc_op, sender.clone()) {
+            Some(_) => {
+                // Overrides an existing route -- panic
+                error!("GRPC, Connection::subscribe overrides an existing value: {:?}, client: {}", rpc_op, self.identity());
+                panic!("GRPC, Tried to replace an existing route");
             }
-        } else {
-            return Err(GrpcServerError::InvalidSubscriptionPayload);
-        };
-        response.id = request.id;
+            None => {
+                trace!("GRPC, Connection::subscribe - {:?} route is registered, client:{:?}", rpc_op, self.identity());
+            }
+        }
+        sender
+    }
 
-        Ok(response)
+    async fn route_to_handler(&self, core_service: &DynRpcService, request: KaspadRequest) -> GrpcServerResult<()> {
+        // TODO: add appropriate error
+        if request.payload.is_none() {
+            debug!("GRPC, Route to handler got empty payload, client: {}", self);
+            return Err(GrpcServerError::InvalidRequestPayload);
+        }
+        let rpc_op = request.payload.as_ref().unwrap().into();
+        let sender = self.inner.routing_map.read().get(&rpc_op).cloned();
+        let sender = sender.unwrap_or_else(|| self.subscribe(core_service, rpc_op));
+        match sender.send(request).await {
+            Ok(_) => Ok(()),
+            Err(_) => Err(GrpcServerError::ClosedHandler(rpc_op)),
+        }
+    }
+
+    /// Enqueues a response to be sent to the client
+    pub async fn enqueue(&self, response: KaspadResponse) -> bool {
+        assert!(response.payload.is_some(), "Kaspad gRPC message should always have a value");
+        self.inner.outgoing_route.send(response).await.is_ok()
     }
 }
 
@@ -552,7 +261,7 @@ pub enum GrpcEncoding {
 
 impl ConnectionT for Connection {
     type Notification = Notification;
-    type Message = Arc<StatusResult<KaspadResponse>>;
+    type Message = Arc<KaspadResponse>;
     type Encoding = GrpcEncoding;
     type Error = super::error::GrpcServerError;
 
@@ -561,7 +270,7 @@ impl ConnectionT for Connection {
     }
 
     fn into_message(notification: &kaspa_rpc_core::Notification, _: &Self::Encoding) -> Self::Message {
-        Arc::new(Ok((notification).into()))
+        Arc::new((notification).into())
     }
 
     fn send(&self, message: Self::Message) -> Result<(), Self::Error> {
@@ -572,18 +281,22 @@ impl ConnectionT for Connection {
     }
 
     fn close(&self) -> bool {
-        if let Some(signal) = self.inner.shutdown_signal.lock().take() {
+        if let Some(signal) = self.inner.mutable_state.lock().shutdown_signal.take() {
             let _ = signal.send(());
         } else {
             // This means the connection was already closed.
             // The typical case is the manager terminating all connections.
             return false;
         }
+
+        // Drop all handler senders
+        self.inner.routing_map.write().clear();
+
         self.inner.manager.unregister(self.clone());
         true
     }
 
     fn is_closed(&self) -> bool {
-        self.inner.shutdown_signal.lock().is_none()
+        self.inner.mutable_state.lock().shutdown_signal.is_none()
     }
 }

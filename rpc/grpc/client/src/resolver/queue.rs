@@ -60,13 +60,13 @@ impl Resolver for QueueResolver {
         let mut pending_calls = self.pending_calls.lock().unwrap();
         let mut pending: Option<Pending> = None;
         if pending_calls.front().is_some() {
-            if pending_calls.front().unwrap().is_matching(&response, response_op.clone()) {
+            if pending_calls.front().unwrap().is_matching(&response, response_op) {
                 pending = pending_calls.pop_front();
             } else {
                 let pending_slice = pending_calls.make_contiguous();
                 // Iterate the queue front to back, so older pendings first
                 for i in 0..pending_slice.len() {
-                    if pending_calls.get(i).unwrap().is_matching(&response, response_op.clone()) {
+                    if pending_calls.get(i).unwrap().is_matching(&response, response_op) {
                         pending = pending_calls.remove(i);
                         break;
                     }

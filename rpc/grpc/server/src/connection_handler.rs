@@ -28,7 +28,7 @@ use std::{
 };
 use tokio::sync::mpsc::channel as mpsc_channel;
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tonic::{codec::CompressionEncoding, transport::Server as TonicServer, Request, Response};
 
 /// A protowire gRPC connections handler.
@@ -106,7 +106,7 @@ impl ConnectionHandler {
         self.running.store(false, Ordering::SeqCst);
 
         // Wait for the internal notifier to stop
-        // Note that this requires the core service it is listening to to have closed it's listener
+        // Note that this requires the core service it is listening to to have closed its listener
         self.notifier().join().await?;
 
         // Close all existing connections
@@ -124,6 +124,7 @@ impl ConnectionHandler {
 impl Rpc for ConnectionHandler {
     type MessageStreamStream = Pin<Box<dyn Stream<Item = Result<KaspadResponse, tonic::Status>> + Send + Sync + 'static>>;
 
+    /// Handle the new arriving client connection
     async fn message_stream(
         &self,
         request: Request<tonic::Streaming<KaspadRequest>>,
@@ -160,7 +161,7 @@ impl Rpc for ConnectionHandler {
         );
         self.manager.register(connection);
 
-        // Return connection stream
-        Ok(Response::new(Box::pin(ReceiverStream::new(outgoing_receiver))))
+        // Give tonic a receiver stream (messages sent to it will be forwarded to the client)
+        Ok(Response::new(Box::pin(ReceiverStream::new(outgoing_receiver).map(Ok)) as Self::MessageStreamStream))
     }
 }
