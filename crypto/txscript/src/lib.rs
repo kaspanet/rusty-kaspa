@@ -506,10 +506,8 @@ mod tests {
     use std::iter::once;
 
     use crate::opcodes::codes::{OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpPushData1, OpTrue};
-    use crate::script_builder::ScriptBuilderError;
 
     use super::*;
-    use kaspa_consensus_core::constants::MAX_TX_IN_SEQUENCE_NUM;
     use kaspa_consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
@@ -914,12 +912,22 @@ mod tests {
             );
         }
     }
+}
 
+#[cfg(test)]
+mod bitcoind_tests {
     // Bitcoind tests
     use serde::Deserialize;
     use std::fs::File;
     use std::io::BufReader;
     use std::path::Path;
+
+    use super::*;
+    use crate::script_builder::ScriptBuilderError;
+    use kaspa_consensus_core::constants::MAX_TX_IN_SEQUENCE_NUM;
+    use kaspa_consensus_core::tx::{
+        PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
+    };
 
     #[derive(PartialEq, Eq, Debug, Clone)]
     enum UnifiedError {
@@ -976,15 +984,17 @@ mod tests {
     impl JsonTestRow {
         fn test_row(&self) -> Result<(), TestError> {
             // Parse test to objects
-            let (ss, spk, expected_result) = match self.clone() {
-                JsonTestRow::Test(ss, spk, _, expected_result) => (ss, spk, expected_result),
-                JsonTestRow::TestWithComment(ss, spk, _, expected_result, _) => (ss, spk, expected_result),
+            let (sig_script, script_pub_key, expected_result) = match self.clone() {
+                JsonTestRow::Test(sig_script, sig_pub_key, _, expected_result) => (sig_script, sig_pub_key, expected_result),
+                JsonTestRow::TestWithComment(sig_script, sig_pub_key, _, expected_result, _) => {
+                    (sig_script, sig_pub_key, expected_result)
+                }
                 JsonTestRow::Comment(_) => {
                     return Ok(());
                 }
             };
 
-            let result = Self::run_test(ss, spk);
+            let result = Self::run_test(sig_script, script_pub_key);
 
             match Self::result_name(result.clone()).contains(&expected_result.as_str()) {
                 true => Ok(()),
@@ -992,10 +1002,10 @@ mod tests {
             }
         }
 
-        fn run_test(ss: String, spk: String) -> Result<(), UnifiedError> {
-            let script_sig = opcodes::parse_short_form(ss).map_err(UnifiedError::ScriptBuilderError)?;
+        fn run_test(sig_script: String, sig_pub_key: String) -> Result<(), UnifiedError> {
+            let script_sig = opcodes::parse_short_form(sig_script).map_err(UnifiedError::ScriptBuilderError)?;
             let script_pub_key =
-                ScriptPublicKey::from_vec(0, opcodes::parse_short_form(spk).map_err(UnifiedError::ScriptBuilderError)?);
+                ScriptPublicKey::from_vec(0, opcodes::parse_short_form(sig_pub_key).map_err(UnifiedError::ScriptBuilderError)?);
 
             // Create transaction
             let tx = create_spending_transaction(script_sig, script_pub_key.clone());
@@ -1018,8 +1028,6 @@ mod tests {
         }
 
         /*
-
-        // Ensure there were no errors when the expected result is OK.
 
         // At this point an error was expected so ensure the result of
         // the execution matches it.

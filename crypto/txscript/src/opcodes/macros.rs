@@ -134,8 +134,7 @@ macro_rules! opcode_list {
                 if let Ok(value) = token.parse::<i64>() {
                     builder.add_i64(value)?;
                 }
-                else if let Ok(value) = token.strip_prefix("0x").and_then(|trimmed| Some(hex::decode(trimmed))).unwrap_or_else(|| Err(hex::FromHexError::InvalidStringLength)) {
-                    //builder.add_data_unchecked(&value);
+                else if let Some(Ok(value)) = token.strip_prefix("0x").and_then(|trimmed| Some(hex::decode(trimmed))) {
                     builder.extend(&value);
                 }
                 else if token.len() >= 2 && token.chars().nth(0) == Some('\'') && token.chars().last() == Some('\'') {
