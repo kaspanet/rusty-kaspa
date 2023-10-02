@@ -4,7 +4,7 @@ use kaspa_core::{
         service::{AsyncService, AsyncServiceFuture},
         tick::{TickReason, TickService},
     },
-    trace,
+    trace, warn,
 };
 use workflow_perf_monitor::{
     cpu::{processor_numbers, ProcessStat},
@@ -48,8 +48,15 @@ impl<TS: AsRef<TickService>> Monitor<TS> {
             let IOStats { read_bytes: disk_io_read_bytes, write_bytes: disk_io_write_bytes, .. } = get_process_io_stats()?;
 
             let time_delta = last_log_time.elapsed();
-            let read_delta = disk_io_read_bytes - last_read;
-            let write_delta = disk_io_write_bytes - last_written;
+
+            let read_delta = disk_io_read_bytes.checked_sub(last_read).unwrap_or_else(|| {
+                warn!("new io read bytes value is less than previous, new: {disk_io_read_bytes}, previous: {last_read}");
+                0
+            });
+            let write_delta = disk_io_write_bytes.checked_sub(last_written).unwrap_or_else(|| {
+                warn!("new io write bytes value is less than previous, new: {disk_io_write_bytes}, previous: {last_written}");
+                0
+            });
 
             let now = Instant::now();
             last_log_time = now;
