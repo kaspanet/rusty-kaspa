@@ -1846,9 +1846,15 @@ version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57e065e90a518ab5fedf79aa1e4b784e10f8e484a834f6bda85c42633a2cb7af"
 dependencies = [
+ "async-trait",
  "attohttpc",
+ "bytes",
+ "futures",
+ "http",
+ "hyper",
  "log",
  "rand 0.8.5",
+ "tokio",
  "url",
  "xmltree",
 ]
@@ -2012,6 +2018,7 @@ dependencies = [
  "serde",
  "statest",
  "statrs",
+ "tokio",
 ]
 
 [[package]]
