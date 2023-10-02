@@ -26,7 +26,7 @@ pub const OP_DATA_MAX_VAL: u8 = self::codes::OpData75;
 /// Minus 1 value
 pub const OP_1_NEGATE_VAL: u8 = 0x81;
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum OpCond {
     False,
     True,
@@ -65,6 +65,8 @@ pub trait OpCodeMetadata: Debug {
     // For push data- check if we can use shorter encoding
     fn check_minimal_data_push(&self) -> Result<(), TxScriptError>;
 
+    fn is_disabled(&self) -> bool;
+    fn always_illegal(&self) -> bool;
     fn is_push_opcode(&self) -> bool;
     fn get_data(&self) -> &[u8];
 
@@ -101,6 +103,31 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
         CODE
     }
 
+    fn is_disabled(&self) -> bool {
+        matches!(
+            CODE,
+            codes::OpCat
+                | codes::OpSubStr
+                | codes::OpLeft
+                | codes::OpRight
+                | codes::OpInvert
+                | codes::OpAnd
+                | codes::OpOr
+                | codes::OpXor
+                | codes::Op2Mul
+                | codes::Op2Div
+                | codes::OpMul
+                | codes::OpDiv
+                | codes::OpMod
+                | codes::OpLShift
+                | codes::OpRShift
+        )
+    }
+
+    fn always_illegal(&self) -> bool {
+        matches!(CODE, codes::OpVerIf | codes::OpVerNotIf)
+    }
+
     fn is_push_opcode(&self) -> bool {
         CODE <= NO_COST_OPCODE
     }
@@ -111,7 +138,7 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
 
     // TODO: add it to opcode specification
     fn is_conditional(&self) -> bool {
-        self.value() >= 0x63 && self.value() >= 0x68
+        self.value() >= 0x63 && self.value() <= 0x68
     }
 
     fn check_minimal_data_push(&self) -> Result<(), TxScriptError> {
@@ -324,6 +351,8 @@ opcode_list! {
     opcode OpIf<0x63, 1>(self, vm) {
         let mut cond = OpCond::Skip;
         if vm.is_executing() {
+            // This code seems identical to pop_bool, but was written this way to preserve
+            // the similar flow of go-kaspad
             if let Some(mut cond_buf) = vm.dstack.pop() {
                 if cond_buf.len() > 1 {
                     return Err(TxScriptError::InvalidState("expected boolean".to_string()));
@@ -419,7 +448,7 @@ opcode_list! {
     opcode Op2Swap<0x72, 1>(self, vm) vm.dstack.swap_items::<2>()
 
     opcode OpIfDup<0x73, 1>(self, vm) {
-        let [result] = vm.dstack.pop_raw()?;
+        let [result] = vm.dstack.peek_raw()?;
         if <Vec<u8> as OpcodeData<bool>>::deserialize(&result)? {
             vm.dstack.push(result);
         }
@@ -437,7 +466,7 @@ opcode_list! {
                 vm.dstack.remove(vm.dstack.len()-2);
                 Ok(())
             }
-            false => Err(TxScriptError::EmptyStack),
+            false => Err(TxScriptError::InvalidStackOperation(2, vm.dstack.len())),
         }
     }
 
@@ -445,25 +474,21 @@ opcode_list! {
 
     opcode OpPick<0x79, 1>(self, vm) {
         let [loc]: [i32; 1] = vm.dstack.pop_items()?;
-        match loc >= 0 {
-            true => {
-                vm.dstack.push(vm.dstack[vm.dstack.len()-(loc as usize)-1].clone());
-                Ok(())
-            }
-            false => Err(TxScriptError::InvalidState("pick at a negative value".to_string()))
+        if  loc < 0 || loc as usize >= vm.dstack.len() {
+            return Err(TxScriptError::InvalidState("pick at an invalid location".to_string()));
         }
+        vm.dstack.push(vm.dstack[vm.dstack.len()-(loc as usize)-1].clone());
+        Ok(())
     }
 
     opcode OpRoll<0x7a, 1>(self, vm) {
         let [loc]: [i32; 1] = vm.dstack.pop_items()?;
-        match loc >= 0 {
-            true => {
-                let item = vm.dstack.remove(vm.dstack.len()-(loc as usize)-1);
-                vm.dstack.push(item);
-                Ok(())
-            }
-            false => Err(TxScriptError::InvalidState("pick at a negative value".to_string()))
+        if  loc < 0 || loc as usize >= vm.dstack.len() {
+            return Err(TxScriptError::InvalidState("roll at an invalid location".to_string()));
         }
+        let item = vm.dstack.remove(vm.dstack.len()-(loc as usize)-1);
+        vm.dstack.push(item);
+        Ok(())
     }
 
     opcode OpRot<0x7b, 1>(self, vm) vm.dstack.rot_items::<1>()
@@ -475,7 +500,7 @@ opcode_list! {
                 vm.dstack.insert(vm.dstack.len()-2, vm.dstack.last().expect("We have at least two items").clone());
                 Ok(())
             }
-            false => Err(TxScriptError::EmptyStack)
+            false => Err(TxScriptError::InvalidStackOperation(2, vm.dstack.len()))
         }
     }
 
@@ -491,7 +516,7 @@ opcode_list! {
                 vm.dstack.push_item(i64::try_from(last.len()).map_err(|e| TxScriptError::NumberTooBig(e.to_string()))?);
                 Ok(())
             },
-            None => Err(TxScriptError::EmptyStack)
+            None => Err(TxScriptError::InvalidStackOperation(1, 0))
         }
     }
 
@@ -511,7 +536,7 @@ opcode_list! {
                 }
                 Ok(())
             }
-            false => Err(TxScriptError::EmptyStack)
+            false => Err(TxScriptError::InvalidStackOperation(2, vm.dstack.len()))
         }
     }
 
@@ -524,7 +549,7 @@ opcode_list! {
                     false => Err(TxScriptError::VerifyError),
                 }
             }
-            false => Err(TxScriptError::EmptyStack)
+            false => Err(TxScriptError::InvalidStackOperation(2, vm.dstack.len()))
         }
     }
 
@@ -950,9 +975,15 @@ mod test {
     use crate::caches::Cache;
     use crate::data_stack::Stack;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
-    use crate::{opcodes, TxScriptEngine, TxScriptError};
+    use crate::{opcodes, pay_to_address_script, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD};
+    use kaspa_addresses::{Address, Prefix, Version};
+    use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
     use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
-    use kaspa_consensus_core::tx::PopulatedTransaction;
+    use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+    use kaspa_consensus_core::tx::{
+        PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+        VerifiableTransaction,
+    };
 
     struct TestCase<'a> {
         init: Stack,
@@ -960,14 +991,37 @@ mod test {
         dstack: Stack,
     }
 
-    fn run_test_cases(tests: Vec<TestCase>) {
+    struct ErrorTestCase<'a> {
+        init: Stack,
+        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>>>,
+        error: TxScriptError,
+    }
+
+    fn run_success_test_cases(tests: Vec<TestCase>) {
         let cache = Cache::new(10_000);
         let mut reused_values = SigHashReusedValues::new();
         for TestCase { init, code, dstack } in tests {
             let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
             vm.dstack = init;
-            code.execute(&mut vm).expect("Script should not fail");
+            code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
             assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
+        }
+    }
+
+    fn run_error_test_cases(tests: Vec<ErrorTestCase>) {
+        let cache = Cache::new(10_000);
+        let mut reused_values = SigHashReusedValues::new();
+        for ErrorTestCase { init, code, error } in tests {
+            let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+            vm.dstack = init.clone();
+            assert_eq!(
+                code.execute(&mut vm)
+                    .expect_err(format!("Opcode {} should have errored (init: {:?})", code.value(), init.clone()).as_str()),
+                error,
+                "Opcode {} returned wrong error {:?}",
+                code.value(),
+                init
+            );
         }
     }
 
@@ -981,6 +1035,7 @@ mod test {
             opcodes::OpInvert::empty().expect("Should accept empty"),
             opcodes::OpAnd::empty().expect("Should accept empty"),
             opcodes::OpOr::empty().expect("Should accept empty"),
+            opcodes::OpXor::empty().expect("Should accept empty"),
             opcodes::Op2Mul::empty().expect("Should accept empty"),
             opcodes::Op2Div::empty().expect("Should accept empty"),
             opcodes::OpMul::empty().expect("Should accept empty"),
@@ -1118,7 +1173,7 @@ mod test {
 
     #[test]
     fn test_push_data() {
-        run_test_cases(vec![
+        run_success_test_cases(vec![
             TestCase { code: opcodes::OpFalse::empty().expect("Should accept empty"), dstack: vec![vec![]], init: Default::default() },
             TestCase {
                 code: opcodes::OpData1::new([1u8; 1].to_vec()).expect("Valid opcode"),
@@ -1515,7 +1570,12 @@ mod test {
 
     #[test]
     fn test_push_num() {
-        run_test_cases(vec![
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::Op1Negate::empty().expect("Should accept empty"),
+                dstack: vec![vec![0x81]],
+                init: Default::default(),
+            },
             TestCase { code: opcodes::Op1::empty().expect("Should accept empty"), dstack: vec![vec![1]], init: Default::default() },
             TestCase { code: opcodes::Op2::empty().expect("Should accept empty"), dstack: vec![vec![2]], init: Default::default() },
             TestCase { code: opcodes::Op3::empty().expect("Should accept empty"), dstack: vec![vec![3]], init: Default::default() },
@@ -1537,7 +1597,7 @@ mod test {
 
     #[test]
     fn test_uniary_num_ops() {
-        run_test_cases(vec![
+        run_success_test_cases(vec![
             TestCase { code: opcodes::Op1Add::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![1]] },
             TestCase { code: opcodes::Op1Add::empty().expect("Should accept empty"), init: vec![vec![1]], dstack: vec![vec![2]] },
             TestCase {
@@ -1592,7 +1652,7 @@ mod test {
 
     #[test]
     fn test_binary_num_ops() {
-        run_test_cases(vec![
+        run_success_test_cases(vec![
             TestCase { code: opcodes::OpAdd::empty().expect("Should accept empty"), init: vec![vec![], vec![]], dstack: vec![vec![]] },
             TestCase {
                 code: opcodes::OpAdd::empty().expect("Should accept empty"),
@@ -1665,6 +1725,1178 @@ mod test {
                 init: vec![vec![0, 1], vec![1]],
                 dstack: vec![vec![0xff, 0]],
             },
+            TestCase {
+                code: opcodes::OpMax::empty().expect("Should accept empty"),
+                init: vec![vec![0, 1], vec![1]],
+                dstack: vec![vec![0, 1]],
+            },
+            TestCase {
+                code: opcodes::OpMax::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![0, 1]],
+                dstack: vec![vec![0, 1]],
+            },
+            TestCase {
+                code: opcodes::OpMax::empty().expect("Should accept empty"),
+                init: vec![vec![0, 0x81], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpMin::empty().expect("Should accept empty"),
+                init: vec![vec![0, 1], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpMin::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![0, 1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpMin::empty().expect("Should accept empty"),
+                init: vec![vec![0, 0x81], vec![1]],
+                dstack: vec![vec![0, 0x81]],
+            },
         ]);
+    }
+
+    #[test]
+    fn test_logical_ops() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpEqual::empty().expect("Should accept empty"),
+                init: vec![vec![0, 1, 1, 0], vec![0, 1, 1, 0]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![0]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpEqual::empty().expect("Should accept empty"),
+                init: vec![vec![0, 1, 1, 0], vec![0, 1, 1, 1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpBoolAnd::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpBoolAnd::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpBoolAnd::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpBoolAnd::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpBoolAnd::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![0x81]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpBoolOr::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpBoolOr::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpBoolOr::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpBoolOr::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpBoolOr::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpBoolOr::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpNumEqual::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpNumEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpNumEqual::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpNumEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpNumNotEqual::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpNumNotEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpNumNotEqual::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpNumNotEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpLessThan::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpLessThan::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpLessThan::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpLessThan::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpLessThan::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpLessThan::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![0x81]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpLessThan::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![0x81]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpLessThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpLessThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpLessThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpLessThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpLessThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpLessThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![0x81]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpLessThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![0x81]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThan::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThan::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThan::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThan::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThan::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThan::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![0x81]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThan::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![0x81]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![0x81]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpGreaterThanOrEqual::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![0x81]],
+                dstack: vec![vec![1]],
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_opdepth() {
+        run_success_test_cases(vec![
+            TestCase { code: opcodes::OpDepth::empty().expect("Should accept empty"), init: vec![], dstack: vec![vec![]] },
+            TestCase {
+                code: opcodes::OpDepth::empty().expect("Should accept empty"),
+                init: vec![vec![]],
+                dstack: vec![vec![], vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpDepth::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3]],
+                dstack: vec![vec![1], vec![2], vec![3], vec![3]],
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_opdrop() {
+        run_success_test_cases(vec![
+            TestCase { code: opcodes::OpDrop::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![] },
+            TestCase {
+                code: opcodes::OpDrop::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpDrop::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3], vec![3]],
+                dstack: vec![vec![1], vec![2], vec![3]],
+            },
+        ]);
+
+        run_error_test_cases(vec![ErrorTestCase {
+            code: opcodes::OpDrop::empty().expect("Should accept empty"),
+            init: vec![],
+            error: TxScriptError::InvalidStackOperation(1, 0),
+        }])
+    }
+
+    #[test]
+    fn test_op2drop() {
+        run_success_test_cases(vec![
+            TestCase { code: opcodes::Op2Drop::empty().expect("Should accept empty"), init: vec![vec![], vec![1]], dstack: vec![] },
+            TestCase {
+                code: opcodes::Op2Drop::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3], vec![3]],
+                dstack: vec![vec![1], vec![2]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::Op2Drop::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(2, 0),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Drop::empty().expect("Should accept empty"),
+                init: vec![vec![]],
+                error: TxScriptError::InvalidStackOperation(2, 1),
+            },
+        ])
+    }
+
+    #[test]
+    fn test_opdup() {
+        run_success_test_cases(vec![
+            TestCase { code: opcodes::OpDup::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![], vec![]] },
+            TestCase {
+                code: opcodes::OpDup::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![], vec![1], vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpDup::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3], vec![3]],
+                dstack: vec![vec![1], vec![2], vec![3], vec![3], vec![3]],
+            },
+        ]);
+
+        run_error_test_cases(vec![ErrorTestCase {
+            code: opcodes::OpDup::empty().expect("Should accept empty"),
+            init: vec![],
+            error: TxScriptError::InvalidStackOperation(1, 0),
+        }])
+    }
+
+    #[test]
+    fn test_op2dup() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::Op2Dup::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![], vec![1], vec![], vec![1]],
+            },
+            TestCase {
+                code: opcodes::Op2Dup::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3]],
+                dstack: vec![vec![1], vec![2], vec![3], vec![2], vec![3]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::Op2Dup::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(2, 0),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Dup::empty().expect("Should accept empty"),
+                init: vec![vec![]],
+                error: TxScriptError::InvalidStackOperation(2, 1),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_op3dup() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::Op3Dup::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![], vec![1]],
+                dstack: vec![vec![0x81], vec![], vec![1], vec![0x81], vec![], vec![1]],
+            },
+            TestCase {
+                code: opcodes::Op3Dup::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3]],
+                dstack: vec![vec![1], vec![2], vec![3], vec![1], vec![2], vec![3]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::Op3Dup::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(3, 0),
+            },
+            ErrorTestCase {
+                code: opcodes::Op3Dup::empty().expect("Should accept empty"),
+                init: vec![vec![]],
+                error: TxScriptError::InvalidStackOperation(3, 1),
+            },
+            ErrorTestCase {
+                code: opcodes::Op3Dup::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                error: TxScriptError::InvalidStackOperation(3, 2),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_opnip() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpNip::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpNip::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpNip::empty().expect("Should accept empty"),
+                init: vec![vec![2], vec![], vec![1]],
+                dstack: vec![vec![2], vec![1]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::OpNip::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(2, 0),
+            },
+            ErrorTestCase {
+                code: opcodes::OpNip::empty().expect("Should accept empty"),
+                init: vec![vec![]],
+                error: TxScriptError::InvalidStackOperation(2, 1),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_opover() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpOver::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                dstack: vec![vec![], vec![1], vec![]],
+            },
+            TestCase {
+                code: opcodes::OpOver::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                dstack: vec![vec![1], vec![], vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpOver::empty().expect("Should accept empty"),
+                init: vec![vec![2], vec![], vec![1]],
+                dstack: vec![vec![2], vec![], vec![1], vec![]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::OpOver::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(2, 0),
+            },
+            ErrorTestCase {
+                code: opcodes::OpOver::empty().expect("Should accept empty"),
+                init: vec![vec![]],
+                error: TxScriptError::InvalidStackOperation(2, 1),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_op2over() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::Op2Over::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![2], vec![], vec![1]],
+                dstack: vec![vec![0x81], vec![2], vec![], vec![1], vec![0x81], vec![2]],
+            },
+            TestCase {
+                code: opcodes::Op2Over::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![0x81], vec![2], vec![], vec![1]],
+                dstack: vec![vec![], vec![0x81], vec![2], vec![], vec![1], vec![0x81], vec![2]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::Op2Over::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(4, 0),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Over::empty().expect("Should accept empty"),
+                init: vec![vec![]],
+                error: TxScriptError::InvalidStackOperation(4, 1),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Over::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                error: TxScriptError::InvalidStackOperation(4, 2),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Over::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![], vec![]],
+                error: TxScriptError::InvalidStackOperation(4, 3),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_oppick() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpPick::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![vec![], vec![]],
+            },
+            TestCase {
+                code: opcodes::OpPick::empty().expect("Should accept empty"),
+                init: vec![vec![2], vec![], vec![1]],
+                dstack: vec![vec![2], vec![], vec![2]],
+            },
+            TestCase {
+                code: opcodes::OpPick::empty().expect("Should accept empty"),
+                init: vec![vec![5], vec![4], vec![3], vec![], vec![2]],
+                dstack: vec![vec![5], vec![4], vec![3], vec![], vec![4]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::OpPick::empty().expect("Should accept empty"),
+                init: vec![vec![5], vec![4], vec![3], vec![], vec![4]],
+                error: TxScriptError::InvalidState("pick at an invalid location".to_string()),
+            },
+            ErrorTestCase {
+                code: opcodes::OpPick::empty().expect("Should accept empty"),
+                init: vec![vec![5], vec![4], vec![3], vec![], vec![0x81]],
+                error: TxScriptError::InvalidState("pick at an invalid location".to_string()),
+            },
+        ])
+    }
+
+    #[test]
+    fn test_oproll() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpRoll::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpRoll::empty().expect("Should accept empty"),
+                init: vec![vec![2], vec![], vec![1]],
+                dstack: vec![vec![], vec![2]],
+            },
+            TestCase {
+                code: opcodes::OpRoll::empty().expect("Should accept empty"),
+                init: vec![vec![5], vec![4], vec![3], vec![], vec![2]],
+                dstack: vec![vec![5], vec![3], vec![], vec![4]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::OpRoll::empty().expect("Should accept empty"),
+                init: vec![vec![5], vec![4], vec![3], vec![], vec![4]],
+                error: TxScriptError::InvalidState("roll at an invalid location".to_string()),
+            },
+            ErrorTestCase {
+                code: opcodes::OpRoll::empty().expect("Should accept empty"),
+                init: vec![vec![5], vec![4], vec![3], vec![], vec![0x81]],
+                error: TxScriptError::InvalidState("roll at an invalid location".to_string()),
+            },
+        ])
+    }
+
+    #[test]
+    fn test_oprot() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpRot::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3]],
+                dstack: vec![vec![2], vec![3], vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpRot::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1], vec![2], vec![3]],
+                dstack: vec![vec![], vec![2], vec![3], vec![1]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::OpRot::empty().expect("Should accept empty"),
+                init: vec![vec![2], vec![3]],
+                error: TxScriptError::InvalidStackOperation(3, 2),
+            },
+            ErrorTestCase {
+                code: opcodes::OpRot::empty().expect("Should accept empty"),
+                init: vec![vec![3]],
+                error: TxScriptError::InvalidStackOperation(3, 1),
+            },
+            ErrorTestCase {
+                code: opcodes::OpRot::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(3, 0),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_op2rot() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::Op2Rot::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3], vec![4], vec![5], vec![6]],
+                dstack: vec![vec![3], vec![4], vec![5], vec![6], vec![1], vec![2]],
+            },
+            TestCase {
+                code: opcodes::Op2Rot::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1], vec![2], vec![3], vec![4], vec![5], vec![6]],
+                dstack: vec![vec![], vec![3], vec![4], vec![5], vec![6], vec![1], vec![2]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::Op2Rot::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3], vec![4], vec![5]],
+                error: TxScriptError::InvalidStackOperation(6, 5),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Rot::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3], vec![4]],
+                error: TxScriptError::InvalidStackOperation(6, 4),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Rot::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3]],
+                error: TxScriptError::InvalidStackOperation(6, 3),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Rot::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2]],
+                error: TxScriptError::InvalidStackOperation(6, 2),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Rot::empty().expect("Should accept empty"),
+                init: vec![vec![1]],
+                error: TxScriptError::InvalidStackOperation(6, 1),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Rot::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(6, 0),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_opswap() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpSwap::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2]],
+                dstack: vec![vec![2], vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpSwap::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1], vec![5]],
+                dstack: vec![vec![], vec![5], vec![1]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::OpSwap::empty().expect("Should accept empty"),
+                init: vec![vec![1]],
+                error: TxScriptError::InvalidStackOperation(2, 1),
+            },
+            ErrorTestCase {
+                code: opcodes::OpSwap::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(2, 0),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_op2swap() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::Op2Swap::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2], vec![3], vec![4]],
+                dstack: vec![vec![3], vec![4], vec![1], vec![2]],
+            },
+            TestCase {
+                code: opcodes::Op2Swap::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1], vec![2], vec![3], vec![4]],
+                dstack: vec![vec![], vec![3], vec![4], vec![1], vec![2]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::Op2Swap::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![2], vec![1]],
+                error: TxScriptError::InvalidStackOperation(4, 3),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Swap::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1]],
+                error: TxScriptError::InvalidStackOperation(4, 2),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Swap::empty().expect("Should accept empty"),
+                init: vec![vec![1]],
+                error: TxScriptError::InvalidStackOperation(4, 1),
+            },
+            ErrorTestCase {
+                code: opcodes::Op2Swap::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(4, 0),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_optuck() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpTuck::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![2]],
+                dstack: vec![vec![2], vec![1], vec![2]],
+            },
+            TestCase {
+                code: opcodes::OpTuck::empty().expect("Should accept empty"),
+                init: vec![vec![3], vec![9], vec![2]],
+                dstack: vec![vec![3], vec![2], vec![9], vec![2]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::OpTuck::empty().expect("Should accept empty"),
+                init: vec![vec![3]],
+                error: TxScriptError::InvalidStackOperation(2, 1),
+            },
+            ErrorTestCase {
+                code: opcodes::OpTuck::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(2, 0),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_opequalverify() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpEqualVerify::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![],
+            },
+            TestCase {
+                code: opcodes::OpEqualVerify::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![1, 0, 1], vec![1, 0, 1]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpNumEqualVerify::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                dstack: vec![],
+            },
+            TestCase {
+                code: opcodes::OpNumEqualVerify::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![0, 0, 1], vec![0, 0, 1]],
+                dstack: vec![vec![]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::OpEqualVerify::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![2, 0, 1], vec![1, 0, 1]],
+                error: TxScriptError::VerifyError,
+            },
+            ErrorTestCase {
+                code: opcodes::OpEqualVerify::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                error: TxScriptError::VerifyError,
+            },
+            ErrorTestCase {
+                code: opcodes::OpNumEqualVerify::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![2, 0, 1], vec![1, 0, 1]],
+                error: TxScriptError::VerifyError,
+            },
+            ErrorTestCase {
+                code: opcodes::OpNumEqualVerify::empty().expect("Should accept empty"),
+                init: vec![vec![1], vec![]],
+                error: TxScriptError::VerifyError,
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_opsize() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpSize::empty().expect("Should accept empty"),
+                init: vec![vec![]],
+                dstack: vec![vec![], vec![]],
+            },
+            TestCase {
+                code: opcodes::OpSize::empty().expect("Should accept empty"),
+                init: vec![vec![5]],
+                dstack: vec![vec![5], vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpSize::empty().expect("Should accept empty"),
+                init: vec![vec![0x80, 1]],
+                dstack: vec![vec![0x80, 1], vec![2]],
+            },
+        ]);
+
+        run_error_test_cases(vec![ErrorTestCase {
+            code: opcodes::OpSize::empty().expect("Should accept empty"),
+            init: vec![],
+            error: TxScriptError::InvalidStackOperation(1, 0),
+        }]);
+    }
+
+    #[test]
+    fn test_opwithin() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpWithin::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![], vec![1]],
+                dstack: vec![vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpWithin::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![], vec![]],
+                dstack: vec![vec![]],
+            },
+            TestCase {
+                code: opcodes::OpWithin::empty().expect("Should accept empty"),
+                init: vec![vec![0x81], vec![0x91], vec![1]],
+                dstack: vec![vec![1]],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::OpWithin::empty().expect("Should accept empty"),
+                init: vec![vec![], vec![]],
+                error: TxScriptError::InvalidStackOperation(3, 2),
+            },
+            ErrorTestCase {
+                code: opcodes::OpWithin::empty().expect("Should accept empty"),
+                init: vec![vec![]],
+                error: TxScriptError::InvalidStackOperation(3, 1),
+            },
+            ErrorTestCase {
+                code: opcodes::OpWithin::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(3, 0),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_opsha256() {
+        // Some test vectors from https://www.dlitz.net/crypto/shad256-test-vectors/
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpSHA256::empty().expect("Should accept empty"),
+                init: vec![vec![]],
+                dstack: vec![b"\xe3\xb0\xc4\x42\x98\xfc\x1c\x14\x9a\xfb\xf4\xc8\x99\x6f\xb9\x24\x27\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55".to_vec()],
+            },
+            TestCase {
+                code: opcodes::OpSHA256::empty().expect("Should accept empty"),
+                init: vec![b"abc".to_vec()],
+                dstack: vec![b"\xba\x78\x16\xbf\x8f\x01\xcf\xea\x41\x41\x40\xde\x5d\xae\x22\x23\xb0\x03\x61\xa3\x96\x17\x7a\x9c\xb4\x10\xff\x61\xf2\x00\x15\xad".to_vec()],
+            },
+            TestCase {
+                code: opcodes::OpSHA256::empty().expect("Should accept empty"),
+                init: vec![b"\xde\x18\x89\x41\xa3\x37\x5d\x3a\x8a\x06\x1e\x67\x57\x6e\x92\x6d".to_vec()],
+                dstack: vec![b"\x06\x7c\x53\x12\x69\x73\x5c\xa7\xf5\x41\xfd\xac\xa8\xf0\xdc\x76\x30\x5d\x3c\xad\xa1\x40\xf8\x93\x72\xa4\x10\xfe\x5e\xff\x6e\x4d".to_vec()],
+            },
+        ]);
+
+        run_error_test_cases(vec![ErrorTestCase {
+            code: opcodes::OpSHA256::empty().expect("Should accept empty"),
+            init: vec![],
+            error: TxScriptError::InvalidStackOperation(1, 0),
+        }]);
+    }
+
+    #[test]
+    fn test_opblake2b() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpBlake2b::empty().expect("Should accept empty"),
+                init: vec![b"".to_vec()],
+                dstack: vec![b"\x0e\x57\x51\xc0\x26\xe5\x43\xb2\xe8\xab\x2e\xb0\x60\x99\xda\xa1\xd1\xe5\xdf\x47\x77\x8f\x77\x87\xfa\xab\x45\xcd\xf1\x2f\xe3\xa8".to_vec()],
+            },
+            TestCase {
+                code: opcodes::OpBlake2b::empty().expect("Should accept empty"),
+                init: vec![b"abc".to_vec()],
+                dstack: vec![b"\xbd\xdd\x81\x3c\x63\x42\x39\x72\x31\x71\xef\x3f\xee\x98\x57\x9b\x94\x96\x4e\x3b\xb1\xcb\x3e\x42\x72\x62\xc8\xc0\x68\xd5\x23\x19".to_vec()],
+            },
+        ]);
+
+        run_error_test_cases(vec![ErrorTestCase {
+            code: opcodes::OpBlake2b::empty().expect("Should accept empty"),
+            init: vec![],
+            error: TxScriptError::InvalidStackOperation(1, 0),
+        }]);
+    }
+
+    #[test]
+    fn test_opnop() {
+        run_success_test_cases(vec![TestCase {
+            code: opcodes::OpNop::empty().expect("Should accept empty"),
+            init: vec![vec![], vec![1], vec![2]],
+            dstack: vec![vec![], vec![1], vec![2]],
+        }]);
+    }
+
+    #[derive(Clone)]
+    struct VerifiableTransactionMock(Transaction);
+
+    impl VerifiableTransaction for VerifiableTransactionMock {
+        fn tx(&self) -> &Transaction {
+            &self.0
+        }
+
+        fn populated_input(&self, _index: usize) -> (&TransactionInput, &UtxoEntry) {
+            unimplemented!()
+        }
+    }
+
+    fn make_mock_transaction(lock_time: u64) -> (VerifiableTransactionMock, TransactionInput, UtxoEntry) {
+        let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
+        let dummy_sig_script = vec![0u8; 65];
+        let dummy_tx_input = TransactionInput::new(dummy_prev_out, dummy_sig_script, 10, 1);
+        let addr_hash = vec![1u8; 32];
+
+        let addr = Address::new(Prefix::Testnet, Version::PubKey, &addr_hash);
+        let dummy_script_public_key = pay_to_address_script(&addr);
+        let dummy_tx_out = TransactionOutput::new(SOMPI_PER_KASPA, dummy_script_public_key);
+
+        let tx = VerifiableTransactionMock(Transaction::new(
+            TX_VERSION + 1,
+            vec![dummy_tx_input.clone()],
+            vec![dummy_tx_out.clone()],
+            lock_time,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            vec![],
+        ));
+        let utxo_entry = UtxoEntry::new(0, ScriptPublicKey::default(), 0, false);
+        (tx, dummy_tx_input, utxo_entry)
+    }
+
+    #[test]
+    fn test_opchecklocktimeverify() {
+        // Everything we need to build a script source
+        let (base_tx, input, utxo_entry) = make_mock_transaction(1);
+
+        let sig_cache = Cache::new(10_000);
+        let mut reused_values = SigHashReusedValues::new();
+
+        let code = opcodes::OpCheckLockTimeVerify::empty().expect("Should accept empty");
+
+        for (tx_lock_time, lock_time, should_fail) in [
+            (1u64, vec![], false),                                // Case 1: 0 = locktime < txLockTime
+            (0x800000, vec![0x7f, 0, 0], false),                  // Case 2: 0 < locktime < txLockTime
+            (0x800000, vec![0x7f, 0, 0, 0, 0, 0, 0, 0, 0], true), // Case 3: locktime too big
+            (LOCK_TIME_THRESHOLD * 2, vec![0x7f, 0, 0, 0], true), // Case 4: lock times are inconsistant
+        ] {
+            let mut tx = base_tx.clone();
+            tx.0.lock_time = tx_lock_time;
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
+                .expect("Shouldn't fail");
+            vm.dstack = vec![lock_time.clone()];
+            match code.execute(&mut vm) {
+                // Message is based on the should_fail values
+                Ok(()) => assert!(
+                    !should_fail,
+                    "Opcode {} must fail (tx_lock_time: {}, lock_time: {:?})",
+                    code.value(),
+                    tx_lock_time,
+                    lock_time
+                ),
+                Err(e) => assert!(
+                    should_fail,
+                    "Opcode {} should not fail. Got {} (tx_lock_time: {}, lock_time: {:?})",
+                    code.value(),
+                    e,
+                    tx_lock_time,
+                    lock_time
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn test_opchecksequencerify() {
+        // Everything we need to build a script source
+        let (tx, base_input, utxo_entry) = make_mock_transaction(1);
+
+        let sig_cache = Cache::new(10_000);
+        let mut reused_values = SigHashReusedValues::new();
+
+        let code = opcodes::OpCheckSequenceVerify::empty().expect("Should accept empty");
+
+        for (tx_sequence, sequence, should_fail) in [
+            (1u64, vec![], false),                                // Case 1: 0 = sequence < tx_sequence
+            (0x800000, vec![0x7f, 0, 0], false),                  // Case 2: 0 < sequence < tx_sequence
+            (0x800000, vec![0x7f, 0, 0, 0, 0, 0, 0, 0, 0], true), // Case 3: sequence too big
+            (1 << 63, vec![0x7f, 0, 0], true),                    // Case 4: disabled
+            ((1 << 63) | 0xffff, vec![0x7f, 0, 0], true),         // Case 5: another disabled
+        ] {
+            let mut input = base_input.clone();
+            input.sequence = tx_sequence;
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
+                .expect("Shouldn't fail");
+            vm.dstack = vec![sequence.clone()];
+            match code.execute(&mut vm) {
+                // Message is based on the should_fail values
+                Ok(()) => {
+                    assert!(!should_fail, "Opcode {} must fail (tx_sequence: {}, sequence: {:?})", code.value(), tx_sequence, sequence)
+                }
+                Err(e) => assert!(
+                    should_fail,
+                    "Opcode {} should not fail. Got {} (tx_sequence: {}, sequence: {:?})",
+                    code.value(),
+                    e,
+                    tx_sequence,
+                    sequence
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn test_opreturn() {
+        run_error_test_cases(vec![ErrorTestCase {
+            code: opcodes::OpReturn::empty().expect("Should accept empty"),
+            init: vec![],
+            error: TxScriptError::EarlyReturn,
+        }]);
+    }
+
+    #[test]
+    fn test_opverify() {
+        run_success_test_cases(vec![
+            TestCase { code: opcodes::OpVerify::empty().expect("Should accept empty"), init: vec![vec![1]], dstack: vec![] },
+            TestCase { code: opcodes::OpVerify::empty().expect("Should accept empty"), init: vec![vec![0x81]], dstack: vec![] },
+            TestCase { code: opcodes::OpVerify::empty().expect("Should accept empty"), init: vec![vec![0x80, 0]], dstack: vec![] },
+            TestCase {
+                code: opcodes::OpVerify::empty().expect("Should accept empty"),
+                init: vec![vec![1, 0, 0, 0, 0]],
+                dstack: vec![],
+            },
+        ]);
+
+        run_error_test_cases(vec![
+            ErrorTestCase {
+                code: opcodes::OpVerify::empty().expect("Should accept empty"),
+                init: vec![vec![0, 0, 0, 0x80]],
+                error: TxScriptError::VerifyError,
+            },
+            ErrorTestCase {
+                code: opcodes::OpVerify::empty().expect("Should accept empty"),
+                init: vec![vec![0, 0, 0, 0]],
+                error: TxScriptError::VerifyError,
+            },
+            ErrorTestCase {
+                code: opcodes::OpVerify::empty().expect("Should accept empty"),
+                init: vec![vec![0x80]],
+                error: TxScriptError::VerifyError,
+            },
+            ErrorTestCase {
+                code: opcodes::OpVerify::empty().expect("Should accept empty"),
+                init: vec![vec![0]],
+                error: TxScriptError::VerifyError,
+            },
+            ErrorTestCase {
+                code: opcodes::OpVerify::empty().expect("Should accept empty"),
+                init: vec![vec![]],
+                error: TxScriptError::VerifyError,
+            },
+            ErrorTestCase {
+                code: opcodes::OpVerify::empty().expect("Should accept empty"),
+                init: vec![],
+                error: TxScriptError::InvalidStackOperation(1, 0),
+            },
+        ])
+    }
+
+    #[test]
+    fn test_opifdup() {
+        run_success_test_cases(vec![
+            TestCase {
+                code: opcodes::OpIfDup::empty().expect("Should accept empty"),
+                init: vec![vec![1]],
+                dstack: vec![vec![1], vec![1]],
+            },
+            TestCase {
+                code: opcodes::OpIfDup::empty().expect("Should accept empty"),
+                init: vec![vec![0x80, 0]],
+                dstack: vec![vec![0x80, 0], vec![0x80, 0]],
+            },
+            TestCase { code: opcodes::OpIfDup::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![]] },
+            TestCase {
+                code: opcodes::OpIfDup::empty().expect("Should accept empty"),
+                init: vec![vec![0x80]],
+                dstack: vec![vec![0x80]],
+            },
+            TestCase {
+                code: opcodes::OpIfDup::empty().expect("Should accept empty"),
+                init: vec![vec![0, 0x80]],
+                dstack: vec![vec![0, 0x80]],
+            },
+            TestCase { code: opcodes::OpIfDup::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![]] },
+        ])
     }
 }

@@ -1,0 +1,5309 @@
+[
+  [
+    "Format is: [[wit..., amount]?, scriptSig, scriptPubKey, flags, expected_scripterror, ... comments]"
+  ],
+  [
+    "It is evaluated as if there was a crediting coinbase transaction with two 0"
+  ],
+  [
+    "pushes as scriptSig, and one output of 0 satoshi and given scriptPubKey,"
+  ],
+  [
+    "followed by a spending transaction which spends this output as only input (and"
+  ],
+  [
+    "correct prevout hash), using the given scriptSig. All nLockTimes are 0, all"
+  ],
+  [
+    "nSequences are max."
+  ],
+  [
+    "",
+    "DEPTH 0 EQUAL",
+    "",
+    "OK",
+    "Test the test: we should have an empty stack after scriptSig evaluation"
+  ],
+  [
+    "  ",
+    "DEPTH 0 EQUAL",
+    "",
+    "OK",
+    "and multiple spaces should not change that."
+  ],
+  [
+    "   ",
+    "DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "    ",
+    "DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1 2",
+    "2 EQUALVERIFY 1 EQUAL",
+    "",
+    "OK",
+    "Similarly whitespace around and between symbols"
+  ],
+  [
+    "1  2",
+    "2 EQUALVERIFY 1 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "  1  2",
+    "2 EQUALVERIFY 1 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1  2  ",
+    "2 EQUALVERIFY 1 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "  1  2  ",
+    "2 EQUALVERIFY 1 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x01 0x00",
+    "",
+    "",
+    "OK",
+    "all bytes are significant, not only the last one"
+  ],
+  [
+    "0x09 0x00000000 0x00000000 0x10",
+    "",
+    "",
+    "OK",
+    "equals zero when cast to Int64"
+  ],
+  [
+    "0x01 0x11",
+    "17 EQUAL",
+    "",
+    "OK",
+    "push 1 byte"
+  ],
+  [
+    "0x02 0x417a",
+    "'Az' EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0x4b 0x417a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+    "'Azzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz' EQUAL",
+    "",
+    "OK",
+    "push 75 bytes"
+  ],
+  [
+    "0x4c 0x4c 0x417a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+    "'Azzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz' EQUAL",
+    "",
+    "OK",
+    "0x4c is OP_PUSHDATA1 (push 76 bytes)"
+  ],
+  [
+    "0x4d 0x0001 0x417a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+    "'Azzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz' EQUAL",
+    "",
+    "OK",
+    "0x4d is OP_PUSHDATA2"
+  ],
+  [
+    "0x4f 1000",
+    "ADD 999 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0x50 ENDIF 1",
+    "",
+    "OK",
+    "0x50 is reserved (ok if not executed)"
+  ],
+  [
+    "0x51",
+    "0x5f ADD 0x60 EQUAL",
+    "",
+    "OK",
+    "0x51 through 0x60 push 1 through 16 onto stack"
+  ],
+  [
+    "1",
+    "NOP",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF VER ELSE 1 ENDIF",
+    "",
+    "OK",
+    "VER non-functional (ok if not executed)"
+  ],
+  [
+    "0",
+    "IF RESERVED RESERVED1 RESERVED2 ELSE 1 ENDIF",
+    "",
+    "OK",
+    "RESERVED ok in un-executed IF"
+  ],
+  [
+    "1",
+    "DUP IF ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "IF 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "DUP IF ELSE ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "IF 1 ELSE ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "1 1",
+    "IF IF 1 ELSE 0 ENDIF ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "IF IF 1 ELSE 0 ENDIF ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "1 1",
+    "IF IF 1 ELSE 0 ENDIF ELSE IF 0 ELSE 1 ENDIF ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0 0",
+    "IF IF 1 ELSE 0 ENDIF ELSE IF 0 ELSE 1 ENDIF ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "NOTIF IF 1 ELSE 0 ENDIF ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "1 1",
+    "NOTIF IF 1 ELSE 0 ENDIF ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "NOTIF IF 1 ELSE 0 ENDIF ELSE IF 0 ELSE 1 ENDIF ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0 1",
+    "NOTIF IF 1 ELSE 0 ENDIF ELSE IF 0 ELSE 1 ENDIF ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0 ELSE 1 ELSE 0 ENDIF",
+    "",
+    "OK",
+    "Multiple ELSE's are valid and executed inverts on each ELSE encountered"
+  ],
+  [
+    "1",
+    "IF 1 ELSE 0 ELSE ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "IF ELSE 0 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "IF 1 ELSE 0 ELSE 1 ENDIF ADD 2 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "'' 1",
+    "IF SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ENDIF 0x20 0x2c49a55fe0ca3e7a005420c19a527865df8f17e468d234f562ef238d4236a632 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "NOTIF 0 ELSE 1 ELSE 0 ENDIF",
+    "",
+    "OK",
+    "Multiple ELSE's are valid and execution inverts on each ELSE encountered"
+  ],
+  [
+    "0",
+    "NOTIF 1 ELSE 0 ELSE ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "NOTIF ELSE 0 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "NOTIF 1 ELSE 0 ELSE 1 ENDIF ADD 2 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "'' 0",
+    "NOTIF SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ELSE ELSE SHA256 ENDIF 0x20 0x2c49a55fe0ca3e7a005420c19a527865df8f17e468d234f562ef238d4236a632 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 1 IF RETURN ELSE RETURN ELSE RETURN ENDIF ELSE 1 IF 1 ELSE RETURN ELSE 1 ENDIF ELSE RETURN ENDIF ADD 2 EQUAL",
+    "",
+    "OK",
+    "Nested ELSE ELSE"
+  ],
+  [
+    "1",
+    "NOTIF 0 NOTIF RETURN ELSE RETURN ELSE RETURN ENDIF ELSE 0 NOTIF 1 ELSE RETURN ELSE 1 ENDIF ELSE RETURN ENDIF ADD 2 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF RETURN ENDIF 1",
+    "",
+    "OK",
+    "RETURN only works if executed"
+  ],
+  [
+    "1 1",
+    "VERIFY",
+    "",
+    "OK"
+  ],
+  [
+    "1 0x05 0x01 0x00 0x00 0x00 0x00",
+    "VERIFY",
+    "",
+    "OK",
+    "values >4 bytes can be cast to boolean"
+  ],
+  [
+    "0x01 0x80",
+    "VERIFY TRUE",
+    "",
+    "VERIFY",
+    "negative 0 is false"
+  ],
+  [
+    "10 0 11",
+    "TOALTSTACK DROP FROMALTSTACK ADD 21 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "'gavin_was_here'",
+    "TOALTSTACK 11 FROMALTSTACK 'gavin_was_here' EQUALVERIFY 11 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IFDUP DEPTH 1 EQUALVERIFY 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "IFDUP DEPTH 2 EQUALVERIFY 1 EQUALVERIFY 1 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0x05 0x0100000000",
+    "IFDUP DEPTH 2 EQUALVERIFY 0x05 0x0100000000 EQUALVERIFY DROP TRUE",
+    "",
+    "OK",
+    "IFDUP dups non ints"
+  ],
+  [
+    "0",
+    "DROP DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "DUP 1 ADD 1 EQUALVERIFY 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0 1",
+    "NIP",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "OVER DEPTH 3 EQUALVERIFY DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "22 21 20",
+    "0 PICK 20 EQUALVERIFY DEPTH 3 EQUALVERIFY DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "22 21 20",
+    "1 PICK 21 EQUALVERIFY DEPTH 3 EQUALVERIFY DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "22 21 20",
+    "2 PICK 22 EQUALVERIFY DEPTH 3 EQUALVERIFY DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "22 21 20",
+    "0 ROLL 20 EQUALVERIFY DEPTH 2 EQUALVERIFY DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "22 21 20",
+    "1 ROLL 21 EQUALVERIFY DEPTH 2 EQUALVERIFY DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "22 21 20",
+    "2 ROLL 22 EQUALVERIFY DEPTH 2 EQUALVERIFY DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "22 21 20",
+    "ROT 22 EQUALVERIFY DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "22 21 20",
+    "ROT DROP 20 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "22 21 20",
+    "ROT DROP DROP 21 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "22 21 20",
+    "ROT ROT 21 EQUAL 2DROP",
+    "",
+    "OK"
+  ],
+  [
+    "22 21 20",
+    "ROT ROT ROT 20 EQUALVERIFY DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "25 24 23 22 21 20",
+    "2ROT 24 EQUALVERIFY DROP DROP DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "25 24 23 22 21 20",
+    "2ROT DROP 25 EQUALVERIFY DROP DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "25 24 23 22 21 20",
+    "2ROT 2DROP 20 EQUALVERIFY DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "25 24 23 22 21 20",
+    "2ROT 2DROP DROP 21 EQUALVERIFY 2DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "25 24 23 22 21 20",
+    "2ROT 2DROP 2DROP 22 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "25 24 23 22 21 20",
+    "2ROT 2DROP 2DROP DROP 23 EQUALVERIFY TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "25 24 23 22 21 20",
+    "2ROT 2ROT 22 EQUALVERIFY 2DROP DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "25 24 23 22 21 20",
+    "2ROT 2ROT 2ROT 20 EQUALVERIFY DROP DROP DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "SWAP 1 EQUALVERIFY 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0 1",
+    "TUCK DEPTH 3 EQUALVERIFY SWAP 2DROP",
+    "",
+    "OK"
+  ],
+  [
+    "13 14",
+    "2DUP ROT EQUALVERIFY EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-1 0 1 2",
+    "3DUP DEPTH 7 EQUALVERIFY ADD ADD 3 EQUALVERIFY 2DROP 0 EQUALVERIFY",
+    "",
+    "OK"
+  ],
+  [
+    "1 2 3 5",
+    "2OVER ADD ADD 8 EQUALVERIFY ADD ADD 6 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1 3 5 7",
+    "2SWAP ADD 4 EQUALVERIFY ADD 12 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "SIZE 0 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "SIZE 1 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "127",
+    "SIZE 1 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "128",
+    "SIZE 2 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "32767",
+    "SIZE 2 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "32768",
+    "SIZE 3 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "8388607",
+    "SIZE 3 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "8388608",
+    "SIZE 4 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "2147483647",
+    "SIZE 4 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "2147483648",
+    "SIZE 5 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "549755813887",
+    "SIZE 5 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "549755813888",
+    "SIZE 6 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "9223372036854775807",
+    "SIZE 8 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-1",
+    "SIZE 1 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-127",
+    "SIZE 1 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-128",
+    "SIZE 2 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-32767",
+    "SIZE 2 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-32768",
+    "SIZE 3 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-8388607",
+    "SIZE 3 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-8388608",
+    "SIZE 4 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-2147483647",
+    "SIZE 4 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-2147483648",
+    "SIZE 5 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-549755813887",
+    "SIZE 5 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-549755813888",
+    "SIZE 6 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "-9223372036854775807",
+    "SIZE 8 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "'abcdefghijklmnopqrstuvwxyz'",
+    "SIZE 26 EQUALVERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "42",
+    "SIZE 1 EQUALVERIFY 42 EQUAL",
+    "",
+    "OK",
+    "SIZE does not consume argument"
+  ],
+  [
+    "2 -2",
+    "ADD 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "2147483647 -2147483647",
+    "ADD 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-1 -1",
+    "ADD -2 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0 0",
+    "EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1 1",
+    "ADD 2 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "1ADD 2 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "111",
+    "1SUB 110 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "111 1",
+    "ADD 12 SUB 100 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "ABS 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "16",
+    "ABS 16 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-16",
+    "ABS -16 NEGATE EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "NOT NOP",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "NOT 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "11",
+    "NOT 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "0NOTEQUAL 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "0NOTEQUAL 1 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "111",
+    "0NOTEQUAL 1 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-111",
+    "0NOTEQUAL 1 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1 1",
+    "BOOLAND NOP",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "BOOLAND NOT",
+    "",
+    "OK"
+  ],
+  [
+    "0 1",
+    "BOOLAND NOT",
+    "",
+    "OK"
+  ],
+  [
+    "0 0",
+    "BOOLAND NOT",
+    "",
+    "OK"
+  ],
+  [
+    "16 17",
+    "BOOLAND NOP",
+    "",
+    "OK"
+  ],
+  [
+    "1 1",
+    "BOOLOR NOP",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "BOOLOR NOP",
+    "",
+    "OK"
+  ],
+  [
+    "0 1",
+    "BOOLOR NOP",
+    "",
+    "OK"
+  ],
+  [
+    "0 0",
+    "BOOLOR NOT",
+    "",
+    "OK"
+  ],
+  [
+    "16 17",
+    "BOOLOR NOP",
+    "",
+    "OK"
+  ],
+  [
+    "11 10 1",
+    "ADD NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "11 10 1",
+    "ADD NUMEQUALVERIFY 1",
+    "",
+    "OK"
+  ],
+  [
+    "11 10 1",
+    "ADD NUMNOTEQUAL NOT",
+    "",
+    "OK"
+  ],
+  [
+    "111 10 1",
+    "ADD NUMNOTEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "11 10",
+    "LESSTHAN NOT",
+    "",
+    "OK"
+  ],
+  [
+    "4 4",
+    "LESSTHAN NOT",
+    "",
+    "OK"
+  ],
+  [
+    "10 11",
+    "LESSTHAN",
+    "",
+    "OK"
+  ],
+  [
+    "-11 11",
+    "LESSTHAN",
+    "",
+    "OK"
+  ],
+  [
+    "-11 -10",
+    "LESSTHAN",
+    "",
+    "OK"
+  ],
+  [
+    "11 10",
+    "GREATERTHAN",
+    "",
+    "OK"
+  ],
+  [
+    "4 4",
+    "GREATERTHAN NOT",
+    "",
+    "OK"
+  ],
+  [
+    "10 11",
+    "GREATERTHAN NOT",
+    "",
+    "OK"
+  ],
+  [
+    "-11 11",
+    "GREATERTHAN NOT",
+    "",
+    "OK"
+  ],
+  [
+    "-11 -10",
+    "GREATERTHAN NOT",
+    "",
+    "OK"
+  ],
+  [
+    "11 10",
+    "LESSTHANOREQUAL NOT",
+    "",
+    "OK"
+  ],
+  [
+    "4 4",
+    "LESSTHANOREQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "10 11",
+    "LESSTHANOREQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-11 11",
+    "LESSTHANOREQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-11 -10",
+    "LESSTHANOREQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "11 10",
+    "GREATERTHANOREQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "4 4",
+    "GREATERTHANOREQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "10 11",
+    "GREATERTHANOREQUAL NOT",
+    "",
+    "OK"
+  ],
+  [
+    "-11 11",
+    "GREATERTHANOREQUAL NOT",
+    "",
+    "OK"
+  ],
+  [
+    "-11 -10",
+    "GREATERTHANOREQUAL NOT",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "MIN 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0 1",
+    "MIN 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-1 0",
+    "MIN -1 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0 -2147483647",
+    "MIN -2147483647 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "2147483647 0",
+    "MAX 2147483647 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0 100",
+    "MAX 100 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-100 0",
+    "MAX 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0 -2147483647",
+    "MAX 0 NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0 0 1",
+    "WITHIN",
+    "",
+    "OK"
+  ],
+  [
+    "1 0 1",
+    "WITHIN NOT",
+    "",
+    "OK"
+  ],
+  [
+    "0 -2147483647 2147483647",
+    "WITHIN",
+    "",
+    "OK"
+  ],
+  [
+    "-1 -100 100",
+    "WITHIN",
+    "",
+    "OK"
+  ],
+  [
+    "11 -100 100",
+    "WITHIN",
+    "",
+    "OK"
+  ],
+  [
+    "-2147483647 -100 100",
+    "WITHIN NOT",
+    "",
+    "OK"
+  ],
+  [
+    "2147483647 -100 100",
+    "WITHIN NOT",
+    "",
+    "OK"
+  ],
+  [
+    "2147483647 2147483647",
+    "SUB 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "2147483647",
+    "DUP ADD 4294967294 EQUAL",
+    "",
+    "OK",
+    ">32 bit EQUAL is valid"
+  ],
+  [
+    "2147483647",
+    "NEGATE DUP ADD -4294967294 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "''",
+    "SHA256 0x20 0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "'a'",
+    "SHA256 0x20 0xca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "'abcdefghijklmnopqrstuvwxyz'",
+    "SHA256 0x20 0x71c480df93d6ae2f1efad1447c66c9525e316218cf51fc8d9ed832f2daf18b73 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "''",
+    "SHA256 0x20 0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "'a'",
+    "SHA256 0x20 0xca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "'abcdefghijklmnopqrstuvwxyz'",
+    "SHA256 0x20 0x71c480df93d6ae2f1efad1447c66c9525e316218cf51fc8d9ed832f2daf18b73 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "''",
+    "SHA256 0x20 0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "'a'",
+    "SHA256 0x20 0xca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "'abcdefghijklmnopqrstuvwxyz'",
+    "SHA256 0x20 0x71c480df93d6ae2f1efad1447c66c9525e316218cf51fc8d9ed832f2daf18b73 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "''",
+    "NOP BLAKE2B 0x20 0x0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "'a'",
+    "BLAKE2B NOP 0x20 0x8928aae63c84d87ea098564d1e03ad813f107add474e56aedd286349c0c03ea4 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "'abcdefghijklmnopqrstuvwxyz'",
+    "NOP BLAKE2B 0x20 0x117ad6b940f5e8292c007d9c7e7350cd33cf85b5887e8da71c7957830f536e7c EQUAL",
+    "",
+    "OK",
+    "The NOP is added so the script won't be interpreted as P2SH"
+  ],
+  [
+    "'a'",
+    "NOP BLAKE2B 0x20 0x8928aae63c84d87ea098564d1e03ad813f107add474e56aedd286349c0c03ea4 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xb2 ELSE 1 ENDIF",
+    "",
+    "OK",
+    "opcodes above OP_CHECKSEQUENCEVERIFY invalid if executed"
+  ],
+  [
+    "0",
+    "IF 0xbd ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xbe ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xbf ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xc0 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xc1 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xc2 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xc3 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xc4 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xc5 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xc6 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xc7 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xc8 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xc9 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xca ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xcb ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xcc ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xcd ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xce ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xcf ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xd0 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xd1 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xd2 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xd3 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xd4 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xd5 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xd6 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xd7 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xd8 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xd9 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xda ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xdb ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xdc ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xdd ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xde ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xdf ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xe0 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xe1 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xe2 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xe3 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xe4 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xe5 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xe6 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xe7 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xe8 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xe9 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xea ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xeb ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xec ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xed ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xee ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xef ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xf0 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xf1 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xf2 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xf3 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xf4 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xf5 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xf6 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xf7 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xf8 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xf9 ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xfa ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xfb ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xfc ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xfd ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xfe ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "IF 0xff ELSE 1 ENDIF",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'",
+    "",
+    "OK",
+    "520 byte push"
+  ],
+  [
+    "1",
+    "0x616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+    "",
+    "OK",
+    "201 opcodes executed. 0x61 is NOP"
+  ],
+  [
+    "1 2 3 4 5",
+    "0x6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f 1 2 3 4 5 0x6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f 0x6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d75",
+    "",
+    "OK",
+    "244 stack size (0x6f is 3DUP, 0x6d is 2DROP, and 0x75 is DROP)"
+  ],
+  [
+    "'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'",
+    "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 0x6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f 2DUP DROP 0x6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d 0x61616161",
+    "",
+    "OK",
+    "Max-size (10,000-byte), max-push(520 bytes), max-opcodes(201), max stack size(244 items). 0x6f is 3DUP, 0x61 is NOP, 0x6d is 2DROP"
+  ],
+  [
+    "0",
+    "IF 0x5050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050 ENDIF 1",
+    "",
+    "OK",
+    ">201 opcodes, but RESERVED (0x50) doesn't count towards opcode limit."
+  ],
+  [
+    "",
+    "1",
+    "",
+    "OK"
+  ],
+  [
+    "127",
+    "0x01 0x7F EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "128",
+    "0x02 0x8000 EQUAL",
+    "",
+    "OK",
+    "Leave room for the sign bit"
+  ],
+  [
+    "32767",
+    "0x02 0xFF7F EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "32768",
+    "0x03 0x008000 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "8388607",
+    "0x03 0xFFFF7F EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "8388608",
+    "0x04 0x00008000 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "2147483647",
+    "0x04 0xFFFFFF7F EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "2147483648",
+    "0x05 0x0000008000 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "549755813887",
+    "0x05 0xFFFFFFFF7F EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "549755813888",
+    "0x06 0xFFFFFFFF7F EQUALVERIFY 2DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "9223372036854775807",
+    "0x08 0xFFFFFFFFFFFFFF7F EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-2",
+    "0x01 0x82 EQUAL",
+    "",
+    "OK",
+    "Numbers are little-endian with the MSB being a sign bit"
+  ],
+  [
+    "-127",
+    "0x01 0xFF EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-128",
+    "0x02 0x8080 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-32767",
+    "0x02 0xFFFF EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-32768",
+    "0x03 0x008080 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-8388607",
+    "0x03 0xFFFFFF EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-8388608",
+    "0x04 0x00008080 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-2147483647",
+    "0x04 0xFFFFFFFF EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-2147483648",
+    "0x05 0x0000008080 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-4294967295",
+    "0x05 0xFFFFFFFF80 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-549755813887",
+    "0x05 0xFFFFFFFFFF EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-549755813888",
+    "0x06 0x000000008080 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-9223372036854775807",
+    "0x08 0xFFFFFFFFFFFFFFFF EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "2147483647",
+    "1ADD 2147483648 EQUAL",
+    "",
+    "OK",
+    "We can do math on 4-byte integers, and compare 5-byte ones"
+  ],
+  [
+    "2147483647",
+    "1ADD DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "-2147483647",
+    "1ADD DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "0x02 0x0100 EQUAL NOT",
+    "",
+    "OK",
+    "Not the same byte array..."
+  ],
+  [
+    "0",
+    "0x01 0x80 EQUAL NOT",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "NOP 1",
+    "",
+    "OK",
+    "The following tests check the if(stack.size() < N) tests in each opcode"
+  ],
+  [
+    "1",
+    "IF 1 ENDIF",
+    "",
+    "OK",
+    "They are here to catch copy-and-paste errors"
+  ],
+  [
+    "0",
+    "NOTIF 1 ENDIF",
+    "",
+    "OK",
+    "Most of them are duplicated elsewhere,"
+  ],
+  [
+    "1",
+    "VERIFY 1",
+    "",
+    "OK",
+    "but, hey, more is always better, right?"
+  ],
+  [
+    "0",
+    "TOALTSTACK 1",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "TOALTSTACK FROMALTSTACK",
+    "",
+    "OK"
+  ],
+  [
+    "0 0",
+    "2DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "0 1",
+    "2DUP VERIFY DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0 0 1",
+    "3DUP VERIFY DROP DROP DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0 1 0 0",
+    "2OVER VERIFY DROP DROP DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0 1 0 0 0 0",
+    "2ROT VERIFY DROP DROP DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0 1 0 0",
+    "2SWAP VERIFY DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "IFDUP VERIFY",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "DEPTH 1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "DROP 1",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "DUP VERIFY",
+    "",
+    "OK"
+  ],
+  [
+    "0 1",
+    "NIP",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "OVER VERIFY DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "1 0 0 0 3",
+    "PICK VERIFY DROP DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "PICK VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "1 0 0 0 3",
+    "ROLL VERIFY DROP DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "ROLL",
+    "",
+    "OK"
+  ],
+  [
+    "1 0 0",
+    "ROT VERIFY DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "SWAP VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0 1",
+    "TUCK VERIFY DROP DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "SIZE VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0 0",
+    "EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0 0",
+    "EQUALVERIFY 1",
+    "",
+    "OK"
+  ],
+  [
+    "0 0 1",
+    "EQUAL EQUAL",
+    "",
+    "OK",
+    "OP_0 and bools must have identical byte representations"
+  ],
+  [
+    "0",
+    "1ADD",
+    "",
+    "OK"
+  ],
+  [
+    "2",
+    "1SUB",
+    "",
+    "OK"
+  ],
+  [
+    "-1",
+    "NEGATE",
+    "",
+    "OK"
+  ],
+  [
+    "-1",
+    "ABS",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "NOT",
+    "",
+    "OK"
+  ],
+  [
+    "-1",
+    "0NOTEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "ADD",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "SUB",
+    "",
+    "OK"
+  ],
+  [
+    "-1 -1",
+    "BOOLAND",
+    "",
+    "OK"
+  ],
+  [
+    "-1 0",
+    "BOOLOR",
+    "",
+    "OK"
+  ],
+  [
+    "0 0",
+    "NUMEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "5 4",
+    "NUMEQUAL FALSE EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0 0",
+    "NUMEQUALVERIFY 1",
+    "",
+    "OK"
+  ],
+  [
+    "-1 0",
+    "NUMNOTEQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-1 0",
+    "LESSTHAN",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "GREATERTHAN",
+    "",
+    "OK"
+  ],
+  [
+    "0 0",
+    "LESSTHANOREQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "0 0",
+    "GREATERTHANOREQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "-1 0",
+    "MIN",
+    "",
+    "OK"
+  ],
+  [
+    "1 0",
+    "MAX",
+    "",
+    "OK"
+  ],
+  [
+    "-1 -1 0",
+    "WITHIN",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "SHA256",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "BLAKE2B",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 0 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK",
+    "CHECKMULTISIG is allowed to have zero keys and/or sigs"
+  ],
+  [
+    "",
+    "0 0 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 0 1 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK",
+    "Zero sigs means no sigs are checked"
+  ],
+  [
+    "",
+    "0 0 1 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 0 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK",
+    "CHECKMULTISIG is allowed to have zero keys and/or sigs"
+  ],
+  [
+    "",
+    "0 0 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 0 1 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK",
+    "Zero sigs means no sigs are checked"
+  ],
+  [
+    "",
+    "0 0 1 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 2 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK",
+    "Test from up to 20 pubkeys, all not checked"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 3 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 4 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 5 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 6 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 7 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 8 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 9 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 10 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 11 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 12 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 13 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 14 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 15 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 16 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 17 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 18 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 19 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG VERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 1 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 2 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 3 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 4 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 5 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 6 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 7 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 8 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 9 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 10 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 11 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 12 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 13 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 14 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 15 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 16 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 17 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 18 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 19 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "",
+    "0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY DEPTH 0 EQUAL",
+    "",
+    "OK"
+  ],
+  [
+    "1",
+    "0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY 0 0 CHECKMULTISIGVERIFY",
+    "",
+    "OK",
+    "nOpCount is incremented by the number of keys evaluated in addition to the usual one op per op. In this case we have zero keys, so we can execute 201 CHECKMULTISIGS"
+  ],
+  [
+    "",
+    "NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY DROP DROP DROP DROP DROP DROP DROP TRUE",
+    "",
+    "OK",
+    "Even though there are no signatures being checked nOpCount is incremented by the number of keys."
+  ],
+  [
+    "1",
+    "NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY",
+    "",
+    "OK"
+  ],
+  [
+    "0x01 1",
+    "BLAKE2B 0x20 0xce57216285125006ec18197bd8184221cefa559bb0798410d99a5bba5b07cd1d EQUAL",
+    "",
+    "OK",
+    "Very basic P2SH"
+  ],
+  [
+    "0x00",
+    "SIZE 0 EQUALVERIFY DROP TRUE",
+    "",
+    "OK",
+    "Basic OP_0 execution"
+  ],
+  [
+    "Numeric pushes"
+  ],
+  [
+    "-1",
+    "0x4f EQUAL",
+    "",
+    "OK",
+    "OP1_NEGATE pushes 0x81"
+  ],
+  [
+    "1",
+    "0x51 EQUAL",
+    "",
+    "OK",
+    "OP_1  pushes 0x01"
+  ],
+  [
+    "2",
+    "0x52 EQUAL",
+    "",
+    "OK",
+    "OP_2  pushes 0x02"
+  ],
+  [
+    "3",
+    "0x53 EQUAL",
+    "",
+    "OK",
+    "OP_3  pushes 0x03"
+  ],
+  [
+    "4",
+    "0x54 EQUAL",
+    "",
+    "OK",
+    "OP_4  pushes 0x04"
+  ],
+  [
+    "5",
+    "0x55 EQUAL",
+    "",
+    "OK",
+    "OP_5  pushes 0x05"
+  ],
+  [
+    "6",
+    "0x56 EQUAL",
+    "",
+    "OK",
+    "OP_6  pushes 0x06"
+  ],
+  [
+    "7",
+    "0x57 EQUAL",
+    "",
+    "OK",
+    "OP_7  pushes 0x07"
+  ],
+  [
+    "8",
+    "0x58 EQUAL",
+    "",
+    "OK",
+    "OP_8  pushes 0x08"
+  ],
+  [
+    "9",
+    "0x59 EQUAL",
+    "",
+    "OK",
+    "OP_9  pushes 0x09"
+  ],
+  [
+    "10",
+    "0x5a EQUAL",
+    "",
+    "OK",
+    "OP_10 pushes 0x0a"
+  ],
+  [
+    "11",
+    "0x5b EQUAL",
+    "",
+    "OK",
+    "OP_11 pushes 0x0b"
+  ],
+  [
+    "12",
+    "0x5c EQUAL",
+    "",
+    "OK",
+    "OP_12 pushes 0x0c"
+  ],
+  [
+    "13",
+    "0x5d EQUAL",
+    "",
+    "OK",
+    "OP_13 pushes 0x0d"
+  ],
+  [
+    "14",
+    "0x5e EQUAL",
+    "",
+    "OK",
+    "OP_14 pushes 0x0e"
+  ],
+  [
+    "15",
+    "0x5f EQUAL",
+    "",
+    "OK",
+    "OP_15 pushes 0x0f"
+  ],
+  [
+    "16",
+    "0x60 EQUAL",
+    "",
+    "OK",
+    "OP_16 pushes 0x10"
+  ],
+  [
+    "Unevaluated non-minimal pushes are ignored"
+  ],
+  [
+    "0",
+    "IF 0x4c 0x00 ENDIF 1 ",
+    "",
+    "OK",
+    "non-minimal PUSHDATA1 ignored"
+  ],
+  [
+    "0",
+    "IF 0x4d 0x0000 ENDIF 1 ",
+    "",
+    "OK",
+    "non-minimal PUSHDATA2 ignored"
+  ],
+  [
+    "0",
+    "IF 0x4c 0x00000000 ENDIF 1 ",
+    "",
+    "OK",
+    "non-minimal PUSHDATA4 ignored"
+  ],
+  [
+    "0",
+    "IF 0x01 0x81 ENDIF 1 ",
+    "",
+    "OK",
+    "1NEGATE equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x01 ENDIF 1 ",
+    "",
+    "OK",
+    "OP_1  equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x02 ENDIF 1 ",
+    "",
+    "OK",
+    "OP_2  equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x03 ENDIF 1 ",
+    "",
+    "OK",
+    "OP_3  equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x04 ENDIF 1 ",
+    "",
+    "OK",
+    "OP_4  equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x05 ENDIF 1 ",
+    "",
+    "OK",
+    "OP_5  equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x06 ENDIF 1 ",
+    "",
+    "OK",
+    "OP_6  equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x07 ENDIF 1 ",
+    "",
+    "OK",
+    "OP_7  equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x08 ENDIF 1 ",
+    "",
+    "OK",
+    "OP_8  equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x09 ENDIF 1 ",
+    "",
+    "OK",
+    "OP_9  equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x0a ENDIF 1 ",
+    "",
+    "OK",
+    "OP_10 equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x0b ENDIF 1 ",
+    "",
+    "OK",
+    "OP_11 equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x0c ENDIF 1 ",
+    "",
+    "OK",
+    "OP_12 equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x0d ENDIF 1 ",
+    "",
+    "OK",
+    "OP_13 equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x0e ENDIF 1 ",
+    "",
+    "OK",
+    "OP_14 equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x0f ENDIF 1 ",
+    "",
+    "OK",
+    "OP_15 equiv"
+  ],
+  [
+    "0",
+    "IF 0x01 0x10 ENDIF 1 ",
+    "",
+    "OK",
+    "OP_16 equiv"
+  ],
+  [
+    "Numeric minimaldata rules are only applied when a stack item is numerically evaluated; the push itself is allowed"
+  ],
+  [
+    "0x01 0x00",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x01 0x80",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0180",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0100",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0200",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0300",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0400",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0500",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0600",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0700",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0800",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0900",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0a00",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0b00",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0c00",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0d00",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0e00",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x0f00",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "0x02 0x1000",
+    "1 VERIFY DROP TRUE",
+    "",
+    "OK"
+  ],
+  [
+    "While not really correctly DER encoded, the empty signature is allowed"
+  ],
+  [
+    "to provide a compact way to provide a delibrately invalid signature."
+  ],
+  [
+    "0",
+    "0x21 0x02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0 CHECKSIG NOT",
+    "",
+    "OK"
+  ],
+  [
+    "0",
+    "1 0x21 0x02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0 1 CHECKMULTISIG NOT",
+    "",
+    "OK"
+  ],
+  [
+    "TRUE DATA_8 0x0000000000000080",
+    "CHECKSEQUENCEVERIFY",
+    "",
+    "OK",
+    "CSV passes if stack top bit 1 << 63 is set"
+  ],
+  [
+    "",
+    "DEPTH",
+    "",
+    "EVAL_FALSE",
+    "Test the test: we should have an empty stack after scriptSig evaluation"
+  ],
+  [
+    "  ",
+    "DEPTH",
+    "",
+    "EVAL_FALSE",
+    "and multiple spaces should not change that."
+  ],
+  [
+    "   ",
+    "DEPTH",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "    ",
+    "DEPTH",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "",
+    "",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "",
+    "NOP",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "",
+    "NOP DEPTH",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "",
+    "DEPTH",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "",
+    "NOP",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "",
+    "NOP DEPTH",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "0x4c01",
+    "0x01 NOP",
+    "",
+    "BAD_OPCODE",
+    "PUSHDATA1 with not enough bytes"
+  ],
+  [
+    "0x4d0200ff",
+    "0x01 NOP",
+    "",
+    "BAD_OPCODE",
+    "PUSHDATA2 with not enough bytes"
+  ],
+  [
+    "0x4e03000000ffff",
+    "0x01 NOP",
+    "",
+    "BAD_OPCODE",
+    "PUSHDATA4 with not enough bytes"
+  ],
+  [
+    "1",
+    "IF 0x50 ENDIF 1",
+    "",
+    "BAD_OPCODE",
+    "0x50 is reserved"
+  ],
+  [
+    "0x52",
+    "0x5f ADD 0x60 EQUAL",
+    "",
+    "EVAL_FALSE",
+    "0x51 through 0x60 push 1 through 16 onto stack"
+  ],
+  [
+    "0",
+    "NOP",
+    "",
+    "EVAL_FALSE",
+    ""
+  ],
+  [
+    "1",
+    "IF VER ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE",
+    "VER non-functional"
+  ],
+  [
+    "0",
+    "IF VERIF ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE",
+    "VERIF illegal everywhere"
+  ],
+  [
+    "0",
+    "IF ELSE 1 ELSE VERIF ENDIF",
+    "",
+    "BAD_OPCODE",
+    "VERIF illegal everywhere"
+  ],
+  [
+    "0",
+    "IF VERNOTIF ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE",
+    "VERNOTIF illegal everywhere"
+  ],
+  [
+    "0",
+    "IF ELSE 1 ELSE VERNOTIF ENDIF",
+    "",
+    "BAD_OPCODE",
+    "VERNOTIF illegal everywhere"
+  ],
+  [
+    "0",
+    "DUP IF ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "0",
+    "IF 1 ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "0",
+    "DUP IF ELSE ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "0",
+    "IF 1 ELSE ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "0",
+    "NOTIF ELSE 1 ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "0 1",
+    "IF IF 1 ELSE 0 ENDIF ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "0 0",
+    "IF IF 1 ELSE 0 ENDIF ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "1 0",
+    "IF IF 1 ELSE 0 ENDIF ELSE IF 0 ELSE 1 ENDIF ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "0 1",
+    "IF IF 1 ELSE 0 ENDIF ELSE IF 0 ELSE 1 ENDIF ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "0 0",
+    "NOTIF IF 1 ELSE 0 ENDIF ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "0 1",
+    "NOTIF IF 1 ELSE 0 ENDIF ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "1 1",
+    "NOTIF IF 1 ELSE 0 ENDIF ELSE IF 0 ELSE 1 ENDIF ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "0 0",
+    "NOTIF IF 1 ELSE 0 ENDIF ELSE IF 0 ELSE 1 ENDIF ENDIF",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "1",
+    "IF RETURN ELSE ELSE 1 ENDIF",
+    "",
+    "OP_RETURN",
+    "Multiple ELSEs"
+  ],
+  [
+    "1",
+    "IF 1 ELSE ELSE RETURN ENDIF",
+    "",
+    "OP_RETURN"
+  ],
+  [
+    "1",
+    "ENDIF",
+    "",
+    "UNBALANCED_CONDITIONAL",
+    "Malformed IF/ELSE/ENDIF sequence"
+  ],
+  [
+    "1",
+    "ELSE ENDIF",
+    "",
+    "UNBALANCED_CONDITIONAL"
+  ],
+  [
+    "1",
+    "ENDIF ELSE",
+    "",
+    "UNBALANCED_CONDITIONAL"
+  ],
+  [
+    "1",
+    "ENDIF ELSE IF",
+    "",
+    "UNBALANCED_CONDITIONAL"
+  ],
+  [
+    "1",
+    "IF ELSE ENDIF ELSE",
+    "",
+    "UNBALANCED_CONDITIONAL"
+  ],
+  [
+    "1",
+    "IF ELSE ENDIF ELSE ENDIF",
+    "",
+    "UNBALANCED_CONDITIONAL"
+  ],
+  [
+    "1",
+    "IF ENDIF ENDIF",
+    "",
+    "UNBALANCED_CONDITIONAL"
+  ],
+  [
+    "1",
+    "IF ELSE ELSE ENDIF ENDIF",
+    "",
+    "UNBALANCED_CONDITIONAL"
+  ],
+  [
+    "1",
+    "RETURN",
+    "",
+    "OP_RETURN"
+  ],
+  [
+    "1",
+    "DUP IF RETURN ENDIF",
+    "",
+    "OP_RETURN"
+  ],
+  [
+    "1",
+    "RETURN 'data'",
+    "",
+    "OP_RETURN",
+    "canonical prunable txout format"
+  ],
+  [
+    "0",
+    "VERIFY 1",
+    "",
+    "VERIFY"
+  ],
+  [
+    "1",
+    "VERIFY",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "1",
+    "VERIFY 0",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "",
+    "IFDUP DEPTH 0 EQUAL",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "DROP DEPTH 0 EQUAL",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "DUP DEPTH 0 EQUAL",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "DUP 1 ADD 2 EQUALVERIFY 0 EQUAL",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "",
+    "NIP",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "1 NIP",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "1 0 NIP",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "",
+    "OVER 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "OVER",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "19 20 21",
+    "PICK 19 EQUALVERIFY DEPTH 2 EQUAL",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "0 PICK",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "-1 PICK",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "19 20 21",
+    "0 PICK 20 EQUALVERIFY DEPTH 3 EQUAL",
+    "",
+    "EQUALVERIFY"
+  ],
+  [
+    "19 20 21",
+    "1 PICK 21 EQUALVERIFY DEPTH 3 EQUAL",
+    "",
+    "EQUALVERIFY"
+  ],
+  [
+    "19 20 21",
+    "2 PICK 22 EQUALVERIFY DEPTH 3 EQUAL",
+    "",
+    "EQUALVERIFY"
+  ],
+  [
+    "",
+    "0 ROLL",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "-1 ROLL",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "19 20 21",
+    "0 ROLL 20 EQUALVERIFY DEPTH 2 EQUAL",
+    "",
+    "EQUALVERIFY"
+  ],
+  [
+    "19 20 21",
+    "1 ROLL 21 EQUALVERIFY DEPTH 2 EQUAL",
+    "",
+    "EQUALVERIFY"
+  ],
+  [
+    "19 20 21",
+    "2 ROLL 22 EQUALVERIFY DEPTH 2 EQUAL",
+    "",
+    "EQUALVERIFY"
+  ],
+  [
+    "",
+    "ROT 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "1 ROT 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "1 2 ROT 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "SWAP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "SWAP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "0 1",
+    "SWAP 1 EQUALVERIFY",
+    "",
+    "EQUALVERIFY"
+  ],
+  [
+    "",
+    "TUCK 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "TUCK 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1 0",
+    "TUCK DEPTH 3 EQUALVERIFY SWAP 2DROP",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "",
+    "2DUP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "2DUP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "3DUP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "3DUP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1 2",
+    "3DUP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "2OVER 1 VERIFY DROP DROP DROP DROP TRUE",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "2 3 2OVER 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "2SWAP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "2 3 2SWAP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "'a' 'b'",
+    "CAT",
+    "",
+    "DISABLED_OPCODE",
+    "CAT disabled"
+  ],
+  [
+    "'a' 'b' 0",
+    "IF CAT ELSE 1 ENDIF",
+    "",
+    "DISABLED_OPCODE",
+    "CAT disabled"
+  ],
+  [
+    "'abc' 1 1",
+    "SUBSTR",
+    "",
+    "DISABLED_OPCODE",
+    "SUBSTR disabled"
+  ],
+  [
+    "'abc' 1 1 0",
+    "IF SUBSTR ELSE 1 ENDIF",
+    "",
+    "DISABLED_OPCODE",
+    "SUBSTR disabled"
+  ],
+  [
+    "'abc' 2 0",
+    "IF LEFT ELSE 1 ENDIF",
+    "",
+    "DISABLED_OPCODE",
+    "LEFT disabled"
+  ],
+  [
+    "'abc' 2 0",
+    "IF RIGHT ELSE 1 ENDIF",
+    "",
+    "DISABLED_OPCODE",
+    "RIGHT disabled"
+  ],
+  [
+    "",
+    "SIZE 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "NOP",
+    "",
+    "EMPTY_STACK",
+    "Checks EMPTY_STACK error"
+  ],
+  [
+    "'abc'",
+    "INVERT VERIFY TRUE",
+    "",
+    "DISABLED_OPCODE",
+    "INVERT disabled"
+  ],
+  [
+    "1 2 0",
+    "IF AND ELSE 1 ENDIF NOP",
+    "",
+    "DISABLED_OPCODE",
+    "AND disabled"
+  ],
+  [
+    "1 2 0",
+    "IF OR ELSE 1 ENDIF NOP",
+    "",
+    "DISABLED_OPCODE",
+    "OR disabled"
+  ],
+  [
+    "1 2 0",
+    "IF XOR ELSE 1 ENDIF NOP",
+    "",
+    "DISABLED_OPCODE",
+    "XOR disabled"
+  ],
+  [
+    "2 0",
+    "IF 2MUL ELSE 1 ENDIF NOP",
+    "",
+    "DISABLED_OPCODE",
+    "2MUL disabled"
+  ],
+  [
+    "2 0",
+    "IF 2DIV ELSE 1 ENDIF NOP",
+    "",
+    "DISABLED_OPCODE",
+    "2DIV disabled"
+  ],
+  [
+    "2 2 0",
+    "IF MUL ELSE 1 ENDIF NOP",
+    "",
+    "DISABLED_OPCODE",
+    "MUL disabled"
+  ],
+  [
+    "2 2 0",
+    "IF DIV ELSE 1 ENDIF NOP",
+    "",
+    "DISABLED_OPCODE",
+    "DIV disabled"
+  ],
+  [
+    "2 2 0",
+    "IF MOD ELSE 1 ENDIF NOP",
+    "",
+    "DISABLED_OPCODE",
+    "MOD disabled"
+  ],
+  [
+    "2 2 0",
+    "IF LSHIFT ELSE 1 ENDIF NOP",
+    "",
+    "DISABLED_OPCODE",
+    "LSHIFT disabled"
+  ],
+  [
+    "2 2 0",
+    "IF RSHIFT ELSE 1 ENDIF NOP",
+    "",
+    "DISABLED_OPCODE",
+    "RSHIFT disabled"
+  ],
+  [
+    "",
+    "EQUAL NOT",
+    "",
+    "INVALID_STACK_OPERATION",
+    "EQUAL must error when there are no stack items"
+  ],
+  [
+    "0",
+    "EQUAL NOT",
+    "",
+    "INVALID_STACK_OPERATION",
+    "EQUAL must error when there are not 2 stack items"
+  ],
+  [
+    "0 1",
+    "EQUAL",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "1 1",
+    "ADD 0 EQUAL",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "11 1",
+    "ADD 12 SUB 11 EQUAL",
+    "",
+    "EVAL_FALSE"
+  ],
+  [
+    "2147483648 0",
+    "ADD NOP",
+    "",
+    "UNKNOWN_ERROR",
+    "arithmetic operands must be in range [-2^31...2^31] "
+  ],
+  [
+    "-2147483648 0",
+    "ADD NOP",
+    "",
+    "UNKNOWN_ERROR",
+    "arithmetic operands must be in range [-2^31...2^31] "
+  ],
+  [
+    "2147483647",
+    "DUP ADD 4294967294 NUMEQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "NUMEQUAL must be in numeric range"
+  ],
+  [
+    "'abcdef'",
+    "NOT 0 EQUAL",
+    "",
+    "UNKNOWN_ERROR",
+    "NOT is an arithmetic operand"
+  ],
+  [
+    "2",
+    "DUP MUL 4 EQUAL",
+    "",
+    "DISABLED_OPCODE",
+    "disabled"
+  ],
+  [
+    "2",
+    "DUP DIV 1 EQUAL",
+    "",
+    "DISABLED_OPCODE",
+    "disabled"
+  ],
+  [
+    "2",
+    "2MUL 4 EQUAL",
+    "",
+    "DISABLED_OPCODE",
+    "disabled"
+  ],
+  [
+    "2",
+    "2DIV 1 EQUAL",
+    "",
+    "DISABLED_OPCODE",
+    "disabled"
+  ],
+  [
+    "7 3",
+    "MOD 1 EQUAL",
+    "",
+    "DISABLED_OPCODE",
+    "disabled"
+  ],
+  [
+    "2 2",
+    "LSHIFT 8 EQUAL",
+    "",
+    "DISABLED_OPCODE",
+    "disabled"
+  ],
+  [
+    "2 1",
+    "RSHIFT 1 EQUAL",
+    "",
+    "DISABLED_OPCODE",
+    "disabled"
+  ],
+  [
+    "0x50",
+    "1",
+    "",
+    "BAD_OPCODE",
+    "opcode 0x50 is reserved"
+  ],
+  [
+    "1",
+    "IF 0xb2 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE",
+    "opcodes above OP_CHECKSEQUENCEVERIFY invalid if executed"
+  ],
+  [
+    "1",
+    "IF 0xb3 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xb4 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xb5 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xb6 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xb7 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xb8 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xb9 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xba ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xbb ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xbc ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xbd ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xbe ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xbf ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xc0 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xc1 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xc2 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xc3 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xc4 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xc5 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xc6 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xc7 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xc8 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xc9 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xca ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xcb ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xcc ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xcd ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xce ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xcf ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xd0 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xd1 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xd2 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xd3 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xd4 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xd5 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xd6 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xd7 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xd8 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xd9 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xda ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xdb ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xdc ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xdd ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xde ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xdf ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xe0 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xe1 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xe2 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xe3 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xe4 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xe5 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xe6 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xe7 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xe8 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xe9 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xea ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xeb ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xec ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xed ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xee ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xef ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xf0 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xf1 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xf2 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xf3 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xf4 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xf5 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xf6 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xf7 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xf8 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xf9 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xfa ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xfb ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xfc ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xfd ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xfe ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "1",
+    "IF 0xff ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE"
+  ],
+  [
+    "",
+    "SHA256",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "SHA256",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "SHA256",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "BLAKE2B",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "BLAKE2B",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'",
+    "",
+    "PUSH_SIZE",
+    ">520 byte push"
+  ],
+  [
+    "0",
+    "IF 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' ENDIF 1",
+    "",
+    "PUSH_SIZE",
+    ">520 byte push in non-executed IF branch"
+  ],
+  [
+    "1",
+    "0x61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+    "",
+    "OP_COUNT",
+    ">201 opcodes executed. 0x61 is NOP"
+  ],
+  [
+    "0",
+    "IF 0x6161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161 ENDIF 1",
+    "",
+    "OP_COUNT",
+    ">201 opcodes including non-executed IF branch. 0x61 is NOP"
+  ],
+  [
+    "",
+    "1 2 3 4 5 6 0x6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f",
+    "",
+    "STACK_SIZE",
+    ">244 stack size (0x6f is 3DUP)"
+  ],
+  [
+    "",
+    "1 TOALTSTACK 2 TOALTSTACK 3 4 5 6 7 8 0x6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f",
+    "",
+    "STACK_SIZE",
+    ">244 stack+altstack size"
+  ],
+  [
+    "",
+    "0 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' 0x6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f 2DUP 0x616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+    "",
+    "SCRIPT_SIZE",
+    "10,001-byte scriptPubKey"
+  ],
+  [
+    "1",
+    "VER",
+    "",
+    "BAD_OPCODE",
+    "OP_VER is reserved"
+  ],
+  [
+    "1",
+    "VERIF",
+    "",
+    "BAD_OPCODE",
+    "OP_VERIF is reserved"
+  ],
+  [
+    "1",
+    "VERNOTIF",
+    "",
+    "BAD_OPCODE",
+    "OP_VERNOTIF is reserved"
+  ],
+  [
+    "1",
+    "RESERVED",
+    "",
+    "BAD_OPCODE",
+    "OP_RESERVED is reserved"
+  ],
+  [
+    "1",
+    "RESERVED1",
+    "",
+    "BAD_OPCODE",
+    "OP_RESERVED1 is reserved"
+  ],
+  [
+    "1",
+    "RESERVED2",
+    "",
+    "BAD_OPCODE",
+    "OP_RESERVED2 is reserved"
+  ],
+  [
+    "1",
+    "0xb2",
+    "",
+    "BAD_OPCODE",
+    "0xb2 == OP_CHECKSEQUENCEVERIFY + 1"
+  ],
+  [
+    "2147483648",
+    "1ADD 1",
+    "",
+    "UNKNOWN_ERROR",
+    "We cannot do math on 5-byte integers"
+  ],
+  [
+    "2147483648",
+    "NEGATE 1",
+    "",
+    "UNKNOWN_ERROR",
+    "We cannot do math on 5-byte integers"
+  ],
+  [
+    "-2147483648",
+    "1ADD 1",
+    "",
+    "UNKNOWN_ERROR",
+    "Because we use a sign bit, -2147483648 is also 5 bytes"
+  ],
+  [
+    "2147483647",
+    "1ADD 1SUB 1",
+    "",
+    "UNKNOWN_ERROR",
+    "We cannot do math on 5-byte integers, even if the result is 4-bytes"
+  ],
+  [
+    "2147483648",
+    "1SUB 1",
+    "",
+    "UNKNOWN_ERROR",
+    "We cannot do math on 5-byte integers, even if the result is 4-bytes"
+  ],
+  [
+    "2147483648 1",
+    "BOOLOR 1",
+    "",
+    "UNKNOWN_ERROR",
+    "We cannot do BOOLOR on 5-byte integers (but we can still do IF etc)"
+  ],
+  [
+    "2147483648 1",
+    "BOOLAND 1",
+    "",
+    "UNKNOWN_ERROR",
+    "We cannot do BOOLAND on 5-byte integers"
+  ],
+  [
+    "1",
+    "1 ENDIF",
+    "",
+    "UNBALANCED_CONDITIONAL",
+    "ENDIF without IF"
+  ],
+  [
+    "1",
+    "IF 1",
+    "",
+    "UNBALANCED_CONDITIONAL",
+    "IF without ENDIF"
+  ],
+  [
+    "",
+    "IF 1 ENDIF",
+    "",
+    "UNBALANCED_CONDITIONAL",
+    "The following tests check the if(stack.size() < N) tests in each opcode"
+  ],
+  [
+    "",
+    "NOTIF 1 ENDIF",
+    "",
+    "UNBALANCED_CONDITIONAL",
+    "They are here to catch copy-and-paste errors"
+  ],
+  [
+    "",
+    "VERIFY 1",
+    "",
+    "INVALID_STACK_OPERATION",
+    "Most of them are duplicated elsewhere,"
+  ],
+  [
+    "",
+    "TOALTSTACK 1",
+    "",
+    "INVALID_STACK_OPERATION",
+    "but, hey, more is always better, right?"
+  ],
+  [
+    "1",
+    "FROMALTSTACK",
+    "",
+    "INVALID_ALTSTACK_OPERATION"
+  ],
+  [
+    "1",
+    "2DROP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "2DUP",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1 1",
+    "3DUP",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1 1 1",
+    "2OVER",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1 1 1 1 1",
+    "2ROT",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1 1 1",
+    "2SWAP",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "IFDUP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "DROP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "DUP 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "NIP",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "OVER",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1 1 1 3",
+    "PICK",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "0",
+    "PICK 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1 1 1 3",
+    "ROLL",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "0",
+    "ROLL 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1 1",
+    "ROT",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "SWAP",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "TUCK",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "SIZE 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "EQUAL 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "EQUALVERIFY 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "1ADD 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "1SUB 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "NEGATE 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "ABS 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "NOT 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "0NOTEQUAL 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "ADD",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "SUB",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "BOOLAND",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "BOOLOR",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "NUMEQUAL",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "NUMEQUALVERIFY 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "NUMNOTEQUAL",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "LESSTHAN",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "GREATERTHAN",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "LESSTHANOREQUAL",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "GREATERTHANOREQUAL",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "MIN",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1",
+    "MAX",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "1 1",
+    "WITHIN",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "SHA256 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "BLAKE2B 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "",
+    "BLAKE2B 1",
+    "",
+    "INVALID_STACK_OPERATION"
+  ],
+  [
+    "Increase CHECKSIG and CHECKMULTISIG negative test coverage"
+  ],
+  [
+    "",
+    "CHECKSIG NOT",
+    "",
+    "INVALID_STACK_OPERATION",
+    "CHECKSIG must error when there are no stack items"
+  ],
+  [
+    "0",
+    "CHECKSIG NOT",
+    "",
+    "INVALID_STACK_OPERATION",
+    "CHECKSIG must error when there are not 2 stack items"
+  ],
+  [
+    "",
+    "CHECKMULTISIG NOT",
+    "",
+    "INVALID_STACK_OPERATION",
+    "CHECKMULTISIG must error when there are no stack items"
+  ],
+  [
+    "",
+    "-1 CHECKMULTISIG NOT",
+    "",
+    "PUBKEY_COUNT",
+    "CHECKMULTISIG must error when the specified number of pubkeys is negative"
+  ],
+  [
+    "",
+    "1 CHECKMULTISIG NOT",
+    "",
+    "INVALID_STACK_OPERATION",
+    "CHECKMULTISIG must error when there are not enough pubkeys on the stack"
+  ],
+  [
+    "",
+    "-1 0 CHECKMULTISIG NOT",
+    "",
+    "SIG_COUNT",
+    "CHECKMULTISIG must error when the specified number of signatures is negative"
+  ],
+  [
+    "",
+    "1 'pk1' 1 CHECKMULTISIG NOT",
+    "",
+    "INVALID_STACK_OPERATION",
+    "CHECKMULTISIG must error when there are not enough signatures on the stack"
+  ],
+  [
+    "",
+    "0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG 0 0 CHECKMULTISIG",
+    "",
+    "OP_COUNT",
+    "202 CHECKMULTISIGS, fails due to 201 op limit"
+  ],
+  [
+    "",
+    "NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIG",
+    "",
+    "OP_COUNT",
+    "Fails due to 201 script operation limit"
+  ],
+  [
+    "1",
+    "NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP NOP 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY 0 0 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' 'n' 'o' 'p' 'q' 'r' 's' 't' 20 CHECKMULTISIGVERIFY",
+    "",
+    "OP_COUNT",
+    ""
+  ],
+  [
+    "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21",
+    "21 CHECKMULTISIG 1",
+    "",
+    "PUBKEY_COUNT",
+    "nPubKeys > 20"
+  ],
+  [
+    "0 'sig' 1 0",
+    "CHECKMULTISIG 1",
+    "",
+    "SIG_COUNT",
+    "nSigs > nPubKeys"
+  ],
+  [
+    "NOP 0x01 1",
+    "BLAKE2B 0x20 0xda1745e9b549bd0bfa1a569971c77eba30cd5a4b EQUAL",
+    "",
+    "SIG_PUSHONLY",
+    "Tests for Script.IsPushOnly()"
+  ],
+  [
+    "0 0x01 0x50",
+    "BLAKE2B 0x20 0xece424a6bb6ddf4db592c0faed60685047a361b1 EQUAL",
+    "",
+    "BAD_OPCODE",
+    "OP_RESERVED in P2SH should fail"
+  ],
+  [
+    "0 0x01",
+    "VER BLAKE2B 0x20 0x0f4d7845db968f2a81b530b6f3c1d6246d4c7e01 EQUAL",
+    "",
+    "BAD_OPCODE",
+    "OP_VER in P2SH should fail"
+  ],
+  [
+    "0x00",
+    "'00' EQUAL",
+    "",
+    "EVAL_FALSE",
+    "Basic OP_0 execution"
+  ],
+  [
+    "MINIMALDATA enforcement for PUSHDATAs"
+  ],
+  [
+    "0x4c 0x00",
+    "DROP 1",
+    "",
+    "MINIMALDATA",
+    "Empty vector minimally represented by OP_0"
+  ],
+  [
+    "0x01 0x81",
+    "DROP 1",
+    "",
+    "MINIMALDATA",
+    "-1 minimally represented by OP_1NEGATE"
+  ],
+  [
+    "0x01 0x01",
+    "DROP 1",
+    "",
+    "MINIMALDATA",
+    "1 to 16 minimally represented by OP_1 to OP_16"
+  ],
+  [
+    "0x01 0x02",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x03",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x04",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x05",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x06",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x07",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x08",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x09",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x0a",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x0b",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x0c",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x0d",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x0e",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x0f",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x01 0x10",
+    "DROP 1",
+    "",
+    "MINIMALDATA"
+  ],
+  [
+    "0x4c 0x48 0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+    "DROP 1",
+    "",
+    "MINIMALDATA",
+    "PUSHDATA1 of 72 bytes minimally represented by direct push"
+  ],
+  [
+    "0x4d 0xFF00 0x111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+    "DROP 1",
+    "",
+    "MINIMALDATA",
+    "PUSHDATA2 of 255 bytes minimally represented by PUSHDATA1"
+  ],
+  [
+    "0x4e 0x00010000 0x11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+    "DROP 1",
+    "",
+    "MINIMALDATA",
+    "PUSHDATA4 of 256 bytes minimally represented by PUSHDATA2"
+  ],
+  [
+    "MINIMALDATA enforcement for numeric arguments"
+  ],
+  [
+    "0x01 0x00",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "numequals 0"
+  ],
+  [
+    "0x02 0x0000",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "numequals 0"
+  ],
+  [
+    "0x01 0x80",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "0x80 (negative zero) numequals 0"
+  ],
+  [
+    "0x02 0x0080",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "numequals 0"
+  ],
+  [
+    "0x02 0x0500",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "numequals 5"
+  ],
+  [
+    "0x03 0x050000",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "numequals 5"
+  ],
+  [
+    "0x02 0x0580",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "numequals -5"
+  ],
+  [
+    "0x03 0x050080",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "numequals -5"
+  ],
+  [
+    "0x03 0xff7f80",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "Minimal encoding is 0xffff"
+  ],
+  [
+    "0x03 0xff7f00",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "Minimal encoding is 0xff7f"
+  ],
+  [
+    "0x04 0xffff7f80",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "Minimal encoding is 0xffffff"
+  ],
+  [
+    "0x04 0xffff7f00",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR",
+    "Minimal encoding is 0xffff7f"
+  ],
+  [
+    "Test every numeric-accepting opcode for correct handling of the numeric minimal encoding rule"
+  ],
+  [
+    "1 0x02 0x0000",
+    "PICK DROP",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "1 0x02 0x0000",
+    "ROLL DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000",
+    "1ADD DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000",
+    "1SUB DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000",
+    "NEGATE DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000",
+    "ABS DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000",
+    "NOT DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000",
+    "0NOTEQUAL DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "ADD DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "ADD DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "SUB DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "SUB DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "BOOLAND DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "BOOLAND DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "BOOLOR DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "BOOLOR DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "NUMEQUAL DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 1",
+    "NUMEQUAL DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "NUMEQUALVERIFY 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "NUMEQUALVERIFY 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "NUMNOTEQUAL DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "NUMNOTEQUAL DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "LESSTHAN DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "LESSTHAN DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "GREATERTHAN DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "GREATERTHAN DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "LESSTHANOREQUAL DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "LESSTHANOREQUAL DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "GREATERTHANOREQUAL DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "GREATERTHANOREQUAL DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "MIN DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "MIN DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "MAX DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "MAX DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0 0",
+    "WITHIN DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000 0",
+    "WITHIN DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0 0x02 0x0000",
+    "WITHIN DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "CHECKMULTISIG DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "CHECKMULTISIG DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0 1",
+    "CHECKMULTISIG DROP 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0 0x02 0x0000",
+    "CHECKMULTISIGVERIFY 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "0x02 0x0000 0",
+    "CHECKMULTISIGVERIFY 1",
+    "",
+    "UNKNOWN_ERROR"
+  ],
+  [
+    "Check MINIMALIF"
+  ],
+  [
+    "2",
+    "IF TRUE ELSE FALSE",
+    "",
+    "MINIMALIF"
+  ],
+  [
+    "2",
+    "NOTIF TRUE ELSE FALSE",
+    "",
+    "MINIMALIF"
+  ],
+  [
+    "Order of CHECKMULTISIG evaluation tests, inverted by swapping the order of"
+  ],
+  [
+    "pubkeys/signatures so they fail due to the STRICTENC rules on validly encoded"
+  ],
+  [
+    "signatures and pubkeys."
+  ],
+  [
+    "0x41 0x833682d4f60cc916a22a2c263e658fa662c49badb1e2a8c6208987bf99b1abd740498371480069e7a7a6e7471bf78c27bd9a1fd04fb212a92017346250ac187b01 0x41 0xea4a8d20562a950f4695dc24804565482e9fa111704886179d0c348f2b8a15fe691a305cd599c59c131677146661d5b98cb935330989a85f33afc70d0a21add101",
+    "2 0x21 0x02865c40293a680cb9c020e7b1e106d8c1916d3cef99aa431a56d253e69256dac0 0 2 CHECKMULTISIG NOT",
+    "",
+    "PUBKEYFORMAT",
+    "2-of-2 CHECKMULTISIG NOT with the first pubkey invalid, and both signatures validly encoded."
+  ],
+  [
+    "CHECKSEQUENCEVERIFY tests"
+  ],
+  [
+    "",
+    "CHECKSEQUENCEVERIFY",
+    "",
+    "INVALID_STACK_OPERATION",
+    "CSV automatically fails on a empty stack"
+  ],
+  [
+    "0",
+    "CHECKSEQUENCEVERIFY",
+    "",
+    "UNSATISFIED_LOCKTIME",
+    "CSV fails if stack top bit 1 << 31 is set and the tx version < 2"
+  ],
+  [
+    "4294967296",
+    "CHECKSEQUENCEVERIFY",
+    "",
+    "UNSATISFIED_LOCKTIME",
+    "CSV fails if stack top bit 1 << 31 is not set, and tx version < 2"
+  ],
+  [
+    "NULLFAIL should cover all signatures and signatures only"
+  ],
+  [
+    "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
+    "0x01 0x14 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0x01 0x14 CHECKMULTISIG NOT",
+    "",
+    "OK",
+    "BIP66 and NULLFAIL-compliant"
+  ],
+  [
+    "0x09 0x300602010102010101 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
+    "0x01 0x14 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0x01 0x14 CHECKMULTISIG NOT",
+    "",
+    "NULLFAIL",
+    "BIP66-compliant but not NULLFAIL-compliant 4"
+  ],
+  [
+    "The End"
+  ]
+]

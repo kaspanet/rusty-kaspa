@@ -6,9 +6,6 @@ pub enum TxScriptError {
     MalformedPushSize(Vec<u8>),
     #[error("opcode requires {0} bytes, but script only has {1} remaining")]
     MalformedPush(usize, usize),
-    // We return error if stack entry is false
-    #[error("false stack entry at end of script execution")]
-    FalseStackEntry,
     #[error("transaction input index {0} >= {1}")]
     InvalidIndex(usize, usize),
     #[error("combined stack size {0} > max allowed {1}")]
@@ -23,6 +20,7 @@ pub enum TxScriptError {
     EmptyStack,
     #[error("stack contains {0} unexpected items")]
     CleanStack(usize),
+    // We return error if stack entry is false
     #[error("false stack entry at end of script execution")]
     EvalFalse,
     #[error("script returned early")]
@@ -67,4 +65,8 @@ pub enum TxScriptError {
     SignatureScriptNotPushOnly,
     #[error("end of script reached in conditional execution")]
     ErrUnbalancedConditional,
+    #[error("opcode requires at least {0} but stack has only {1}")]
+    InvalidStackOperation(usize, usize),
+    #[error("script of size {0} exceeded maximum allowed size of {1}")]
+    ScriptSize(usize, usize),
 }
