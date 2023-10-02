@@ -27,7 +27,7 @@ impl Bip32 {
         let id = AccountId::from_bip32(&prv_key_data_id, &data);
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
-        let storage::account::Bip32 { account_index, xpub_keys, ecdsa } = data;
+        let storage::account::Bip32 { account_index, xpub_keys, ecdsa, .. } = data;
 
         let address_derivation_indexes = meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or_default();
 
@@ -73,7 +73,7 @@ impl Account for Bip32 {
 
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
-        let bip32 = storage::Bip32 { account_index: self.account_index, xpub_keys: self.xpub_keys.clone(), ecdsa: self.ecdsa };
+        let bip32 = storage::Bip32::new(self.account_index, self.xpub_keys.clone(), self.ecdsa);
         let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Bip32(bip32));
         Ok(account)
     }

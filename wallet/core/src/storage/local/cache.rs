@@ -8,6 +8,7 @@ use crate::storage::*;
 use std::collections::HashMap;
 
 pub struct Cache {
+    pub wallet_title: Option<String>,
     pub user_hint: Option<Hint>,
     pub prv_key_data: Encrypted,
     pub prv_key_data_info: Collection<PrvKeyDataId, PrvKeyDataInfo>,
@@ -30,15 +31,16 @@ impl TryFrom<(Wallet, &Secret)> for Cache {
         let accounts: Collection<AccountId, Account> = payload.0.accounts.try_into()?;
         let metadata: Collection<AccountId, Metadata> = wallet.metadata.try_into()?;
         let user_hint = wallet.user_hint;
+        let wallet_title = wallet.title;
         let address_book = payload.0.address_book.into_iter().collect();
 
-        Ok(Cache { user_hint, prv_key_data, prv_key_data_info, accounts, metadata, address_book })
+        Ok(Cache { wallet_title, user_hint, prv_key_data, prv_key_data_info, accounts, metadata, address_book })
     }
 }
 
-impl TryFrom<(Option<Hint>, Payload, &Secret)> for Cache {
+impl TryFrom<(Option<String>, Option<Hint>, Payload, &Secret)> for Cache {
     type Error = Error;
-    fn try_from((user_hint, payload, secret): (Option<Hint>, Payload, &Secret)) -> Result<Self> {
+    fn try_from((wallet_title, user_hint, payload, secret): (Option<String>, Option<Hint>, Payload, &Secret)) -> Result<Self> {
         let prv_key_data_info = payload.prv_key_data.iter().map(|pkdata| pkdata.into()).collect::<Vec<PrvKeyDataInfo>>().try_into()?;
 
         let prv_key_data_map = payload.prv_key_data.into_iter().map(|pkdata| (pkdata.id, pkdata)).collect::<HashMap<_, _>>();
@@ -48,7 +50,7 @@ impl TryFrom<(Option<Hint>, Payload, &Secret)> for Cache {
         let metadata: Collection<AccountId, Metadata> = Collection::default();
         let address_book = payload.address_book.into_iter().collect();
 
-        Ok(Cache { user_hint, prv_key_data, prv_key_data_info, accounts, metadata, address_book })
+        Ok(Cache { wallet_title, user_hint, prv_key_data, prv_key_data_info, accounts, metadata, address_book })
     }
 }
 
@@ -61,9 +63,15 @@ impl TryFrom<(&Cache, &Secret)> for Wallet {
         let accounts: Vec<Account> = (&cache.accounts).try_into()?;
         let metadata: Vec<Metadata> = (&cache.metadata).try_into()?;
         let address_book = cache.address_book.clone();
-        let payload = Payload { prv_key_data, accounts, address_book };
+        let payload = Payload::new(prv_key_data, accounts, address_book);
         let payload = Decrypted::new(payload).encrypt(secret)?;
 
-        Ok(Wallet { version: WALLET_VERSION, payload, metadata, user_hint: cache.user_hint.clone() })
+        Ok(Wallet {
+            version: WALLET_VERSION,
+            payload,
+            metadata,
+            user_hint: cache.user_hint.clone(),
+            title: cache.wallet_title.clone(),
+        })
     }
 }

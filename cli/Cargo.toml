@@ -12,6 +12,7 @@ legacy-rpc = ["kaspa-wallet-core/legacy-rpc"]
 default = []
 
 [lib]
+name = "kaspa_cli_lib"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]

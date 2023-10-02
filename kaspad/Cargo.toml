@@ -8,6 +8,7 @@ include.workspace = true
 license.workspace = true
 
 [lib]
+name = "kaspad_lib"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
