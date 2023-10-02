@@ -64,7 +64,7 @@ impl Handler for Metrics {
             self.mute.store(mute, Ordering::Relaxed);
         }
 
-        self.rpc.lock().unwrap().replace(ctx.wallet().rpc().clone());
+        self.rpc.lock().unwrap().replace(ctx.wallet().rpc_api().clone());
 
         self.start_task(&ctx).await?;
         Ok(())

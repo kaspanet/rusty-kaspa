@@ -42,14 +42,15 @@ fn get_home_dir() -> PathBuf {
     return dirs::home_dir().unwrap();
 }
 
-fn get_app_dir() -> PathBuf {
+/// Get the default application directory.
+pub fn get_app_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     return get_home_dir().join("rusty-kaspa");
     #[cfg(not(target_os = "windows"))]
     return get_home_dir().join(".rusty-kaspa");
 }
 
-fn validate_args(args: &Args) -> ConfigResult<()> {
+pub fn validate_args(args: &Args) -> ConfigResult<()> {
     #[cfg(feature = "devnet-prealloc")]
     {
         if args.num_prealloc_utxos.is_some() && !(args.devnet || args.simnet) {
@@ -94,12 +95,16 @@ fn get_user_approval_or_exit(message: &str, approve: bool) {
     }
 }
 
+/// Runtime configuration struct for the application.
 #[derive(Default)]
 pub struct Runtime {
     log_dir: Option<String>,
 }
 
-fn get_app_dir_from_args(args: &Args) -> PathBuf {
+/// Get the application directory from the supplied [`Args`].
+/// This function can be used to identify the location of
+/// the application folder that contains kaspad logs and the database.
+pub fn get_app_dir_from_args(args: &Args) -> PathBuf {
     let app_dir = args
         .appdir
         .clone()
@@ -112,33 +117,60 @@ fn get_app_dir_from_args(args: &Args) -> PathBuf {
     }
 }
 
+/// Get the log directory from the supplied [`Args`].
+pub fn get_log_dir(args: &Args) -> Option<String> {
+    let network = args.network();
+    let app_dir = get_app_dir_from_args(args);
+
+    // Logs directory is usually under the application directory, unless otherwise specified
+    let log_dir = args.logdir.clone().unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
+    let log_dir = if log_dir.is_empty() { app_dir.join(network.to_prefixed()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
+    let log_dir = if args.no_log_files { None } else { log_dir.to_str().map(String::from) };
+    log_dir
+}
+
 impl Runtime {
     pub fn from_args(args: &Args) -> Self {
         // Configure the panic behavior
         kaspa_core::panic::configure_panic();
 
-        let network = args.network();
-        let app_dir = get_app_dir_from_args(args);
-
-        // Logs directory is usually under the application directory, unless otherwise specified
-        let log_dir = args.logdir.clone().unwrap_or_default().replace('~', get_home_dir().as_path().to_str().unwrap());
-        let log_dir =
-            if log_dir.is_empty() { app_dir.join(network.to_prefixed()).join(DEFAULT_LOG_DIR) } else { PathBuf::from(log_dir) };
-        let log_dir = if args.no_log_files { None } else { log_dir.to_str() };
+        let log_dir = get_log_dir(args);
 
         // Initialize the logger
-        kaspa_core::log::init_logger(log_dir, &args.log_level);
+        kaspa_core::log::init_logger(log_dir.as_deref(), &args.log_level);
 
         Self { log_dir: log_dir.map(|log_dir| log_dir.to_owned()) }
     }
 }
 
-pub fn create_core(args: Args) -> Arc<Core> {
+/// Create [`Core`] instance with supplied [`Args`].
+/// This function will automatically create a [`Runtime`]
+/// instance with the supplied [`Args`] and then
+/// call [`create_core_with_runtime`].
+///
+/// Usage semantics:
+/// `let (core, rpc_core_service) = create_core(args);`
+///
+/// The instance of the [`RpcCoreService`] needs to be released
+/// (dropped) before the `Core` is shut down.
+///
+pub fn create_core(args: Args) -> (Arc<Core>, Arc<RpcCoreService>) {
     let rt = Runtime::from_args(&args);
     create_core_with_runtime(&rt, &args)
 }
 
-pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> Arc<Core> {
+/// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
+///
+/// Usage semantics:
+/// ```ignore
+/// let Runtime = Runtime::from_args(&args); // or create your own
+/// let (core, rpc_core_service) = create_core(&runtime, &args);
+/// ```
+///
+/// The instance of the [`RpcCoreService`] needs to be released
+/// (dropped) before the `Core` is shut down.
+///
+pub fn create_core_with_runtime(runtime: &Runtime, args: &Args) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
 
     // Make sure args forms a valid set of properties
@@ -365,5 +397,5 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     core.bind(consensus_manager);
     core.bind(async_runtime);
 
-    core
+    (core, rpc_core_service)
 }

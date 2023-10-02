@@ -31,7 +31,7 @@ impl MultiSig {
         let id = AccountId::from_multisig(&prv_key_data_id, &data);
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
-        let storage::account::MultiSig { account_index, xpub_keys, cosigner_index, minimum_signatures, ecdsa } = data;
+        let storage::account::MultiSig { account_index, xpub_keys, cosigner_index, minimum_signatures, ecdsa, .. } = data;
 
         let address_derivation_indexes = meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or_default();
 
@@ -80,13 +80,13 @@ impl Account for MultiSig {
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
 
-        let multisig = storage::MultiSig {
-            account_index: self.account_index,
-            xpub_keys: self.xpub_keys.clone(),
-            ecdsa: self.ecdsa,
-            cosigner_index: self.cosigner_index,
-            minimum_signatures: self.minimum_signatures,
-        };
+        let multisig = storage::MultiSig::new(
+            self.account_index,
+            self.xpub_keys.clone(),
+            self.cosigner_index,
+            self.minimum_signatures,
+            self.ecdsa,
+        );
 
         let account =
             storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::MultiSig(multisig));

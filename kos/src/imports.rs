@@ -8,7 +8,7 @@ pub use crate::terminal::*;
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSerialize};
 pub use futures::{future::join_all, select, select_biased, stream::StreamExt, FutureExt, Stream};
-pub use kaspa_cli::{KaspaCli, Options as KaspaCliOptions};
+pub use kaspa_cli_lib::{KaspaCli, Options as KaspaCliOptions};
 pub use kaspa_consensus_core::network::NetworkType;
 pub use kaspa_daemon::{
     CpuMiner, CpuMinerConfig, CpuMinerCtl, DaemonEvent, DaemonKind, DaemonStatus, Daemons, Kaspad, KaspadConfig, KaspadCtl,

@@ -7,12 +7,15 @@ use crate::storage::{Decrypted, Encrypted, Hint, Metadata, PrvKeyData, PrvKeyDat
 use serde_json::{from_str, from_value, Value};
 use workflow_store::fs;
 
-pub const WALLET_VERSION: [u16; 3] = [0, 0, 1];
+pub const WALLET_VERSION: [u16; 3] = [1, 0, 0];
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Wallet {
     #[serde(default)]
     pub version: [u16; 3],
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_hint: Option<Hint>,
     pub payload: Encrypted,
@@ -20,9 +23,15 @@ pub struct Wallet {
 }
 
 impl Wallet {
-    pub fn try_new(user_hint: Option<Hint>, secret: &Secret, payload: Payload, metadata: Vec<Metadata>) -> Result<Self> {
+    pub fn try_new(
+        title: Option<String>,
+        user_hint: Option<Hint>,
+        secret: &Secret,
+        payload: Payload,
+        metadata: Vec<Metadata>,
+    ) -> Result<Self> {
         let payload = Decrypted::new(payload).encrypt(secret)?;
-        Ok(Self { version: WALLET_VERSION, payload, metadata, user_hint })
+        Ok(Self { version: WALLET_VERSION, title, payload, metadata, user_hint })
     }
 
     pub fn payload(&self, secret: &Secret) -> Result<Decrypted<Payload>> {

@@ -3,7 +3,7 @@ use kaspa_core::{core::Core, signals::Shutdown};
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::notify::mode::NotificationMode;
-use kaspad::{args::Args, daemon::create_core_with_runtime};
+use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
 use std::{sync::Arc, time::Duration};
 use tempfile::TempDir;
 
@@ -54,7 +54,7 @@ impl Daemon {
         args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
 
         let network = args.network();
-        let core = create_core_with_runtime(&Default::default(), &args);
+        let (core, _) = create_core_with_runtime(&Default::default(), &args);
         Daemon { network, rpc_port, p2p_port, core, workers: None, _appdir_tempdir: appdir_tempdir }
     }
 

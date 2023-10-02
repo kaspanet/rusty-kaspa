@@ -1,7 +1,7 @@
 use crate::result::Result;
+use crate::rpc::DynRpcApi;
 use crate::tx::{DataKind, Generator};
 use crate::utxo::UtxoEntryReference;
-use crate::DynRpcApi;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_core::sign::sign_with_multiple_v2;

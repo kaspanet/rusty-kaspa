@@ -1,6 +1,6 @@
 use super::toolbar::*;
 use crate::imports::*;
-use kaspa_cli::metrics::{Metric, MetricsSnapshot};
+use kaspa_cli_lib::metrics::{Metric, MetricsSnapshot};
 use std::collections::HashMap;
 use workflow_core::time::{HOURS, MINUTES};
 use workflow_d3::container::*;

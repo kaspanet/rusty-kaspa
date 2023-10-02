@@ -5,8 +5,8 @@ use futures::{pin_mut, TryFutureExt};
 use regex::Regex;
 struct Inner {
     task_ctl: DuplexChannel,
-    rpc: Arc<DynRpcApi>,
-    multiplexer: Multiplexer<Events>,
+    rpc: Mutex<Option<Rpc>>,
+    multiplexer: Multiplexer<Box<Events>>,
     running: AtomicBool,
     is_synced: AtomicBool,
     state_observer: StateObserver,
@@ -18,10 +18,10 @@ pub struct SyncMonitor {
 }
 
 impl SyncMonitor {
-    pub fn new(rpc: &Arc<DynRpcApi>, multiplexer: &Multiplexer<Events>) -> Self {
+    pub fn new(rpc: Option<Rpc>, multiplexer: &Multiplexer<Box<Events>>) -> Self {
         Self {
             inner: Arc::new(Inner {
-                rpc: rpc.clone(),
+                rpc: Mutex::new(rpc.clone()),
                 multiplexer: multiplexer.clone(),
                 task_ctl: DuplexChannel::oneshot(),
                 running: AtomicBool::new(false),
@@ -48,7 +48,7 @@ impl SyncMonitor {
                     log_trace!("sync monitor: stopping sync monitor task");
                     self.stop_task().await?;
                 }
-                self.notify(Events::SyncState(SyncState::Synced)).await?;
+                self.notify(Events::SyncState { sync_state: SyncState::Synced }).await?;
             } else {
                 self.inner.is_synced.store(false, Ordering::SeqCst);
                 log_trace!("sync monitor: node is not synced");
@@ -56,7 +56,7 @@ impl SyncMonitor {
                     log_trace!("sync monitor: starting sync monitor task");
                     self.start_task().await?;
                 }
-                self.notify(Events::SyncState(SyncState::NotSynced)).await?;
+                self.notify(Events::SyncState { sync_state: SyncState::NotSynced }).await?;
             }
         }
 
@@ -70,23 +70,28 @@ impl SyncMonitor {
         Ok(())
     }
 
-    pub fn rpc(&self) -> &Arc<DynRpcApi> {
-        &self.inner.rpc
+    pub fn rpc_api(&self) -> Arc<DynRpcApi> {
+        self.inner.rpc.lock().unwrap().as_ref().expect("SyncMonitor RPC not initialized").rpc_api().clone()
     }
 
-    pub fn multiplexer(&self) -> &Multiplexer<Events> {
+    pub async fn bind_rpc(&self, rpc: Option<Rpc>) -> Result<()> {
+        *self.inner.rpc.lock().unwrap() = rpc;
+        Ok(())
+    }
+
+    pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
         &self.inner.multiplexer
     }
 
     pub async fn notify(&self, event: Events) -> Result<()> {
         self.multiplexer()
-            .try_broadcast(event)
+            .try_broadcast(Box::new(event))
             .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
         Ok(())
     }
 
-    async fn handle_event(&self, event: Events) -> Result<()> {
-        match &event {
+    async fn handle_event(&self, event: Box<Events>) -> Result<()> {
+        match *event {
             Events::UtxoProcStart { .. } => {}
             Events::UtxoProcStop { .. } => {}
             _ => {}
@@ -98,7 +103,7 @@ impl SyncMonitor {
     async fn get_sync_status(&self) -> Result<bool> {
         cfg_if! {
             if #[cfg(feature = "legacy-rpc")] {
-                Ok(self.rpc().get_info().map_ok(|info| info.is_synced).await?)
+                Ok(self.rpc_api().get_info().map_ok(|info| info.is_synced).await?)
             } else {
                 Ok(self.rpc().get_sync_status().await?)
             }
@@ -133,7 +138,7 @@ impl SyncMonitor {
                             if is_synced {
                                 if is_synced != this.is_synced() {
                                     this.inner.is_synced.store(true, Ordering::SeqCst);
-                                    this.notify(Events::SyncState(SyncState::Synced)).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
+                                    this.notify(Events::SyncState { sync_state : SyncState::Synced }).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
                                     // this.notify(Events::NodeSync { is_synced }).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
                                 }
 
@@ -181,8 +186,8 @@ impl SyncMonitor {
                 }
             }
         }
-        if let Some(state) = state {
-            self.notify(Events::SyncState(state)).await?;
+        if let Some(sync_state) = state {
+            self.notify(Events::SyncState { sync_state }).await?;
         }
 
         Ok(())

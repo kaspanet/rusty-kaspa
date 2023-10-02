@@ -1,4 +1,4 @@
-use kaspa_cli::kaspa_cli;
+use kaspa_cli_lib::kaspa_cli;
 use wasm_bindgen::prelude::*;
 use workflow_terminal::Options;
 use workflow_terminal::Result;

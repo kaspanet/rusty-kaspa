@@ -515,7 +515,7 @@ impl UtxoContext {
 
     pub async fn scan_and_register_addresses(&self, addresses: Vec<Address>, current_daa_score: Option<u64>) -> Result<()> {
         self.register_addresses(&addresses).await?;
-        let resp = self.processor().rpc().get_utxos_by_addresses(addresses).await?;
+        let resp = self.processor().rpc_api().get_utxos_by_addresses(addresses).await?;
         let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
         let current_daa_score = current_daa_score.unwrap_or_else(|| {
             self.processor()

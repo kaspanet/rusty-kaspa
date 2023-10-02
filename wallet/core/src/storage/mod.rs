@@ -17,7 +17,7 @@ pub use address::AddressBookEntry;
 pub use binding::Binding;
 pub use hint::Hint;
 pub use id::IdT;
-pub use interface::{AccessContextT, AccountStore, Interface, PrvKeyDataStore, TransactionRecordStore};
+pub use interface::{AccessContextT, AccountStore, Interface, PrvKeyDataStore, TransactionRecordStore, WalletDescriptor};
 pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
 pub use metadata::Metadata;
 pub use transaction::{TransactionMetadata, TransactionRecord, TransactionType};
@@ -40,7 +40,7 @@ mod tests {
         // loading of account references and a wallet instance and confirms
         // that the serialized data is as expected.
 
-        let store = local::Storage::new("test-wallet-store")?;
+        let store = local::Storage::try_new("test-wallet-store")?;
 
         let mut payload = Payload::default();
 
@@ -63,13 +63,13 @@ mod tests {
         payload.prv_key_data.push(prv_key_data2.clone());
 
         let settings = Settings { name: Some("Wallet-A".to_string()), title: Some("Wallet A".to_string()), is_visible: false };
-        let bip32 = Bip32 { account_index: 0, xpub_keys: pub_key_data1.clone(), ecdsa: false };
+        let bip32 = Bip32::new(0, pub_key_data1.clone(), false);
         let id = AccountId::from_bip32(&prv_key_data1.id, &bip32);
         let account1 = Account::new(id, Some(prv_key_data1.id), settings, AccountData::Bip32(bip32));
         payload.accounts.push(account1);
 
         let settings = Settings { name: Some("Wallet-B".to_string()), title: Some("Wallet B".to_string()), is_visible: false };
-        let bip32 = Bip32 { account_index: 0, xpub_keys: pub_key_data2.clone(), ecdsa: false };
+        let bip32 = Bip32::new(0, pub_key_data2.clone(), false);
         let id = AccountId::from_bip32(&prv_key_data2.id, &bip32);
         let account2 = Account::new(id, Some(prv_key_data2.id), settings, AccountData::Bip32(bip32));
         payload.accounts.push(account2);
@@ -77,7 +77,7 @@ mod tests {
         let payload_json = serde_json::to_string(&payload).unwrap();
         // let settings = WalletSettings::new(account_id);
 
-        let w1 = Wallet::try_new(None, &wallet_secret, payload, vec![])?;
+        let w1 = Wallet::try_new(None, None, &wallet_secret, payload, vec![])?;
         w1.try_store(&store).await?;
         // Wallet::try_store_payload(&store, &wallet_secret, payload).await?;
 

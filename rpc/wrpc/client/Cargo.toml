@@ -7,6 +7,10 @@ authors.workspace = true
 include.workspace = true
 license.workspace = true
 
+[features]
+no-unsafe-eval = ["workflow-core/no-unsafe-eval","workflow-rpc/no-unsafe-eval"]
+default = []
+
 [lib]
 crate-type = ["cdylib", "lib"]
 

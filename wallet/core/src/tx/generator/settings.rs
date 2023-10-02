@@ -12,7 +12,7 @@ pub struct GeneratorSettings {
     // Network type
     pub network_type: NetworkType,
     // Event multiplexer
-    pub multiplexer: Option<Multiplexer<Events>>,
+    pub multiplexer: Option<Multiplexer<Box<Events>>>,
     // Utxo iterator
     pub utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
     // Utxo Context
@@ -71,7 +71,7 @@ impl GeneratorSettings {
         final_transaction_destination: PaymentDestination,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
-        multiplexer: Option<Multiplexer<Events>>,
+        multiplexer: Option<Multiplexer<Box<Events>>>,
     ) -> Result<Self> {
         let network_type = utxo_context.processor().network_id()?.into();
         let utxo_iterator = UtxoIterator::new(&utxo_context);
@@ -101,7 +101,7 @@ impl GeneratorSettings {
         final_transaction_destination: PaymentDestination,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
-        multiplexer: Option<Multiplexer<Events>>,
+        multiplexer: Option<Multiplexer<Box<Events>>>,
     ) -> Result<Self> {
         let network_type = NetworkType::try_from(change_address.prefix)?;
 

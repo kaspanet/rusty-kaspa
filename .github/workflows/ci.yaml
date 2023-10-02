@@ -106,7 +106,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo build with devnet-prealloc feature
-        run: cargo build --features devnet-prealloc --workspace
+        run: cargo build --features devnet-prealloc --workspace --all --tests --benches
         
       - name: Run cargo test regular features
         run: cargo test --workspace

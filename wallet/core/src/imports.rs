@@ -1,7 +1,8 @@
 pub use crate::error::Error;
 pub use crate::events::{Events, SyncState};
+pub use crate::rpc::Rpc;
+pub use crate::rpc::{DynRpcApi, RpcCtl};
 pub use crate::utxo::scan::{Scan, ScanExtent};
-pub use crate::DynRpcApi;
 pub use crate::{runtime, storage, utils, utxo};
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};

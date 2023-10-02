@@ -26,8 +26,10 @@ impl UtxoProcessor {
     #[wasm_bindgen(constructor)]
     pub async fn ctor(js_value: JsValue) -> Result<UtxoProcessor> {
         let UtxoProcessorCreateArgs { rpc, network_id } = js_value.try_into()?;
-        let rpc_client: Arc<DynRpcApi> = rpc.client().clone();
-        let inner = native::UtxoProcessor::new(&rpc_client, Some(network_id), None);
+        let rpc_api: Arc<DynRpcApi> = rpc.client().clone();
+        let rpc_ctl = rpc.client().rpc_ctl().clone();
+        let rpc_binding = Rpc::new(rpc_api, rpc_ctl);
+        let inner = native::UtxoProcessor::new(Some(rpc_binding), Some(network_id), None);
         let events = EventDispatcher::new();
 
         inner.start().await?;

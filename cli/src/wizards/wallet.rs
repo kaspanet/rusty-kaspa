@@ -92,7 +92,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
     wallet.store().batch().await?;
 
     let account_kind = AccountKind::Bip32;
-    let wallet_args = WalletCreateArgs::new(name.map(String::from), hint, wallet_secret.clone(), true);
+    let wallet_args = WalletCreateArgs::new(name.map(String::from), None, hint, wallet_secret.clone(), true);
     let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone());
     let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_secret.clone(), payment_secret);
     let descriptor = ctx.wallet().create_wallet(wallet_args).await?;

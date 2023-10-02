@@ -124,7 +124,7 @@ pub enum Error {
     #[error(transparent)]
     ParseFloatError(#[from] std::num::ParseFloatError),
 
-    #[error("data decryption error (chacha20poly1305 -> {0})")]
+    #[error("Unable to decrypt this wallet")]
     Chacha20poly1305(chacha20poly1305::Error),
 
     #[error(transparent)]

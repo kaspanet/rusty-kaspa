@@ -156,7 +156,7 @@ enum GeneratorSource {
 /// Converts [`GeneratorSettingsObject`] to a series of properties intended for use by the [`Generator`].
 struct GeneratorSettings {
     pub source: GeneratorSource,
-    pub multiplexer: Option<Multiplexer<Events>>,
+    pub multiplexer: Option<Multiplexer<Box<Events>>>,
     pub final_transaction_destination: PaymentDestination,
     pub change_address: Option<Address>,
     pub final_priority_fee: Fees,

@@ -16,7 +16,7 @@ impl Rpc {
 
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, mut argv: Vec<String>, cmd: &str) -> Result<()> {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
-        let rpc = ctx.wallet().rpc().clone();
+        let rpc = ctx.wallet().rpc_api().clone();
         // tprintln!(ctx, "{response}");
 
         if argv.is_empty() {
@@ -148,7 +148,7 @@ impl Rpc {
                 let addresses = argv.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
                 for address in addresses {
                     let result = rpc.get_balance_by_address_call(GetBalanceByAddressRequest { address }).await?;
-                    self.println(&ctx, result);
+                    self.println(&ctx, sompi_to_kaspa(result.balance));
                 }
             }
             RpcApiOps::GetBalancesByAddresses => {
