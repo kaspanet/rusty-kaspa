@@ -486,13 +486,13 @@ impl Wallet {
                 runtime::MultiSig::try_new(
                     self,
                     settings,
-                    MultiSig {
-                        xpub_keys: Arc::new(xpub_keys),
-                        prv_key_data_ids: Some(Arc::new(prv_key_data_ids)),
-                        cosigner_index: Some(min_cosigner_index),
-                        minimum_signatures: args.minimum_signatures,
-                        ecdsa: false,
-                    },
+                    MultiSig::new(
+                        Arc::new(xpub_keys),
+                        Some(Arc::new(prv_key_data_ids)),
+                        Some(min_cosigner_index),
+                        args.minimum_signatures,
+                        false,
+                    ),
                     None,
                 )
                 .await?,
@@ -502,13 +502,7 @@ impl Wallet {
                 runtime::MultiSig::try_new(
                     self,
                     settings,
-                    MultiSig {
-                        xpub_keys: Arc::new(xpub_keys),
-                        prv_key_data_ids: None,
-                        cosigner_index: None,
-                        minimum_signatures: args.minimum_signatures,
-                        ecdsa: false,
-                    },
+                    MultiSig::new(Arc::new(xpub_keys), None, None, args.minimum_signatures, false),
                     None,
                 )
                 .await?,
@@ -893,13 +887,13 @@ impl Wallet {
             runtime::MultiSig::try_new(
                 self,
                 storage::Settings::default(),
-                MultiSig {
-                    xpub_keys: Arc::new(xpub_keys),
-                    prv_key_data_ids: Some(Arc::new(prv_key_data_ids)),
-                    cosigner_index: Some(min_cosigner_index),
+                MultiSig::new(
+                    Arc::new(xpub_keys),
+                    Some(Arc::new(prv_key_data_ids)),
+                    Some(min_cosigner_index),
                     minimum_signatures,
-                    ecdsa: false,
-                },
+                    false,
+                ),
                 None,
             )
             .await?,

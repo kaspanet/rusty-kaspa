@@ -77,13 +77,13 @@ impl Account for MultiSig {
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
 
-        let multisig = storage::MultiSig {
-            xpub_keys: self.xpub_keys.clone(),
-            ecdsa: self.ecdsa,
-            cosigner_index: self.cosigner_index,
-            minimum_signatures: self.minimum_signatures,
-            prv_key_data_ids: self.prv_key_data_ids.clone(),
-        };
+        let multisig = storage::MultiSig::new(
+            self.xpub_keys.clone(),
+            self.prv_key_data_ids.clone(),
+            self.cosigner_index,
+            self.minimum_signatures,
+            self.ecdsa,
+        );
 
         let account = storage::Account::new(*self.id(), None, settings, storage::AccountData::MultiSig(multisig));
 

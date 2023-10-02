@@ -1,6 +1,6 @@
 use zeroize::Zeroize;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Secret(Vec<u8>);
 
 impl Secret {

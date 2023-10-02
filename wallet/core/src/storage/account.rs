@@ -59,6 +59,18 @@ pub struct MultiSig {
     pub ecdsa: bool,
 }
 
+impl MultiSig {
+    pub fn new(
+        xpub_keys: Arc<Vec<String>>,
+        prv_key_data_ids: Option<Arc<Vec<PrvKeyDataId>>>,
+        cosigner_index: Option<u8>,
+        minimum_signatures: u16,
+        ecdsa: bool,
+    ) -> Self {
+        Self { version: MULTISIG_ACCOUNT_VERSION, xpub_keys, prv_key_data_ids, cosigner_index, minimum_signatures, ecdsa }
+    }
+}
+
 const KEYPAIR_ACCOUNT_VERSION: u16 = 0;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
