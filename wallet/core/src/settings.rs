@@ -47,7 +47,7 @@ where
     K: DefaultSettings + Clone + Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     pub fn try_new(filename: &str) -> Result<Self> {
-        Ok(Self { map: DashMap::default(), storage: Storage::new(&format!("{filename}.settings"))?, phantom: PhantomData })
+        Ok(Self { map: DashMap::default(), storage: Storage::try_new(&format!("{filename}.settings"))?, phantom: PhantomData })
     }
 
     pub fn new_with_storage(storage: Storage) -> Self {

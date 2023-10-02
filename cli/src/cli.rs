@@ -7,9 +7,9 @@ use crate::modules::node::Node;
 use crate::notifier::{Notification, Notifier};
 use crate::result::Result;
 use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
+use kaspa_wallet_core::rpc::DynRpcApi;
 use kaspa_wallet_core::runtime::{Account, BalanceStrings};
 use kaspa_wallet_core::storage::{IdT, PrvKeyDataInfo};
-use kaspa_wallet_core::DynRpcApi;
 use kaspa_wallet_core::{runtime::Wallet, Events};
 use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::*;
@@ -159,12 +159,12 @@ impl KaspaCli {
         self.wallet.is_connected()
     }
 
-    pub fn rpc(&self) -> Arc<DynRpcApi> {
-        self.wallet.rpc().clone()
+    pub fn rpc_api(&self) -> Arc<DynRpcApi> {
+        self.wallet.rpc_api().clone()
     }
 
-    pub fn rpc_client(&self) -> Arc<KaspaRpcClient> {
-        self.wallet.rpc_client().clone()
+    pub fn rpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
+        self.wallet.wrpc_client().clone()
     }
 
     pub fn store(&self) -> Arc<dyn Interface> {
@@ -241,6 +241,7 @@ impl KaspaCli {
         self.start_notification_pipe_task();
         self.handlers.start(self).await?;
         // wallet starts rpc and notifier
+        self.wallet.load_settings().await.unwrap_or_else(|_| log_error!("Unable to load settings, discarding..."));
         self.wallet.start().await?;
         Ok(())
     }
@@ -280,11 +281,11 @@ impl KaspaCli {
                     msg = multiplexer.receiver.recv().fuse() => {
 
                         if let Ok(msg) = msg {
-                            match msg {
+                            match *msg {
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},
-                                Events::UtxoProcError(err) => {
-                                    terrorln!(this,"{err}");
+                                Events::UtxoProcError { message } => {
+                                    terrorln!(this,"{message}");
                                 },
                                 #[allow(unused_variables)]
                                 Events::Connect{ url, network_id } => {
@@ -292,14 +293,14 @@ impl KaspaCli {
                                 },
                                 #[allow(unused_variables)]
                                 Events::Disconnect{ url, network_id } => {
-                                    tprintln!(this, "Disconnected from {url}");
+                                    tprintln!(this, "Disconnected from {}",url.unwrap_or("N/A".to_string()));
                                     this.term().refresh_prompt();
                                 },
-                                Events::UtxoIndexNotEnabled => {
+                                Events::UtxoIndexNotEnabled { .. } => {
                                     tprintln!(this, "Error: Kaspa node UTXO index is not enabled...")
                                 },
-                                Events::SyncState(state) => {
-                                    this.sync_state.lock().unwrap().replace(state);
+                                Events::SyncState { sync_state } => {
+                                    this.sync_state.lock().unwrap().replace(sync_state);
                                     this.term().refresh_prompt();
                                 }
                                 Events::ServerStatus {
@@ -309,7 +310,7 @@ impl KaspaCli {
                                     ..
                                 } => {
 
-                                    tprintln!(this, "Connected to Kaspa node version {server_version} at {url}");
+                                    tprintln!(this, "Connected to Kaspa node version {server_version} at {}", url.unwrap_or("N/A".to_string()));
 
                                     let is_open = this.wallet.is_open();
 
@@ -334,11 +335,15 @@ impl KaspaCli {
                                     }
 
                                 },
+                                Events::AccountSelection { .. } => { },
+                                Events::WalletError { .. } => { },
                                 Events::WalletOpen |
                                 Events::WalletReload => {
 
                                     // load all accounts
-                                    this.wallet().activate_all_stored_accounts().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
+                                    if let Err(err) = this.wallet().activate_all_stored_accounts().await {
+                                        terrorln!(this, "{err}");
+                                    }
 
                                     // list all accounts
                                     this.list().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
@@ -351,9 +356,9 @@ impl KaspaCli {
                                 Events::WalletClose => {
                                     this.term().refresh_prompt();
                                 },
-                                Events::DAAScoreChange(daa) => {
+                                Events::DAAScoreChange { current_daa_score } => {
                                     if this.is_mutted() && this.flags.get(Track::Daa) {
-                                        tprintln!(this, "{NOTIFY} DAA: {daa}");
+                                        tprintln!(this, "{NOTIFY} DAA: {current_daa_score}");
                                     }
                                 },
                                 Events::Reorg {
