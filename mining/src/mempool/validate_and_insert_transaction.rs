@@ -21,7 +21,7 @@ impl Mempool {
         consensus: &dyn ConsensusApi,
         mut transaction: MutableTransaction,
     ) -> RuleResult<MutableTransaction> {
-        self.validate_transaction_acceptance(&transaction)?;
+        self.validate_transaction_unacceptance(&transaction)?;
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
         transaction.calculated_mass = Some(consensus.calculate_transaction_mass(&transaction.tx));
         self.validate_transaction_in_isolation(&transaction)?;
@@ -49,6 +49,8 @@ impl Mempool {
             return Ok(None);
         }
 
+        self.validate_transaction_unacceptance(&transaction)?;
+
         // Re-check double spends since validate_and_insert_transaction is no longer atomic
         self.transaction_pool.check_double_spends(&transaction)?;
 
@@ -67,7 +69,6 @@ impl Mempool {
         }
 
         self.validate_transaction_in_context(&transaction)?;
-        self.validate_transaction_acceptance(&transaction)?;
 
         // Before adding the transaction, check if there is room in the pool
         self.transaction_pool.limit_transaction_count(1, &transaction)?.iter().try_for_each(|x| {
@@ -80,7 +81,8 @@ impl Mempool {
         Ok(Some(accepted_transaction))
     }
 
-    fn validate_transaction_acceptance(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+    /// Validates that the transaction wasn't already accepted into the DAG
+    fn validate_transaction_unacceptance(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         // Reject if the transaction is registered as an accepted transaction
         let transaction_id = transaction.id();
         match self.accepted_transactions.has(&transaction_id) {
@@ -172,7 +174,7 @@ impl Mempool {
         assert_eq!(transactions.len(), 1, "the list returned by remove_orphan is expected to contain exactly one transaction");
         let transaction = transactions.pop().unwrap();
 
-        self.validate_transaction_acceptance(&transaction.mtx)?;
+        self.validate_transaction_unacceptance(&transaction.mtx)?;
         self.transaction_pool.check_double_spends(&transaction.mtx)?;
         Ok(transaction)
     }
