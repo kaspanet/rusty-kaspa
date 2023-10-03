@@ -1,9 +1,11 @@
 use kaspa_addresses::Address;
+use kaspa_consensusmanager::ConsensusManager;
+use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspad_lib::args::Args;
 
 use crate::common::daemon::Daemon;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 #[tokio::test]
 async fn daemon_sanity_test() {
@@ -58,4 +60,32 @@ async fn daemon_mining_test() {
     for accepted_txs_pair in vc.accepted_transaction_ids {
         assert_eq!(accepted_txs_pair.accepted_transaction_ids.len(), 1);
     }
+}
+
+#[tokio::test]
+async fn daemon_cleaning_test() {
+    kaspa_core::log::try_init_logger("info,kaspa_grpc_core=trace,kaspa_grpc_server=trace,kaspa_grpc_client=trace");
+    let args = Args { devnet: true, ..Default::default() };
+    let consensus_manager;
+    let async_runtime;
+    let core;
+    {
+        let mut kaspad1 = Daemon::new_random_with_args(args);
+        let dyn_consensus_manager = kaspad1.core.find(ConsensusManager::IDENT).unwrap();
+        let dyn_async_runtime = kaspad1.core.find(AsyncRuntime::IDENT).unwrap();
+        consensus_manager =
+            Arc::downgrade(&Arc::downcast::<kaspa_consensusmanager::ConsensusManager>(dyn_consensus_manager.arc_any()).unwrap());
+        async_runtime = Arc::downgrade(&Arc::downcast::<AsyncRuntime>(dyn_async_runtime.arc_any()).unwrap());
+        core = Arc::downgrade(&kaspad1.core);
+
+        let rpc_client1 = kaspad1.start().await;
+        rpc_client1.disconnect().await.unwrap();
+        drop(rpc_client1);
+        kaspad1.shutdown();
+    }
+    tokio::time::sleep(Duration::from_secs(4)).await;
+
+    assert_eq!(consensus_manager.strong_count(), 0);
+    assert_eq!(async_runtime.strong_count(), 0);
+    assert_eq!(core.strong_count(), 0);
 }

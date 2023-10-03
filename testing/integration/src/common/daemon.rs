@@ -15,7 +15,7 @@ pub struct Daemon {
     pub rpc_port: u16,
     pub p2p_port: u16,
 
-    core: Arc<Core>,
+    pub core: Arc<Core>,
     workers: Option<Vec<std::thread::JoinHandle<()>>>,
 
     _appdir_tempdir: TempDir,
