@@ -46,6 +46,18 @@ impl Drop for AccessContext {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
+pub struct WalletDescriptor {
+    pub title: Option<String>,
+    pub filename: String,
+}
+
+impl WalletDescriptor {
+    pub fn new(title: Option<String>, filename: String) -> Self {
+        Self { title, filename }
+    }
+}
+
 pub type StorageStream<T> = Pin<Box<dyn Stream<Item = Result<T>> + Send>>;
 
 #[async_trait]
@@ -99,30 +111,35 @@ pub trait TransactionRecordStore: Send + Sync {
 
 #[derive(Debug)]
 pub struct CreateArgs {
-    pub name: Option<String>,
+    pub title: Option<String>,
+    pub filename: Option<String>,
     pub user_hint: Option<Hint>,
     pub overwrite_wallet: bool,
 }
 
 impl CreateArgs {
-    pub fn new(name: Option<String>, user_hint: Option<Hint>, overwrite_wallet: bool) -> Self {
-        Self { name, user_hint, overwrite_wallet }
+    pub fn new(title: Option<String>, filename: Option<String>, user_hint: Option<Hint>, overwrite_wallet: bool) -> Self {
+        Self { title, filename, user_hint, overwrite_wallet }
     }
 }
 
 #[derive(Debug)]
 pub struct OpenArgs {
-    pub name: Option<String>,
+    pub filename: Option<String>,
 }
 
 impl OpenArgs {
-    pub fn new(name: Option<String>) -> Self {
-        Self { name }
+    pub fn new(filename: Option<String>) -> Self {
+        Self { filename }
     }
 }
 
 #[async_trait]
 pub trait Interface: Send + Sync + AnySync {
+    /// enumerate all wallets available in the storage
+    async fn wallet_list(&self) -> Result<Vec<WalletDescriptor>>;
+
+    /// check if a wallet is currently open
     fn is_open(&self) -> bool;
 
     /// return storage information string (file location)

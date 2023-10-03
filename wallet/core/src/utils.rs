@@ -5,22 +5,6 @@ use kaspa_consensus_core::network::NetworkType;
 use separator::Separatable;
 use workflow_log::style;
 
-pub fn try_map_kaspa_str_to_sompi(s: Option<&str>) -> Result<Option<u64>> {
-    if let Some(s) = s {
-        try_kaspa_str_to_sompi(s)
-    } else {
-        Ok(None)
-    }
-}
-
-pub fn try_map_kaspa_str_to_sompi_i64(s: Option<&str>) -> Result<Option<i64>> {
-    if let Some(s) = s {
-        try_kaspa_str_to_sompi_i64(s)
-    } else {
-        Ok(None)
-    }
-}
-
 pub fn try_kaspa_str_to_sompi<S: Into<String>>(s: S) -> Result<Option<u64>> {
     let s: String = s.into();
     let amount = s.trim();
@@ -28,8 +12,7 @@ pub fn try_kaspa_str_to_sompi<S: Into<String>>(s: S) -> Result<Option<u64>> {
         return Ok(None);
     }
 
-    let amount = amount.parse::<f64>()? * SOMPI_PER_KASPA as f64;
-    Ok(Some(amount as u64))
+    Ok(Some(str_to_sompi(amount)?))
 }
 
 pub fn try_kaspa_str_to_sompi_i64<S: Into<String>>(s: S) -> Result<Option<i64>> {
@@ -89,4 +72,16 @@ pub fn format_address_colors(address: &Address, range: Option<usize>) -> String 
     let right = &payload[finish..];
 
     format!("{prefix}:{left}:{center}:{right}")
+}
+
+fn str_to_sompi(amount: &str) -> Result<u64> {
+    let Some(dot_idx) = amount.find('.') else {
+        return Ok(amount.parse::<u64>()? * SOMPI_PER_KASPA);
+    };
+    let integer = amount[..dot_idx].parse::<u64>()? * SOMPI_PER_KASPA;
+    let decimal = &amount[dot_idx + 1..];
+    let decimal_len = decimal.len();
+    let decimal =
+        if decimal_len <= 8 { decimal.parse::<u64>()? * 10u64.pow(8 - decimal_len as u32) } else { decimal[..8].parse::<u64>()? };
+    Ok(integer + decimal)
 }

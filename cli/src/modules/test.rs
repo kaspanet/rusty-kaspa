@@ -2,7 +2,7 @@ use crate::imports::*;
 
 use nw_sys::notifications;
 use nw_sys::options::*;
-// use kaspa_cli::daemon::*;
+// use kaspa_cli_lib::daemon::*;
 
 #[derive(Default, Handler)]
 #[help("Testing ...")]

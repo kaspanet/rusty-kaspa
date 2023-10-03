@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_cli::metrics::MetricsSnapshot;
+use kaspa_cli_lib::metrics::MetricsSnapshot;
 
 static mut TERMINAL: Option<Arc<Terminal>> = None;
 static mut SHUTDOWN_ATTEMPTS: usize = 0;

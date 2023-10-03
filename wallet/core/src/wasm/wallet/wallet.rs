@@ -35,7 +35,10 @@ impl Wallet {
             encoding.unwrap_or(WrpcEncoding::Borsh),
             None,
         )?;
-        let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc.client().clone()), store, network_id)?);
+        let rpc_api: Arc<DynRpcApi> = rpc.client().rpc_api().clone();
+        let rpc_ctl = rpc.client().rpc_ctl().clone();
+        let rpc_binding = Rpc::new(rpc_api, rpc_ctl);
+        let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc_binding), store, network_id)?);
         let events = EventDispatcher::default();
 
         Ok(Self { wallet, events, rpc })
@@ -210,7 +213,8 @@ impl TryFrom<JsValue> for WalletCtorArgs {
 }
 
 struct WalletCreateArgs {
-    pub name: Option<String>,
+    pub title: Option<String>,
+    pub filename: Option<String>,
     pub user_hint: Option<Hint>,
     pub wallet_secret: Secret,
     pub overwrite_wallet_storage: bool,
@@ -221,13 +225,20 @@ impl TryFrom<&JsValue> for WalletCreateArgs {
     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(js_value) {
             Ok(WalletCreateArgs {
-                name: object.try_get_string("name")?,
+                title: object.try_get_string("title")?,
+                filename: object.try_get_string("filename")?,
                 user_hint: object.try_get_string("hint")?.map(Hint::from),
                 wallet_secret: object.get_string("walletSecret")?.into(),
                 overwrite_wallet_storage: object.try_get_bool("overwrite")?.unwrap_or(false),
             })
         } else if let Some(secret) = js_value.as_string() {
-            Ok(WalletCreateArgs { name: None, user_hint: None, wallet_secret: secret.into(), overwrite_wallet_storage: false })
+            Ok(WalletCreateArgs {
+                title: None,
+                filename: None,
+                user_hint: None,
+                wallet_secret: secret.into(),
+                overwrite_wallet_storage: false,
+            })
         } else {
             Err("WalletCreateArgs argument must be an object or a secret".into())
         }
@@ -237,7 +248,8 @@ impl TryFrom<&JsValue> for WalletCreateArgs {
 impl From<WalletCreateArgs> for runtime::WalletCreateArgs {
     fn from(args: WalletCreateArgs) -> Self {
         Self {
-            name: args.name,
+            title: args.title,
+            filename: args.filename,
             user_hint: args.user_hint,
             wallet_secret: args.wallet_secret,
             overwrite_wallet_storage: args.overwrite_wallet_storage,
