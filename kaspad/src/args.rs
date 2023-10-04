@@ -127,6 +127,7 @@ impl Args {
         config.user_agent_comments = self.user_agent_comments.clone();
         config.block_template_cache_lifetime = self.block_template_cache_lifetime;
 
+        config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
         #[cfg(feature = "devnet-prealloc")]
         if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
             config.initial_utxo_set = Arc::new(self.generate_prealloc_utxos(num_prealloc_utxos));
