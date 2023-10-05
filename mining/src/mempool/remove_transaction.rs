@@ -33,7 +33,7 @@ impl Mempool {
 
         let mut removed_orphans: Vec<TransactionId> = vec![];
         removed_transactions.iter().try_for_each(|tx_id| {
-            self.remove_transaction_from_sets(tx_id, remove_redeemers).map(|txs| {
+            self.remove_from_transaction_pool_and_update_orphans(tx_id, remove_redeemers).map(|txs| {
                 removed_orphans.extend(txs.into_iter().map(|x| x.id()));
             })
         })?;
@@ -72,13 +72,12 @@ impl Mempool {
         Ok(())
     }
 
-    fn remove_transaction_from_sets(
+    fn remove_from_transaction_pool_and_update_orphans(
         &mut self,
         transaction_id: &TransactionId,
         remove_redeemers: bool,
     ) -> RuleResult<Vec<MempoolTransaction>> {
         let removed_transaction = self.transaction_pool.remove_transaction(transaction_id)?;
-        self.transaction_pool.remove_transaction_utxos(&removed_transaction.mtx);
         self.orphan_pool.update_orphans_after_transaction_removed(&removed_transaction, remove_redeemers)
     }
 }

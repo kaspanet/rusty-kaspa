@@ -118,6 +118,7 @@ impl TransactionsPool {
         Ok(())
     }
 
+    /// Fully removes the transaction from all relational sets, as well as updates the UTXO set
     pub(crate) fn remove_transaction(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
         // Remove all bijective parent/chained relations
         if let Some(parents) = self.parent_transactions.get(transaction_id) {
@@ -142,7 +143,18 @@ impl TransactionsPool {
         self.ready_transactions.remove(transaction_id);
 
         // Remove the transaction itself
-        self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))
+        let removed_tx = self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))?;
+
+        // TODO: consider using `self.parent_transactions.get(transaction_id)`
+        // The tradeoff to consider is whether it might be possible that a parent tx exists in the pool
+        // however its relation as parent is not registered. This can supposedly happen in rare cases where
+        // the parent was removed w/o redeemers and then re-added
+        let parent_ids = self.get_parent_transaction_ids_in_pool(&removed_tx.mtx);
+
+        // Remove the transaction from the mempool UTXO set
+        self.utxo_set.remove_transaction(&removed_tx.mtx, &parent_ids);
+
+        Ok(removed_tx)
     }
 
     pub(crate) fn ready_transaction_count(&self) -> usize {
@@ -235,11 +247,6 @@ impl TransactionsPool {
 
     pub(crate) fn check_double_spends(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         self.utxo_set.check_double_spends(transaction)
-    }
-
-    pub(crate) fn remove_transaction_utxos(&mut self, transaction: &MutableTransaction) {
-        let parent_ids = self.get_parent_transaction_ids_in_pool(transaction);
-        self.utxo_set.remove_transaction(transaction, &parent_ids)
     }
 
     pub(crate) fn collect_expired_low_priority_transactions(&self, virtual_daa_score: u64) -> Vec<TransactionId> {
