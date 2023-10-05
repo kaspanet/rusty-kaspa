@@ -1,9 +1,6 @@
 use crate::mempool::{
     errors::RuleResult,
-    model::{
-        pool::Pool,
-        tx::{MempoolTransaction, TxRemovalReason},
-    },
+    model::{pool::Pool, tx::TxRemovalReason},
     Mempool,
 };
 use kaspa_consensus_core::tx::TransactionId;
@@ -28,15 +25,18 @@ impl Mempool {
 
         let mut removed_transactions = vec![*transaction_id];
         if remove_redeemers {
+            // Add all descendent txs as pending removals
             removed_transactions.extend(self.transaction_pool.get_redeemer_ids_in_pool(transaction_id));
         }
 
         let mut removed_orphans: Vec<TransactionId> = vec![];
-        removed_transactions.iter().try_for_each(|tx_id| {
-            self.remove_from_transaction_pool_and_update_orphans(tx_id, remove_redeemers).map(|txs| {
-                removed_orphans.extend(txs.into_iter().map(|x| x.id()));
-            })
-        })?;
+        for tx_id in removed_transactions.iter() {
+            // Remove the tx from the transaction pool and the UTXO set (handled within the pool)
+            let tx = self.transaction_pool.remove_transaction(tx_id)?;
+            // Update/remove descendent orphan txs (depending on `remove_redeemers`)
+            let txs = self.orphan_pool.update_orphans_after_transaction_removed(&tx, remove_redeemers)?;
+            removed_orphans.extend(txs.into_iter().map(|x| x.id()));
+        }
         removed_transactions.extend(removed_orphans);
 
         match reason {
@@ -66,14 +66,5 @@ impl Mempool {
         }
 
         Ok(())
-    }
-
-    fn remove_from_transaction_pool_and_update_orphans(
-        &mut self,
-        transaction_id: &TransactionId,
-        remove_redeemers: bool,
-    ) -> RuleResult<Vec<MempoolTransaction>> {
-        let removed_transaction = self.transaction_pool.remove_transaction(transaction_id)?;
-        self.orphan_pool.update_orphans_after_transaction_removed(&removed_transaction, remove_redeemers)
     }
 }

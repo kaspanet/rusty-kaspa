@@ -118,7 +118,7 @@ impl TransactionsPool {
         Ok(())
     }
 
-    /// Fully removes the transaction from all relational sets, as well as updates the UTXO set
+    /// Fully removes the transaction from all relational sets, as well as from the UTXO set
     pub(crate) fn remove_transaction(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
         // Remove all bijective parent/chained relations
         if let Some(parents) = self.parent_transactions.get(transaction_id) {
