@@ -118,25 +118,6 @@ impl TransactionsPool {
         Ok(())
     }
 
-    pub(crate) fn remove_parent_chained_relation_in_pool(
-        &mut self,
-        transaction_id: &TransactionId,
-        parent_id: &TransactionId,
-    ) -> bool {
-        let mut found = false;
-        // Remove the bijective parent/chained relation
-        if let Some(parents) = self.parent_transactions.get_mut(transaction_id) {
-            found = parents.remove(parent_id);
-            if parents.is_empty() {
-                self.ready_transactions.insert(*transaction_id);
-            }
-        }
-        if let Some(chains) = self.chained_transactions.get_mut(parent_id) {
-            found = chains.remove(transaction_id) || found;
-        }
-        found
-    }
-
     pub(crate) fn remove_transaction(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
         // Remove all bijective parent/chained relations
         if let Some(parents) = self.parent_transactions.get(transaction_id) {
@@ -310,13 +291,7 @@ impl Pool for TransactionsPool {
         &self.chained_transactions
     }
 
-    fn entry_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction> {
+    fn get_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction> {
         self.all_transactions.get_mut(transaction_id)
-    }
-
-    fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {
-        self.last_expire_scan_daa_score = virtual_daa_score;
-        self.last_expire_scan_time = unix_now();
-        Ok(())
     }
 }

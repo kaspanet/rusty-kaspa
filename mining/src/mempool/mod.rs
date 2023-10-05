@@ -140,7 +140,7 @@ impl Mempool {
     }
 
     pub(crate) fn update_revalidated_transaction(&mut self, transaction: MutableTransaction) -> bool {
-        if let Some(tx) = self.transaction_pool.entry_mut(&transaction.id()) {
+        if let Some(tx) = self.transaction_pool.get_mut(&transaction.id()) {
             tx.mtx = transaction;
             true
         } else {

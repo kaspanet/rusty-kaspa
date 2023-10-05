@@ -28,22 +28,13 @@ impl Mempool {
 
         let mut removed_transactions = vec![*transaction_id];
         if remove_redeemers {
-            let redeemers = self.transaction_pool.get_redeemer_ids_in_pool(transaction_id);
-            removed_transactions.extend(redeemers);
-        } else {
-            // Note: when `remove_redeemers=false` we avoid calling `get_redeemer_ids_in_pool` which might
-            // have linear complexity (in mempool size) in the worst-case. Instead, we only obtain the direct
-            // tx children since only for these txs we need to update the parent/chain relation to the removed tx
-            let direct_redeemers = self.transaction_pool.get_direct_redeemer_ids_in_pool(transaction_id);
-            direct_redeemers.iter().for_each(|x| {
-                self.transaction_pool.remove_parent_chained_relation_in_pool(x, transaction_id);
-            });
+            removed_transactions.extend(self.transaction_pool.get_redeemer_ids_in_pool(transaction_id));
         }
 
         let mut removed_orphans: Vec<TransactionId> = vec![];
         removed_transactions.iter().try_for_each(|tx_id| {
             self.remove_transaction_from_sets(tx_id, remove_redeemers).map(|txs| {
-                removed_orphans.extend(txs.iter().map(|x| x.id()));
+                removed_orphans.extend(txs.into_iter().map(|x| x.id()));
             })
         })?;
         removed_transactions.extend(removed_orphans);
@@ -52,32 +43,30 @@ impl Mempool {
             removed_transactions.extend(self.orphan_pool.remove_redeemers_of(transaction_id)?.iter().map(|x| x.id()));
         }
 
-        if !removed_transactions.is_empty() {
-            match reason {
-                TxRemovalReason::Muted => {}
-                TxRemovalReason::DoubleSpend => match removed_transactions.len() {
-                    0 => {}
-                    1 => warn!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),
-                    n => warn!(
-                        "Removed {} transactions ({}): {}{}",
-                        n,
-                        reason,
-                        removed_transactions.iter().reusable_format(", "),
-                        extra_info
-                    ),
-                },
-                _ => match removed_transactions.len() {
-                    0 => {}
-                    1 => debug!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),
-                    n => debug!(
-                        "Removed {} transactions ({}): {}{}",
-                        n,
-                        reason,
-                        removed_transactions.iter().reusable_format(", "),
-                        extra_info
-                    ),
-                },
-            }
+        match reason {
+            TxRemovalReason::Muted => {}
+            TxRemovalReason::DoubleSpend => match removed_transactions.len() {
+                0 => {}
+                1 => warn!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),
+                n => warn!(
+                    "Removed {} transactions ({}): {}{}",
+                    n,
+                    reason,
+                    removed_transactions.iter().reusable_format(", "),
+                    extra_info
+                ),
+            },
+            _ => match removed_transactions.len() {
+                0 => {}
+                1 => debug!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),
+                n => debug!(
+                    "Removed {} transactions ({}): {}{}",
+                    n,
+                    reason,
+                    removed_transactions.iter().reusable_format(", "),
+                    extra_info
+                ),
+            },
         }
 
         Ok(())

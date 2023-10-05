@@ -10,7 +10,6 @@ use crate::{
     },
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
-use kaspa_mining_errors::mempool::RuleResult;
 use std::collections::{hash_set::Iter, HashMap, HashSet, VecDeque};
 
 pub(crate) type TransactionsEdges = HashMap<TransactionId, TransactionIdSet>;
@@ -28,7 +27,7 @@ pub(crate) trait Pool {
         self.all().get(transaction_id)
     }
 
-    fn entry_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction>;
+    fn get_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction>;
 
     /// Returns the number of transactions in the pool
     fn len(&self) -> usize {
@@ -94,17 +93,6 @@ pub(crate) trait Pool {
         descendants
     }
 
-    /// Returns the ids of all transactions which directly chained to `transaction_id`
-    /// and exist in the pool.
-    fn get_direct_redeemer_ids_in_pool(&self, transaction_id: &TransactionId) -> TransactionIdSet {
-        if let Some(transaction) = self.get(transaction_id) {
-            if let Some(chains) = self.chained().get(&transaction.id()) {
-                return chains.clone();
-            }
-        }
-        Default::default()
-    }
-
     /// Returns a vector with clones of all the transactions in the pool.
     fn get_all_transactions(&self) -> Vec<MutableTransaction> {
         self.all().values().map(|x| x.mtx.clone()).collect()
@@ -139,8 +127,6 @@ pub(crate) trait Pool {
             });
         });
     }
-
-    fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()>;
 }
 
 pub(crate) struct PoolIndex {

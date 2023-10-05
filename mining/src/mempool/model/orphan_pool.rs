@@ -263,28 +263,14 @@ impl OrphanPool {
     fn chained_mut(&mut self) -> &mut TransactionsEdges {
         &mut self.chained_orphans
     }
-}
 
-impl Pool for OrphanPool {
-    fn all(&self) -> &MempoolTransactionCollection {
-        &self.all_orphans
-    }
-
-    fn chained(&self) -> &TransactionsEdges {
-        &self.chained_orphans
-    }
-
-    fn entry_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction> {
-        self.all_orphans.get_mut(transaction_id)
-    }
-
-    fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {
+    pub(crate) fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {
         if virtual_daa_score < self.last_expire_scan + self.config.orphan_expire_scan_interval_daa_score {
             return Ok(());
         }
 
         // Never expire high priority transactions
-        // Remove all transactions whose addedAtDAAScore is older then TransactionExpireIntervalDAAScore
+        // Remove all transactions whose `added_at_daa_score` is older then TransactionExpireIntervalDAAScore
         let expired_low_priority_transactions: Vec<TransactionId> = self
             .all_orphans
             .values()
@@ -305,5 +291,19 @@ impl Pool for OrphanPool {
 
         self.last_expire_scan = virtual_daa_score;
         Ok(())
+    }
+}
+
+impl Pool for OrphanPool {
+    fn all(&self) -> &MempoolTransactionCollection {
+        &self.all_orphans
+    }
+
+    fn chained(&self) -> &TransactionsEdges {
+        &self.chained_orphans
+    }
+
+    fn get_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction> {
+        self.all_orphans.get_mut(transaction_id)
     }
 }
