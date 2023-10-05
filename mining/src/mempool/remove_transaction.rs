@@ -39,10 +39,6 @@ impl Mempool {
         })?;
         removed_transactions.extend(removed_orphans);
 
-        if remove_redeemers {
-            removed_transactions.extend(self.orphan_pool.remove_redeemers_of(transaction_id)?.iter().map(|x| x.id()));
-        }
-
         match reason {
             TxRemovalReason::Muted => {}
             TxRemovalReason::DoubleSpend => match removed_transactions.len() {
