@@ -510,7 +510,7 @@ impl MiningManager {
         for chunk in &expired_low_priority_transactions.iter().chunks(24) {
             let mut mempool = self.mempool.write();
             chunk.into_iter().for_each(|tx| {
-                if let Err(err) = mempool.remove_transaction(tx, false, TxRemovalReason::Muted, "") {
+                if let Err(err) = mempool.remove_transaction(tx, true, TxRemovalReason::Muted, "") {
                     warn!("Failed to remove transaction {} from mempool: {}", tx, err);
                 }
             });

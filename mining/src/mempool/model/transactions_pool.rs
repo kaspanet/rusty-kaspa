@@ -249,13 +249,16 @@ impl TransactionsPool {
         self.utxo_set.check_double_spends(transaction)
     }
 
-    pub(crate) fn collect_expired_low_priority_transactions(&self, virtual_daa_score: u64) -> Vec<TransactionId> {
+    pub(crate) fn collect_expired_low_priority_transactions(&mut self, virtual_daa_score: u64) -> Vec<TransactionId> {
         let now = unix_now();
         if virtual_daa_score < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score
             || now < self.last_expire_scan_time + self.config.transaction_expire_scan_interval_milliseconds
         {
             return vec![];
         }
+
+        self.last_expire_scan_daa_score = virtual_daa_score;
+        self.last_expire_scan_time = now;
 
         // Never expire high priority transactions
         // Remove all transactions whose added_at_daa_score is older then transaction_expire_interval_daa_score
