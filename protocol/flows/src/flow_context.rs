@@ -375,7 +375,7 @@ impl FlowContext {
             return Ok(());
         }
 
-        if self.should_run_cleaning_task().await {
+        if self.should_run_mempool_scanning_task().await {
             // Spawn a task executing the removal of expired low priority transactions and, if time has come too,
             // the revalidation of high priority transactions.
             //
@@ -384,7 +384,7 @@ impl FlowContext {
             let mining_manager = self.mining_manager().clone();
             let consensus_clone = consensus.clone();
             let context = self.clone();
-            debug!("<> Starting cleaning task #{}...", self.cleaning_count().await);
+            debug!("<> Starting mempool scanning task #{}...", self.mempool_scanning_job_count().await);
             tokio::spawn(async move {
                 mining_manager.clone().expire_low_priority_transactions(&consensus_clone).await;
                 if context.should_rebroadcast().await {
@@ -396,8 +396,8 @@ impl FlowContext {
                         let _ = context.broadcast_transactions(transactions).await;
                     }
                 }
-                context.cleaning_is_done().await;
-                debug!("<> Cleaning task is done");
+                context.mempool_scanning_is_done().await;
+                debug!("<> Mempool scanning task is done");
             });
         }
 
@@ -443,8 +443,8 @@ impl FlowContext {
     }
 
     /// Returns true if the time has come for running the task cleaning mempool transactions.
-    async fn should_run_cleaning_task(&self) -> bool {
-        self.transactions_spread.write().await.should_run_cleaning_task()
+    async fn should_run_mempool_scanning_task(&self) -> bool {
+        self.transactions_spread.write().await.should_run_mempool_scanning_task()
     }
 
     /// Returns true if the time has come for a rebroadcast of the mempool high priority transactions.
@@ -452,12 +452,12 @@ impl FlowContext {
         self.transactions_spread.read().await.should_rebroadcast()
     }
 
-    async fn cleaning_count(&self) -> u64 {
-        self.transactions_spread.read().await.cleaning_count()
+    async fn mempool_scanning_job_count(&self) -> u64 {
+        self.transactions_spread.read().await.mempool_scanning_job_count()
     }
 
-    async fn cleaning_is_done(&self) {
-        self.transactions_spread.write().await.cleaning_is_done()
+    async fn mempool_scanning_is_done(&self) {
+        self.transactions_spread.write().await.mempool_scanning_is_done()
     }
 
     /// Add the given transactions IDs to a set of IDs to broadcast. The IDs will be broadcasted to all peers
