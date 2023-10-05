@@ -26,6 +26,7 @@ impl<T: Send + 'static> ClientPool<T> {
                 tokio::spawn(async move {
                     while let Ok(msg) = rx.recv().await {
                         if client_op(client.clone(), msg).await {
+                            rx.close();
                             break;
                         }
                     }
