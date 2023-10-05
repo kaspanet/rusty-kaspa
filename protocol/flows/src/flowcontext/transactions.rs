@@ -10,7 +10,8 @@ use kaspa_p2p_lib::{
 };
 use std::time::{Duration, Instant};
 
-const SCANNING_TASK_INTERVAL: Duration = Duration::from_secs(10);
+/// Interval between mempool scanning tasks (in seconds)
+const SCANNING_TASK_INTERVAL: u64 = 10;
 const REBROADCAST_FREQUENCY: u64 = 3;
 const BROADCAST_INTERVAL: Duration = Duration::from_millis(500);
 pub(crate) const MAX_INV_PER_TX_INV_MSG: usize = 131_072;
@@ -39,14 +40,17 @@ impl TransactionsSpread {
     /// Returns true if the time has come for running the task of scanning mempool transactions
     /// and if so, mark the task as running.
     pub fn should_run_mempool_scanning_task(&mut self) -> bool {
-        if self.scanning_task_running || Instant::now() < self.last_scanning_time + SCANNING_TASK_INTERVAL {
+        let now = Instant::now();
+        if self.scanning_task_running || now < self.last_scanning_time + Duration::from_secs(SCANNING_TASK_INTERVAL) {
             return false;
         }
-        // Keep the launching times aligned to exact intervals
-        let call_time = Instant::now();
-        while self.last_scanning_time + SCANNING_TASK_INTERVAL < call_time {
-            self.last_scanning_time += SCANNING_TASK_INTERVAL;
-        }
+        let delta = now.checked_duration_since(self.last_scanning_time).expect("verified above");
+        // Keep the launching times aligned to exact intervals. Note that `delta=10.1` seconds will result in
+        // adding 10 seconds to last scan time, while `delta=11` will result in adding 20 (assuming scanning
+        // interval is 10 seconds).
+        self.last_scanning_time +=
+            Duration::from_secs(((delta.as_secs() + SCANNING_TASK_INTERVAL - 1) / SCANNING_TASK_INTERVAL) * SCANNING_TASK_INTERVAL);
+
         self.scanning_job_count += 1;
         self.scanning_task_running = true;
         true
