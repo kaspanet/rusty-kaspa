@@ -17,10 +17,8 @@ pub(crate) type TransactionsEdges = HashMap<TransactionId, TransactionIdSet>;
 
 pub(crate) trait Pool {
     fn all(&self) -> &MempoolTransactionCollection;
-    fn all_mut(&mut self) -> &mut MempoolTransactionCollection;
 
     fn chained(&self) -> &TransactionsEdges;
-    fn chained_mut(&mut self) -> &mut TransactionsEdges;
 
     fn has(&self, transaction_id: &TransactionId) -> bool {
         self.all().contains_key(transaction_id)
@@ -29,6 +27,8 @@ pub(crate) trait Pool {
     fn get(&self, transaction_id: &TransactionId) -> Option<&MempoolTransaction> {
         self.all().get(transaction_id)
     }
+
+    fn entry_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction>;
 
     /// Returns the number of transactions in the pool
     fn len(&self) -> usize {

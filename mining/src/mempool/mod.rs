@@ -13,7 +13,7 @@ use self::{
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
 use kaspa_core::time::Stopwatch;
-use std::{collections::hash_map::Entry, sync::Arc};
+use std::sync::Arc;
 
 pub(crate) mod check_transaction_standard;
 pub mod config;
@@ -140,8 +140,8 @@ impl Mempool {
     }
 
     pub(crate) fn update_revalidated_transaction(&mut self, transaction: MutableTransaction) -> bool {
-        if let Entry::Occupied(mut entry) = self.transaction_pool.all_mut().entry(transaction.id()) {
-            entry.get_mut().mtx = transaction;
+        if let Some(tx) = self.transaction_pool.entry_mut(&transaction.id()) {
+            tx.mtx = transaction;
             true
         } else {
             false

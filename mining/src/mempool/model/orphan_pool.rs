@@ -259,6 +259,10 @@ impl OrphanPool {
     fn get_random_low_priority_orphan(&self) -> Option<&MempoolTransaction> {
         self.all_orphans.values().find(|x| x.priority == Priority::Low)
     }
+
+    fn chained_mut(&mut self) -> &mut TransactionsEdges {
+        &mut self.chained_orphans
+    }
 }
 
 impl Pool for OrphanPool {
@@ -266,16 +270,12 @@ impl Pool for OrphanPool {
         &self.all_orphans
     }
 
-    fn all_mut(&mut self) -> &mut MempoolTransactionCollection {
-        &mut self.all_orphans
-    }
-
     fn chained(&self) -> &TransactionsEdges {
         &self.chained_orphans
     }
 
-    fn chained_mut(&mut self) -> &mut TransactionsEdges {
-        &mut self.chained_orphans
+    fn entry_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction> {
+        self.all_orphans.get_mut(transaction_id)
     }
 
     fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {

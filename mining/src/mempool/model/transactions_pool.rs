@@ -108,7 +108,7 @@ impl TransactionsPool {
             self.ready_transactions.insert(id);
         }
         for parent_id in parents {
-            let entry = self.chained_mut().entry(parent_id).or_default();
+            let entry = self.chained_transactions.entry(parent_id).or_default();
             entry.insert(id);
         }
 
@@ -306,18 +306,12 @@ impl Pool for TransactionsPool {
     }
 
     #[inline]
-    fn all_mut(&mut self) -> &mut MempoolTransactionCollection {
-        &mut self.all_transactions
-    }
-
-    #[inline]
     fn chained(&self) -> &TransactionsEdges {
         &self.chained_transactions
     }
 
-    #[inline]
-    fn chained_mut(&mut self) -> &mut TransactionsEdges {
-        &mut self.chained_transactions
+    fn entry_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction> {
+        self.all_transactions.get_mut(transaction_id)
     }
 
     fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {
