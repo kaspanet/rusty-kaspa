@@ -1,6 +1,6 @@
 use super::MiningCounters;
 use kaspa_core::{
-    info,
+    debug, info,
     task::{
         service::{AsyncService, AsyncServiceFuture},
         tick::{TickReason, TickService},
@@ -61,9 +61,8 @@ impl MiningMonitor {
                 delta.low_priority_tx_counts,
                 delta.tx_accepted_counts,
             );
-            // FIXME: (wip) change the log level to debug and decide what info should be kept or formulated differently
             if tx_script_cache_snapshot != last_tx_script_cache_snapshot {
-                info!(
+                debug!(
                     "UTXO set stats: {} spent, {} created ({} signatures validated, {} cache hits, {:.2} hit ratio)",
                     delta.input_counts,
                     delta.output_counts,
@@ -72,9 +71,8 @@ impl MiningMonitor {
                     tx_script_cache_delta.hit_ratio()
                 );
             }
-            // FIXME: change to debug
             if delta.txs_sample + delta.orphans_sample > 0 {
-                info!(
+                debug!(
                     "Mempool sample: {} ready out of {} txs, {} orphans, {} cached as accepted",
                     delta.ready_txs_sample, delta.txs_sample, delta.orphans_sample, delta.accepted_sample
                 );

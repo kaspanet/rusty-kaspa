@@ -537,7 +537,7 @@ impl MiningManager {
             debug!("<> Revalidating high priority transactions found no transactions");
             return;
         } else {
-            debug!("<> Revalidating high priority transactions...");
+            debug!("<> Revalidating {} high priority transactions...", transaction_ids.len());
         }
         drop(mempool);
         // read lock on mempool by transaction chunks
