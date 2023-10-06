@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use crate::{
     constants,
@@ -140,7 +140,7 @@ pub enum RuleError {
     InvalidTransactionsInUtxoContext(usize, usize),
 
     #[error("invalid transactions in new block template")]
-    InvalidTransactionsInNewBlock(Vec<(TransactionId, TxRuleError)>),
+    InvalidTransactionsInNewBlock(HashMap<TransactionId, TxRuleError>),
 
     #[error("DAA window data has only {0} entries")]
     InsufficientDaaWindowSize(usize),

@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use crate::{coinbase::MinerData, header::Header, tx::Transaction};
+use crate::{
+    coinbase::MinerData,
+    header::Header,
+    tx::{Transaction, TransactionId},
+};
 use kaspa_hashes::Hash;
 
 /// A mutable block structure where header and transactions within can still be mutated.
@@ -62,6 +66,34 @@ impl Block {
     pub fn from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Block {
         Block::from_header(Header::from_precomputed_hash(hash, parents))
     }
+}
+
+/// An abstraction for a recallable transaction selector with persistent state
+pub trait TemplateTransactionSelector {
+    /// Expected to return a batch of transactions which were not previously selected.
+    /// The batch will typically contain sufficient transactions to fill the block
+    /// mass (along with the previously unrejected txs), or will drain the selector    
+    fn select_transactions(&mut self) -> Vec<Transaction>;
+
+    /// Should be used to report invalid transactions obtained from the *most recent*
+    /// `select_transactions` call. Implementors should use this call to internally
+    /// track the selection state and discard the rejected tx from internal occupation calculations
+    fn reject_selection(&mut self, tx_id: TransactionId);
+
+    /// Determine whether this was an overall successful selection episode
+    fn is_successful(&self) -> bool;
+}
+
+/// Block template build mode
+#[derive(Clone, Copy, Debug)]
+pub enum TemplateBuildMode {
+    /// Block template build can possibly fail if `TemplateTransactionSelector::is_successful` deems the operation unsuccessful.
+    ///
+    /// In such a case, the build fails with `BlockRuleError::InvalidTransactionsInNewBlock`.
+    Standard,
+
+    /// Block template build always succeeds. The built block contains only the validated transactions.
+    Infallible,
 }
 
 /// A block template for miners.

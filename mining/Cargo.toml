@@ -17,6 +17,7 @@ kaspa-core.workspace = true
 kaspa-mining-errors.workspace = true
 kaspa-consensusmanager.workspace = true
 kaspa-utils.workspace = true
+
 thiserror.workspace = true
 serde.workspace = true
 log.workspace = true
@@ -24,6 +25,12 @@ futures-util.workspace = true
 smallvec.workspace = true
 rand.workspace = true
 parking_lot.workspace = true
+itertools.workspace = true
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "macros",
+    "signal",
+] }
 
 [dev-dependencies]
 kaspa-txscript.workspace = true

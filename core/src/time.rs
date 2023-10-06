@@ -22,13 +22,17 @@ impl<const TR: u64> Stopwatch<TR> {
     pub fn with_threshold(name: &'static str) -> Self {
         Self { name, start: Instant::now() }
     }
+
+    pub fn elapsed(&self) -> Duration {
+        self.start.elapsed()
+    }
 }
 
 impl<const TR: u64> Drop for Stopwatch<TR> {
     fn drop(&mut self) {
         let elapsed = self.start.elapsed();
         if elapsed > Duration::from_millis(TR) {
-            kaspa_core::warn!("\n[{}] Abnormal time: {:#?}", self.name, elapsed);
+            kaspa_core::trace!("[{}] Abnormal time: {:#?}", self.name, elapsed);
         }
     }
 }

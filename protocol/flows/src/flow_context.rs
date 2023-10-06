@@ -354,14 +354,16 @@ impl FlowContext {
     /// _GO-KASPAD: OnNewBlock + broadcastTransactionsAfterBlockAdded_
     pub async fn on_new_block(&self, consensus: &ConsensusProxy, block: Block) -> Result<(), ProtocolError> {
         let hash = block.hash();
-        let blocks = self.unorphan_blocks(consensus, hash).await;
+        let mut blocks = self.unorphan_blocks(consensus, hash).await;
+        // Process blocks in topological order
+        blocks.sort_by(|a, b| a.header.blue_work.partial_cmp(&b.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
         for block in once(block).chain(blocks.into_iter()) {
             transactions_to_broadcast.enqueue_chunk(
                 self.mining_manager()
                     .clone()
-                    .handle_new_block_transactions(consensus, block.transactions.clone())
+                    .handle_new_block_transactions(consensus, block.header.daa_score, block.transactions.clone())
                     .await?
                     .iter()
                     .map(|x| x.id()),
@@ -373,9 +375,30 @@ impl FlowContext {
             return Ok(());
         }
 
-        if self.should_rebroadcast_transactions().await {
-            transactions_to_broadcast
-                .enqueue_chunk(self.mining_manager().clone().revalidate_high_priority_transactions(consensus).await?.into_iter());
+        if self.should_run_mempool_scanning_task().await {
+            // Spawn a task executing the removal of expired low priority transactions and, if time has come too,
+            // the revalidation of high priority transactions.
+            //
+            // The TransactionSpread member ensures at most one instance of this task is running at any
+            // given time.
+            let mining_manager = self.mining_manager().clone();
+            let consensus_clone = consensus.clone();
+            let context = self.clone();
+            debug!("<> Starting mempool scanning task #{}...", self.mempool_scanning_job_count().await);
+            tokio::spawn(async move {
+                mining_manager.clone().expire_low_priority_transactions(&consensus_clone).await;
+                if context.should_rebroadcast().await {
+                    let (tx, mut rx) = unbounded_channel();
+                    tokio::spawn(async move {
+                        mining_manager.revalidate_high_priority_transactions(&consensus_clone, tx).await;
+                    });
+                    while let Some(transactions) = rx.recv().await {
+                        let _ = context.broadcast_transactions(transactions).await;
+                    }
+                }
+                context.mempool_scanning_is_done().await;
+                debug!("<> Mempool scanning task is done");
+            });
         }
 
         self.broadcast_transactions(transactions_to_broadcast).await
@@ -419,11 +442,22 @@ impl FlowContext {
         self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await
     }
 
-    /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
-    ///
-    /// If true, the instant of the call is registered as the last rebroadcast time.
-    pub async fn should_rebroadcast_transactions(&self) -> bool {
-        self.transactions_spread.write().await.should_rebroadcast_transactions()
+    /// Returns true if the time has come for running the task cleaning mempool transactions.
+    async fn should_run_mempool_scanning_task(&self) -> bool {
+        self.transactions_spread.write().await.should_run_mempool_scanning_task()
+    }
+
+    /// Returns true if the time has come for a rebroadcast of the mempool high priority transactions.
+    async fn should_rebroadcast(&self) -> bool {
+        self.transactions_spread.read().await.should_rebroadcast()
+    }
+
+    async fn mempool_scanning_job_count(&self) -> u64 {
+        self.transactions_spread.read().await.mempool_scanning_job_count()
+    }
+
+    async fn mempool_scanning_is_done(&self) {
+        self.transactions_spread.write().await.mempool_scanning_is_done()
     }
 
     /// Add the given transactions IDs to a set of IDs to broadcast. The IDs will be broadcasted to all peers

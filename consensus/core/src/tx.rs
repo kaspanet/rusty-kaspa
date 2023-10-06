@@ -340,6 +340,12 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
     }
 }
 
+impl<T: AsRef<Transaction>> AsRef<Transaction> for MutableTransaction<T> {
+    fn as_ref(&self) -> &Transaction {
+        self.tx.as_ref()
+    }
+}
+
 /// Private struct used to wrap a [`MutableTransaction`] as a [`VerifiableTransaction`]
 struct MutableTransactionVerifiableWrapper<'a, T: AsRef<Transaction>> {
     inner: &'a MutableTransaction<T>,

@@ -4,7 +4,7 @@ use kaspa_consensus::consensus::Consensus;
 use kaspa_consensus::model::stores::virtual_state::VirtualStateStoreReader;
 use kaspa_consensus::params::Params;
 use kaspa_consensus_core::api::ConsensusApi;
-use kaspa_consensus_core::block::Block;
+use kaspa_consensus_core::block::{Block, TemplateBuildMode, TemplateTransactionSelector};
 use kaspa_consensus_core::coinbase::MinerData;
 use kaspa_consensus_core::sign::sign;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
@@ -21,6 +21,30 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::cmp::max;
 use std::iter::once;
 use std::sync::Arc;
+
+struct OnetimeTxSelector {
+    txs: Option<Vec<Transaction>>,
+}
+
+impl OnetimeTxSelector {
+    fn new(txs: Vec<Transaction>) -> Self {
+        Self { txs: Some(txs) }
+    }
+}
+
+impl TemplateTransactionSelector for OnetimeTxSelector {
+    fn select_transactions(&mut self) -> Vec<Transaction> {
+        self.txs.take().unwrap()
+    }
+
+    fn reject_selection(&mut self, _tx_id: kaspa_consensus_core::tx::TransactionId) {
+        unimplemented!()
+    }
+
+    fn is_successful(&self) -> bool {
+        true
+    }
+}
 
 pub struct Miner {
     // ID
@@ -89,7 +113,7 @@ impl Miner {
         let session = self.consensus.acquire_session();
         let mut block_template = self
             .consensus
-            .build_block_template(self.miner_data.clone(), txs)
+            .build_block_template(self.miner_data.clone(), Box::new(OnetimeTxSelector::new(txs)), TemplateBuildMode::Standard)
             .expect("simulation txs are selected in sync with virtual state and are expected to be valid");
         drop(session);
         block_template.block.header.timestamp = timestamp; // Use simulation time rather than real time

@@ -1,8 +1,8 @@
-use std::collections::{hash_set::Iter, HashMap, HashSet};
-
-use super::{map::MempoolTransactionCollection, tx::MempoolTransaction};
 use crate::{
-    mempool::tx::Priority,
+    mempool::{
+        model::{map::MempoolTransactionCollection, tx::MempoolTransaction},
+        tx::Priority,
+    },
     model::{
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
         topological_index::TopologicalIndex,
@@ -10,15 +10,14 @@ use crate::{
     },
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
+use std::collections::{hash_set::Iter, HashMap, HashSet, VecDeque};
 
 pub(crate) type TransactionsEdges = HashMap<TransactionId, TransactionIdSet>;
 
 pub(crate) trait Pool {
     fn all(&self) -> &MempoolTransactionCollection;
-    fn all_mut(&mut self) -> &mut MempoolTransactionCollection;
 
     fn chained(&self) -> &TransactionsEdges;
-    fn chained_mut(&mut self) -> &mut TransactionsEdges;
 
     fn has(&self, transaction_id: &TransactionId) -> bool {
         self.all().contains_key(transaction_id)
@@ -27,6 +26,8 @@ pub(crate) trait Pool {
     fn get(&self, transaction_id: &TransactionId) -> Option<&MempoolTransaction> {
         self.all().get(transaction_id)
     }
+
+    fn get_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction>;
 
     /// Returns the number of transactions in the pool
     fn len(&self) -> usize {
@@ -62,29 +63,44 @@ pub(crate) trait Pool {
 
     /// Returns the ids of all transactions being directly and indirectly chained to `transaction_id`
     /// and existing in the pool.
-    fn get_redeemer_ids_in_pool(&self, transaction_id: &TransactionId) -> TransactionIdSet {
-        let mut redeemers = TransactionIdSet::new();
+    ///
+    /// The transactions are traversed in BFS mode. The returned order is not guaranteed to be
+    /// topological.
+    ///
+    /// NOTE: this operation's complexity might become linear in the size of the mempool if the mempool
+    /// contains deeply chained transactions
+    fn get_redeemer_ids_in_pool(&self, transaction_id: &TransactionId) -> Vec<TransactionId> {
+        // TODO: study if removals based on the results of this function should occur in reversed
+        // topological order to prevent missing outpoints in concurrent processes.
+        let mut visited = TransactionIdSet::new();
+        let mut descendants = vec![];
         if let Some(transaction) = self.get(transaction_id) {
-            let mut stack = vec![transaction];
-            while let Some(transaction) = stack.pop() {
+            let mut queue = VecDeque::new();
+            queue.push_back(transaction);
+            while let Some(transaction) = queue.pop_front() {
                 if let Some(chains) = self.chained().get(&transaction.id()) {
-                    for redeemer_id in chains {
+                    chains.iter().for_each(|redeemer_id| {
                         if let Some(redeemer) = self.get(redeemer_id) {
-                            // Do no revisit transactions
-                            if redeemers.insert(*redeemer_id) {
-                                stack.push(redeemer);
+                            if visited.insert(*redeemer_id) {
+                                descendants.push(*redeemer_id);
+                                queue.push_back(redeemer);
                             }
                         }
-                    }
+                    })
                 }
             }
         }
-        redeemers
+        descendants
     }
 
     /// Returns a vector with clones of all the transactions in the pool.
     fn get_all_transactions(&self) -> Vec<MutableTransaction> {
         self.all().values().map(|x| x.mtx.clone()).collect()
+    }
+
+    /// Returns a vector with ids of all the transactions in the pool.
+    fn get_all_transaction_ids(&self) -> Vec<TransactionId> {
+        self.all().keys().cloned().collect()
     }
 
     /// Fills owner transactions for a set of script public keys.
@@ -98,9 +114,7 @@ pub(crate) trait Pool {
                     // Insert the mutable transaction in the owners object if not already present.
                     // Clone since the transaction leaves the mempool.
                     owner_set.transactions.entry(*id).or_insert_with(|| transaction.mtx.clone());
-                    if !owner.sending_txs.contains(id) {
-                        owner.sending_txs.insert(*id);
-                    }
+                    owner.sending_txs.insert(*id);
                 }
 
                 // Receiving transactions
@@ -108,9 +122,7 @@ pub(crate) trait Pool {
                     // Insert the mutable transaction in the owners object if not already present.
                     // Clone since the transaction leaves the mempool.
                     owner_set.transactions.entry(*id).or_insert_with(|| transaction.mtx.clone());
-                    if !owner.receiving_txs.contains(id) {
-                        owner.receiving_txs.insert(*id);
-                    }
+                    owner.receiving_txs.insert(*id);
                 }
             });
         });
@@ -123,6 +135,7 @@ pub(crate) struct PoolIndex {
 }
 
 impl PoolIndex {
+    #[allow(dead_code)]
     pub(crate) fn new(transactions: TransactionIdSet, chained_transactions: TransactionsEdges) -> Self {
         Self { transactions, chained_transactions }
     }

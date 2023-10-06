@@ -41,7 +41,7 @@ use crate::{
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{BlockValidationFuture, ConsensusApi},
-    block::{Block, BlockTemplate},
+    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     block_count::BlockCount,
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
@@ -70,6 +70,7 @@ use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_txscript::caches::TxScriptCacheCounters;
 
 use std::thread::{self, JoinHandle};
 use std::{
@@ -132,6 +133,7 @@ impl Consensus {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         creation_timestamp: u64,
     ) -> Self {
         let params = &config.params;
@@ -147,7 +149,7 @@ impl Consensus {
         // Services and managers
         //
 
-        let services = ConsensusServices::new(db.clone(), storage.clone(), config.clone());
+        let services = ConsensusServices::new(db.clone(), storage.clone(), config.clone(), tx_script_cache_counters);
 
         //
         // Processor channels
@@ -353,8 +355,13 @@ impl Consensus {
 }
 
 impl ConsensusApi for Consensus {
-    fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
-        self.virtual_processor.build_block_template(miner_data, txs)
+    fn build_block_template(
+        &self,
+        miner_data: MinerData,
+        tx_selector: Box<dyn TemplateTransactionSelector>,
+        build_mode: TemplateBuildMode,
+    ) -> Result<BlockTemplate, RuleError> {
+        self.virtual_processor.build_block_template(miner_data, tx_selector, build_mode)
     }
 
     fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
@@ -367,9 +374,22 @@ impl ConsensusApi for Consensus {
         Box::pin(result)
     }
 
-    fn validate_mempool_transaction_and_populate(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
-        self.virtual_processor.validate_mempool_transaction_and_populate(transaction)?;
+    fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
+        self.virtual_processor.validate_mempool_transaction(transaction)?;
         Ok(())
+    }
+
+    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        self.virtual_processor.validate_mempool_transactions_in_parallel(transactions)
+    }
+
+    fn populate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
+        self.virtual_processor.populate_mempool_transaction(transaction)?;
+        Ok(())
+    }
+
+    fn populate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        self.virtual_processor.populate_mempool_transactions_in_parallel(transactions)
     }
 
     fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {

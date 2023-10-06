@@ -68,7 +68,7 @@ impl MempoolUtxoSet {
         self.outpoint_owner_id.get(outpoint)
     }
 
-    /// Make sure no other transaction in the mempool is already spending an output one of this transaction inputs spends
+    /// Make sure no other transaction in the mempool is already spending an output which one of this transaction inputs spends
     pub(crate) fn check_double_spends(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         let transaction_id = transaction.id();
         for input in transaction.tx.inputs.iter() {

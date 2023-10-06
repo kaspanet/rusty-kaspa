@@ -55,6 +55,7 @@ pub struct Args {
     pub externalip: Option<IpAddress>,
     pub perf_metrics: bool,
     pub perf_metrics_interval_sec: u64,
+    pub block_template_cache_lifetime: Option<u64>,
 
     #[cfg(feature = "devnet-prealloc")]
     pub num_prealloc_utxos: Option<u64>,
@@ -98,6 +99,7 @@ impl Default for Args {
             perf_metrics: false,
             perf_metrics_interval_sec: 1,
             externalip: None,
+            block_template_cache_lifetime: None,
 
             #[cfg(feature = "devnet-prealloc")]
             num_prealloc_utxos: None,
@@ -118,6 +120,7 @@ impl Args {
         // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
         config.enable_sanity_checks = true;
         config.user_agent_comments = self.user_agent_comments.clone();
+        config.block_template_cache_lifetime = self.block_template_cache_lifetime;
 
         #[cfg(feature = "devnet-prealloc")]
         if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
@@ -356,6 +359,8 @@ pub fn parse_args() -> Args {
             .get_one::<u64>("perf-metrics-interval-sec")
             .cloned()
             .unwrap_or(defaults.perf_metrics_interval_sec),
+        // Note: currently used programmatically by benchmarks and not exposed to CLI users
+        block_template_cache_lifetime: defaults.block_template_cache_lifetime,
 
         #[cfg(feature = "devnet-prealloc")]
         num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),

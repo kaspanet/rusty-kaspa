@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     acceptance_data::AcceptanceData,
-    block::{Block, BlockTemplate},
+    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     block_count::BlockCount,
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -27,7 +27,12 @@ pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStat
 /// Abstracts the consensus external API
 #[allow(unused_variables)]
 pub trait ConsensusApi: Send + Sync {
-    fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+    fn build_block_template(
+        &self,
+        miner_data: MinerData,
+        tx_selector: Box<dyn TemplateTransactionSelector>,
+        build_mode: TemplateBuildMode,
+    ) -> Result<BlockTemplate, RuleError> {
         unimplemented!()
     }
 
@@ -40,8 +45,24 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to full transaction
-    /// validation if all are found. If validation is successful, also [`transaction.calculated_fee`] is expected to be populated
-    fn validate_mempool_transaction_and_populate(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
+    /// validation if all are found. If validation is successful, also [`transaction.calculated_fee`] is expected to be populated.
+    fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
+        unimplemented!()
+    }
+
+    /// Populates the mempool transactions with maximally found UTXO entry data and proceeds to full transactions
+    /// validation if all are found. If validation is successful, also [`transaction.calculated_fee`] is expected to be populated.
+    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        unimplemented!()
+    }
+
+    /// Populates the mempool transaction with maximally found UTXO entry data.
+    fn populate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
+        unimplemented!()
+    }
+
+    /// Populates the mempool transactions with maximally found UTXO entry data.
+    fn populate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
         unimplemented!()
     }
 

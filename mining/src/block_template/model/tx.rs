@@ -19,6 +19,7 @@ pub(crate) struct Candidate {
 
     /// Range start in the candidate list total_p space
     pub(crate) start: f64,
+
     /// Range end in the candidate list total_p space
     pub(crate) end: f64,
 
@@ -32,6 +33,7 @@ impl Candidate {
     }
 }
 
+#[derive(Default)]
 pub(crate) struct CandidateList {
     pub(crate) candidates: Vec<Candidate>,
     pub(crate) total_p: f64,
