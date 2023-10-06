@@ -37,7 +37,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::join;
 
@@ -62,8 +62,8 @@ fn estimated_mass(num_inputs: usize, num_outputs: u64) -> u64 {
     200 + 34 * num_outputs + 1000 * (num_inputs as u64)
 }
 
-const EXPAND_FACTOR: u64 = 2;
-const CONTRACT_FACTOR: u64 = 2;
+const EXPAND_FACTOR: u64 = 1;
+const CONTRACT_FACTOR: u64 = 1;
 
 /// Builds a TX DAG based on the initial UTXO set and on constant params
 fn generate_tx_dag(
@@ -117,7 +117,7 @@ fn generate_tx_dag(
         utxoset.remove_collection(&utxo_diff.remove);
         utxoset.add_collection(&utxo_diff.add);
 
-        if i % 100 == 0 {
+        if i % (target_levels / 10).max(1) == 0 {
             info!("Generated {} txs", txs.len());
         }
     }
@@ -148,14 +148,22 @@ fn verify_tx_dag(initial_utxoset: &UtxoCollection, txs: &Vec<Arc<Transaction>>) 
 #[ignore = "bmk"]
 async fn bench_bbt_latency() {
     kaspa_core::panic::configure_panic();
-    kaspa_core::log::try_init_logger("info,kaspa_core::time=trace");
+    kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
 
     // Constants
-    const BLOCK_COUNT: usize = 20_000;
-    const TX_COUNT: usize = 600_000;
-    const TX_LEVEL_WIDTH: usize = 1000;
+    const BLOCK_COUNT: usize = usize::MAX;
+
+    const MEMPOOL_TARGET: u64 = 600_000;
+    const TX_COUNT: usize = 1_400_000;
+    const TX_LEVEL_WIDTH: usize = 20_000;
+    const TPS_PRESSURE: u64 = u64::MAX;
+
     const SUBMIT_BLOCK_CLIENTS: usize = 20;
-    const SUBMIT_TX_CLIENTS: usize = 1;
+    const SUBMIT_TX_CLIENTS: usize = 2;
+
+    if TX_COUNT < TX_LEVEL_WIDTH {
+        panic!()
+    }
 
     /*
     Logic:
@@ -186,7 +194,7 @@ async fn bench_bbt_latency() {
         num_prealloc_utxos: Some(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR),
         prealloc_address: Some(prealloc_address.to_string()),
         prealloc_amount: 500 * SOMPI_PER_KASPA,
-        block_template_cache_lifetime: Some(5),
+        block_template_cache_lifetime: Some(0),
         ..Default::default()
     };
     let network = args.network();
@@ -221,6 +229,7 @@ async fn bench_bbt_latency() {
 
     let submit_block_pool = daemon
         .new_client_pool(SUBMIT_BLOCK_CLIENTS, 100, |c, block| async move {
+            let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("sb");
             let response = c.submit_block(block, false).await.unwrap();
             assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
             false
@@ -245,6 +254,7 @@ async fn bench_bbt_latency() {
     let cc = bbt_client.clone();
     let exec = executing.clone();
     let notification_rx = receiver.clone();
+    let pac = pay_address.clone();
     let miner_receiver_task = tokio::spawn(async move {
         while let Ok(notification) = notification_rx.recv().await {
             match notification {
@@ -252,8 +262,8 @@ async fn bench_bbt_latency() {
                     while notification_rx.try_recv().is_ok() {
                         // Drain the channel
                     }
-                    // let _sw = Stopwatch::<500>::with_threshold("get_block_template");
-                    *current_template.lock() = cc.get_block_template(pay_address.clone(), vec![]).await.unwrap();
+                    // let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("bbt");
+                    *current_template.lock() = cc.get_block_template(pac.clone(), vec![]).await.unwrap();
                 }
                 _ => panic!(),
             }
@@ -267,6 +277,7 @@ async fn bench_bbt_latency() {
 
     let block_sender = submit_block_pool.sender();
     let exec = executing.clone();
+    let cc = Arc::new(bbt_client.clone());
     let miner_loop_task = tokio::spawn(async move {
         for i in 0..BLOCK_COUNT {
             // Simulate mining time
@@ -277,6 +288,15 @@ async fn bench_bbt_latency() {
             let mut block = current_template_consume.lock().block.clone();
             // Use index as nonce to avoid duplicate blocks
             block.header.nonce = i as u64;
+
+            let ctc = current_template_consume.clone();
+            let ccc = cc.clone();
+            let pac = pay_address.clone();
+            tokio::spawn(async move {
+                // let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("bbt");
+                // We used the current template so let's refetch a new template with new txs
+                *ctc.lock() = ccc.get_block_template(pac, vec![]).await.unwrap();
+            });
 
             let bs = block_sender.clone();
             tokio::spawn(async move {
@@ -298,8 +318,34 @@ async fn bench_bbt_latency() {
     let tx_sender = submit_tx_pool.sender();
     let exec = executing.clone();
     let cc = client.clone();
+    let mut tps_pressure = if MEMPOOL_TARGET < u64::MAX { u64::MAX } else { TPS_PRESSURE };
+    let mut last_log_time = Instant::now() - Duration::from_secs(5);
+    let mut log_index = 0;
     let tx_sender_task = tokio::spawn(async move {
         for (i, tx) in txs.into_iter().enumerate() {
+            if tps_pressure != u64::MAX {
+                tokio::time::sleep(std::time::Duration::from_secs_f64(1.0 / tps_pressure as f64)).await;
+            }
+            if last_log_time.elapsed() > Duration::from_millis(200) {
+                let mut mempool_size = cc.get_info().await.unwrap().mempool_size;
+                if log_index % 10 == 0 {
+                    info!("Mempool size: {:#?}, txs submitted: {}", mempool_size, i);
+                }
+                log_index += 1;
+                last_log_time = Instant::now();
+
+                if mempool_size > (MEMPOOL_TARGET as f32 * 1.05) as u64 {
+                    tps_pressure = TPS_PRESSURE;
+                    while mempool_size > MEMPOOL_TARGET {
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                        mempool_size = cc.get_info().await.unwrap().mempool_size;
+                        if log_index % 10 == 0 {
+                            info!("Mempool size: {:#?}, txs submitted: {}", mempool_size, i);
+                        }
+                        log_index += 1;
+                    }
+                }
+            }
             match tx_sender.send((i, tx)).await {
                 Ok(_) => {}
                 Err(_) => {
@@ -312,8 +358,13 @@ async fn bench_bbt_latency() {
         }
 
         kaspa_core::warn!("Tx sender task, waiting for mempool to drain..");
-        while cc.get_info().await.unwrap().mempool_size > 0 {
+        loop {
             if !exec.load(Ordering::Relaxed) {
+                break;
+            }
+            let mempool_size = cc.get_info().await.unwrap().mempool_size;
+            info!("Mempool size: {:#?}", mempool_size);
+            if mempool_size == 0 || (TX_COUNT as u64 > MEMPOOL_TARGET && mempool_size < MEMPOOL_TARGET) {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
