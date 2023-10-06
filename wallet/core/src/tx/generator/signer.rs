@@ -38,7 +38,9 @@ impl Signer {
             let account = self.inner.account.clone().as_derivation_capable().expect("expecting derivation capable");
 
             let (receive, change) = account.derivation().addresses_indexes(&addresses)?;
-            let private_keys = account.create_private_keys(&self.inner.keydata, &self.inner.payment_secret, &receive, &change)?;
+            let payload = self.inner.keydata.payload.decrypt(self.inner.payment_secret.as_ref())?;
+            let xkey = payload.get_xprv(self.inner.payment_secret.as_ref())?;
+            let private_keys = account.create_private_keys(&xkey, &receive, &change)?;
             for (address, private_key) in private_keys {
                 keys.insert(address.clone(), private_key.to_bytes());
             }
@@ -77,7 +79,18 @@ impl KeydataSigner {
 
 impl SignerT for KeydataSigner {
     fn try_sign(&self, mutable_tx: SignableTransaction, addresses: &[Address]) -> Result<SignableTransaction> {
-        let keys_for_signing = addresses.iter().map(|address| *self.inner.keys.get(address).unwrap()).collect::<Vec<_>>();
+        let keys_for_signing = addresses
+            .iter()
+            .map(|address| {
+                // if let Some(key) = self.inner.keys.get(address) {
+                //     *key
+                // } else {
+                //     workflow_log::log_info!("address key missing: {address}");
+                //     secp256k1::ONE_KEY.to_bytes()
+                // }
+                *self.inner.keys.get(address).unwrap()
+            })
+            .collect::<Vec<_>>();
         Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing))
     }
 }

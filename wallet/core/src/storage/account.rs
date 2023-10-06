@@ -16,15 +16,12 @@ const LEGACY_ACCOUNT_VERSION: u16 = 0;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Legacy {
-    #[serde(default)]
-    pub version: u16,
-
-    pub xpub_keys: Arc<Vec<String>>,
+    pub version: u16
 }
 
 impl Legacy {
-    pub fn new(xpub_keys: Arc<Vec<String>>) -> Self {
-        Self { version: LEGACY_ACCOUNT_VERSION, xpub_keys }
+    pub fn new() -> Self {
+        Self { version: LEGACY_ACCOUNT_VERSION }
     }
 }
 
