@@ -16,8 +16,7 @@ pub fn js_sign_message(value: JsValue) -> Result<String, Error> {
 
         let pm = PersonalMessage(&raw_msg);
 
-        let sig_result = sign_message(&pm, &privkey_bytes);
-        let sig_vec = sig_result.unwrap_throw();
+        let sig_vec = sign_message(&pm, &privkey_bytes)?;
 
         Ok(faster_hex::hex_string(sig_vec.as_slice()))
     } else {
@@ -37,7 +36,7 @@ pub fn js_verify_message(value: JsValue) -> Result<bool, Error> {
 
         let pm = PersonalMessage(&raw_msg);
         let mut signature_bytes = [0u8; 64];
-        faster_hex::hex_decode(signature.as_bytes(), &mut signature_bytes).unwrap_throw();
+        faster_hex::hex_decode(signature.as_bytes(), &mut signature_bytes)?;
 
         Ok(verify_message(&pm, &signature_bytes.to_vec(), &public_key.into()).is_ok())
     } else {
