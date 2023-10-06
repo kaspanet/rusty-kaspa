@@ -43,7 +43,7 @@ impl TransactionValidator {
             ghostdag_k,
             coinbase_payload_script_public_key_max_len,
             coinbase_maturity,
-            sig_cache: Cache::new(10_000, counters),
+            sig_cache: Cache::with_counters(10_000, counters),
         }
     }
 }

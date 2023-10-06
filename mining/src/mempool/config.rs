@@ -47,6 +47,7 @@ pub struct Config {
     pub minimum_relay_transaction_fee: u64,
     pub minimum_standard_transaction_version: u16,
     pub maximum_standard_transaction_version: u16,
+    pub block_spam_txs: bool,
 }
 
 impl Config {
@@ -70,6 +71,7 @@ impl Config {
         minimum_relay_transaction_fee: u64,
         minimum_standard_transaction_version: u16,
         maximum_standard_transaction_version: u16,
+        block_spam_txs: bool,
     ) -> Self {
         Self {
             maximum_transaction_count,
@@ -90,12 +92,13 @@ impl Config {
             minimum_relay_transaction_fee,
             minimum_standard_transaction_version,
             maximum_standard_transaction_version,
+            block_spam_txs,
         }
     }
 
     /// Build a default config.
     /// The arguments should be obtained from the current consensus [`kaspa_consensus_core::config::params::Params`] instance.
-    pub fn build_default(target_milliseconds_per_block: u64, relay_non_std_transactions: bool, max_block_mass: u64) -> Self {
+    pub const fn build_default(target_milliseconds_per_block: u64, relay_non_std_transactions: bool, max_block_mass: u64) -> Self {
         Self {
             maximum_transaction_count: DEFAULT_MAXIMUM_TRANSACTION_COUNT,
             maximum_ready_transaction_count: DEFAULT_MAXIMUM_READY_TRANSACTION_COUNT,
@@ -118,6 +121,18 @@ impl Config {
             minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
             minimum_standard_transaction_version: DEFAULT_MINIMUM_STANDARD_TRANSACTION_VERSION,
             maximum_standard_transaction_version: DEFAULT_MAXIMUM_STANDARD_TRANSACTION_VERSION,
+            block_spam_txs: false,
         }
+    }
+
+    /// Build a default config with optional spam blocking.
+    /// The arguments should be obtained from the current consensus [`kaspa_consensus_core::config::params::Params`] instance.
+    pub const fn build_default_with_spam_blocking_option(
+        block_spam_txs: bool,
+        target_milliseconds_per_block: u64,
+        relay_non_std_transactions: bool,
+        max_block_mass: u64,
+    ) -> Self {
+        Self { block_spam_txs, ..Self::build_default(target_milliseconds_per_block, relay_non_std_transactions, max_block_mass) }
     }
 }

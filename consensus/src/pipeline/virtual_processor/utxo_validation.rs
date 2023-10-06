@@ -70,16 +70,20 @@ impl VirtualStateProcessor {
 
         ctx.mergeset_diff.add_transaction(&validated_coinbase, pov_daa_score).unwrap();
         ctx.multiset_hash.add_transaction(&validated_coinbase, pov_daa_score);
-        ctx.accepted_tx_ids.push(validated_coinbase.id());
+        let validated_coinbase_id = validated_coinbase.id();
+        ctx.accepted_tx_ids.push(validated_coinbase_id);
 
         // TODO: no need to validate selected parent transactions, but only to populate and add,
         // since selected parent txs were already validated as part of selected parent utxo state verification.
 
-        for (merged_block, txs) in once((ctx.selected_parent(), selected_parent_transactions)).chain(
-            ctx.ghostdag_data
-                .consensus_ordered_mergeset_without_selected_parent(self.ghostdag_primary_store.deref())
-                .map(|b| (b, self.block_transactions_store.get(b).unwrap())),
-        ) {
+        for (i, (merged_block, txs)) in once((ctx.selected_parent(), selected_parent_transactions))
+            .chain(
+                ctx.ghostdag_data
+                    .consensus_ordered_mergeset_without_selected_parent(self.ghostdag_primary_store.deref())
+                    .map(|b| (b, self.block_transactions_store.get(b).unwrap())),
+            )
+            .enumerate()
+        {
             // Create a composed UTXO view from the selected parent UTXO view + the mergeset UTXO diff
             let composed_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
 
@@ -94,13 +98,27 @@ impl VirtualStateProcessor {
                 block_fee += validated_tx.calculated_fee;
             }
 
-            ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
-                block_hash: merged_block,
-                accepted_transactions: validated_transactions
-                    .into_iter()
-                    .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx })
-                    .collect(),
-            });
+            if i == 0 {
+                // For the selected parent, we prepend the coinbase tx
+                ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
+                    block_hash: merged_block,
+                    accepted_transactions: once(AcceptedTxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })
+                        .chain(
+                            validated_transactions
+                                .into_iter()
+                                .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx }),
+                        )
+                        .collect(),
+                });
+            } else {
+                ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
+                    block_hash: merged_block,
+                    accepted_transactions: validated_transactions
+                        .into_iter()
+                        .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx })
+                        .collect(),
+                });
+            }
 
             let coinbase_data = self.coinbase_manager.deserialize_coinbase_payload(&txs[0].payload).unwrap();
             ctx.mergeset_rewards.insert(

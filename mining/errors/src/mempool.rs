@@ -69,6 +69,9 @@ pub enum RuleError {
     // TODO: This error is added for the tx_relay flow but is never constructed neither in the golang nor in this version. Discuss if it can be removed.
     #[error("transaction {0} is invalid")]
     RejectInvalid(TransactionId),
+
+    #[error("Rejected spam tx {0} from mempool")]
+    RejectSpamTransaction(TransactionId),
 }
 
 impl From<NonStandardError> for RuleError {

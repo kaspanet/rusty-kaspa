@@ -1,6 +1,6 @@
 use kaspa_addresses::Address;
 use kaspa_rpc_core::api::rpc::RpcApi;
-use kaspad::args::Args;
+use kaspad_lib::args::Args;
 
 use crate::common::daemon::Daemon;
 use std::time::Duration;
@@ -49,4 +49,13 @@ async fn daemon_mining_test() {
     tokio::time::sleep(Duration::from_secs(1)).await;
     // Expect the blocks to be relayed to daemon #2
     assert_eq!(rpc_client2.get_block_dag_info().await.unwrap().block_count, 10);
+
+    // Check that acceptance data contains the expected coinbase tx ids
+    let vc = rpc_client2.get_virtual_chain_from_block(kaspa_consensus::params::SIMNET_GENESIS.hash, true).await.unwrap();
+    assert_eq!(vc.removed_chain_block_hashes.len(), 0);
+    assert_eq!(vc.added_chain_block_hashes.len(), 10);
+    assert_eq!(vc.accepted_transaction_ids.len(), 10);
+    for accepted_txs_pair in vc.accepted_transaction_ids {
+        assert_eq!(accepted_txs_pair.accepted_transaction_ids.len(), 1);
+    }
 }

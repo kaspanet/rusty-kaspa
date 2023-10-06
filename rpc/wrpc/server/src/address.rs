@@ -16,14 +16,14 @@ impl WrpcNetAddress {
             WrpcNetAddress::Default => {
                 let port = match encoding {
                     WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
-                    WrpcEncoding::SerdeJson => network_type.default_borsh_rpc_port(),
+                    WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
                 };
                 format!("127.0.0.1:{port}").parse().unwrap()
             }
             WrpcNetAddress::Public => {
                 let port = match encoding {
                     WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
-                    WrpcEncoding::SerdeJson => network_type.default_borsh_rpc_port(),
+                    WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
                 };
                 format!("0.0.0.0:{port}").parse().unwrap()
             }

@@ -44,6 +44,9 @@ pub struct RelayTransactionsFlow {
     invs_route: IncomingRoute,
     /// A route for other messages such as Transaction and TransactionNotFound
     msg_route: IncomingRoute,
+
+    /// Track the number of spam txs coming from this peer
+    spam_counter: u64,
 }
 
 #[async_trait::async_trait]
@@ -59,7 +62,7 @@ impl Flow for RelayTransactionsFlow {
 
 impl RelayTransactionsFlow {
     pub fn new(ctx: FlowContext, router: Arc<Router>, invs_route: IncomingRoute, msg_route: IncomingRoute) -> Self {
-        Self { ctx, router, invs_route, msg_route }
+        Self { ctx, router, invs_route, msg_route, spam_counter: 0 }
     }
 
     pub fn invs_channel_size() -> usize {
@@ -172,22 +175,37 @@ impl RelayTransactionsFlow {
                 transactions.push(transaction);
             }
         }
-        match self
+        let insert_results = self
             .ctx
             .mining_manager()
             .clone()
             .validate_and_insert_transaction_batch(&consensus, transactions, Priority::Low, Orphan::Allowed)
-            .await
-        {
-            Ok(accepted_transactions) => {
-                self.ctx.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await?;
+            .await;
+
+        for res in insert_results.iter() {
+            match res {
+                Ok(_) => {}
+                Err(MiningManagerError::MempoolError(RuleError::RejectInvalid(transaction_id))) => {
+                    // TODO: discuss a banning process
+                    return Err(ProtocolError::MisbehavingPeer(format!("rejected invalid transaction {}", transaction_id)));
+                }
+                Err(MiningManagerError::MempoolError(RuleError::RejectSpamTransaction(_))) => {
+                    self.spam_counter += 1;
+                    if self.spam_counter % 100 == 0 {
+                        kaspa_core::warn!("Peer {} has shared {} spam txs", self.router, self.spam_counter);
+                    }
+                }
+                Err(_) => {}
             }
-            Err(MiningManagerError::MempoolError(RuleError::RejectInvalid(transaction_id))) => {
-                // TODO: discuss a banning process
-                return Err(ProtocolError::MisbehavingPeer(format!("rejected invalid transaction {}", transaction_id)));
-            }
-            Err(_) => {}
         }
+
+        self.ctx
+            .broadcast_transactions(insert_results.into_iter().filter_map(|res| match res {
+                Ok(x) => Some(x.id()),
+                Err(_) => None,
+            }))
+            .await?;
+
         Ok(())
     }
 }

@@ -14,6 +14,24 @@ impl Wallet {
         }
 
         match argv.remove(0).as_str() {
+            "list" => {
+                let wallets = ctx.store().wallet_list().await?;
+                if wallets.is_empty() {
+                    tprintln!(ctx, "No wallets found");
+                } else {
+                    tprintln!(ctx, "");
+                    tprintln!(ctx, "Wallets:");
+                    tprintln!(ctx, "");
+                    for wallet in wallets {
+                        if let Some(title) = wallet.title {
+                            tprintln!(ctx, "  {}: {}", wallet.filename, title);
+                        } else {
+                            tprintln!(ctx, "  {}", wallet.filename);
+                        }
+                    }
+                    tprintln!(ctx, "");
+                }
+            }
             "create" => {
                 let wallet_name = if argv.is_empty() {
                     None
@@ -65,7 +83,7 @@ impl Wallet {
                 }
             }
             v => {
-                tprintln!(ctx, "unknown command: '{v}'\r\n");
+                tprintln!(ctx, "unknown command: '{v}'");
                 return self.display_help(ctx, argv).await;
             }
         }
@@ -76,6 +94,7 @@ impl Wallet {
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
         ctx.term().help(
             &[
+                ("list", "List available local wallet files"),
                 ("create [<name>]", "Create a new wallet"),
                 ("open [<name>]", "Open an existing wallet (shorthand: 'open [<name>]')"),
                 ("close", "Close an opened wallet (shorthand: 'close')"),

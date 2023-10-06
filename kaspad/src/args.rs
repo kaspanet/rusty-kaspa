@@ -71,8 +71,8 @@ impl Default for Args {
         Self {
             appdir: Some("datadir".into()),
             no_log_files: false,
-            rpclisten_borsh: Some(WrpcNetAddress::Default),
-            rpclisten_json: Some(WrpcNetAddress::Default),
+            rpclisten_borsh: None,
+            rpclisten_json: None,
             unsafe_rpc: false,
             async_threads: num_cpus::get(),
             utxoindex: false,

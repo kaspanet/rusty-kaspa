@@ -19,7 +19,11 @@ pub struct Cache<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone 
 }
 
 impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync, S: BuildHasher + Default> Cache<TKey, TData, S> {
-    pub fn new(size: u64, counters: Arc<TxScriptCacheCounters>) -> Self {
+    pub fn new(size: u64) -> Self {
+        Self::with_counters(size, Default::default())
+    }
+
+    pub fn with_counters(size: u64, counters: Arc<TxScriptCacheCounters>) -> Self {
         Self {
             map: Arc::new(RwLock::new(IndexMap::with_capacity_and_hasher(size as usize, S::default()))),
             size: size as usize,

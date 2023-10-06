@@ -28,7 +28,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy};
 use kaspa_core::{debug, error, info, time::Stopwatch, warn};
-use kaspa_mining_errors::mempool::RuleError;
+use kaspa_mining_errors::{manager::MiningManagerError, mempool::RuleError};
 use parking_lot::RwLock;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
@@ -49,6 +49,23 @@ impl MiningManager {
         counters: Arc<MiningCounters>,
     ) -> Self {
         let config = Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass);
+        Self::with_config(config, cache_lifetime, counters)
+    }
+
+    pub fn new_with_spam_blocking_option(
+        block_spam_txs: bool,
+        target_time_per_block: u64,
+        relay_non_std_transactions: bool,
+        max_block_mass: u64,
+        cache_lifetime: Option<u64>,
+        counters: Arc<MiningCounters>,
+    ) -> Self {
+        let config = Config::build_default_with_spam_blocking_option(
+            block_spam_txs,
+            target_time_per_block,
+            relay_non_std_transactions,
+            max_block_mass,
+        );
         Self::with_config(config, cache_lifetime, counters)
     }
 
@@ -311,11 +328,11 @@ impl MiningManager {
         transactions: Vec<Transaction>,
         priority: Priority,
         orphan: Orphan,
-    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+    ) -> Vec<MiningManagerResult<Arc<Transaction>>> {
         const TRANSACTION_CHUNK_SIZE: usize = 250;
 
         // The capacity used here may be exceeded since accepted transactions may unorphan other transactions.
-        let mut accepted_transactions: Vec<Arc<Transaction>> = Vec::with_capacity(transactions.len());
+        let mut insert_results: Vec<MiningManagerResult<Arc<Transaction>>> = Vec::with_capacity(transactions.len());
         let mut unorphaned_transactions = vec![];
         let _swo = Stopwatch::<80>::with_threshold("validate_and_insert_transaction_batch topological_sort op");
         let sorted_transactions = transactions.into_iter().map(MutableTransaction::from_tx).topological_into_iter();
@@ -344,6 +361,7 @@ impl MiningManager {
                     }
                     Err(err) => {
                         debug!("Failed to pre validate transaction {0} due to rule error: {1}", transaction_id, err);
+                        insert_results.push(Err(MiningManagerError::MempoolError(err)));
                         None
                     }
                 }
@@ -371,7 +389,7 @@ impl MiningManager {
                 let transaction_id = transaction.id();
                 match mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan) {
                     Ok(Some(accepted_transaction)) => {
-                        accepted_transactions.push(accepted_transaction.clone());
+                        insert_results.push(Ok(accepted_transaction.clone()));
                         self.counters.increase_tx_counts(1, priority);
                         mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
                     }
@@ -381,18 +399,17 @@ impl MiningManager {
                     }
                     Err(err) => {
                         debug!("Failed to post validate transaction {0} due to rule error: {1}", transaction_id, err);
+                        insert_results.push(Err(MiningManagerError::MempoolError(err)));
                         vec![]
-                    } // TODO: handle RuleError::RejectInvalid errors when a banning process gets implemented
+                    }
                 }
             });
             unorphaned_transactions.extend(txs);
         }
 
-        accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
-
-        // Please note: the only reason this function returns a Result is the future handling of misbehaving nodes
-        // and the related RuleError::RejectInvalid
-        Ok(accepted_transactions)
+        insert_results
+            .extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions).into_iter().map(Ok));
+        insert_results
     }
 
     fn next_transaction_chunk_upper_bound(&self, transactions: &[MutableTransaction], lower_bound: usize) -> Option<usize> {
@@ -779,7 +796,7 @@ impl MiningManagerProxy {
         transactions: Vec<Transaction>,
         priority: Priority,
         orphan: Orphan,
-    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+    ) -> Vec<MiningManagerResult<Arc<Transaction>>> {
         consensus
             .clone()
             .spawn_blocking(move |c| self.inner.validate_and_insert_transaction_batch(c, transactions, priority, orphan))

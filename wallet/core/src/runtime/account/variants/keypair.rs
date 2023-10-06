@@ -24,7 +24,7 @@ impl Keypair {
         let id = AccountId::from_keypair(&prv_key_data_id, &data);
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
-        let storage::account::Keypair { public_key, ecdsa } = data;
+        let storage::account::Keypair { public_key, ecdsa, .. } = data;
         Ok(Self { inner, prv_key_data_id, public_key, ecdsa })
     }
 }
@@ -59,7 +59,7 @@ impl Account for Keypair {
 
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
-        let keypair = storage::Keypair { public_key: self.public_key, ecdsa: self.ecdsa };
+        let keypair = storage::Keypair::new(self.public_key, self.ecdsa);
         let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Keypair(keypair));
         Ok(account)
     }
