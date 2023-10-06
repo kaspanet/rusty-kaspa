@@ -102,6 +102,13 @@ impl MempoolCountersSnapshot {
         self.high_priority_tx_counts + self.low_priority_tx_counts
     }
 
+    /// Indicates whether this snapshot has any TPS activity which is worth logging
+    pub fn has_tps_activity(&self) -> bool {
+        self.tx_accepted_counts > 0 || self.block_tx_counts > 0 || self.low_priority_tx_counts > 0 || self.high_priority_tx_counts > 0
+    }
+
+    /// Returns an estimate of _Unique-TPS_, i.e. the number of unique transactions per second on average
+    /// (excluding coinbase transactions)
     pub fn u_tps(&self) -> f64 {
         let elapsed = self.elapsed_time.as_secs_f64();
         if elapsed != 0f64 {
@@ -111,13 +118,18 @@ impl MempoolCountersSnapshot {
         }
     }
 
+    /// Returns an estimate to the _Effective-TPS_ fraction which is a measure of how much of DAG capacity
+    /// is utilized compared to the number of available mempool transactions. For instance a max
+    /// value of `1.0` indicates that we cannot do any better in terms of throughput vs. current
+    /// demand. A value close to `0.0` means that DAG capacity is mostly filled with duplicate
+    /// transactions even though the mempool (demand) offers a much larger amount of unique transactions.   
     pub fn e_tps(&self) -> f64 {
-        let accepted_txs = u64::min(self.ready_txs_sample, self.tx_accepted_counts);
-        let total_txs = u64::min(self.ready_txs_sample, self.block_tx_counts);
+        let accepted_txs = u64::min(self.ready_txs_sample, self.tx_accepted_counts); // The throughput
+        let total_txs = u64::min(self.ready_txs_sample, self.block_tx_counts); // The min of demand and capacity
         if total_txs > 0 {
             accepted_txs as f64 / total_txs as f64
         } else {
-            0f64
+            1f64 // No demand means we are 100% efficient
         }
     }
 }

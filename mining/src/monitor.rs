@@ -53,14 +53,16 @@ impl MiningMonitor {
             let delta = &snapshot - &last_snapshot;
             let tx_script_cache_delta = &tx_script_cache_snapshot - &last_tx_script_cache_snapshot;
 
-            info!(
-                "Tx throughput stats: {:.2} u-tps, {:.2}% e-tps (in: {} via RPC, {} via P2P, out: {} via accepted blocks)",
-                delta.u_tps(),
-                delta.e_tps() * 100.0,
-                delta.high_priority_tx_counts,
-                delta.low_priority_tx_counts,
-                delta.tx_accepted_counts,
-            );
+            if delta.has_tps_activity() {
+                info!(
+                    "Tx throughput stats: {:.2} u-tps, {:.2}% e-tps (in: {} via RPC, {} via P2P, out: {} via accepted blocks)",
+                    delta.u_tps(),
+                    delta.e_tps() * 100.0,
+                    delta.high_priority_tx_counts,
+                    delta.low_priority_tx_counts,
+                    delta.tx_accepted_counts,
+                );
+            }
             if tx_script_cache_snapshot != last_tx_script_cache_snapshot {
                 debug!(
                     "UTXO set stats: {} spent, {} created ({} signatures validated, {} cache hits, {:.2} hit ratio)",
