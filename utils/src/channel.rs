@@ -1,4 +1,4 @@
-use async_channel::{unbounded, Receiver, RecvError, SendError, Sender, TryRecvError, TrySendError};
+use async_channel::{bounded, unbounded, Receiver, RecvError, SendError, Sender, TryRecvError, TrySendError};
 
 /// Multiple producers multiple consumers channel
 #[derive(Clone, Debug)]
@@ -9,6 +9,11 @@ pub struct Channel<T> {
 
 impl<T> Channel<T> {
     pub fn new(channel: (Sender<T>, Receiver<T>)) -> Channel<T> {
+        Self { sender: channel.0, receiver: channel.1 }
+    }
+
+    pub fn bounded(capacity: usize) -> Channel<T> {
+        let channel = bounded(capacity);
         Self { sender: channel.0, receiver: channel.1 }
     }
 

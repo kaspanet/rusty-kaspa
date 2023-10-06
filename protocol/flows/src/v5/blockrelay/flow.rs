@@ -154,8 +154,8 @@ impl HandleRelayInvsFlow {
             }
 
             self.ctx.log_block_acceptance(inv.hash, BlockSource::Relay);
-            self.ctx.on_new_block_template().await?;
             self.ctx.on_new_block(&session, block).await?;
+            self.ctx.on_new_block_template().await?;
 
             // Broadcast all *new* virtual parents. As a policy, we avoid directly relaying the new block since
             // we wish to relay only blocks who entered past(virtual).

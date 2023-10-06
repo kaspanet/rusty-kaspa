@@ -1,23 +1,27 @@
-use crate::model::{
-    candidate_tx::CandidateTransaction,
-    owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
+use crate::{
+    model::{
+        candidate_tx::CandidateTransaction,
+        owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
+    },
+    MiningCounters,
 };
 
 use self::{
     config::Config,
-    model::{orphan_pool::OrphanPool, pool::Pool, transactions_pool::TransactionsPool},
+    model::{accepted_transactions::AcceptedTransactions, orphan_pool::OrphanPool, pool::Pool, transactions_pool::TransactionsPool},
+    tx::Priority,
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
+use kaspa_core::time::Stopwatch;
 use std::sync::Arc;
 
 pub(crate) mod check_transaction_standard;
 pub mod config;
 pub mod errors;
 pub(crate) mod handle_new_block_transactions;
-mod model;
+pub(crate) mod model;
 pub(crate) mod populate_entries_and_try_validate;
 pub(crate) mod remove_transaction;
-pub(crate) mod revalidate_high_priority_transactions;
 pub(crate) mod validate_and_insert_transaction;
 
 /// Mempool contains transactions intended to be inserted into a block and mined.
@@ -40,14 +44,16 @@ pub(crate) struct Mempool {
     config: Arc<Config>,
     transaction_pool: TransactionsPool,
     orphan_pool: OrphanPool,
+    accepted_transactions: AcceptedTransactions,
+    counters: Arc<MiningCounters>,
 }
 
 impl Mempool {
-    pub(crate) fn new(config: Config) -> Self {
-        let config = Arc::new(config);
+    pub(crate) fn new(config: Arc<Config>, counters: Arc<MiningCounters>) -> Self {
         let transaction_pool = TransactionsPool::new(config.clone());
         let orphan_pool = OrphanPool::new(config.clone());
-        Self { config, transaction_pool, orphan_pool }
+        let accepted_transactions = AcceptedTransactions::new(config.clone());
+        Self { config, transaction_pool, orphan_pool, accepted_transactions, counters }
     }
 
     pub(crate) fn get_transaction(
@@ -81,14 +87,18 @@ impl Mempool {
         include_transaction_pool: bool,
         include_orphan_pool: bool,
     ) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
-        let mut transactions = vec![];
-        let mut orphans = vec![];
-        if include_transaction_pool {
-            transactions = self.transaction_pool.get_all_transactions()
-        }
-        if include_orphan_pool {
-            orphans = self.orphan_pool.get_all_transactions()
-        }
+        let transactions = if include_transaction_pool { self.transaction_pool.get_all_transactions() } else { vec![] };
+        let orphans = if include_orphan_pool { self.orphan_pool.get_all_transactions() } else { vec![] };
+        (transactions, orphans)
+    }
+
+    pub(crate) fn get_all_transaction_ids(
+        &self,
+        include_transaction_pool: bool,
+        include_orphan_pool: bool,
+    ) -> (Vec<TransactionId>, Vec<TransactionId>) {
+        let transactions = if include_transaction_pool { self.transaction_pool.get_all_transaction_ids() } else { vec![] };
+        let orphans = if include_orphan_pool { self.orphan_pool.get_all_transaction_ids() } else { vec![] };
         (transactions, orphans)
     }
 
@@ -120,7 +130,37 @@ impl Mempool {
     }
 
     pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
+        let _sw = Stopwatch::<10>::with_threshold("block_candidate_transactions op");
         self.transaction_pool.all_ready_transactions()
+    }
+
+    pub(crate) fn all_transaction_ids_with_priority(&self, priority: Priority) -> Vec<TransactionId> {
+        let _sw = Stopwatch::<15>::with_threshold("all_transaction_ids_with_priority op");
+        self.transaction_pool.all_transaction_ids_with_priority(priority)
+    }
+
+    pub(crate) fn update_revalidated_transaction(&mut self, transaction: MutableTransaction) -> bool {
+        if let Some(tx) = self.transaction_pool.get_mut(&transaction.id()) {
+            tx.mtx = transaction;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn has_accepted_transaction(&self, transaction_id: &TransactionId) -> bool {
+        self.accepted_transactions.has(transaction_id)
+    }
+
+    pub(crate) fn unaccepted_transactions(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
+        self.accepted_transactions.unaccepted(&mut transactions.into_iter())
+    }
+
+    pub(crate) fn unknown_transactions(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
+        let mut not_in_pools_txs = transactions
+            .into_iter()
+            .filter(|transaction_id| !(self.transaction_pool.has(transaction_id) || self.orphan_pool.has(transaction_id)));
+        self.accepted_transactions.unaccepted(&mut not_in_pools_txs)
     }
 }
 
