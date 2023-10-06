@@ -22,7 +22,6 @@ macro_rules! route {
                         return __ret;
                     }
                     let __self = self;
-                    let request = request;
                     let __ret: RpcResult<[<$name Response>]> =
                         { __self.inner.call(RpcApiOps::$name, request).await?.as_ref().try_into() };
                     #[allow(unreachable_code)]
