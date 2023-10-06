@@ -48,7 +48,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    block::{BlockTemplate, MutableBlock},
+    block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::MinerData,
     config::genesis::GenesisBlock,
@@ -81,11 +81,14 @@ use itertools::Itertools;
 use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rand::seq::SliceRandom;
-use rayon::ThreadPool;
+use rayon::{
+    prelude::{IntoParallelRefMutIterator, ParallelIterator},
+    ThreadPool,
+};
 use rocksdb::WriteBatch;
 use std::{
     cmp::min,
-    collections::{BinaryHeap, VecDeque},
+    collections::{BinaryHeap, HashMap, VecDeque},
     ops::Deref,
     sync::{atomic::Ordering, Arc},
 };
@@ -705,19 +708,69 @@ impl VirtualStateProcessor {
         (virtual_parents, ghostdag_data)
     }
 
-    pub fn validate_mempool_transaction_and_populate(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
+    fn validate_mempool_transaction_impl(
+        &self,
+        mutable_tx: &mut MutableTransaction,
+        virtual_utxo_view: &impl UtxoView,
+        virtual_daa_score: u64,
+        virtual_past_median_time: u64,
+    ) -> TxResult<()> {
         self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx)?;
+        self.transaction_validator.utxo_free_tx_validation(&mutable_tx.tx, virtual_daa_score, virtual_past_median_time)?;
+        self.validate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view, virtual_daa_score)?;
+        Ok(())
+    }
 
+    pub fn validate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
+        let virtual_read = self.virtual_stores.read();
+        let virtual_state = virtual_read.state.get().unwrap();
+        let virtual_utxo_view = &virtual_read.utxo_set;
+        let virtual_daa_score = virtual_state.daa_score;
+        let virtual_past_median_time = virtual_state.past_median_time;
+        self.validate_mempool_transaction_impl(mutable_tx, virtual_utxo_view, virtual_daa_score, virtual_past_median_time)
+    }
+
+    pub fn validate_mempool_transactions_in_parallel(&self, mutable_txs: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
         let virtual_read = self.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
         let virtual_daa_score = virtual_state.daa_score;
         let virtual_past_median_time = virtual_state.past_median_time;
 
-        self.transaction_validator.utxo_free_tx_validation(&mutable_tx.tx, virtual_daa_score, virtual_past_median_time)?;
-        self.validate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view, virtual_daa_score)?;
+        self.thread_pool.install(|| {
+            mutable_txs
+                .par_iter_mut()
+                .map(|mtx| {
+                    self.validate_mempool_transaction_impl(mtx, &virtual_utxo_view, virtual_daa_score, virtual_past_median_time)
+                })
+                .collect::<Vec<TxResult<()>>>()
+        })
+    }
 
+    fn populate_mempool_transaction_impl(
+        &self,
+        mutable_tx: &mut MutableTransaction,
+        virtual_utxo_view: &impl UtxoView,
+    ) -> TxResult<()> {
+        self.populate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view)?;
         Ok(())
+    }
+
+    pub fn populate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
+        let virtual_read = self.virtual_stores.read();
+        let virtual_utxo_view = &virtual_read.utxo_set;
+        self.populate_mempool_transaction_impl(mutable_tx, virtual_utxo_view)
+    }
+
+    pub fn populate_mempool_transactions_in_parallel(&self, mutable_txs: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        let virtual_read = self.virtual_stores.read();
+        let virtual_utxo_view = &virtual_read.utxo_set;
+        self.thread_pool.install(|| {
+            mutable_txs
+                .par_iter_mut()
+                .map(|mtx| self.populate_mempool_transaction_impl(mtx, &virtual_utxo_view))
+                .collect::<Vec<TxResult<()>>>()
+        })
     }
 
     fn validate_block_template_transaction(
@@ -734,14 +787,59 @@ impl VirtualStateProcessor {
         Ok(())
     }
 
-    pub fn build_block_template(&self, miner_data: MinerData, txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+    pub fn build_block_template(
+        &self,
+        miner_data: MinerData,
+        mut tx_selector: Box<dyn TemplateTransactionSelector>,
+        build_mode: TemplateBuildMode,
+    ) -> Result<BlockTemplate, RuleError> {
+        //
         // TODO: tests
+        //
+
+        // We call for the initial tx batch before acquiring the virtual read lock,
+        // optimizing for the common case where all txs are valid. Following selection calls
+        // are called within the lock in order to preserve validness of already validated txs
+        let mut txs = tx_selector.select_transactions();
+
         let virtual_read = self.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
 
-        // Validate the transactions in virtual's utxo context
-        self.validate_block_template_transactions(&txs, &virtual_state, virtual_utxo_view)?;
+        let mut invalid_transactions = HashMap::new();
+        for tx in txs.iter() {
+            if let Err(e) = self.validate_block_template_transaction(tx, &virtual_state, virtual_utxo_view) {
+                invalid_transactions.insert(tx.id(), e);
+                tx_selector.reject_selection(tx.id());
+            }
+        }
+
+        let mut has_rejections = !invalid_transactions.is_empty();
+        if has_rejections {
+            txs.retain(|tx| !invalid_transactions.contains_key(&tx.id()));
+        }
+
+        while has_rejections {
+            has_rejections = false;
+            let next_batch = tx_selector.select_transactions(); // Note that once next_batch is empty the loop will exit
+            for tx in next_batch {
+                if let Err(e) = self.validate_block_template_transaction(&tx, &virtual_state, virtual_utxo_view) {
+                    invalid_transactions.insert(tx.id(), e);
+                    tx_selector.reject_selection(tx.id());
+                    has_rejections = true;
+                } else {
+                    txs.push(tx);
+                }
+            }
+        }
+
+        // Check whether this was an overall successful selection episode. We pass this decision
+        // to the selector implementation which has the broadest picture and can use mempool config
+        // and context
+        match (build_mode, tx_selector.is_successful()) {
+            (TemplateBuildMode::Standard, false) => return Err(RuleError::InvalidTransactionsInNewBlock(invalid_transactions)),
+            (TemplateBuildMode::Standard, true) | (TemplateBuildMode::Infallible, _) => {}
+        }
 
         // At this point we can safely drop the read lock
         drop(virtual_read);
@@ -750,17 +848,17 @@ impl VirtualStateProcessor {
         self.build_block_template_from_virtual_state(virtual_state, miner_data, txs)
     }
 
-    pub fn validate_block_template_transactions(
+    pub(crate) fn validate_block_template_transactions(
         &self,
         txs: &[Transaction],
         virtual_state: &VirtualState,
         utxo_view: &impl UtxoView,
     ) -> Result<(), RuleError> {
-        // Search for invalid transactions. This can happen since the mining manager calling this function is not atomically in sync with virtual state
-        let mut invalid_transactions = Vec::new();
+        // Search for invalid transactions
+        let mut invalid_transactions = HashMap::new();
         for tx in txs.iter() {
             if let Err(e) = self.validate_block_template_transaction(tx, virtual_state, utxo_view) {
-                invalid_transactions.push((tx.id(), e))
+                invalid_transactions.insert(tx.id(), e);
             }
         }
         if !invalid_transactions.is_empty() {

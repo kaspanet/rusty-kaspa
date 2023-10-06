@@ -2,9 +2,14 @@ pub mod errors;
 pub mod transaction_validator_populated;
 mod tx_validation_in_isolation;
 pub mod tx_validation_not_utxo_related;
+use std::sync::Arc;
+
 use crate::model::stores::ghostdag;
 
-use kaspa_txscript::{caches::Cache, SigCacheKey};
+use kaspa_txscript::{
+    caches::{Cache, TxScriptCacheCounters},
+    SigCacheKey,
+};
 pub use tx_validation_in_isolation::*;
 
 #[derive(Clone)]
@@ -28,6 +33,7 @@ impl TransactionValidator {
         ghostdag_k: ghostdag::KType,
         coinbase_payload_script_public_key_max_len: u8,
         coinbase_maturity: u64,
+        counters: Arc<TxScriptCacheCounters>,
     ) -> Self {
         Self {
             max_tx_inputs,
@@ -37,7 +43,7 @@ impl TransactionValidator {
             ghostdag_k,
             coinbase_payload_script_public_key_max_len,
             coinbase_maturity,
-            sig_cache: Cache::new(10_000),
+            sig_cache: Cache::with_counters(10_000, counters),
         }
     }
 }

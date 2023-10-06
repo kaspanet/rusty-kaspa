@@ -247,12 +247,11 @@ impl VirtualStateProcessor {
         }
     }
 
-    /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to validation if all found
-    pub(super) fn validate_mempool_transaction_in_utxo_context(
+    /// Populates the mempool transaction with maximally found UTXO entry data
+    pub(crate) fn populate_mempool_transaction_in_utxo_context(
         &self,
         mutable_tx: &mut MutableTransaction,
         utxo_view: &impl UtxoView,
-        pov_daa_score: u64,
     ) -> TxResult<()> {
         let mut has_missing_outpoints = false;
         for i in 0..mutable_tx.tx.inputs.len() {
@@ -271,6 +270,18 @@ impl VirtualStateProcessor {
         if has_missing_outpoints {
             return Err(TxRuleError::MissingTxOutpoints);
         }
+        Ok(())
+    }
+
+    /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to validation if all found
+    pub(super) fn validate_mempool_transaction_in_utxo_context(
+        &self,
+        mutable_tx: &mut MutableTransaction,
+        utxo_view: &impl UtxoView,
+        pov_daa_score: u64,
+    ) -> TxResult<()> {
+        self.populate_mempool_transaction_in_utxo_context(mutable_tx, utxo_view)?;
+
         // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
         let calculated_fee =
             self.transaction_validator.validate_populated_transaction_and_get_fee(&mutable_tx.as_verifiable(), pov_daa_score)?;
