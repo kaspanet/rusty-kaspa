@@ -229,7 +229,9 @@ jobs:
 
       - name: Install gcc-multilib
         # gcc-multilib allows clang to find gnu libraries properly
-        run: sudo apt install -y gcc-multilib
+        run: |
+          sudo apt-get update
+          sudo apt install -y gcc-multilib
 
       - name: Install stable toolchain
         if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
@@ -290,7 +292,9 @@ jobs:
 
       - name: Install gcc-multilib
         # gcc-multilib allows clang to find gnu libraries properly
-        run: sudo apt install -y gcc-multilib
+        run: |
+          sudo apt-get update
+          sudo apt install -y gcc-multilib
 
       - name: Install stable toolchain
         if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
