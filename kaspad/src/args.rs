@@ -55,6 +55,7 @@ pub struct Args {
     pub externalip: Option<IpAddress>,
     pub perf_metrics: bool,
     pub perf_metrics_interval_sec: u64,
+    pub block_template_cache_lifetime: Option<u64>,
 
     #[cfg(feature = "devnet-prealloc")]
     pub num_prealloc_utxos: Option<u64>,
@@ -62,8 +63,6 @@ pub struct Args {
     pub prealloc_address: Option<String>,
     #[cfg(feature = "devnet-prealloc")]
     pub prealloc_amount: u64,
-    #[cfg(feature = "devnet-prealloc")]
-    pub block_template_cache_lifetime: Option<u64>,
 }
 
 impl Default for Args {
@@ -100,6 +99,7 @@ impl Default for Args {
             perf_metrics: false,
             perf_metrics_interval_sec: 1,
             externalip: None,
+            block_template_cache_lifetime: None,
 
             #[cfg(feature = "devnet-prealloc")]
             num_prealloc_utxos: None,
@@ -107,8 +107,6 @@ impl Default for Args {
             prealloc_address: None,
             #[cfg(feature = "devnet-prealloc")]
             prealloc_amount: 1_000_000,
-            #[cfg(feature = "devnet-prealloc")]
-            block_template_cache_lifetime: None,
         }
     }
 }
@@ -122,14 +120,11 @@ impl Args {
         // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
         config.enable_sanity_checks = true;
         config.user_agent_comments = self.user_agent_comments.clone();
+        config.block_template_cache_lifetime = self.block_template_cache_lifetime;
 
         #[cfg(feature = "devnet-prealloc")]
         if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
             config.initial_utxo_set = Arc::new(self.generate_prealloc_utxos(num_prealloc_utxos));
-        }
-        #[cfg(feature = "devnet-prealloc")]
-        if self.block_template_cache_lifetime.is_some() {
-            config.block_template_cache_lifetime = self.block_template_cache_lifetime;
         }
     }
 
@@ -364,6 +359,8 @@ pub fn parse_args() -> Args {
             .get_one::<u64>("perf-metrics-interval-sec")
             .cloned()
             .unwrap_or(defaults.perf_metrics_interval_sec),
+        // Note: currently used programmatically by benchmarks and not exposed to CLI users
+        block_template_cache_lifetime: defaults.block_template_cache_lifetime,
 
         #[cfg(feature = "devnet-prealloc")]
         num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
@@ -371,8 +368,6 @@ pub fn parse_args() -> Args {
         prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
         #[cfg(feature = "devnet-prealloc")]
         prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
-        #[cfg(feature = "devnet-prealloc")]
-        block_template_cache_lifetime: m.get_one::<u64>("block-template-cache-lifetime").cloned(),
     }
 }
 

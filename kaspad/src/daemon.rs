@@ -323,17 +323,13 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     let address_manager = AddressManager::new(config.clone(), meta_db);
 
-    #[cfg(not(feature = "devnet-prealloc"))]
-    let cache_lifetime: Option<u64> = None;
-    #[cfg(feature = "devnet-prealloc")]
-    let cache_lifetime = config.block_template_cache_lifetime;
     let mining_monitor = Arc::new(MiningMonitor::new(mining_counters.clone(), tx_script_cache_counters.clone(), tick_service.clone()));
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_spam_blocking_option(
         network.is_mainnet(),
         config.target_time_per_block,
         false,
         config.max_block_mass,
-        cache_lifetime,
+        config.block_template_cache_lifetime,
         mining_counters,
     )));
 

@@ -59,11 +59,10 @@ pub struct Config {
 
     pub externalip: Option<IpAddress>,
 
-    #[cfg(feature = "devnet-prealloc")]
-    pub initial_utxo_set: Arc<UtxoCollection>,
+    pub block_template_cache_lifetime: Option<u64>,
 
     #[cfg(feature = "devnet-prealloc")]
-    pub block_template_cache_lifetime: Option<u64>,
+    pub initial_utxo_set: Arc<UtxoCollection>,
 }
 
 impl Config {
@@ -85,11 +84,10 @@ impl Config {
             user_agent_comments: Default::default(),
             externalip: None,
             p2p_listen_address: ContextualNetAddress::unspecified(),
+            block_template_cache_lifetime: None,
 
             #[cfg(feature = "devnet-prealloc")]
             initial_utxo_set: Default::default(),
-            #[cfg(feature = "devnet-prealloc")]
-            block_template_cache_lifetime: None,
         }
     }
 
