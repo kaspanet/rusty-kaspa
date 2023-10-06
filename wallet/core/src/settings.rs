@@ -101,15 +101,15 @@ where
             None
         };
 
-        let list = if list.is_none() {
+        let list = if let Some(value) = list {
+            value
+        } else {
             Value::Object(Map::from_iter(<K as DefaultSettings>::defaults().await.into_iter().map(|(k, v)| {
                 let ks = to_value(k).unwrap();
                 let ks = ks.as_str().expect("Unable to convert key to string");
 
                 (ks.to_string(), v)
             })))
-        } else {
-            list.unwrap()
         };
 
         self.map.clear();

@@ -1,3 +1,4 @@
+pub use crate::core::MetricsCtl;
 pub use crate::core::*;
 pub use crate::error::Error;
 pub use crate::ipc::*;
