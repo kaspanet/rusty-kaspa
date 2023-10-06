@@ -70,7 +70,7 @@ pub struct UtxoProcessor {
 
 impl UtxoProcessor {
     pub fn new(rpc: Option<Rpc>, network_id: Option<NetworkId>, multiplexer: Option<Multiplexer<Box<Events>>>) -> Self {
-        let multiplexer = multiplexer.unwrap_or_else(Multiplexer::new);
+        let multiplexer = multiplexer.unwrap_or_default();
         UtxoProcessor { inner: Arc::new(Inner::new(rpc, network_id, multiplexer)) }
     }
 

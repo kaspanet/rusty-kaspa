@@ -64,7 +64,7 @@ fn deserialize_i64(v: &[u8]) -> Result<i64, TxScriptError> {
         l if l > size_of::<i64>() => {
             Err(TxScriptError::NotMinimalData(format!("numeric value encoded as {v:x?} is longer than 8 bytes")))
         }
-        l if l == 0 => Ok(0),
+        0 => Ok(0),
         _ => {
             check_minimal_data_encoding(v)?;
             let msb = v[v.len() - 1];

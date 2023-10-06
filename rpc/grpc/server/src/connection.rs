@@ -315,7 +315,6 @@ impl Connection {
             match payload {
                 Payload::NotifyBlockAddedRequest(ref request) => match kaspa_rpc_core::NotifyBlockAddedRequest::try_from(request) {
                     Ok(request) => {
-                        let listener_id = listener_id;
                         let result = notifier
                             .clone()
                             .execute_subscribe_command(listener_id, Scope::BlockAdded(BlockAddedScope::default()), request.command)
@@ -328,7 +327,6 @@ impl Connection {
                 Payload::NotifyVirtualChainChangedRequest(ref request) => {
                     match kaspa_rpc_core::NotifyVirtualChainChangedRequest::try_from(request) {
                         Ok(request) => {
-                            let listener_id = listener_id;
                             let result = notifier
                                 .clone()
                                 .execute_subscribe_command(
@@ -348,7 +346,6 @@ impl Connection {
                 Payload::NotifyFinalityConflictRequest(ref request) => {
                     match kaspa_rpc_core::NotifyFinalityConflictRequest::try_from(request) {
                         Ok(request) => {
-                            let listener_id = listener_id;
                             let result = notifier
                                 .clone()
                                 .execute_subscribe_command(
@@ -376,7 +373,6 @@ impl Connection {
                 Payload::NotifyUtxosChangedRequest(ref request) => {
                     match kaspa_rpc_core::NotifyUtxosChangedRequest::try_from(request) {
                         Ok(request) => {
-                            let listener_id = listener_id;
                             let result = notifier
                                 .clone()
                                 .execute_subscribe_command(
@@ -394,7 +390,6 @@ impl Connection {
                 Payload::NotifySinkBlueScoreChangedRequest(ref request) => {
                     match kaspa_rpc_core::NotifySinkBlueScoreChangedRequest::try_from(request) {
                         Ok(request) => {
-                            let listener_id = listener_id;
                             let result = notifier
                                 .clone()
                                 .execute_subscribe_command(
@@ -412,7 +407,6 @@ impl Connection {
                 Payload::NotifyVirtualDaaScoreChangedRequest(ref request) => {
                     match kaspa_rpc_core::NotifyVirtualDaaScoreChangedRequest::try_from(request) {
                         Ok(request) => {
-                            let listener_id = listener_id;
                             let result = notifier
                                 .clone()
                                 .execute_subscribe_command(
@@ -430,7 +424,6 @@ impl Connection {
                 Payload::NotifyPruningPointUtxoSetOverrideRequest(ref request) => {
                     match kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(request) {
                         Ok(request) => {
-                            let listener_id = listener_id;
                             let result = notifier
                                 .clone()
                                 .execute_subscribe_command(
@@ -448,7 +441,6 @@ impl Connection {
                 Payload::NotifyNewBlockTemplateRequest(ref request) => {
                     match kaspa_rpc_core::NotifyNewBlockTemplateRequest::try_from(request) {
                         Ok(request) => {
-                            let listener_id = listener_id;
                             let result = notifier
                                 .clone()
                                 .execute_subscribe_command(
@@ -468,7 +460,6 @@ impl Connection {
                     let response: StopNotifyingUtxosChangedResponseMessage =
                         match kaspa_rpc_core::NotifyUtxosChangedRequest::try_from(&notify_request) {
                             Ok(request) => {
-                                let listener_id = listener_id;
                                 let result = notifier
                                     .clone()
                                     .execute_subscribe_command(
@@ -489,7 +480,6 @@ impl Connection {
                     let response: StopNotifyingPruningPointUtxoSetOverrideResponseMessage =
                         match kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(&notify_request) {
                             Ok(request) => {
-                                let listener_id = listener_id;
                                 let result = notifier
                                     .clone()
                                     .execute_subscribe_command(
