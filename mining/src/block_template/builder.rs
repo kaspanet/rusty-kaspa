@@ -1,9 +1,16 @@
 use super::{errors::BuilderResult, policy::Policy};
 use crate::{block_template::selector::TransactionsSelector, model::candidate_tx::CandidateTransaction};
 use kaspa_consensus_core::{
-    api::ConsensusApi, block::BlockTemplate, coinbase::MinerData, merkle::calc_hash_merkle_root, tx::COINBASE_TRANSACTION_INDEX,
+    api::ConsensusApi,
+    block::{BlockTemplate, TemplateBuildMode},
+    coinbase::MinerData,
+    merkle::calc_hash_merkle_root,
+    tx::COINBASE_TRANSACTION_INDEX,
 };
-use kaspa_core::{debug, time::unix_now};
+use kaspa_core::{
+    debug,
+    time::{unix_now, Stopwatch},
+};
 
 pub(crate) struct BlockTemplateBuilder {
     policy: Policy,
@@ -83,16 +90,16 @@ impl BlockTemplateBuilder {
         consensus: &dyn ConsensusApi,
         miner_data: &MinerData,
         transactions: Vec<CandidateTransaction>,
+        build_mode: TemplateBuildMode,
     ) -> BuilderResult<BlockTemplate> {
-        debug!("Considering {} transactions for inclusion to new block", transactions.len());
-        let mut selector = TransactionsSelector::new(self.policy.clone(), transactions);
-        let block_txs = selector.select_transactions();
-        Ok(consensus.build_block_template(miner_data.clone(), block_txs)?)
+        let _sw = Stopwatch::<20>::with_threshold("build_block_template op");
+        debug!("Considering {} transactions for a new block template", transactions.len());
+        let selector = Box::new(TransactionsSelector::new(self.policy.clone(), transactions));
+        Ok(consensus.build_block_template(miner_data.clone(), selector, build_mode)?)
     }
 
     /// modify_block_template clones an existing block template, modifies it to the requested coinbase data and updates the timestamp
     pub(crate) fn modify_block_template(
-        &self,
         consensus: &dyn ConsensusApi,
         new_miner_data: &MinerData,
         block_template_to_modify: &BlockTemplate,

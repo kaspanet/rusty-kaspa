@@ -1,7 +1,7 @@
 use super::coinbase_mock::CoinbaseManagerMock;
 use kaspa_consensus_core::{
     api::ConsensusApi,
-    block::{BlockTemplate, MutableBlock},
+    block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
     constants::BLOCK_VERSION,
     errors::{
@@ -72,7 +72,13 @@ impl ConsensusMock {
 }
 
 impl ConsensusApi for ConsensusMock {
-    fn build_block_template(&self, miner_data: MinerData, mut txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+    fn build_block_template(
+        &self,
+        miner_data: MinerData,
+        mut tx_selector: Box<dyn TemplateTransactionSelector>,
+        _build_mode: TemplateBuildMode,
+    ) -> Result<BlockTemplate, RuleError> {
+        let mut txs = tx_selector.select_transactions();
         let coinbase_manager = CoinbaseManagerMock::new();
         let coinbase = coinbase_manager.expected_coinbase_transaction(miner_data.clone());
         txs.insert(0, coinbase.tx);
@@ -97,7 +103,7 @@ impl ConsensusApi for ConsensusMock {
         Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now, 0))
     }
 
-    fn validate_mempool_transaction_and_populate(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
+    fn validate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
         // If a predefined status was registered to simulate an error, return it right away
         if let Some(status) = self.statuses.read().get(&mutable_tx.id()) {
             if status.is_err() {
@@ -127,6 +133,14 @@ impl ConsensusApi for ConsensusMock {
         let calculated_fee = total_in - total_out;
         mutable_tx.calculated_fee = Some(calculated_fee);
         Ok(())
+    }
+
+    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        transactions.iter_mut().map(|x| self.validate_mempool_transaction(x)).collect()
+    }
+
+    fn populate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        transactions.iter_mut().map(|x| self.validate_mempool_transaction(x)).collect()
     }
 
     fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {

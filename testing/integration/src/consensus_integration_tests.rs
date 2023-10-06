@@ -52,6 +52,7 @@ use kaspa_database::prelude::ConnBuilder;
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
+use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
@@ -1689,8 +1690,10 @@ async fn staging_consensus_test() {
     let (notification_send, _notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
     let counters = Arc::new(ProcessingCounters::default());
+    let tx_script_cache_counters = Arc::new(TxScriptCacheCounters::default());
 
-    let consensus_factory = Arc::new(ConsensusFactory::new(meta_db, &config, consensus_db_dir, 4, notification_root, counters));
+    let consensus_factory =
+        Arc::new(ConsensusFactory::new(meta_db, &config, consensus_db_dir, 4, notification_root, counters, tx_script_cache_counters));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
 
     let core = Arc::new(Core::new());
