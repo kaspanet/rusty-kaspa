@@ -136,7 +136,7 @@ impl Account for Legacy {
         //     receive_pubkeys.extend(derivator.receive_pubkey_manager().get_cache()?);
         //     change_pubkeys.extend(derivator.change_pubkey_manager().get_cache()?);
         // }
-        let legacy = storage::Legacy {};
+        let legacy = storage::Legacy::new();
         // receive_pubkeys: Arc::new(receive_pubkeys),
         // change_pubkeys: Arc::new(change_pubkeys)
 

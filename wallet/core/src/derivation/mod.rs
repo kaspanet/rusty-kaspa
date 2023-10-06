@@ -13,7 +13,6 @@ use crate::runtime::account::create_private_keys;
 use crate::runtime::AccountKind;
 use crate::Result;
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
-use kaspa_utils::hex::ToHex;
 use kaspa_consensus_core::network::NetworkType;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};

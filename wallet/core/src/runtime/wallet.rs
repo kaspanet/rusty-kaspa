@@ -792,7 +792,7 @@ impl Wallet {
             log_info!("TODO: PrivateKeyAlreadyExists {}", prv_key_data.id.to_hex());
         }
 
-        let data = storage::Legacy {}; // receive_pubkeys: Arc::new(HashMap::new()), change_pubkeys: Arc::new(HashMap::new()) };
+        let data = storage::Legacy::new(); // receive_pubkeys: Arc::new(HashMap::new()), change_pubkeys: Arc::new(HashMap::new()) };
         let settings = storage::Settings::default();
         let account = Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?);
         // store private key
@@ -853,7 +853,7 @@ impl Wallet {
                 // account
             }
             AccountKind::Legacy => {
-                let data = storage::Legacy {};
+                let data = storage::Legacy::new();
                 let settings = storage::Settings::default();
                 Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?)
             }

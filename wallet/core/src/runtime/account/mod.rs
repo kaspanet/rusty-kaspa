@@ -432,7 +432,7 @@ pub trait DerivationCapableAccount: Account {
         let change_address_keypair =
             derivation.get_range_with_keys(true, change_address_index..change_address_index + 1, false, &xkey).await?;
 
-        let rpc = self.wallet().rpc();
+        let rpc = self.wallet().rpc_api();
         let notifier = notifier.as_ref();
 
         let mut index: usize = start;
@@ -495,13 +495,13 @@ pub trait DerivationCapableAccount: Account {
                         None,
                     )?;
 
-                    let generator = Generator::new(settings, None, abortable);
+                    let generator = Generator::try_new(settings, None, Some(abortable))?;
 
                     let mut stream = generator.stream();
                     while let Some(transaction) = stream.try_next().await? {
                         transaction.try_sign_with_keys(keys.clone())?;
                         //let id = transaction.id();
-                        let id = transaction.try_submit(rpc).await?;
+                        let id = transaction.try_submit(&rpc).await?;
                         if let Some(notifier) = notifier {
                             notifier(index, balance, Some(id));
                         }
