@@ -112,12 +112,12 @@ impl Prefix {
 
     /// Is this a public key?
     pub fn is_public(self) -> bool {
-        &self.chars[1..] == b"pub"
+        &self.chars[1..] == b"pub" || &self.chars[1..] == b"tub"
     }
 
     /// Is this a private key?
     pub fn is_private(self) -> bool {
-        &self.chars[1..] == b"prv"
+        &self.chars[1..] == b"prv" || &self.chars[1..] == b"trv"
     }
 
     /// Get the [`Version`] number.
