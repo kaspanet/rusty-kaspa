@@ -346,8 +346,8 @@ impl WalletDerivationManager {
     }
 
     /// Serialize this key as a self-[`Zeroizing`] `String`.
-    pub fn to_string(&self) -> Zeroizing<String> {
-        let key = self.extended_public_key.to_string(Some(Prefix::KPUB));
+    pub fn to_string(&self, prefix: Option<Prefix>) -> Zeroizing<String> {
+        let key = self.extended_public_key.to_string(Some(prefix.unwrap_or(Prefix::KPUB)));
         Zeroizing::new(key)
     }
 }
@@ -526,6 +526,54 @@ mod tests {
             let address: String = PubkeyDerivationManager::create_address(&pubkey, Prefix::Mainnet, false).unwrap().into();
             assert_eq!(change_addresses[index as usize], address, "change address at {index} failed");
         }
+    }
+
+    #[tokio::test]
+    async fn wallet_from_mnemonic() {
+        let mnemonic = "fringe ceiling crater inject pilot travel gas nurse bulb bullet horn segment snack harbor dice laugh vital cigar push couple plastic into slender worry";
+        let mnemonic = kaspa_bip32::Mnemonic::new(mnemonic, kaspa_bip32::Language::English).unwrap();
+        let xprv = kaspa_bip32::ExtendedPrivateKey::<kaspa_bip32::SecretKey>::new(mnemonic.to_seed("")).unwrap();
+        let xprv_str = xprv.to_string(kaspa_bip32::Prefix::KPRV).to_string();
+        assert_eq!(
+            xprv_str,
+            "kprv5y2qurMHCsXYrpeDB395BY2DPKYHUGaCMpFAYRi1cmhwin1bWRyUXVbtTyy54FCGxPnnEvbK9WaiaQgkGS9ngGxmHy1bubZYY6MTokeYP2Q",
+            "xprv not matched"
+        );
+
+        let wallet = WalletDerivationManager::from_master_xprv(&xprv_str, false, 0, None).unwrap();
+        let xpub_str = wallet.to_string(Some(kaspa_bip32::Prefix::KPUB)).to_string();
+        assert_eq!(
+            xpub_str,
+            "kpub2HtoTgsG6e1c7ixJ6JY49otNSzhEKkwnH6bsPHLAXUdYnfEuYw9LnhT7uRzaS4LSeit2rzutV6z8Fs9usdEGKnNe6p1JxfP71mK8rbUfYWo",
+            "drived kpub not matched"
+        );
+
+        println!("Extended kpub: {}\n", xpub_str);
+    }
+
+    #[tokio::test]
+    async fn address_test_by_ktrv() {
+        let mnemonic = "hunt bitter praise lift buyer topic crane leopard uniform network inquiry over grain pass match crush marine strike doll relax fortune trumpet sunny silk";
+        let mnemonic = kaspa_bip32::Mnemonic::new(mnemonic, kaspa_bip32::Language::English).unwrap();
+        let xprv = kaspa_bip32::ExtendedPrivateKey::<kaspa_bip32::SecretKey>::new(mnemonic.to_seed("")).unwrap();
+        let ktrv_str = xprv.to_string(kaspa_bip32::Prefix::KTRV).to_string();
+        assert_eq!(
+            ktrv_str,
+            "ktrv5himbbCxArFU2CHiEQyVHP1ABS1tA1SY88CwePzGeM8gHfWmkNBXehhKsESH7UwcxpjpDdMNbwtBfyPoZ7W59kYfVnUXKRgv8UguDns2FQb",
+            "master ktrv not matched"
+        );
+
+        let wallet = WalletDerivationManager::from_master_xprv(&ktrv_str, false, 0, None).unwrap();
+        let ktub_str = wallet.to_string(Some(kaspa_bip32::Prefix::KTUB)).to_string();
+        assert_eq!(
+            ktub_str,
+            "ktub23beJLczbxoS4emYHxm5H2rPnXJPGTwjNLAc8JyjHnSFLPMJBj5h3U8oWbn1x1jayZRov6uhvGd4zUGrWH6PkYZMWsykUsQWYqjbLnHrzUE",
+            "drived ktub not matched"
+        );
+
+        let key = wallet.derive_receive_pubkey(1).unwrap();
+        let address = PubkeyDerivationManager::create_address(&key, Prefix::Testnet, false).unwrap().to_string();
+        assert_eq!(address, "kaspatest:qrc2959g0pqda53glnfd238cdnmk24zxzkj8n5x83rkktx4h73dkc4ave6wyg")
     }
 
     #[tokio::test]
