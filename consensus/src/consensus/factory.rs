@@ -11,6 +11,7 @@ use kaspa_database::{
     registry::DatabaseStorePrefixes,
 };
 
+use kaspa_txscript::caches::TxScriptCacheCounters;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -153,6 +154,7 @@ pub struct Factory {
     db_parallelism: usize,
     notification_root: Arc<ConsensusNotificationRoot>,
     counters: Arc<ProcessingCounters>,
+    tx_script_cache_counters: Arc<TxScriptCacheCounters>,
 }
 
 impl Factory {
@@ -163,6 +165,7 @@ impl Factory {
         db_parallelism: usize,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        tx_script_cache_counters: Arc<TxScriptCacheCounters>,
     ) -> Self {
         let mut config = config.clone();
         #[cfg(feature = "devnet-prealloc")]
@@ -175,6 +178,7 @@ impl Factory {
             db_parallelism,
             notification_root,
             counters,
+            tx_script_cache_counters,
         }
     }
 }
@@ -208,6 +212,7 @@ impl ConsensusFactory for Factory {
             session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
+            self.tx_script_cache_counters.clone(),
             entry.creation_timestamp,
         ));
 
@@ -236,6 +241,7 @@ impl ConsensusFactory for Factory {
             session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
+            self.tx_script_cache_counters.clone(),
             entry.creation_timestamp,
         ));
 

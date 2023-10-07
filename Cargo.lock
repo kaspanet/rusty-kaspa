@@ -2463,6 +2463,7 @@ version = "0.1.7"
 dependencies = [
  "criterion",
  "futures-util",
+ "itertools 0.10.5",
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-consensusmanager",
@@ -2479,6 +2480,7 @@ dependencies = [
  "serde",
  "smallvec",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
