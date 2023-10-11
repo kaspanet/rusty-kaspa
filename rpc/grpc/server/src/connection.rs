@@ -286,7 +286,7 @@ impl ConnectionT for Connection {
     }
 
     /// Closes the connection, signals exit, and cleans up all resources so that underlying connections will be aborted correctly.
-    /// 
+    ///
     /// Returns true of this is the first call to close.
     fn close(&self) -> bool {
         // Acquire state mutex and send the shutdown signal
