@@ -85,7 +85,7 @@ async fn daemon_cleaning_test() {
         drop(rpc_client1);
         kaspad1.shutdown();
     }
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
 
     assert_eq!(consensus_manager.strong_count(), 0);
     assert_eq!(async_runtime.strong_count(), 0);
