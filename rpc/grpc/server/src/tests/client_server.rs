@@ -1,10 +1,38 @@
 use super::rpc_core_mock::RpcCoreMock;
-use crate::adaptor::Adaptor;
+use crate::{adaptor::Adaptor, manager::Manager};
 use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
 use std::sync::Arc;
+
+#[tokio::test]
+async fn test_client_server_sanity_check() {
+    kaspa_core::log::try_init_logger("info, kaspa_grpc_core=trace, kaspa_grpc_server=trace, kaspa_grpc_client=trace");
+
+    // Create and start a fake core service
+    let rpc_core_service = Arc::new(RpcCoreMock::new());
+    rpc_core_service.start();
+
+    // Create and start the server
+    let server = create_server(rpc_core_service.clone());
+    assert!(!server.has_connections(), "server should have no client when just started");
+
+    let client = create_client(server.serve_address()).await;
+    assert_eq!(server.active_connections().len(), 1, "the client failed to connect to the server");
+
+    // Stop the fake service
+    rpc_core_service.join().await;
+
+    // Stop the server
+    assert!(server.stop().await.is_ok(), "error stopping the server");
+
+    assert!(client.disconnect().await.is_ok(), "client failed to disconnect");
+    drop(client);
+
+    drop(server);
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+}
 
 #[tokio::test]
 async fn test_client_server_connections() {
