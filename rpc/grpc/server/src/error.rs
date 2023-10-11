@@ -18,6 +18,12 @@ pub enum GrpcServerError {
 
     #[error("{0:?} handler is closed")]
     ClosedHandler(RpcApiOps),
+
+    #[error("client connection is closed")]
+    ConnectionClosed,
+
+    #[error("outgoing route capacity has been reached (client: {0})")]
+    OutgoingRouteCapacityReached(String),
 }
 
 impl From<GrpcServerError> for kaspa_rpc_core::error::RpcError {

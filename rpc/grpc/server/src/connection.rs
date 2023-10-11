@@ -1,6 +1,6 @@
 use crate::{
     error::{GrpcServerError, GrpcServerResult},
-    manager::Manager,
+    manager::ManagerEvent,
     request_handler::handler_factory::HandlerFactory,
 };
 use kaspa_core::{debug, error, info, trace};
@@ -14,9 +14,9 @@ use kaspa_rpc_core::{
 };
 use parking_lot::{Mutex, RwLock};
 use std::{collections::HashMap, fmt::Display, net::SocketAddr, sync::Arc};
-use tokio::select;
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
+use tokio::{select, sync::mpsc::error::TrySendError};
 use tonic::Streaming;
 use uuid::Uuid;
 
@@ -59,8 +59,9 @@ struct Inner {
     /// Routing map for mapping messages to RPC op handlers
     routing_map: RwLock<RoutingMap>,
 
-    /// The manager of active connections
-    manager: Manager,
+    /// A channel sender for internal event management.
+    /// Used to send information from each router to a central manager object
+    manager_sender: MpscSender<ManagerEvent>,
 
     /// The notifier relaying consensus notifications to connections
     notifier: Arc<GrpcNotifier>,
@@ -69,11 +70,11 @@ struct Inner {
     mutable_state: Mutex<InnerMutableState>,
 }
 
-// impl Drop for Inner {
-//     fn drop(&mut self) {
-//         debug!("GRPC: dropping connection for client {}", self.connection_id);
-//     }
-// }
+impl Drop for Inner {
+    fn drop(&mut self) {
+        debug!("GRPC: dropping connection {}", self.connection_id);
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Connection {
@@ -87,10 +88,10 @@ impl Display for Connection {
 }
 
 impl Connection {
-    pub fn new(
+    pub(crate) fn new(
         net_address: SocketAddr,
         core_service: DynRpcService,
-        manager: Manager,
+        manager_sender: MpscSender<ManagerEvent>,
         notifier: Arc<Notifier<Notification, Connection>>,
         mut incoming_stream: Streaming<KaspadRequest>,
         outgoing_route: GrpcSender,
@@ -102,7 +103,7 @@ impl Connection {
                 net_address,
                 outgoing_route,
                 routing_map: Default::default(),
-                manager,
+                manager_sender,
                 notifier: notifier.clone(),
                 mutable_state: Mutex::new(InnerMutableState::new(Some(shutdown_sender))),
             }),
@@ -111,7 +112,6 @@ impl Connection {
         // Start the connection receive loop
         debug!("GRPC: Connection starting for client {}", connection);
         tokio::spawn(async move {
-            // Do not preallocate some capacity because we do not expect so many different ops to be called
             loop {
                 select! {
                     biased; // We use biased polling so that the shutdown signal is always checked first
@@ -147,13 +147,14 @@ impl Connection {
                     }
                 }
             }
-            connection.unregister_listener();
+            // Mark as closed
             connection.close();
-            debug!(
-                "GRPC: Connection receive loop - exited, client: {}, client refs: {}",
-                connection,
-                Arc::strong_count(&connection.inner)
-            );
+
+            let connection_id = connection.to_string();
+            let inner = Arc::downgrade(&connection.inner);
+            drop(connection);
+
+            debug!("GRPC: Connection receive loop - exited, client: {}, client refs: {}", connection_id, inner.strong_count());
         });
 
         connection_clone
@@ -224,9 +225,13 @@ impl Connection {
     }
 
     /// Enqueues a response to be sent to the client
-    pub async fn enqueue(&self, response: KaspadResponse) -> bool {
+    pub async fn enqueue(&self, response: KaspadResponse) -> GrpcServerResult<()> {
         assert!(response.payload.is_some(), "Kaspad gRPC message should always have a value");
-        self.inner.outgoing_route.send(response).await.is_ok()
+        match self.inner.outgoing_route.try_send(response) {
+            Ok(_) => Ok(()),
+            Err(TrySendError::Closed(_)) => Err(GrpcServerError::ConnectionClosed),
+            Err(TrySendError::Full(_)) => Err(GrpcServerError::OutgoingRouteCapacityReached(self.to_string())),
+        }
     }
 }
 
@@ -280,19 +285,35 @@ impl ConnectionT for Connection {
         }
     }
 
+    /// Closes the connection, signals exit, and cleans up all resources so that underlying connections will be aborted correctly.
+    /// 
+    /// Returns true of this is the first call to close.
     fn close(&self) -> bool {
-        if let Some(signal) = self.inner.mutable_state.lock().shutdown_signal.take() {
-            let _ = signal.send(());
-        } else {
-            // This means the connection was already closed.
-            // The typical case is the manager terminating all connections.
-            return false;
-        }
+        // Acquire state mutex and send the shutdown signal
+        // NOTE: Using a block to drop the lock asap
+        {
+            let mut state = self.inner.mutable_state.lock();
 
-        // Drop all handler senders
+            if let Some(signal) = state.shutdown_signal.take() {
+                let _ = signal.send(());
+            } else {
+                // This means the connection was already closed
+                trace!("GRPC: Connection close was called more than once, client: {}", self);
+                return false;
+            }
+        }
+        // Drop all routes, triggering the drop of all handlers
         self.inner.routing_map.write().clear();
 
-        self.inner.manager.unregister(self.clone());
+        // Unregister from notifier
+        self.unregister_listener();
+
+        // Send a close notification to the central Manager
+        self.inner
+            .manager_sender
+            .try_send(ManagerEvent::ConnectionClosing(self.clone()))
+            .expect("manager receiver should never drop before senders");
+
         true
     }
 

@@ -1,4 +1,5 @@
 use crate::connection::{Connection, ConnectionId};
+use itertools::Itertools;
 use kaspa_core::{debug, info, warn};
 use kaspa_notify::connection::Connection as ConnectionT;
 use parking_lot::RwLock;
@@ -7,6 +8,15 @@ use std::{
     net::SocketAddr,
     sync::Arc,
 };
+use tokio::sync::mpsc::Receiver as MpscReceiver;
+use tokio::sync::oneshot::Sender as OneshotSender;
+
+#[derive(Debug)]
+pub(crate) enum ManagerEvent {
+    IsFull(OneshotSender<bool>),
+    NewConnection(Connection),
+    ConnectionClosing(Connection),
+}
 
 #[derive(Clone, Debug)]
 pub struct Manager {
@@ -16,7 +26,29 @@ pub struct Manager {
 
 impl Manager {
     pub fn new(max_connections: usize) -> Self {
-        Self { connections: Arc::new(RwLock::new(HashMap::new())), max_connections }
+        Self { connections: Default::default(), max_connections }
+    }
+
+    /// Starts a loop for receiving central manager events from all connections. This mechanism is used for
+    /// managing a collection of active connections.
+    pub(crate) fn start_event_loop(self, mut manager_receiver: MpscReceiver<ManagerEvent>) {
+        debug!("GRPC, Manager event loop starting");
+        tokio::spawn(async move {
+            while let Some(new_event) = manager_receiver.recv().await {
+                match new_event {
+                    ManagerEvent::IsFull(sender) => {
+                        sender.send(self.is_full()).expect("send the response");
+                    }
+                    ManagerEvent::NewConnection(new_connection) => {
+                        self.register(new_connection);
+                    }
+                    ManagerEvent::ConnectionClosing(connection) => {
+                        self.unregister(connection);
+                    }
+                }
+            }
+            debug!("GRPC, Manager event loop exiting");
+        });
     }
 
     pub fn register(&self, connection: Connection) {
@@ -40,21 +72,26 @@ impl Manager {
     }
 
     pub fn unregister(&self, connection: Connection) {
-        if let Occupied(entry) = self.connections.write().entry(connection.identity()) {
+        let mut connections_write = self.connections.write();
+        let connection_count = connections_write.len();
+        if let Occupied(entry) = connections_write.entry(connection.identity()) {
             // We search for the connection by identity, but make sure to delete it only if it's actually the same object.
             // This is extremely important in cases of duplicate connection rejection etc.
             if Connection::ptr_eq(entry.get(), &connection) {
                 entry.remove_entry();
-                debug!("GRPC: unregistering connection from {connection}");
+                info!("GRPC: end connection {} #{}", connection, connection_count);
             }
         }
     }
 
     /// Terminate all connections
     pub fn terminate_all_connections(&self) {
-        let connections = self.connections.write().drain().map(|(_, r)| r).collect::<Vec<_>>();
-        for connection in connections {
+        // Note that using drain here prevents unregister() to successfully find the entry...
+        let connections = self.connections.write().drain().map(|(_, cx)| cx).collect_vec();
+        for (i, connection) in connections.into_iter().enumerate().rev() {
             connection.close();
+            // ... so we log explicitly here
+            info!("GRPC: end connection {} #{}", connection, i + 1);
         }
     }
 
@@ -66,5 +103,11 @@ impl Manager {
     /// Returns whether there are currently active connections
     pub fn has_connections(&self) -> bool {
         !self.connections.read().is_empty()
+    }
+}
+
+impl Drop for Manager {
+    fn drop(&mut self) {
+        debug!("GRPC: dropping Manager, refs count {}", Arc::strong_count(&self.connections));
     }
 }

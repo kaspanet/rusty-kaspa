@@ -11,11 +11,11 @@ async fn test_client_server_connections() {
     kaspa_core::log::try_init_logger("info, kaspa_grpc_core=trace, kaspa_grpc_server=trace, kaspa_grpc_client=trace");
 
     // Create and start a fake core service
-    let core_service = Arc::new(RpcCoreMock::new());
-    core_service.start();
+    let rpc_core_service = Arc::new(RpcCoreMock::new());
+    rpc_core_service.start();
 
     // Create and start the server
-    let server = create_server(core_service.clone());
+    let server = create_server(rpc_core_service.clone());
     assert!(!server.has_connections(), "server should have no client when just started");
 
     info!("=================================================================================");
@@ -24,13 +24,18 @@ async fn test_client_server_connections() {
     let client1 = create_client(server.serve_address()).await;
     let client2 = create_client(server.serve_address()).await;
 
+    assert!(rpc_core_service.notify_new_block_template().is_ok());
+    rpc_core_service.notify_complete().await;
+
     assert_eq!(server.active_connections().len(), 2, "one or more clients failed to connect to the server");
 
     assert!(client1.disconnect().await.is_ok(), "client 1 failed to disconnect");
     assert!(client2.disconnect().await.is_ok(), "client 2 failed to disconnect");
 
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assert!(!server.has_connections(), "server should have no more clients");
+    drop(client1);
+    drop(client2);
 
     info!("=================================================================================");
     info!("2 clients connecting and server disconnecting them");
@@ -41,11 +46,13 @@ async fn test_client_server_connections() {
     assert_eq!(server.active_connections().len(), 2, "one or more clients failed to connect to the server");
 
     server.terminate_all_connections();
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     assert!(!client1.is_connected(), "server failed to disconnect client 1");
     assert!(!client2.is_connected(), "server failed to disconnect client 2");
     assert!(!server.has_connections(), "server should have no more clients");
+    drop(client1);
+    drop(client2);
 
     info!("=================================================================================");
     info!("2 clients connecting, 1 disconnecting itself, server shutting down");
@@ -56,27 +63,30 @@ async fn test_client_server_connections() {
     assert_eq!(server.active_connections().len(), 2, "one or more clients failed to connect to the server");
 
     assert!(client1.disconnect().await.is_ok(), "client 1 failed to disconnect");
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assert_eq!(server.active_connections().len(), 1, "server should have one client left connected");
 
     // Stop the fake service
-    core_service.join().await;
+    rpc_core_service.join().await;
 
     // Stop the server
-    assert!(server.terminate().await.is_ok(), "error stopping the server");
+    assert!(server.stop().await.is_ok(), "error stopping the server");
 
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assert!(!client2.is_connected(), "server failed to disconnect client 2");
     assert!(!server.has_connections(), "server should have no more clients");
+    drop(client1);
+    drop(client2);
 
     drop(server);
 
     // Wait for server termination (just for logging properly)
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 }
 
 fn create_server(core_service: Arc<RpcCoreMock>) -> Arc<Adaptor> {
-    Adaptor::server(get_free_net_address(), core_service.clone(), core_service.core_notifier(), 128)
+    let manager = Manager::new(128);
+    Adaptor::server(get_free_net_address(), manager, core_service.clone(), core_service.core_notifier())
 }
 
 async fn create_client(server_address: NetAddress) -> GrpcClient {

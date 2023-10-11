@@ -182,7 +182,8 @@ impl Handler for RequestHandler {
             let response = self.handle_request(request).await;
             match response {
                 Ok(response) => {
-                    if !self.connection.enqueue(response).await {
+                    if self.connection.enqueue(response).await.is_err() {
+                        // TODO: handle full route error
                         break;
                     }
                 }
@@ -436,7 +437,8 @@ impl Handler for SubscriptionHandler {
             let response = self.handle_subscription(request).await;
             match response {
                 Ok(response) => {
-                    if !self.connection.enqueue(response).await {
+                    if self.connection.enqueue(response).await.is_err() {
+                        // TODO: handle full route error
                         break;
                     }
                 }
