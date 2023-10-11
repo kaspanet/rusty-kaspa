@@ -70,25 +70,42 @@ impl ConnectionHandler {
     }
 
     /// Launches a gRPC server listener loop
-    pub(crate) fn serve(self: &Arc<Self>, serve_address: NetAddress) -> OneshotSender<()> {
+    pub(crate) fn serve(&self, serve_address: NetAddress) -> OneshotSender<()> {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
+        let (signal_sender, signal_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
         info!("GRPC Server starting on: {}", serve_address);
-        tokio::spawn(async move {
-            let protowire_server = RpcServer::from_arc(connection_handler.clone())
-                .send_compressed(CompressionEncoding::Gzip)
+
+        // Spawn server task
+        let server_handle = tokio::spawn(async move {
+            let protowire_server = RpcServer::new(connection_handler)
                 .accept_compressed(CompressionEncoding::Gzip)
+                .send_compressed(CompressionEncoding::Gzip)
                 .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
             // TODO: check whether we should set tcp_keepalive
             let serve_result = TonicServer::builder()
                 .add_service(protowire_server)
-                .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
+                .serve_with_shutdown(
+                    serve_address.into(),
+                    signal_receiver.map(|_| {
+                        debug!("GRPC: Server received the shutdown signal");
+                    }),
+                )
                 .await;
 
             match serve_result {
                 Ok(_) => info!("GRPC Server stopped on: {}", serve_address),
                 Err(err) => panic!("GRPC Server {serve_address} stopped with error: {err:?}"),
+            }
+        });
+
+        // Spawn termination task
+        tokio::spawn(async move {
+            let _ = termination_receiver.await;
+            signal_sender.send(()).expect("send signal");
+            if (timeout(Duration::from_millis(500), server_handle).await).is_err() {
+                warn!("GRPC Server stopped forcefully on: {}", serve_address);
             }
         });
         termination_sender
