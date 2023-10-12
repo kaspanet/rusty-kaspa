@@ -127,10 +127,10 @@ macro_rules! opcode_list {
 
         #[cfg(test)]
         #[allow(unused_comparisons)]
-        pub(crate) fn parse_short_form(test: String) -> ScriptBuilderResult<Vec<u8>>
+        pub(crate) fn parse_short_form(script: String) -> ScriptBuilderResult<Vec<u8>>
         {
             let mut builder = ScriptBuilder::new();
-            for token in test.split_whitespace() {
+            for token in script.split_whitespace() {
                 if let Ok(value) = token.parse::<i64>() {
                     builder.add_i64(value)?;
                 }
