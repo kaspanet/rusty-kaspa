@@ -56,6 +56,7 @@ message KaspadRequest {
     GetCoinSupplyRequestMessage getCoinSupplyRequest = 1086;
     PingRequestMessage pingRequest = 1088;
     GetMetricsRequestMessage getMetricsRequest = 1090;
+    NotifySyncStateChangedRequestMessage notifySyncStateChangedRequest = 1091;
   }
 }
 
@@ -112,6 +113,9 @@ message KaspadResponse {
     GetCoinSupplyResponseMessage getCoinSupplyResponse= 1087;
     PingResponseMessage pingResponse= 1089;
     GetMetricsResponseMessage getMetricsResponse= 1091;
+
+    NotifySyncStateChangedResponseMessage notifySyncStateChangedResponse = 1092;
+    SyncStateChangedNotificationMessage syncStateChangedNotification = 1093;
   }
 }
 

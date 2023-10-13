@@ -41,6 +41,8 @@ pub enum Notification {
 
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
+    #[display(fmt = "SyncStateChanged notification")]
+    SyncStateChanged(SyncStateChangedNotification),
 }
 }
 
@@ -172,3 +174,44 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct NewBlockTemplateNotification {}
+
+#[derive(Debug, Clone)]
+pub enum SyncStateChangedNotification {
+    Proof { current: u8, max: u8 },
+    Headers { headers: u64, progress: i64 },
+    Blocks { blocks: u64, progress: i64 },
+    UtxoResync,
+    UtxoSync { chunks: u64, total: u64 },
+    TrustSync { processed: u64, total: u64 },
+    Synced,
+}
+
+impl SyncStateChangedNotification {
+    pub fn new_proof(current: u8, max: u8) -> Self {
+        Self::Proof { current, max }
+    }
+
+    pub fn new_headers(headers: u64, progress: i64) -> Self {
+        Self::Headers { headers, progress }
+    }
+
+    pub fn new_blocks(blocks: u64, progress: i64) -> Self {
+        Self::Blocks { blocks, progress }
+    }
+
+    pub fn new_utxo_resync() -> Self {
+        Self::UtxoResync
+    }
+
+    pub fn new_utxo_sync(chunks: u64, total: u64) -> Self {
+        Self::UtxoSync { chunks, total }
+    }
+
+    pub fn new_trust_sync(processed: u64, total: u64) -> Self {
+        Self::TrustSync { processed, total }
+    }
+
+    pub fn new_synced() -> Self {
+        Self::Synced
+    }
+}

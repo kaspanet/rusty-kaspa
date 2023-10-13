@@ -76,8 +76,10 @@ use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_notify::notifier::Notify;
 
+use crate::model::stores::headers::CompactHeaderData;
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
+use kaspa_consensus_core::config::params::DAAWindowParams;
 use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rand::seq::SliceRandom;
@@ -86,6 +88,7 @@ use rayon::{
     ThreadPool,
 };
 use rocksdb::WriteBatch;
+use std::sync::atomic::AtomicBool;
 use std::{
     cmp::min,
     collections::{BinaryHeap, HashMap, VecDeque},
@@ -112,6 +115,7 @@ pub struct VirtualStateProcessor {
     pub(super) max_block_parents: u8,
     pub(super) mergeset_size_limit: u64,
     pub(super) pruning_depth: u64,
+    pub(super) daa_window_params: DAAWindowParams,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -152,6 +156,8 @@ pub struct VirtualStateProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
+
+    previous_synced: AtomicBool,
 }
 
 impl VirtualStateProcessor {
@@ -179,6 +185,7 @@ impl VirtualStateProcessor {
             max_block_parents: params.max_block_parents,
             mergeset_size_limit: params.mergeset_size_limit,
             pruning_depth: params.pruning_depth,
+            daa_window_params: params.daa_window_params,
 
             db,
             statuses_store: storage.statuses_store.clone(),
@@ -211,6 +218,7 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
+            previous_synced: AtomicBool::new(false),
         }
     }
 
@@ -288,7 +296,6 @@ impl VirtualStateProcessor {
                 &chain_path,
             )
             .expect("all possible rule errors are unexpected here");
-
         // Update the pruning processor about the virtual state change
         let sink_ghostdag_data = self.ghostdag_primary_store.get_compact_data(new_sink).unwrap();
         // Empty the channel before sending the new message. If pruning processor is busy, this step makes sure
@@ -318,6 +325,22 @@ impl VirtualStateProcessor {
                 Arc::new(added_chain_blocks_acceptance_data),
             )))
             .expect("expecting an open unbounded channel");
+
+        {
+            let CompactHeaderData { timestamp, daa_score, .. } = self.headers_store.get_compact_header_data(new_sink).unwrap();
+            match (self.daa_window_params.is_nearly_synced(timestamp, daa_score), self.previous_synced.load(Ordering::Relaxed)) {
+                (true, false) => {
+                    self.notification_root
+                        .notify(Notification::SyncStateChanged(
+                            kaspa_consensus_notify::notification::SyncStateChangedNotification::new_synced(),
+                        ))
+                        .expect("expecting an open unbounded channel");
+                    self.previous_synced.store(true, Ordering::Relaxed);
+                }
+                (false, true) => self.previous_synced.store(false, Ordering::Relaxed),
+                _ => {}
+            }
+        }
     }
 
     pub(crate) fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {

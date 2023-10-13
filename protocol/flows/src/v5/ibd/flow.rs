@@ -13,10 +13,12 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointsList},
     BlockHashSet,
 };
+use kaspa_consensus_notify::notification::{Notification, SyncStateChangedNotification};
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy, StagingConsensus};
 use kaspa_core::{debug, info, time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_notify::notifier::Notify;
 use kaspa_p2p_lib::{
     common::ProtocolError,
     convert::model::trusted::TrustedDataPackage,
@@ -312,6 +314,17 @@ impl IbdFlow {
             let passed = now.duration_since(last_time);
             if passed > Duration::from_secs(1) {
                 info!("Processed {} trusted blocks in the last {:.2}s (total {})", i - last_index, passed.as_secs_f64(), i);
+
+                if !self.ctx.consensus().session().await.async_is_nearly_synced().await {
+                    self.ctx
+                        .notification_root
+                        .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_trust_sync(
+                            (i - last_index) as u64,
+                            i as u64,
+                        )))
+                        .expect("expecting an open unbounded channel");
+                }
+
                 last_time = now;
                 last_index = i;
             }
@@ -330,7 +343,22 @@ impl IbdFlow {
         relay_block: &Block,
     ) -> Result<(), ProtocolError> {
         let highest_shared_header_score = consensus.async_get_header(highest_known_syncer_chain_hash).await?.daa_score;
-        let mut progress_reporter = ProgressReporter::new(highest_shared_header_score, relay_block.header.daa_score, "block headers");
+        let mut progress_reporter = ProgressReporter::new(
+            highest_shared_header_score,
+            relay_block.header.daa_score,
+            "block headers",
+            Some(|headers: usize, progress: i32| {
+                if !futures::executor::block_on(self.ctx.consensus().session_blocking()).is_nearly_synced() {
+                    self.ctx
+                        .notification_root
+                        .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_headers(
+                            headers as u64,
+                            progress as i64,
+                        )))
+                        .expect("expecting an open unbounded channel")
+                }
+            }),
+        );
 
         self.router
             .enqueue(make_message!(
@@ -366,7 +394,6 @@ impl IbdFlow {
         }
 
         self.sync_missing_relay_past_headers(consensus, syncer_virtual_selected_parent, relay_block.hash()).await?;
-
         Ok(())
     }
 
@@ -438,7 +465,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 RequestPruningPointUtxoSetMessage { pruning_point_hash: Some(pruning_point.into()) }
             ))
             .await?;
-        let mut chunk_stream = PruningPointUtxosetChunkStream::new(&self.router, &mut self.incoming_route);
+        let mut chunk_stream = PruningPointUtxosetChunkStream::new(&self.router, &mut self.incoming_route, &self.ctx);
         let mut multiset = MuHash::new();
         while let Some(chunk) = chunk_stream.next().await? {
             multiset = consensus
@@ -462,7 +489,23 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
 
         let low_header = consensus.async_get_header(*hashes.first().expect("hashes was non empty")).await?;
         let high_header = consensus.async_get_header(*hashes.last().expect("hashes was non empty")).await?;
-        let mut progress_reporter = ProgressReporter::new(low_header.daa_score, high_header.daa_score, "blocks");
+        let notification_root = self.ctx.notification_root.clone();
+        let consensus_move = self.ctx.consensus().clone();
+        let mut progress_reporter = ProgressReporter::new(
+            low_header.daa_score,
+            high_header.daa_score,
+            "blocks",
+            Some(move |blocks, progress| {
+                if !futures::executor::block_on(consensus_move.session_blocking()).is_nearly_synced() {
+                    notification_root
+                        .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_blocks(
+                            blocks as u64,
+                            progress as i64,
+                        )))
+                        .expect("expecting an open unbounded channel")
+                }
+            }),
+        );
 
         let mut iter = hashes.chunks(IBD_BATCH_SIZE);
         let (mut prev_jobs, mut prev_daa_score) =
@@ -482,7 +525,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         let prev_chunk_len = prev_jobs.len();
         try_join_all(prev_jobs).await?;
         progress_reporter.report_completion(prev_chunk_len);
-
         self.ctx.on_new_block_template().await?;
 
         Ok(())

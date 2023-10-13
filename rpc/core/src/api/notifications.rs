@@ -43,6 +43,9 @@ pub enum Notification {
 
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
+
+    #[display(fmt = "SyncStateChanged notification")]
+    SyncStateChanged(SyncStateChangedNotification),
 }
 }
 
@@ -59,6 +62,7 @@ impl Notification {
             Notification::VirtualDaaScoreChanged(v) => to_value(&v),
             Notification::SinkBlueScoreChanged(v) => to_value(&v),
             Notification::VirtualChainChanged(v) => to_value(&v),
+            Notification::SyncStateChanged(v) => to_value(&v),
         }
     }
 }

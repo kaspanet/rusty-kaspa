@@ -9,13 +9,16 @@ license.workspace = true
 
 [dependencies]
 kaspa-hashes.workspace = true
-thiserror.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-consensusmanager.workspace = true
+kaspa-consensus-notify.workspace = true
+kaspa-notify.workspace = true
 kaspa-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-index-core.workspace = true
 kaspa-database.workspace = true
-kaspa-consensusmanager.workspace = true
+
+thiserror.workspace = true
 log.workspace = true
 rocksdb.workspace = true
 serde.workspace = true

@@ -291,6 +291,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         tx_script_cache_counters.clone(),
     ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
+
     let consensus_monitor = Arc::new(ConsensusMonitor::new(processing_counters.clone(), tick_service.clone()));
 
     let perf_monitor_builder = PerfMonitorBuilder::new()
@@ -314,7 +315,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             .with_files_limit(UTXO_INDEX_DB_FILE_LIMIT)
             .with_db_path(utxoindex_db_dir)
             .build();
-        let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
+        let utxoindex =
+            UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db, notification_root.clone()).unwrap());
         let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
         Some(index_service)
     } else {
@@ -326,7 +328,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let mining_monitor = Arc::new(MiningMonitor::new(mining_counters.clone(), tx_script_cache_counters.clone(), tick_service.clone()));
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_spam_blocking_option(
         network.is_mainnet(),
-        config.target_time_per_block,
+        config.daa_window_params.target_time_per_block,
         false,
         config.max_block_mass,
         config.block_template_cache_lifetime,

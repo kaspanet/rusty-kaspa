@@ -1052,6 +1052,60 @@ pub struct NotifyNewBlockTemplateResponse {}
 #[serde(rename_all = "camelCase")]
 pub struct NewBlockTemplateNotification {}
 
+//____
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NotifySyncStateChangedRequest {
+    pub command: Command,
+}
+
+impl NotifySyncStateChangedRequest {
+    pub fn new(command: Command) -> Self {
+        Self { command }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NotifySyncStateChangedResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SyncStateChangedNotification {
+    Proof {
+        #[allow(dead_code)]
+        current: u8,
+        #[allow(dead_code)]
+        max: u8,
+    },
+    Headers {
+        #[allow(dead_code)]
+        headers: u64,
+        #[allow(dead_code)]
+        progress: i64,
+    },
+    Blocks {
+        #[allow(dead_code)]
+        blocks: u64,
+        #[allow(dead_code)]
+        progress: i64,
+    },
+    UtxoResync,
+    UtxoSync {
+        #[allow(dead_code)]
+        chunks: u64,
+        #[allow(dead_code)]
+        total: u64,
+    },
+    TrustSync {
+        #[allow(dead_code)]
+        processed: u64,
+        #[allow(dead_code)]
+        total: u64,
+    },
+    Synced,
+}
+
 ///
 ///  wRPC response for RpcApiOps::Subscribe request
 ///

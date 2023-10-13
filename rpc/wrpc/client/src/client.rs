@@ -62,6 +62,7 @@ impl Inner {
             RpcApiOps::VirtualDaaScoreChangedNotification,
             RpcApiOps::PruningPointUtxoSetOverrideNotification,
             RpcApiOps::NewBlockTemplateNotification,
+            RpcApiOps::SyncStateChangedNotification,
         ]
         .into_iter()
         .for_each(|notification_op| {

@@ -283,7 +283,7 @@ mod tests {
         for test in tests.iter() {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
+                let mut config = Config::build_default(params.daa_window_params.target_time_per_block, false, params.max_block_mass);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
@@ -368,7 +368,7 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let mut config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
+                let mut config = Config::build_default(params.daa_window_params.target_time_per_block, false, params.max_block_mass);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
@@ -548,7 +548,7 @@ mod tests {
         for test in tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
-                let config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
+                let config = Config::build_default(params.daa_window_params.target_time_per_block, false, params.max_block_mass);
                 let counters = Arc::new(MiningCounters::default());
                 let mempool = Mempool::new(Arc::new(config), counters);
 

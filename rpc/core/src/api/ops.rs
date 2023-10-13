@@ -95,6 +95,7 @@ pub enum RpcApiOps {
     NotifyVirtualDaaScoreChanged,
     NotifyVirtualChainChanged,
     NotifySinkBlueScoreChanged,
+    NotifySyncStateChanged,
 
     // ~
     Subscribe,
@@ -115,6 +116,7 @@ pub enum RpcApiOps {
     VirtualDaaScoreChangedNotification,
     PruningPointUtxoSetOverrideNotification,
     NewBlockTemplateNotification,
+    SyncStateChangedNotification,
 }
 
 impl From<RpcApiOps> for u32 {
@@ -137,6 +139,7 @@ impl From<EventType> for RpcApiOps {
             EventType::VirtualDaaScoreChanged => RpcApiOps::VirtualDaaScoreChangedNotification,
             EventType::PruningPointUtxoSetOverride => RpcApiOps::PruningPointUtxoSetOverrideNotification,
             EventType::NewBlockTemplate => RpcApiOps::NewBlockTemplateNotification,
+            EventType::SyncStateChanged => RpcApiOps::SyncStateChangedNotification,
         }
     }
 }

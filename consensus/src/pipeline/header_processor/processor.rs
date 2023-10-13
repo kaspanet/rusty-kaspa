@@ -201,7 +201,7 @@ impl HeaderProcessor {
             counters,
             // TODO (HF): make sure to also pass `new_timestamp_deviation_tolerance` and use according to HF activation score
             timestamp_deviation_tolerance: params.timestamp_deviation_tolerance(0),
-            target_time_per_block: params.target_time_per_block,
+            target_time_per_block: params.daa_window_params.target_time_per_block,
             max_block_parents: params.max_block_parents,
             mergeset_size_limit: params.mergeset_size_limit,
             skip_proof_of_work: params.skip_proof_of_work,

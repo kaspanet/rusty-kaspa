@@ -3,8 +3,8 @@ use kaspa_notify::{scope::Scope, subscription::Command};
 use crate::protowire::{
     kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage,
     NotifyFinalityConflictRequestMessage, NotifyNewBlockTemplateRequestMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
-    NotifySinkBlueScoreChangedRequestMessage, NotifyUtxosChangedRequestMessage, NotifyVirtualChainChangedRequestMessage,
-    NotifyVirtualDaaScoreChangedRequestMessage,
+    NotifySinkBlueScoreChangedRequestMessage, NotifySyncStateChangedRequestMessage, NotifyUtxosChangedRequestMessage,
+    NotifyVirtualChainChangedRequestMessage, NotifyVirtualDaaScoreChangedRequestMessage,
 };
 
 impl KaspadRequest {
@@ -64,6 +64,11 @@ impl kaspad_request::Payload {
                     command: command.into(),
                 })
             }
+            Scope::SyncStateChanged(_) => {
+                kaspad_request::Payload::NotifySyncStateChangedRequest(NotifySyncStateChangedRequestMessage {
+                    command: command.into(),
+                })
+            }
         }
     }
 
@@ -81,6 +86,7 @@ impl kaspad_request::Payload {
                 | Payload::NotifyNewBlockTemplateRequest(_)
                 | Payload::StopNotifyingUtxosChangedRequest(_)
                 | Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(_)
+                | Payload::NotifySyncStateChangedRequest(_)
         )
     }
 }
@@ -94,21 +100,21 @@ impl KaspadResponse {
     }
 }
 
-#[allow(clippy::match_like_matches_macro)]
 impl kaspad_response::Payload {
     pub fn is_notification(&self) -> bool {
         use crate::protowire::kaspad_response::Payload;
-        match self {
-            Payload::BlockAddedNotification(_) => true,
-            Payload::VirtualChainChangedNotification(_) => true,
-            Payload::FinalityConflictNotification(_) => true,
-            Payload::FinalityConflictResolvedNotification(_) => true,
-            Payload::UtxosChangedNotification(_) => true,
-            Payload::SinkBlueScoreChangedNotification(_) => true,
-            Payload::VirtualDaaScoreChangedNotification(_) => true,
-            Payload::PruningPointUtxoSetOverrideNotification(_) => true,
-            Payload::NewBlockTemplateNotification(_) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Payload::BlockAddedNotification(_)
+                | Payload::VirtualChainChangedNotification(_)
+                | Payload::FinalityConflictNotification(_)
+                | Payload::FinalityConflictResolvedNotification(_)
+                | Payload::UtxosChangedNotification(_)
+                | Payload::SinkBlueScoreChangedNotification(_)
+                | Payload::VirtualDaaScoreChangedNotification(_)
+                | Payload::PruningPointUtxoSetOverrideNotification(_)
+                | Payload::NewBlockTemplateNotification(_)
+                | Payload::SyncStateChangedNotification(_)
+        )
     }
 }

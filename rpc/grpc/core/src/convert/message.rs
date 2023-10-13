@@ -380,6 +380,12 @@ from!(item: &kaspa_rpc_core::NotifyVirtualDaaScoreChangedRequest, protowire::Not
 });
 from!(RpcResult<&kaspa_rpc_core::NotifyVirtualDaaScoreChangedResponse>, protowire::NotifyVirtualDaaScoreChangedResponseMessage);
 
+from!(item: &kaspa_rpc_core::NotifySyncStateChangedRequest, protowire::NotifySyncStateChangedRequestMessage, {
+    Self { command: item.command.into() }
+});
+
+from!(RpcResult<&kaspa_rpc_core::NotifySyncStateChangedResponse>, protowire::NotifySyncStateChangedResponseMessage);
+
 from!(item: &kaspa_rpc_core::NotifyVirtualChainChangedRequest, protowire::NotifyVirtualChainChangedRequestMessage, {
     Self { include_accepted_transaction_ids: item.include_accepted_transaction_ids, command: item.command.into() }
 });
@@ -714,6 +720,12 @@ try_from!(item: &protowire::NotifyVirtualDaaScoreChangedRequestMessage, kaspa_rp
     Self { command: item.command.into() }
 });
 try_from!(&protowire::NotifyVirtualDaaScoreChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifyVirtualDaaScoreChangedResponse>);
+
+try_from!(item: &protowire::NotifySyncStateChangedRequestMessage, kaspa_rpc_core::NotifySyncStateChangedRequest, {
+    Self { command: item.command.into() }
+});
+
+try_from!(&protowire::NotifySyncStateChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifySyncStateChangedResponse>);
 
 try_from!(item: &protowire::NotifyVirtualChainChangedRequestMessage, kaspa_rpc_core::NotifyVirtualChainChangedRequest, {
     Self { include_accepted_transaction_ids: item.include_accepted_transaction_ids, command: item.command.into() }

@@ -18,6 +18,7 @@ use crate::{
 };
 
 use itertools::Itertools;
+use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use std::sync::Arc;
 
@@ -71,6 +72,7 @@ impl ConsensusServices {
         storage: Arc<ConsensusStorage>,
         config: Arc<Config>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
+        notification_root: Arc<ConsensusNotificationRoot>,
     ) -> Arc<Self> {
         let params = &config.params;
 
@@ -93,12 +95,12 @@ impl ConsensusServices {
             storage.block_window_cache_for_difficulty.clone(),
             storage.block_window_cache_for_past_median_time.clone(),
             params.max_difficulty_target,
-            params.target_time_per_block,
-            params.sampling_activation_daa_score,
-            params.legacy_difficulty_window_size,
-            params.sampled_difficulty_window_size,
+            params.daa_window_params.target_time_per_block,
+            params.daa_window_params.sampling_activation_daa_score,
+            params.daa_window_params.legacy_difficulty_window_size,
+            params.daa_window_params.sampled_difficulty_window_size,
             params.min_difficulty_window_len,
-            params.difficulty_sample_rate,
+            params.daa_window_params.difficulty_sample_rate,
             params.legacy_past_median_time_window_size(),
             params.sampled_past_median_time_window_size(),
             params.past_median_time_sample_rate,
@@ -136,7 +138,7 @@ impl ConsensusServices {
             params.max_coinbase_payload_len,
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
-            params.target_time_per_block,
+            params.daa_window_params.target_time_per_block,
         );
 
         let mass_calculator =
@@ -185,6 +187,8 @@ impl ConsensusServices {
             params.pruning_proof_m,
             params.anticone_finalization_depth(),
             params.ghostdag_k,
+            notification_root,
+            params.daa_window_params,
         ));
 
         let sync_manager = SyncManager::new(

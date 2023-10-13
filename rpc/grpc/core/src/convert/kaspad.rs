@@ -50,6 +50,8 @@ impl From<&kaspad_request::Payload> for RpcApiOps {
 
             Payload::StopNotifyingUtxosChangedRequest(_) => RpcApiOps::NotifyUtxosChanged,
             Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
+
+            Payload::NotifySyncStateChangedRequest(_) => RpcApiOps::NotifySyncStateChanged,
         }
     }
 }
@@ -100,6 +102,7 @@ impl From<&kaspad_response::Payload> for RpcApiOps {
             Payload::NotifyPruningPointUtxoSetOverrideResponse(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
             Payload::NotifyVirtualDaaScoreChangedResponse(_) => RpcApiOps::NotifyVirtualDaaScoreChanged,
             Payload::NotifyVirtualChainChangedResponse(_) => RpcApiOps::NotifyVirtualChainChanged,
+            Payload::NotifySyncStateChangedResponse(_) => RpcApiOps::NotifySyncStateChanged,
 
             Payload::StopNotifyingPruningPointUtxoSetOverrideResponse(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
             Payload::StopNotifyingUtxosChangedResponse(_) => RpcApiOps::NotifyUtxosChanged,
@@ -114,6 +117,7 @@ impl From<&kaspad_response::Payload> for RpcApiOps {
             Payload::PruningPointUtxoSetOverrideNotification(_) => RpcApiOps::Notification,
             Payload::VirtualDaaScoreChangedNotification(_) => RpcApiOps::Notification,
             Payload::VirtualChainChangedNotification(_) => RpcApiOps::Notification,
+            Payload::SyncStateChangedNotification(_) => RpcApiOps::Notification,
         }
     }
 }
@@ -309,6 +313,7 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_notify_response!(NotifyVirtualDaaScoreChanged);
     impl_into_kaspad_notify_response!(NotifyVirtualChainChanged);
     impl_into_kaspad_notify_response!(NotifySinkBlueScoreChanged);
+    impl_into_kaspad_notify_response!(NotifySyncStateChanged);
 
     macro_rules! impl_into_kaspad_response {
         ($name:tt) => {

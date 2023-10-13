@@ -2,12 +2,15 @@
 //! Logical stream abstractions used throughout the IBD negotiation protocols
 //!
 
+use crate::flow_context::FlowContext;
 use kaspa_consensus_core::{
     errors::consensus::ConsensusError,
     header::Header,
     tx::{TransactionOutpoint, UtxoEntry},
 };
+use kaspa_consensus_notify::notification::{Notification, SyncStateChangedNotification};
 use kaspa_core::{debug, info};
+use kaspa_notify::notifier::Notify;
 use kaspa_p2p_lib::{
     common::{ProtocolError, DEFAULT_TIMEOUT},
     convert::model::trusted::TrustedDataEntry,
@@ -135,11 +138,12 @@ pub struct PruningPointUtxosetChunkStream<'a, 'b> {
     incoming_route: &'b mut IncomingRoute,
     i: usize, // Chunk index
     utxo_count: usize,
+    ctx: &'a FlowContext,
 }
 
 impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
-    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
-        Self { router, incoming_route, i: 0, utxo_count: 0 }
+    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute, ctx: &'a FlowContext) -> Self {
+        Self { router, incoming_route, i: 0, utxo_count: 0, ctx }
     }
 
     pub async fn next(&mut self) -> Result<Option<UtxosetChunk>, ProtocolError> {
@@ -179,6 +183,15 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
             self.utxo_count += chunk.len();
             if self.i % IBD_BATCH_SIZE == 0 {
                 info!("Received {} UTXO set chunks so far, totaling in {} UTXOs", self.i, self.utxo_count);
+                if !self.ctx.consensus_manager.consensus().session().await.async_is_nearly_synced().await {
+                    self.ctx
+                        .notification_root
+                        .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_utxo_sync(
+                            self.i as u64,
+                            self.utxo_count as u64,
+                        )))
+                        .expect("expecting an open unbounded channel");
+                }
                 self.router
                     .enqueue(make_message!(
                         Payload::RequestNextPruningPointUtxoSetChunk,

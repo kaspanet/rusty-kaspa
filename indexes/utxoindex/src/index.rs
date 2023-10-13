@@ -7,6 +7,14 @@ use crate::{
     IDENT,
 };
 use kaspa_consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
+
+#[cfg(not(test))]
+use kaspa_consensus_notify::notification::{Notification, SyncStateChangedNotification};
+#[cfg(not(test))]
+use kaspa_consensus_notify::root::ConsensusNotificationRoot;
+#[cfg(not(test))]
+use kaspa_notify::notifier::Notify;
+
 use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
 use kaspa_database::prelude::{StoreError, StoreResult, DB};
@@ -26,12 +34,23 @@ const RESYNC_CHUNK_SIZE: usize = 2048; //Increased from 1k (used in go-kaspad), 
 pub struct UtxoIndex {
     consensus_manager: Arc<ConsensusManager>,
     store: Store,
+    #[cfg(not(test))]
+    notification_root: Arc<ConsensusNotificationRoot>,
 }
 
 impl UtxoIndex {
     /// Creates a new [`UtxoIndex`] within a [`RwLock`]
-    pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<DB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
-        let mut utxoindex = Self { consensus_manager: consensus_manager.clone(), store: Store::new(db) };
+    pub fn new(
+        consensus_manager: Arc<ConsensusManager>,
+        db: Arc<DB>,
+        #[cfg(not(test))] notification_root: Arc<ConsensusNotificationRoot>,
+    ) -> UtxoIndexResult<Arc<RwLock<Self>>> {
+        let mut utxoindex = Self {
+            consensus_manager: consensus_manager.clone(),
+            store: Store::new(db),
+            #[cfg(not(test))]
+            notification_root,
+        };
         if !utxoindex.is_synced()? {
             utxoindex.resync()?;
         }
@@ -127,6 +146,15 @@ impl UtxoIndexApi for UtxoIndex {
     /// 2) resyncing while consensus notifies of utxo differences, may result in a corrupted db.
     fn resync(&mut self) -> UtxoIndexResult<()> {
         info!("Resyncing the utxoindex...");
+
+        #[cfg(not(test))]
+        {
+            if !futures::executor::block_on(self.consensus_manager.consensus().session_blocking()).is_nearly_synced() {
+                self.notification_root
+                    .notify(Notification::SyncStateChanged(SyncStateChangedNotification::new_utxo_resync()))
+                    .expect("expecting an open unbounded channel");
+            }
+        }
 
         self.store.delete_all()?;
         let consensus = self.consensus_manager.consensus();
