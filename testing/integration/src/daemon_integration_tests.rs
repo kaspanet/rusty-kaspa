@@ -7,7 +7,7 @@ use kaspad_lib::args::Args;
 use crate::common::daemon::Daemon;
 use std::{sync::Arc, time::Duration};
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_sanity_test() {
     kaspa_core::log::try_init_logger("INFO");
 
@@ -27,7 +27,7 @@ async fn daemon_sanity_test() {
     kaspad2.shutdown();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_mining_test() {
     kaspa_core::log::try_init_logger("INFO");
 
@@ -65,7 +65,7 @@ async fn daemon_mining_test() {
 }
 
 // The following test runtime parameters are required for a graceful shutdown of the gRPC server
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_cleaning_test() {
     kaspa_core::log::try_init_logger("info,kaspa_grpc_core=trace,kaspa_grpc_server=trace,kaspa_grpc_client=trace,kaspa_core=trace");
     let args = Args { devnet: true, ..Default::default() };
