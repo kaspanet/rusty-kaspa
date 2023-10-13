@@ -18,7 +18,13 @@ impl HandlerFactory {
     ) -> Box<dyn Handler> {
         match rpc_op.is_subscription() {
             false => Box::new(RequestHandler::new(rpc_op, connection, core_service.clone(), incoming_route)),
-            true => Box::new(SubscriptionHandler::new(rpc_op, connection.clone(), notifier, connection.listener_id(), incoming_route)),
+            true => Box::new(SubscriptionHandler::new(
+                rpc_op,
+                connection.clone(),
+                notifier,
+                connection.get_or_register_listener_id(),
+                incoming_route,
+            )),
         }
     }
 }

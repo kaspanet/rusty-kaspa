@@ -176,16 +176,20 @@ impl Connection {
         self.inner.notifier.clone()
     }
 
-    fn register_listener(&self) -> ListenerId {
-        self.inner.notifier.as_ref().register_new_listener(self.clone())
-    }
-
-    pub fn listener_id(&self) -> ListenerId {
-        *self.inner.mutable_state.lock().listener_id.get_or_insert_with(|| self.register_listener())
+    pub fn get_or_register_listener_id(&self) -> ListenerId {
+        *self
+            .inner
+            .mutable_state
+            .lock()
+            .listener_id
+            .get_or_insert_with(|| self.inner.notifier.as_ref().register_new_listener(self.clone()))
     }
 
     fn unregister_listener(&self) {
-        self.inner.mutable_state.lock().listener_id.take().map(|listener_id| self.inner.notifier.unregister_listener(listener_id));
+        let listener_id = self.inner.mutable_state.lock().listener_id.take();
+        if let Some(listener_id) = listener_id {
+            self.inner.notifier.unregister_listener(listener_id).expect("unregister listener")
+        }
     }
 
     pub fn request_channel_size() -> usize {
@@ -302,11 +306,11 @@ impl ConnectionT for Connection {
                 return false;
             }
         }
-        // Drop all routes, triggering the drop of all handlers
-        self.inner.routing_map.write().clear();
-
         // Unregister from notifier
         self.unregister_listener();
+
+        // Drop all routes, triggering the drop of all handlers
+        self.inner.routing_map.write().clear();
 
         // Send a close notification to the central Manager
         self.inner

@@ -2,7 +2,8 @@ use super::rpc_core_mock::RpcCoreMock;
 use crate::{adaptor::Adaptor, manager::Manager};
 use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::notify::mode::NotificationMode;
+use kaspa_notify::scope::{NewBlockTemplateScope, Scope};
+use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
 use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
 use std::sync::Arc;
 
@@ -143,6 +144,46 @@ async fn test_client_server_connections() {
     }
 
     // Wait for server termination (just for logging properly)
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+}
+
+#[tokio::test]
+async fn test_client_server_notifications() {
+    kaspa_core::log::try_init_logger("info, kaspa_grpc_core=trace, kaspa_grpc_server=trace, kaspa_grpc_client=trace");
+
+    // Create and start a fake core service
+    let rpc_core_service = Arc::new(RpcCoreMock::new());
+    rpc_core_service.start();
+
+    // Create and start the server
+    let server = create_server(rpc_core_service.clone());
+
+    // Connect 2 clients
+    let client1 = create_client(server.serve_address()).await;
+    let client2 = create_client(server.serve_address()).await;
+
+    // Subscribe both clients to NewBlockTemplate notifications
+    assert!(client1.start_notify(0, Scope::NewBlockTemplate(NewBlockTemplateScope::default())).await.is_ok());
+    assert!(client2.start_notify(0, Scope::NewBlockTemplate(NewBlockTemplateScope::default())).await.is_ok());
+
+    // Let core send a notification
+    assert!(rpc_core_service.notify_new_block_template().is_ok());
+    rpc_core_service.notify_complete().await;
+
+    // Make sure each client receives the notification
+    assert!(client1.notification_channel_receiver().recv().await.is_ok());
+    assert!(client2.notification_channel_receiver().recv().await.is_ok());
+
+    // Disconnect the first client but keep the other
+    assert!(client1.disconnect().await.is_ok(), "client failed to disconnect");
+    drop(client1);
+
+    // Stop the fake service
+    rpc_core_service.join().await;
+
+    // Stop the server
+    assert!(server.stop().await.is_ok(), "error stopping the server");
+    drop(server);
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 }
 
