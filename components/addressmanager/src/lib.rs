@@ -91,7 +91,13 @@ impl AddressManager {
             // An external IP was passed, we will try to bind that if it's valid
             Some(local_net_address) if local_net_address.is_publicly_routable() => {
                 info!("External ip {} added to store", local_net_address);
-                Some((NetAddress { ip: local_net_address, port: self.config.default_p2p_port() }, None))
+                Some((
+                    NetAddress {
+                        ip: local_net_address,
+                        port: self.config.p2p_listen_address.normalize(self.config.default_p2p_port()).port,
+                    },
+                    None,
+                ))
             }
             Some(local_net_address) => {
                 info!("Non-publicly routable external ip {} not added to store", local_net_address);
