@@ -3,7 +3,7 @@ use crate::{
     flow_trait::Flow,
 };
 use kaspa_consensus_core::{block::Block, blockstatus::BlockStatus, errors::block::RuleError};
-use kaspa_consensusmanager::ConsensusProxy;
+use kaspa_consensusmanager::{ConsensusInstance, ConsensusProxy};
 use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
@@ -83,9 +83,9 @@ impl HandleRelayInvsFlow {
         loop {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
-            let session = self.ctx.consensus().session().await;
 
-            match session.async_get_block_status(inv.hash).await {
+            let consensus = self.ctx.consensus();
+            match consensus.session().await.async_get_block_status(inv.hash).await {
                 None | Some(BlockStatus::StatusHeaderOnly) => {} // Continue processing this missing inv
                 Some(BlockStatus::StatusInvalid) => {
                     // Report a protocol error
@@ -99,11 +99,11 @@ impl HandleRelayInvsFlow {
             }
 
             if self.ctx.is_known_orphan(inv.hash).await {
-                self.enqueue_orphan_roots(&session, inv.hash).await;
+                self.enqueue_orphan_roots(consensus, inv.hash).await;
                 continue;
             }
 
-            if self.ctx.is_ibd_running() && !session.async_is_nearly_synced().await {
+            if self.ctx.is_ibd_running() && !consensus.session().await.async_is_nearly_synced().await {
                 // Note: If the node is considered nearly synced we continue processing relay blocks even though an IBD is in progress.
                 // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
                 debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
@@ -123,6 +123,7 @@ impl HandleRelayInvsFlow {
             // Note we do not apply the heuristic below if inv was queued indirectly (as an orphan root), since
             // that means the process started by a proper and relevant relay block
             if !inv.is_indirect {
+                let session = consensus.session().await;
                 // Check bounded merge depth to avoid requesting irrelevant data which cannot be merged under virtual
                 if let Some(virtual_merge_depth_root) = session.async_get_virtual_merge_depth_root().await {
                     let root_header = session.async_get_header(virtual_merge_depth_root).await.unwrap();
@@ -139,27 +140,27 @@ impl HandleRelayInvsFlow {
                 }
             }
 
-            let prev_virtual_parents = session.async_get_virtual_parents().await;
+            let prev_virtual_parents = consensus.session().await.async_get_virtual_parents().await;
 
             // TODO: consider storing the future in a task queue and polling it (without awaiting) in order to continue
             // queueing the following relay blocks. On the other hand we might have sufficient concurrency from all parallel relay flows
-            match session.validate_and_insert_block(block.clone()).await {
+            match consensus.session().await.validate_and_insert_block(block.clone()).await {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
-                    self.process_orphan(&session, block, inv.is_indirect).await?;
+                    self.process_orphan(consensus, block, inv.is_indirect).await?;
                     continue;
                 }
                 Err(rule_error) => return Err(rule_error.into()),
             }
 
             self.ctx.log_block_acceptance(inv.hash, BlockSource::Relay);
-            self.ctx.on_new_block(&session, block).await?;
+            self.ctx.on_new_block(consensus.clone(), block).await?;
             self.ctx.on_new_block_template().await?;
 
             // Broadcast all *new* virtual parents. As a policy, we avoid directly relaying the new block since
             // we wish to relay only blocks who entered past(virtual).
-            for new_virtual_parent in session.async_get_virtual_parents().await.difference(&prev_virtual_parents) {
+            for new_virtual_parent in consensus.session().await.async_get_virtual_parents().await.difference(&prev_virtual_parents) {
                 self.ctx
                     .hub()
                     .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(new_virtual_parent.into()) }))
@@ -168,7 +169,7 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn enqueue_orphan_roots(&mut self, consensus: &ConsensusProxy, orphan: Hash) {
+    async fn enqueue_orphan_roots(&mut self, consensus: ConsensusInstance, orphan: Hash) {
         if let Some(roots) = self.ctx.get_orphan_roots(consensus, orphan).await {
             if roots.is_empty() {
                 return;
@@ -199,7 +200,12 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn process_orphan(&mut self, consensus: &ConsensusProxy, block: Block, is_indirect_inv: bool) -> Result<(), ProtocolError> {
+    async fn process_orphan(
+        &mut self,
+        consensus: ConsensusInstance,
+        block: Block,
+        is_indirect_inv: bool,
+    ) -> Result<(), ProtocolError> {
         // Return if the block has been orphaned from elsewhere already
         if self.ctx.is_known_orphan(block.hash()).await {
             return Ok(());
@@ -208,7 +214,7 @@ impl HandleRelayInvsFlow {
         // Add the block to the orphan pool if it's within orphan resolution range.
         // If the block is indirect it means one of its descendants was already is resolution range, so
         // we can avoid the query.
-        if is_indirect_inv || self.check_orphan_resolution_range(consensus, block.hash()).await? {
+        if is_indirect_inv || self.check_orphan_resolution_range(consensus.clone(), block.hash()).await? {
             let hash = block.hash();
             self.ctx.add_orphan(block).await;
             self.enqueue_orphan_roots(consensus, hash).await;
@@ -228,7 +234,7 @@ impl HandleRelayInvsFlow {
     /// mechanism or via IBD. This method sends a BlockLocator request to the peer with
     /// a limit of `ctx.orphan_resolution_range`. In the response, if we know none of the hashes,
     /// we should retrieve the given block `hash` via IBD. Otherwise, via unorphaning.
-    async fn check_orphan_resolution_range(&mut self, consensus: &ConsensusProxy, hash: Hash) -> Result<bool, ProtocolError> {
+    async fn check_orphan_resolution_range(&mut self, consensus: ConsensusInstance, hash: Hash) -> Result<bool, ProtocolError> {
         self.router
             .enqueue(make_message!(
                 Payload::RequestBlockLocator,
@@ -238,7 +244,7 @@ impl HandleRelayInvsFlow {
         let msg = dequeue_with_timeout!(self.msg_route, Payload::BlockLocator)?;
         let locator_hashes: Vec<Hash> = msg.try_into()?;
         for h in locator_hashes {
-            if consensus.async_get_block_status(h).await.is_some_and(|s| s.has_block_body()) {
+            if consensus.session().await.async_get_block_status(h).await.is_some_and(|s| s.has_block_body()) {
                 return Ok(true);
             }
         }

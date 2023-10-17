@@ -216,10 +216,10 @@ impl RpcCoreService {
 #[async_trait]
 impl RpcApi for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
-        let session = self.consensus_manager.consensus().session().await;
+        let consensus = self.consensus_manager.consensus();
 
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
-        let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
+        let is_synced: bool = self.has_sufficient_peer_connectivity() && consensus.session().await.async_is_nearly_synced().await;
 
         if !self.config.enable_unsynced_mining && !is_synced {
             // error = "Block not submitted - node is not synced"
@@ -236,7 +236,7 @@ impl RpcApi for RpcCoreService {
         let hash = block.hash();
 
         if !request.allow_non_daa_blocks {
-            let virtual_daa_score = session.async_get_virtual_daa_score().await;
+            let virtual_daa_score = consensus.session().await.async_get_virtual_daa_score().await;
 
             // A simple heuristic check which signals that the mined block is out of date
             // and should not be accepted unless user explicitly requests
@@ -249,7 +249,7 @@ impl RpcApi for RpcCoreService {
         }
 
         trace!("incoming SubmitBlockRequest for block {}", hash);
-        match self.flow_context.submit_rpc_block(&session, block.clone()).await {
+        match self.flow_context.submit_rpc_block(consensus, block.clone()).await {
             Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
             Err(err) => {
                 warn!("The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}", err, err);
