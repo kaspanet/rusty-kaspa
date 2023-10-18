@@ -60,7 +60,7 @@ impl OrphanBlocksPool {
                     }
                 }
             } else {
-                let status = consensus.session().await.async_get_block_status(current).await;
+                let status = consensus.unguarded().await.async_get_block_status(current).await;
                 if status.is_none_or(|s| s.is_header_only()) {
                     // Block is not in the orphan pool nor does its body exist consensus-wise, so it is a root
                     roots.push(current);
@@ -81,7 +81,7 @@ impl OrphanBlocksPool {
                 let mut processable = true;
                 for p in entry.get().header.direct_parents().iter().copied() {
                     if !processing.contains_key(&p)
-                        && consensus.session().await.async_get_block_status(p).await.is_none_or(|s| s.is_header_only())
+                        && consensus.unguarded().await.async_get_block_status(p).await.is_none_or(|s| s.is_header_only())
                     {
                         processable = false;
                         break;
@@ -91,7 +91,7 @@ impl OrphanBlocksPool {
                     let orphan_block = entry.remove();
                     processing.insert(
                         orphan_hash,
-                        (orphan_block.clone(), consensus.session().await.validate_and_insert_block(orphan_block)),
+                        (orphan_block.clone(), consensus.unguarded().await.validate_and_insert_block(orphan_block)),
                     );
                     process_queue.enqueue_chunk(self.iterate_child_orphans(orphan_hash));
                 }

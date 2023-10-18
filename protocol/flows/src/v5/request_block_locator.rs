@@ -37,7 +37,7 @@ impl RequestBlockLocatorFlow {
             let (high, limit) = msg.try_into()?;
 
             let locator =
-                self.ctx.consensus().session().await.async_create_block_locator_from_pruning_point(high, limit as usize).await?;
+                self.ctx.consensus().unguarded().await.async_create_block_locator_from_pruning_point(high, limit as usize).await?;
 
             self.router
                 .enqueue(make_message!(

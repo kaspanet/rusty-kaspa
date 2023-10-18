@@ -322,7 +322,7 @@ impl FlowContext {
             return Err(RuleError::NoTransactions)?;
         }
         let hash = block.hash();
-        if let Err(err) = self.consensus().session().await.validate_and_insert_block(block.clone()).await {
+        if let Err(err) = self.consensus().unguarded().await.validate_and_insert_block(block.clone()).await {
             warn!("Validation failed for block {}: {}", hash, err);
             return Err(err)?;
         }
@@ -363,7 +363,7 @@ impl FlowContext {
             transactions_to_broadcast.enqueue_chunk(
                 self.mining_manager()
                     .clone()
-                    .handle_new_block_transactions(&consensus.session().await, block.header.daa_score, block.transactions.clone())
+                    .handle_new_block_transactions(&consensus.unguarded().await, block.header.daa_score, block.transactions.clone())
                     .await?
                     .iter()
                     .map(|x| x.id()),
@@ -382,7 +382,7 @@ impl FlowContext {
             // The TransactionSpread member ensures at most one instance of this task is running at any
             // given time.
             let mining_manager = self.mining_manager().clone();
-            let consensus_clone = consensus.clone().session().await;
+            let consensus_clone = consensus.clone().unguarded().await;
             let context = self.clone();
             debug!("<> Starting mempool scanning task #{}...", self.mempool_scanning_job_count().await);
             tokio::spawn(async move {

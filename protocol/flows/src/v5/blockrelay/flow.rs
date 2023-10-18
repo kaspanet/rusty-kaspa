@@ -85,7 +85,8 @@ impl HandleRelayInvsFlow {
             let inv = self.invs_route.dequeue().await?;
 
             let consensus = self.ctx.consensus();
-            match consensus.session().await.async_get_block_status(inv.hash).await {
+            let consensus_unguarded = consensus.unguarded().await;
+            match consensus_unguarded.async_get_block_status(inv.hash).await {
                 None | Some(BlockStatus::StatusHeaderOnly) => {} // Continue processing this missing inv
                 Some(BlockStatus::StatusInvalid) => {
                     // Report a protocol error
@@ -103,7 +104,7 @@ impl HandleRelayInvsFlow {
                 continue;
             }
 
-            if self.ctx.is_ibd_running() && !consensus.session().await.async_is_nearly_synced().await {
+            if self.ctx.is_ibd_running() && !consensus_unguarded.async_is_nearly_synced().await {
                 // Note: If the node is considered nearly synced we continue processing relay blocks even though an IBD is in progress.
                 // For instance this means that downloading a side-chain from a delayed node does not interop the normal flow of live blocks.
                 debug!("Got relay block {} while in IBD and the node is out of sync, continuing...", inv.hash);
@@ -140,11 +141,11 @@ impl HandleRelayInvsFlow {
                 }
             }
 
-            let prev_virtual_parents = consensus.session().await.async_get_virtual_parents().await;
+            let prev_virtual_parents = consensus_unguarded.async_get_virtual_parents().await;
 
             // TODO: consider storing the future in a task queue and polling it (without awaiting) in order to continue
             // queueing the following relay blocks. On the other hand we might have sufficient concurrency from all parallel relay flows
-            match consensus.session().await.validate_and_insert_block(block.clone()).await {
+            match consensus_unguarded.validate_and_insert_block(block.clone()).await {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
@@ -160,7 +161,7 @@ impl HandleRelayInvsFlow {
 
             // Broadcast all *new* virtual parents. As a policy, we avoid directly relaying the new block since
             // we wish to relay only blocks who entered past(virtual).
-            for new_virtual_parent in consensus.session().await.async_get_virtual_parents().await.difference(&prev_virtual_parents) {
+            for new_virtual_parent in consensus_unguarded.async_get_virtual_parents().await.difference(&prev_virtual_parents) {
                 self.ctx
                     .hub()
                     .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(new_virtual_parent.into()) }))

@@ -95,6 +95,10 @@ impl ConsensusInstance {
         let g = self.session_lock.read_owned().await;
         ConsensusSessionOwned::new(g, self.consensus.clone())
     }
+
+    pub async fn unguarded(&self) -> ConsensusSessionOwned {
+        ConsensusSessionOwned::new_without_session_lock(self.consensus.clone()).await
+    }
 }
 
 pub struct ConsensusSessionBlocking<'a> {
@@ -127,6 +131,11 @@ pub struct ConsensusSessionOwned {
 impl ConsensusSessionOwned {
     pub fn new(session_guard: SessionOwnedReadGuard, consensus: DynConsensus) -> Self {
         Self { _session_guard: session_guard, consensus }
+    }
+
+    pub async fn new_without_session_lock(consensus: DynConsensus) -> Self {
+        let stub_lock = Arc::new(RfRwLock::new());
+        Self { _session_guard: SessionOwnedReadGuard(Arc::new(stub_lock.read_owned().await)), consensus }
     }
 
     /// Uses [`tokio::task::spawn_blocking`] to run the provided consensus closure on a thread where blocking is acceptable.
