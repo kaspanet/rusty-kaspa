@@ -299,11 +299,11 @@ impl FlowContext {
         self.orphans_pool.read().await.is_known_orphan(hash)
     }
 
-    pub async fn get_orphan_roots(&self, consensus: ConsensusInstance, orphan: Hash) -> Option<Vec<Hash>> {
+    pub async fn get_orphan_roots(&self, consensus: &ConsensusInstance, orphan: Hash) -> Option<Vec<Hash>> {
         self.orphans_pool.read().await.get_orphan_roots(consensus, orphan).await
     }
 
-    pub async fn unorphan_blocks(&self, consensus: ConsensusInstance, root: Hash) -> Vec<Block> {
+    pub async fn unorphan_blocks(&self, consensus: &ConsensusInstance, root: Hash) -> Vec<Block> {
         let unorphaned_blocks = self.orphans_pool.write().await.unorphan_blocks(consensus, root).await;
         match unorphaned_blocks.len() {
             0 => {}
@@ -317,7 +317,7 @@ impl FlowContext {
     }
 
     /// Adds the rpc-submitted block to the DAG and propagates it to peers.
-    pub async fn submit_rpc_block(&self, consensus: ConsensusInstance, block: Block) -> Result<(), ProtocolError> {
+    pub async fn submit_rpc_block(&self, consensus: &ConsensusInstance, block: Block) -> Result<(), ProtocolError> {
         if block.transactions.is_empty() {
             return Err(RuleError::NoTransactions)?;
         }
@@ -352,9 +352,9 @@ impl FlowContext {
     /// and possibly rebroadcast manually added transactions when not in IBD.
     ///
     /// _GO-KASPAD: OnNewBlock + broadcastTransactionsAfterBlockAdded_
-    pub async fn on_new_block(&self, consensus: ConsensusInstance, block: Block) -> Result<(), ProtocolError> {
+    pub async fn on_new_block(&self, consensus: &ConsensusInstance, block: Block) -> Result<(), ProtocolError> {
         let hash = block.hash();
-        let mut blocks = self.unorphan_blocks(consensus.clone(), hash).await;
+        let mut blocks = self.unorphan_blocks(consensus, hash).await;
         // Process blocks in topological order
         blocks.sort_by(|a, b| a.header.blue_work.partial_cmp(&b.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates

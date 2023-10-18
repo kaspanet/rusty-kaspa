@@ -44,7 +44,7 @@ impl OrphanBlocksPool {
     /// Returns the orphan roots of the provided orphan. Orphan roots are ancestors of this orphan which are
     /// not in the orphan pool AND do not exist consensus-wise or are header-only. Given an orphan relayed by
     /// a peer, these blocks should be the next-in-line to be requested from that peer.
-    pub async fn get_orphan_roots(&self, consensus: ConsensusInstance, orphan: Hash) -> Option<Vec<Hash>> {
+    pub async fn get_orphan_roots(&self, consensus: &ConsensusInstance, orphan: Hash) -> Option<Vec<Hash>> {
         if !self.orphans.contains_key(&orphan) {
             return None;
         }
@@ -70,7 +70,7 @@ impl OrphanBlocksPool {
         Some(roots)
     }
 
-    pub async fn unorphan_blocks(&mut self, consensus: ConsensusInstance, root: Hash) -> Vec<Block> {
+    pub async fn unorphan_blocks(&mut self, consensus: &ConsensusInstance, root: Hash) -> Vec<Block> {
         self.orphans.remove(&root); // Try removing the root, just in case it was previously an orphan
 
         let mut process_queue = ProcessQueue::from(self.iterate_child_orphans(root).collect());
@@ -171,13 +171,13 @@ mod tests {
         pool.add_orphan(c.clone());
         pool.add_orphan(d.clone());
 
-        assert_eq!(pool.get_orphan_roots(ci.clone(), d.hash()).await.unwrap(), roots);
+        assert_eq!(pool.get_orphan_roots(&ci, d.hash()).await.unwrap(), roots);
 
         consensus.validate_and_insert_block(a.clone()).await.unwrap();
         consensus.validate_and_insert_block(b.clone()).await.unwrap();
 
         assert_eq!(
-            pool.unorphan_blocks(ci.clone(), 8.into()).await.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(),
+            pool.unorphan_blocks(&ci, 8.into()).await.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(),
             HashSet::from([10.into(), 11.into()])
         );
         assert!(pool.orphans.is_empty());
