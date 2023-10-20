@@ -25,6 +25,21 @@ impl BlockProcessingMessage {
     }
 }
 
+pub enum VirtualStateProcessingMessage {
+    Exit,
+    Process(BlockTask, BlockResultSender),
+}
+
+impl VirtualStateProcessingMessage {
+    pub fn is_processing_message(&self) -> bool {
+        matches!(self, VirtualStateProcessingMessage::Process(_, _))
+    }
+
+    pub fn is_exit_message(&self) -> bool {
+        matches!(self, VirtualStateProcessingMessage::Exit)
+    }
+}
+
 pub enum BlockTask {
     /// Ordinary block processing task, requiring full validation. The block might be header-only
     Ordinary { block: Block },

@@ -36,7 +36,7 @@ use crate::{
     },
     params::Params,
     pipeline::{
-        deps_manager::BlockProcessingMessage, pruning_processor::processor::PruningProcessingMessage,
+        deps_manager::VirtualStateProcessingMessage, pruning_processor::processor::PruningProcessingMessage,
         virtual_processor::utxo_validation::UtxoProcessingContext, ProcessingCounters,
     },
     processes::{
@@ -97,7 +97,7 @@ use super::errors::{PruningImportError, PruningImportResult};
 
 pub struct VirtualStateProcessor {
     // Channels
-    receiver: CrossbeamReceiver<BlockProcessingMessage>,
+    receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
     pruning_sender: CrossbeamSender<PruningProcessingMessage>,
     pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
 
@@ -157,7 +157,7 @@ pub struct VirtualStateProcessor {
 impl VirtualStateProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: CrossbeamReceiver<BlockProcessingMessage>,
+        receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
         pruning_sender: CrossbeamSender<PruningProcessingMessage>,
         pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
@@ -240,7 +240,7 @@ impl VirtualStateProcessor {
             // This is done since virtual processing is not a per-block
             // operation, so it benefits from max available info
 
-            let messages: Vec<BlockProcessingMessage> = std::iter::once(msg).chain(self.receiver.try_iter()).collect();
+            let messages: Vec<VirtualStateProcessingMessage> = std::iter::once(msg).chain(self.receiver.try_iter()).collect();
             trace!("virtual processor received {} tasks", messages.len());
 
             self.resolve_virtual();
@@ -248,8 +248,8 @@ impl VirtualStateProcessor {
             let statuses_read = self.statuses_store.read();
             for msg in messages {
                 match msg {
-                    BlockProcessingMessage::Exit => break 'outer,
-                    BlockProcessingMessage::Process(task, _, virtual_state_result_transmitter) => {
+                    VirtualStateProcessingMessage::Exit => break 'outer,
+                    VirtualStateProcessingMessage::Process(task, virtual_state_result_transmitter) => {
                         // We don't care if receivers were dropped
                         let _ = virtual_state_result_transmitter.send(Ok(statuses_read.get(task.block().hash()).unwrap()));
                     }

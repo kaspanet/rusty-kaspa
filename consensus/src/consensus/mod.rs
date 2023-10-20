@@ -30,7 +30,7 @@ use crate::{
     },
     pipeline::{
         body_processor::BlockBodyProcessor,
-        deps_manager::{BlockProcessingMessage, BlockResultSender, BlockTask},
+        deps_manager::{BlockProcessingMessage, BlockResultSender, BlockTask, VirtualStateProcessingMessage},
         header_processor::HeaderProcessor,
         pruning_processor::processor::{PruningProcessingMessage, PruningProcessor},
         virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
@@ -159,8 +159,10 @@ impl Consensus {
             unbounded_crossbeam();
         let (body_sender, body_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
             unbounded_crossbeam();
-        let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
-            unbounded_crossbeam();
+        let (virtual_sender, virtual_receiver): (
+            CrossbeamSender<VirtualStateProcessingMessage>,
+            CrossbeamReceiver<VirtualStateProcessingMessage>,
+        ) = unbounded_crossbeam();
         let (pruning_sender, pruning_receiver): (
             CrossbeamSender<PruningProcessingMessage>,
             CrossbeamReceiver<PruningProcessingMessage>,

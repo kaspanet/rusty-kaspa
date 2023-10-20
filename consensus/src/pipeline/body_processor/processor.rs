@@ -14,7 +14,7 @@ use crate::{
         },
     },
     pipeline::{
-        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId},
+        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId, VirtualStateProcessingMessage},
         ProcessingCounters,
     },
     processes::{coinbase::CoinbaseManager, mass::MassCalculator, transaction_validator::TransactionValidator},
@@ -37,12 +37,11 @@ use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{atomic::Ordering, Arc};
-use tokio::sync::oneshot;
 
 pub struct BlockBodyProcessor {
     // Channels
     receiver: Receiver<BlockProcessingMessage>,
-    sender: Sender<BlockProcessingMessage>,
+    sender: Sender<VirtualStateProcessingMessage>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -85,7 +84,7 @@ impl BlockBodyProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: Receiver<BlockProcessingMessage>,
-        sender: Sender<BlockProcessingMessage>,
+        sender: Sender<VirtualStateProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
 
         db: Arc<DB>,
@@ -149,7 +148,7 @@ impl BlockBodyProcessor {
         self.task_manager.wait_for_idle();
 
         // Pass the exit signal on to the following processor
-        self.sender.send(BlockProcessingMessage::Exit).unwrap();
+        self.sender.send(VirtualStateProcessingMessage::Exit).unwrap();
     }
 
     fn queue_block(self: &Arc<BlockBodyProcessor>, task_id: TaskId) {
@@ -162,10 +161,7 @@ impl BlockBodyProcessor {
                     // We don't care if receivers were dropped
                     let _ = virtual_state_result_transmitter.send(res.clone());
                 } else {
-                    // TODO: This sender is never used, so come back to this and see if we can replace
-                    // BlockProcessingMessage with something else (VirtualStateProcessingMessage ?)
-                    let (btx, _) = oneshot::channel();
-                    self.sender.send(BlockProcessingMessage::Process(task, btx, virtual_state_result_transmitter)).unwrap();
+                    self.sender.send(VirtualStateProcessingMessage::Process(task, virtual_state_result_transmitter)).unwrap();
                 }
             });
 
