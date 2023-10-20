@@ -5,7 +5,7 @@ use kaspa_core::{
         service::{AsyncService, AsyncServiceFuture},
         tick::{TickReason, TickService},
     },
-    trace,
+    trace, warn,
 };
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
@@ -36,7 +36,8 @@ impl Extender {
 impl Extender {
     pub async fn worker(&self) -> Result<(), AddPortError> {
         while let TickReason::Wakeup = self.tick_service.tick(self.fetch_interval).await {
-            self.gateway
+            if let Err(e) = self
+                .gateway
                 .add_port(
                     igd_next::PortMappingProtocol::TCP,
                     self.external_port,
@@ -45,8 +46,11 @@ impl Extender {
                     "Kaspad-rusty",
                 )
                 .await
-                .unwrap(); // todo handle??
-            debug!("extend external ip mapping");
+            {
+                warn!("extend external ip mapping err: {e:?}");
+            } else {
+                debug!("extend external ip mapping");
+            }
         }
         // Let the system print final logs before exiting
         tokio::time::sleep(Duration::from_millis(500)).await;
