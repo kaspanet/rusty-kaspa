@@ -211,7 +211,7 @@ impl Miner {
             Suspension::Halt
         } else {
             let session = self.consensus.acquire_session();
-            let status = futures::executor::block_on(self.consensus.validate_and_insert_block(block)).unwrap();
+            let status = futures::executor::block_on(self.consensus.validate_and_insert_block(block).1).unwrap();
             assert!(status.is_utxo_valid_or_pending());
             drop(session);
             Suspension::Idle

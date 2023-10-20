@@ -249,9 +249,9 @@ impl VirtualStateProcessor {
             for msg in messages {
                 match msg {
                     BlockProcessingMessage::Exit => break 'outer,
-                    BlockProcessingMessage::Process(task, result_transmitter) => {
+                    BlockProcessingMessage::Process(task, _, virtual_state_result_transmitter) => {
                         // We don't care if receivers were dropped
-                        let _ = result_transmitter.send(Ok(statuses_read.get(task.block().hash()).unwrap()));
+                        let _ = virtual_state_result_transmitter.send(Ok(statuses_read.get(task.block().hash()).unwrap()));
                     }
                 };
             }

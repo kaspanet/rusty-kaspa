@@ -293,11 +293,15 @@ impl Consensus {
         self.pruning_lock.blocking_read()
     }
 
-    fn validate_and_insert_block_impl(&self, task: BlockTask) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        let (tx, rx): (BlockResultSender, _) = oneshot::channel();
-        self.block_sender.send(BlockProcessingMessage::Process(task, tx)).unwrap();
+    fn validate_and_insert_block_impl(
+        &self,
+        task: BlockTask,
+    ) -> (impl Future<Output = BlockProcessResult<BlockStatus>>, impl Future<Output = BlockProcessResult<BlockStatus>>) {
+        let (btx, brx): (BlockResultSender, _) = oneshot::channel();
+        let (vtx, vrx): (BlockResultSender, _) = oneshot::channel();
+        self.block_sender.send(BlockProcessingMessage::Process(task, btx, vtx)).unwrap();
         self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
-        async { rx.await.unwrap() }
+        (async { brx.await.unwrap() }, async { vrx.await.unwrap() })
     }
 
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
@@ -364,14 +368,14 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.build_block_template(miner_data, tx_selector, build_mode)
     }
 
-    fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
+    fn validate_and_insert_block(&self, block: Block) -> (BlockValidationFuture, BlockValidationFuture) {
         let result = self.validate_and_insert_block_impl(BlockTask::Ordinary { block });
-        Box::pin(result)
+        (Box::pin(result.0), Box::pin(result.1))
     }
 
-    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
+    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> (BlockValidationFuture, BlockValidationFuture) {
         let result = self.validate_and_insert_block_impl(BlockTask::Trusted { block: tb.block });
-        Box::pin(result)
+        (Box::pin(result.0), Box::pin(result.1))
     }
 
     fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {

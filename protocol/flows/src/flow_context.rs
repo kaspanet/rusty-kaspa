@@ -322,7 +322,7 @@ impl FlowContext {
             return Err(RuleError::NoTransactions)?;
         }
         let hash = block.hash();
-        if let Err(err) = self.consensus().session().await.validate_and_insert_block(block.clone()).await {
+        if let Err(err) = self.consensus().session().await.validate_and_insert_block(block.clone()).1.await {
             warn!("Validation failed for block {}: {}", hash, err);
             return Err(err)?;
         }

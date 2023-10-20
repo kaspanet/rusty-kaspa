@@ -134,7 +134,7 @@ impl TestConsensus {
     }
 
     pub fn add_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.validate_and_insert_block(self.build_block_with_parents(hash, parents).to_immutable())
+        self.validate_and_insert_block(self.build_block_with_parents(hash, parents).to_immutable()).1
     }
 
     pub fn add_utxo_valid_block_with_parents(
@@ -144,7 +144,7 @@ impl TestConsensus {
         txs: Vec<Transaction>,
     ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-        self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable())
+        self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable()).1
     }
 
     pub fn build_utxo_valid_block_with_parents(

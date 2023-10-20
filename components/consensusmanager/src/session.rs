@@ -142,11 +142,11 @@ impl ConsensusSessionOwned {
 }
 
 impl ConsensusSessionOwned {
-    pub fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
+    pub fn validate_and_insert_block(&self, block: Block) -> (BlockValidationFuture, BlockValidationFuture) {
         self.consensus.validate_and_insert_block(block)
     }
 
-    pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
+    pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> (BlockValidationFuture, BlockValidationFuture) {
         self.consensus.validate_and_insert_trusted_block(tb)
     }
 

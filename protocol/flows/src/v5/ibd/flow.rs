@@ -316,7 +316,7 @@ impl IbdFlow {
                 last_index = i;
             }
             // TODO: queue and join in batches
-            staging.validate_and_insert_trusted_block(tb).await?;
+            staging.validate_and_insert_trusted_block(tb).1.await?;
         }
         info!("Done processing trusted blocks");
         Ok(proof_pruning_point)
@@ -346,11 +346,12 @@ impl IbdFlow {
         if let Some(chunk) = chunk_stream.next().await? {
             let mut prev_daa_score = chunk.last().expect("chunk is never empty").daa_score;
             let mut prev_jobs: Vec<BlockValidationFuture> =
-                chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h))).collect();
+                chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).1).collect();
 
             while let Some(chunk) = chunk_stream.next().await? {
                 let current_daa_score = chunk.last().expect("chunk is never empty").daa_score;
-                let current_jobs = chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h))).collect();
+                let current_jobs =
+                    chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).1).collect();
                 let prev_chunk_len = prev_jobs.len();
                 // Join the previous chunk so that we always concurrently process a chunk and receive another
                 try_join_all(prev_jobs).await?;
@@ -397,7 +398,7 @@ impl IbdFlow {
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockHeaders)?;
         let chunk: HeadersChunk = msg.try_into()?;
         let jobs: Vec<BlockValidationFuture> =
-            chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h))).collect();
+            chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).1).collect();
         try_join_all(jobs).await?;
         dequeue_with_timeout!(self.incoming_route, Payload::DoneHeaders)?;
 
@@ -511,7 +512,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
             current_daa_score = block.header.daa_score;
-            jobs.push(consensus.validate_and_insert_block(block));
+            jobs.push(consensus.validate_and_insert_block(block).1);
         }
 
         Ok((jobs, current_daa_score))

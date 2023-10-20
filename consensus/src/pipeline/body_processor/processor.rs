@@ -37,6 +37,7 @@ use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
 use std::sync::{atomic::Ordering, Arc};
+use tokio::sync::oneshot;
 
 pub struct BlockBodyProcessor {
     // Channels
@@ -133,8 +134,8 @@ impl BlockBodyProcessor {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
                 BlockProcessingMessage::Exit => break,
-                BlockProcessingMessage::Process(task, result_transmitter) => {
-                    if let Some(task_id) = self.task_manager.register(task, result_transmitter) {
+                BlockProcessingMessage::Process(task, block_result_transmitter, virtual_result_transmitter) => {
+                    if let Some(task_id) = self.task_manager.register(task, block_result_transmitter, virtual_result_transmitter) {
                         let processor = self.clone();
                         self.thread_pool.spawn(move || {
                             processor.queue_block(task_id);
@@ -155,12 +156,16 @@ impl BlockBodyProcessor {
         if let Some(task) = self.task_manager.try_begin(task_id) {
             let res = self.process_body(task.block(), task.is_trusted());
 
-            let dependent_tasks = self.task_manager.end(task, |task, result_transmitter| {
+            let dependent_tasks = self.task_manager.end(task, |task, block_result_transmitter, virtual_state_result_transmitter| {
+                let _ = block_result_transmitter.send(res.clone());
                 if res.is_err() || !task.requires_virtual_processing() {
                     // We don't care if receivers were dropped
-                    let _ = result_transmitter.send(res.clone());
+                    let _ = virtual_state_result_transmitter.send(res.clone());
                 } else {
-                    self.sender.send(BlockProcessingMessage::Process(task, result_transmitter)).unwrap();
+                    // TODO: This sender is never used, so come back to this and see if we can replace
+                    // BlockProcessingMessage with something else (VirtualStateProcessingMessage ?)
+                    let (btx, _) = oneshot::channel();
+                    self.sender.send(BlockProcessingMessage::Process(task, btx, virtual_state_result_transmitter)).unwrap();
                 }
             });
 

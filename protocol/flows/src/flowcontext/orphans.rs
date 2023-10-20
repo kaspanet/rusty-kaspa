@@ -87,7 +87,7 @@ impl OrphanBlocksPool {
                 }
                 if processable {
                     let orphan_block = entry.remove();
-                    processing.insert(orphan_hash, (orphan_block.clone(), consensus.validate_and_insert_block(orphan_block)));
+                    processing.insert(orphan_hash, (orphan_block.clone(), consensus.validate_and_insert_block(orphan_block).1));
                     process_queue.enqueue_chunk(self.iterate_child_orphans(orphan_hash));
                 }
             }
@@ -140,9 +140,9 @@ mod tests {
     }
 
     impl ConsensusApi for MockProcessor {
-        fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
+        fn validate_and_insert_block(&self, block: Block) -> (BlockValidationFuture, BlockValidationFuture) {
             self.processed.write().insert(block.hash());
-            Box::pin(block_process_mock())
+            (Box::pin(block_process_mock()), Box::pin(block_process_mock()))
         }
 
         fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
@@ -168,8 +168,8 @@ mod tests {
 
         assert_eq!(pool.get_orphan_roots(&consensus, d.hash()).await.unwrap(), roots);
 
-        consensus.validate_and_insert_block(a.clone()).await.unwrap();
-        consensus.validate_and_insert_block(b.clone()).await.unwrap();
+        consensus.validate_and_insert_block(a.clone()).1.await.unwrap();
+        consensus.validate_and_insert_block(b.clone()).1.await.unwrap();
 
         assert_eq!(
             pool.unorphan_blocks(&consensus, 8.into()).await.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(),

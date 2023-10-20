@@ -143,7 +143,7 @@ impl HandleRelayInvsFlow {
 
             // TODO: consider storing the future in a task queue and polling it (without awaiting) in order to continue
             // queueing the following relay blocks. On the other hand we might have sufficient concurrency from all parallel relay flows
-            match session.validate_and_insert_block(block.clone()).await {
+            match session.validate_and_insert_block(block.clone()).1.await {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);

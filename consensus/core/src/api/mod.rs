@@ -36,11 +36,11 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
+    fn validate_and_insert_block(&self, block: Block) -> (BlockValidationFuture, BlockValidationFuture) {
         unimplemented!()
     }
 
-    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
+    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> (BlockValidationFuture, BlockValidationFuture) {
         unimplemented!()
     }
 
