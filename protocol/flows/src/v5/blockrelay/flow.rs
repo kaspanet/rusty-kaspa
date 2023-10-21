@@ -2,7 +2,7 @@ use crate::{
     flow_context::{BlockSource, FlowContext, RequestScope},
     flow_trait::Flow,
 };
-use kaspa_consensus_core::{block::Block, blockstatus::BlockStatus, errors::block::RuleError};
+use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_consensusmanager::ConsensusProxy;
 use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
@@ -120,30 +120,27 @@ impl HandleRelayInvsFlow {
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
 
-            // Note we do not apply the heuristic below if inv was queued indirectly (as an orphan root), since
+            let blue_work_threshold = session.async_get_virtual_merge_depth_blue_work_threshold().await;
+            // Since `blue_work` respects topology, the negation of this condition means that the relay
+            // block is not in the future of virtual's merge depth root, and thus cannot be merged unless
+            // other valid blocks Kosherize it (in which case it will be obtained once the merger is relayed)
+            let broadcast = block.header.blue_work > blue_work_threshold;
+
+            // We do not apply the skip heuristic below if inv was queued indirectly (as an orphan root), since
             // that means the process started by a proper and relevant relay block
-            if !inv.is_indirect {
-                // Check bounded merge depth to avoid requesting irrelevant data which cannot be merged under virtual
-                if let Some(virtual_merge_depth_root) = session.async_get_virtual_merge_depth_root().await {
-                    let root_header = session.async_get_header(virtual_merge_depth_root).await.unwrap();
-                    // Since `blue_work` respects topology, this condition means that the relay
-                    // block is not in the future of virtual's merge depth root, and thus cannot be merged unless
-                    // other valid blocks Kosherize it, in which case it will be obtained once the merger is relayed
-                    if block.header.blue_work <= root_header.blue_work {
-                        debug!(
-                            "Relay block {} has lower blue work than virtual's merge depth root {} ({} <= {}), hence we are skipping it",
-                            inv.hash, virtual_merge_depth_root, block.header.blue_work, root_header.blue_work
-                        );
-                        continue;
-                    }
-                }
+            if !inv.is_indirect && !broadcast {
+                debug!(
+                    "Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
+                    inv.hash, block.header.blue_work, blue_work_threshold
+                );
+                continue;
             }
 
-            let prev_virtual_parents = session.async_get_virtual_parents().await;
+            let BlockValidationFutures { block_task, virtual_state_task } = session.validate_and_insert_block(block.clone());
 
             // TODO: consider storing the future in a task queue and polling it (without awaiting) in order to continue
             // queueing the following relay blocks. On the other hand we might have sufficient concurrency from all parallel relay flows
-            match session.validate_and_insert_block(block.clone()).virtual_state_task.await {
+            match block_task.await {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
@@ -153,18 +150,23 @@ impl HandleRelayInvsFlow {
                 Err(rule_error) => return Err(rule_error.into()),
             }
 
+            // As a policy, we only relay blocks who stand a chance to enter past(virtual).
+            // The only mining rule which permanently excludes a block is the merge depth bound
+            // (as opposed to "max parents" and "mergeset size limit" rules)
+            if broadcast {
+                self.ctx
+                    .hub()
+                    .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(inv.hash.into()) }))
+                    .await;
+            }
+
+            // We only care about waiting for virtual to process the block before proceeding with post-processing
+            // actions such as updating the mempool. We know this will not err since `block_task` already completed w/o error
+            let _ = virtual_state_task.await;
+
             self.ctx.log_block_acceptance(inv.hash, BlockSource::Relay);
             self.ctx.on_new_block(&session, block).await?;
             self.ctx.on_new_block_template().await?;
-
-            // Broadcast all *new* virtual parents. As a policy, we avoid directly relaying the new block since
-            // we wish to relay only blocks who entered past(virtual).
-            for new_virtual_parent in session.async_get_virtual_parents().await.difference(&prev_virtual_parents) {
-                self.ctx
-                    .hub()
-                    .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(new_virtual_parent.into()) }))
-                    .await;
-            }
         }
     }
 

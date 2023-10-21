@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet, ChainPath, Hash,
+    BlockHashSet, BlueWorkType, ChainPath, Hash,
 };
 use kaspa_utils::sync::rwlock::*;
 use std::{ops::Deref, sync::Arc};
@@ -169,6 +169,13 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_virtual_merge_depth_root(&self) -> Option<Hash> {
         self.clone().spawn_blocking(|c| c.get_virtual_merge_depth_root()).await
+    }
+
+    /// Returns the `BlueWork` threshold at which blocks with lower or equal blue work are considered
+    /// to be un-mergeable by current virtual state.
+    /// (Note: in some rare cases when the node is unsynced the function might return zero as the threshold)
+    pub async fn async_get_virtual_merge_depth_blue_work_threshold(&self) -> BlueWorkType {
+        self.clone().spawn_blocking(|c| c.get_virtual_merge_depth_blue_work_threshold()).await
     }
 
     pub async fn async_get_sink(&self) -> Hash {

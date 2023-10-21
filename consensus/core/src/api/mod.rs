@@ -19,7 +19,7 @@ use crate::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet, ChainPath,
+    BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
@@ -94,6 +94,13 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
+        unimplemented!()
+    }
+
+    /// Returns the `BlueWork` threshold at which blocks with lower or equal blue work are considered
+    /// to be un-mergeable by current virtual state.
+    /// (Note: in some rare cases when the node is unsynced the function might return zero as the threshold)
+    fn get_virtual_merge_depth_blue_work_threshold(&self) -> BlueWorkType {
         unimplemented!()
     }
 

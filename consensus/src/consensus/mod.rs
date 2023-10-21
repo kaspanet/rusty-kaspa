@@ -57,7 +57,7 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet, ChainPath,
+    BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
@@ -416,13 +416,8 @@ impl ConsensusApi for Consensus {
 
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
         // TODO: consider saving the merge depth root as part of virtual state
-        // TODO: unwrap on pruning_point and virtual state reads when staging consensus is implemented
-        let Some(pruning_point) = self.pruning_point_store.read().pruning_point().unwrap_option() else {
-            return None;
-        };
-        let Some(virtual_state) = self.virtual_stores.read().state.get().unwrap_option() else {
-            return None;
-        };
+        let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
+        let virtual_state = self.virtual_stores.read().state.get().unwrap();
         let virtual_ghostdag_data = &virtual_state.ghostdag_data;
         let root = self.services.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
         if root.is_origin() {
@@ -430,6 +425,10 @@ impl ConsensusApi for Consensus {
         } else {
             Some(root)
         }
+    }
+
+    fn get_virtual_merge_depth_blue_work_threshold(&self) -> BlueWorkType {
+        self.get_virtual_merge_depth_root().map_or(BlueWorkType::ZERO, |root| self.ghostdag_primary_store.get_blue_work(root).unwrap())
     }
 
     fn get_sink(&self) -> Hash {

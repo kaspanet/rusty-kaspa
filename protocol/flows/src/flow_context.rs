@@ -3,6 +3,7 @@ use crate::v5;
 use async_trait::async_trait;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
+use kaspa_consensus_core::api::BlockValidationFutures;
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::block::RuleError;
@@ -322,14 +323,21 @@ impl FlowContext {
             return Err(RuleError::NoTransactions)?;
         }
         let hash = block.hash();
-        if let Err(err) = self.consensus().session().await.validate_and_insert_block(block.clone()).virtual_state_task.await {
+        let BlockValidationFutures { block_task, virtual_state_task } =
+            self.consensus().session().await.validate_and_insert_block(block.clone());
+        if let Err(err) = block_task.await {
             warn!("Validation failed for block {}: {}", hash, err);
             return Err(err)?;
         }
-        self.log_block_acceptance(hash, BlockSource::Submit);
-        self.on_new_block_template().await?;
-        self.on_new_block(consensus, block).await?;
+        // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
+
+        // Wait for full virtual-state processing
+        let _ = virtual_state_task.await;
+
+        self.log_block_acceptance(hash, BlockSource::Submit);
+        self.on_new_block(consensus, block).await?;
+        self.on_new_block_template().await?;
         Ok(())
     }
 
