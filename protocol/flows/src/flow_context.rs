@@ -1,6 +1,7 @@
 use crate::flowcontext::{orphans::OrphanBlocksPool, process_queue::ProcessQueue, transactions::TransactionsSpread};
 use crate::v5;
 use async_trait::async_trait;
+use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
 use kaspa_consensus_core::api::BlockValidationFutures;
@@ -305,7 +306,15 @@ impl FlowContext {
     }
 
     pub async fn unorphan_blocks(&self, consensus: &ConsensusProxy, root: Hash) -> Vec<Block> {
-        let unorphaned_blocks = self.orphans_pool.write().await.unorphan_blocks(consensus, root).await;
+        let (blocks, jobs) = self.orphans_pool.write().await.unorphan_blocks(consensus, root).await;
+        let mut unorphaned_blocks = Vec::with_capacity(blocks.len());
+        let results = join_all(jobs).await;
+        for (block, result) in blocks.into_iter().zip(results) {
+            match result {
+                Ok(_) => unorphaned_blocks.push(block),
+                Err(e) => warn!("Validation failed for orphan block {}: {}", block.hash(), e),
+            }
+        }
         match unorphaned_blocks.len() {
             0 => {}
             1 => info!("Unorphaned block {}", unorphaned_blocks[0].hash()),
