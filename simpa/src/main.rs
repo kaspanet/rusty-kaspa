@@ -347,7 +347,7 @@ fn submit_chunk(
             src_consensus.headers_store.get_header(hash).unwrap(),
             src_consensus.block_transactions_store.get(hash).unwrap(),
         );
-        let f = dst_consensus.validate_and_insert_block(block).1;
+        let f = dst_consensus.validate_and_insert_block(block).virtual_state_task;
         futures.push(f);
     }
     futures

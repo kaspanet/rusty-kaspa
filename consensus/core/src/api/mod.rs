@@ -24,6 +24,17 @@ use crate::{
 use kaspa_hashes::Hash;
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
 
+/// A struct returned by consensus for block validation processing calls
+pub struct BlockValidationFutures {
+    /// A future triggered when block processing is completed (header and body processing)
+    pub block_task: BlockValidationFuture,
+
+    /// A future triggered when DAG state which included this block has been processed by the virtual processor
+    /// (exceptions are header-only blocks and trusted blocks which have the future completed before virtual
+    /// processing along with the [`block_task`])
+    pub virtual_state_task: BlockValidationFuture,
+}
+
 /// Abstracts the consensus external API
 #[allow(unused_variables)]
 pub trait ConsensusApi: Send + Sync {
@@ -36,11 +47,11 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn validate_and_insert_block(&self, block: Block) -> (BlockValidationFuture, BlockValidationFuture) {
+    fn validate_and_insert_block(&self, block: Block) -> BlockValidationFutures {
         unimplemented!()
     }
 
-    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> (BlockValidationFuture, BlockValidationFuture) {
+    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFutures {
         unimplemented!()
     }
 

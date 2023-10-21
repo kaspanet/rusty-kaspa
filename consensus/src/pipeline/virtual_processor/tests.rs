@@ -125,7 +125,7 @@ impl TestContext {
     }
 
     pub async fn validate_and_insert_block(&mut self, block: Block) -> &mut Self {
-        let status = self.consensus.validate_and_insert_block(block).1.await.unwrap();
+        let status = self.consensus.validate_and_insert_block(block).virtual_state_task.await.unwrap();
         assert!(status.has_block_body());
         self
     }

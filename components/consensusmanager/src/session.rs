@@ -4,7 +4,7 @@
 
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    api::{BlockValidationFuture, ConsensusApi, DynConsensus},
+    api::{BlockValidationFutures, ConsensusApi, DynConsensus},
     block::Block,
     block_count::BlockCount,
     blockstatus::BlockStatus,
@@ -142,11 +142,11 @@ impl ConsensusSessionOwned {
 }
 
 impl ConsensusSessionOwned {
-    pub fn validate_and_insert_block(&self, block: Block) -> (BlockValidationFuture, BlockValidationFuture) {
+    pub fn validate_and_insert_block(&self, block: Block) -> BlockValidationFutures {
         self.consensus.validate_and_insert_block(block)
     }
 
-    pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> (BlockValidationFuture, BlockValidationFuture) {
+    pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFutures {
         self.consensus.validate_and_insert_trusted_block(tb)
     }
 

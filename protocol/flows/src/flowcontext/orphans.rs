@@ -87,7 +87,10 @@ impl OrphanBlocksPool {
                 }
                 if processable {
                     let orphan_block = entry.remove();
-                    processing.insert(orphan_hash, (orphan_block.clone(), consensus.validate_and_insert_block(orphan_block).1));
+                    processing.insert(
+                        orphan_hash,
+                        (orphan_block.clone(), consensus.validate_and_insert_block(orphan_block).virtual_state_task),
+                    );
                     process_queue.enqueue_chunk(self.iterate_child_orphans(orphan_hash));
                 }
             }
@@ -122,7 +125,7 @@ impl OrphanBlocksPool {
 mod tests {
     use super::*;
     use kaspa_consensus_core::{
-        api::{BlockValidationFuture, ConsensusApi},
+        api::{BlockValidationFutures, ConsensusApi},
         blockstatus::BlockStatus,
         errors::block::BlockProcessResult,
     };
@@ -140,9 +143,9 @@ mod tests {
     }
 
     impl ConsensusApi for MockProcessor {
-        fn validate_and_insert_block(&self, block: Block) -> (BlockValidationFuture, BlockValidationFuture) {
+        fn validate_and_insert_block(&self, block: Block) -> BlockValidationFutures {
             self.processed.write().insert(block.hash());
-            (Box::pin(block_process_mock()), Box::pin(block_process_mock()))
+            BlockValidationFutures { block_task: Box::pin(block_process_mock()), virtual_state_task: Box::pin(block_process_mock()) }
         }
 
         fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
@@ -168,8 +171,8 @@ mod tests {
 
         assert_eq!(pool.get_orphan_roots(&consensus, d.hash()).await.unwrap(), roots);
 
-        consensus.validate_and_insert_block(a.clone()).1.await.unwrap();
-        consensus.validate_and_insert_block(b.clone()).1.await.unwrap();
+        consensus.validate_and_insert_block(a.clone()).virtual_state_task.await.unwrap();
+        consensus.validate_and_insert_block(b.clone()).virtual_state_task.await.unwrap();
 
         assert_eq!(
             pool.unorphan_blocks(&consensus, 8.into()).await.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(),

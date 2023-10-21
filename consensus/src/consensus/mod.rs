@@ -40,7 +40,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    api::{BlockValidationFuture, ConsensusApi},
+    api::{BlockValidationFutures, ConsensusApi},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     block_count::BlockCount,
     blockhash::BlockHashExtensions,
@@ -370,14 +370,14 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.build_block_template(miner_data, tx_selector, build_mode)
     }
 
-    fn validate_and_insert_block(&self, block: Block) -> (BlockValidationFuture, BlockValidationFuture) {
-        let result = self.validate_and_insert_block_impl(BlockTask::Ordinary { block });
-        (Box::pin(result.0), Box::pin(result.1))
+    fn validate_and_insert_block(&self, block: Block) -> BlockValidationFutures {
+        let (block_task, virtual_state_task) = self.validate_and_insert_block_impl(BlockTask::Ordinary { block });
+        BlockValidationFutures { block_task: Box::pin(block_task), virtual_state_task: Box::pin(virtual_state_task) }
     }
 
-    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> (BlockValidationFuture, BlockValidationFuture) {
-        let result = self.validate_and_insert_block_impl(BlockTask::Trusted { block: tb.block });
-        (Box::pin(result.0), Box::pin(result.1))
+    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFutures {
+        let (block_task, virtual_state_task) = self.validate_and_insert_block_impl(BlockTask::Trusted { block: tb.block });
+        BlockValidationFutures { block_task: Box::pin(block_task), virtual_state_task: Box::pin(virtual_state_task) }
     }
 
     fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
