@@ -20,7 +20,7 @@ use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus::processes::window::{WindowManager, WindowType};
-use kaspa_consensus_core::api::ConsensusApi;
+use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
 use kaspa_consensus_core::blockstatus::BlockStatus;
@@ -44,9 +44,9 @@ use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
 use kaspa_core::core::Core;
-use kaspa_core::info;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
+use kaspa_core::{assert_match, info};
 use kaspa_database::create_temp_db;
 use kaspa_database::prelude::ConnBuilder;
 use kaspa_index_processor::service::IndexService;
@@ -457,14 +457,19 @@ async fn incest_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
-    consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await.unwrap();
+    let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
+    block_task.await.unwrap(); // Assert that block task completes as well
+    virtual_state_task.await.unwrap();
 
     let mut block = consensus.build_block_with_parents(2.into(), vec![config.genesis.hash]);
     block.header.parents_by_level[0] = vec![1.into(), config.genesis.hash];
-    match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
+    let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
+    match virtual_state_task.await {
         Err(RuleError::InvalidParentsRelation(a, b)) => {
             assert_eq!(a, config.genesis.hash);
             assert_eq!(b, 1.into());
+            // Assert that block task returns the same error as well
+            assert_match!(block_task.await, Err(RuleError::InvalidParentsRelation(_, _)));
         }
         res => {
             panic!("Unexpected result: {res:?}")
@@ -481,9 +486,12 @@ async fn missing_parents_test() {
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
     block.header.parents_by_level[0] = vec![0.into()];
-    match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
+    let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
+    match virtual_state_task.await {
         Err(RuleError::MissingParents(missing)) => {
             assert_eq!(missing, vec![0.into()]);
+            // Assert that block task returns the same error as well
+            assert_match!(block_task.await, Err(RuleError::MissingParents(_)));
         }
         res => {
             panic!("Unexpected result: {res:?}")
