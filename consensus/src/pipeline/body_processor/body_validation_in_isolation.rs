@@ -113,7 +113,7 @@ mod tests {
         params::MAINNET_PARAMS,
     };
     use kaspa_consensus_core::{
-        api::ConsensusApi,
+        api::{BlockValidationFutures, ConsensusApi},
         block::MutableBlock,
         header::Header,
         merkle::calc_hash_merkle_root,
@@ -443,18 +443,32 @@ mod tests {
         let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis.hash], vec![]);
         block.transactions[0].version += 1;
 
-        assert_match!(consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::BadMerkleRoot(_, _)));
+        let BlockValidationFutures { block_task, virtual_state_task } =
+            consensus.validate_and_insert_block(block.clone().to_immutable());
+
+        assert_match!(block_task.await, Err(RuleError::BadMerkleRoot(_, _)));
+        // Assert that both tasks return the same error
+        assert_match!(virtual_state_task.await, Err(RuleError::BadMerkleRoot(_, _)));
 
         // BadMerkleRoot shouldn't mark the block as known invalid
-        assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::BadMerkleRoot(_, _)));
+        assert_match!(
+            consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await,
+            Err(RuleError::BadMerkleRoot(_, _))
+        );
 
         let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis.hash], vec![]);
         block.header.parents_by_level[0][0] = 0.into();
 
-        assert_match!(consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::MissingParents(_)));
+        assert_match!(
+            consensus.validate_and_insert_block(block.clone().to_immutable()).virtual_state_task.await,
+            Err(RuleError::MissingParents(_))
+        );
 
         // MissingParents shouldn't mark the block as known invalid
-        assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::MissingParents(_)));
+        assert_match!(
+            consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await,
+            Err(RuleError::MissingParents(_))
+        );
 
         consensus.shutdown(wait_handles);
     }
