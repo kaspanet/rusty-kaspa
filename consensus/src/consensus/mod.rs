@@ -30,7 +30,7 @@ use crate::{
     },
     pipeline::{
         body_processor::BlockBodyProcessor,
-        deps_manager::{BlockProcessingMessage, BlockResultSender, BlockTask},
+        deps_manager::{BlockProcessingMessage, BlockResultSender, BlockTask, VirtualStateProcessingMessage},
         header_processor::HeaderProcessor,
         pruning_processor::processor::{PruningProcessingMessage, PruningProcessor},
         virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
@@ -40,7 +40,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    api::{BlockValidationFuture, ConsensusApi},
+    api::{BlockValidationFutures, ConsensusApi},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     block_count::BlockCount,
     blockhash::BlockHashExtensions,
@@ -57,7 +57,7 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet, ChainPath,
+    BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
@@ -159,8 +159,10 @@ impl Consensus {
             unbounded_crossbeam();
         let (body_sender, body_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
             unbounded_crossbeam();
-        let (virtual_sender, virtual_receiver): (CrossbeamSender<BlockProcessingMessage>, CrossbeamReceiver<BlockProcessingMessage>) =
-            unbounded_crossbeam();
+        let (virtual_sender, virtual_receiver): (
+            CrossbeamSender<VirtualStateProcessingMessage>,
+            CrossbeamReceiver<VirtualStateProcessingMessage>,
+        ) = unbounded_crossbeam();
         let (pruning_sender, pruning_receiver): (
             CrossbeamSender<PruningProcessingMessage>,
             CrossbeamReceiver<PruningProcessingMessage>,
@@ -293,11 +295,15 @@ impl Consensus {
         self.pruning_lock.blocking_read()
     }
 
-    fn validate_and_insert_block_impl(&self, task: BlockTask) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        let (tx, rx): (BlockResultSender, _) = oneshot::channel();
-        self.block_sender.send(BlockProcessingMessage::Process(task, tx)).unwrap();
+    fn validate_and_insert_block_impl(
+        &self,
+        task: BlockTask,
+    ) -> (impl Future<Output = BlockProcessResult<BlockStatus>>, impl Future<Output = BlockProcessResult<BlockStatus>>) {
+        let (btx, brx): (BlockResultSender, _) = oneshot::channel();
+        let (vtx, vrx): (BlockResultSender, _) = oneshot::channel();
+        self.block_sender.send(BlockProcessingMessage::Process(task, btx, vtx)).unwrap();
         self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
-        async { rx.await.unwrap() }
+        (async { brx.await.unwrap() }, async { vrx.await.unwrap() })
     }
 
     pub fn body_tips(&self) -> Arc<BlockHashSet> {
@@ -364,14 +370,14 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.build_block_template(miner_data, tx_selector, build_mode)
     }
 
-    fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
-        let result = self.validate_and_insert_block_impl(BlockTask::Ordinary { block });
-        Box::pin(result)
+    fn validate_and_insert_block(&self, block: Block) -> BlockValidationFutures {
+        let (block_task, virtual_state_task) = self.validate_and_insert_block_impl(BlockTask::Ordinary { block });
+        BlockValidationFutures { block_task: Box::pin(block_task), virtual_state_task: Box::pin(virtual_state_task) }
     }
 
-    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
-        let result = self.validate_and_insert_block_impl(BlockTask::Trusted { block: tb.block });
-        Box::pin(result)
+    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFutures {
+        let (block_task, virtual_state_task) = self.validate_and_insert_block_impl(BlockTask::Trusted { block: tb.block });
+        BlockValidationFutures { block_task: Box::pin(block_task), virtual_state_task: Box::pin(virtual_state_task) }
     }
 
     fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
@@ -410,13 +416,8 @@ impl ConsensusApi for Consensus {
 
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
         // TODO: consider saving the merge depth root as part of virtual state
-        // TODO: unwrap on pruning_point and virtual state reads when staging consensus is implemented
-        let Some(pruning_point) = self.pruning_point_store.read().pruning_point().unwrap_option() else {
-            return None;
-        };
-        let Some(virtual_state) = self.virtual_stores.read().state.get().unwrap_option() else {
-            return None;
-        };
+        let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
+        let virtual_state = self.virtual_stores.read().state.get().unwrap();
         let virtual_ghostdag_data = &virtual_state.ghostdag_data;
         let root = self.services.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
         if root.is_origin() {
@@ -424,6 +425,10 @@ impl ConsensusApi for Consensus {
         } else {
             Some(root)
         }
+    }
+
+    fn get_virtual_merge_depth_blue_work_threshold(&self) -> BlueWorkType {
+        self.get_virtual_merge_depth_root().map_or(BlueWorkType::ZERO, |root| self.ghostdag_primary_store.get_blue_work(root).unwrap())
     }
 
     fn get_sink(&self) -> Hash {

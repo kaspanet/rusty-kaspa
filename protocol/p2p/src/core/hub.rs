@@ -95,12 +95,24 @@ impl Hub {
         }
     }
 
-    /// Broadcast a message to all peers. Note that broadcast can also be called on a
-    /// specific router and will eventually lead to the same call (via the hub event loop)
+    /// Broadcast a message to all peers
     pub async fn broadcast(&self, msg: KaspadMessage) {
         let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
         for router in peers {
             let _ = router.enqueue(msg.clone()).await;
+        }
+    }
+
+    /// Broadcast a vector of messages to all peers
+    pub async fn broadcast_many(&self, msgs: Vec<KaspadMessage>) {
+        if msgs.is_empty() {
+            return;
+        }
+        let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
+        for router in peers {
+            for msg in msgs.iter().cloned() {
+                let _ = router.enqueue(msg).await;
+            }
         }
     }
 

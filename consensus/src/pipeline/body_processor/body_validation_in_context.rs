@@ -120,17 +120,20 @@ mod tests {
         }
 
         let valid_block = consensus.build_block_with_parents_and_transactions(3.into(), vec![config.genesis.hash], vec![]);
-        consensus.validate_and_insert_block(valid_block.to_immutable()).await.unwrap();
+        consensus.validate_and_insert_block(valid_block.to_immutable()).virtual_state_task.await.unwrap();
         {
             let mut block = consensus.build_block_with_parents_and_transactions(2.into(), vec![3.into()], vec![]);
             block.transactions[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
 
             assert_match!(
-                consensus.validate_and_insert_block(block.clone().to_immutable()).await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 50000000000);
+                consensus.validate_and_insert_block(block.clone().to_immutable()).virtual_state_task.await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 50000000000);
 
             // The second time we send an invalid block we expect it to be a known invalid.
-            assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::KnownInvalid));
+            assert_match!(
+                consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await,
+                Err(RuleError::KnownInvalid)
+            );
         }
 
         {
@@ -139,7 +142,7 @@ mod tests {
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
 
             assert_match!(
-                consensus.validate_and_insert_block(block.to_immutable()).await,
+                consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await,
                 Err(RuleError::BadCoinbasePayloadBlueScore(_, _))
             );
         }
@@ -149,17 +152,20 @@ mod tests {
             block.transactions[0].payload = vec![];
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
 
-            assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::BadCoinbasePayload(_)));
+            assert_match!(
+                consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await,
+                Err(RuleError::BadCoinbasePayload(_))
+            );
         }
 
         let valid_block_child = consensus.build_block_with_parents_and_transactions(6.into(), vec![3.into()], vec![]);
-        consensus.validate_and_insert_block(valid_block_child.clone().to_immutable()).await.unwrap();
+        consensus.validate_and_insert_block(valid_block_child.clone().to_immutable()).virtual_state_task.await.unwrap();
         {
             // The block DAA score is 2, so the subsidy should be calculated according to the deflationary stage.
             let mut block = consensus.build_block_with_parents_and_transactions(7.into(), vec![6.into()], vec![]);
             block.transactions[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-            assert_match!(consensus.validate_and_insert_block(block.to_immutable()).await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 44000000000);
+            assert_match!(consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 44000000000);
         }
 
         {
@@ -223,10 +229,10 @@ mod tests {
         );
 
         if should_pass {
-            consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
+            consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await.unwrap();
         } else {
             assert_match!(
-                consensus.validate_and_insert_block(block.to_immutable()).await,
+                consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await,
                 Err(RuleError::TxInContextFailed(_, e)) if matches!(e, TxRuleError::NotFinalized(_)));
         }
     }

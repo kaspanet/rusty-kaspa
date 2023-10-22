@@ -14,7 +14,7 @@ use crate::{
         },
     },
     pipeline::{
-        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId},
+        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId, VirtualStateProcessingMessage},
         ProcessingCounters,
     },
     processes::{coinbase::CoinbaseManager, mass::MassCalculator, transaction_validator::TransactionValidator},
@@ -41,7 +41,7 @@ use std::sync::{atomic::Ordering, Arc};
 pub struct BlockBodyProcessor {
     // Channels
     receiver: Receiver<BlockProcessingMessage>,
-    sender: Sender<BlockProcessingMessage>,
+    sender: Sender<VirtualStateProcessingMessage>,
 
     // Thread pool
     pub(super) thread_pool: Arc<ThreadPool>,
@@ -84,7 +84,7 @@ impl BlockBodyProcessor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: Receiver<BlockProcessingMessage>,
-        sender: Sender<BlockProcessingMessage>,
+        sender: Sender<VirtualStateProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
 
         db: Arc<DB>,
@@ -133,8 +133,8 @@ impl BlockBodyProcessor {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
                 BlockProcessingMessage::Exit => break,
-                BlockProcessingMessage::Process(task, result_transmitter) => {
-                    if let Some(task_id) = self.task_manager.register(task, result_transmitter) {
+                BlockProcessingMessage::Process(task, block_result_transmitter, virtual_result_transmitter) => {
+                    if let Some(task_id) = self.task_manager.register(task, block_result_transmitter, virtual_result_transmitter) {
                         let processor = self.clone();
                         self.thread_pool.spawn(move || {
                             processor.queue_block(task_id);
@@ -148,19 +148,20 @@ impl BlockBodyProcessor {
         self.task_manager.wait_for_idle();
 
         // Pass the exit signal on to the following processor
-        self.sender.send(BlockProcessingMessage::Exit).unwrap();
+        self.sender.send(VirtualStateProcessingMessage::Exit).unwrap();
     }
 
     fn queue_block(self: &Arc<BlockBodyProcessor>, task_id: TaskId) {
         if let Some(task) = self.task_manager.try_begin(task_id) {
             let res = self.process_body(task.block(), task.is_trusted());
 
-            let dependent_tasks = self.task_manager.end(task, |task, result_transmitter| {
+            let dependent_tasks = self.task_manager.end(task, |task, block_result_transmitter, virtual_state_result_transmitter| {
+                let _ = block_result_transmitter.send(res.clone());
                 if res.is_err() || !task.requires_virtual_processing() {
                     // We don't care if receivers were dropped
-                    let _ = result_transmitter.send(res.clone());
+                    let _ = virtual_state_result_transmitter.send(res.clone());
                 } else {
-                    self.sender.send(BlockProcessingMessage::Process(task, result_transmitter)).unwrap();
+                    self.sender.send(VirtualStateProcessingMessage::Process(task, virtual_state_result_transmitter)).unwrap();
                 }
             });
 

@@ -1,8 +1,10 @@
-use futures::future::join_all;
 use indexmap::{map::Entry::Occupied, IndexMap};
-use kaspa_consensus_core::block::Block;
+use kaspa_consensus_core::{
+    api::{BlockValidationFuture, BlockValidationFutures},
+    block::Block,
+};
 use kaspa_consensusmanager::ConsensusProxy;
-use kaspa_core::{debug, warn};
+use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_utils::option::OptionExtensions;
 use rand::Rng;
@@ -10,11 +12,27 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::process_queue::ProcessQueue;
 
+struct OrphanBlock {
+    /// The actual block
+    block: Block,
+
+    /// A set of child orphans loosely maintained such that any block in the
+    /// orphan pool which has this block as a direct parent will be in the set, however
+    /// items are never removed, so this set might contain evicted hashes as well
+    children: HashSet<Hash>,
+}
+
+impl OrphanBlock {
+    fn new(block: Block, children: HashSet<Hash>) -> Self {
+        Self { block, children }
+    }
+}
+
 pub struct OrphanBlocksPool {
     /// NOTES:
     /// 1. We use IndexMap for cheap random eviction
     /// 2. We avoid the custom block hasher since this pool is pre-validation storage
-    orphans: IndexMap<Hash, Block>,
+    orphans: IndexMap<Hash, OrphanBlock>,
     /// Max number of orphans to keep in the pool
     max_orphans: usize,
 }
@@ -26,6 +44,10 @@ impl OrphanBlocksPool {
 
     /// Adds the provided block to the orphan pool
     pub fn add_orphan(&mut self, orphan_block: Block) {
+        let orphan_hash = orphan_block.hash();
+        if self.orphans.contains_key(&orphan_hash) {
+            return;
+        }
         if self.orphans.len() == self.max_orphans {
             debug!("Orphan blocks pool size exceeded. Evicting a random orphan block.");
             // Evict a random orphan in order to keep pool size under the limit
@@ -33,7 +55,12 @@ impl OrphanBlocksPool {
                 debug!("Evicted {} from the orphan blocks pool", evicted);
             }
         }
-        self.orphans.insert(orphan_block.hash(), orphan_block);
+        for parent in orphan_block.header.direct_parents() {
+            if let Some(entry) = self.orphans.get_mut(parent) {
+                entry.children.insert(orphan_hash);
+            }
+        }
+        self.orphans.insert(orphan_block.hash(), OrphanBlock::new(orphan_block, self.iterate_child_orphans(orphan_hash).collect()));
     }
 
     /// Returns whether this block is in the orphan pool.
@@ -54,7 +81,7 @@ impl OrphanBlocksPool {
         let mut visited = HashSet::from([orphan]); // We avoid the custom block hasher here. See comment on `orphans` above.
         while let Some(current) = queue.pop_front() {
             if let Some(block) = self.orphans.get(&current) {
-                for parent in block.header.direct_parents().iter().copied() {
+                for parent in block.block.header.direct_parents().iter().copied() {
                     if visited.insert(parent) {
                         queue.push_back(parent);
                     }
@@ -70,16 +97,19 @@ impl OrphanBlocksPool {
         Some(roots)
     }
 
-    pub async fn unorphan_blocks(&mut self, consensus: &ConsensusProxy, root: Hash) -> Vec<Block> {
-        self.orphans.remove(&root); // Try removing the root, just in case it was previously an orphan
-
-        let mut process_queue = ProcessQueue::from(self.iterate_child_orphans(root).collect());
+    pub async fn unorphan_blocks(
+        &mut self,
+        consensus: &ConsensusProxy,
+        root: Hash,
+    ) -> (Vec<Block>, Vec<BlockValidationFuture>, Vec<BlockValidationFuture>) {
+        let root_entry = self.orphans.remove(&root); // Try removing the root just in case it was previously an orphan
+        let mut process_queue =
+            ProcessQueue::from(root_entry.map(|e| e.children).unwrap_or_else(|| self.iterate_child_orphans(root).collect()));
         let mut processing = HashMap::new();
         while let Some(orphan_hash) = process_queue.dequeue() {
-            // If the entry does not exist it means it was processed on a previous iteration
             if let Occupied(entry) = self.orphans.entry(orphan_hash) {
                 let mut processable = true;
-                for p in entry.get().header.direct_parents().iter().copied() {
+                for p in entry.get().block.header.direct_parents().iter().copied() {
                     if !processing.contains_key(&p) && consensus.async_get_block_status(p).await.is_none_or(|s| s.is_header_only()) {
                         processable = false;
                         break;
@@ -87,42 +117,33 @@ impl OrphanBlocksPool {
                 }
                 if processable {
                     let orphan_block = entry.remove();
-                    processing.insert(orphan_hash, (orphan_block.clone(), consensus.validate_and_insert_block(orphan_block)));
-                    process_queue.enqueue_chunk(self.iterate_child_orphans(orphan_hash));
+                    let BlockValidationFutures { block_task, virtual_state_task } =
+                        consensus.validate_and_insert_block(orphan_block.block.clone());
+                    processing.insert(orphan_hash, (orphan_block.block, block_task, virtual_state_task));
+                    process_queue.enqueue_chunk(orphan_block.children);
                 }
             }
         }
-        let mut unorphaned_blocks = Vec::with_capacity(processing.len());
-        let (blocks, jobs): (Vec<_>, Vec<_>) = processing.into_values().unzip();
-        let results = join_all(jobs).await;
-        for (block, result) in blocks.into_iter().zip(results) {
-            match result {
-                Ok(_) => unorphaned_blocks.push(block),
-                Err(e) => warn!("Validation failed for orphan block {}: {}", block.hash(), e),
-            }
-        }
-        unorphaned_blocks
+        itertools::multiunzip(processing.into_values())
     }
 
     fn iterate_child_orphans(&self, hash: Hash) -> impl Iterator<Item = Hash> + '_ {
-        // TODO: consider optimizing by holding a list of child dependencies for each orphan
-        self.orphans.iter().filter_map(
-            move |(&orphan_hash, orphan_block)| {
-                if orphan_block.header.direct_parents().contains(&hash) {
-                    Some(orphan_hash)
-                } else {
-                    None
-                }
-            },
-        )
+        self.orphans.iter().filter_map(move |(&orphan_hash, orphan_block)| {
+            if orphan_block.block.header.direct_parents().contains(&hash) {
+                Some(orphan_hash)
+            } else {
+                None
+            }
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::future::try_join_all;
     use kaspa_consensus_core::{
-        api::{BlockValidationFuture, ConsensusApi},
+        api::{BlockValidationFutures, ConsensusApi},
         blockstatus::BlockStatus,
         errors::block::BlockProcessResult,
     };
@@ -140,9 +161,9 @@ mod tests {
     }
 
     impl ConsensusApi for MockProcessor {
-        fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
+        fn validate_and_insert_block(&self, block: Block) -> BlockValidationFutures {
             self.processed.write().insert(block.hash());
-            Box::pin(block_process_mock())
+            BlockValidationFutures { block_task: Box::pin(block_process_mock()), virtual_state_task: Box::pin(block_process_mock()) }
         }
 
         fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
@@ -168,13 +189,12 @@ mod tests {
 
         assert_eq!(pool.get_orphan_roots(&consensus, d.hash()).await.unwrap(), roots);
 
-        consensus.validate_and_insert_block(a.clone()).await.unwrap();
-        consensus.validate_and_insert_block(b.clone()).await.unwrap();
+        consensus.validate_and_insert_block(a.clone()).virtual_state_task.await.unwrap();
+        consensus.validate_and_insert_block(b.clone()).virtual_state_task.await.unwrap();
 
-        assert_eq!(
-            pool.unorphan_blocks(&consensus, 8.into()).await.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(),
-            HashSet::from([10.into(), 11.into()])
-        );
+        let (blocks, _, virtual_state_tasks) = pool.unorphan_blocks(&consensus, 8.into()).await;
+        try_join_all(virtual_state_tasks).await.unwrap();
+        assert_eq!(blocks.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(), HashSet::from([10.into(), 11.into()]));
         assert!(pool.orphans.is_empty());
 
         drop((a, b, c, d));

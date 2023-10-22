@@ -19,10 +19,21 @@ use crate::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet, ChainPath,
+    BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
+
+/// A struct returned by consensus for block validation processing calls
+pub struct BlockValidationFutures {
+    /// A future triggered when block processing is completed (header and body processing)
+    pub block_task: BlockValidationFuture,
+
+    /// A future triggered when DAG state which included this block has been processed by the virtual processor
+    /// (exceptions are header-only blocks and trusted blocks which have the future completed before virtual
+    /// processing along with the [`block_task`])
+    pub virtual_state_task: BlockValidationFuture,
+}
 
 /// Abstracts the consensus external API
 #[allow(unused_variables)]
@@ -36,11 +47,11 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
+    fn validate_and_insert_block(&self, block: Block) -> BlockValidationFutures {
         unimplemented!()
     }
 
-    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
+    fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFutures {
         unimplemented!()
     }
 
@@ -83,6 +94,13 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
+        unimplemented!()
+    }
+
+    /// Returns the `BlueWork` threshold at which blocks with lower or equal blue work are considered
+    /// to be un-mergeable by current virtual state.
+    /// (Note: in some rare cases when the node is unsynced the function might return zero as the threshold)
+    fn get_virtual_merge_depth_blue_work_threshold(&self) -> BlueWorkType {
         unimplemented!()
     }
 

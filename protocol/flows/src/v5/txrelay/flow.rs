@@ -204,7 +204,7 @@ impl RelayTransactionsFlow {
                 Ok(x) => Some(x.id()),
                 Err(_) => None,
             }))
-            .await?;
+            .await;
 
         Ok(())
     }
