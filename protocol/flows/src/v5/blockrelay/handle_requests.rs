@@ -40,7 +40,7 @@ impl HandleRelayBlockRequests {
             let hashes: Vec<_> = msg.try_into()?;
 
             let consensus = self.ctx.consensus();
-            let session = consensus.session().await;
+            let session = consensus.unguarded_session().await;
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;

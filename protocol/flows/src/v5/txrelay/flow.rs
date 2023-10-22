@@ -89,7 +89,7 @@ impl RelayTransactionsFlow {
             }
 
             let consensus = self.ctx.consensus();
-            let session = consensus.session().await;
+            let session = consensus.unguarded_session().await;
 
             // Transaction relay is disabled if the node is out of sync and thus not mining
             if !session.async_is_nearly_synced().await {

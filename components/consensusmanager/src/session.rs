@@ -95,6 +95,13 @@ impl ConsensusInstance {
         let g = self.session_lock.read_owned().await;
         ConsensusSessionOwned::new(g, self.consensus.clone())
     }
+
+    // Returns unguarded consensus session. There's no guarantee that data won't be pruned between
+    // two sequential consensus calls. This doesn't hold the consensus's pruning lock, so it should
+    // be preferred upon [`session`] when data consistnecy is not important.
+    pub async fn unguarded_session(&self) -> ConsensusSessionOwned {
+        ConsensusSessionOwned::new_without_session_guard(self.consensus.clone()).await
+    }
 }
 
 pub struct ConsensusSessionBlocking<'a> {
@@ -120,13 +127,17 @@ impl Deref for ConsensusSessionBlocking<'_> {
 /// See method `spawn_blocking` within for context on the usefulness of this type
 #[derive(Clone)]
 pub struct ConsensusSessionOwned {
-    _session_guard: SessionOwnedReadGuard,
+    _session_guard: Option<SessionOwnedReadGuard>,
     consensus: DynConsensus,
 }
 
 impl ConsensusSessionOwned {
     pub fn new(session_guard: SessionOwnedReadGuard, consensus: DynConsensus) -> Self {
-        Self { _session_guard: session_guard, consensus }
+        Self { _session_guard: Some(session_guard), consensus }
+    }
+
+    pub async fn new_without_session_guard(consensus: DynConsensus) -> Self {
+        Self { _session_guard: None, consensus }
     }
 
     /// Uses [`tokio::task::spawn_blocking`] to run the provided consensus closure on a thread where blocking is acceptable.
