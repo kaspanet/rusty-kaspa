@@ -305,22 +305,24 @@ impl FlowContext {
         self.orphans_pool.read().await.get_orphan_roots(consensus, orphan).await
     }
 
-    pub async fn unorphan_blocks(&self, consensus: &ConsensusProxy, root: Hash) -> Vec<Block> {
-        let (blocks, jobs) = self.orphans_pool.write().await.unorphan_blocks(consensus, root).await;
+    pub async fn unorphan_blocks(&self, consensus: &ConsensusProxy, root: Hash) -> Vec<(Block, BlockValidationFuture)> {
+        let (blocks, block_tasks, virtual_state_tasks) = self.orphans_pool.write().await.unorphan_blocks(consensus, root).await;
         let mut unorphaned_blocks = Vec::with_capacity(blocks.len());
-        let results = join_all(jobs).await;
-        for (block, result) in blocks.into_iter().zip(results) {
+        let results = join_all(block_tasks).await;
+        for ((block, result), virtual_state_task) in blocks.into_iter().zip(results).zip(virtual_state_tasks) {
             match result {
-                Ok(_) => unorphaned_blocks.push(block),
+                Ok(_) => {
+                    unorphaned_blocks.push((block, virtual_state_task));
+                }
                 Err(e) => warn!("Validation failed for orphan block {}: {}", block.hash(), e),
             }
         }
         match unorphaned_blocks.len() {
             0 => {}
-            1 => info!("Unorphaned block {}", unorphaned_blocks[0].hash()),
+            1 => info!("Unorphaned block {}", unorphaned_blocks[0].0.hash()),
             n => match self.is_log_throttled() {
-                true => info!("Unorphaned {} blocks ...{}", n, unorphaned_blocks.last().unwrap().hash()),
-                false => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.hash()).reusable_format(", ")),
+                true => info!("Unorphaned {} blocks ...{}", n, unorphaned_blocks.last().unwrap().0.hash()),
+                false => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.0.hash()).reusable_format(", ")),
             },
         }
         unorphaned_blocks
@@ -370,24 +372,28 @@ impl FlowContext {
         let hash = block.hash();
         let mut blocks = self.unorphan_blocks(consensus, hash).await;
 
-        // TODO: broadcast unorphaned
-
-        // We only care about waiting for virtual to process the block before proceeding with post-processing
-        // actions such as updating the mempool. We know this will not err since `block_task` already completed w/o error
-        let _ = virtual_state_task.await;
+        // Broadcast unorphaned blocks
+        let msgs = blocks
+            .iter()
+            .map(|(b, _)| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()) }))
+            .collect();
+        self.hub.broadcast_many(msgs).await;
 
         // Process blocks in topological order
-        blocks.sort_by(|a, b| a.header.blue_work.partial_cmp(&b.header.blue_work).unwrap());
+        blocks.sort_by(|a, b| a.0.header.blue_work.partial_cmp(&b.0.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
-        for block in once(block).chain(blocks.into_iter()) {
+        for (block, virtual_state_task) in once((block, virtual_state_task)).chain(blocks.into_iter()) {
+            // We only care about waiting for virtual to process the block at this point, before proceeding with post-processing
+            // actions such as updating the mempool. We know this will not err since `block_task` already completed w/o error
+            let _ = virtual_state_task.await;
             if let Ok(txs) = self
                 .mining_manager()
                 .clone()
                 .handle_new_block_transactions(consensus, block.header.daa_score, block.transactions.clone())
                 .await
             {
-                transactions_to_broadcast.enqueue_chunk(txs.iter().map(|x| x.id()));
+                transactions_to_broadcast.enqueue_chunk(txs.into_iter().map(|x| x.id()));
             }
         }
 
@@ -395,6 +401,8 @@ impl FlowContext {
         if self.is_ibd_running() {
             return;
         }
+
+        self.broadcast_transactions(transactions_to_broadcast).await;
 
         if self.should_run_mempool_scanning_task().await {
             // Spawn a task executing the removal of expired low priority transactions and, if time has come too,
@@ -421,8 +429,6 @@ impl FlowContext {
                 debug!("<> Mempool scanning task is done");
             });
         }
-
-        self.broadcast_transactions(transactions_to_broadcast).await
     }
 
     /// Notifies that a new block template is available for miners.

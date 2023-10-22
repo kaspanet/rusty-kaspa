@@ -1,5 +1,8 @@
 use indexmap::{map::Entry::Occupied, IndexMap};
-use kaspa_consensus_core::{api::BlockValidationFuture, block::Block};
+use kaspa_consensus_core::{
+    api::{BlockValidationFuture, BlockValidationFutures},
+    block::Block,
+};
 use kaspa_consensusmanager::ConsensusProxy;
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
@@ -69,7 +72,11 @@ impl OrphanBlocksPool {
         Some(roots)
     }
 
-    pub async fn unorphan_blocks(&mut self, consensus: &ConsensusProxy, root: Hash) -> (Vec<Block>, Vec<BlockValidationFuture>) {
+    pub async fn unorphan_blocks(
+        &mut self,
+        consensus: &ConsensusProxy,
+        root: Hash,
+    ) -> (Vec<Block>, Vec<BlockValidationFuture>, Vec<BlockValidationFuture>) {
         self.orphans.remove(&root); // Try removing the root, just in case it was previously an orphan
 
         let mut process_queue = ProcessQueue::from(self.iterate_child_orphans(root).collect());
@@ -86,15 +93,14 @@ impl OrphanBlocksPool {
                 }
                 if processable {
                     let orphan_block = entry.remove();
-                    processing.insert(
-                        orphan_hash,
-                        (orphan_block.clone(), consensus.validate_and_insert_block(orphan_block).virtual_state_task),
-                    );
+                    let BlockValidationFutures { block_task, virtual_state_task } =
+                        consensus.validate_and_insert_block(orphan_block.clone());
+                    processing.insert(orphan_hash, (orphan_block, block_task, virtual_state_task));
                     process_queue.enqueue_chunk(self.iterate_child_orphans(orphan_hash));
                 }
             }
         }
-        processing.into_values().unzip()
+        itertools::multiunzip(processing.into_values())
     }
 
     fn iterate_child_orphans(&self, hash: Hash) -> impl Iterator<Item = Hash> + '_ {
@@ -165,8 +171,8 @@ mod tests {
         consensus.validate_and_insert_block(a.clone()).virtual_state_task.await.unwrap();
         consensus.validate_and_insert_block(b.clone()).virtual_state_task.await.unwrap();
 
-        let (blocks, jobs) = pool.unorphan_blocks(&consensus, 8.into()).await;
-        try_join_all(jobs).await.unwrap();
+        let (blocks, _, virtual_state_tasks) = pool.unorphan_blocks(&consensus, 8.into()).await;
+        try_join_all(virtual_state_tasks).await.unwrap();
         assert_eq!(blocks.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(), HashSet::from([10.into(), 11.into()]));
         assert!(pool.orphans.is_empty());
 
