@@ -18,7 +18,7 @@ use kaspa_consensus_core::{
 
 use kaspa_core::kaspad_env::version;
 
-use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
+use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
 
 #[derive(Debug, Clone)]
@@ -52,7 +52,7 @@ pub struct Args {
     pub archival: bool,
     pub sanity: bool,
     pub yes: bool,
-    pub externalip: Option<IpAddress>,
+    pub externalip: Option<ContextualNetAddress>,
     pub perf_metrics: bool,
     pub perf_metrics_interval_sec: u64,
     pub block_template_cache_lifetime: Option<u64>,
@@ -126,8 +126,9 @@ impl Args {
         config.enable_sanity_checks = true;
         config.user_agent_comments = self.user_agent_comments.clone();
         config.block_template_cache_lifetime = self.block_template_cache_lifetime;
-
         config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
+        config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));
+
         #[cfg(feature = "devnet-prealloc")]
         if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
             config.initial_utxo_set = Arc::new(self.generate_prealloc_utxos(num_prealloc_utxos));
@@ -305,8 +306,8 @@ pub fn cli() -> Command {
                 .value_name("externalip")
                 .require_equals(true)
                 .default_missing_value(None)
-                .value_parser(clap::value_parser!(IpAddress))
-                .help("Add an ip to the list of local addresses we claim to listen on to peers"),
+                .value_parser(clap::value_parser!(ContextualNetAddress))
+                .help("Add an socket address(ip:port) to the list of local addresses we claim to listen on to peers"),
         )
         .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
         .arg(
@@ -360,7 +361,7 @@ pub fn parse_args() -> Args {
         sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
         yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
         user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
-        externalip: m.get_one::<IpAddress>("externalip").cloned(),
+        externalip: m.get_one::<ContextualNetAddress>("externalip").cloned(),
         perf_metrics: m.get_one::<bool>("perf-metrics").cloned().unwrap_or(defaults.perf_metrics),
         perf_metrics_interval_sec: m
             .get_one::<u64>("perf-metrics-interval-sec")

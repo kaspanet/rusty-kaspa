@@ -3,7 +3,7 @@ pub mod constants;
 pub mod genesis;
 pub mod params;
 
-use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
+use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
 
 #[cfg(feature = "devnet-prealloc")]
 use crate::utxo::utxo_collection::UtxoCollection;
@@ -57,7 +57,7 @@ pub struct Config {
     // If undefined, sets it to 0.0.0.0
     pub p2p_listen_address: ContextualNetAddress,
 
-    pub externalip: Option<IpAddress>,
+    pub externalip: Option<NetAddress>,
 
     pub block_template_cache_lifetime: Option<u64>,
 
