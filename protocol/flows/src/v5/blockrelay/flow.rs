@@ -111,10 +111,11 @@ impl HandleRelayInvsFlow {
             }
 
             // We keep the request scope alive until consensus processes the block
-            let Some((block, _request_scope)) = self.request_block(inv.hash).await? else {
+            let Some((block, request_scope)) = self.request_block(inv.hash).await? else {
                 debug!("Relay block {} was already requested from another peer, continuing...", inv.hash);
                 continue;
             };
+            request_scope.report_obtained();
 
             if block.is_header_only() {
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));

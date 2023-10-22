@@ -34,8 +34,10 @@ use kaspa_p2p_lib::{
 use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::time::Instant;
 use std::{
-    collections::HashSet,
     iter::once,
     ops::Deref,
     sync::{
@@ -56,6 +58,9 @@ const PROTOCOL_VERSION: u32 = 5;
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
+
+/// The min time to wait before allowing another parallel request
+const REQUEST_SCOPE_WAIT_TIME: Duration = Duration::from_secs(1);
 
 #[derive(Debug, PartialEq)]
 pub enum BlockSource {
@@ -115,9 +120,9 @@ pub struct FlowContextInner {
     pub config: Arc<Config>,
     hub: Hub,
     orphans_pool: AsyncRwLock<OrphanBlocksPool>,
-    shared_block_requests: Arc<Mutex<HashSet<Hash>>>,
+    shared_block_requests: Arc<Mutex<HashMap<Hash, RequestScopeMetadata>>>,
     transactions_spread: AsyncRwLock<TransactionsSpread>,
-    shared_transaction_requests: Arc<Mutex<HashSet<TransactionId>>>,
+    shared_transaction_requests: Arc<Mutex<HashMap<TransactionId, RequestScopeMetadata>>>,
     is_ibd_running: Arc<AtomicBool>,
     ibd_peer_key: Arc<RwLock<Option<PeerKey>>>,
     pub address_manager: Arc<Mutex<AddressManager>>,
@@ -149,14 +154,27 @@ impl Drop for IbdRunningGuard {
     }
 }
 
+pub struct RequestScopeMetadata {
+    pub timestamp: Instant,
+    pub obtained: bool,
+}
+
 pub struct RequestScope<T: PartialEq + Eq + std::hash::Hash> {
-    set: Arc<Mutex<HashSet<T>>>,
+    set: Arc<Mutex<HashMap<T, RequestScopeMetadata>>>,
     pub req: T,
 }
 
 impl<T: PartialEq + Eq + std::hash::Hash> RequestScope<T> {
-    pub fn new(set: Arc<Mutex<HashSet<T>>>, req: T) -> Self {
+    pub fn new(set: Arc<Mutex<HashMap<T, RequestScopeMetadata>>>, req: T) -> Self {
         Self { set, req }
+    }
+
+    /// Scope holders should use this function to report that the request has
+    /// successfully been obtained from the peer and is now being processed
+    pub fn report_obtained(&self) {
+        if let Some(e) = self.set.lock().get_mut(&self.req) {
+            e.obtained = true;
+        }
     }
 }
 
@@ -195,9 +213,9 @@ impl FlowContext {
                 node_id: Uuid::new_v4().into(),
                 consensus_manager,
                 orphans_pool: AsyncRwLock::new(OrphanBlocksPool::new(max_orphans)),
-                shared_block_requests: Arc::new(Mutex::new(HashSet::new())),
+                shared_block_requests: Arc::new(Mutex::new(HashMap::new())),
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
-                shared_transaction_requests: Arc::new(Mutex::new(HashSet::new())),
+                shared_transaction_requests: Arc::new(Mutex::new(HashMap::new())),
                 is_ibd_running: Default::default(),
                 ibd_peer_key: Default::default(),
                 hub,
@@ -272,20 +290,34 @@ impl FlowContext {
         }
     }
 
-    pub fn try_adding_block_request(&self, req: Hash) -> Option<RequestScope<Hash>> {
-        if self.shared_block_requests.lock().insert(req) {
-            Some(RequestScope::new(self.shared_block_requests.clone(), req))
-        } else {
-            None
+    fn try_adding_request_impl(req: Hash, map: &Arc<Mutex<HashMap<Hash, RequestScopeMetadata>>>) -> Option<RequestScope<Hash>> {
+        match map.lock().entry(req) {
+            Entry::Occupied(mut e) => {
+                if e.get().obtained {
+                    None
+                } else {
+                    let now = Instant::now();
+                    if now > e.get().timestamp + REQUEST_SCOPE_WAIT_TIME {
+                        e.get_mut().timestamp = now;
+                        Some(RequestScope::new(map.clone(), req))
+                    } else {
+                        None
+                    }
+                }
+            }
+            Entry::Vacant(e) => {
+                e.insert(RequestScopeMetadata { timestamp: Instant::now(), obtained: false });
+                Some(RequestScope::new(map.clone(), req))
+            }
         }
     }
 
+    pub fn try_adding_block_request(&self, req: Hash) -> Option<RequestScope<Hash>> {
+        Self::try_adding_request_impl(req, &self.shared_block_requests)
+    }
+
     pub fn try_adding_transaction_request(&self, req: TransactionId) -> Option<RequestScope<TransactionId>> {
-        if self.shared_transaction_requests.lock().insert(req) {
-            Some(RequestScope::new(self.shared_transaction_requests.clone(), req))
-        } else {
-            None
-        }
+        Self::try_adding_request_impl(req, &self.shared_transaction_requests)
     }
 
     pub async fn add_orphan(&self, orphan_block: Block) {

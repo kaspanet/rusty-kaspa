@@ -500,6 +500,8 @@ impl MiningManager {
         block_transactions: &[Transaction],
     ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
         // TODO: should use tx acceptance data to verify that new block txs are actually accepted into virtual state.
+        // TODO: avoid returning a result from this function (and the underlying function). Any possible error is a
+        // problem of the internal implementation and unrelated to the caller
 
         // write lock on mempool
         let unorphaned_transactions = self.mempool.write().handle_new_block_transactions(block_daa_score, block_transactions)?;
