@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
 use kaspa_connectionmanager::ConnectionManager;
-use kaspa_consensus_core::api::BlockValidationFutures;
+use kaspa_consensus_core::api::{BlockValidationFuture, BlockValidationFutures};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::block::RuleError;
@@ -332,8 +332,7 @@ impl FlowContext {
             return Err(RuleError::NoTransactions)?;
         }
         let hash = block.hash();
-        let BlockValidationFutures { block_task, virtual_state_task } =
-            self.consensus().session().await.validate_and_insert_block(block.clone());
+        let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.clone());
         if let Err(err) = block_task.await {
             warn!("Validation failed for block {}: {}", hash, err);
             return Err(err)?;
@@ -341,12 +340,10 @@ impl FlowContext {
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
 
-        // Wait for full virtual-state processing
-        let _ = virtual_state_task.await;
-
+        self.on_new_block(consensus, block, virtual_state_task).await;
+        self.on_new_block_template().await;
         self.log_block_acceptance(hash, BlockSource::Submit);
-        self.on_new_block(consensus, block).await?;
-        self.on_new_block_template().await?;
+
         Ok(())
     }
 
@@ -369,27 +366,34 @@ impl FlowContext {
     /// and possibly rebroadcast manually added transactions when not in IBD.
     ///
     /// _GO-KASPAD: OnNewBlock + broadcastTransactionsAfterBlockAdded_
-    pub async fn on_new_block(&self, consensus: &ConsensusProxy, block: Block) -> Result<(), ProtocolError> {
+    pub async fn on_new_block(&self, consensus: &ConsensusProxy, block: Block, virtual_state_task: BlockValidationFuture) {
         let hash = block.hash();
         let mut blocks = self.unorphan_blocks(consensus, hash).await;
+
+        // TODO: broadcast unorphaned
+
+        // We only care about waiting for virtual to process the block before proceeding with post-processing
+        // actions such as updating the mempool. We know this will not err since `block_task` already completed w/o error
+        let _ = virtual_state_task.await;
+
         // Process blocks in topological order
         blocks.sort_by(|a, b| a.header.blue_work.partial_cmp(&b.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
         for block in once(block).chain(blocks.into_iter()) {
-            transactions_to_broadcast.enqueue_chunk(
-                self.mining_manager()
-                    .clone()
-                    .handle_new_block_transactions(consensus, block.header.daa_score, block.transactions.clone())
-                    .await?
-                    .iter()
-                    .map(|x| x.id()),
-            );
+            if let Ok(txs) = self
+                .mining_manager()
+                .clone()
+                .handle_new_block_transactions(consensus, block.header.daa_score, block.transactions.clone())
+                .await
+            {
+                transactions_to_broadcast.enqueue_chunk(txs.iter().map(|x| x.id()));
+            }
         }
 
         // Don't relay transactions when in IBD
         if self.is_ibd_running() {
-            return Ok(());
+            return;
         }
 
         if self.should_run_mempool_scanning_task().await {
@@ -422,13 +426,12 @@ impl FlowContext {
     }
 
     /// Notifies that a new block template is available for miners.
-    pub async fn on_new_block_template(&self) -> Result<(), ProtocolError> {
+    pub async fn on_new_block_template(&self) {
         // Clear current template cache
         self.mining_manager().clear_block_template();
         // Notifications from the flow context might be ignored if the inner channel is already closing
         // due to global shutdown, hence we ignore the possible error
         let _ = self.notification_root.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}));
-        Ok(())
     }
 
     /// Notifies that the UTXO set was reset due to pruning point change via IBD.
@@ -456,7 +459,8 @@ impl FlowContext {
     ) -> Result<(), ProtocolError> {
         let accepted_transactions =
             self.mining_manager().clone().validate_and_insert_transaction(consensus, transaction, Priority::High, orphan).await?;
-        self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await
+        self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await;
+        Ok(())
     }
 
     /// Returns true if the time has come for running the task cleaning mempool transactions.
@@ -482,10 +486,7 @@ impl FlowContext {
     ///
     /// The broadcast itself may happen only during a subsequent call to this function since it is done at most
     /// after a predefined interval or when the queue length is larger than the Inv message capacity.
-    pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(
-        &self,
-        transaction_ids: I,
-    ) -> Result<(), ProtocolError> {
+    pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(&self, transaction_ids: I) {
         self.transactions_spread.write().await.broadcast_transactions(transaction_ids).await
     }
 }

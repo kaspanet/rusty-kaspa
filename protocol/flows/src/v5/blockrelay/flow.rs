@@ -138,8 +138,6 @@ impl HandleRelayInvsFlow {
 
             let BlockValidationFutures { block_task, virtual_state_task } = session.validate_and_insert_block(block.clone());
 
-            // TODO: consider storing the future in a task queue and polling it (without awaiting) in order to continue
-            // queueing the following relay blocks. On the other hand we might have sufficient concurrency from all parallel relay flows
             match block_task.await {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
@@ -160,13 +158,14 @@ impl HandleRelayInvsFlow {
                     .await;
             }
 
-            // We only care about waiting for virtual to process the block before proceeding with post-processing
-            // actions such as updating the mempool. We know this will not err since `block_task` already completed w/o error
-            let _ = virtual_state_task.await;
-
-            self.ctx.log_block_acceptance(inv.hash, BlockSource::Relay);
-            self.ctx.on_new_block(&session, block).await?;
-            self.ctx.on_new_block_template().await?;
+            // We spawn post-processing as a separate task so that this loop
+            // can continue processing the following relay blocks
+            let ctx = self.ctx.clone();
+            tokio::spawn(async move {
+                ctx.on_new_block(&session, block, virtual_state_task).await;
+                ctx.on_new_block_template().await;
+                ctx.log_block_acceptance(inv.hash, BlockSource::Relay);
+            });
         }
     }
 
