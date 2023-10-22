@@ -12,11 +12,27 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::process_queue::ProcessQueue;
 
+struct OrphanBlock {
+    /// The actual block
+    block: Block,
+
+    /// A set of child orphans loosely maintained such that any block in the
+    /// orphan pool which has this block as a direct parent will be in the set, however
+    /// items are never removed, so this set might contain evicted hashes as well
+    children: HashSet<Hash>,
+}
+
+impl OrphanBlock {
+    fn new(block: Block, children: HashSet<Hash>) -> Self {
+        Self { block, children }
+    }
+}
+
 pub struct OrphanBlocksPool {
     /// NOTES:
     /// 1. We use IndexMap for cheap random eviction
     /// 2. We avoid the custom block hasher since this pool is pre-validation storage
-    orphans: IndexMap<Hash, Block>,
+    orphans: IndexMap<Hash, OrphanBlock>,
     /// Max number of orphans to keep in the pool
     max_orphans: usize,
 }
@@ -28,6 +44,10 @@ impl OrphanBlocksPool {
 
     /// Adds the provided block to the orphan pool
     pub fn add_orphan(&mut self, orphan_block: Block) {
+        let orphan_hash = orphan_block.hash();
+        if self.orphans.contains_key(&orphan_hash) {
+            return;
+        }
         if self.orphans.len() == self.max_orphans {
             debug!("Orphan blocks pool size exceeded. Evicting a random orphan block.");
             // Evict a random orphan in order to keep pool size under the limit
@@ -35,7 +55,12 @@ impl OrphanBlocksPool {
                 debug!("Evicted {} from the orphan blocks pool", evicted);
             }
         }
-        self.orphans.insert(orphan_block.hash(), orphan_block);
+        for parent in orphan_block.header.direct_parents() {
+            if let Some(entry) = self.orphans.get_mut(parent) {
+                entry.children.insert(orphan_hash);
+            }
+        }
+        self.orphans.insert(orphan_block.hash(), OrphanBlock::new(orphan_block, self.iterate_child_orphans(orphan_hash).collect()));
     }
 
     /// Returns whether this block is in the orphan pool.
@@ -56,7 +81,7 @@ impl OrphanBlocksPool {
         let mut visited = HashSet::from([orphan]); // We avoid the custom block hasher here. See comment on `orphans` above.
         while let Some(current) = queue.pop_front() {
             if let Some(block) = self.orphans.get(&current) {
-                for parent in block.header.direct_parents().iter().copied() {
+                for parent in block.block.header.direct_parents().iter().copied() {
                     if visited.insert(parent) {
                         queue.push_back(parent);
                     }
@@ -77,15 +102,14 @@ impl OrphanBlocksPool {
         consensus: &ConsensusProxy,
         root: Hash,
     ) -> (Vec<Block>, Vec<BlockValidationFuture>, Vec<BlockValidationFuture>) {
-        self.orphans.remove(&root); // Try removing the root, just in case it was previously an orphan
-
-        let mut process_queue = ProcessQueue::from(self.iterate_child_orphans(root).collect());
+        let root_entry = self.orphans.remove(&root); // Try removing the root just in case it was previously an orphan
+        let mut process_queue =
+            ProcessQueue::from(root_entry.map(|e| e.children).unwrap_or_else(|| self.iterate_child_orphans(root).collect()));
         let mut processing = HashMap::new();
         while let Some(orphan_hash) = process_queue.dequeue() {
-            // If the entry does not exist it means it was processed on a previous iteration
             if let Occupied(entry) = self.orphans.entry(orphan_hash) {
                 let mut processable = true;
-                for p in entry.get().header.direct_parents().iter().copied() {
+                for p in entry.get().block.header.direct_parents().iter().copied() {
                     if !processing.contains_key(&p) && consensus.async_get_block_status(p).await.is_none_or(|s| s.is_header_only()) {
                         processable = false;
                         break;
@@ -94,9 +118,9 @@ impl OrphanBlocksPool {
                 if processable {
                     let orphan_block = entry.remove();
                     let BlockValidationFutures { block_task, virtual_state_task } =
-                        consensus.validate_and_insert_block(orphan_block.clone());
-                    processing.insert(orphan_hash, (orphan_block, block_task, virtual_state_task));
-                    process_queue.enqueue_chunk(self.iterate_child_orphans(orphan_hash));
+                        consensus.validate_and_insert_block(orphan_block.block.clone());
+                    processing.insert(orphan_hash, (orphan_block.block, block_task, virtual_state_task));
+                    process_queue.enqueue_chunk(orphan_block.children);
                 }
             }
         }
@@ -104,16 +128,13 @@ impl OrphanBlocksPool {
     }
 
     fn iterate_child_orphans(&self, hash: Hash) -> impl Iterator<Item = Hash> + '_ {
-        // TODO: consider optimizing by holding a list of child dependencies for each orphan
-        self.orphans.iter().filter_map(
-            move |(&orphan_hash, orphan_block)| {
-                if orphan_block.header.direct_parents().contains(&hash) {
-                    Some(orphan_hash)
-                } else {
-                    None
-                }
-            },
-        )
+        self.orphans.iter().filter_map(move |(&orphan_hash, orphan_block)| {
+            if orphan_block.block.header.direct_parents().contains(&hash) {
+                Some(orphan_hash)
+            } else {
+                None
+            }
+        })
     }
 }
 
