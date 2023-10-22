@@ -32,7 +32,7 @@ impl HandleIbdBlockRequests {
 
             debug!("got request for {} IBD blocks", hashes.len());
             let consensus = self.ctx.consensus();
-            let session = consensus.session().await;
+            let session = consensus.unguarded_session();
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;

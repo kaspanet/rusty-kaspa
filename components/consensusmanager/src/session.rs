@@ -96,11 +96,11 @@ impl ConsensusInstance {
         ConsensusSessionOwned::new(g, self.consensus.clone())
     }
 
-    // Returns unguarded consensus session. There's no guarantee that data won't be pruned between
+    // Returns an unguarded consensus session. There's no guarantee that data won't be pruned between
     // two sequential consensus calls. This doesn't hold the consensus's pruning lock, so it should
     // be preferred upon [`session`] when data consistnecy is not important.
-    pub async fn unguarded_session(&self) -> ConsensusSessionOwned {
-        ConsensusSessionOwned::new_without_session_guard(self.consensus.clone()).await
+    pub fn unguarded_session(&self) -> ConsensusSessionOwned {
+        ConsensusSessionOwned::new_without_session_guard(self.consensus.clone())
     }
 }
 
@@ -136,7 +136,7 @@ impl ConsensusSessionOwned {
         Self { _session_guard: Some(session_guard), consensus }
     }
 
-    pub async fn new_without_session_guard(consensus: DynConsensus) -> Self {
+    pub fn new_without_session_guard(consensus: DynConsensus) -> Self {
         Self { _session_guard: None, consensus }
     }
 
