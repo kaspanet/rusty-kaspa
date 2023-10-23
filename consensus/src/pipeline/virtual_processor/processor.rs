@@ -82,7 +82,7 @@ use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rand::seq::SliceRandom;
 use rayon::{
-    prelude::{IntoParallelRefMutIterator, ParallelIterator},
+    prelude::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator},
     ThreadPool,
 };
 use rocksdb::WriteBatch;
@@ -787,6 +787,19 @@ impl VirtualStateProcessor {
         })
     }
 
+    fn validate_block_template_transactions_in_parallel<V: UtxoView + Sync>(
+        &self,
+        txs: &[Transaction],
+        virtual_state: &VirtualState,
+        utxo_view: &V,
+    ) -> Vec<TxResult<()>> {
+        self.thread_pool.install(|| {
+            txs.par_iter()
+                .map(|tx| self.validate_block_template_transaction(tx, virtual_state, &utxo_view))
+                .collect::<Vec<TxResult<()>>>()
+        })
+    }
+
     fn validate_block_template_transaction(
         &self,
         tx: &Transaction,
@@ -821,8 +834,9 @@ impl VirtualStateProcessor {
         let virtual_utxo_view = &virtual_read.utxo_set;
 
         let mut invalid_transactions = HashMap::new();
-        for tx in txs.iter() {
-            if let Err(e) = self.validate_block_template_transaction(tx, &virtual_state, virtual_utxo_view) {
+        let results = self.validate_block_template_transactions_in_parallel(&txs, &virtual_state, &virtual_utxo_view);
+        for (tx, res) in txs.iter().zip(results) {
+            if let Err(e) = res {
                 invalid_transactions.insert(tx.id(), e);
                 tx_selector.reject_selection(tx.id());
             }
@@ -836,8 +850,10 @@ impl VirtualStateProcessor {
         while has_rejections {
             has_rejections = false;
             let next_batch = tx_selector.select_transactions(); // Note that once next_batch is empty the loop will exit
-            for tx in next_batch {
-                if let Err(e) = self.validate_block_template_transaction(&tx, &virtual_state, virtual_utxo_view) {
+            let next_batch_results =
+                self.validate_block_template_transactions_in_parallel(&next_batch, &virtual_state, &virtual_utxo_view);
+            for (tx, res) in next_batch.into_iter().zip(next_batch_results) {
+                if let Err(e) = res {
                     invalid_transactions.insert(tx.id(), e);
                     tx_selector.reject_selection(tx.id());
                     has_rejections = true;
