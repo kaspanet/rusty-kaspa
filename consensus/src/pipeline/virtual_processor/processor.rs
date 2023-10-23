@@ -25,7 +25,7 @@ use crate::{
             pruning_utxoset::PruningUtxosetStores,
             reachability::DbReachabilityStore,
             relations::{DbRelationsStore, RelationsStoreReader},
-            selected_chain::{DbSelectedChainStore, SelectedChainStore, SelectedChainStoreReader},
+            selected_chain::{DbSelectedChainStore, SelectedChainStore},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
@@ -215,22 +215,6 @@ impl VirtualStateProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        // TEMP: upgrade from prev DB version where the chain was the headers selected chain
-        if let Some(virtual_state) = self.virtual_stores.read().state.get().unwrap_option() {
-            let sink = virtual_state.ghostdag_data.selected_parent;
-            let mut selected_chain_write = self.selected_chain_store.write();
-            if let Some((_, tip)) = selected_chain_write.get_tip().unwrap_option() {
-                // This means we are upgrading from the previous version
-                if sink != tip {
-                    let chain_path = self.dag_traversal_manager.calculate_chain_path(tip, sink);
-                    info!("Upgrading the DB from HSC storage to VSC storage: {:?}", chain_path);
-                    let mut batch = WriteBatch::default();
-                    selected_chain_write.apply_changes(&mut batch, &chain_path).unwrap();
-                    self.db.write(batch).unwrap();
-                }
-            }
-        }
-
         'outer: while let Ok(msg) = self.receiver.recv() {
             if msg.is_exit_message() {
                 break;
