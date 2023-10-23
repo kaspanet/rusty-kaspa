@@ -307,7 +307,7 @@ pub fn cli() -> Command {
                 .require_equals(true)
                 .default_missing_value(None)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help("Add an socket address(ip:port) to the list of local addresses we claim to listen on to peers"),
+                .help("Add a socket address(ip:port) to the list of local addresses we claim to listen on to peers"),
         )
         .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
         .arg(

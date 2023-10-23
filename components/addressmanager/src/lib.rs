@@ -2,12 +2,7 @@ mod port_mapping_extender;
 mod stores;
 extern crate self as address_manager;
 
-use std::{
-    collections::HashSet,
-    net::{IpAddr, SocketAddr},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration};
 
 use address_manager::port_mapping_extender::Extender;
 use igd_next::{self as igd, aio::tokio::Tokio, AddPortError, Gateway};
@@ -28,6 +23,8 @@ const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
 
 const UPNP_DEADLINE_SEC: u64 = 2 * 60;
 const UPNP_EXTEND_PERIOD: u64 = UPNP_DEADLINE_SEC / 2;
+
+const APP_NAME: &str = "rusty-kaspa";
 
 struct ExtendHelper {
     gateway: Gateway,
@@ -104,26 +101,20 @@ impl AddressManager {
                     info!("Non-publicly routable external ip from gateway using upnp {} not added to store", ip);
                     return None;
                 }
-                info!("Get external ip from gateway using upnp: {ip}");
+                info!("Got external ip from gateway using upnp: {ip}");
 
                 let default_port = self.config.default_p2p_port();
 
                 let normalized_p2p_listen_address = self.config.p2p_listen_address.normalize(default_port);
-                let local_addr = if normalized_p2p_listen_address.ip == IpAddress(IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0))) {
+                let local_addr = if normalized_p2p_listen_address.ip.is_unspecified() {
                     SocketAddr::new(local_ip_address::local_ip().unwrap(), normalized_p2p_listen_address.port)
                 } else {
                     normalized_p2p_listen_address.into()
                 };
 
-                match gateway.add_port(
-                    igd::PortMappingProtocol::TCP,
-                    default_port,
-                    local_addr,
-                    UPNP_DEADLINE_SEC as u32,
-                    "Kaspad-rusty",
-                ) {
+                match gateway.add_port(igd::PortMappingProtocol::TCP, default_port, local_addr, UPNP_DEADLINE_SEC as u32, APP_NAME) {
                     Ok(_) => {
-                        info!("Add port mapping to default external port: {ip}:{default_port}");
+                        info!("Added port mapping to default external port: {ip}:{default_port}");
                         Some((
                             NetAddress { ip, port: default_port },
                             Some(ExtendHelper { gateway, local_addr, external_port: default_port }),
@@ -131,9 +122,9 @@ impl AddressManager {
                     }
                     Err(AddPortError::PortInUse {}) => {
                         let port = gateway
-                            .add_any_port(igd::PortMappingProtocol::TCP, local_addr, UPNP_DEADLINE_SEC as u32, "Kaspad-rusty")
+                            .add_any_port(igd::PortMappingProtocol::TCP, local_addr, UPNP_DEADLINE_SEC as u32, APP_NAME)
                             .ok()?;
-                        info!("Add port mapping to random external port: {ip}:{port}");
+                        info!("Added port mapping to random external port: {ip}:{port}");
                         Some((NetAddress { ip, port }, Some(ExtendHelper { gateway, local_addr, external_port: port })))
                     }
                     Err(err) => {
