@@ -262,12 +262,30 @@ impl VirtualStateProcessor {
     }
 
     fn resolve_virtual(self: &Arc<Self>) {
-        let _prune_guard = self.pruning_lock.blocking_read();
         let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
         let virtual_read = self.virtual_stores.upgradable_read();
         let prev_state = virtual_read.state.get().unwrap();
         let finality_point = self.virtual_finality_point(&prev_state.ghostdag_data, pruning_point);
-        let tips = self.body_tips_store.read().get().unwrap().iter().copied().collect_vec();
+
+        // PRUNE SAFETY: in order to avoid locking the prune lock throughout virtual resolving we make sure
+        // to only process blocks in the future of the finality point (F) which are never pruned (since finality depth << pruning depth).
+        // This is justified since:
+        //      1. Tips which are not in the future of F definitely don't have F on their chain
+        //         hence cannot become the next sink (due to finality violation).
+        //      2. Such tips cannot be merged by virtual since they are violating the merge depth
+        //         bound (merge depth <= finality depth).
+        // (both claims are true by induction for any block in their past as well)
+        let prune_guard = self.pruning_lock.blocking_read();
+        let tips = self
+            .body_tips_store
+            .read()
+            .get()
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|&h| self.reachability_service.is_dag_ancestor_of(finality_point, h))
+            .collect_vec();
+        drop(prune_guard);
         let prev_sink = prev_state.ghostdag_data.selected_parent;
         let mut accumulated_diff = prev_state.utxo_diff.clone().to_reversed();
 
@@ -581,11 +599,16 @@ impl VirtualStateProcessor {
                 // `finality_point == pruning_point` indicates we are at IBD start hence no warning required
                 warn!("Finality Violation Detected. Block {} violates finality and is ignored from Virtual chain.", candidate);
             }
+            // PRUNE SAFETY: see comment within [`resolve_virtual`]
+            let prune_guard = self.pruning_lock.blocking_read();
             for parent in self.relations_service.get_parents(candidate).unwrap().iter().copied() {
-                if !self.reachability_service.is_dag_ancestor_of_any(parent, &mut heap.iter().map(|sb| sb.hash)) {
+                if self.reachability_service.is_dag_ancestor_of(finality_point, parent)
+                    && !self.reachability_service.is_dag_ancestor_of_any(parent, &mut heap.iter().map(|sb| sb.hash))
+                {
                     heap.push(SortableBlock { hash: parent, blue_work: self.ghostdag_primary_store.get_blue_work(parent).unwrap() });
                 }
             }
+            drop(prune_guard);
         }
     }
 
@@ -601,6 +624,13 @@ impl VirtualStateProcessor {
         pruning_point: Hash,
     ) -> (Vec<Hash>, GhostdagData) {
         // TODO: tests
+
+        // Mergeset increasing might traverse DAG areas which are below the finality point and which theoretically
+        // can borderline with pruned data, hence we acquire the prune lock to insure data consistency. Note that
+        // the final selected mergeset can never be pruned (this is the essence of the prunality proof), however
+        // we might touch such data prior to validating the bounded merge rule. All in all, this function is short
+        // enough so we avoid making further optimizations
+        let _prune_guard = self.pruning_lock.blocking_read();
         let max_block_parents = self.max_block_parents as usize;
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
@@ -876,7 +906,7 @@ impl VirtualStateProcessor {
     ) -> Result<BlockTemplate, RuleError> {
         // [`calc_block_parents`] can use deep blocks below the pruning point for this calculation, so we
         // need to hold the pruning lock.
-        let _pruning_guard = self.pruning_lock.blocking_read();
+        let _prune_guard = self.pruning_lock.blocking_read();
         let pruning_info = self.pruning_point_store.read().get().unwrap();
         let header_pruning_point =
             self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);
