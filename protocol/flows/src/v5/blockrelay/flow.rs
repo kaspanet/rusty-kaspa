@@ -83,7 +83,7 @@ impl HandleRelayInvsFlow {
         loop {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
-            let session = self.ctx.consensus().session().await;
+            let session = self.ctx.consensus().unguarded_session();
 
             match session.async_get_block_status(inv.hash).await {
                 None | Some(BlockStatus::StatusHeaderOnly) => {} // Continue processing this missing inv

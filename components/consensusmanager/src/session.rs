@@ -95,6 +95,13 @@ impl ConsensusInstance {
         let g = self.session_lock.read_owned().await;
         ConsensusSessionOwned::new(g, self.consensus.clone())
     }
+
+    /// Returns an unguarded consensus session. There's no guarantee that data will not be pruned between
+    /// two sequential consensus calls. This session doesn't hold the consensus pruning lock, so it should
+    /// be preferred upon [`session`] when data consistency is not important.
+    pub fn unguarded_session(&self) -> ConsensusSessionOwned {
+        ConsensusSessionOwned::new_without_session_guard(self.consensus.clone())
+    }
 }
 
 pub struct ConsensusSessionBlocking<'a> {
@@ -120,13 +127,17 @@ impl Deref for ConsensusSessionBlocking<'_> {
 /// See method `spawn_blocking` within for context on the usefulness of this type
 #[derive(Clone)]
 pub struct ConsensusSessionOwned {
-    _session_guard: SessionOwnedReadGuard,
+    _session_guard: Option<SessionOwnedReadGuard>,
     consensus: DynConsensus,
 }
 
 impl ConsensusSessionOwned {
     pub fn new(session_guard: SessionOwnedReadGuard, consensus: DynConsensus) -> Self {
-        Self { _session_guard: session_guard, consensus }
+        Self { _session_guard: Some(session_guard), consensus }
+    }
+
+    pub fn new_without_session_guard(consensus: DynConsensus) -> Self {
+        Self { _session_guard: None, consensus }
     }
 
     /// Uses [`tokio::task::spawn_blocking`] to run the provided consensus closure on a thread where blocking is acceptable.
@@ -221,10 +232,6 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_tips(&self) -> Vec<Hash> {
         self.clone().spawn_blocking(|c| c.get_tips()).await
-    }
-
-    pub async fn async_header_exists(&self, hash: Hash) -> bool {
-        self.clone().spawn_blocking(move |c| c.header_exists(hash)).await
     }
 
     pub async fn async_is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {

@@ -874,6 +874,9 @@ impl VirtualStateProcessor {
         miner_data: MinerData,
         mut txs: Vec<Transaction>,
     ) -> Result<BlockTemplate, RuleError> {
+        // [`calc_block_parents`] can use deep blocks below the pruning point for this calculation, so we
+        // need to hold the pruning lock.
+        let _pruning_guard = self.pruning_lock.blocking_read();
         let pruning_info = self.pruning_point_store.read().get().unwrap();
         let header_pruning_point =
             self.pruning_point_manager.expected_header_pruning_point(virtual_state.ghostdag_data.to_compact(), pruning_info);

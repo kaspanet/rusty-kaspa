@@ -39,8 +39,7 @@ impl HandleRelayBlockRequests {
             let msg = dequeue!(self.incoming_route, Payload::RequestRelayBlocks)?;
             let hashes: Vec<_> = msg.try_into()?;
 
-            let consensus = self.ctx.consensus();
-            let session = consensus.session().await;
+            let session = self.ctx.consensus().unguarded_session();
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;
@@ -51,7 +50,7 @@ impl HandleRelayBlockRequests {
     }
 
     async fn send_sink(&mut self) -> Result<(), ProtocolError> {
-        let sink = self.ctx.consensus().session().await.async_get_sink().await;
+        let sink = self.ctx.consensus().unguarded_session().async_get_sink().await;
         if sink == self.ctx.config.genesis.hash {
             return Ok(());
         }
