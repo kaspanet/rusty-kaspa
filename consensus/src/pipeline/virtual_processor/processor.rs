@@ -42,7 +42,7 @@ use crate::{
     processes::{
         coinbase::CoinbaseManager,
         ghostdag::ordering::SortableBlock,
-        transaction_validator::{errors::TxResult, TransactionValidator},
+        transaction_validator::{errors::TxResult, transaction_validator_populated::TxValidationFlags, TransactionValidator},
         window::WindowManager,
     },
 };
@@ -810,7 +810,7 @@ impl VirtualStateProcessor {
         // which were previously validated through `validate_mempool_transaction_and_populate`, hence we only perform
         // in-context validations
         self.transaction_validator.utxo_free_tx_validation(tx, virtual_state.daa_score, virtual_state.past_median_time)?;
-        self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score)?;
+        self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score, TxValidationFlags::Full)?;
         Ok(())
     }
 
@@ -1033,6 +1033,7 @@ impl VirtualStateProcessor {
             &new_pruning_point_transactions,
             &virtual_read.utxo_set,
             new_pruning_point_header.daa_score,
+            TxValidationFlags::Full,
         );
         if validated_transactions.len() < new_pruning_point_transactions.len() - 1 {
             // Some non-coinbase transactions are invalid
