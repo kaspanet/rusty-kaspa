@@ -39,8 +39,7 @@ impl HandleRelayBlockRequests {
             let msg = dequeue!(self.incoming_route, Payload::RequestRelayBlocks)?;
             let hashes: Vec<_> = msg.try_into()?;
 
-            let consensus = self.ctx.consensus();
-            let session = consensus.unguarded_session();
+            let session = self.ctx.consensus().unguarded_session();
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;

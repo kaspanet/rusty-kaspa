@@ -96,9 +96,9 @@ impl ConsensusInstance {
         ConsensusSessionOwned::new(g, self.consensus.clone())
     }
 
-    // Returns an unguarded consensus session. There's no guarantee that data won't be pruned between
-    // two sequential consensus calls. This doesn't hold the consensus's pruning lock, so it should
-    // be preferred upon [`session`] when data consistnecy is not important.
+    /// Returns an unguarded consensus session. There's no guarantee that data will not be pruned between
+    /// two sequential consensus calls. This session doesn't hold the consensus pruning lock, so it should
+    /// be preferred upon [`session`] when data consistency is not important.
     pub fn unguarded_session(&self) -> ConsensusSessionOwned {
         ConsensusSessionOwned::new_without_session_guard(self.consensus.clone())
     }
@@ -232,10 +232,6 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_tips(&self) -> Vec<Hash> {
         self.clone().spawn_blocking(|c| c.get_tips()).await
-    }
-
-    pub async fn async_header_exists(&self, hash: Hash) -> bool {
-        self.clone().spawn_blocking(move |c| c.header_exists(hash)).await
     }
 
     pub async fn async_is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {

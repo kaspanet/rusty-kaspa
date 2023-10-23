@@ -173,10 +173,6 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn header_exists(&self, hash: Hash) -> bool {
-        unimplemented!()
-    }
-
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
         unimplemented!()
     }

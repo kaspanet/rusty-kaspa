@@ -293,7 +293,7 @@ impl RpcApi for RpcCoreService {
 
     async fn get_block_call(&self, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
         // TODO: test
-        let session = self.consensus_manager.consensus().unguarded_session();
+        let session = self.consensus_manager.consensus().session().await;
         let block = session.async_get_block_even_if_header_only(request.hash).await?;
         Ok(GetBlockResponse {
             block: self
