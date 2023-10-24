@@ -177,9 +177,11 @@ impl MultiConsensusManagementStore {
 
     pub fn set_is_archival_node(&mut self, is_archival_node: bool) {
         let mut metadata = self.metadata.read().unwrap();
-        metadata.is_archival_node = is_archival_node;
-        let mut batch = WriteBatch::default();
-        self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
+        if metadata.is_archival_node != is_archival_node {
+            metadata.is_archival_node = is_archival_node;
+            let mut batch = WriteBatch::default();
+            self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
+        }
     }
 }
 
