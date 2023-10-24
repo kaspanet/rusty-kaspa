@@ -7,7 +7,7 @@ use std::{collections::HashSet, iter, net::SocketAddr, sync::Arc, time::Duration
 use address_manager::port_mapping_extender::Extender;
 use igd_next::{
     self as igd, aio::tokio::Tokio, AddAnyPortError, AddPortError, Gateway, GetExternalIpError, GetGenericPortMappingEntryError,
-    PortMappingEntry, SearchError,
+    SearchError,
 };
 use itertools::Itertools;
 use kaspa_consensus_core::config::Config;
