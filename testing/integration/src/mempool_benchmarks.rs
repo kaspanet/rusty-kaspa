@@ -190,7 +190,7 @@ async fn bench_bbt_latency() {
 
     let args = Args {
         simnet: true,
-        disable_upnp: true,
+        disable_upnp: true, // UPnP registration might take some time and is not needed for this test
         enable_unsynced_mining: true,
         num_prealloc_utxos: Some(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR),
         prealloc_address: Some(prealloc_address.to_string()),

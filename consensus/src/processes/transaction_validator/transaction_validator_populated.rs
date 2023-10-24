@@ -12,8 +12,8 @@ pub enum TxValidationFlags {
     /// Perform full validation including script verification
     Full,
 
-    /// Perform fee and sequence/maturity validations but skip script checks. This
-    /// is usually an optimization to be applied when it is known that scrips were already checked
+    /// Perform fee and sequence/maturity validations but skip script checks. This is usually
+    /// an optimization to be applied when it is known that scripts were already checked
     SkipScriptChecks,
 }
 
