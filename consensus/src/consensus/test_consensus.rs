@@ -282,4 +282,8 @@ impl ConsensusFactory for TestConsensusFactory {
     fn close(&self) {
         self.tc.notification_root().close();
     }
+
+    fn clean_non_active_consensus_entries(&self) {
+        unimplemented!()
+    }
 }

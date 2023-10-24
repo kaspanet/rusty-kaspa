@@ -6,7 +6,7 @@ use itertools::Itertools;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
-use kaspa_core::{debug, time::unix_now};
+use kaspa_core::{debug, info, time::unix_now};
 use kaspa_database::{
     prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB},
     registry::DatabaseStorePrefixes,
@@ -216,26 +216,6 @@ impl Factory {
         factory.clean_non_active_consensus_entries();
         factory
     }
-
-    pub fn clean_non_active_consensus_entries(&self) {
-        if self.config.is_archival {
-            return;
-        }
-
-        let mut write_guard = self.management_store.write();
-        let entries_to_delete = write_guard.iterate_non_active().collect_vec();
-        for entry_result in entries_to_delete.iter() {
-            let entry = entry_result.as_ref().unwrap();
-            let dir = self.db_root_dir.join(entry.directory_name.clone());
-            if dir.exists() {
-                fs::remove_dir_all(dir).unwrap();
-            }
-        }
-
-        for entry_result in entries_to_delete {
-            write_guard.delete_entry(entry_result.unwrap()).unwrap();
-        }
-    }
 }
 
 impl ConsensusFactory for Factory {
@@ -306,5 +286,35 @@ impl ConsensusFactory for Factory {
     fn close(&self) {
         debug!("Consensus factory: closing");
         self.notification_root.close();
+    }
+
+    fn clean_non_active_consensus_entries(&self) {
+        if self.config.is_archival {
+            return;
+        }
+
+        let mut write_guard = self.management_store.write();
+        let entries_to_delete = write_guard
+            .iterate_non_active()
+            .filter_map(|entry_result| {
+                let entry = entry_result.unwrap();
+                let dir = self.db_root_dir.join(entry.directory_name.clone());
+                if dir.exists() {
+                    match fs::remove_dir_all(dir) {
+                        Ok(_) => Some(entry),
+                        Err(e) => {
+                            warn!("Couldn't delete consensus entry {}: {}", entry.key, e);
+                            None
+                        }
+                    }
+                } else {
+                    Some(entry)
+                }
+            })
+            .collect_vec();
+
+        for entry in entries_to_delete {
+            write_guard.delete_entry(entry).unwrap();
+        }
     }
 }

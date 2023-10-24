@@ -37,6 +37,8 @@ pub trait ConsensusFactory: Sync + Send {
 
     /// Close the factory and cleanup any shared resources used by it
     fn close(&self);
+
+    fn clean_non_active_consensus_entries(&self);
 }
 
 /// Test-only mock factory
@@ -52,6 +54,10 @@ impl ConsensusFactory for MockFactory {
     }
 
     fn close(&self) {
+        unimplemented!()
+    }
+
+    fn clean_non_active_consensus_entries(&self) {
         unimplemented!()
     }
 }
@@ -146,6 +152,10 @@ impl ConsensusManager {
         debug!("[Consensus manager] all consensus threads exited");
         self.factory.close();
     }
+
+    pub fn clean_non_active_consensus_entries(&self) {
+        self.factory.clean_non_active_consensus_entries();
+    }
 }
 
 impl Service for ConsensusManager {
@@ -185,7 +195,7 @@ impl StagingConsensus {
         for handler in handlers {
             handler.handle_consensus_reset();
         }
-        // TODO: Delete non active consensus entries
+        self.manager.clean_non_active_consensus_entries();
     }
 
     pub fn cancel(self) {
