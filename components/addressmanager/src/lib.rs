@@ -5,16 +5,16 @@ extern crate self as address_manager;
 use std::{collections::HashSet, iter, net::SocketAddr, sync::Arc, time::Duration};
 
 use address_manager::port_mapping_extender::Extender;
-use igd_next::{self as igd, aio::tokio::Tokio, AddPortError, Gateway};
+use igd_next::{self as igd, aio::tokio::Tokio, AddAnyPortError, AddPortError, Gateway, GetExternalIpError, SearchError};
 use itertools::Itertools;
 use kaspa_consensus_core::config::Config;
-use kaspa_core::task::tick::TickService;
-use kaspa_core::{debug, info, time::unix_now, warn};
+use kaspa_core::{debug, info, task::tick::TickService, time::unix_now, warn};
 use kaspa_database::prelude::{StoreResultExtensions, DB};
 use kaspa_utils::networking::IpAddress;
 use local_ip_address::list_afinet_netifas;
 use parking_lot::Mutex;
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
+use thiserror::Error;
 
 pub use stores::NetAddress;
 
@@ -31,6 +31,18 @@ struct ExtendHelper {
     gateway: Gateway,
     local_addr: SocketAddr,
     external_port: u16,
+}
+
+#[derive(Error, Debug)]
+pub enum UpnpError {
+    #[error(transparent)]
+    AddPortError(#[from] AddPortError),
+    #[error(transparent)]
+    AddAnyPortError(#[from] AddAnyPortError),
+    #[error(transparent)]
+    SearchError(#[from] SearchError),
+    #[error(transparent)]
+    GetExternalIpError(#[from] GetExternalIpError),
 }
 
 pub struct AddressManager {
@@ -58,7 +70,14 @@ impl AddressManager {
         self.local_net_addresses = self.local_addresses().collect();
 
         let extender = if self.local_net_addresses.is_empty() && !self.config.disable_upnp {
-            let (net_address, ExtendHelper { gateway, local_addr, external_port }) = self.upnp()?;
+            let (net_address, ExtendHelper { gateway, local_addr, external_port }) = match self.upnp() {
+                Err(err) => {
+                    warn!("Error adding port mapping: {err}");
+                    return None;
+                }
+                Ok(None) => return None,
+                Ok(Some((net_address, extend_helper))) => (net_address, extend_helper),
+            };
             self.local_net_addresses.push(net_address);
 
             let gateway: igd_next::aio::Gateway<Tokio> = igd_next::aio::Gateway {
@@ -128,13 +147,13 @@ impl AddressManager {
         }
     }
 
-    fn upnp(&self) -> Option<(NetAddress, ExtendHelper)> {
+    fn upnp(&self) -> Result<Option<(NetAddress, ExtendHelper)>, UpnpError> {
         info!("Attempting to register upnp... (to disable run the node with --disable-upnp)");
-        let gateway = igd::search_gateway(Default::default()).ok()?;
-        let ip = IpAddress::new(gateway.get_external_ip().ok()?);
+        let gateway = igd::search_gateway(Default::default())?;
+        let ip = IpAddress::new(gateway.get_external_ip()?);
         if !ip.is_publicly_routable() {
             info!("Non-publicly routable external ip from gateway using upnp {} not added to store", ip);
-            return None;
+            return Ok(None);
         }
         info!("Got external ip from gateway using upnp: {ip}");
 
@@ -156,19 +175,19 @@ impl AddressManager {
         ) {
             Ok(_) => {
                 info!("Added port mapping to default external port: {ip}:{default_port}");
-                Some((NetAddress { ip, port: default_port }, ExtendHelper { gateway, local_addr, external_port: default_port }))
+                Ok(Some((NetAddress { ip, port: default_port }, ExtendHelper { gateway, local_addr, external_port: default_port })))
             }
             Err(AddPortError::PortInUse {}) => {
-                let port = gateway
-                    .add_any_port(igd::PortMappingProtocol::TCP, local_addr, UPNP_DEADLINE_SEC as u32, UPNP_REGISTRATION_NAME)
-                    .ok()?;
+                let port = gateway.add_any_port(
+                    igd::PortMappingProtocol::TCP,
+                    local_addr,
+                    UPNP_DEADLINE_SEC as u32,
+                    UPNP_REGISTRATION_NAME,
+                )?;
                 info!("Added port mapping to random external port: {ip}:{port}");
-                Some((NetAddress { ip, port }, ExtendHelper { gateway, local_addr, external_port: port }))
+                Ok(Some((NetAddress { ip, port }, ExtendHelper { gateway, local_addr, external_port: port })))
             }
-            Err(err) => {
-                warn!("error adding port: {err}");
-                None
-            }
+            Err(err) => Err(err.into()),
         }
     }
 
