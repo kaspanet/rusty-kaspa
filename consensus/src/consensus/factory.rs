@@ -298,6 +298,8 @@ impl ConsensusFactory for Factory {
     }
 
     fn clean_non_active_consensus_entries(&self) {
+        self.delete_staging_entry();
+
         if self.config.is_archival {
             return;
         }
@@ -339,9 +341,7 @@ impl ConsensusFactory for Factory {
                     warn!("Couldn't delete staging consensus entry {}: {}", entry.key, e);
                 }
             };
-        } else {
-            warn!("Couldn't delete staging consensus entry: entry was not found");
+            write_guard.cancel_staging_consensus().unwrap();
         }
-        self.management_store.write().cancel_staging_consensus().unwrap();
     }
 }

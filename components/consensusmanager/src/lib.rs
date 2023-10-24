@@ -210,6 +210,7 @@ impl StagingConsensus {
         for handle in self.handles {
             handle.join().unwrap();
         }
+        drop(self.staging);
         self.manager.delete_staging_entry();
     }
 }

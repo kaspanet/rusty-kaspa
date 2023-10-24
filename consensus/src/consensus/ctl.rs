@@ -39,8 +39,6 @@ impl ConsensusCtl for Ctl {
     fn make_active(&self) {
         // TODO: pass a value to make sure the correct consensus is committed
         self.management_store.write().commit_staging_consensus().unwrap();
-
-        // TODO: delete previous active
     }
 }
 
