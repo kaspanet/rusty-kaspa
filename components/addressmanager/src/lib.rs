@@ -58,7 +58,7 @@ impl AddressManager {
         self.local_net_addresses = self.local_addresses().collect();
 
         let extender = if self.local_net_addresses.is_empty() && !self.config.disable_upnp {
-            let Some((net_address, ExtendHelper { gateway, local_addr, external_port })) = self.upnp() else { return None };
+            let (net_address, ExtendHelper { gateway, local_addr, external_port }) = self.upnp()?;
             self.local_net_addresses.push(net_address);
 
             let gateway: igd_next::aio::Gateway<Tokio> = igd_next::aio::Gateway {
@@ -117,12 +117,12 @@ impl AddressManager {
                 return itertools::Either::Left(None.into_iter());
             };
             // TODO: Add Check IPv4 or IPv6 match from Go code
-            itertools::Either::Right(network_interfaces.into_iter().map(|(_, ip)| IpAddress::from(ip)).filter_map(|ip| {
-                ip.is_publicly_routable().then(|| {
+            itertools::Either::Right(
+                network_interfaces.into_iter().map(|(_, ip)| IpAddress::from(ip)).filter(|&ip| ip.is_publicly_routable()).map(|ip| {
                     info!("Publicly routable local address found: {}", ip);
                     NetAddress::new(ip, self.config.default_p2p_port())
-                })
-            }))
+                }),
+            )
         } else {
             itertools::Either::Left(None.into_iter())
         }
