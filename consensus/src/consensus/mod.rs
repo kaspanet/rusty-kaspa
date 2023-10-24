@@ -594,11 +594,8 @@ impl ConsensusApi for Consensus {
     fn get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         let _guard = self.pruning_lock.blocking_read();
         self.validate_block_exists(hash)?;
-        Ok(self.services.dag_traversal_manager.anticone(
-            hash,
-            self.virtual_stores.read().state.get().unwrap().parents.iter().copied(),
-            None,
-        )?)
+        let virtual_state = self.virtual_stores.read().state.get().unwrap();
+        Ok(self.services.dag_traversal_manager.anticone(hash, virtual_state.parents.iter().copied(), None)?)
     }
 
     fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {

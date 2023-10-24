@@ -24,7 +24,8 @@ const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
 const UPNP_DEADLINE_SEC: u64 = 2 * 60;
 const UPNP_EXTEND_PERIOD: u64 = UPNP_DEADLINE_SEC / 2;
 
-const APP_NAME: &str = "rusty-kaspa";
+/// The name used as description when registering the UPnP service
+pub(crate) const UPNP_REGISTRATION_NAME: &str = "rusty-kaspa";
 
 struct ExtendHelper {
     gateway: Gateway,
@@ -112,7 +113,13 @@ impl AddressManager {
                     normalized_p2p_listen_address.into()
                 };
 
-                match gateway.add_port(igd::PortMappingProtocol::TCP, default_port, local_addr, UPNP_DEADLINE_SEC as u32, APP_NAME) {
+                match gateway.add_port(
+                    igd::PortMappingProtocol::TCP,
+                    default_port,
+                    local_addr,
+                    UPNP_DEADLINE_SEC as u32,
+                    UPNP_REGISTRATION_NAME,
+                ) {
                     Ok(_) => {
                         info!("Added port mapping to default external port: {ip}:{default_port}");
                         Some((
@@ -122,7 +129,7 @@ impl AddressManager {
                     }
                     Err(AddPortError::PortInUse {}) => {
                         let port = gateway
-                            .add_any_port(igd::PortMappingProtocol::TCP, local_addr, UPNP_DEADLINE_SEC as u32, APP_NAME)
+                            .add_any_port(igd::PortMappingProtocol::TCP, local_addr, UPNP_DEADLINE_SEC as u32, UPNP_REGISTRATION_NAME)
                             .ok()?;
                         info!("Added port mapping to random external port: {ip}:{port}");
                         Some((NetAddress { ip, port }, Some(ExtendHelper { gateway, local_addr, external_port: port })))

@@ -7,15 +7,34 @@ use super::{
     TransactionValidator,
 };
 
+#[derive(Clone, Copy)]
+pub enum TxValidationFlags {
+    /// Perform full validation including script verification
+    Full,
+
+    /// Perform fee and sequence/maturity validations but skip script checks. This is usually
+    /// an optimization to be applied when it is known that scripts were already checked
+    SkipScriptChecks,
+}
+
 impl TransactionValidator {
-    pub fn validate_populated_transaction_and_get_fee(&self, tx: &impl VerifiableTransaction, pov_daa_score: u64) -> TxResult<u64> {
+    pub fn validate_populated_transaction_and_get_fee(
+        &self,
+        tx: &impl VerifiableTransaction,
+        pov_daa_score: u64,
+        flags: TxValidationFlags,
+    ) -> TxResult<u64> {
         self.check_transaction_coinbase_maturity(tx, pov_daa_score)?;
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         Self::check_sequence_lock(tx, pov_daa_score)?;
-        Self::check_sig_op_counts(tx)?;
-        self.check_scripts(tx)?;
-
+        match flags {
+            TxValidationFlags::Full => {
+                Self::check_sig_op_counts(tx)?;
+                self.check_scripts(tx)?;
+            }
+            TxValidationFlags::SkipScriptChecks => {}
+        }
         Ok(total_in - total_out)
     }
 

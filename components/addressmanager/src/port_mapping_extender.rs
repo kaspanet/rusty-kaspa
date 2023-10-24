@@ -9,6 +9,8 @@ use kaspa_core::{
 };
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
+use crate::UPNP_REGISTRATION_NAME;
+
 pub const SERVICE_NAME: &str = "port-mapping-extender";
 
 pub struct Extender {
@@ -43,7 +45,7 @@ impl Extender {
                     self.external_port,
                     self.local_addr,
                     self.deadline_sec as u32,
-                    "Kaspad-rusty",
+                    UPNP_REGISTRATION_NAME,
                 )
                 .await
             {
