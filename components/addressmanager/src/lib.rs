@@ -7,7 +7,7 @@ use std::{collections::HashSet, iter, net::SocketAddr, sync::Arc, time::Duration
 use address_manager::port_mapping_extender::Extender;
 use igd_next::{
     self as igd, aio::tokio::Tokio, AddAnyPortError, AddPortError, Gateway, GetExternalIpError, GetGenericPortMappingEntryError,
-    SearchError,
+    PortMappingEntry, SearchError,
 };
 use itertools::Itertools;
 use kaspa_consensus_core::config::Config;
@@ -183,7 +183,11 @@ impl AddressManager {
                     index += 1;
                     continue;
                 }
-                Err(_) => break false,
+                Err(GetGenericPortMappingEntryError::RequestError(err)) => {
+                    warn!("[UPnP] request existing port mapping err: {:?}", err);
+                    break false;
+                }
+                Err(GetGenericPortMappingEntryError::SpecifiedArrayIndexInvalid) => break false,
             }
         };
         if already_in_use {
