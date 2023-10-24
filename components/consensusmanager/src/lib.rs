@@ -21,9 +21,6 @@ pub trait ConsensusCtl: Sync + Send {
 
     /// Set as current active consensus
     fn make_active(&self);
-
-    /// Delete this consensus instance from memory and disk permanently
-    fn delete(&self);
 }
 
 pub type DynConsensusCtl = Arc<dyn ConsensusCtl>;
@@ -39,6 +36,8 @@ pub trait ConsensusFactory: Sync + Send {
     fn close(&self);
 
     fn clean_non_active_consensus_entries(&self);
+
+    fn delete_staging_entry(&self);
 }
 
 /// Test-only mock factory
@@ -58,6 +57,10 @@ impl ConsensusFactory for MockFactory {
     }
 
     fn clean_non_active_consensus_entries(&self) {
+        unimplemented!()
+    }
+
+    fn delete_staging_entry(&self) {
         unimplemented!()
     }
 }
@@ -156,6 +159,10 @@ impl ConsensusManager {
     pub fn clean_non_active_consensus_entries(&self) {
         self.factory.clean_non_active_consensus_entries();
     }
+
+    pub fn delete_staging_entry(&self) {
+        self.factory.delete_staging_entry();
+    }
 }
 
 impl Service for ConsensusManager {
@@ -203,7 +210,7 @@ impl StagingConsensus {
         for handle in self.handles {
             handle.join().unwrap();
         }
-        self.staging.ctl.delete();
+        self.manager.delete_staging_entry();
     }
 }
 

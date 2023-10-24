@@ -42,25 +42,6 @@ impl ConsensusCtl for Ctl {
 
         // TODO: delete previous active
     }
-
-    fn delete(&self) {
-        // TODO: see above
-        self.management_store.write().cancel_staging_consensus().unwrap();
-
-        // TODO: delete staging
-        // for _ in 0..16 {
-        //     if self.consensus_db_ref.strong_count() > 0 {
-        //         // Sometimes another thread is shuting-down and cleaning resources
-        //         std::thread::sleep(std::time::Duration::from_millis(500));
-        //     } else {
-        //         break;
-        //     }
-        // }
-        // assert_eq!(self.consensus_db_ref.strong_count(), 0, "DB has strong references and cannot be deleted");
-        // let options = rocksdb::Options::default();
-        // DB::destroy(&options, self.consensus_db_path.clone())
-        //     .expect("DB is expected to be deletable since there are no references to it");
-    }
 }
 
 /// Impl for test purposes
@@ -74,10 +55,6 @@ impl ConsensusCtl for Consensus {
     }
 
     fn make_active(&self) {
-        unimplemented!()
-    }
-
-    fn delete(&self) {
         unimplemented!()
     }
 }

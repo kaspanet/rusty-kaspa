@@ -6,7 +6,7 @@ use itertools::Itertools;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
-use kaspa_core::{debug, info, time::unix_now};
+use kaspa_core::{debug, time::unix_now, warn};
 use kaspa_database::{
     prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB},
     registry::DatabaseStorePrefixes,
@@ -92,6 +92,15 @@ impl MultiConsensusManagementStore {
                 self.metadata.write(DirectDbWriter::new(&self.db), &metadata)?;
                 Ok(ConsensusEntryType::New(ConsensusEntry::from_key(key)))
             }
+        }
+    }
+
+    // This function assumes metadata is already set
+    pub fn staging_consensus_entry(&mut self) -> Option<ConsensusEntry> {
+        let metadata = self.metadata.read().unwrap();
+        match metadata.staging_consensus_key {
+            Some(key) => Some(self.entries.read(key.into()).unwrap()),
+            None => None,
         }
     }
 
@@ -316,5 +325,23 @@ impl ConsensusFactory for Factory {
         for entry in entries_to_delete {
             write_guard.delete_entry(entry).unwrap();
         }
+    }
+
+    fn delete_staging_entry(&self) {
+        let mut write_guard = self.management_store.write();
+        if let Some(entry) = write_guard.staging_consensus_entry() {
+            let dir = self.db_root_dir.join(entry.directory_name.clone());
+            match fs::remove_dir_all(dir) {
+                Ok(_) => {
+                    write_guard.delete_entry(entry).unwrap();
+                }
+                Err(e) => {
+                    warn!("Couldn't delete staging consensus entry {}: {}", entry.key, e);
+                }
+            };
+        } else {
+            warn!("Couldn't delete staging consensus entry: entry was not found");
+        }
+        self.management_store.write().cancel_staging_consensus().unwrap();
     }
 }

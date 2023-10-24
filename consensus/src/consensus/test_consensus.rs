@@ -286,4 +286,8 @@ impl ConsensusFactory for TestConsensusFactory {
     fn clean_non_active_consensus_entries(&self) {
         unimplemented!()
     }
+
+    fn delete_staging_entry(&self) {
+        unimplemented!()
+    }
 }
