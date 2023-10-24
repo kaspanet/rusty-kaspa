@@ -27,7 +27,7 @@ async fn daemon_sanity_test() {
 async fn daemon_mining_test() {
     kaspa_core::log::try_init_logger("INFO");
 
-    let args = Args { simnet: true, unsafe_rpc: true, enable_unsynced_mining: true, ..Default::default() };
+    let args = Args { simnet: true, unsafe_rpc: true, enable_unsynced_mining: true, disable_upnp: true, ..Default::default() };
     let mut kaspad1 = Daemon::new_random_with_args(args.clone());
     let mut kaspad2 = Daemon::new_random_with_args(args);
     let rpc_client1 = kaspad1.start().await;

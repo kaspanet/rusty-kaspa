@@ -26,7 +26,7 @@ pub struct Daemon {
 
 impl Daemon {
     pub fn new_random() -> Daemon {
-        let args = Args { devnet: true, ..Default::default() };
+        let args = Args { devnet: true, disable_upnp: true, ..Default::default() };
         Self::new_random_with_args(args)
     }
 
