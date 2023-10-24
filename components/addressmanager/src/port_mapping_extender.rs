@@ -49,9 +49,9 @@ impl Extender {
                 )
                 .await
             {
-                warn!("extend external ip mapping err: {e:?}");
+                warn!("[UPnP] Extend external ip mapping err: {e:?}");
             } else {
-                debug!("extend external ip mapping");
+                debug!("[UPnP] Extend external ip mapping");
             }
         }
         // Let the system print final logs before exiting

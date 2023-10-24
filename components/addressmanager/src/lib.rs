@@ -72,7 +72,7 @@ impl AddressManager {
         let extender = if self.local_net_addresses.is_empty() && !self.config.disable_upnp {
             let (net_address, ExtendHelper { gateway, local_addr, external_port }) = match self.upnp() {
                 Err(err) => {
-                    warn!("Error adding port mapping: {err}");
+                    warn!("[UPnP] Error adding port mapping: {err}");
                     return None;
                 }
                 Ok(None) => return None,
@@ -148,14 +148,14 @@ impl AddressManager {
     }
 
     fn upnp(&self) -> Result<Option<(NetAddress, ExtendHelper)>, UpnpError> {
-        info!("Attempting to register upnp... (to disable run the node with --disable-upnp)");
+        info!("[UPnP] Attempting to register upnp... (to disable run the node with --disable-upnp)");
         let gateway = igd::search_gateway(Default::default())?;
         let ip = IpAddress::new(gateway.get_external_ip()?);
         if !ip.is_publicly_routable() {
-            info!("Non-publicly routable external ip from gateway using upnp {} not added to store", ip);
+            info!("[UPnP] Non-publicly routable external ip from gateway using upnp {} not added to store", ip);
             return Ok(None);
         }
-        info!("Got external ip from gateway using upnp: {ip}");
+        info!("[UPnP] Got external ip from gateway using upnp: {ip}");
 
         let default_port = self.config.default_p2p_port();
 
@@ -174,7 +174,7 @@ impl AddressManager {
             UPNP_REGISTRATION_NAME,
         ) {
             Ok(_) => {
-                info!("Added port mapping to default external port: {ip}:{default_port}");
+                info!("[UPnP] Added port mapping to default external port: {ip}:{default_port}");
                 Ok(Some((NetAddress { ip, port: default_port }, ExtendHelper { gateway, local_addr, external_port: default_port })))
             }
             Err(AddPortError::PortInUse {}) => {
@@ -184,7 +184,7 @@ impl AddressManager {
                     UPNP_DEADLINE_SEC as u32,
                     UPNP_REGISTRATION_NAME,
                 )?;
-                info!("Added port mapping to random external port: {ip}:{port}");
+                info!("[UPnP] Added port mapping to random external port: {ip}:{port}");
                 Ok(Some((NetAddress { ip, port }, ExtendHelper { gateway, local_addr, external_port: port })))
             }
             Err(err) => Err(err.into()),
