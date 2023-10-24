@@ -1,6 +1,6 @@
 use igd_next::{aio::tokio::Tokio, AddPortError};
 use kaspa_core::{
-    debug, error,
+    debug, error, info,
     task::{
         service::{AsyncService, AsyncServiceFuture},
         tick::{TickReason, TickService},
@@ -81,6 +81,11 @@ impl AsyncService for Extender {
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
+            if let Err(err) = self.gateway.remove_port(igd_next::PortMappingProtocol::TCP, self.external_port).await {
+                warn!("[UPnP] Remove port mapping err: {err:?}");
+            } else {
+                info!("[UPnP] Successfully removed port mapping, external port: {}", self.external_port);
+            }
             trace!("{} stopped", SERVICE_NAME);
             Ok(())
         })
