@@ -1,6 +1,6 @@
 target
 web-root
-/.idea/*
+**/.idea/
 /rust-toolchain
 /.vscode/
 **/db-*

@@ -18,7 +18,7 @@ use kaspa_consensus_core::{
 
 use kaspa_core::kaspad_env::version;
 
-use kaspa_utils::networking::{ContextualNetAddress, IpAddress};
+use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
 
 #[derive(Debug, Clone)]
@@ -52,7 +52,7 @@ pub struct Args {
     pub archival: bool,
     pub sanity: bool,
     pub yes: bool,
-    pub externalip: Option<IpAddress>,
+    pub externalip: Option<ContextualNetAddress>,
     pub perf_metrics: bool,
     pub perf_metrics_interval_sec: u64,
     pub block_template_cache_lifetime: Option<u64>,
@@ -63,6 +63,8 @@ pub struct Args {
     pub prealloc_address: Option<String>,
     #[cfg(feature = "devnet-prealloc")]
     pub prealloc_amount: u64,
+
+    pub disable_upnp: bool,
 }
 
 impl Default for Args {
@@ -107,6 +109,8 @@ impl Default for Args {
             prealloc_address: None,
             #[cfg(feature = "devnet-prealloc")]
             prealloc_amount: 1_000_000,
+
+            disable_upnp: false,
         }
     }
 }
@@ -114,6 +118,7 @@ impl Default for Args {
 impl Args {
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
+        config.disable_upnp = self.disable_upnp;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
         config.is_archival = self.archival;
@@ -121,6 +126,8 @@ impl Args {
         config.enable_sanity_checks = true;
         config.user_agent_comments = self.user_agent_comments.clone();
         config.block_template_cache_lifetime = self.block_template_cache_lifetime;
+        config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
+        config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));
 
         #[cfg(feature = "devnet-prealloc")]
         if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
@@ -299,17 +306,18 @@ pub fn cli() -> Command {
                 .value_name("externalip")
                 .require_equals(true)
                 .default_missing_value(None)
-                .value_parser(clap::value_parser!(IpAddress))
-                .help("Add an ip to the list of local addresses we claim to listen on to peers"),
+                .value_parser(clap::value_parser!(ContextualNetAddress))
+                .help("Add a socket address(ip:port) to the list of local addresses we claim to listen on to peers"),
         )
-    .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
-    .arg(
-        Arg::new("perf-metrics-interval-sec")
-            .long("perf-metrics-interval-sec")
-            .require_equals(true)
-            .value_parser(clap::value_parser!(u64))
-            .help("Interval in seconds for performance metrics collection."),
-    );
+        .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
+        .arg(
+            Arg::new("perf-metrics-interval-sec")
+                .long("perf-metrics-interval-sec")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u64))
+                .help("Interval in seconds for performance metrics collection."),
+        )
+        .arg(arg!(--"disable-upnp" "Disable upnp"));
 
     #[cfg(feature = "devnet-prealloc")]
     let cmd = cmd
@@ -353,7 +361,7 @@ pub fn parse_args() -> Args {
         sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
         yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
         user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
-        externalip: m.get_one::<IpAddress>("externalip").cloned(),
+        externalip: m.get_one::<ContextualNetAddress>("externalip").cloned(),
         perf_metrics: m.get_one::<bool>("perf-metrics").cloned().unwrap_or(defaults.perf_metrics),
         perf_metrics_interval_sec: m
             .get_one::<u64>("perf-metrics-interval-sec")
@@ -368,6 +376,7 @@ pub fn parse_args() -> Args {
         prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
         #[cfg(feature = "devnet-prealloc")]
         prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
+        disable_upnp: m.get_one::<bool>("disable-upnp").cloned().unwrap_or(defaults.disable_upnp),
     }
 }
 

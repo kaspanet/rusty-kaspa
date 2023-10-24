@@ -321,7 +321,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         None
     };
 
-    let address_manager = AddressManager::new(config.clone(), meta_db);
+    let (address_manager, port_mapping_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
 
     let mining_monitor = Arc::new(MiningMonitor::new(mining_counters.clone(), tx_script_cache_counters.clone(), tick_service.clone()));
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_spam_blocking_option(
@@ -374,6 +374,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     async_runtime.register(notify_service);
     if let Some(index_service) = index_service {
         async_runtime.register(index_service)
+    };
+    if let Some(port_mapping_extender_svc) = port_mapping_extender_svc {
+        async_runtime.register(Arc::new(port_mapping_extender_svc))
     };
     async_runtime.register(rpc_core_service.clone());
     async_runtime.register(grpc_service);
