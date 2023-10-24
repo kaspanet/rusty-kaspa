@@ -174,7 +174,7 @@ impl AddressManager {
             match gateway.get_generic_port_mapping_entry(index) {
                 Ok(entry) => {
                     if entry.enabled && entry.external_port == default_port {
-                        info!("[UPnP] Found existing mapping that uses the same external port. description: {}, external port: {}, internal port: {}, client: {}, lease duration: {}", entry.port_mapping_description, entry.external_port, entry.internal_port, entry.internal_client, entry.lease_duration);
+                        info!("[UPnP] Found existing mapping that uses the same external port. Description: {}, external port: {}, internal port: {}, client: {}, lease duration: {}", entry.port_mapping_description, entry.external_port, entry.internal_port, entry.internal_client, entry.lease_duration);
                         break true;
                     }
                     index += 1;
