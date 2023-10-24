@@ -166,6 +166,23 @@ impl AddressManager {
             normalized_p2p_listen_address.into()
         };
 
+        let mut index = 0;
+        let mut already_in_use = false;
+        while let Ok(entry) = gateway.get_generic_port_mapping_entry(index) {
+            if entry.enabled && entry.external_port == default_port {
+                info!("[UPnP] found existing mapping that uses the same external port. description: {}, external port: {}, internal port: {}, client: {}, lease duration: {}", entry.port_mapping_description, entry.external_port, entry.internal_port, entry.internal_client, entry.lease_duration);
+                already_in_use = true;
+                break;
+            }
+            index += 1;
+        }
+        if already_in_use {
+            let port =
+                gateway.add_any_port(igd::PortMappingProtocol::TCP, local_addr, UPNP_DEADLINE_SEC as u32, UPNP_REGISTRATION_NAME)?;
+            info!("[UPnP] Added port mapping to random external port: {ip}:{port}");
+            return Ok(Some((NetAddress { ip, port }, ExtendHelper { gateway, local_addr, external_port: port })));
+        }
+
         match gateway.add_port(
             igd::PortMappingProtocol::TCP,
             default_port,
