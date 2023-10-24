@@ -5,7 +5,10 @@ extern crate self as address_manager;
 use std::{collections::HashSet, iter, net::SocketAddr, sync::Arc, time::Duration};
 
 use address_manager::port_mapping_extender::Extender;
-use igd_next::{self as igd, aio::tokio::Tokio, AddAnyPortError, AddPortError, Gateway, GetExternalIpError, SearchError};
+use igd_next::{
+    self as igd, aio::tokio::Tokio, AddAnyPortError, AddPortError, Gateway, GetExternalIpError, GetGenericPortMappingEntryError,
+    SearchError,
+};
 use itertools::Itertools;
 use kaspa_consensus_core::config::Config;
 use kaspa_core::{debug, info, task::tick::TickService, time::unix_now, warn};
@@ -167,15 +170,22 @@ impl AddressManager {
         };
 
         let mut index = 0;
-        let mut already_in_use = false;
-        while let Ok(entry) = gateway.get_generic_port_mapping_entry(index) {
-            if entry.enabled && entry.external_port == default_port {
-                info!("[UPnP] found existing mapping that uses the same external port. description: {}, external port: {}, internal port: {}, client: {}, lease duration: {}", entry.port_mapping_description, entry.external_port, entry.internal_port, entry.internal_client, entry.lease_duration);
-                already_in_use = true;
-                break;
+        let already_in_use = loop {
+            match gateway.get_generic_port_mapping_entry(index) {
+                Ok(entry) => {
+                    if entry.enabled && entry.external_port == default_port {
+                        info!("[UPnP] found existing mapping that uses the same external port. description: {}, external port: {}, internal port: {}, client: {}, lease duration: {}", entry.port_mapping_description, entry.external_port, entry.internal_port, entry.internal_client, entry.lease_duration);
+                        break true;
+                    }
+                    index += 1;
+                }
+                Err(GetGenericPortMappingEntryError::ActionNotAuthorized) => {
+                    index += 1;
+                    continue;
+                }
+                Err(_) => break false,
             }
-            index += 1;
-        }
+        };
         if already_in_use {
             let port =
                 gateway.add_any_port(igd::PortMappingProtocol::TCP, local_addr, UPNP_DEADLINE_SEC as u32, UPNP_REGISTRATION_NAME)?;
