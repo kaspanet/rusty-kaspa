@@ -53,7 +53,7 @@ use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
-use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
+use kaspa_utils::{channel::Channel, networking::ContextualNetAddress, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use std::{
@@ -571,7 +571,8 @@ impl RpcApi for RpcCoreService {
             warn!("AddPeer RPC command called while node in safe RPC mode -- ignoring.");
             return Err(RpcError::UnavailableInSafeMode);
         }
-        let peer_address = request.peer_address.normalize(self.config.net.default_p2p_port());
+        let peer_address = tokio::task::spawn_blocking(move || ContextualNetAddress::resolve(&request.peer_address)).await.unwrap()?;
+        let peer_address = peer_address.normalize(self.config.net.default_p2p_port());
         if let Some(connection_manager) = self.flow_context.connection_manager() {
             connection_manager.add_connection_request(peer_address.into(), request.is_permanent).await;
         } else {

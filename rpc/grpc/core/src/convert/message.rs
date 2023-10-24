@@ -1,7 +1,5 @@
 use crate::protowire::{self, submit_block_response_message::RejectReason};
-use kaspa_rpc_core::{
-    RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
-};
+use kaspa_rpc_core::{RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult};
 use std::str::FromStr;
 
 macro_rules! from {
@@ -519,7 +517,7 @@ try_from!(item: &protowire::GetConnectedPeerInfoResponseMessage, RpcResult<kaspa
 });
 
 try_from!(item: &protowire::AddPeerRequestMessage, kaspa_rpc_core::AddPeerRequest, {
-    Self { peer_address: RpcContextualPeerAddress::from_str(&item.address)?, is_permanent: item.is_permanent }
+    Self { peer_address: item.address.clone().to_owned(), is_permanent: item.is_permanent }
 });
 try_from!(&protowire::AddPeerResponseMessage, RpcResult<kaspa_rpc_core::AddPeerResponse>);
 

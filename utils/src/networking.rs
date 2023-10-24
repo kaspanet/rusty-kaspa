@@ -3,9 +3,11 @@ use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
-    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
+    num::ParseIntError,
     ops::Deref,
     str::FromStr,
+    sync::Arc,
 };
 use uuid::Uuid;
 
@@ -281,12 +283,58 @@ impl ContextualNetAddress {
     pub fn loopback() -> Self {
         Self { ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)).into(), port: None }
     }
+
+    // resolve uses `to_socket_addrs` which is a blocking io operation, so when used in
+    // a tokio context it's best to be used inside a `tokio::task::spawn_blocking` block.
+    pub fn resolve(s: &str) -> Result<Self, ResolveError> {
+        match s.parse::<ContextualNetAddress>() {
+            Ok(addr) => Ok(addr),
+            Err(e) => {
+                if !hostname_validator::is_valid(s) {
+                    return Err(ResolveError::AddrParseError(e));
+                } else {
+                    let (host, port) = match s.split_once(":") {
+                        Some((host, port_str)) => match port_str.parse::<u16>() {
+                            Ok(port) => (host, Some(port)),
+                            Err(e) => {
+                                return Err(ResolveError::ParseIntError(e));
+                            }
+                        },
+                        None => (s, None),
+                    };
+                    const STUB_PORT: u16 = 80;
+                    match (host, STUB_PORT).to_socket_addrs() {
+                        Ok(mut addrs) => match addrs.next() {
+                            Some(addr) => Ok(Self::new(addr.ip().into(), port)),
+                            None => Err(ResolveError::LookupFoundNoAddresses(s.to_owned())),
+                        },
+                        Err(e) => Err(ResolveError::IoError(Arc::new(e))),
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl From<NetAddress> for ContextualNetAddress {
     fn from(value: NetAddress) -> Self {
         Self::new(value.ip, Some(value.port))
     }
+}
+
+#[derive(Debug, thiserror::Error, Clone)]
+pub enum ResolveError {
+    #[error("Lookup found no addresses associated with: {0}")]
+    LookupFoundNoAddresses(String),
+
+    #[error(transparent)]
+    AddrParseError(#[from] AddrParseError),
+
+    #[error(transparent)]
+    ParseIntError(#[from] ParseIntError),
+
+    #[error(transparent)]
+    IoError(#[from] Arc<std::io::Error>),
 }
 
 impl FromStr for ContextualNetAddress {
