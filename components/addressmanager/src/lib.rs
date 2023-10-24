@@ -9,7 +9,10 @@ use igd_next::{
     self as igd, aio::tokio::Tokio, AddAnyPortError, AddPortError, Gateway, GetExternalIpError, GetGenericPortMappingEntryError,
     SearchError,
 };
-use itertools::Itertools;
+use itertools::{
+    Either::{Left, Right},
+    Itertools,
+};
 use kaspa_consensus_core::config::Config;
 use kaspa_core::{debug, info, task::tick::TickService, time::unix_now, warn};
 use kaspa_database::prelude::{StoreResultExtensions, DB};
@@ -114,7 +117,7 @@ impl AddressManager {
             // An external IP was passed, we will try to bind that if it's valid
             Some(local_net_address) if local_net_address.ip.is_publicly_routable() => {
                 info!("External address is publicly routable {}", local_net_address);
-                return itertools::Either::Left(iter::once(local_net_address));
+                return Left(iter::once(local_net_address));
             }
             Some(local_net_address) => {
                 info!("External address is not publicly routable {}", local_net_address);
@@ -122,7 +125,7 @@ impl AddressManager {
             None => {}
         };
 
-        itertools::Either::Right(self.routable_addresses_from_net_interfaces())
+        Right(self.routable_addresses_from_net_interfaces())
     }
 
     fn routable_addresses_from_net_interfaces(&self) -> impl Iterator<Item = NetAddress> + '_ {
@@ -131,22 +134,22 @@ impl AddressManager {
         let listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
         if listen_address.ip.is_publicly_routable() {
             info!("Publicly routable local address found: {}", listen_address.ip);
-            itertools::Either::Left(Some(listen_address).into_iter())
+            Left(Left(iter::once(listen_address)))
         } else if listen_address.ip.is_unspecified() {
             let network_interfaces = list_afinet_netifas();
             let Ok(network_interfaces) = network_interfaces else {
                 warn!("Error getting network interfaces: {:?}", network_interfaces);
-                return itertools::Either::Left(None.into_iter());
+                return Left(Right(iter::empty()));
             };
             // TODO: Add Check IPv4 or IPv6 match from Go code
-            itertools::Either::Right(
-                network_interfaces.into_iter().map(|(_, ip)| IpAddress::from(ip)).filter(|&ip| ip.is_publicly_routable()).map(|ip| {
+            Right(network_interfaces.into_iter().map(|(_, ip)| IpAddress::from(ip)).filter(|&ip| ip.is_publicly_routable()).map(
+                |ip| {
                     info!("Publicly routable local address found: {}", ip);
                     NetAddress::new(ip, self.config.default_p2p_port())
-                }),
-            )
+                },
+            ))
         } else {
-            itertools::Either::Left(None.into_iter())
+            Left(Right(iter::empty()))
         }
     }
 
