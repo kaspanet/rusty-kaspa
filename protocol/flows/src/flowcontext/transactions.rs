@@ -3,7 +3,6 @@ use itertools::Itertools;
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
-    common::ProtocolError,
     make_message,
     pb::{kaspad_message::Payload, InvTransactionsMessage, KaspadMessage},
     Hub,
@@ -78,15 +77,12 @@ impl TransactionsSpread {
     /// capacity.
     ///
     /// _GO-KASPAD: EnqueueTransactionIDsForPropagation_
-    pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(
-        &mut self,
-        transaction_ids: I,
-    ) -> Result<(), ProtocolError> {
+    pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(&mut self, transaction_ids: I) {
         self.transaction_ids.enqueue_chunk(transaction_ids);
 
         let now = Instant::now();
         if now < self.last_broadcast_time + BROADCAST_INTERVAL && self.transaction_ids.len() < MAX_INV_PER_TX_INV_MSG {
-            return Ok(());
+            return;
         }
 
         while !self.transaction_ids.is_empty() {
@@ -97,7 +93,6 @@ impl TransactionsSpread {
         }
 
         self.last_broadcast_time = Instant::now();
-        Ok(())
     }
 
     async fn broadcast(&self, msg: KaspadMessage) {
