@@ -38,7 +38,7 @@ pub struct Error {
 pub fn acquire_guard(value: i32) -> Result<FDGuard, Error> {
     loop {
         let acquired = ACQUIRED_FD.load(Ordering::SeqCst); // todo ordering??
-        let limit = get_limit();
+        let limit = limit();
         if acquired + value > limit {
             return Err(Error { acquired, limit });
         }
@@ -50,7 +50,7 @@ pub fn acquire_guard(value: i32) -> Result<FDGuard, Error> {
     }
 }
 
-pub fn get_limit() -> i32 {
+pub fn limit() -> i32 {
     cfg_if::cfg_if! {
         if #[cfg(test)] {
             100
@@ -65,6 +65,10 @@ pub fn get_limit() -> i32 {
             panic!("unsupported OS")
         }
     }
+}
+
+pub fn remainder() -> i32 {
+    limit() - ACQUIRED_FD.load(Ordering::Relaxed)
 }
 
 #[cfg(test)]
