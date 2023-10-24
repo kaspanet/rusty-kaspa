@@ -185,6 +185,7 @@ impl StagingConsensus {
         for handler in handlers {
             handler.handle_consensus_reset();
         }
+        // TODO: Delete non active consensus entries
     }
 
     pub fn cancel(self) {

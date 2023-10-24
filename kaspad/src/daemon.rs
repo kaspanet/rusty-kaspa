@@ -14,8 +14,8 @@ use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::networking::ContextualNetAddress;
 
 use kaspa_addressmanager::AddressManager;
-use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
+use kaspa_consensus::{consensus::factory::MultiConsensusManagementStore, pipeline::monitor::ConsensusMonitor};
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
@@ -255,6 +255,10 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         // Reopen the DB
         meta_db =
             kaspa_database::prelude::ConnBuilder::default().with_files_limit(META_DB_FILE_LIMIT).with_db_path(meta_db_dir).build();
+    }
+
+    if !args.archival && MultiConsensusManagementStore::new(meta_db.clone()).is_archival_node().unwrap() {
+        get_user_approval_or_exit("--archival is set to false although the node was previously archival. Proceeding may delete archived data. Do you confirm? (y/n)", args.yes);
     }
 
     let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
