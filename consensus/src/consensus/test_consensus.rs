@@ -282,4 +282,12 @@ impl ConsensusFactory for TestConsensusFactory {
     fn close(&self) {
         self.tc.notification_root().close();
     }
+
+    fn delete_inactive_consensus_entries(&self) {
+        unimplemented!()
+    }
+
+    fn delete_staging_entry(&self) {
+        unimplemented!()
+    }
 }
