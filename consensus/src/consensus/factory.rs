@@ -122,8 +122,6 @@ impl MultiConsensusManagementStore {
     pub fn new_staging_consensus_entry(&mut self) -> StoreResult<ConsensusEntry> {
         let mut metadata = self.metadata.read()?;
 
-        // TODO: handle the case where `staging_consensus_key` is already some (perhaps from a previous interrupted run)
-
         metadata.max_key_used += 1;
         let new_key = metadata.max_key_used;
         metadata.staging_consensus_key = Some(new_key);
@@ -161,7 +159,7 @@ impl MultiConsensusManagementStore {
         })
     }
 
-    fn iterate_non_active(&self) -> impl Iterator<Item = Result<ConsensusEntry, Box<dyn Error>>> + '_ {
+    fn iterate_inactive_entries(&self) -> impl Iterator<Item = Result<ConsensusEntry, Box<dyn Error>>> + '_ {
         let current_consensus_key = self.metadata.read().unwrap().current_consensus_key;
         self.iterator().filter(move |entry_result| {
             if let Ok(entry) = entry_result {
@@ -222,7 +220,7 @@ impl Factory {
         management_store.write().set_is_archival_node(config.is_archival);
         let factory =
             Self { management_store, config, db_root_dir, db_parallelism, notification_root, counters, tx_script_cache_counters };
-        factory.clean_non_active_consensus_entries();
+        factory.delete_inactive_consensus_entries();
         factory
     }
 }
@@ -297,7 +295,8 @@ impl ConsensusFactory for Factory {
         self.notification_root.close();
     }
 
-    fn clean_non_active_consensus_entries(&self) {
+    fn delete_inactive_consensus_entries(&self) {
+        // Staging entry is deleted also by archival nodes since it represents non-final data
         self.delete_staging_entry();
 
         if self.config.is_archival {
@@ -306,7 +305,7 @@ impl ConsensusFactory for Factory {
 
         let mut write_guard = self.management_store.write();
         let entries_to_delete = write_guard
-            .iterate_non_active()
+            .iterate_inactive_entries()
             .filter_map(|entry_result| {
                 let entry = entry_result.unwrap();
                 let dir = self.db_root_dir.join(entry.directory_name.clone());
@@ -314,7 +313,7 @@ impl ConsensusFactory for Factory {
                     match fs::remove_dir_all(dir) {
                         Ok(_) => Some(entry),
                         Err(e) => {
-                            warn!("Couldn't delete consensus entry {}: {}", entry.key, e);
+                            warn!("Error deleting consensus entry {}: {}", entry.key, e);
                             None
                         }
                     }
@@ -338,7 +337,7 @@ impl ConsensusFactory for Factory {
                     write_guard.delete_entry(entry).unwrap();
                 }
                 Err(e) => {
-                    warn!("Couldn't delete staging consensus entry {}: {}", entry.key, e);
+                    warn!("Error deleting staging consensus entry {}: {}", entry.key, e);
                 }
             };
             write_guard.cancel_staging_consensus().unwrap();

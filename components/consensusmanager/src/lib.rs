@@ -35,8 +35,11 @@ pub trait ConsensusFactory: Sync + Send {
     /// Close the factory and cleanup any shared resources used by it
     fn close(&self);
 
-    fn clean_non_active_consensus_entries(&self);
+    /// If the node is not configured as archival -- delete inactive consensus entries and their databases  
+    fn delete_inactive_consensus_entries(&self);
 
+    /// Delete the staging consensus entry and its database (this is done even if the node is archival
+    /// since staging reflects non-final data)
     fn delete_staging_entry(&self);
 }
 
@@ -56,7 +59,7 @@ impl ConsensusFactory for MockFactory {
         unimplemented!()
     }
 
-    fn clean_non_active_consensus_entries(&self) {
+    fn delete_inactive_consensus_entries(&self) {
         unimplemented!()
     }
 
@@ -156,8 +159,8 @@ impl ConsensusManager {
         self.factory.close();
     }
 
-    pub fn clean_non_active_consensus_entries(&self) {
-        self.factory.clean_non_active_consensus_entries();
+    pub fn delete_inactive_consensus_entries(&self) {
+        self.factory.delete_inactive_consensus_entries();
     }
 
     pub fn delete_staging_entry(&self) {
@@ -202,7 +205,11 @@ impl StagingConsensus {
         for handler in handlers {
             handler.handle_consensus_reset();
         }
-        self.manager.clean_non_active_consensus_entries();
+        // Drop `prev` so that deletion below succeeds
+        drop(prev);
+        // Staging was committed and is now the active consensus so we can delete
+        // any pervious, now inactive, consensus entries
+        self.manager.delete_inactive_consensus_entries();
     }
 
     pub fn cancel(self) {
@@ -210,7 +217,9 @@ impl StagingConsensus {
         for handle in self.handles {
             handle.join().unwrap();
         }
+        // Drop staging (and DB refs therein) so that the delete operation below succeeds
         drop(self.staging);
+        // Delete the canceled staging consensus
         self.manager.delete_staging_entry();
     }
 }
