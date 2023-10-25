@@ -2018,6 +2018,7 @@ dependencies = [
  "serde",
  "statest",
  "statrs",
+ "thiserror",
  "tokio",
 ]
 
