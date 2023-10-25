@@ -842,8 +842,9 @@ impl Wallet {
 
         let account: Arc<dyn Account> = match account_kind {
             AccountKind::Bip32 => {
-                let xpub_keys = Arc::new(vec![]);
                 let account_index = 0;
+                let xpub_key = prv_key_data.create_xpub(payment_secret, account_kind, account_index).await?;
+                let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(kaspa_bip32::Prefix::KPUB))]);
                 let ecdsa = false;
                 // ---
 

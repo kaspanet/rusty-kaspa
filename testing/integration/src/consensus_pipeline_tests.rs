@@ -32,7 +32,10 @@ async fn test_concurrent_pipeline() {
     for (hash, parents) in blocks {
         // Submit to consensus twice to make sure duplicates are handled
         let b = consensus.build_block_with_parents(hash, parents).to_immutable();
-        let results = join!(consensus.validate_and_insert_block(b.clone()), consensus.validate_and_insert_block(b));
+        let results = join!(
+            consensus.validate_and_insert_block(b.clone()).virtual_state_task,
+            consensus.validate_and_insert_block(b).virtual_state_task
+        );
         results.0.unwrap();
         results.1.unwrap();
     }
@@ -102,7 +105,7 @@ async fn test_concurrent_pipeline_random() {
             let b = consensus.build_block_with_parents_and_transactions(hash, tips.clone(), vec![]).to_immutable();
 
             // Submit to consensus
-            let f = consensus.validate_and_insert_block(b);
+            let f = consensus.validate_and_insert_block(b).virtual_state_task;
             futures.push(f);
         }
         try_join_all(futures).await.unwrap();

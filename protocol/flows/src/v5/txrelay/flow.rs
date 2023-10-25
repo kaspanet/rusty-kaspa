@@ -88,8 +88,7 @@ impl RelayTransactionsFlow {
                 return Err(ProtocolError::Other("Number of invs in tx inv message is over the limit"));
             }
 
-            let consensus = self.ctx.consensus();
-            let session = consensus.session().await;
+            let session = self.ctx.consensus().unguarded_session();
 
             // Transaction relay is disabled if the node is out of sync and thus not mining
             if !session.async_is_nearly_synced().await {
@@ -204,7 +203,7 @@ impl RelayTransactionsFlow {
                 Ok(x) => Some(x.id()),
                 Err(_) => None,
             }))
-            .await?;
+            .await;
 
         Ok(())
     }
