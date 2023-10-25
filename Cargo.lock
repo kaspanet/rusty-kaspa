@@ -753,6 +753,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrome-sys"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "thiserror",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "workflow-core",
+ "workflow-core-macros",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5912,6 +5924,7 @@ dependencies = [
  "async-std",
  "base64 0.21.2",
  "cfg-if 1.0.0",
+ "chrome-sys",
  "faster-hex 0.8.0",
  "home",
  "js-sys",
