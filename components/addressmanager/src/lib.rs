@@ -172,6 +172,19 @@ impl AddressManager {
             normalized_p2p_listen_address.into()
         };
 
+        // This loop checks for existing port mappings in the UPnP-enabled gateway.
+        //
+        // The goal of this loop is to identify if the desired external port (`default_port`) is
+        // already mapped to any device inside the local network. This is crucial because, in
+        // certain scenarios, gateways might not throw the `PortInUse` error but rather might
+        // silently remap the external port when there's a conflict. By iterating through the
+        // current mappings, we can make an informed decision about whether to attempt using
+        // the default port or request a new random one.
+        //
+        // The loop goes through all existing port mappings one-by-one:
+        // - If a mapping is found that uses the desired external port, the loop breaks with `already_in_use` set to true.
+        // - If the index is not valid (i.e., we've iterated through all the mappings), the loop breaks with `already_in_use` set to false.
+        // - Any other errors during fetching of port mappings are handled accordingly, but the end result is to exit the loop with the `already_in_use` flag set appropriately.
         let mut index = 0;
         let already_in_use = loop {
             match gateway.get_generic_port_mapping_entry(index) {
