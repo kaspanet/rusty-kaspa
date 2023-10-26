@@ -203,33 +203,33 @@ pbkdf2 = { version = "0.12.1" }
 # pbkdf2 = { version = "0.11", default-features = false}
 
 # workflow dependencies
-# workflow-d3 = { version = "0.7.0" }
-# workflow-nw = { version = "0.7.0" }
-# workflow-log = { version = "0.7.0" }
-# workflow-core = { version = "0.7.0" }
-# workflow-wasm = { version = "0.7.0" }
-# workflow-dom = { version = "0.7.0" }
-# workflow-rpc = { version = "0.7.0" }
-# workflow-node = { version = "0.7.0" }
-# workflow-store = { version = "0.7.0" }
-# workflow-terminal = { version = "0.7.0" }
-# nw-sys = "0.1.5"
+workflow-d3 = { version = "0.7.0" }
+workflow-nw = { version = "0.7.0" }
+workflow-log = { version = "0.7.0" }
+workflow-core = { version = "0.7.0" }
+workflow-wasm = { version = "0.7.0" }
+workflow-dom = { version = "0.7.0" }
+workflow-rpc = { version = "0.7.0" }
+workflow-node = { version = "0.7.0" }
+workflow-store = { version = "0.7.0" }
+workflow-terminal = { version = "0.7.0" }
+nw-sys = "0.1.5"
 
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs
 # into a sibling folder from https://github.com/workflow-rs/workflow-rs
-workflow-d3 = { path = "../workflow-rs/d3" }
-workflow-nw = { path = "../workflow-rs/nw" }
-workflow-log = { path = "../workflow-rs/log" }
-workflow-core = { path = "../workflow-rs/core" }
-workflow-wasm = { path = "../workflow-rs/wasm" }
-workflow-dom = { path = "../workflow-rs/dom" }
-workflow-rpc = { path = "../workflow-rs/rpc" }
-workflow-node = { path = "../workflow-rs/node" }
-workflow-store = { path = "../workflow-rs/store" }
-workflow-terminal = { path = "../workflow-rs/terminal" }
+# workflow-d3 = { path = "../workflow-rs/d3" }
+# workflow-nw = { path = "../workflow-rs/nw" }
+# workflow-log = { path = "../workflow-rs/log" }
+# workflow-core = { path = "../workflow-rs/core" }
+# workflow-wasm = { path = "../workflow-rs/wasm" }
+# workflow-dom = { path = "../workflow-rs/dom" }
+# workflow-rpc = { path = "../workflow-rs/rpc" }
+# workflow-node = { path = "../workflow-rs/node" }
+# workflow-store = { path = "../workflow-rs/store" }
+# workflow-terminal = { path = "../workflow-rs/terminal" }
 #https://github.com/aspectron/nw-sys
-nw-sys = { path = "../nw-sys" }
+# nw-sys = { path = "../nw-sys" }
 
 [profile.release]
 lto = "thin"
