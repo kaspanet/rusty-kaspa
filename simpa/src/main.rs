@@ -187,8 +187,15 @@ fn main() {
         };
         let (dummy_notification_sender, _) = unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-        let consensus =
-            Arc::new(Consensus::new(db, config.clone(), Default::default(), notification_root, Default::default(), unix_now()));
+        let consensus = Arc::new(Consensus::new(
+            db,
+            config.clone(),
+            Default::default(),
+            notification_root,
+            Default::default(),
+            Default::default(),
+            unix_now(),
+        ));
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { config.genesis.timestamp + args.sim_time * 1000 } else { u64::MAX }; // milliseconds
@@ -216,8 +223,15 @@ fn main() {
     let (_lifetime2, db2) = create_temp_db!(ConnBuilder::default().with_parallelism(num_cpus::get()));
     let (dummy_notification_sender, _) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-    let consensus2 =
-        Arc::new(Consensus::new(db2, config.clone(), Default::default(), notification_root, Default::default(), unix_now()));
+    let consensus2 = Arc::new(Consensus::new(
+        db2,
+        config.clone(),
+        Default::default(),
+        notification_root,
+        Default::default(),
+        Default::default(),
+        unix_now(),
+    ));
     let handles2 = consensus2.run_processors();
     rt.block_on(validate(&consensus, &consensus2, &config, args.delay, args.bps));
     consensus2.shutdown(handles2);
@@ -333,7 +347,7 @@ fn submit_chunk(
             src_consensus.headers_store.get_header(hash).unwrap(),
             src_consensus.block_transactions_store.get(hash).unwrap(),
         );
-        let f = dst_consensus.validate_and_insert_block(block);
+        let f = dst_consensus.validate_and_insert_block(block).virtual_state_task;
         futures.push(f);
     }
     futures

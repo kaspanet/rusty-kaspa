@@ -74,6 +74,7 @@ pub struct Keypair {
     pub version: u16,
 
     pub public_key: String, //PublicKey,
+    // pub public_key: PublicKey,
     pub ecdsa: bool,
 }
 

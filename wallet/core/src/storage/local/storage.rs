@@ -86,6 +86,10 @@ impl Storage {
         }
 
         let file = self.filename();
+        // if file.exists() {
+        //     return Ok(());
+        // }
+
         if let Some(dir) = file.parent() {
             fs::create_dir_all_sync(dir)?;
         }

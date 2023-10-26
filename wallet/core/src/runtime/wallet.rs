@@ -261,7 +261,7 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    async fn load_impl(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
+    async fn load_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
         self.reset().await?;
 
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
@@ -276,8 +276,8 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    pub async fn load(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
-        if let Err(err) = self.load_impl(wallet_secret, name).await {
+    pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+        if let Err(err) = self.load_impl(secret, name).await {
             self.notify(Events::WalletError { message: err.to_string() }).await?;
             Err(err)
         } else {
@@ -745,8 +745,9 @@ impl Wallet {
 
         let account: Arc<dyn Account> = match account_kind {
             AccountKind::Bip32 => {
-                let xpub_keys = Arc::new(vec![]);
                 let account_index = 0;
+                let xpub_key = prv_key_data.create_xpub(payment_secret, account_kind, account_index).await?;
+                let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(kaspa_bip32::Prefix::KPUB))]);
                 let ecdsa = false;
                 // ---
 

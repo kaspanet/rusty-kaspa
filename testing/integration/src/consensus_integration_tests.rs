@@ -20,7 +20,7 @@ use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus::processes::window::{WindowManager, WindowType};
-use kaspa_consensus_core::api::ConsensusApi;
+use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
 use kaspa_consensus_core::blockstatus::BlockStatus;
@@ -44,14 +44,15 @@ use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
 use kaspa_core::core::Core;
-use kaspa_core::info;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
+use kaspa_core::{assert_match, info};
 use kaspa_database::create_temp_db;
 use kaspa_database::prelude::ConnBuilder;
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
+use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
@@ -189,6 +190,7 @@ async fn consensus_sanity_test() {
 
     consensus
         .validate_and_insert_block(consensus.build_block_with_parents(genesis_child, vec![MAINNET_PARAMS.genesis.hash]).to_immutable())
+        .virtual_state_task
         .await
         .unwrap();
 
@@ -257,7 +259,7 @@ async fn ghostdag_test() {
             let block_header = consensus.build_header_with_parents(block_id, strings_to_hashes(&block.parents));
 
             // Submit to consensus
-            consensus.validate_and_insert_block(Block::from_header(block_header)).await.unwrap();
+            consensus.validate_and_insert_block(Block::from_header(block_header)).virtual_state_task.await.unwrap();
         }
 
         // Clone with a new cache in order to verify correct writes to the DB itself
@@ -356,7 +358,7 @@ async fn block_window_test() {
         );
 
         // Submit to consensus
-        consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
+        consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await.unwrap();
 
         let window = consensus
             .window_manager()
@@ -392,7 +394,7 @@ async fn header_in_isolation_validation_test() {
         let mut block = block.clone();
         let block_version = BLOCK_VERSION - 1;
         block.header.version = block_version;
-        match consensus.validate_and_insert_block(block.to_immutable()).await {
+        match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::WrongBlockVersion(wrong_version)) => {
                 assert_eq!(wrong_version, block_version)
             }
@@ -409,7 +411,7 @@ async fn header_in_isolation_validation_test() {
         let now = unix_now();
         let block_ts = now + config.legacy_timestamp_deviation_tolerance * config.target_time_per_block + 2000;
         block.header.timestamp = block_ts;
-        match consensus.validate_and_insert_block(block.to_immutable()).await {
+        match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TimeTooFarIntoTheFuture(ts, _)) => {
                 assert_eq!(ts, block_ts)
             }
@@ -423,7 +425,7 @@ async fn header_in_isolation_validation_test() {
         let mut block = block.clone();
         block.header.hash = 3.into();
         block.header.parents_by_level[0] = vec![];
-        match consensus.validate_and_insert_block(block.to_immutable()).await {
+        match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::NoParents) => {}
             res => {
                 panic!("Unexpected result: {res:?}")
@@ -435,7 +437,7 @@ async fn header_in_isolation_validation_test() {
         let mut block = block.clone();
         block.header.hash = 4.into();
         block.header.parents_by_level[0] = (5..(config.max_block_parents + 6)).map(|x| (x as u64).into()).collect();
-        match consensus.validate_and_insert_block(block.to_immutable()).await {
+        match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TooManyParents(num_parents, limit)) => {
                 assert_eq!((config.max_block_parents + 1) as usize, num_parents);
                 assert_eq!(limit, config.max_block_parents as usize);
@@ -455,14 +457,19 @@ async fn incest_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
     let block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
-    consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
+    let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
+    block_task.await.unwrap(); // Assert that block task completes as well
+    virtual_state_task.await.unwrap();
 
     let mut block = consensus.build_block_with_parents(2.into(), vec![config.genesis.hash]);
     block.header.parents_by_level[0] = vec![1.into(), config.genesis.hash];
-    match consensus.validate_and_insert_block(block.to_immutable()).await {
+    let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
+    match virtual_state_task.await {
         Err(RuleError::InvalidParentsRelation(a, b)) => {
             assert_eq!(a, config.genesis.hash);
             assert_eq!(b, 1.into());
+            // Assert that block task returns the same error as well
+            assert_match!(block_task.await, Err(RuleError::InvalidParentsRelation(_, _)));
         }
         res => {
             panic!("Unexpected result: {res:?}")
@@ -479,9 +486,12 @@ async fn missing_parents_test() {
     let wait_handles = consensus.init();
     let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
     block.header.parents_by_level[0] = vec![0.into()];
-    match consensus.validate_and_insert_block(block.to_immutable()).await {
+    let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.to_immutable());
+    match virtual_state_task.await {
         Err(RuleError::MissingParents(missing)) => {
             assert_eq!(missing, vec![0.into()]);
+            // Assert that block task returns the same error as well
+            assert_match!(block_task.await, Err(RuleError::MissingParents(_)));
         }
         res => {
             panic!("Unexpected result: {res:?}")
@@ -501,14 +511,14 @@ async fn known_invalid_test() {
     let mut block = consensus.build_block_with_parents(1.into(), vec![config.genesis.hash]);
     block.header.timestamp -= 1;
 
-    match consensus.validate_and_insert_block(block.clone().to_immutable()).await {
+    match consensus.validate_and_insert_block(block.clone().to_immutable()).virtual_state_task.await {
         Err(RuleError::TimeTooOld(_, _)) => {}
         res => {
             panic!("Unexpected result: {res:?}")
         }
     }
 
-    match consensus.validate_and_insert_block(block.to_immutable()).await {
+    match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
         Err(RuleError::KnownInvalid) => {}
         res => {
             panic!("Unexpected result: {res:?}")
@@ -559,13 +569,13 @@ async fn median_time_test() {
             let parent = if i == 1 { test.config.genesis.hash } else { (i - 1).into() };
             let mut block = consensus.build_block_with_parents(i.into(), vec![parent]);
             block.header.timestamp = test.config.genesis.timestamp + i;
-            consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
+            consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await.unwrap();
         }
 
         let mut block = consensus.build_block_with_parents((num_blocks + 2).into(), vec![num_blocks.into()]);
         // We set the timestamp to be less than the median time and expect the block to be rejected
         block.header.timestamp = test.config.genesis.timestamp + num_blocks - timestamp_deviation_tolerance - 1;
-        match consensus.validate_and_insert_block(block.to_immutable()).await {
+        match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TimeTooOld(_, _)) => {}
             res => {
                 panic!("{}: Unexpected result: {:?}", test.name, res)
@@ -575,7 +585,7 @@ async fn median_time_test() {
         let mut block = consensus.build_block_with_parents((num_blocks + 3).into(), vec![num_blocks.into()]);
         // We set the timestamp to be the exact median time and expect the block to be rejected
         block.header.timestamp = test.config.genesis.timestamp + num_blocks - timestamp_deviation_tolerance;
-        match consensus.validate_and_insert_block(block.to_immutable()).await {
+        match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
             Err(RuleError::TimeTooOld(_, _)) => {}
             res => {
                 panic!("{}: Unexpected result: {:?}", test.name, res)
@@ -585,7 +595,7 @@ async fn median_time_test() {
         let mut block = consensus.build_block_with_parents((num_blocks + 4).into(), vec![(num_blocks).into()]);
         // We set the timestamp to be bigger than the median time and expect the block to be inserted successfully.
         block.header.timestamp = test.config.genesis.timestamp + timestamp_deviation_tolerance + 1;
-        consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
+        consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await.unwrap();
 
         consensus.shutdown(wait_handles);
     }
@@ -603,18 +613,18 @@ async fn mergeset_size_limit_test() {
     for i in 1..(num_blocks_per_chain + 1) {
         let block = consensus.build_block_with_parents(i.into(), vec![tip1_hash]);
         tip1_hash = block.header.hash;
-        consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
+        consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await.unwrap();
     }
 
     let mut tip2_hash = config.genesis.hash;
     for i in (num_blocks_per_chain + 2)..(2 * num_blocks_per_chain + 1) {
         let block = consensus.build_block_with_parents(i.into(), vec![tip2_hash]);
         tip2_hash = block.header.hash;
-        consensus.validate_and_insert_block(block.to_immutable()).await.unwrap();
+        consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await.unwrap();
     }
 
     let block = consensus.build_block_with_parents((3 * num_blocks_per_chain + 1).into(), vec![tip1_hash, tip2_hash]);
-    match consensus.validate_and_insert_block(block.to_immutable()).await {
+    match consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await {
         Err(RuleError::MergeSetTooBig(a, b)) => {
             assert_eq!(a, config.mergeset_size_limit + 1);
             assert_eq!(b, config.mergeset_size_limit);
@@ -951,7 +961,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
         info!("Processing {} trusted blocks...", trusted_blocks.len());
         for tb in trusted_blocks.into_iter() {
-            tc.validate_and_insert_trusted_block(tb).await.unwrap();
+            tc.validate_and_insert_trusted_block(tb).virtual_state_task.await.unwrap();
         }
         Some(pruning_point)
     } else {
@@ -984,7 +994,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
             external_block_store.insert(hash, block.transactions).unwrap();
             let block = Block::from_header_arc(block.header);
-            let status = tc.validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
+            let status =
+                tc.validate_and_insert_block(block).virtual_state_task.await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
             assert!(status.is_header_only());
         }
     }
@@ -1023,7 +1034,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
     } else {
         for hash in missing_bodies {
             let block = Block::from_arcs(tc.get_header(hash).unwrap(), external_block_store.get(hash).unwrap());
-            let status = tc.validate_and_insert_block(block).await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
+            let status =
+                tc.validate_and_insert_block(block).virtual_state_task.await.unwrap_or_else(|e| panic!("block {hash} failed: {e}"));
             assert!(status.is_utxo_valid_or_pending());
         }
     }
@@ -1054,7 +1066,7 @@ fn submit_header_chunk(
         let block = json_line_to_block(line);
         external_block_store.insert(block.hash(), block.transactions).unwrap();
         let block = Block::from_header_arc(block.header);
-        let f = tc.validate_and_insert_block(block);
+        let f = tc.validate_and_insert_block(block).virtual_state_task;
         futures.push(f);
     }
     futures
@@ -1068,7 +1080,7 @@ fn submit_body_chunk(
     let mut futures = Vec::new();
     for hash in chunk {
         let block = Block::from_arcs(tc.get_header(hash).unwrap(), external_block_store.get(hash).unwrap());
-        let f = tc.validate_and_insert_block(block);
+        let f = tc.validate_and_insert_block(block).virtual_state_task;
         futures.push(f);
     }
     futures
@@ -1298,7 +1310,7 @@ async fn difficulty_test() {
         });
         let mut header = consensus.build_header_with_parents(new_unique(), parents);
         header.timestamp = block_time;
-        consensus.validate_and_insert_block(Block::new(header.clone(), vec![])).await.unwrap();
+        consensus.validate_and_insert_block(Block::new(header.clone(), vec![])).virtual_state_task.await.unwrap();
         header
     }
 
@@ -1689,8 +1701,10 @@ async fn staging_consensus_test() {
     let (notification_send, _notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
     let counters = Arc::new(ProcessingCounters::default());
+    let tx_script_cache_counters = Arc::new(TxScriptCacheCounters::default());
 
-    let consensus_factory = Arc::new(ConsensusFactory::new(meta_db, &config, consensus_db_dir, 4, notification_root, counters));
+    let consensus_factory =
+        Arc::new(ConsensusFactory::new(meta_db, &config, consensus_db_dir, 4, notification_root, counters, tx_script_cache_counters));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
 
     let core = Arc::new(Core::new());

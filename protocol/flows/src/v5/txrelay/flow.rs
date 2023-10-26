@@ -88,8 +88,7 @@ impl RelayTransactionsFlow {
                 return Err(ProtocolError::Other("Number of invs in tx inv message is over the limit"));
             }
 
-            let consensus = self.ctx.consensus();
-            let session = consensus.session().await;
+            let session = self.ctx.consensus().unguarded_session();
 
             // Transaction relay is disabled if the node is out of sync and thus not mining
             if !session.async_is_nearly_synced().await {
@@ -107,12 +106,11 @@ impl RelayTransactionsFlow {
     ) -> Result<Vec<RequestScope<TransactionId>>, ProtocolError> {
         // Build a vector with the transaction ids unknown in the mempool and not already requested
         // by another peer
+        let transaction_ids = self.ctx.mining_manager().clone().unknown_transactions(transaction_ids).await;
         let mut requests = Vec::new();
         for transaction_id in transaction_ids {
-            if !self.is_known_transaction(transaction_id).await {
-                if let Some(req) = self.ctx.try_adding_transaction_request(transaction_id) {
-                    requests.push(req);
-                }
+            if let Some(req) = self.ctx.try_adding_transaction_request(transaction_id) {
+                requests.push(req);
             }
         }
 
@@ -129,12 +127,6 @@ impl RelayTransactionsFlow {
         }
 
         Ok(requests)
-    }
-
-    async fn is_known_transaction(&self, transaction_id: TransactionId) -> bool {
-        // Ask the transaction memory pool if the transaction is known
-        // to it in any form (main pool or orphan).
-        self.ctx.mining_manager().clone().has_transaction(transaction_id, true, true).await
     }
 
     /// Returns the next Transaction or TransactionNotFound message in msg_route,
@@ -168,7 +160,7 @@ impl RelayTransactionsFlow {
         consensus: ConsensusProxy,
         requests: Vec<RequestScope<TransactionId>>,
     ) -> Result<(), ProtocolError> {
-        // trace!("Receive {} transaction ids from {}", requests.len(), self.router.identity());
+        let mut transactions: Vec<Transaction> = Vec::with_capacity(requests.len());
         for request in requests {
             let response = self.read_response().await?;
             let transaction_id = response.transaction_id();
@@ -178,40 +170,41 @@ impl RelayTransactionsFlow {
                     request.req, transaction_id
                 )));
             }
-            let Response::Transaction(transaction) = response else {
-                continue;
-            };
-            match self
-                .ctx
-                .mining_manager()
-                .clone()
-                .validate_and_insert_transaction(&consensus, transaction, Priority::Low, Orphan::Allowed)
-                .await
-            {
-                Ok(accepted_transactions) => {
-                    // trace!("Broadcast {} accepted transaction ids", accepted_transactions.len());
-                    self.ctx.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await?;
+            if let Response::Transaction(transaction) = response {
+                transactions.push(transaction);
+            }
+        }
+        let insert_results = self
+            .ctx
+            .mining_manager()
+            .clone()
+            .validate_and_insert_transaction_batch(&consensus, transactions, Priority::Low, Orphan::Allowed)
+            .await;
+
+        for res in insert_results.iter() {
+            match res {
+                Ok(_) => {}
+                Err(MiningManagerError::MempoolError(RuleError::RejectInvalid(transaction_id))) => {
+                    // TODO: discuss a banning process
+                    return Err(ProtocolError::MisbehavingPeer(format!("rejected invalid transaction {}", transaction_id)));
                 }
-                Err(MiningManagerError::MempoolError(err)) => {
-                    match err {
-                        RuleError::RejectInvalid(_) => {
-                            // TODO: discuss a banning process
-                            return Err(ProtocolError::MisbehavingPeer(format!("rejected invalid transaction {}", transaction_id)));
-                        }
-                        RuleError::RejectSpamTransaction(_) => {
-                            self.spam_counter += 1;
-                            if self.spam_counter % 100 == 0 {
-                                kaspa_core::warn!("Peer {} has shared {} spam txs", self.router, self.spam_counter);
-                            }
-                        }
-                        _ => (),
+                Err(MiningManagerError::MempoolError(RuleError::RejectSpamTransaction(_))) => {
+                    self.spam_counter += 1;
+                    if self.spam_counter % 100 == 0 {
+                        kaspa_core::warn!("Peer {} has shared {} spam txs", self.router, self.spam_counter);
                     }
-                    continue;
                 }
                 Err(_) => {}
             }
         }
-        // trace!("Processed {} transactions from {}", requests.len(), self.router.identity());
+
+        self.ctx
+            .broadcast_transactions(insert_results.into_iter().filter_map(|res| match res {
+                Ok(x) => Some(x.id()),
+                Err(_) => None,
+            }))
+            .await;
+
         Ok(())
     }
 }

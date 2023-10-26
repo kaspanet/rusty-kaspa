@@ -1,16 +1,40 @@
 use crate::{consensus::test_consensus::TestConsensus, model::services::reachability::ReachabilityService};
 use kaspa_consensus_core::{
     api::ConsensusApi,
-    block::{Block, BlockTemplate, MutableBlock},
+    block::{Block, BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockhash,
     blockstatus::BlockStatus,
     coinbase::MinerData,
     config::{params::MAINNET_PARAMS, ConfigBuilder},
-    tx::{ScriptPublicKey, ScriptVec},
+    tx::{ScriptPublicKey, ScriptVec, Transaction},
     BlockHashSet,
 };
 use kaspa_hashes::Hash;
 use std::{collections::VecDeque, thread::JoinHandle};
+
+struct OnetimeTxSelector {
+    txs: Option<Vec<Transaction>>,
+}
+
+impl OnetimeTxSelector {
+    fn new(txs: Vec<Transaction>) -> Self {
+        Self { txs: Some(txs) }
+    }
+}
+
+impl TemplateTransactionSelector for OnetimeTxSelector {
+    fn select_transactions(&mut self) -> Vec<Transaction> {
+        self.txs.take().unwrap()
+    }
+
+    fn reject_selection(&mut self, _tx_id: kaspa_consensus_core::tx::TransactionId) {
+        unimplemented!()
+    }
+
+    fn is_successful(&self) -> bool {
+        true
+    }
+}
 
 struct TestContext {
     consensus: TestConsensus,
@@ -78,7 +102,14 @@ impl TestContext {
     }
 
     pub fn build_block_template(&self, nonce: u64, timestamp: u64) -> BlockTemplate {
-        let mut t = self.consensus.build_block_template(self.miner_data.clone(), Default::default()).unwrap();
+        let mut t = self
+            .consensus
+            .build_block_template(
+                self.miner_data.clone(),
+                Box::new(OnetimeTxSelector::new(Default::default())),
+                TemplateBuildMode::Standard,
+            )
+            .unwrap();
         t.block.header.timestamp = timestamp;
         t.block.header.nonce = nonce;
         t.block.header.finalize();
@@ -94,7 +125,7 @@ impl TestContext {
     }
 
     pub async fn validate_and_insert_block(&mut self, block: Block) -> &mut Self {
-        let status = self.consensus.validate_and_insert_block(block).await.unwrap();
+        let status = self.consensus.validate_and_insert_block(block).virtual_state_task.await.unwrap();
         assert!(status.has_block_body());
         self
     }

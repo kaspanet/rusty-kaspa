@@ -4,7 +4,7 @@ use crate::imports::*;
 use crate::result::Result;
 use std::{collections::HashMap, sync::MutexGuard};
 
-use kaspa_metrics::Metric;
+use kaspa_cli_lib::metrics::Metric;
 use web_sys::{Document, Element, MouseEvent};
 use workflow_d3::graph::GraphDuration;
 #[allow(unused_imports)]

@@ -49,8 +49,17 @@ impl TestConsensus {
     /// Creates a test consensus instance based on `config` with the provided `db` and `notification_sender`
     pub fn with_db(db: Arc<DB>, config: &Config, notification_sender: Sender<Notification>) -> Self {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
-        let counters = Arc::new(ProcessingCounters::default());
-        let consensus = Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters, 0));
+        let counters = Default::default();
+        let tx_script_cache_counters = Default::default();
+        let consensus = Arc::new(Consensus::new(
+            db,
+            Arc::new(config.clone()),
+            Default::default(),
+            notification_root,
+            counters,
+            tx_script_cache_counters,
+            0,
+        ));
         let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
 
         Self { params: config.params.clone(), consensus, block_builder, db_lifetime: Default::default() }
@@ -60,8 +69,17 @@ impl TestConsensus {
     pub fn with_notifier(config: &Config, notification_sender: Sender<Notification>) -> Self {
         let (db_lifetime, db) = create_temp_db!(ConnBuilder::default());
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
-        let counters = Arc::new(ProcessingCounters::default());
-        let consensus = Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters, 0));
+        let counters = Default::default();
+        let tx_script_cache_counters = Default::default();
+        let consensus = Arc::new(Consensus::new(
+            db,
+            Arc::new(config.clone()),
+            Default::default(),
+            notification_root,
+            counters,
+            tx_script_cache_counters,
+            0,
+        ));
         let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
 
         Self { consensus, block_builder, params: config.params.clone(), db_lifetime }
@@ -72,8 +90,17 @@ impl TestConsensus {
         let (db_lifetime, db) = create_temp_db!(ConnBuilder::default());
         let (dummy_notification_sender, _) = async_channel::unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-        let counters = Arc::new(ProcessingCounters::default());
-        let consensus = Arc::new(Consensus::new(db, Arc::new(config.clone()), Default::default(), notification_root, counters, 0));
+        let counters = Default::default();
+        let tx_script_cache_counters = Default::default();
+        let consensus = Arc::new(Consensus::new(
+            db,
+            Arc::new(config.clone()),
+            Default::default(),
+            notification_root,
+            counters,
+            tx_script_cache_counters,
+            0,
+        ));
         let block_builder = TestBlockBuilder::new(consensus.virtual_processor.clone());
 
         Self { consensus, block_builder, params: config.params.clone(), db_lifetime }
@@ -107,7 +134,7 @@ impl TestConsensus {
     }
 
     pub fn add_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.validate_and_insert_block(self.build_block_with_parents(hash, parents).to_immutable())
+        self.validate_and_insert_block(self.build_block_with_parents(hash, parents).to_immutable()).virtual_state_task
     }
 
     pub fn add_utxo_valid_block_with_parents(
@@ -118,6 +145,7 @@ impl TestConsensus {
     ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
         self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable())
+            .virtual_state_task
     }
 
     pub fn build_utxo_valid_block_with_parents(
@@ -253,5 +281,13 @@ impl ConsensusFactory for TestConsensusFactory {
 
     fn close(&self) {
         self.tc.notification_root().close();
+    }
+
+    fn delete_inactive_consensus_entries(&self) {
+        unimplemented!()
+    }
+
+    fn delete_staging_entry(&self) {
+        unimplemented!()
     }
 }
