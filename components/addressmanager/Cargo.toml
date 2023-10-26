@@ -19,7 +19,10 @@ rand.workspace = true
 parking_lot.workspace = true
 borsh.workspace = true
 log.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
 local-ip-address = "0.5.3"
+igd-next = { version = "0.14.2", features = ["aio_tokio"] }
 
 [dev-dependencies]
 statrs = "0.13.0"

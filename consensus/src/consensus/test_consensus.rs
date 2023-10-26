@@ -134,7 +134,7 @@ impl TestConsensus {
     }
 
     pub fn add_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.validate_and_insert_block(self.build_block_with_parents(hash, parents).to_immutable())
+        self.validate_and_insert_block(self.build_block_with_parents(hash, parents).to_immutable()).virtual_state_task
     }
 
     pub fn add_utxo_valid_block_with_parents(
@@ -145,6 +145,7 @@ impl TestConsensus {
     ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
         self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable())
+            .virtual_state_task
     }
 
     pub fn build_utxo_valid_block_with_parents(
@@ -280,5 +281,13 @@ impl ConsensusFactory for TestConsensusFactory {
 
     fn close(&self) {
         self.tc.notification_root().close();
+    }
+
+    fn delete_inactive_consensus_entries(&self) {
+        unimplemented!()
+    }
+
+    fn delete_staging_entry(&self) {
+        unimplemented!()
     }
 }

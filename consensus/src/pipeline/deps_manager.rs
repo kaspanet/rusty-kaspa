@@ -12,16 +12,31 @@ pub type BlockResultSender = oneshot::Sender<BlockProcessResult<BlockStatus>>;
 
 pub enum BlockProcessingMessage {
     Exit,
-    Process(BlockTask, BlockResultSender),
+    Process(BlockTask, BlockResultSender, BlockResultSender),
 }
 
 impl BlockProcessingMessage {
     pub fn is_processing_message(&self) -> bool {
-        matches!(self, BlockProcessingMessage::Process(_, _))
+        matches!(self, BlockProcessingMessage::Process(_, _, _))
     }
 
     pub fn is_exit_message(&self) -> bool {
         matches!(self, BlockProcessingMessage::Exit)
+    }
+}
+
+pub enum VirtualStateProcessingMessage {
+    Exit,
+    Process(BlockTask, BlockResultSender),
+}
+
+impl VirtualStateProcessingMessage {
+    pub fn is_processing_message(&self) -> bool {
+        matches!(self, VirtualStateProcessingMessage::Process(_, _))
+    }
+
+    pub fn is_exit_message(&self) -> bool {
+        matches!(self, VirtualStateProcessingMessage::Exit)
     }
 }
 
@@ -62,12 +77,13 @@ struct BlockTaskInternal {
     task: Option<BlockTask>,
 
     // A list of channel senders for transmitting the processing result of this task to the async callers
-    result_transmitter: BlockResultSender,
+    block_result_transmitter: BlockResultSender,
+    virtual_state_result_transmitter: BlockResultSender,
 }
 
 impl BlockTaskInternal {
-    fn new(task: BlockTask, result_transmitter: BlockResultSender) -> Self {
-        Self { task: Some(task), result_transmitter }
+    fn new(task: BlockTask, block_result_transmitter: BlockResultSender, virtual_state_result_transmitter: BlockResultSender) -> Self {
+        Self { task: Some(task), block_result_transmitter, virtual_state_result_transmitter }
     }
 }
 
@@ -169,17 +185,26 @@ impl BlockTaskDependencyManager {
     /// with the additional task and the function returns `None` indicating that the task shall
     /// not be queued for processing yet. The function is expected to be called by a single worker
     /// controlling the reception of block processing tasks.
-    pub fn register(&self, task: BlockTask, result_transmitter: BlockResultSender) -> Option<TaskId> {
+    pub fn register(
+        &self,
+        task: BlockTask,
+        block_result_transmitter: BlockResultSender,
+        virtual_state_result_transmitter: BlockResultSender,
+    ) -> Option<TaskId> {
         let mut pending = self.pending.lock();
         let hash = task.block().hash();
         match pending.entry(hash) {
             Vacant(e) => {
-                e.insert(BlockTaskGroup::new(BlockTaskInternal::new(task, result_transmitter)));
+                e.insert(BlockTaskGroup::new(BlockTaskInternal::new(
+                    task,
+                    block_result_transmitter,
+                    virtual_state_result_transmitter,
+                )));
                 Some(hash)
             }
             e => {
                 e.and_modify(|g| {
-                    g.tasks.push_back(BlockTaskInternal::new(task, result_transmitter));
+                    g.tasks.push_back(BlockTaskInternal::new(task, block_result_transmitter, virtual_state_result_transmitter));
                 });
                 None
             }
@@ -213,7 +238,7 @@ impl BlockTaskDependencyManager {
     /// and returns a list of `dependent_tasks` which should be requeued to workers.
     pub fn end<F>(&self, task: BlockTask, callback: F) -> Vec<TaskId>
     where
-        F: Fn(BlockTask, BlockResultSender),
+        F: Fn(BlockTask, BlockResultSender, BlockResultSender),
     {
         let task_id = task.block().hash();
         // Re-lock for post-processing steps
@@ -230,7 +255,7 @@ impl BlockTaskDependencyManager {
         assert!(internal_task.task.is_none());
 
         // Callback within the lock
-        callback(task, internal_task.result_transmitter);
+        callback(task, internal_task.block_result_transmitter, internal_task.virtual_state_result_transmitter);
 
         if pending.is_empty() {
             self.idle_signal.notify_one();
