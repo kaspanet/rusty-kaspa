@@ -559,11 +559,14 @@ pub trait DerivationCapableAccount: Account {
 
     fn create_private_keys<'l>(
         &self,
-        xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
+        key_data: &PrvKeyData,
+        payment_secret: &Option<Secret>,
         receive: &[(&'l Address, u32)],
         change: &[(&'l Address, u32)],
     ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
-        create_private_keys(self.account_kind(), self.cosigner_index(), self.account_index(), xkey, receive, change)
+        let payload = key_data.payload.decrypt(payment_secret.as_ref())?;
+        let xkey = payload.get_xprv(payment_secret.as_ref())?;
+        create_private_keys(self.account_kind(), self.cosigner_index(), self.account_index(), &xkey, receive, change)
     }
 }
 
