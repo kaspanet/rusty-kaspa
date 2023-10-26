@@ -246,3 +246,9 @@ impl TryFrom<JsValue> for PublicKey {
         }
     }
 }
+
+impl From<PublicKey> for XOnlyPublicKey {
+    fn from(value: PublicKey) -> Self {
+        value.xonly_public_key
+    }
+}
