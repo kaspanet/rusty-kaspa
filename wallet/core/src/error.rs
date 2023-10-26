@@ -216,6 +216,12 @@ pub enum Error {
 
     #[error("Requested transaction is too heavy")]
     GeneratorTransactionIsTooHeavy,
+
+    #[error(transparent)]
+    MultisigCreateError(#[from] kaspa_txscript::MultisigCreateError),
+
+    #[error(transparent)]
+    TxScriptError(#[from] kaspa_txscript_errors::TxScriptError),
 }
 
 impl From<Aborted> for Error {

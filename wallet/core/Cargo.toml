@@ -44,6 +44,7 @@ kaspa-consensus-core.workspace = true
 kaspa-consensus-wasm.workspace = true
 kaspa-core.workspace = true
 kaspa-txscript.workspace = true
+kaspa-txscript-errors.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde-wasm-bindgen.workspace = true

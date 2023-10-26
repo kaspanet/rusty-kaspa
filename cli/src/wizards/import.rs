@@ -38,22 +38,29 @@ pub async fn ask(term: &Arc<Terminal>) -> Result<Vec<String>> {
     }
 }
 
-pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>) -> Result<()> {
+pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: AccountKind, additional_xpubs: &[String]) -> Result<()> {
     let wallet = ctx.wallet();
 
     if !wallet.is_open() {
         return Err(Error::WalletIsNotOpen);
     }
+    let term = ctx.term();
 
     tprintln!(ctx);
-    let wallet_secret = Secret::new(ctx.term().ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
+    let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
     tprintln!(ctx);
-    let mnemonic = ask(&ctx.term()).await?;
+    let mnemonic = ask(&term).await?;
     tprintln!(ctx);
 
-    let account_kind = if mnemonic.len() == 24 { AccountKind::Bip32 } else { AccountKind::Legacy };
+    match account_kind {
+        AccountKind::Legacy if mnemonic.len() != 12 => Err(Error::Custom("wrong mnemonic length".to_owned())),
+        AccountKind::Bip32 if mnemonic.len() != 24 => Err(Error::Custom("wrong mnemonic length".to_owned())),
 
-    let payment_secret = if matches!(account_kind, AccountKind::Bip32) {
+        AccountKind::Legacy | AccountKind::Bip32 | AccountKind::MultiSig => Ok(()),
+        _ => Err(Error::Custom("unsupported account kind".to_owned())),
+    }?;
+
+    let payment_secret = {
         tpara!(
             ctx,
             "\
@@ -71,20 +78,52 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>) -> Result<()> {
             ",
         );
 
-        let payment_secret = ctx.term().ask(true, "Enter payment password (optional): ").await?;
+        let payment_secret = term.ask(true, "Enter payment password (optional): ").await?;
         if payment_secret.trim().is_empty() {
             None
         } else {
             Some(Secret::new(payment_secret.trim().as_bytes().to_vec()))
         }
-    } else {
-        None
     };
 
     let mnemonic = mnemonic.join(" ");
     let mnemonic = Mnemonic::new(mnemonic.trim(), Language::English)?;
 
-    wallet.import_with_mnemonic(wallet_secret, payment_secret.as_ref(), mnemonic, account_kind).await?;
+    let account = if !matches!(account_kind, AccountKind::MultiSig) {
+        wallet.import_with_mnemonic(wallet_secret, payment_secret.as_ref(), mnemonic, account_kind).await?
+    } else {
+        let mut mnemonics_secrets = vec![(mnemonic, payment_secret)];
+        while matches!(
+            term.ask(false, "Do you want to add more mnemonics (type 'y' to approve)?: ").await?.trim(),
+            "y" | "Y" | "YES" | "yes"
+        ) {
+            tprintln!(ctx);
+            let mnemonic = ask(&term).await?;
+            tprintln!(ctx);
+            let payment_secret = term.ask(true, "Enter payment password (optional): ").await?;
+            let payment_secret = payment_secret.trim().is_not_empty().then(|| Secret::new(payment_secret.trim().as_bytes().to_vec()));
+            let mnemonic = mnemonic.join(" ");
+            let mnemonic = Mnemonic::new(mnemonic.trim(), Language::English)?;
 
+            mnemonics_secrets.push((mnemonic, payment_secret));
+        }
+
+        let mut additional_xpubs = additional_xpubs.to_vec();
+        if additional_xpubs.is_empty() {
+            loop {
+                let xpub_key = term.ask(false, "Enter extended public key: (empty to skip or stop)").await?;
+                if xpub_key.is_empty() {
+                    break;
+                }
+                additional_xpubs.push(xpub_key.trim().to_owned());
+            }
+        }
+        let n_required: u16 = term.ask(false, "Enter the minimum number of signatures required: ").await?.parse()?;
+
+        wallet.import_multisig_with_mnemonic(wallet_secret, mnemonics_secrets, n_required, additional_xpubs).await?
+    };
+
+    tprintln!(ctx, "\naccount imported: {}\n", account.get_list_string()?);
+    wallet.select(Some(&account)).await?;
     Ok(())
 }
