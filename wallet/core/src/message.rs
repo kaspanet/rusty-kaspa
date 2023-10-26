@@ -20,17 +20,6 @@ pub fn sign_message(msg: &PersonalMessage, privkey: &[u8; 32]) -> Result<Vec<u8>
     Ok(sig.to_vec())
 }
 
-pub fn sign_message_with_aux_rand(msg: &PersonalMessage, privkey: &[u8; 32], aux_rand: &[u8; 32]) -> Result<Vec<u8>, Error> {
-    let hash = calc_personal_message_hash(msg);
-
-    let msg = secp256k1::Message::from_slice(hash.as_bytes().as_slice())?;
-    let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
-    let curve = secp256k1::Secp256k1::new();
-    let sig: [u8; 64] = *curve.sign_schnorr_with_aux_rand(&msg, &schnorr_key, aux_rand).as_ref();
-
-    Ok(sig.to_vec())
-}
-
 /// Ok(()) if the signature matches the given message and pubkey
 /// Error if any of the inputs are incorrect, or the signature is invalid
 pub fn verify_message(msg: &PersonalMessage, signature: &Vec<u8>, pubkey: &XOnlyPublicKey) -> Result<(), Error> {
@@ -49,6 +38,19 @@ fn calc_personal_message_hash(msg: &PersonalMessage) -> Hash {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Sign message equivalent that's only used for tests
+    /// Necessary only because of KIP test vectors
+    fn sign_message_with_aux_rand(msg: &PersonalMessage, privkey: &[u8; 32], aux_rand: &[u8; 32]) -> Result<Vec<u8>, Error> {
+        let hash = calc_personal_message_hash(msg);
+
+        let msg = secp256k1::Message::from_slice(hash.as_bytes().as_slice())?;
+        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
+        let curve = secp256k1::Secp256k1::new();
+        let sig: [u8; 64] = *curve.sign_schnorr_with_aux_rand(&msg, &schnorr_key, aux_rand).as_ref();
+
+        Ok(sig.to_vec())
+    }
 
     #[test]
     fn test_basic_sign_and_verify_sign() {
