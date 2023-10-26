@@ -16,12 +16,18 @@ const LEGACY_ACCOUNT_VERSION: u16 = 0;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Legacy {
-    pub version: u16
+    pub version: u16,
 }
 
 impl Legacy {
     pub fn new() -> Self {
         Self { version: LEGACY_ACCOUNT_VERSION }
+    }
+}
+
+impl Default for Legacy {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

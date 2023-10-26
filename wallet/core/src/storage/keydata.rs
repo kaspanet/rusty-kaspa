@@ -269,6 +269,11 @@ impl PrvKeyData {
         create_xpub_from_xprv(xprv, account_kind, account_index).await
     }
 
+    pub fn get_xprv(&self, payment_secret: Option<&Secret>) -> Result<ExtendedPrivateKey<secp256k1::SecretKey>> {
+        let payload = self.payload.decrypt(payment_secret)?;
+        payload.get_xprv(payment_secret)
+    }
+
     pub fn as_mnemonic(&self, payment_secret: Option<&Secret>) -> Result<Option<Mnemonic>> {
         let payload = self.payload.decrypt(payment_secret)?;
         payload.as_mnemonic()

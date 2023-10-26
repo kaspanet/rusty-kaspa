@@ -296,7 +296,6 @@ impl Wallet {
         Ok(())
     }
 
-
     /// Loads a wallet from storage. Accounts are not activated by this call.
     pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
         if let Err(err) = self.load_impl(secret, name).await {

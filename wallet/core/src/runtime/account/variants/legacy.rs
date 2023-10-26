@@ -118,13 +118,13 @@ impl Account for Legacy {
 
     fn receive_address(&self) -> Result<Address> {
         //self.info()?.receive_address.clone().ok_or(Error::Custom("Account initialization is pending.".into()))
-        Ok(self.derivation.receive_address_manager().current_address()?)
+        self.derivation.receive_address_manager().current_address()
         //Ok(self.receive_address.clone())
     }
 
     fn change_address(&self) -> Result<Address> {
         //self.info()?.change_address.clone().ok_or(Error::Custom("Account initialization is pending.".into()))
-        Ok(self.derivation.change_address_manager().current_address()?)
+        self.derivation.change_address_manager().current_address()
         //Ok(self.change_address.clone())
     }
 

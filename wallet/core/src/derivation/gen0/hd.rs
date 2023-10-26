@@ -107,7 +107,7 @@ impl PubkeyDerivationManagerV0 {
         let inner = locked
             .as_ref()
             .ok_or(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending (Error: 101).".into()))?;
-        Ok(inner.public_key.clone())
+        Ok(inner.public_key)
     }
     fn index_(&self) -> Result<u32> {
         // let locked = self.opt_inner();
@@ -147,7 +147,7 @@ impl PubkeyDerivationManagerV0 {
                     //workflow_log::log_info!("use_cache: {use_cache}");
                     if use_cache {
                         //workflow_log::log_info!("cache insert: {:?}", key);
-                        cache.insert(index, key.clone());
+                        cache.insert(index, key);
                     }
                     Ok(key)
                 })
@@ -156,7 +156,7 @@ impl PubkeyDerivationManagerV0 {
             indexes
                 .map(|index| {
                     if let Some(key) = cache.get(&index) {
-                        Ok(key.clone())
+                        Ok(*key)
                     } else {
                         Err(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending  (Error: 102).".into()))
                     }
@@ -182,11 +182,11 @@ impl PubkeyDerivationManagerV0 {
             //workflow_log::log_info!("use_cache: {use_cache}");
             if self.use_cache() {
                 //workflow_log::log_info!("cache insert: {:?}", key);
-                self.cache.lock()?.insert(index, key.clone());
+                self.cache.lock()?.insert(index, key);
             }
             return Ok(key);
         } else if let Some(key) = self.cache.lock()?.get(&index) {
-            return Ok(key.clone());
+            return Ok(*key);
         }
 
         Err(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending  (Error: 102).".into()))
@@ -236,7 +236,7 @@ impl PubkeyDerivationManagerV0 {
 
 impl From<&PubkeyDerivationManagerV0> for ExtendedPublicKey<secp256k1::PublicKey> {
     fn from(inner: &PubkeyDerivationManagerV0) -> ExtendedPublicKey<secp256k1::PublicKey> {
-        ExtendedPublicKey { public_key: inner.public_key_().unwrap().clone(), attrs: inner.attrs().clone() }
+        ExtendedPublicKey { public_key: inner.public_key_().unwrap(), attrs: inner.attrs().clone() }
     }
 }
 
@@ -248,7 +248,7 @@ impl PubkeyDerivationManagerTrait for PubkeyDerivationManagerV0 {
     }
 
     fn index(&self) -> Result<u32> {
-        Ok(self.index_()?)
+        self.index_()
     }
 
     fn set_index(&self, index: u32) -> Result<()> {
@@ -439,7 +439,7 @@ impl WalletDerivationManagerV0 {
         xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
         path: DerivationPath,
     ) -> Result<(SecretKey, ExtendedKeyAttrs)> {
-        let mut private_key = xkey.private_key().clone();
+        let mut private_key = *xkey.private_key();
         let mut attrs = xkey.attrs().clone();
         for child in path {
             (private_key, attrs) = Self::derive_private_key(&private_key, &attrs, child)?;
@@ -543,13 +543,13 @@ impl WalletDerivationManagerV0 {
         let receive_wallet = PubkeyDerivationManagerV0 {
             index: Arc::new(Mutex::new(0)),
             use_cache: Arc::new(AtomicBool::new(true)),
-            cache: Arc::new(Mutex::new(receive_keys.unwrap_or(HashMap::new()))),
+            cache: Arc::new(Mutex::new(receive_keys.unwrap_or_default())),
             inner: Arc::new(Mutex::new(None)),
         };
         let change_wallet = PubkeyDerivationManagerV0 {
             index: Arc::new(Mutex::new(0)),
             use_cache: Arc::new(AtomicBool::new(true)),
-            cache: Arc::new(Mutex::new(change_keys.unwrap_or(HashMap::new()))),
+            cache: Arc::new(Mutex::new(change_keys.unwrap_or_default())),
             inner: Arc::new(Mutex::new(None)),
         };
         let wallet = Self {

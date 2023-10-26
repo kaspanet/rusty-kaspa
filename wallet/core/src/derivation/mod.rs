@@ -17,7 +17,6 @@ use kaspa_consensus_core::network::NetworkType;
 use kaspa_txscript::{
     extract_script_pub_key_address, multisig_redeem_script, multisig_redeem_script_ecdsa, pay_to_script_hash_script,
 };
-use kaspa_utils::hex::ToHex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use wasm_bindgen::prelude::*;
