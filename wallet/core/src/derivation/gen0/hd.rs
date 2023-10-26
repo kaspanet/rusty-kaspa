@@ -326,11 +326,11 @@ impl WalletDerivationManagerV0 {
         // if let Some(address_type) = address_type {
         //     path = format!("{path}/{}", address_type.index());
         // }
-        println!("path: {path}");
+        //println!("path: {path}");
         let children = path.split('/');
         for child in children {
             (private_key, attrs) = Self::derive_private_key(&private_key, &attrs, child.parse::<ChildNumber>()?)?;
-            println!("ccc: {child}, public_key : {:?}, attrs: {:?}", private_key.get_public_key(), attrs);
+            //println!("ccc: {child}, public_key : {:?}, attrs: {:?}", private_key.get_public_key(), attrs);
         }
 
         Ok((private_key, attrs))
@@ -651,40 +651,32 @@ impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
 
     #[inline(always)]
     fn new_receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        let key = self.receive_pubkey_manager.new_pubkey()?;
-        Ok(key)
+        Ok(self.receive_pubkey_manager.new_pubkey()?)
     }
 
     #[inline(always)]
     fn new_change_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        let key = self.change_pubkey_manager.new_pubkey()?;
-        Ok(key)
+        Ok(self.change_pubkey_manager.new_pubkey()?)
     }
 
     #[inline(always)]
     fn receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        let key = self.receive_pubkey_manager.current_pubkey()?;
-        Ok(key)
+        Ok(self.receive_pubkey_manager.current_pubkey()?)
     }
 
     #[inline(always)]
     fn change_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        let key = self.change_pubkey_manager.current_pubkey()?;
-        Ok(key)
+        Ok(self.change_pubkey_manager.current_pubkey()?)
     }
 
     #[inline(always)]
     fn derive_receive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
-        workflow_log::log_info!("derive_receive_pubkey");
-        let key = self.receive_pubkey_manager.derive_pubkey(index)?;
-        Ok(key)
+        Ok(self.receive_pubkey_manager.derive_pubkey(index)?)
     }
 
     #[inline(always)]
     fn derive_change_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
-        workflow_log::log_info!("derive_change_pubkey");
-        let key = self.change_pubkey_manager.derive_pubkey(index)?;
-        Ok(key)
+        Ok(self.change_pubkey_manager.derive_pubkey(index)?)
     }
 
     fn initialize(&self, key: String, index: Option<u32>) -> Result<()> {
@@ -949,6 +941,9 @@ mod tests {
         assert!(res.is_ok(), "wallet_test.remove_key() failed");
 
         let pubkey = hd_wallet_test.derive_receive_pubkey(0);
+        assert!(pubkey.is_ok(), "Should be ok, as cache should return upto 0..20 keys");
+
+        let pubkey = hd_wallet_test.derive_receive_pubkey(21);
         assert!(pubkey.is_err(), "Should be error here");
     }
 
@@ -970,7 +965,7 @@ mod tests {
         let receive_addresses = gen0_receive_addresses();
         let change_addresses = gen0_change_addresses();
 
-        println!("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+        //println!("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
         //println!("hd_wallet1: {:?}", hd_wallet.receive_pubkey_manager().public_key());
         //println!("hd_wallet2: {:?}", hd_wallet2.receive_pubkey_manager.public_key());
 
