@@ -18,7 +18,6 @@ pub mod help;
 pub mod history;
 pub mod import;
 pub mod list;
-// pub mod metrics;
 pub mod message;
 pub mod miner;
 pub mod monitor;
@@ -42,6 +41,10 @@ pub mod theme;
 pub mod track;
 pub mod transfer;
 pub mod wallet;
+
+// this module is registered manually within
+// applications that support metrics
+pub mod metrics;
 
 // TODO
 // broadcast

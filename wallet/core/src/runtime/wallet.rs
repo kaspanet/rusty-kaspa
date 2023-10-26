@@ -261,7 +261,7 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    async fn load_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+    async fn load_impl(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
         self.reset().await?;
 
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
@@ -276,8 +276,8 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
-        if let Err(err) = self.load_impl(secret, name).await {
+    pub async fn load(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
+        if let Err(err) = self.load_impl(wallet_secret, name).await {
             self.notify(Events::WalletError { message: err.to_string() }).await?;
             Err(err)
         } else {
