@@ -19,6 +19,12 @@ macro_rules! scope_enum {
                     }
                 }
             }
+            $($(#[$variant_meta])* impl std::convert::From<[<$variant_name Scope>]> for Scope {
+                fn from(value: [<$variant_name Scope>]) -> Self {
+                    Scope::$variant_name(value)
+                }
+            })*
+
         }
     }
 }
