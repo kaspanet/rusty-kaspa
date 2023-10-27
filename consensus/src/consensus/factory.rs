@@ -200,7 +200,7 @@ pub struct Factory {
     notification_root: Arc<ConsensusNotificationRoot>,
     counters: Arc<ProcessingCounters>,
     tx_script_cache_counters: Arc<TxScriptCacheCounters>,
-    pub fd_total_budget: i32,
+    fd_total_budget: i32,
 }
 
 impl Factory {
