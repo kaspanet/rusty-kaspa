@@ -310,14 +310,56 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_notify_response!(NotifyVirtualChainChanged);
     impl_into_kaspad_notify_response!(NotifySinkBlueScoreChanged);
 
+    impl_into_kaspad_notify_response!(NotifyUtxosChanged, StopNotifyingUtxosChanged);
+    impl_into_kaspad_notify_response!(NotifyPruningPointUtxoSetOverride, StopNotifyingPruningPointUtxoSetOverride);
+
     macro_rules! impl_into_kaspad_response {
         ($name:tt) => {
             paste::paste! {
                 impl_into_kaspad_response_ex!(kaspa_rpc_core::[<$name Response>],[<$name ResponseMessage>],[<$name Response>]);
             }
         };
+        ($core_name:tt, $protowire_name:tt) => {
+            paste::paste! {
+                impl_into_kaspad_response_base!(kaspa_rpc_core::[<$core_name Response>],[<$protowire_name ResponseMessage>],[<$protowire_name Response>]);
+            }
+        };
     }
     use impl_into_kaspad_response;
+
+    macro_rules! impl_into_kaspad_response_base {
+        ($core_struct:path, $protowire_struct:ident, $variant:ident) => {
+            // ----------------------------------------------------------------------------
+            // rpc_core to protowire
+            // ----------------------------------------------------------------------------
+
+            impl From<RpcResult<$core_struct>> for $protowire_struct {
+                fn from(item: RpcResult<$core_struct>) -> Self {
+                    item.as_ref().map_err(|x| (*x).clone()).into()
+                }
+            }
+
+            impl From<RpcError> for $protowire_struct {
+                fn from(item: RpcError) -> Self {
+                    let x: RpcResult<&$core_struct> = Err(item);
+                    x.into()
+                }
+            }
+
+            impl From<$protowire_struct> for kaspad_response::Payload {
+                fn from(item: $protowire_struct) -> Self {
+                    kaspad_response::Payload::$variant(item)
+                }
+            }
+
+            impl From<$protowire_struct> for KaspadResponse {
+                fn from(item: $protowire_struct) -> Self {
+                    Self { id: 0, payload: Some(kaspad_response::Payload::$variant(item)) }
+                }
+            }
+        };
+    }
+    use impl_into_kaspad_response_base;
 
     macro_rules! impl_into_kaspad_response_ex {
         ($core_struct:path, $protowire_struct:ident, $variant:ident) => {
@@ -349,30 +391,7 @@ pub mod kaspad_response_convert {
                 }
             }
 
-            impl From<RpcResult<$core_struct>> for $protowire_struct {
-                fn from(item: RpcResult<$core_struct>) -> Self {
-                    item.as_ref().map_err(|x| (*x).clone()).into()
-                }
-            }
-
-            impl From<RpcError> for $protowire_struct {
-                fn from(item: RpcError) -> Self {
-                    let x: RpcResult<&$core_struct> = Err(item);
-                    x.into()
-                }
-            }
-
-            impl From<$protowire_struct> for kaspad_response::Payload {
-                fn from(item: $protowire_struct) -> Self {
-                    kaspad_response::Payload::$variant(item)
-                }
-            }
-
-            impl From<$protowire_struct> for KaspadResponse {
-                fn from(item: $protowire_struct) -> Self {
-                    Self { id: 0, payload: Some(kaspad_response::Payload::$variant(item)) }
-                }
-            }
+            impl_into_kaspad_response_base!($core_struct, $protowire_struct, $variant);
 
             // ----------------------------------------------------------------------------
             // protowire to rpc_core
@@ -408,6 +427,13 @@ pub mod kaspad_response_convert {
 
             paste::paste! {
                 impl_into_kaspad_notify_response_ex!(kaspa_rpc_core::[<$name Response>],[<$name ResponseMessage>]);
+            }
+        };
+        ($core_name:tt, $protowire_name:tt) => {
+            impl_into_kaspad_response!($core_name, $protowire_name);
+
+            paste::paste! {
+                impl_into_kaspad_notify_response_ex!(kaspa_rpc_core::[<$core_name Response>],[<$protowire_name ResponseMessage>]);
             }
         };
     }

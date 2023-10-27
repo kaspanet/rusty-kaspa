@@ -9,11 +9,7 @@ use kaspa_core::debug;
 use kaspa_grpc_core::protowire::{kaspad_request::Payload, *};
 use kaspa_notify::{
     listener::ListenerId,
-    scope::{
-        BlockAddedScope, FinalityConflictResolvedScope, FinalityConflictScope, NewBlockTemplateScope,
-        PruningPointUtxoSetOverrideScope, Scope, SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope,
-        VirtualDaaScoreChangedScope,
-    },
+    scope::{FinalityConflictResolvedScope, Scope},
     subscriber::SubscriptionManager,
 };
 use kaspa_rpc_core::api::{ops::RpcApiOps, rpc::DynRpcService};
@@ -220,15 +216,8 @@ impl SubscriptionHandler {
             match payload {
                 Payload::NotifyBlockAddedRequest(ref request) => match kaspa_rpc_core::NotifyBlockAddedRequest::try_from(request) {
                     Ok(request) => {
-                        let result = self
-                            .notifier
-                            .clone()
-                            .execute_subscribe_command(
-                                self.listener_id,
-                                Scope::BlockAdded(BlockAddedScope::default()),
-                                request.command,
-                            )
-                            .await;
+                        let command = request.command;
+                        let result = self.notifier.clone().execute_subscribe_command(self.listener_id, request.into(), command).await;
                         NotifyBlockAddedResponseMessage::from(result).into()
                     }
                     Err(err) => NotifyBlockAddedResponseMessage::from(err).into(),
@@ -237,17 +226,9 @@ impl SubscriptionHandler {
                 Payload::NotifyVirtualChainChangedRequest(ref request) => {
                     match kaspa_rpc_core::NotifyVirtualChainChangedRequest::try_from(request) {
                         Ok(request) => {
-                            let result = self
-                                .notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    self.listener_id,
-                                    Scope::VirtualChainChanged(VirtualChainChangedScope::new(
-                                        request.include_accepted_transaction_ids,
-                                    )),
-                                    request.command,
-                                )
-                                .await;
+                            let command = request.command;
+                            let result =
+                                self.notifier.clone().execute_subscribe_command(self.listener_id, request.into(), command).await;
                             NotifyVirtualChainChangedResponseMessage::from(result).into()
                         }
                         Err(err) => NotifyVirtualChainChangedResponseMessage::from(err).into(),
@@ -257,22 +238,15 @@ impl SubscriptionHandler {
                 Payload::NotifyFinalityConflictRequest(ref request) => {
                     match kaspa_rpc_core::NotifyFinalityConflictRequest::try_from(request) {
                         Ok(request) => {
-                            let result = self
-                                .notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    self.listener_id,
-                                    Scope::FinalityConflict(FinalityConflictScope::default()),
-                                    request.command,
-                                )
-                                .await
-                                .and(
+                            let command = request.command;
+                            let result =
+                                self.notifier.clone().execute_subscribe_command(self.listener_id, request.into(), command).await.and(
                                     self.notifier
                                         .clone()
                                         .execute_subscribe_command(
                                             self.listener_id,
                                             Scope::FinalityConflictResolved(FinalityConflictResolvedScope::default()),
-                                            request.command,
+                                            command,
                                         )
                                         .await,
                                 );
@@ -285,15 +259,9 @@ impl SubscriptionHandler {
                 Payload::NotifyUtxosChangedRequest(ref request) => {
                     match kaspa_rpc_core::NotifyUtxosChangedRequest::try_from(request) {
                         Ok(request) => {
-                            let result = self
-                                .notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    self.listener_id,
-                                    Scope::UtxosChanged(UtxosChangedScope::new(request.addresses)),
-                                    request.command,
-                                )
-                                .await;
+                            let command = request.command;
+                            let result =
+                                self.notifier.clone().execute_subscribe_command(self.listener_id, request.into(), command).await;
                             NotifyUtxosChangedResponseMessage::from(result).into()
                         }
                         Err(err) => NotifyUtxosChangedResponseMessage::from(err).into(),
@@ -303,15 +271,9 @@ impl SubscriptionHandler {
                 Payload::NotifySinkBlueScoreChangedRequest(ref request) => {
                     match kaspa_rpc_core::NotifySinkBlueScoreChangedRequest::try_from(request) {
                         Ok(request) => {
-                            let result = self
-                                .notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    self.listener_id,
-                                    Scope::SinkBlueScoreChanged(SinkBlueScoreChangedScope::default()),
-                                    request.command,
-                                )
-                                .await;
+                            let command = request.command;
+                            let result =
+                                self.notifier.clone().execute_subscribe_command(self.listener_id, request.into(), command).await;
                             NotifySinkBlueScoreChangedResponseMessage::from(result).into()
                         }
                         Err(err) => NotifySinkBlueScoreChangedResponseMessage::from(err).into(),
@@ -321,15 +283,9 @@ impl SubscriptionHandler {
                 Payload::NotifyVirtualDaaScoreChangedRequest(ref request) => {
                     match kaspa_rpc_core::NotifyVirtualDaaScoreChangedRequest::try_from(request) {
                         Ok(request) => {
-                            let result = self
-                                .notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    self.listener_id,
-                                    Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope::default()),
-                                    request.command,
-                                )
-                                .await;
+                            let command = request.command;
+                            let result =
+                                self.notifier.clone().execute_subscribe_command(self.listener_id, request.into(), command).await;
                             NotifyVirtualDaaScoreChangedResponseMessage::from(result).into()
                         }
                         Err(err) => NotifyVirtualDaaScoreChangedResponseMessage::from(err).into(),
@@ -339,15 +295,9 @@ impl SubscriptionHandler {
                 Payload::NotifyPruningPointUtxoSetOverrideRequest(ref request) => {
                     match kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(request) {
                         Ok(request) => {
-                            let result = self
-                                .notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    self.listener_id,
-                                    Scope::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideScope::default()),
-                                    request.command,
-                                )
-                                .await;
+                            let command = request.command;
+                            let result =
+                                self.notifier.clone().execute_subscribe_command(self.listener_id, request.into(), command).await;
                             NotifyPruningPointUtxoSetOverrideResponseMessage::from(result).into()
                         }
                         Err(err) => NotifyPruningPointUtxoSetOverrideResponseMessage::from(err).into(),
@@ -357,15 +307,9 @@ impl SubscriptionHandler {
                 Payload::NotifyNewBlockTemplateRequest(ref request) => {
                     match kaspa_rpc_core::NotifyNewBlockTemplateRequest::try_from(request) {
                         Ok(request) => {
-                            let result = self
-                                .notifier
-                                .clone()
-                                .execute_subscribe_command(
-                                    self.listener_id,
-                                    Scope::NewBlockTemplate(NewBlockTemplateScope::default()),
-                                    request.command,
-                                )
-                                .await;
+                            let command = request.command;
+                            let result =
+                                self.notifier.clone().execute_subscribe_command(self.listener_id, request.into(), command).await;
                             NotifyNewBlockTemplateResponseMessage::from(result).into()
                         }
                         Err(err) => NotifyNewBlockTemplateResponseMessage::from(err).into(),
@@ -373,47 +317,26 @@ impl SubscriptionHandler {
                 }
 
                 Payload::StopNotifyingUtxosChangedRequest(ref request) => {
-                    let notify_request = NotifyUtxosChangedRequestMessage::from(request);
-                    let response: StopNotifyingUtxosChangedResponseMessage =
-                        match kaspa_rpc_core::NotifyUtxosChangedRequest::try_from(&notify_request) {
-                            Ok(request) => {
-                                let result = self
-                                    .notifier
-                                    .clone()
-                                    .execute_subscribe_command(
-                                        self.listener_id,
-                                        Scope::UtxosChanged(UtxosChangedScope::new(request.addresses)),
-                                        request.command,
-                                    )
-                                    .await;
-                                NotifyUtxosChangedResponseMessage::from(result).into()
-                            }
-                            Err(err) => NotifyUtxosChangedResponseMessage::from(err).into(),
-                        };
-                    KaspadResponse { id: 0, payload: Some(kaspad_response::Payload::StopNotifyingUtxosChangedResponse(response)) }
+                    match kaspa_rpc_core::NotifyUtxosChangedRequest::try_from(request) {
+                        Ok(request) => {
+                            let command = request.command;
+                            let result =
+                                self.notifier.clone().execute_subscribe_command(self.listener_id, request.into(), command).await;
+                            StopNotifyingUtxosChangedResponseMessage::from(result).into()
+                        }
+                        Err(err) => StopNotifyingUtxosChangedResponseMessage::from(err).into(),
+                    }
                 }
 
                 Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(ref request) => {
-                    let notify_request = NotifyPruningPointUtxoSetOverrideRequestMessage::from(request);
-                    let response: StopNotifyingPruningPointUtxoSetOverrideResponseMessage =
-                        match kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(&notify_request) {
-                            Ok(request) => {
-                                let result = self
-                                    .notifier
-                                    .clone()
-                                    .execute_subscribe_command(
-                                        self.listener_id,
-                                        Scope::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideScope::default()),
-                                        request.command,
-                                    )
-                                    .await;
-                                NotifyPruningPointUtxoSetOverrideResponseMessage::from(result).into()
-                            }
-                            Err(err) => NotifyPruningPointUtxoSetOverrideResponseMessage::from(err).into(),
-                        };
-                    KaspadResponse {
-                        id: 0,
-                        payload: Some(kaspad_response::Payload::StopNotifyingPruningPointUtxoSetOverrideResponse(response)),
+                    match kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest::try_from(request) {
+                        Ok(request) => {
+                            let command = request.command;
+                            let result =
+                                self.notifier.clone().execute_subscribe_command(self.listener_id, request.into(), command).await;
+                            NotifyPruningPointUtxoSetOverrideResponseMessage::from(result).into()
+                        }
+                        Err(err) => NotifyPruningPointUtxoSetOverrideResponseMessage::from(err).into(),
                     }
                 }
 
