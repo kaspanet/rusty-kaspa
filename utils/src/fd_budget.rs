@@ -62,7 +62,7 @@ pub fn limit() -> i32 {
             rlimit::getrlimit(rlimit::Resource::NOFILE).unwrap().0 as i32
         }
         else {
-            panic!("unsupported OS")
+            512
         }
     }
 }
