@@ -3,7 +3,7 @@ use crate::{
     manager::ManagerEvent,
     request_handler::handler_factory::HandlerFactory,
 };
-use kaspa_core::{debug, error, info, trace};
+use kaspa_core::{debug, info, trace};
 use kaspa_grpc_core::protowire::{KaspadRequest, KaspadResponse};
 use kaspa_notify::{
     connection::Connection as ConnectionT, error::Error as NotificationError, listener::ListenerId, notifier::Notifier,
@@ -202,21 +202,17 @@ impl Connection {
     }
 
     fn subscribe(&self, core_service: &DynRpcService, rpc_op: RpcApiOps) -> RequestSender {
-        let (sender, receiver) = mpsc_channel(Self::request_channel_size());
-        let handler = HandlerFactory::new_handler(rpc_op, self.clone(), core_service, self.inner.notifier.clone(), receiver);
-        handler.launch();
         match self.inner.routing_map.write().entry(rpc_op) {
-            Entry::Occupied(_) => {
-                // Overrides an existing route -- panic
-                error!("GRPC, Connection::subscribe overrides an existing value: {:?}, client: {}", rpc_op, self.identity());
-                panic!("GRPC, Tried to replace an existing route");
-            }
             Entry::Vacant(entry) => {
+                let (sender, receiver) = mpsc_channel(Self::request_channel_size());
+                let handler = HandlerFactory::new_handler(rpc_op, self.clone(), core_service, self.inner.notifier.clone(), receiver);
+                handler.launch();
                 entry.insert(sender.clone());
                 trace!("GRPC, Connection::subscribe - {:?} route is registered, client:{:?}", rpc_op, self.identity());
+                sender
             }
+            Entry::Occupied(entry) => entry.get().clone(),
         }
-        sender
     }
 
     async fn route_to_handler(&self, core_service: &DynRpcService, request: KaspadRequest) -> GrpcServerResult<()> {
