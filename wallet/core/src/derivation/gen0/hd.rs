@@ -651,32 +651,32 @@ impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
 
     #[inline(always)]
     fn new_receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        Ok(self.receive_pubkey_manager.new_pubkey()?)
+        self.receive_pubkey_manager.new_pubkey()
     }
 
     #[inline(always)]
     fn new_change_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        Ok(self.change_pubkey_manager.new_pubkey()?)
+        self.change_pubkey_manager.new_pubkey()
     }
 
     #[inline(always)]
     fn receive_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        Ok(self.receive_pubkey_manager.current_pubkey()?)
+        self.receive_pubkey_manager.current_pubkey()
     }
 
     #[inline(always)]
     fn change_pubkey(&self) -> Result<secp256k1::PublicKey> {
-        Ok(self.change_pubkey_manager.current_pubkey()?)
+        self.change_pubkey_manager.current_pubkey()
     }
 
     #[inline(always)]
     fn derive_receive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
-        Ok(self.receive_pubkey_manager.derive_pubkey(index)?)
+        self.receive_pubkey_manager.derive_pubkey(index)
     }
 
     #[inline(always)]
     fn derive_change_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
-        Ok(self.change_pubkey_manager.derive_pubkey(index)?)
+        self.change_pubkey_manager.derive_pubkey(index)
     }
 
     fn initialize(&self, key: String, index: Option<u32>) -> Result<()> {
