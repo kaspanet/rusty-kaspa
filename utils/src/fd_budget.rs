@@ -76,7 +76,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
+    fn test_acquire_and_release_guards() {
         let guard = acquire_guard(30).unwrap();
         assert_eq!(guard.acquired(), 30);
         assert_eq!(ACQUIRED_FD.load(Ordering::Relaxed), 30);
