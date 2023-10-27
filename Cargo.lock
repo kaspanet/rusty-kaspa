@@ -2739,6 +2739,7 @@ dependencies = [
  "kaspa-consensus-notify",
  "kaspa-consensusmanager",
  "kaspa-core",
+ "kaspa-hashes",
  "kaspa-index-core",
  "kaspa-math",
  "kaspa-mining",

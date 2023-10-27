@@ -556,12 +556,23 @@ impl RpcApi for RpcCoreService {
         if request.window_size as u64 > self.config.pruning_depth {
             return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.pruning_depth));
         }
+
+        // In the previous golang implementation the convention for virtual was the following const.
+        // In the current implementation, consensus behaves the same when it gets a None instead.
+        const LEGACY_VIRTUAL: kaspa_hashes::Hash = kaspa_hashes::Hash::from_bytes([0xff; kaspa_hashes::HASH_SIZE]);
+        let mut start_hash = request.start_hash;
+        if let Some(start) = start_hash {
+            if start == LEGACY_VIRTUAL {
+                start_hash = None;
+            }
+        }
+
         Ok(EstimateNetworkHashesPerSecondResponse::new(
             self.consensus_manager
                 .consensus()
                 .session()
                 .await
-                .async_estimate_network_hashes_per_second(request.start_hash, request.window_size as usize)
+                .async_estimate_network_hashes_per_second(start_hash, request.window_size as usize)
                 .await?,
         ))
     }
