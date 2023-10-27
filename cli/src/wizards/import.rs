@@ -51,10 +51,10 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: Acco
     tprintln!(ctx);
     let mnemonic = ask(&term).await?;
     tprintln!(ctx);
-
+    let length = mnemonic.len();
     match account_kind {
-        AccountKind::Legacy if mnemonic.len() != 12 => Err(Error::Custom("wrong mnemonic length".to_owned())),
-        AccountKind::Bip32 if mnemonic.len() != 24 => Err(Error::Custom("wrong mnemonic length".to_owned())),
+        AccountKind::Legacy if length != 12 => Err(Error::Custom(format!("wrong mnemonic length ({length})"))),
+        AccountKind::Bip32 if length != 24 => Err(Error::Custom(format!("wrong mnemonic length ({length})"))),
 
         AccountKind::Legacy | AccountKind::Bip32 | AccountKind::MultiSig => Ok(()),
         _ => Err(Error::Custom("unsupported account kind".to_owned())),
