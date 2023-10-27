@@ -13,7 +13,12 @@ use kaspa_rpc_core::{
     Notification,
 };
 use parking_lot::{Mutex, RwLock};
-use std::{collections::HashMap, fmt::Display, net::SocketAddr, sync::Arc};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt::Display,
+    net::SocketAddr,
+    sync::Arc,
+};
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use tokio::{select, sync::mpsc::error::TrySendError};
@@ -200,13 +205,14 @@ impl Connection {
         let (sender, receiver) = mpsc_channel(Self::request_channel_size());
         let handler = HandlerFactory::new_handler(rpc_op, self.clone(), core_service, self.inner.notifier.clone(), receiver);
         handler.launch();
-        match self.inner.routing_map.write().insert(rpc_op, sender.clone()) {
-            Some(_) => {
+        match self.inner.routing_map.write().entry(rpc_op) {
+            Entry::Occupied(_) => {
                 // Overrides an existing route -- panic
                 error!("GRPC, Connection::subscribe overrides an existing value: {:?}, client: {}", rpc_op, self.identity());
                 panic!("GRPC, Tried to replace an existing route");
             }
-            None => {
+            Entry::Vacant(entry) => {
+                entry.insert(sender.clone());
                 trace!("GRPC, Connection::subscribe - {:?} route is registered, client:{:?}", rpc_op, self.identity());
             }
         }
