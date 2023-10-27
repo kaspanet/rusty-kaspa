@@ -17,7 +17,7 @@ pub fn main() {
     let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
 
     let args = parse_args();
-    let fd_total_budget = limit() - 32;
+    let fd_total_budget = limit() - args.rpc_max_clients as i32 - args.inbound_limit as i32 - args.outbound_target as i32;
     let (core, _) = create_core(args, fd_total_budget);
 
     // Bind the keyboard signal to the core

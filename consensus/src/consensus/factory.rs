@@ -200,7 +200,7 @@ pub struct Factory {
     notification_root: Arc<ConsensusNotificationRoot>,
     counters: Arc<ProcessingCounters>,
     tx_script_cache_counters: Arc<TxScriptCacheCounters>,
-    fd_total_budget: i32,
+    fd_budget: i32,
 }
 
 impl Factory {
@@ -212,7 +212,7 @@ impl Factory {
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
-        fd_total_budget: i32,
+        fd_budget: i32,
     ) -> Self {
         let mut config = config.clone();
         #[cfg(feature = "devnet-prealloc")]
@@ -228,7 +228,7 @@ impl Factory {
             notification_root,
             counters,
             tx_script_cache_counters,
-            fd_total_budget,
+            fd_budget,
         };
         factory.delete_inactive_consensus_entries();
         factory
@@ -258,7 +258,7 @@ impl ConsensusFactory for Factory {
         let db = kaspa_database::prelude::ConnBuilder::default()
             .with_db_path(dir)
             .with_parallelism(self.db_parallelism)
-            .with_files_limit(200.max(self.fd_total_budget * 70 / 100))
+            .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
             .build()
             .unwrap();
 
@@ -292,7 +292,7 @@ impl ConsensusFactory for Factory {
         let db = kaspa_database::prelude::ConnBuilder::default()
             .with_db_path(dir)
             .with_parallelism(self.db_parallelism)
-            .with_files_limit(10.max(self.fd_total_budget * 10 / 100))
+            .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
             .build()
             .unwrap();
 

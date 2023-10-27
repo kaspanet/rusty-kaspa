@@ -207,7 +207,7 @@ async fn bench_bbt_latency() {
     verify_tx_dag(&utxoset, &txs);
     info!("Generated overall {} txs", txs.len());
 
-    let fd_total_budget = limit() - 64;
+    let fd_total_budget = limit();
     let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
     let client = daemon.start().await;
     let bbt_client = daemon.new_client().await;
