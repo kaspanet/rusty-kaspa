@@ -78,9 +78,7 @@ impl ConnectionHandler {
                     .layer(LimitLayer::new(tcp_limit))
                     // TODO: check whether we should set tcp_keepalive
                     .add_service(protowire_server)
-                    .serve(serve_address.into())
-                    // todo fix shutdown
-                    // .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
+                    .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
                     .await
             } else {
                 // TODO: check whether we should set tcp_keepalive
