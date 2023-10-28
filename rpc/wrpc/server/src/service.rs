@@ -7,6 +7,7 @@ use kaspa_core::{
 };
 use kaspa_rpc_core::api::ops::RpcApiOps;
 use kaspa_rpc_service::service::RpcCoreService;
+use kaspa_utils::tcp_limiter::Limit;
 use kaspa_utils::triggers::SingleTrigger;
 pub use kaspa_wrpc_core::ServerCounters;
 use std::sync::atomic::Ordering;
@@ -22,11 +23,12 @@ pub struct Options {
     pub listen_address: String,
     pub grpc_proxy_address: Option<String>,
     pub verbose: bool,
+    pub tcp_limit: Option<Arc<Limit>>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { listen_address: "127.0.0.1:17110".to_owned(), verbose: false, grpc_proxy_address: None }
+        Options { listen_address: "127.0.0.1:17110".to_owned(), verbose: false, grpc_proxy_address: None, tcp_limit: None }
     }
 }
 
@@ -49,6 +51,7 @@ pub struct KaspaRpcHandler {
     pub server: Server,
     pub options: Arc<Options>,
     pub counters: Arc<ServerCounters>,
+    pub tcp_limit: Option<Arc<Limit>>,
 }
 
 impl KaspaRpcHandler {
@@ -58,14 +61,32 @@ impl KaspaRpcHandler {
         core_service: Option<Arc<RpcCoreService>>,
         options: Arc<Options>,
         counters: Arc<ServerCounters>,
+        tcp_limit: Option<Arc<Limit>>,
     ) -> KaspaRpcHandler {
-        KaspaRpcHandler { server: Server::new(tasks, encoding, core_service, options.clone()), options, counters }
+        KaspaRpcHandler { server: Server::new(tasks, encoding, core_service, options.clone()), options, counters, tcp_limit }
     }
 }
 
 #[async_trait]
 impl RpcHandler for KaspaRpcHandler {
     type Context = Connection;
+
+    fn accept(&self, _peer: &SocketAddr) -> bool {
+        if let Some(ref limit) = self.tcp_limit {
+            loop {
+                let current = limit.load(Ordering::Acquire);
+                if current + 1 > limit.max() {
+                    return false;
+                }
+                match limit.compare_exchange(current, current + 1, Ordering::Release, Ordering::Relaxed) {
+                    Ok(_) => return true,
+                    Err(_) => continue, // The global counter was updated by another thread, retry
+                }
+            }
+        } else {
+            true
+        }
+    }
 
     async fn connect(self: Arc<Self>, _peer: &SocketAddr) -> WebSocketResult<()> {
         self.counters.connection_attempts.fetch_add(1, Ordering::SeqCst);
@@ -97,6 +118,9 @@ impl RpcHandler for KaspaRpcHandler {
     /// before dropping it. This is the last chance to cleanup and resources owned by
     /// this connection. Delegate to Server.
     async fn disconnect(self: Arc<Self>, ctx: Self::Context, _result: WebSocketResult<()>) {
+        if let Some(ref limit) = self.tcp_limit {
+            limit.fetch_sub(1, Ordering::Release);
+        }
         self.counters.live_connections.fetch_sub(1, Ordering::SeqCst);
         self.server.disconnect(ctx).await;
     }
@@ -125,7 +149,8 @@ impl WrpcService {
     ) -> Self {
         let options = Arc::new(options);
         // Create handle to manage connections
-        let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, *encoding, core_service, options.clone(), counters));
+        let rpc_handler =
+            Arc::new(KaspaRpcHandler::new(tasks, *encoding, core_service, options.clone(), counters, options.tcp_limit.clone()));
 
         // Create router (initializes Interface registering RPC method and notification handlers)
         let router = Arc::new(Router::new(rpc_handler.server.clone()));
