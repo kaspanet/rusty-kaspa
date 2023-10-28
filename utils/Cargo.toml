@@ -17,18 +17,18 @@ smallvec.workspace = true
 itertools.workspace = true
 thiserror.workspace = true
 cfg-if.workspace = true
-tokio.workspace = true
 
 triggered = "0.1"
 event-listener = "2.5.3"
 ipnet = "2.8.0"
-http = "0.2.9"
-log = "0.4.20"
-pin-project = "1.1.3"
-tonic.workspace = true
+
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rlimit = "0.10.1"
+tokio.workspace = true
+tonic.workspace = true
+http = "0.2.9"
+pin-project = "1.1.3"
 
 [dev-dependencies]
 bincode.workspace = true

@@ -2900,7 +2900,6 @@ dependencies = [
  "http",
  "ipnet",
  "itertools 0.10.5",
- "log",
  "pin-project",
  "rand 0.8.5",
  "rlimit",
