@@ -1068,7 +1068,7 @@ impl SubscribeResponse {
 }
 
 ///
-///  wRPC response for RpcApiOps::Subscribe request
+///  wRPC response for RpcApiOps::Unsubscribe request
 ///
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
