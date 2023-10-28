@@ -2,6 +2,7 @@ use crate::{connection_handler::ConnectionHandler, manager::Manager};
 use kaspa_notify::notifier::Notifier;
 use kaspa_rpc_core::{api::rpc::DynRpcService, notify::connection::ChannelConnection, Notification, RpcResult};
 use kaspa_utils::networking::NetAddress;
+use kaspa_utils::tcp_limiter::Limit;
 use std::{ops::Deref, sync::Arc};
 use tokio::sync::oneshot::Sender as OneshotSender;
 
@@ -34,10 +35,11 @@ impl Adaptor {
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
         max_connections: usize,
+        tcp_limit: Option<Arc<Limit>>,
     ) -> Arc<Self> {
         let manager = Manager::new(max_connections);
         let connection_handler = Arc::new(ConnectionHandler::new(core_service.clone(), core_notifier, manager.clone()));
-        let server_termination = connection_handler.serve(serve_address);
+        let server_termination = connection_handler.serve(serve_address, tcp_limit);
         connection_handler.start();
         Arc::new(Adaptor::new(Some(server_termination), connection_handler, manager, serve_address))
     }

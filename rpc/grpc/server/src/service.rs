@@ -4,6 +4,7 @@ use kaspa_core::{
     trace, warn,
 };
 use kaspa_rpc_service::service::RpcCoreService;
+use kaspa_utils::tcp_limiter::Limit;
 use kaspa_utils::{networking::NetAddress, triggers::SingleTrigger};
 use std::sync::Arc;
 
@@ -14,11 +15,12 @@ pub struct GrpcService {
     core_service: Arc<RpcCoreService>,
     rpc_max_clients: usize,
     shutdown: SingleTrigger,
+    tcp_limit: Option<Arc<Limit>>,
 }
 
 impl GrpcService {
-    pub fn new(address: NetAddress, core_service: Arc<RpcCoreService>, rpc_max_clients: usize) -> Self {
-        Self { net_address: address, core_service, rpc_max_clients, shutdown: SingleTrigger::default() }
+    pub fn new(address: NetAddress, core_service: Arc<RpcCoreService>, rpc_max_clients: usize, tcp_limit: Option<Arc<Limit>>) -> Self {
+        Self { net_address: address, core_service, rpc_max_clients, shutdown: SingleTrigger::default(), tcp_limit }
     }
 }
 
@@ -33,8 +35,13 @@ impl AsyncService for GrpcService {
         // Prepare a shutdown signal receiver
         let shutdown_signal = self.shutdown.listener.clone();
 
-        let grpc_adaptor =
-            Adaptor::server(self.net_address, self.core_service.clone(), self.core_service.notifier(), self.rpc_max_clients);
+        let grpc_adaptor = Adaptor::server(
+            self.net_address,
+            self.core_service.clone(),
+            self.core_service.notifier(),
+            self.rpc_max_clients,
+            self.tcp_limit.clone(),
+        );
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {

@@ -76,7 +76,8 @@ async fn test_client_server_connections() {
 }
 
 fn create_server(core_service: Arc<RpcCoreMock>) -> Arc<Adaptor> {
-    Adaptor::server(get_free_net_address(), core_service.clone(), core_service.core_notifier(), 128)
+    Adaptor::server(get_free_net_address(), core_service.clone(), core_service.core_notifier(), 128, None)
+    // todo tcp limit
 }
 
 async fn create_client(server_address: NetAddress) -> GrpcClient {

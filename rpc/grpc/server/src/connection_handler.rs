@@ -19,6 +19,8 @@ use kaspa_rpc_core::{
     Notification, RpcResult,
 };
 use kaspa_utils::networking::NetAddress;
+use kaspa_utils::tcp_limiter::grpc::layer::LimitLayer;
+use kaspa_utils::tcp_limiter::Limit;
 use std::{
     pin::Pin,
     sync::{
@@ -60,7 +62,7 @@ impl ConnectionHandler {
     }
 
     /// Launches a gRPC server listener loop
-    pub(crate) fn serve(self: &Arc<Self>, serve_address: NetAddress) -> OneshotSender<()> {
+    pub(crate) fn serve(self: &Arc<Self>, serve_address: NetAddress, tcp_limit: Option<Arc<Limit>>) -> OneshotSender<()> {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
         info!("GRPC Server starting on: {}", serve_address);
@@ -70,11 +72,20 @@ impl ConnectionHandler {
                 .accept_compressed(CompressionEncoding::Gzip)
                 .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
-            // TODO: check whether we should set tcp_keepalive
-            let serve_result = TonicServer::builder()
-                .add_service(protowire_server)
-                .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
-                .await;
+            let mut builder = TonicServer::builder();
+            let serve_result = if let Some(tcp_limit) = tcp_limit {
+                builder
+                    .layer(LimitLayer::new(tcp_limit))
+                    // TODO: check whether we should set tcp_keepalive
+                    .add_service(protowire_server)
+                    .serve(serve_address.into())
+                    // todo fix shutdown
+                    // .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
+                    .await
+            } else {
+                // TODO: check whether we should set tcp_keepalive
+                builder.add_service(protowire_server).serve_with_shutdown(serve_address.into(), termination_receiver.map(drop)).await
+            };
 
             match serve_result {
                 Ok(_) => info!("GRPC Server stopped on: {}", serve_address),
