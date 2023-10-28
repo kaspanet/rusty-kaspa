@@ -6,25 +6,28 @@ use crate::{
     error::{GrpcServerError, GrpcServerResult},
 };
 use kaspa_core::debug;
-use kaspa_grpc_core::protowire::{kaspad_request::Payload, *};
+use kaspa_grpc_core::{
+    ops::KaspadPayloadOps,
+    protowire::{kaspad_request::Payload, *},
+};
 use kaspa_notify::{
     listener::ListenerId,
     scope::{FinalityConflictResolvedScope, Scope},
     subscriber::SubscriptionManager,
 };
-use kaspa_rpc_core::api::{ops::RpcApiOps, rpc::DynRpcService};
+use kaspa_rpc_core::api::rpc::DynRpcService;
 
 // TODO: consider a macro generating RpcOpsApi-dedicated handler structs
 
 pub struct RequestHandler {
-    rpc_op: RpcApiOps,
+    rpc_op: KaspadPayloadOps,
     connection: Connection,
     core_service: DynRpcService,
     incoming_route: IncomingRoute,
 }
 
 impl RequestHandler {
-    pub fn new(rpc_op: RpcApiOps, connection: Connection, core_service: DynRpcService, incoming_route: IncomingRoute) -> Self {
+    pub fn new(rpc_op: KaspadPayloadOps, connection: Connection, core_service: DynRpcService, incoming_route: IncomingRoute) -> Self {
         Self { rpc_op, connection, core_service, incoming_route }
     }
 
@@ -193,7 +196,7 @@ impl Handler for RequestHandler {
 }
 
 pub struct SubscriptionHandler {
-    rpc_op: RpcApiOps,
+    rpc_op: KaspadPayloadOps,
     connection: Connection,
     notifier: Arc<GrpcNotifier>,
     listener_id: ListenerId,
@@ -202,7 +205,7 @@ pub struct SubscriptionHandler {
 
 impl SubscriptionHandler {
     pub fn new(
-        rpc_op: RpcApiOps,
+        rpc_op: KaspadPayloadOps,
         connection: Connection,
         notifier: Arc<GrpcNotifier>,
         listener_id: ListenerId,

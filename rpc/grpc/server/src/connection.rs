@@ -4,14 +4,14 @@ use crate::{
     request_handler::handler_factory::HandlerFactory,
 };
 use kaspa_core::{debug, info, trace};
-use kaspa_grpc_core::protowire::{KaspadRequest, KaspadResponse};
+use kaspa_grpc_core::{
+    ops::KaspadPayloadOps,
+    protowire::{KaspadRequest, KaspadResponse},
+};
 use kaspa_notify::{
     connection::Connection as ConnectionT, error::Error as NotificationError, listener::ListenerId, notifier::Notifier,
 };
-use kaspa_rpc_core::{
-    api::{ops::RpcApiOps, rpc::DynRpcService},
-    Notification,
-};
+use kaspa_rpc_core::{api::rpc::DynRpcService, Notification};
 use parking_lot::{Mutex, RwLock};
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -32,7 +32,7 @@ pub type StatusResult<T> = Result<T, tonic::Status>;
 pub type ConnectionId = Uuid;
 
 type RequestSender = MpscSender<KaspadRequest>;
-type RoutingMap = HashMap<RpcApiOps, RequestSender>;
+type RoutingMap = HashMap<KaspadPayloadOps, RequestSender>;
 
 #[derive(Debug, Default)]
 struct InnerMutableState {
@@ -201,7 +201,7 @@ impl Connection {
         256
     }
 
-    fn subscribe(&self, core_service: &DynRpcService, rpc_op: RpcApiOps) -> RequestSender {
+    fn subscribe(&self, core_service: &DynRpcService, rpc_op: KaspadPayloadOps) -> RequestSender {
         match self.inner.routing_map.write().entry(rpc_op) {
             Entry::Vacant(entry) => {
                 let (sender, receiver) = mpsc_channel(Self::request_channel_size());

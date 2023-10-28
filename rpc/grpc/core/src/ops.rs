@@ -88,3 +88,19 @@ pub enum KaspadPayloadOps {
     // The conversion from a notification ResponsePayload into KaspadPayloadOps fails.
 }
 }
+
+impl KaspadPayloadOps {
+    pub fn is_subscription(&self) -> bool {
+        matches!(
+            self,
+            KaspadPayloadOps::NotifyBlockAdded
+                | KaspadPayloadOps::NotifyNewBlockTemplate
+                | KaspadPayloadOps::NotifyUtxosChanged
+                | KaspadPayloadOps::NotifyVirtualChainChanged
+                | KaspadPayloadOps::NotifyPruningPointUtxoSetOverride
+                | KaspadPayloadOps::NotifyFinalityConflict
+                | KaspadPayloadOps::NotifySinkBlueScoreChanged
+                | KaspadPayloadOps::NotifyVirtualDaaScoreChanged
+        )
+    }
+}

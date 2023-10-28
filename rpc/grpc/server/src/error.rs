@@ -1,4 +1,4 @@
-use kaspa_rpc_core::api::ops::RpcApiOps;
+use kaspa_grpc_core::ops::KaspadPayloadOps;
 use thiserror::Error;
 use tokio::sync::mpsc::error::TrySendError;
 
@@ -17,7 +17,7 @@ pub enum GrpcServerError {
     InvalidSubscriptionPayload,
 
     #[error("{0:?} handler is closed")]
-    ClosedHandler(RpcApiOps),
+    ClosedHandler(KaspadPayloadOps),
 
     #[error("client connection is closed")]
     ConnectionClosed,

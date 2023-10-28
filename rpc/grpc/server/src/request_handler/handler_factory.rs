@@ -3,14 +3,15 @@ use super::{
     handler_trait::Handler,
 };
 use crate::connection::{Connection, GrpcNotifier, IncomingRoute};
-use kaspa_rpc_core::api::{ops::RpcApiOps, rpc::DynRpcService};
+use kaspa_grpc_core::ops::KaspadPayloadOps;
+use kaspa_rpc_core::api::rpc::DynRpcService;
 use std::sync::Arc;
 
 pub struct HandlerFactory {}
 
 impl HandlerFactory {
     pub fn new_handler(
-        rpc_op: RpcApiOps,
+        rpc_op: KaspadPayloadOps,
         connection: Connection,
         core_service: &DynRpcService,
         notifier: Arc<GrpcNotifier>,
