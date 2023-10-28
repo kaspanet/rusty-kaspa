@@ -1,7 +1,9 @@
-pub mod grpc;
+mod tcp_wrapper;
 
 use std::ops::Deref;
 use std::sync::atomic::AtomicI32;
+
+pub use tcp_wrapper::Wrapper;
 
 /// `Limit` is a struct that tracks the current number of active TCP connections
 /// against a maximum limit. It is designed to be shared across different services
