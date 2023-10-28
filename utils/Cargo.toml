@@ -17,6 +17,8 @@ smallvec.workspace = true
 itertools.workspace = true
 thiserror.workspace = true
 cfg-if.workspace = true
+tower.workspace = true
+tonic.workspace = true
 
 triggered = "0.1"
 event-listener = "2.5.3"

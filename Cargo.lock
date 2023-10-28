@@ -2906,6 +2906,8 @@ dependencies = [
  "smallvec",
  "thiserror",
  "tokio",
+ "tonic",
+ "tower",
  "triggered",
  "uuid 1.4.1",
 ]
@@ -5227,6 +5229,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ce8c33a8d48bd45d624a6e523445fd21ec13d3653cd51f681abf67418f54eb8"
 dependencies = [
  "cfg-if 1.0.0",
+ "log",
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",
