@@ -3,8 +3,10 @@ use crate::{
     resolver::{matcher::Matcher, KaspadResponseReceiver, KaspadResponseSender, Resolver},
 };
 use kaspa_core::trace;
-use kaspa_grpc_core::protowire::{KaspadRequest, KaspadResponse};
-use kaspa_rpc_core::api::ops::RpcApiOps;
+use kaspa_grpc_core::{
+    ops::KaspadPayloadOps,
+    protowire::{KaspadRequest, KaspadResponse},
+};
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
@@ -15,17 +17,17 @@ use tokio::sync::oneshot;
 #[derive(Debug)]
 struct Pending {
     timestamp: Instant,
-    op: RpcApiOps,
+    op: KaspadPayloadOps,
     request: KaspadRequest,
     sender: KaspadResponseSender,
 }
 
 impl Pending {
-    fn new(op: RpcApiOps, request: KaspadRequest, sender: KaspadResponseSender) -> Self {
+    fn new(op: KaspadPayloadOps, request: KaspadRequest, sender: KaspadResponseSender) -> Self {
         Self { timestamp: Instant::now(), op, request, sender }
     }
 
-    fn is_matching(&self, response: &KaspadResponse, response_op: RpcApiOps) -> bool {
+    fn is_matching(&self, response: &KaspadResponse, response_op: KaspadPayloadOps) -> bool {
         self.op == response_op && self.request.is_matching(response)
     }
 }
@@ -42,7 +44,7 @@ impl QueueResolver {
 }
 
 impl Resolver for QueueResolver {
-    fn register_request(&self, op: RpcApiOps, request: &KaspadRequest) -> KaspadResponseReceiver {
+    fn register_request(&self, op: KaspadPayloadOps, request: &KaspadRequest) -> KaspadResponseReceiver {
         let (sender, receiver) = oneshot::channel::<Result<KaspadResponse>>();
         {
             let pending = Pending::new(op, request.clone(), sender);
@@ -55,7 +57,7 @@ impl Resolver for QueueResolver {
     }
 
     fn handle_response(&self, response: KaspadResponse) {
-        let response_op: RpcApiOps = response.payload.as_ref().unwrap().into();
+        let response_op: KaspadPayloadOps = response.payload.as_ref().unwrap().try_into().expect("response is not a notification");
         trace!("[Resolver] handle_response type: {:?}", response_op);
         let mut pending_calls = self.pending_calls.lock().unwrap();
         let mut pending: Option<Pending> = None;

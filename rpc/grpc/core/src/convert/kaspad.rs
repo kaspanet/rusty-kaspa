@@ -1,4 +1,4 @@
-use crate::protowire::{kaspad_request, kaspad_response, KaspadRequest, KaspadResponse};
+use crate::protowire::{kaspad_request, KaspadRequest, KaspadResponse};
 use kaspa_rpc_core::api::ops::RpcApiOps;
 
 impl From<&kaspad_request::Payload> for RpcApiOps {
@@ -50,70 +50,6 @@ impl From<&kaspad_request::Payload> for RpcApiOps {
 
             Payload::StopNotifyingUtxosChangedRequest(_) => RpcApiOps::NotifyUtxosChanged,
             Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
-        }
-    }
-}
-
-impl From<&kaspad_response::Payload> for RpcApiOps {
-    fn from(item: &kaspad_response::Payload) -> Self {
-        use kaspad_response::Payload;
-        match item {
-            Payload::SubmitBlockResponse(_) => RpcApiOps::SubmitBlock,
-            Payload::GetBlockTemplateResponse(_) => RpcApiOps::GetBlockTemplate,
-            Payload::GetCurrentNetworkResponse(_) => RpcApiOps::GetCurrentNetwork,
-            Payload::GetBlockResponse(_) => RpcApiOps::GetBlock,
-            Payload::GetBlocksResponse(_) => RpcApiOps::GetBlocks,
-            Payload::GetInfoResponse(_) => RpcApiOps::GetInfo,
-            Payload::ShutdownResponse(_) => RpcApiOps::Shutdown,
-
-            Payload::GetPeerAddressesResponse(_) => RpcApiOps::GetPeerAddresses,
-            Payload::GetSelectedTipHashResponse(_) => RpcApiOps::GetSelectedTipHash,
-            Payload::GetMempoolEntryResponse(_) => RpcApiOps::GetMempoolEntry,
-            Payload::GetMempoolEntriesResponse(_) => RpcApiOps::GetMempoolEntries,
-            Payload::GetConnectedPeerInfoResponse(_) => RpcApiOps::GetConnectedPeerInfo,
-            Payload::AddPeerResponse(_) => RpcApiOps::AddPeer,
-            Payload::SubmitTransactionResponse(_) => RpcApiOps::SubmitTransaction,
-            Payload::GetSubnetworkResponse(_) => RpcApiOps::GetSubnetwork,
-            Payload::GetVirtualChainFromBlockResponse(_) => RpcApiOps::GetVirtualChainFromBlock,
-            Payload::GetBlockCountResponse(_) => RpcApiOps::GetBlockCount,
-            Payload::GetBlockDagInfoResponse(_) => RpcApiOps::GetBlockDagInfo,
-            Payload::ResolveFinalityConflictResponse(_) => RpcApiOps::ResolveFinalityConflict,
-            Payload::GetHeadersResponse(_) => RpcApiOps::GetHeaders,
-            Payload::GetUtxosByAddressesResponse(_) => RpcApiOps::GetUtxosByAddresses,
-            Payload::GetBalanceByAddressResponse(_) => RpcApiOps::GetBalanceByAddress,
-            Payload::GetBalancesByAddressesResponse(_) => RpcApiOps::GetBalancesByAddresses,
-            Payload::GetSinkBlueScoreResponse(_) => RpcApiOps::GetSinkBlueScore,
-            Payload::BanResponse(_) => RpcApiOps::Ban,
-            Payload::UnbanResponse(_) => RpcApiOps::Unban,
-            Payload::EstimateNetworkHashesPerSecondResponse(_) => RpcApiOps::EstimateNetworkHashesPerSecond,
-            Payload::GetMempoolEntriesByAddressesResponse(_) => RpcApiOps::GetMempoolEntriesByAddresses,
-            Payload::GetCoinSupplyResponse(_) => RpcApiOps::GetCoinSupply,
-            Payload::PingResponse(_) => RpcApiOps::Ping,
-            Payload::GetMetricsResponse(_) => RpcApiOps::GetMetrics,
-
-            // Subscription commands for starting/stopping notifications
-            Payload::NotifyBlockAddedResponse(_) => RpcApiOps::NotifyBlockAdded,
-            Payload::NotifyNewBlockTemplateResponse(_) => RpcApiOps::NotifyNewBlockTemplate,
-            Payload::NotifyFinalityConflictResponse(_) => RpcApiOps::NotifyFinalityConflict,
-            Payload::NotifyUtxosChangedResponse(_) => RpcApiOps::NotifyUtxosChanged,
-            Payload::NotifySinkBlueScoreChangedResponse(_) => RpcApiOps::NotifySinkBlueScoreChanged,
-            Payload::NotifyPruningPointUtxoSetOverrideResponse(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
-            Payload::NotifyVirtualDaaScoreChangedResponse(_) => RpcApiOps::NotifyVirtualDaaScoreChanged,
-            Payload::NotifyVirtualChainChangedResponse(_) => RpcApiOps::NotifyVirtualChainChanged,
-
-            Payload::StopNotifyingPruningPointUtxoSetOverrideResponse(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
-            Payload::StopNotifyingUtxosChangedResponse(_) => RpcApiOps::NotifyUtxosChanged,
-
-            // Notifications
-            Payload::BlockAddedNotification(_) => RpcApiOps::Notification,
-            Payload::NewBlockTemplateNotification(_) => RpcApiOps::Notification,
-            Payload::FinalityConflictNotification(_) => RpcApiOps::Notification,
-            Payload::FinalityConflictResolvedNotification(_) => RpcApiOps::Notification,
-            Payload::UtxosChangedNotification(_) => RpcApiOps::Notification,
-            Payload::SinkBlueScoreChangedNotification(_) => RpcApiOps::Notification,
-            Payload::PruningPointUtxoSetOverrideNotification(_) => RpcApiOps::Notification,
-            Payload::VirtualDaaScoreChangedNotification(_) => RpcApiOps::Notification,
-            Payload::VirtualChainChangedNotification(_) => RpcApiOps::Notification,
         }
     }
 }
