@@ -7,6 +7,8 @@ use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
 use kaspa_core::{debug, info};
 use kaspa_utils::networking::NetAddress;
+use kaspa_utils::tcp_limiter::grpc::layer::LimitLayer;
+use kaspa_utils::tcp_limiter::Limit;
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -54,7 +56,11 @@ impl ConnectionHandler {
     }
 
     /// Launches a P2P server listener loop
-    pub(crate) fn serve(&self, serve_address: NetAddress) -> Result<OneshotSender<()>, ConnectionError> {
+    pub(crate) fn serve(
+        &self,
+        serve_address: NetAddress,
+        tcp_limit: Option<Arc<Limit>>,
+    ) -> Result<OneshotSender<()>, ConnectionError> {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
         info!("P2P Server starting on: {}", serve_address);
@@ -64,11 +70,23 @@ impl ConnectionHandler {
                 .send_compressed(tonic::codec::CompressionEncoding::Gzip)
                 .max_decoding_message_size(P2P_MAX_MESSAGE_SIZE);
 
-            // TODO: check whether we should set tcp_keepalive
-            let serve_result = TonicServer::builder()
-                .add_service(proto_server)
-                .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
-                .await;
+            let mut builder = TonicServer::builder();
+            let serve_result = if let Some(tcp_limit) = tcp_limit {
+                builder
+                    .layer(LimitLayer::new(tcp_limit))
+                    // TODO: check whether we should set tcp_keepalive
+                    .add_service(proto_server)
+                    .serve(serve_address.into())
+                    // todo fix shutdown
+                    // .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
+                    .await
+            } else {
+                builder
+                    // TODO: check whether we should set tcp_keepalive
+                    .add_service(proto_server)
+                    .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
+                    .await
+            };
 
             match serve_result {
                 Ok(_) => info!("P2P Server stopped: {}", serve_address),
