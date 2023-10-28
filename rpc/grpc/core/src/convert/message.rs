@@ -350,10 +350,18 @@ from!(item: RpcResult<&kaspa_rpc_core::GetCoinSupplyResponse>, protowire::GetCoi
 from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
 from!(RpcResult<&kaspa_rpc_core::PingResponse>, protowire::PingResponseMessage);
 
-from!(&kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMessage);
-from!(_item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
+from!(item: &kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMessage, {
     Self {
-        // TODO @tiram
+        process_metrics: item.process_metrics,
+        consensus_metrics: item.consensus_metrics
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
+    Self {
+        server_time_msb: (item.server_time >> 64) as u64,
+        server_time_lsb: item.server_time as u64,
+        process_metrics: item.process_metrics.as_ref().map(|x| x.into()),
+        consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
         error: None,
     }
 });
@@ -684,16 +692,14 @@ try_from!(item: &protowire::GetCoinSupplyResponseMessage, RpcResult<kaspa_rpc_co
 try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
 try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
-try_from!(_item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
-    // TODO @tiram
-    Self { process_metrics: false, consensus_metrics: false }
+try_from!(item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
+    Self { process_metrics: item.process_metrics, consensus_metrics: item.consensus_metrics }
 });
 try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
-        // TODO @tiram
-        server_time: 0,
-        process_metrics: None,
-        consensus_metrics: None,
+        server_time: ((item.server_time_msb as u128) << 64) + item.server_time_lsb as u128,
+        process_metrics: item.process_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
     }
 });
 
