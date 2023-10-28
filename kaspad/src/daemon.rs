@@ -368,6 +368,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         args.inbound_limit,
         dns_seeders,
         config.default_p2p_port(),
+        None, // todo tcp limit
     ));
 
     let rpc_core_service = Arc::new(RpcCoreService::new(

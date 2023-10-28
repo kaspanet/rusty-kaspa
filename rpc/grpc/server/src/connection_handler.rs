@@ -18,9 +18,8 @@ use kaspa_rpc_core::{
     notify::{channel::NotificationChannel, connection::ChannelConnection},
     Notification, RpcResult,
 };
-use kaspa_utils::networking::NetAddress;
-use kaspa_utils::tcp_limiter::grpc::layer::LimitLayer;
-use kaspa_utils::tcp_limiter::Limit;
+use kaspa_utils::tcp_limiter::Wrapper;
+use kaspa_utils::{networking::NetAddress, tcp_limiter::Limit};
 use std::{
     pin::Pin,
     sync::{
@@ -28,9 +27,12 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::mpsc::channel as mpsc_channel;
-use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
-use tokio_stream::wrappers::ReceiverStream;
+use tokio::{
+    net::TcpListener,
+    sync::mpsc::channel as mpsc_channel,
+    sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender},
+};
+use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tonic::{codec::CompressionEncoding, transport::Server as TonicServer, Request, Response};
 
 /// A protowire gRPC connections handler.
@@ -72,17 +74,20 @@ impl ConnectionHandler {
                 .accept_compressed(CompressionEncoding::Gzip)
                 .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
-            let mut builder = TonicServer::builder();
-            let serve_result = if let Some(tcp_limit) = tcp_limit {
+            let builder = TonicServer::builder().add_service(protowire_server);
+            let serve_result = if let Some(limit) = tcp_limit {
+                let listener = TcpListener::bind(serve_address.to_string()).await.unwrap();
+                let tcp_stream = tokio_stream::wrappers::TcpListenerStream::new(listener).filter_map(|tcp_stream| match tcp_stream {
+                    Ok(tcp_stream) => Wrapper::new(tcp_stream, limit.clone()).map(Ok),
+                    Err(e) => Some(Err(e)),
+                });
                 builder
-                    .layer(LimitLayer::new(tcp_limit))
                     // TODO: check whether we should set tcp_keepalive
-                    .add_service(protowire_server)
-                    .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
+                    .serve_with_incoming_shutdown(tcp_stream, termination_receiver.map(drop))
                     .await
             } else {
                 // TODO: check whether we should set tcp_keepalive
-                builder.add_service(protowire_server).serve_with_shutdown(serve_address.into(), termination_receiver.map(drop)).await
+                builder.serve_with_shutdown(serve_address.into(), termination_receiver.map(drop)).await
             };
 
             match serve_result {

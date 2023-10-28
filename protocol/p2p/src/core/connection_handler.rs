@@ -7,20 +7,19 @@ use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
 use kaspa_core::{debug, info};
 use kaspa_utils::networking::NetAddress;
-use kaspa_utils::tcp_limiter::grpc::layer::LimitLayer;
-use kaspa_utils::tcp_limiter::Limit;
+use kaspa_utils::tcp_limiter::{Limit, Wrapper};
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
+use tokio::net::TcpListener;
 use tokio::sync::mpsc::{channel as mpsc_channel, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tokio_stream::StreamExt;
 use tonic::transport::{Error as TonicError, Server as TonicServer};
 use tonic::{Request, Response, Status as TonicStatus, Streaming};
-
 #[derive(Error, Debug)]
 pub enum ConnectionError {
     #[error("missing socket address")]
@@ -70,20 +69,20 @@ impl ConnectionHandler {
                 .send_compressed(tonic::codec::CompressionEncoding::Gzip)
                 .max_decoding_message_size(P2P_MAX_MESSAGE_SIZE);
 
-            let mut builder = TonicServer::builder();
-            let serve_result = if let Some(tcp_limit) = tcp_limit {
+            let builder = TonicServer::builder().add_service(proto_server);
+            let serve_result = if let Some(limit) = tcp_limit {
+                let listener = TcpListener::bind(serve_address.to_string()).await.unwrap();
+                let tcp_stream = TcpListenerStream::new(listener).filter_map(|tcp_stream| match tcp_stream {
+                    Ok(tcp_stream) => Wrapper::new(tcp_stream, limit.clone()).map(Ok),
+                    Err(e) => Some(Err(e)),
+                });
                 builder
-                    .layer(LimitLayer::new(tcp_limit))
                     // TODO: check whether we should set tcp_keepalive
-                    .add_service(proto_server)
-                    .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
+                    .serve_with_incoming_shutdown(tcp_stream, termination_receiver.map(drop))
                     .await
             } else {
-                builder
-                    // TODO: check whether we should set tcp_keepalive
-                    .add_service(proto_server)
-                    .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
-                    .await
+                // TODO: check whether we should set tcp_keepalive
+                builder.serve_with_shutdown(serve_address.into(), termination_receiver.map(drop)).await
             };
 
             match serve_result {
