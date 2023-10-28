@@ -2,6 +2,7 @@ use crate::{
     collector::{GrpcServiceCollector, GrpcServiceConverter},
     connection::Connection,
     manager::ManagerEvent,
+    request_handler::{factory::Factory, interface::Interface},
 };
 use futures::{FutureExt, Stream};
 use kaspa_core::{debug, info, warn};
@@ -19,6 +20,7 @@ use kaspa_rpc_core::{
     Notification, RpcResult,
 };
 use kaspa_utils::networking::NetAddress;
+use std::fmt::Debug;
 use std::{
     pin::Pin,
     sync::{
@@ -35,12 +37,32 @@ use tokio::{
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tonic::{codec::CompressionEncoding, transport::Server as TonicServer, Request, Response};
 
+#[derive(Clone)]
+pub struct ServerContext {
+    /// The RPC core service API the RPC methods are calling
+    pub core_service: DynRpcService,
+    /// The notifier relaying RPC core notifications to connections
+    pub notifier: Arc<Notifier<Notification, Connection>>,
+}
+
+impl ServerContext {
+    pub fn new(core_service: DynRpcService, notifier: Arc<Notifier<Notification, Connection>>) -> Self {
+        Self { core_service, notifier }
+    }
+}
+
+impl Debug for ServerContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerContext").finish()
+    }
+}
+
 /// A protowire gRPC connections handler.
 #[derive(Clone)]
 pub struct ConnectionHandler {
     manager_sender: MpscSender<ManagerEvent>,
-    core_service: DynRpcService,
-    notifier: Arc<Notifier<Notification, Connection>>,
+    server_context: ServerContext,
+    interface: Arc<Interface>,
     running: Arc<AtomicBool>,
 }
 
@@ -64,9 +86,11 @@ impl ConnectionHandler {
         let subscriber = Arc::new(Subscriber::new(GRPC_SERVER, core_events, core_notifier, core_listener_id));
         let notifier: Arc<Notifier<Notification, Connection>> =
             Arc::new(Notifier::new(GRPC_SERVER, core_events, vec![collector], vec![subscriber], 10));
+        let server_context = ServerContext::new(core_service, notifier);
+        let interface = Arc::new(Factory::new_interface(server_context.clone()));
         let running = Default::default();
 
-        Self { manager_sender, core_service, notifier, running }
+        Self { manager_sender, server_context, interface, running }
     }
 
     /// Launches a gRPC server listener loop
@@ -112,8 +136,23 @@ impl ConnectionHandler {
     }
 
     #[inline(always)]
-    pub fn notifier(&self) -> Arc<Notifier<Notification, Connection>> {
-        self.notifier.clone()
+    fn server_context(&self) -> ServerContext {
+        self.server_context.clone()
+    }
+
+    #[inline(always)]
+    fn interface(&self) -> Arc<Interface> {
+        self.interface.clone()
+    }
+
+    #[inline(always)]
+    fn manager_sender(&self) -> MpscSender<ManagerEvent> {
+        self.manager_sender.clone()
+    }
+
+    #[inline(always)]
+    fn notifier(&self) -> Arc<Notifier<Notification, Connection>> {
+        self.server_context.notifier.clone()
     }
 
     pub fn start(&self) {
@@ -205,9 +244,9 @@ impl Rpc for ConnectionHandler {
         // Build the connection object
         let connection = Connection::new(
             remote_address,
-            self.core_service.clone(),
-            self.manager_sender.clone(),
-            self.notifier(),
+            self.server_context(),
+            self.interface(),
+            self.manager_sender(),
             incoming_stream,
             outgoing_route,
         );

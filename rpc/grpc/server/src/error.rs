@@ -16,6 +16,9 @@ pub enum GrpcServerError {
     #[error("Subscription has no valid payload")]
     InvalidSubscriptionPayload,
 
+    #[error("This RPC method is not implemented by the gRPC server")]
+    MethodNotImplemented,
+
     #[error("{0:?} handler is closed")]
     ClosedHandler(KaspadPayloadOps),
 

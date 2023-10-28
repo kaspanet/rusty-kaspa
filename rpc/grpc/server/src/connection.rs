@@ -1,7 +1,8 @@
 use crate::{
+    connection_handler::ServerContext,
     error::{GrpcServerError, GrpcServerResult},
     manager::ManagerEvent,
-    request_handler::handler_factory::HandlerFactory,
+    request_handler::{factory::Factory, interface::Interface},
 };
 use kaspa_core::{debug, info, trace};
 use kaspa_grpc_core::{
@@ -11,7 +12,7 @@ use kaspa_grpc_core::{
 use kaspa_notify::{
     connection::Connection as ConnectionT, error::Error as NotificationError, listener::ListenerId, notifier::Notifier,
 };
-use kaspa_rpc_core::{api::rpc::DynRpcService, Notification};
+use kaspa_rpc_core::Notification;
 use parking_lot::{Mutex, RwLock};
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -68,8 +69,11 @@ struct Inner {
     /// Used to send information from each router to a central manager object
     manager_sender: MpscSender<ManagerEvent>,
 
-    /// The notifier relaying consensus notifications to connections
-    notifier: Arc<GrpcNotifier>,
+    /// The server RPC core service and notifier
+    server_context: ServerContext,
+
+    /// The interface providing the RPC methods to the request handlers
+    interface: Arc<Interface>,
 
     /// Used for managing connection mutable state
     mutable_state: Mutex<InnerMutableState>,
@@ -95,9 +99,9 @@ impl Display for Connection {
 impl Connection {
     pub(crate) fn new(
         net_address: SocketAddr,
-        core_service: DynRpcService,
+        server_context: ServerContext,
+        interface: Arc<Interface>,
         manager_sender: MpscSender<ManagerEvent>,
-        notifier: Arc<Notifier<Notification, Connection>>,
         mut incoming_stream: Streaming<KaspadRequest>,
         outgoing_route: GrpcSender,
     ) -> Self {
@@ -109,7 +113,8 @@ impl Connection {
                 outgoing_route,
                 routing_map: Default::default(),
                 manager_sender,
-                notifier: notifier.clone(),
+                server_context,
+                interface,
                 mutable_state: Mutex::new(InnerMutableState::new(Some(shutdown_sender))),
             }),
         };
@@ -129,7 +134,7 @@ impl Connection {
                     res = incoming_stream.message() => match res {
                         Ok(Some(request)) => {
                             trace!("GRPC: request: {:?}, client: {}", request, connection.identity());
-                            match connection.route_to_handler(&core_service, request).await {
+                            match connection.route_to_handler(request).await {
                                 Ok(()) => {},
                                 Err(e) => {
                                     debug!("GRPC: Connection receive loop - route error: {} for client: {}", e, connection);
@@ -178,7 +183,7 @@ impl Connection {
     }
 
     pub fn notifier(&self) -> Arc<GrpcNotifier> {
-        self.inner.notifier.clone()
+        self.inner.server_context.notifier.clone()
     }
 
     pub fn get_or_register_listener_id(&self) -> ListenerId {
@@ -187,13 +192,13 @@ impl Connection {
             .mutable_state
             .lock()
             .listener_id
-            .get_or_insert_with(|| self.inner.notifier.as_ref().register_new_listener(self.clone()))
+            .get_or_insert_with(|| self.inner.server_context.notifier.as_ref().register_new_listener(self.clone()))
     }
 
     fn unregister_listener(&self) {
         let listener_id = self.inner.mutable_state.lock().listener_id.take();
         if let Some(listener_id) = listener_id {
-            self.inner.notifier.unregister_listener(listener_id).expect("unregister listener")
+            self.inner.server_context.notifier.unregister_listener(listener_id).expect("unregister listener")
         }
     }
 
@@ -201,11 +206,12 @@ impl Connection {
         256
     }
 
-    fn subscribe(&self, core_service: &DynRpcService, rpc_op: KaspadPayloadOps) -> RequestSender {
+    fn subscribe(&self, rpc_op: KaspadPayloadOps) -> RequestSender {
         match self.inner.routing_map.write().entry(rpc_op) {
             Entry::Vacant(entry) => {
                 let (sender, receiver) = mpsc_channel(Self::request_channel_size());
-                let handler = HandlerFactory::new_handler(rpc_op, self.clone(), core_service, self.inner.notifier.clone(), receiver);
+                let handler =
+                    Factory::new_handler(rpc_op, receiver, self.inner.server_context.clone(), &self.inner.interface, self.clone());
                 handler.launch();
                 entry.insert(sender.clone());
                 trace!("GRPC, Connection::subscribe - {:?} route is registered, client:{:?}", rpc_op, self.identity());
@@ -215,7 +221,7 @@ impl Connection {
         }
     }
 
-    async fn route_to_handler(&self, core_service: &DynRpcService, request: KaspadRequest) -> GrpcServerResult<()> {
+    async fn route_to_handler(&self, request: KaspadRequest) -> GrpcServerResult<()> {
         // TODO: add appropriate error
         if request.payload.is_none() {
             debug!("GRPC, Route to handler got empty payload, client: {}", self);
@@ -223,7 +229,7 @@ impl Connection {
         }
         let rpc_op = request.payload.as_ref().unwrap().into();
         let sender = self.inner.routing_map.read().get(&rpc_op).cloned();
-        let sender = sender.unwrap_or_else(|| self.subscribe(core_service, rpc_op));
+        let sender = sender.unwrap_or_else(|| self.subscribe(rpc_op));
         match sender.send(request).await {
             Ok(_) => Ok(()),
             Err(_) => Err(GrpcServerError::ClosedHandler(rpc_op)),
