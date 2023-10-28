@@ -18,11 +18,11 @@ pub const RPC_API_VERSION: [u16; 4] = [0, 1, 0, 0];
 #[derive(Describe, Clone, Copy, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RpcApiOps {
-    /// Ping the node to check if connectin is alive
+    /// Ping the node to check if connection is alive
     Ping = 0,
     /// Get metrics for consensus information and node performance
     GetMetrics,
-    /// Get state infomation on the node
+    /// Get state information on the node
     GetServerInfo,
     /// Get the current sync status of the node
     GetSyncStatus,
