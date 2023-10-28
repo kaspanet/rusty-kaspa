@@ -65,6 +65,8 @@ pub struct Args {
     pub prealloc_amount: u64,
 
     pub disable_upnp: bool,
+
+    pub max_tcp_connections: Option<u16>,
 }
 
 impl Default for Args {
@@ -111,6 +113,7 @@ impl Default for Args {
             prealloc_amount: 1_000_000,
 
             disable_upnp: false,
+            max_tcp_connections: None,
         }
     }
 }
@@ -316,7 +319,14 @@ pub fn cli() -> Command {
                 .require_equals(true)
                 .value_parser(clap::value_parser!(u64))
                 .help("Interval in seconds for performance metrics collection."),
-        )
+        ).arg(
+        Arg::new("max-tcp-conns")
+            .long("max-tcp-conns")
+            .value_name("max-tcp-conns")
+            .require_equals(true)
+            .value_parser(clap::value_parser!(u16))
+            .help("Max number of tcp connections."),
+    )
         .arg(arg!(--"disable-upnp" "Disable upnp"));
 
     #[cfg(feature = "devnet-prealloc")]
@@ -377,6 +387,7 @@ pub fn parse_args() -> Args {
         #[cfg(feature = "devnet-prealloc")]
         prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
         disable_upnp: m.get_one::<bool>("disable-upnp").cloned().unwrap_or(defaults.disable_upnp),
+        max_tcp_connections: m.get_one::<u16>("max-tcp-conns").cloned(),
     }
 }
 
