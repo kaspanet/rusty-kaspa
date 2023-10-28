@@ -2360,6 +2360,7 @@ dependencies = [
  "tonic",
  "tonic-build",
  "triggered",
+ "workflow-core",
 ]
 
 [[package]]

@@ -20,6 +20,7 @@ log.workspace = true
 rand.workspace = true
 paste.workspace = true
 regex.workspace = true
+workflow-core.workspace = true
 async-trait = "0.1.57"
 futures = { version = "0.3" }
 tonic = { version = "0.10", features = ["tls", "gzip"] }

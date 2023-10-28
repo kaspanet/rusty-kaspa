@@ -1,4 +1,5 @@
 use crate::protowire::{kaspad_request::Payload as RequestPayload, kaspad_response::Payload as ResponsePayload};
+use workflow_core::enums::Describe;
 
 macro_rules! payload_type_enum {
     ($(#[$meta:meta])* $vis:vis enum $name:ident {
@@ -35,7 +36,7 @@ macro_rules! payload_type_enum {
 
 payload_type_enum! {
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
+#[derive(Describe, Debug, Copy, Clone, Eq, Hash, PartialEq)]
 pub enum KaspadPayloadOps {
     SubmitBlock = 0,
     GetBlockTemplate,
