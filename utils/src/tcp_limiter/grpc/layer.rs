@@ -1,5 +1,4 @@
-use crate::tcp_limiter::grpc::service::LimiterService;
-use crate::tcp_limiter::Limit;
+use crate::{tcp_limiter::grpc::service::LimiterService, tcp_limiter::Limit};
 use std::sync::Arc;
 use tower::Layer;
 

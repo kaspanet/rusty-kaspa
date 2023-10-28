@@ -4,7 +4,7 @@ use std::{
     sync::{atomic::Ordering, Arc},
     task::{Context, Poll},
 };
-use tonic::{codegen::http, Code, Status};
+use tonic::{Code, Status};
 use tower::Service;
 
 #[derive(Debug, Clone)]

@@ -2897,6 +2897,7 @@ dependencies = [
  "event-listener 2.5.3",
  "faster-hex 0.6.1",
  "futures-util",
+ "http",
  "ipnet",
  "itertools 0.10.5",
  "rand 0.8.5",

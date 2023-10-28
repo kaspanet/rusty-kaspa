@@ -23,6 +23,7 @@ tonic.workspace = true
 triggered = "0.1"
 event-listener = "2.5.3"
 ipnet = "2.8.0"
+http = "0.2.9"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rlimit = "0.10.1"
