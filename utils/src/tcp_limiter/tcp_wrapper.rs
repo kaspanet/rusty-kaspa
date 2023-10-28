@@ -15,12 +15,17 @@ use tonic::transport::server::Connected;
 impl Wrapper {
     pub fn new(inner: TcpStream, limit: impl Into<Arc<Limit>>) -> Option<Self> {
         let limit = limit.into();
-        let current = limit.fetch_add(1, Ordering::SeqCst);
-        if current >= limit.max() {
-            limit.fetch_sub(1, Ordering::Release);
-            return None;
+
+        loop {
+            let current = limit.load(Ordering::Acquire);
+            if current + 1 > limit.max() {
+                return None;
+            }
+            match limit.compare_exchange(current, current + 1, Ordering::Release, Ordering::Relaxed) {
+                Ok(_) => return Some(Self { inner, limit }),
+                Err(_) => continue, // The global counter was updated by another thread, retry
+            }
         }
-        Some(Self { inner, limit })
     }
 }
 

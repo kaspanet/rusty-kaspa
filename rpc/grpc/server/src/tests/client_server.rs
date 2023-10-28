@@ -88,9 +88,6 @@ async fn test_client_server_connections_tcp_conn_limit() {
     let server = create_server_with_limit(core_service.clone(), Limit::new(2));
     assert!(!server.has_connections(), "server should have no client when just started");
 
-    info!("=================================================================================");
-    info!("2 clients connecting and disconnecting themselves");
-
     let client1 = create_client(server.serve_address()).await;
     let client2 = create_client(server.serve_address()).await;
 
@@ -103,39 +100,12 @@ async fn test_client_server_connections_tcp_conn_limit() {
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     assert_eq!(server.active_connections().len(), 2, "limit doesn't work");
+
     assert!(client1.disconnect().await.is_ok(), "client 1 failed to disconnect");
     assert!(client2.disconnect().await.is_ok(), "client 2 failed to disconnect");
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     assert!(!server.has_connections(), "server should have no more clients");
-    //
-    // info!("=================================================================================");
-    // info!("2 clients connecting and server disconnecting them");
-    //
-    // let client1 = create_client(server.serve_address()).await;
-    // let client2 = create_client(server.serve_address()).await;
-    //
-    // assert_eq!(server.active_connections().len(), 2, "one or more clients failed to connect to the server");
-    //
-    // server.terminate_all_connections();
-    // tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    //
-    // assert!(!client1.is_connected(), "server failed to disconnect client 1");
-    // assert!(!client2.is_connected(), "server failed to disconnect client 2");
-    // assert!(!server.has_connections(), "server should have no more clients");
-    //
-    // info!("=================================================================================");
-    // info!("2 clients connecting, 1 disconnecting itself, server shutting down");
-    //
-    // let client1 = create_client(server.serve_address()).await;
-    // let client2 = create_client(server.serve_address()).await;
-    //
-    // assert_eq!(server.active_connections().len(), 2, "one or more clients failed to connect to the server");
-    //
-    // assert!(client1.disconnect().await.is_ok(), "client 1 failed to disconnect");
-    // tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    // assert_eq!(server.active_connections().len(), 1, "server should have one client left connected");
-
     // Stop the fake service
     core_service.join().await;
 
