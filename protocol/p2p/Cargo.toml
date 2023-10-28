@@ -33,6 +33,7 @@ itertools.workspace = true
 uuid.workspace = true
 serde.workspace = true
 borsh.workspace = true
+tonic.workspace = true
 
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 prost = "0.11"
@@ -43,12 +44,11 @@ tokio = { workspace = true, features = [
     "signal",
 ] }
 tokio-stream = { version = "0.1.11", features = ["net"] }
-tonic = { version = "0.9.1", features = ["tls", "gzip"] }
 h2 = "0.3"
 seqlock = "0.2"
 
 [build-dependencies]
-tonic-build = { version = "0.9.1", features = ["prost"] }
+tonic-build.workspace = true
 
 [dev-dependencies]
 hex = "0.4.3"

@@ -183,8 +183,9 @@ dashmap = "5.4.0"
 separator = "0.4.1"
 serde_bytes = "0.11.11"
 xxhash-rust = { version = "0.8.6", features = ["xxh3"] }
-tonic = { version = "0.9", features = ["gzip"] }
-tower = "0.4.13"
+tonic = { version = "0.9.1", features = ["tls", "gzip"] }
+tonic-build = { version = "0.9.1", features = ["prost"] }
+
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }
 bs58 = { version = "0.4", features = ["check"], default-features = false }

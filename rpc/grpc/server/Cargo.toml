@@ -23,10 +23,10 @@ parking_lot.workspace = true
 log.workspace = true
 rand.workspace = true
 once_cell.workspace = true
+tonic.workspace = true
 
 async-trait = "0.1.57"
 futures = { version = "0.3" }
-tonic = { version = "0.9", features = ["gzip"] }
 prost = { version = "0.11" }
 h2 = "0.3"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
