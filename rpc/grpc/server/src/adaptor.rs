@@ -55,7 +55,7 @@ impl Adaptor {
 
     /// Terminates all connections and cleans up any additional async resources
     pub async fn stop(&self) -> RpcResult<()> {
-        debug!("GRPC: stopping the adaptor");
+        debug!("GRPC, Stopping the adaptor");
         self.terminate_all_connections();
         self.connection_handler.stop().await?;
         Ok(())

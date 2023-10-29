@@ -75,7 +75,7 @@ struct Inner {
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        debug!("GRPC: dropping connection {}", self.connection_id);
+        debug!("GRPC, Dropping connection {}", self.connection_id);
     }
 }
 
@@ -162,24 +162,24 @@ impl Connection {
         };
         let connection_clone = connection.clone();
         // Start the connection receive loop
-        debug!("GRPC: Connection starting for client {}", connection);
+        debug!("GRPC, Connection starting for client {}", connection);
         tokio::spawn(async move {
             loop {
                 select! {
                     biased; // We use biased polling so that the shutdown signal is always checked first
 
                     _ = &mut shutdown_receiver => {
-                        debug!("GRPC: Connection receive loop - shutdown signal received, exiting connection receive loop, client: {}", connection.identity());
+                        debug!("GRPC, Connection receive loop - shutdown signal received, exiting connection receive loop, client: {}", connection.identity());
                         break;
                     }
 
                     res = incoming_stream.message() => match res {
                         Ok(Some(request)) => {
-                            trace!("GRPC: request: {:?}, client: {}", request, connection.identity());
+                            trace!("GRPC, request: {:?}, client: {}", request, connection.identity());
                             match router.route_to_handler(&connection, request).await {
                                 Ok(()) => {},
                                 Err(e) => {
-                                    debug!("GRPC: Connection receive loop - route error: {} for client: {}", e, connection);
+                                    debug!("GRPC, Connection receive loop - route error: {} for client: {}", e, connection);
                                     break;
                                 }
                             }
@@ -212,7 +212,7 @@ impl Connection {
             let inner = Arc::downgrade(&connection.inner);
             drop(connection);
 
-            debug!("GRPC: Connection receive loop - exited, client: {}, client refs: {}", connection_id, inner.strong_count());
+            debug!("GRPC, Connection receive loop - exited, client: {}, client refs: {}", connection_id, inner.strong_count());
         });
 
         connection_clone
@@ -328,7 +328,7 @@ impl ConnectionT for Connection {
                 let _ = signal.send(());
             } else {
                 // This means the connection was already closed
-                trace!("GRPC: Connection close was called more than once, client: {}", self);
+                trace!("GRPC, Connection close was called more than once, client: {}", self);
                 return false;
             }
         }

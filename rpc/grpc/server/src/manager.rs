@@ -52,10 +52,10 @@ impl Manager {
     }
 
     pub fn register(&self, connection: Connection) {
-        debug!("GRPC: registering a new connection from {connection}");
+        debug!("GRPC, Registering a new connection from {connection}");
         let mut connections_write = self.connections.write();
         let previous_connection = connections_write.insert(connection.identity(), connection.clone());
-        info!("GRPC: new incoming connection {} #{}", connection, connections_write.len());
+        info!("GRPC, new incoming connection {} #{}", connection, connections_write.len());
 
         // Release the write lock to prevent a deadlock if a previous connection exists and must be closed
         drop(connections_write);
@@ -63,7 +63,7 @@ impl Manager {
         // A previous connection with the same id is VERY unlikely to occur but just in case, we close it cleanly
         if let Some(previous_connection) = previous_connection {
             previous_connection.close();
-            warn!("GRPC: removing connection with duplicate identity: {}", previous_connection.identity());
+            warn!("GRPC, removing connection with duplicate identity: {}", previous_connection.identity());
         }
     }
 
@@ -79,7 +79,7 @@ impl Manager {
             // This is extremely important in cases of duplicate connection rejection etc.
             if Connection::ptr_eq(entry.get(), &connection) {
                 entry.remove_entry();
-                info!("GRPC: end connection {} #{}", connection, connection_count);
+                info!("GRPC, end connection {} #{}", connection, connection_count);
             }
         }
     }
@@ -91,7 +91,7 @@ impl Manager {
         for (i, connection) in connections.into_iter().enumerate().rev() {
             connection.close();
             // ... so we log explicitly here
-            info!("GRPC: end connection {} #{}", connection, i + 1);
+            info!("GRPC, end connection {} #{}", connection, i + 1);
         }
     }
 
@@ -108,6 +108,6 @@ impl Manager {
 
 impl Drop for Manager {
     fn drop(&mut self) {
-        debug!("GRPC: dropping Manager, refs count {}", Arc::strong_count(&self.connections));
+        debug!("GRPC, Dropping Manager, refs count {}", Arc::strong_count(&self.connections));
     }
 }

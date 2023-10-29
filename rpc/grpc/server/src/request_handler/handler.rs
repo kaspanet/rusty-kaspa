@@ -54,10 +54,10 @@ impl Handler for RequestHandler {
                     }
                 }
                 Err(e) => {
-                    debug!("GRPC: Request handling error {} for client {}", e, self.connection);
+                    debug!("GRPC, Request handling error {} for client {}", e, self.connection);
                 }
             }
         }
-        debug!("GRPC: exiting request handler {:?} for client {}", self.rpc_op, self.connection);
+        debug!("GRPC, Exiting request handler {:?} for client {}", self.rpc_op, self.connection);
     }
 }

@@ -45,7 +45,7 @@ impl AsyncService for GrpcService {
             // Stop the connection handler, closing all connections and refusing new ones
             match grpc_adaptor.stop().await {
                 Ok(_) => {
-                    debug!("GRPC: Adaptor terminated successfully");
+                    debug!("GRPC, Adaptor terminated successfully");
                 }
                 Err(err) => {
                     warn!("{} error while stopping the connection handler: {}", GRPC_SERVICE, err);

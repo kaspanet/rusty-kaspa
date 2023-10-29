@@ -113,7 +113,7 @@ impl ConnectionHandler {
                 .serve_with_shutdown(
                     serve_address.into(),
                     signal_receiver.map(|_| {
-                        debug!("GRPC: Server received the shutdown signal");
+                        debug!("GRPC, Server received the shutdown signal");
                     }),
                 )
                 .await;
@@ -156,7 +156,7 @@ impl ConnectionHandler {
     }
 
     pub fn start(&self) {
-        debug!("GRPC: Starting the connection handler");
+        debug!("GRPC, Starting the connection handler");
 
         // Start the internal notifier
         self.notifier().start();
@@ -166,7 +166,7 @@ impl ConnectionHandler {
     }
 
     pub async fn stop(&self) -> RpcResult<()> {
-        debug!("GRPC: Stopping the connection handler");
+        debug!("GRPC, Stopping the connection handler");
 
         // Refuse new incoming connections
         self.running.store(false, Ordering::SeqCst);
@@ -175,10 +175,10 @@ impl ConnectionHandler {
         // Note that this requires the core service it is listening to to have closed its listener
         match timeout(Duration::from_millis(100), self.notifier().join()).await {
             Ok(_) => {
-                debug!("GRPC: Stopped the connection handler");
+                debug!("GRPC, Stopped the connection handler");
             }
             Err(_) => {
-                warn!("GRPC: Stopped the connection handler forcefully");
+                warn!("GRPC, Stopped the connection handler forcefully");
             }
         }
 
@@ -192,7 +192,7 @@ impl ConnectionHandler {
 
 impl Drop for ConnectionHandler {
     fn drop(&mut self) {
-        debug!("GRPC: dropping connection handler, refs {}", Arc::strong_count(&self.running));
+        debug!("GRPC, Dropping connection handler, refs {}", Arc::strong_count(&self.running));
     }
 }
 
@@ -235,7 +235,7 @@ impl Rpc for ConnectionHandler {
             }
         }
 
-        debug!("GRPC: incoming message stream from {:?}", remote_address);
+        debug!("GRPC, Incoming message stream from {:?}", remote_address);
 
         // Build the in/out pipes
         let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_route_channel_size());
