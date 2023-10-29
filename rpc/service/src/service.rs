@@ -18,6 +18,7 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
+use kaspa_core::time::unix_now;
 use kaspa_core::{
     core::Core,
     debug,
@@ -59,7 +60,6 @@ use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use std::{
     iter::once,
     sync::{atomic::Ordering, Arc},
-    time::{SystemTime, UNIX_EPOCH},
     vec,
 };
 
@@ -661,9 +661,6 @@ impl RpcApi for RpcCoreService {
         Err(RpcError::NotImplemented)
     }
 
-    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    // UNIMPLEMENTED METHODS
-
     async fn get_metrics_call(&self, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
         let CountersSnapshot {
             resident_set_size,
@@ -705,9 +702,7 @@ impl RpcApi for RpcCoreService {
             mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
         });
 
-        let start = SystemTime::now();
-        let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
-        let server_time = since_the_epoch.as_millis();
+        let server_time = unix_now();
 
         let response = GetMetricsResponse { server_time, process_metrics, consensus_metrics };
 

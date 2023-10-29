@@ -358,8 +358,7 @@ from!(item: &kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMess
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
     Self {
-        server_time_msb: (item.server_time >> 64) as u64,
-        server_time_lsb: item.server_time as u64,
+        server_time: item.server_time,
         process_metrics: item.process_metrics.as_ref().map(|x| x.into()),
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
         error: None,
@@ -697,7 +696,7 @@ try_from!(item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetrics
 });
 try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
-        server_time: ((item.server_time_msb as u128) << 64) + item.server_time_lsb as u128,
+        server_time: item.server_time,
         process_metrics: item.process_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
     }

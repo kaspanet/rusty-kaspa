@@ -787,8 +787,7 @@ message GetMetricsRequestMessage{
 }
 
 message GetMetricsResponseMessage{
-  uint64 serverTimeMsb = 1;
-  uint64 serverTimeLsb = 2;
+  uint64 serverTime = 1;
   ProcessMetrics processMetrics = 11;
   ConsensusMetrics consensusMetrics = 12;
   RPCError error = 1000;
