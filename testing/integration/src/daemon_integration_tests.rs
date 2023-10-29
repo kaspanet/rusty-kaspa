@@ -7,8 +7,7 @@ use std::time::Duration;
 
 #[tokio::test]
 async fn daemon_sanity_test() {
-    // let total_fd_limit =  kaspa_utils::fd_budget::get_limit() / 2 - 128;
-    let total_fd_limit = 10;
+    let total_fd_limit = kaspa_utils::fd_budget::limit() / 2;
     let mut kaspad1 = Daemon::new_random(total_fd_limit);
     let rpc_client1 = kaspad1.start().await;
 
@@ -34,10 +33,10 @@ async fn daemon_mining_test() {
         unsafe_rpc: true,
         enable_unsynced_mining: true,
         disable_upnp: true, // UPnP registration might take some time and is not needed for this test
+        max_tcp_connections: Some(4),
         ..Default::default()
     };
-    // let total_fd_limit = kaspa_utils::fd_budget::get_limit() / 2 - 128;
-    let total_fd_limit = 10;
+    let total_fd_limit = kaspa_utils::fd_budget::limit() / 2;
 
     let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
     let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
