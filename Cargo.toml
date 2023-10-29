@@ -183,6 +183,10 @@ dashmap = "5.4.0"
 separator = "0.4.1"
 serde_bytes = "0.11.11"
 xxhash-rust = { version = "0.8.6", features = ["xxh3"] }
+h2 = "0.3.21"
+prost = { version = "0.12.1" }
+tonic = { version = "0.10.2", features = ["tls", "gzip"] }
+tonic-build = { version = "0.10.2", features = ["prost"] }
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }

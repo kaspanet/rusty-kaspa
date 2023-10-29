@@ -23,13 +23,13 @@ regex.workspace = true
 workflow-core.workspace = true
 async-trait = "0.1.57"
 futures = { version = "0.3" }
-tonic = { version = "0.10", features = ["tls", "gzip"] }
-prost = { version = "0.12" }
-h2 = "0.3"
+tonic = { workspace = true, features = ["tls", "gzip"] }
+prost.workspace = true
+h2.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 tokio-stream = "0.1"
 async-stream = "0.3"
 triggered = "0.1"
 
 [build-dependencies]
-tonic-build = { version = "0.10", features = ["prost"] }
+tonic-build = { workspace = true, features = ["prost"] }
