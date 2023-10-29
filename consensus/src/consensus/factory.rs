@@ -214,6 +214,7 @@ impl Factory {
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         fd_budget: i32,
     ) -> Self {
+        assert!(fd_budget > 0, "fd_budget has to be positive");
         let mut config = config.clone();
         #[cfg(feature = "devnet-prealloc")]
         set_genesis_utxo_commitment_from_config(&mut config);
