@@ -5,7 +5,7 @@ extern crate kaspa_hashes;
 use std::sync::Arc;
 
 use kaspa_core::{info, signals::Signals};
-use kaspa_utils::fd_budget::limit;
+use kaspa_utils::fd_budget;
 use kaspad_lib::{args::parse_args, daemon::create_core};
 
 #[cfg(feature = "heap")]
@@ -17,7 +17,7 @@ pub fn main() {
     let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
 
     let args = parse_args();
-    let fd_total_budget = limit() - args.rpc_max_clients as i32 - args.inbound_limit as i32 - args.outbound_target as i32;
+    let fd_total_budget = fd_budget::limit() - args.rpc_max_clients as i32 - args.inbound_limit as i32 - args.outbound_target as i32;
     let (core, _) = create_core(args, fd_total_budget);
 
     // Bind the keyboard signal to the core

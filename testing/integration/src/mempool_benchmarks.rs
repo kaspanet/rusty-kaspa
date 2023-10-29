@@ -23,7 +23,7 @@ use kaspa_notify::{
 };
 use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcError};
 use kaspa_txscript::pay_to_address_script;
-use kaspa_utils::fd_budget::limit;
+use kaspa_utils::fd_budget;
 use kaspad_lib::args::Args;
 use parking_lot::Mutex;
 use rand::thread_rng;
@@ -207,7 +207,7 @@ async fn bench_bbt_latency() {
     verify_tx_dag(&utxoset, &txs);
     info!("Generated overall {} txs", txs.len());
 
-    let fd_total_budget = limit();
+    let fd_total_budget = fd_budget::limit();
     let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
     let client = daemon.start().await;
     let bbt_client = daemon.new_client().await;
