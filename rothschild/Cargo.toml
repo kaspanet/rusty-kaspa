@@ -22,4 +22,4 @@ log.workspace = true
 faster-hex.workspace = true
 
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
-secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+secp256k1 = { workspace = true, features = ["global-context", "rand-std"] }

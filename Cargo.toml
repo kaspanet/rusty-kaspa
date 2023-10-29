@@ -184,12 +184,48 @@ dashmap = "5.4.0"
 separator = "0.4.1"
 serde_bytes = "0.11.11"
 xxhash-rust = { version = "0.8.6", features = ["xxh3"] }
+crossbeam-channel = "0.5.0"
+flate2 = "1"
+rand_distr = "0.4"
+dhat = "0.3.2"
+duration-string = "0.2.0"
+local-ip-address = "0.5.3"
+igd-next = { version = "0.14.2", features = ["aio_tokio"] }
+statrs = "0.13.0"
+statest = "0.2.2"
+triggered = "0.1"
+log4rs = "1"
+ctrlc = "3.2"
+intertrait = "0.2"
+once_cell = "1"
+keccak = "0.1"
+sha3 = "0.10"
+cc = "1"
+enum-primitive-derive = "0.2.2"
+num-traits = "0.2.15"
+rlimit = "0.10.1"
+dirs = "4.0"
+malachite-nz = "0.3"
+malachite-base = "0.3"
+portable-atomic = {version = "1.4.1", features = ["float"]}
+tokio-stream = "0.1.11"
+prost = "0.11"
+tonic = "0.9.1"
+h2 = "0.3"
+seqlock = "0.2"
+tonic-build = "0.9.1"
+event-listener = "2.5.3"
+ipnet = "2.8.0"
+hex = "0.4.3"
+async-stream = "0.3.0"
+
+
 
 # bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }
 bs58 = { version = "0.4", features = ["check"], default-features = false }
 hmac = { version = "0.12", default-features = false }
-secp256k1 = { version = "0.24", features = [
+secp256k1 = { version = "0.24.0", features = [
     "global-context",
     "rand-std",
     "serde",
@@ -198,9 +234,13 @@ secp256k1 = { version = "0.24", features = [
 zeroize = { version = "1", default-features = false, features = ["alloc"] }
 ripemd = { version = "0.1", default-features = false }
 subtle = { version = "2", default-features = false }
-once_cell = { version = "1" }
 pbkdf2 = { version = "0.12.1" }
 # pbkdf2 = { version = "0.11", default-features = false}
+
+# workflow dependencies that are not a part of workflow-rs
+
+# workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
+workflow-perf-monitor = { version = "0.0.1" }
 
 # workflow dependencies
 workflow-d3 = { version = "0.8.0" }

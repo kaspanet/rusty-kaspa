@@ -29,10 +29,10 @@ async-channel.workspace = true
 num_cpus.workspace = true
 futures.workspace = true
 
-rand_distr = "0.4"
+rand_distr.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
-secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
-dhat = {version = "0.3.2", optional = true}
+secp256k1.workspace = true
+dhat = {workspace = true, optional = true}
 
 [features]
 heap = ["dhat"]

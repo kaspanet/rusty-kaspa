@@ -21,9 +21,9 @@ borsh.workspace = true
 log.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
-local-ip-address = "0.5.3"
-igd-next = { version = "0.14.2", features = ["aio_tokio"] }
+local-ip-address.workspace = true
+igd-next.workspace = true
 
 [dev-dependencies]
-statrs = "0.13.0"
-statest = "0.2.2"
+statrs.workspace = true
+statest.workspace = true

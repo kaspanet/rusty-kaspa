@@ -14,25 +14,25 @@ no-asm = ["keccak"]
 borsh.workspace = true
 faster-hex.workspace = true
 serde.workspace = true
-blake2b_simd = "1"
-sha2 = "0.10"
-once_cell = "1"
-keccak = { version = "0.1", optional = true }
+blake2b_simd.workspace = true
+sha2.workspace = true
+once_cell.workspace = true
+keccak = { workspace = true, optional = true }
 wasm-bindgen.workspace = true
 js-sys.workspace = true
 workflow-wasm.workspace = true
 kaspa-utils.workspace = true
 
 [target.'cfg(any(target_os = "windows", not(target_arch = "x86_64")))'.dependencies]
-keccak = "0.1"
+keccak.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
 rand.workspace = true
-sha3 = "0.10"
+sha3.workspace = true
 
 [build-dependencies]
-cc = "1"
+cc.workspace = true
 
 [[bench]]
 name = "bench"

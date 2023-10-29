@@ -17,7 +17,7 @@ sha2.workspace = true
 itertools.workspace = true
 rand.workspace = true
 indexmap.workspace = true
-secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+secp256k1.workspace = true
 parking_lot.workspace = true
 kaspa-txscript-errors.workspace = true
 smallvec.workspace = true
@@ -29,8 +29,8 @@ serde.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 smallvec.workspace = true
-hex = "0.4"
-serde_json = "1.0"
+hex.workspace = true
+serde_json.workspace = true
 
 [[bench]]
 name = "bench"

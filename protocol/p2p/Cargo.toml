@@ -34,21 +34,22 @@ uuid.workspace = true
 serde.workspace = true
 borsh.workspace = true
 
-futures = { version = "0.3", default-features = false, features = ["alloc"] }
-prost = "0.11"
-ctrlc = "3.2"
+# futures = { workspace = true, default-features = false, features = ["alloc"] }
+futures = { workspace = true, features = ["alloc"] }
+prost.workspace = true
+ctrlc.workspace = true
 tokio = { workspace = true, features = [
     "rt-multi-thread",
     "macros",
     "signal",
 ] }
-tokio-stream = { version = "0.1.11", features = ["net"] }
-tonic = { version = "0.9.1", features = ["tls", "gzip"] }
-h2 = "0.3"
-seqlock = "0.2"
+tokio-stream = { workspace = true, features = ["net"] }
+tonic = { workspace = true, features = ["tls", "gzip"] }
+h2.workspace = true
+seqlock.workspace = true
 
 [build-dependencies]
-tonic-build = { version = "0.9.1", features = ["prost"] }
+tonic-build = { workspace = true, features = ["prost"] }
 
 [dev-dependencies]
-hex = "0.4.3"
+hex.workspace = true

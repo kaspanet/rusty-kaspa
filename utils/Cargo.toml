@@ -17,9 +17,9 @@ smallvec.workspace = true
 itertools.workspace = true
 thiserror.workspace = true
 
-triggered = "0.1"
-event-listener = "2.5.3"
-ipnet = "2.8.0"
+triggered.workspace = true
+event-listener.workspace = true
+ipnet.workspace = true
 
 [dev-dependencies]
 bincode.workspace = true

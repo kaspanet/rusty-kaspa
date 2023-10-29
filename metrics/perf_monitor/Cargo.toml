@@ -11,8 +11,6 @@ kaspa-core.workspace = true
 log.workspace = true
 thiserror.workspace = true
 
-# perf_monitor = {version = "0.2.0", git = "https://github.com/larksuite/perf-monitor-rs", rev = "3b2d52768f229c481186b991ae56559ab4cd087a"}
-# workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
-workflow-perf-monitor = { version = "0.0.1" }
+workflow-perf-monitor.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
-portable-atomic = {version = "1.4.1", features = ["float"]}
+portable-atomic.workspace = true

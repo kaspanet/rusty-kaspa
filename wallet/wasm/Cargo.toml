@@ -23,4 +23,3 @@ wasm-bindgen-futures.workspace = true
 js-sys.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
-# console_error_panic_hook = "0.1.7"

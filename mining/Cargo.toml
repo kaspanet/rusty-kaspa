@@ -35,7 +35,7 @@ tokio = { workspace = true, features = [
 [dev-dependencies]
 kaspa-txscript.workspace = true
 criterion.workspace = true
-secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+secp256k1.workspace = true
 
 [[bench]]
 name = "bench"

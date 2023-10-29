@@ -31,11 +31,12 @@ itertools.workspace = true
 indexmap.workspace = true
 async-trait.workspace = true
 
-futures = { version = "0.3", default-features = false, features = ["alloc"] }
+# futures = { workspace = true, default-features = false, features = ["alloc"] }
+futures = { workspace = true, features = ["alloc"] }
 tokio = { workspace = true, features = [
     "rt-multi-thread",
     "macros",
     "signal",
 ] }
-tokio-stream = { version = "0.1.11", features = ["net"] }
-uuid = { version = "1.2.2", features = ["v4", "fast-rng"] }
+tokio-stream = { workspace = true, features = ["net"] }
+uuid = { workspace = true, features = ["v4", "fast-rng"] }

@@ -14,11 +14,11 @@ log.workspace = true
 cfg-if.workspace = true
 thiserror.workspace = true
 workflow-log.workspace = true
-triggered = "0.1"
+triggered.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-log4rs = { version = "1", features = ["all_components", "gzip", "background_rotation"] }
+log4rs = { workspace = true, features = ["all_components", "gzip", "background_rotation"] }
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread", "time"] }
-ctrlc = { version = "3.2", features = ["termination"] }
-intertrait = "0.2"
+ctrlc = { workspace = true, features = ["termination"] }
+intertrait.workspace = true
 num_cpus.workspace = true

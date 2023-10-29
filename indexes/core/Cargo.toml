@@ -14,13 +14,13 @@ kaspa-consensus-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-notify.workspace = true
 async-channel.workspace = true
-async-trait = "0.1.57"
+async-trait.workspace = true
 log.workspace = true
 serde.workspace = true
-futures = "0.3.25"
-triggered = "0.1"
+futures.workspace = true
+triggered.workspace = true
 derive_more.workspace = true
-paste = "1.0.11"
+paste.workspace = true
 
 [dev-dependencies]
 # parking_lot.workspace = true
