@@ -100,9 +100,6 @@ pub enum RpcApiOps {
     Subscribe,
     Unsubscribe,
 
-    // Server to client notification
-    Notification,
-
     // Notification ops required by wRPC
     // TODO: Remove these ops and use EventType as NotificationOps when workflow_rpc::server::interface::Interface
     //       will be generic over a MethodOps and NotificationOps instead of a single Ops param.
