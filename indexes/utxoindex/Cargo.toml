@@ -8,19 +8,19 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-hashes.workspace = true
-thiserror.workspace = true
+futures.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-utils.workspace = true
-kaspa-index-core.workspace = true
-kaspa-database.workspace = true
 kaspa-consensusmanager.workspace = true
+kaspa-core.workspace = true
+kaspa-database.workspace = true
+kaspa-hashes.workspace = true
+kaspa-index-core.workspace = true
+kaspa-utils.workspace = true
 log.workspace = true
+parking_lot.workspace = true
 rocksdb.workspace = true
 serde.workspace = true
-parking_lot.workspace = true
-futures.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 kaspa-consensus.workspace = true

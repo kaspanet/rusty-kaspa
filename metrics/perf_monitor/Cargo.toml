@@ -9,8 +9,7 @@ include.workspace = true
 [dependencies]
 kaspa-core.workspace = true
 log.workspace = true
-thiserror.workspace = true
-
-workflow-perf-monitor.workspace = true
-tokio = { workspace = true, features = ["rt", "macros", "time"] }
 portable-atomic.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
+workflow-perf-monitor.workspace = true

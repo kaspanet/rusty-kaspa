@@ -16,10 +16,9 @@ kaspa-addresses.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 
-itertools.workspace = true
 clap.workspace = true
-log.workspace = true
 faster-hex.workspace = true
-
-tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
+itertools.workspace = true
+log.workspace = true
 secp256k1 = { workspace = true, features = ["global-context", "rand-std"] }
+tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }

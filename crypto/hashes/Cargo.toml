@@ -11,17 +11,17 @@ license.workspace = true
 no-asm = ["keccak"]
 
 [dependencies]
+blake2b_simd.workspace = true
 borsh.workspace = true
 faster-hex.workspace = true
-serde.workspace = true
-blake2b_simd.workspace = true
-sha2.workspace = true
-once_cell.workspace = true
-keccak = { workspace = true, optional = true }
-wasm-bindgen.workspace = true
 js-sys.workspace = true
-workflow-wasm.workspace = true
 kaspa-utils.workspace = true
+keccak = { workspace = true, optional = true }
+once_cell.workspace = true
+serde.workspace = true
+sha2.workspace = true
+wasm-bindgen.workspace = true
+workflow-wasm.workspace = true
 
 [target.'cfg(any(target_os = "windows", not(target_arch = "x86_64")))'.dependencies]
 keccak.workspace = true

@@ -8,32 +8,31 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-thiserror.workspace = true
+kaspa-core.workspace = true
+kaspa-grpc-core.workspace = true
 kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-service.workspace = true
-kaspa-grpc-core.workspace = true
 kaspa-utils.workspace = true
-kaspa-core.workspace = true
+thiserror.workspace = true
 
-uuid.workspace = true
-faster-hex.workspace = true
 async-channel.workspace = true
-parking_lot.workspace = true
-log.workspace = true
-rand.workspace = true
-once_cell.workspace = true
-
+async-stream.workspace = true
 async-trait.workspace = true
+faster-hex.workspace = true
 futures.workspace = true
-tonic = { workspace = true, features = ["gzip"] }
-prost.workspace = true
 h2.workspace = true
+log.workspace = true
+once_cell.workspace = true
+parking_lot.workspace = true
+paste.workspace = true
+prost.workspace = true
+rand.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 tokio-stream.workspace = true
-async-stream.workspace = true
+tonic = { workspace = true, features = ["gzip"] }
 triggered.workspace = true
-paste.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 kaspa-grpc-client.workspace = true

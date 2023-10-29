@@ -8,23 +8,23 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-consensus-core.workspace = true
-kaspa-addresses.workspace = true
-log.workspace = true
-kaspa-hashes.workspace = true
 blake2b_simd.workspace = true
-sha2.workspace = true
-itertools.workspace = true
-rand.workspace = true
+borsh.workspace = true
 indexmap.workspace = true
-secp256k1.workspace = true
-parking_lot.workspace = true
+itertools.workspace = true
+kaspa-addresses.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-hashes.workspace = true
 kaspa-txscript-errors.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+secp256k1.workspace = true
+serde.workspace = true
+sha2.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
-borsh.workspace = true
-serde.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

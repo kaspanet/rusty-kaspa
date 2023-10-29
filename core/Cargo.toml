@@ -8,17 +8,17 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-futures-util.workspace = true
-wasm-bindgen.workspace = true
-log.workspace = true
 cfg-if.workspace = true
+futures-util.workspace = true
+log.workspace = true
 thiserror.workspace = true
-workflow-log.workspace = true
 triggered.workspace = true
+wasm-bindgen.workspace = true
+workflow-log.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-log4rs = { workspace = true, features = ["all_components", "gzip", "background_rotation"] }
-tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread", "time"] }
 ctrlc = { workspace = true, features = ["termination"] }
 intertrait.workspace = true
+log4rs = { workspace = true, features = ["all_components", "gzip", "background_rotation"] }
 num_cpus.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread", "time"] }

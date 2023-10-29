@@ -26,27 +26,21 @@ kaspa-hashes.workspace = true
 kaspa-math.workspace = true
 kaspa-utils.workspace = true
 
-log.workspace = true
-thiserror.workspace = true
-parking_lot.workspace = true
-itertools.workspace = true
-uuid.workspace = true
-serde.workspace = true
 borsh.workspace = true
-
-# futures = { workspace = true, default-features = false, features = ["alloc"] }
-futures = { workspace = true, features = ["alloc"] }
-prost.workspace = true
 ctrlc.workspace = true
-tokio = { workspace = true, features = [
-    "rt-multi-thread",
-    "macros",
-    "signal",
-] }
+futures = { workspace = true, features = ["alloc"] }
+h2.workspace = true
+itertools.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+prost.workspace = true
+seqlock.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ] }
 tokio-stream = { workspace = true, features = ["net"] }
 tonic = { workspace = true, features = ["tls", "gzip"] }
-h2.workspace = true
-seqlock.workspace = true
+uuid.workspace = true
 
 [build-dependencies]
 tonic-build = { workspace = true, features = ["prost"] }

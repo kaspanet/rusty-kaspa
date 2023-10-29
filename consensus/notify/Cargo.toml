@@ -8,16 +8,16 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-hashes.workspace = true
-thiserror.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-notify.workspace = true
-kaspa-core.workspace = true
-kaspa-utils.workspace = true
 async-channel.workspace = true
-log.workspace = true
-futures.workspace = true
-triggered.workspace = true
-derive_more.workspace = true
-paste.workspace = true
 cfg-if.workspace = true
+derive_more.workspace = true
+futures.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-core.workspace = true
+kaspa-hashes.workspace = true
+kaspa-notify.workspace = true
+kaspa-utils.workspace = true
+log.workspace = true
+paste.workspace = true
+thiserror.workspace = true
+triggered.workspace = true

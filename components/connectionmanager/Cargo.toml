@@ -8,14 +8,14 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-utils.workspace = true
+duration-string.workspace = true
+futures-util.workspace = true
+itertools.workspace = true
+kaspa-addressmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-p2p-lib.workspace = true
-kaspa-addressmanager.workspace = true
-tokio.workspace = true
+kaspa-utils.workspace = true
 log.workspace = true
 parking_lot.workspace = true
-itertools.workspace = true
 rand.workspace = true
-futures-util.workspace = true
-duration-string.workspace = true
+tokio.workspace = true
