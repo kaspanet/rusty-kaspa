@@ -120,9 +120,9 @@ kaspad = { version = "0.1.7", path = "kaspad" }
 kaspa-perf-monitor = { path = "metrics/perf_monitor" }
 
 # external
-thiserror = "1"
-faster-hex = "0.6"
-itertools = "0.10"
+thiserror = "1.0.47"
+faster-hex = "0.6.0" # TODO "0.8.1"
+itertools = "0.11.0"
 rand = "0.8"
 rand_chacha = "0.3"
 rayon = "1"
@@ -131,17 +131,15 @@ blake2b_simd = "1"
 sha2 = "0.10.7"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1.0.91"
-serde-wasm-bindgen = "0.4.5"
-futures-util = { version = "0.3", default-features = false, features = [
-    "alloc",
-] }
+serde-wasm-bindgen = "0.6.1"
+futures-util = { version = "0.3", default-features = false, features = [ "alloc" ] }
 futures = { version = "0.3" }
 bincode = { version = "1", default-features = false }
 tokio = { version = "1", features = ["sync", "rt-multi-thread"] }
 wasm-bindgen = { version = "0.2.87", features = ["serde-serialize"] }
 wasm-bindgen-test = "0.3.37"
-criterion = { version = "0.4", default-features = false }
-indexmap = "1.9.1"
+criterion = { version = "0.5.1", default-features = false }
+indexmap = "2.0.2"
 parking_lot = "0.12"
 smallvec = { version = "1.10.0", features = ["serde"] }
 borsh = { version = "0.9.1", features = ["rc"] } # please keep this fixed
@@ -157,7 +155,7 @@ async-trait = "0.1.57"
 paste = "1.0.11"
 regex = "1.6.0"
 pad = "0.1.6"
-convert_case = "0.5.0"
+convert_case = "0.6.0"
 wasm-bindgen-futures = "0.4.33"
 js-sys = "0.3.64"
 web-sys = "0.3.64"
@@ -170,7 +168,6 @@ downcast = "0.11.0"
 downcast-rs = "1.2.0"
 argon2 = "0.5.0"
 uuid = { version = "1.2.2", features = ["v4", "fast-rng", "serde"] }
-# pbkdf2 = "0.12.1"
 sha1 = "0.10.5"
 aes = "0.8.2"
 cfb-mode = "0.8.2"
@@ -188,10 +185,10 @@ crossbeam-channel = "0.5.0"
 flate2 = "1"
 rand_distr = "0.4"
 dhat = "0.3.2"
-duration-string = "0.2.0"
+duration-string = "0.3.0"
 local-ip-address = "0.5.3"
 igd-next = { version = "0.14.2", features = ["aio_tokio"] }
-statrs = "0.13.0"
+statrs = "0.13.0" # TODO "0.16.0"
 statest = "0.2.2"
 triggered = "0.1"
 log4rs = "1"
@@ -204,43 +201,33 @@ cc = "1"
 enum-primitive-derive = "0.2.2"
 num-traits = "0.2.15"
 rlimit = "0.10.1"
-dirs = "4.0"
-malachite-nz = "0.3"
-malachite-base = "0.3"
+dirs = "5.0.1"
+malachite-nz = "0.4.4"
+malachite-base = "0.4.4"
 portable-atomic = {version = "1.4.1", features = ["float"]}
 tokio-stream = "0.1.11"
-prost = "0.11"
-tonic = "0.9.1"
+prost = "0.12.1"
+tonic = "0.10.2"
 h2 = "0.3"
 seqlock = "0.2"
-tonic-build = "0.9.1"
-event-listener = "2.5.3"
+tonic-build = "0.10.2"
+event-listener = "2.5.3" # TODO "3.0.1"
 ipnet = "2.8.0"
 hex = "0.4.3"
 async-stream = "0.3.0"
-
-
-
-# bip32 dependencies
 rand_core = { version = "0.6", features = ["std"] }
-bs58 = { version = "0.4", features = ["check"], default-features = false }
+bs58 = { version = "0.5.0", features = ["check"], default-features = false }
 hmac = { version = "0.12", default-features = false }
-secp256k1 = { version = "0.24.0", features = [
-    "global-context",
-    "rand-std",
-    "serde",
-] }
-#sha2 = {version = "0.10", default-features = false}
+secp256k1 = { version = "0.24.0", features = [ "global-context", "rand-std", "serde" ] } # TODO "0.28.0"
 zeroize = { version = "1", default-features = false, features = ["alloc"] }
 ripemd = { version = "0.1", default-features = false }
 subtle = { version = "2", default-features = false }
 pbkdf2 = { version = "0.12.1" }
-# pbkdf2 = { version = "0.11", default-features = false}
 
-# workflow dependencies that are not a part of workflow-rs
+# workflow dependencies that are not a part of core libraries
 
 # workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
-workflow-perf-monitor = { version = "0.0.1" }
+workflow-perf-monitor = { version = "0.0.2" }
 
 # workflow dependencies
 workflow-d3 = { version = "0.8.0" }
