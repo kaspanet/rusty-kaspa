@@ -385,7 +385,7 @@ mod tests {
     /// Runs a DAG test-case with full verification using the staging store mechanism.
     /// Note: runtime is quadratic in the number of blocks so should be used with mildly small DAGs (~50)
     fn run_dag_test_case_with_staging(test: &DagTestCase) {
-        let (_lifetime, db) = create_temp_db!(ConnBuilder::default());
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_size = test.blocks.len() as u64 / 3;
         let reachability = RwLock::new(DbReachabilityStore::new(db.clone(), cache_size));
         let relations = RwLock::new(DbRelationsStore::with_prefix(db.clone(), &[], 0));
@@ -533,7 +533,7 @@ mod tests {
             run_dag_test_case(&mut relations, &mut reachability, &test);
 
             // Run with direct DB stores
-            let (_lifetime, db) = create_temp_db!(ConnBuilder::default());
+            let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
             let cache_size = test.blocks.len() as u64 / 3;
             let mut reachability = DbReachabilityStore::new(db.clone(), cache_size);
             let mut relations = DbRelationsStore::new(db, 0, cache_size);

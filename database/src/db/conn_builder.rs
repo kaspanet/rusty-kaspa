@@ -1,59 +1,67 @@
 use crate::db::DB;
-use std::{cmp::min, path::PathBuf, sync::Arc};
+use rocksdb::{DBWithThreadMode, MultiThreaded};
+use std::{path::PathBuf, sync::Arc};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct Unspecified;
 
-#[derive(Debug, Clone)]
-pub struct ConnBuilder<Path: Clone, const STATS_ENABLED: bool, StatsPeriod: Clone> {
+#[derive(Debug)]
+pub struct ConnBuilder<Path, const STATS_ENABLED: bool, StatsPeriod, FDLimit> {
     db_path: Path,
     create_if_missing: bool,
     parallelism: usize,
-    files_limit: i32,
+    files_limit: FDLimit,
     mem_budget: usize,
     stats_period: StatsPeriod,
 }
 
-impl Default for ConnBuilder<Unspecified, false, Unspecified> {
+impl Default for ConnBuilder<Unspecified, false, Unspecified, Unspecified> {
     fn default() -> Self {
         ConnBuilder {
             db_path: Unspecified,
             create_if_missing: true,
             parallelism: 1,
-            files_limit: 500,
             mem_budget: 64 * 1024 * 1024,
             stats_period: Unspecified,
+            files_limit: Unspecified,
         }
     }
 }
 
-impl<Path: Clone, const STATS_ENABLED: bool, StatsPeriod: Clone> ConnBuilder<Path, STATS_ENABLED, StatsPeriod> {
-    pub fn with_db_path(self, db_path: PathBuf) -> ConnBuilder<PathBuf, STATS_ENABLED, StatsPeriod> {
+impl<Path, const STATS_ENABLED: bool, StatsPeriod, FDLimit> ConnBuilder<Path, STATS_ENABLED, StatsPeriod, FDLimit> {
+    pub fn with_db_path(self, db_path: PathBuf) -> ConnBuilder<PathBuf, STATS_ENABLED, StatsPeriod, FDLimit> {
         ConnBuilder {
             db_path,
+            files_limit: self.files_limit,
             create_if_missing: self.create_if_missing,
             parallelism: self.parallelism,
-            files_limit: self.files_limit,
             mem_budget: self.mem_budget,
             stats_period: self.stats_period,
         }
     }
-    pub fn with_create_if_missing(self, create_if_missing: bool) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod> {
+    pub fn with_create_if_missing(self, create_if_missing: bool) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod, FDLimit> {
         ConnBuilder { create_if_missing, ..self }
     }
-    pub fn with_parallelism(self, parallelism: impl Into<usize>) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod> {
+    pub fn with_parallelism(self, parallelism: impl Into<usize>) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod, FDLimit> {
         ConnBuilder { parallelism: parallelism.into(), ..self }
     }
-    pub fn with_files_limit(self, files_limit: impl Into<i32>) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod> {
-        ConnBuilder { files_limit: files_limit.into(), ..self }
-    }
-    pub fn with_mem_budget(self, mem_budget: impl Into<usize>) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod> {
+    pub fn with_mem_budget(self, mem_budget: impl Into<usize>) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod, FDLimit> {
         ConnBuilder { mem_budget: mem_budget.into(), ..self }
+    }
+    pub fn with_files_limit(self, files_limit: impl Into<i32>) -> ConnBuilder<Path, STATS_ENABLED, StatsPeriod, i32> {
+        ConnBuilder {
+            db_path: self.db_path,
+            files_limit: files_limit.into(),
+            create_if_missing: self.create_if_missing,
+            parallelism: self.parallelism,
+            mem_budget: self.mem_budget,
+            stats_period: self.stats_period,
+        }
     }
 }
 
-impl<Path: Clone> ConnBuilder<Path, false, Unspecified> {
-    pub fn enable_stats(self) -> ConnBuilder<Path, true, Unspecified> {
+impl<Path, FDLimit> ConnBuilder<Path, false, Unspecified, FDLimit> {
+    pub fn enable_stats(self) -> ConnBuilder<Path, true, Unspecified, FDLimit> {
         ConnBuilder {
             db_path: self.db_path,
             create_if_missing: self.create_if_missing,
@@ -65,8 +73,8 @@ impl<Path: Clone> ConnBuilder<Path, false, Unspecified> {
     }
 }
 
-impl<Path: Clone, StatsPeriod: Clone> ConnBuilder<Path, true, StatsPeriod> {
-    pub fn disable_stats(self) -> ConnBuilder<Path, false, Unspecified> {
+impl<Path, StatsPeriod, FDLimit> ConnBuilder<Path, true, StatsPeriod, FDLimit> {
+    pub fn disable_stats(self) -> ConnBuilder<Path, false, Unspecified, FDLimit> {
         ConnBuilder {
             db_path: self.db_path,
             create_if_missing: self.create_if_missing,
@@ -76,7 +84,7 @@ impl<Path: Clone, StatsPeriod: Clone> ConnBuilder<Path, true, StatsPeriod> {
             stats_period: Unspecified,
         }
     }
-    pub fn with_stats_period(self, stats_period: impl Into<u32>) -> ConnBuilder<Path, true, u32> {
+    pub fn with_stats_period(self, stats_period: impl Into<u32>) -> ConnBuilder<Path, true, u32, FDLimit> {
         ConnBuilder {
             db_path: self.db_path,
             create_if_missing: self.create_if_missing,
@@ -94,44 +102,39 @@ macro_rules! default_opts {
         if $self.parallelism > 1 {
             opts.increase_parallelism($self.parallelism as i32);
         }
-        opts.optimize_level_style_compaction($self.mem_budget);
 
-        #[cfg(target_os = "windows")]
-        let files_limit = rlimit::getmaxstdio() as i32;
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        let files_limit = rlimit::getrlimit(rlimit::Resource::NOFILE).unwrap().0 as i32;
-        // In most linux environments the limit is set to 1024, so we use 500 to give sufficient slack.
-        // TODO: fine-tune this parameter and additional parameters related to max file size
-        opts.set_max_open_files(min(files_limit, $self.files_limit));
+        opts.optimize_level_style_compaction($self.mem_budget);
+        let guard = kaspa_utils::fd_budget::acquire_guard($self.files_limit)?;
+        opts.set_max_open_files($self.files_limit);
         opts.create_if_missing($self.create_if_missing);
-        opts
+        Ok((opts, guard))
     }};
 }
 
-impl ConnBuilder<PathBuf, false, Unspecified> {
-    pub fn build(self) -> Arc<DB> {
-        let opts = default_opts!(self);
-        let db = Arc::new(DB::open(&opts, self.db_path.to_str().unwrap()).unwrap());
-        db
+impl ConnBuilder<PathBuf, false, Unspecified, i32> {
+    pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
+        let (opts, guard) = default_opts!(self)?;
+        let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
+        Ok(db)
     }
 }
 
-impl ConnBuilder<PathBuf, true, Unspecified> {
-    pub fn build(self) -> Arc<DB> {
-        let mut opts = default_opts!(self);
+impl ConnBuilder<PathBuf, true, Unspecified, i32> {
+    pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
+        let (mut opts, guard) = default_opts!(self)?;
         opts.enable_statistics();
-        let db = Arc::new(DB::open(&opts, self.db_path.to_str().unwrap()).unwrap());
-        db
+        let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
+        Ok(db)
     }
 }
 
-impl ConnBuilder<PathBuf, true, u32> {
-    pub fn build(self) -> Arc<DB> {
-        let mut opts = default_opts!(self);
+impl ConnBuilder<PathBuf, true, u32, i32> {
+    pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
+        let (mut opts, guard) = default_opts!(self)?;
         opts.enable_statistics();
         opts.set_report_bg_io_stats(true);
         opts.set_stats_dump_period_sec(self.stats_period);
-        let db = Arc::new(DB::open(&opts, self.db_path.to_str().unwrap()).unwrap());
-        db
+        let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
+        Ok(db)
     }
 }

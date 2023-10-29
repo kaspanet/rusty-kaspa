@@ -35,7 +35,8 @@ impl Drop for DbLifetime {
             let options = rocksdb::Options::default();
             let path_buf = dir.path().to_owned();
             let path = path_buf.to_str().unwrap();
-            DB::destroy(&options, path).expect("DB is expected to be deletable since there are no references to it");
+            <rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>>::destroy(&options, path)
+                .expect("DB is expected to be deletable since there are no references to it");
         }
     }
 }
@@ -55,7 +56,7 @@ macro_rules! create_temp_db {
     ($conn_builder: expr) => {{
         let db_tempdir = $crate::utils::get_kaspa_tempdir();
         let db_path = db_tempdir.path().to_owned();
-        let db = $conn_builder.with_db_path(db_path).build();
+        let db = $conn_builder.with_db_path(db_path).build().unwrap();
         ($crate::utils::DbLifetime::new(db_tempdir, std::sync::Arc::downgrade(&db)), db)
     }};
 }
@@ -72,7 +73,7 @@ macro_rules! create_permanent_db {
                 _ => panic!("{e}"),
             }
         }
-        let db = $conn_builder.with_db_path(db_dir).build();
+        let db = $conn_builder.with_db_path(db_dir).build().unwrap();
         ($crate::utils::DbLifetime::without_destroy(std::sync::Arc::downgrade(&db)), db)
     }};
 }
@@ -83,7 +84,7 @@ macro_rules! create_permanent_db {
 macro_rules! load_existing_db {
     ($db_path: expr, $conn_builder: expr) => {{
         let db_dir = std::path::PathBuf::from($db_path);
-        let db = $conn_builder.with_db_path(db_dir).with_create_if_missing(false).build();
+        let db = $conn_builder.with_db_path(db_dir).with_create_if_missing(false).build().unwrap();
         ($crate::utils::DbLifetime::without_destroy(std::sync::Arc::downgrade(&db)), db)
     }};
 }

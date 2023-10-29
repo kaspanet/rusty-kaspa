@@ -291,6 +291,7 @@ impl RelationsStore for MemoryRelationsStore {
 mod tests {
     use super::*;
     use crate::processes::relations::RelationsStoreExtensions;
+    use kaspa_database::create_temp_db;
 
     #[test]
     fn test_memory_relations_store() {
@@ -299,9 +300,9 @@ mod tests {
 
     #[test]
     fn test_db_relations_store() {
-        let db_tempdir = kaspa_database::utils::get_kaspa_tempdir();
-        let db = Arc::new(DB::open_default(db_tempdir.path().to_owned().to_str().unwrap()).unwrap());
+        let (lt, db) = create_temp_db!(kaspa_database::prelude::ConnBuilder::default().with_files_limit(10));
         test_relations_store(DbRelationsStore::new(db, 0, 2));
+        drop(lt)
     }
 
     fn test_relations_store<T: RelationsStore>(mut store: T) {
