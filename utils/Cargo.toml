@@ -16,10 +16,14 @@ faster-hex.workspace = true
 smallvec.workspace = true
 itertools.workspace = true
 thiserror.workspace = true
+cfg-if.workspace = true
 
 triggered.workspace = true
 event-listener.workspace = true
 ipnet.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rlimit = "0.10.1"
 
 [dev-dependencies]
 bincode.workspace = true

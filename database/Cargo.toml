@@ -22,7 +22,5 @@ smallvec.workspace = true
 itertools.workspace = true
 num_cpus.workspace = true
 tempfile.workspace = true
-
 enum-primitive-derive.workspace = true
 num-traits.workspace = true
-rlimit.workspace = true
