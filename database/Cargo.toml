@@ -25,4 +25,3 @@ tempfile.workspace = true
 
 enum-primitive-derive = "0.2.2"
 num-traits = "0.2.15"
-rlimit = "0.10.1"
