@@ -25,13 +25,13 @@ pub struct Daemon {
 }
 
 impl Daemon {
-    pub fn new_random() -> Daemon {
+    pub fn new_random(fd_total_budget: i32) -> Daemon {
         // UPnP registration might take some time and is not needed for usual daemon tests
         let args = Args { devnet: true, disable_upnp: true, ..Default::default() };
-        Self::new_random_with_args(args)
+        Self::new_random_with_args(args, fd_total_budget)
     }
 
-    pub fn new_random_with_args(mut args: Args) -> Daemon {
+    pub fn new_random_with_args(mut args: Args, fd_total_budget: i32) -> Daemon {
         // This should ask the OS to allocate free port for socket 1 to 4.
         let socket1 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let rpc_port = socket1.local_addr().unwrap().port();
@@ -58,7 +58,7 @@ impl Daemon {
         args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
 
         let network = args.network();
-        let (core, _) = create_core_with_runtime(&Default::default(), &args);
+        let (core, _) = create_core_with_runtime(&Default::default(), &args, fd_total_budget);
         Daemon { network, rpc_port, p2p_port, core, workers: None, _appdir_tempdir: appdir_tempdir }
     }
 
