@@ -11,10 +11,12 @@ use std::{sync::Arc, time::Duration};
 async fn daemon_sanity_test() {
     kaspa_core::log::try_init_logger("INFO");
 
-    let mut kaspad1 = Daemon::new_random();
+    // let total_fd_limit =  kaspa_utils::fd_budget::get_limit() / 2 - 128;
+    let total_fd_limit = 10;
+    let mut kaspad1 = Daemon::new_random(total_fd_limit);
     let rpc_client1 = kaspad1.start().await;
 
-    let mut kaspad2 = Daemon::new_random();
+    let mut kaspad2 = Daemon::new_random(total_fd_limit);
     let rpc_client2 = kaspad2.start().await;
 
     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -38,8 +40,11 @@ async fn daemon_mining_test() {
         disable_upnp: true, // UPnP registration might take some time and is not needed for this test
         ..Default::default()
     };
-    let mut kaspad1 = Daemon::new_random_with_args(args.clone());
-    let mut kaspad2 = Daemon::new_random_with_args(args);
+    // let total_fd_limit = kaspa_utils::fd_budget::get_limit() / 2 - 128;
+    let total_fd_limit = 10;
+
+    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
     let rpc_client1 = kaspad1.start().await;
     let rpc_client2 = kaspad2.start().await;
 
@@ -79,7 +84,8 @@ async fn daemon_cleaning_test() {
     let async_runtime;
     let core;
     {
-        let mut kaspad1 = Daemon::new_random_with_args(args);
+        let total_fd_limit = 10;
+        let mut kaspad1 = Daemon::new_random_with_args(args, total_fd_limit);
         let dyn_consensus_manager = kaspad1.core.find(ConsensusManager::IDENT).unwrap();
         let dyn_async_runtime = kaspad1.core.find(AsyncRuntime::IDENT).unwrap();
         consensus_manager = Arc::downgrade(&Arc::downcast::<ConsensusManager>(dyn_consensus_manager.arc_any()).unwrap());

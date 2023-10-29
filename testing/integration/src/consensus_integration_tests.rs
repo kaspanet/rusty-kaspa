@@ -113,7 +113,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
     map.get_mut(&blocks[0]).unwrap().parents.push(root);
 
     // Act
-    let (_temp_db_lifetime, db) = create_temp_db!(ConnBuilder::default());
+    let (_temp_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let mut store = DbReachabilityStore::new(db.clone(), 100000);
     let mut relations = DbRelationsStore::new(db, 0, 100000); // TODO: remove level
     let mut builder = DagBuilder::new(&mut store, &mut relations);
@@ -922,9 +922,9 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv));
 
     // External storage for storing block bodies. This allows separating header and body processing phases
-    let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default());
+    let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let external_block_store = DbBlockTransactionsStore::new(external_storage, config.perf.block_data_cache_size);
-    let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default());
+    let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(UtxoIndexProxy::new(utxoindex.clone()))));
@@ -1696,15 +1696,23 @@ async fn staging_consensus_test() {
     let consensus_db_dir = db_path.join("consensus");
     let meta_db_dir = db_path.join("meta");
 
-    let meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir).build();
+    let meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir).with_files_limit(5).build().unwrap();
 
     let (notification_send, _notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
     let counters = Arc::new(ProcessingCounters::default());
     let tx_script_cache_counters = Arc::new(TxScriptCacheCounters::default());
 
-    let consensus_factory =
-        Arc::new(ConsensusFactory::new(meta_db, &config, consensus_db_dir, 4, notification_root, counters, tx_script_cache_counters));
+    let consensus_factory = Arc::new(ConsensusFactory::new(
+        meta_db,
+        &config,
+        consensus_db_dir,
+        4,
+        notification_root,
+        counters,
+        tx_script_cache_counters,
+        200,
+    ));
     let consensus_manager = Arc::new(ConsensusManager::new(consensus_factory));
 
     let core = Arc::new(Core::new());

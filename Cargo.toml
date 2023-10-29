@@ -118,7 +118,6 @@ kaspa-wrpc-server = { version = "0.1.7", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.1.7", path = "rpc/wrpc/wasm" }
 kaspad = { version = "0.1.7", path = "kaspad" }
 kaspa-perf-monitor = { path = "metrics/perf_monitor" }
-
 # external
 thiserror = "1"
 faster-hex = "0.6"
