@@ -71,6 +71,7 @@ impl Adaptor {
 
     /// Connect to a new peer (no retries)
     pub async fn connect_peer(&self, peer_address: String) -> Result<PeerKey, ConnectionError> {
+        // todo pass tcp limit
         self.connection_handler.connect_with_retry(peer_address, 1, Default::default()).await.map(|r| r.key())
     }
 
@@ -81,6 +82,7 @@ impl Adaptor {
         retry_attempts: u8,
         retry_interval: Duration,
     ) -> Result<PeerKey, ConnectionError> {
+        // todo pass tcp limit
         self.connection_handler.connect_with_retry(peer_address, retry_attempts, retry_interval).await.map(|r| r.key())
     }
 

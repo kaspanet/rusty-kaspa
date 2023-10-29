@@ -143,6 +143,7 @@ impl ConnectionHandler {
         retry_attempts: u8,
         retry_interval: Duration,
     ) -> Result<Arc<Router>, ConnectionError> {
+        // todo consider tcp limit
         let mut counter = 0;
         loop {
             counter += 1;
