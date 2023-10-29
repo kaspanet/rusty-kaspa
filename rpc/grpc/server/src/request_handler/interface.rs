@@ -14,6 +14,14 @@ use std::{collections::HashMap, sync::Arc};
 
 pub type DynMethod = Arc<dyn MethodTrait<ServerContext, Connection, KaspadRequest, KaspadResponse>>;
 
+/// An interface providing methods implementations and a fallback "not implemented" method
+/// actually returning a message with a "not implemented" error.
+///
+/// The interface can provide a method clone for every [`KaspadPayloadOps`] variant for later
+/// processing of related requests.
+///
+/// It is also possible to directly let the interface itself process a request by invoking
+/// the `call()` method.
 pub struct Interface {
     server_ctx: ServerContext,
     methods: HashMap<KaspadPayloadOps, DynMethod>,
@@ -41,6 +49,11 @@ impl Interface {
         if self.methods.insert(op, method).is_some() {
             panic!("RPC method {op:?} is declared multiple times")
         }
+    }
+
+    pub fn replace_method(&mut self, op: KaspadPayloadOps, method: Method<ServerContext, Connection, KaspadRequest, KaspadResponse>) {
+        let method: Arc<dyn MethodTrait<ServerContext, Connection, KaspadRequest, KaspadResponse>> = Arc::new(method);
+        let _ = self.methods.insert(op, method);
     }
 
     pub async fn call(

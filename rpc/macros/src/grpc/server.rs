@@ -130,7 +130,6 @@ impl ToTokens for RpcTable {
                 for op in #payload_ops::list() {
                     match op {
                         #(#targets)*
-                        _ => { }
                     }
                 }
 

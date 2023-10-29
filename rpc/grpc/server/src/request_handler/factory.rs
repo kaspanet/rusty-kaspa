@@ -23,7 +23,8 @@ impl Factory {
     }
 
     pub fn new_interface(server_ctx: ServerContext) -> Interface {
-        #[allow(unreachable_patterns)]
+        // The array as last argument in the macro call below must exactly match the full set of
+        // KaspadPayloadOps variants.
         let mut interface = build_grpc_server_interface!(
             server_ctx.clone(),
             ServerContext,
@@ -65,7 +66,7 @@ impl Factory {
                 GetMetrics,
                 NotifyBlockAdded,
                 NotifyNewBlockTemplate,
-                // NotifyFinalityConflict,      // Manually implemented so subscription gets mirrored to FinalityConflictResolved as well (see below)
+                NotifyFinalityConflict,
                 NotifyUtxosChanged,
                 NotifySinkBlueScoreChanged,
                 NotifyPruningPointUtxoSetOverride,
@@ -76,6 +77,8 @@ impl Factory {
             ]
         );
 
+        // Manually reimplementing the NotifyFinalityConflictRequest method so subscription
+        // gets mirrored to FinalityConflictResolved notifications as well.
         let method: Method<ServerContext, Connection, KaspadRequest, KaspadResponse> =
             Method::new(|server_ctx: ServerContext, connection: Connection, request: KaspadRequest| {
                 Box::pin(async move {
@@ -110,7 +113,7 @@ impl Factory {
                     Ok(response)
                 })
             });
-        interface.method(KaspadPayloadOps::NotifyFinalityConflict, method);
+        interface.replace_method(KaspadPayloadOps::NotifyFinalityConflict, method);
 
         interface
     }
