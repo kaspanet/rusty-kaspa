@@ -128,7 +128,7 @@ impl ConnectionHandler {
         tokio::spawn(async move {
             let _ = termination_receiver.await;
             signal_sender.send(()).expect("send signal");
-            if (timeout(Duration::from_millis(500), server_handle).await).is_err() {
+            if (timeout(Duration::from_secs(1), server_handle).await).is_err() {
                 warn!("GRPC Server stopped forcefully on: {}", serve_address);
             }
         });
