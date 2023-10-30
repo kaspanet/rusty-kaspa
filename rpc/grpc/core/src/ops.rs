@@ -79,6 +79,7 @@ pub enum KaspadPayloadOps {
     Ping,
     GetMetrics,
     GetServerInfo,
+    GetSyncStatus,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,

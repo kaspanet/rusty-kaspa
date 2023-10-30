@@ -378,6 +378,14 @@ from!(item: RpcResult<&kaspa_rpc_core::GetServerInfoResponse>, protowire::GetSer
     }
 });
 
+from!(&kaspa_rpc_core::GetSyncStatusRequest, protowire::GetSyncStatusRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSyncStatusResponse>, protowire::GetSyncStatusResponseMessage, {
+    Self {
+        is_synced: item.is_synced,
+        error: None,
+    }
+});
+
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
 });
@@ -724,6 +732,13 @@ try_from!(item: &protowire::GetServerInfoResponseMessage, RpcResult<kaspa_rpc_co
         has_utxo_index: item.has_utxo_index,
         is_synced: item.is_synced,
         virtual_daa_score: item.virtual_daa_score,
+    }
+});
+
+try_from!(&protowire::GetSyncStatusRequestMessage, kaspa_rpc_core::GetSyncStatusRequest);
+try_from!(item: &protowire::GetSyncStatusResponseMessage, RpcResult<kaspa_rpc_core::GetSyncStatusResponse>, {
+    Self {
+        is_synced: item.is_synced,
     }
 });
 

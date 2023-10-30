@@ -181,12 +181,8 @@ impl RpcApi for GrpcClient {
     //     self.inner.call(KaspadPayloadOps::SubmitBlock, request).await?.as_ref().try_into()
     // }
 
-    async fn get_sync_status_call(&self, _request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse> {
-        let GetInfoResponse { is_synced, .. } = self.get_info().await?;
-        Ok(GetSyncStatusResponse { is_synced })
-    }
-
     route!(ping_call, Ping);
+    route!(get_sync_status_call, GetSyncStatus);
     route!(get_server_info_call, GetServerInfo);
     route!(get_metrics_call, GetMetrics);
     route!(submit_block_call, SubmitBlock);
