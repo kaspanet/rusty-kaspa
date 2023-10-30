@@ -718,13 +718,13 @@ pub struct ConsensusMetrics {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMetricsResponse {
-    pub server_time: u128,
+    pub server_time: u64,
     pub process_metrics: Option<ProcessMetrics>,
     pub consensus_metrics: Option<ConsensusMetrics>,
 }
 
 impl GetMetricsResponse {
-    pub fn new(server_time: u128, process_metrics: Option<ProcessMetrics>, consensus_metrics: Option<ConsensusMetrics>) -> Self {
+    pub fn new(server_time: u64, process_metrics: Option<ProcessMetrics>, consensus_metrics: Option<ConsensusMetrics>) -> Self {
         Self { process_metrics, consensus_metrics, server_time }
     }
 }
@@ -1068,7 +1068,7 @@ impl SubscribeResponse {
 }
 
 ///
-///  wRPC response for RpcApiOps::Subscribe request
+///  wRPC response for RpcApiOps::Unsubscribe request
 ///
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]

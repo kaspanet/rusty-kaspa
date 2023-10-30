@@ -26,6 +26,7 @@ kaspa-math.workspace = true
 kaspa-utxoindex.workspace = true
 kaspa-wrpc-core.workspace = true
 kaspa-perf-monitor.workspace = true
+kaspa-hashes.workspace = true
 
 log.workspace = true
 async-trait.workspace = true
