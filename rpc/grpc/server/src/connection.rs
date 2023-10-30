@@ -190,7 +190,7 @@ impl Connection {
                         }
                         Err(status) => {
                             if let Some(err) = match_for_io_error(&status) {
-                                info!("GRPC, network error: {} from client {}", err, connection);
+                                debug!("GRPC, network error: {} from client {}", err, connection);
                             } else {
                                 info!("GRPC, network error: {} from client {}", status, connection);
                             }
