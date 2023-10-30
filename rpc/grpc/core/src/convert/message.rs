@@ -1,4 +1,5 @@
 use crate::protowire::{self, submit_block_response_message::RejectReason};
+use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{
     RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
 };
@@ -349,10 +350,17 @@ from!(item: RpcResult<&kaspa_rpc_core::GetCoinSupplyResponse>, protowire::GetCoi
 from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
 from!(RpcResult<&kaspa_rpc_core::PingResponse>, protowire::PingResponseMessage);
 
-from!(&kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMessage);
-from!(_item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
+from!(item: &kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMessage, {
     Self {
-        // TODO @tiram
+        process_metrics: item.process_metrics,
+        consensus_metrics: item.consensus_metrics
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
+    Self {
+        server_time: item.server_time,
+        process_metrics: item.process_metrics.as_ref().map(|x| x.into()),
+        consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
         error: None,
     }
 });
@@ -360,14 +368,23 @@ from!(_item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetri
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
 });
+from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::StopNotifyingUtxosChangedRequestMessage, {
+    Self { addresses: item.addresses.iter().map(|x| x.into()).collect() }
+});
 from!(RpcResult<&kaspa_rpc_core::NotifyUtxosChangedResponse>, protowire::NotifyUtxosChangedResponseMessage);
+from!(RpcResult<&kaspa_rpc_core::NotifyUtxosChangedResponse>, protowire::StopNotifyingUtxosChangedResponseMessage);
 
 from!(item: &kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest, protowire::NotifyPruningPointUtxoSetOverrideRequestMessage, {
     Self { command: item.command.into() }
 });
+from!(&kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest, protowire::StopNotifyingPruningPointUtxoSetOverrideRequestMessage);
 from!(
     RpcResult<&kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>,
     protowire::NotifyPruningPointUtxoSetOverrideResponseMessage
+);
+from!(
+    RpcResult<&kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>,
+    protowire::StopNotifyingPruningPointUtxoSetOverrideResponseMessage
 );
 
 from!(item: &kaspa_rpc_core::NotifyFinalityConflictRequest, protowire::NotifyFinalityConflictRequestMessage, {
@@ -413,7 +430,7 @@ try_from!(item: &protowire::SubmitBlockRequestMessage, kaspa_rpc_core::SubmitBlo
     }
 });
 try_from!(item: &protowire::SubmitBlockResponseMessage, RpcResult<kaspa_rpc_core::SubmitBlockResponse>, {
-    Self { report: RejectReason::from_i32(item.reject_reason).ok_or(RpcError::PrimitiveToEnumConversionError)?.into() }
+    Self { report: RejectReason::try_from(item.reject_reason).map_err(|_| RpcError::PrimitiveToEnumConversionError)?.into() }
 });
 
 try_from!(item: &protowire::GetBlockTemplateRequestMessage, kaspa_rpc_core::GetBlockTemplateRequest, {
@@ -674,16 +691,14 @@ try_from!(item: &protowire::GetCoinSupplyResponseMessage, RpcResult<kaspa_rpc_co
 try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
 try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
-try_from!(_item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
-    // TODO @tiram
-    Self { process_metrics: false, consensus_metrics: false }
+try_from!(item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
+    Self { process_metrics: item.process_metrics, consensus_metrics: item.consensus_metrics }
 });
 try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
-        // TODO @tiram
-        server_time: 0,
-        process_metrics: None,
-        consensus_metrics: None,
+        server_time: item.server_time,
+        process_metrics: item.process_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
     }
 });
 
@@ -693,7 +708,14 @@ try_from!(item: &protowire::NotifyUtxosChangedRequestMessage, kaspa_rpc_core::No
         command: item.command.into(),
     }
 });
+try_from!(item: &protowire::StopNotifyingUtxosChangedRequestMessage, kaspa_rpc_core::NotifyUtxosChangedRequest, {
+    Self {
+        addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()?,
+        command: Command::Stop,
+    }
+});
 try_from!(&protowire::NotifyUtxosChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifyUtxosChangedResponse>);
+try_from!(&protowire::StopNotifyingUtxosChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifyUtxosChangedResponse>);
 
 try_from!(
     item: &protowire::NotifyPruningPointUtxoSetOverrideRequestMessage,
@@ -701,7 +723,16 @@ try_from!(
     { Self { command: item.command.into() } }
 );
 try_from!(
+    _item: &protowire::StopNotifyingPruningPointUtxoSetOverrideRequestMessage,
+    kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest,
+    { Self { command: Command::Stop } }
+);
+try_from!(
     &protowire::NotifyPruningPointUtxoSetOverrideResponseMessage,
+    RpcResult<kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>
+);
+try_from!(
+    &protowire::StopNotifyingPruningPointUtxoSetOverrideResponseMessage,
     RpcResult<kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>
 );
 

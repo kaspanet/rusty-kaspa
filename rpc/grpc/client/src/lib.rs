@@ -9,6 +9,7 @@ use futures::{future::FutureExt, pin_mut, select};
 use kaspa_core::{debug, trace};
 use kaspa_grpc_core::{
     channel::NotificationChannel,
+    ops::KaspadPayloadOps,
     protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
     RPC_MAX_MESSAGE_SIZE,
 };
@@ -23,7 +24,7 @@ use kaspa_notify::{
     subscription::{array::ArrayBuilder, Command, Mutation, SingleSubscription},
 };
 use kaspa_rpc_core::{
-    api::ops::{RpcApiOps, RPC_API_VERSION},
+    api::ops::RPC_API_VERSION,
     api::rpc::RpcApi,
     error::RpcError,
     error::RpcResult,
@@ -178,7 +179,7 @@ impl GrpcClient {
 impl RpcApi for GrpcClient {
     // this example illustrates the body of the function created by the route!() macro
     // async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
-    //     self.inner.call(RpcApiOps::SubmitBlock, request).await?.as_ref().try_into()
+    //     self.inner.call(KaspadPayloadOps::SubmitBlock, request).await?.as_ref().try_into()
     // }
 
     async fn get_server_info_call(&self, _request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse> {
@@ -581,7 +582,7 @@ impl Inner {
         self.resolver.clone()
     }
 
-    async fn call(&self, op: RpcApiOps, request: impl Into<KaspadRequest>) -> Result<KaspadResponse> {
+    async fn call(&self, op: KaspadPayloadOps, request: impl Into<KaspadRequest>) -> Result<KaspadResponse> {
         // Calls are only allowed if the client is connected to the server
         if self.is_connected() {
             let id = u64::from_le_bytes(rand::random::<[u8; 8]>());

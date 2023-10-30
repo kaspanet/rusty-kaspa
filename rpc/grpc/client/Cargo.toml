@@ -8,17 +8,18 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
+kaspa-core.workspace = true
+kaspa-grpc-core.workspace = true
+kaspa-notify.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-utils.workspace = true
+
 async-channel.workspace = true
 async-stream.workspace = true
 async-trait.workspace = true
 faster-hex.workspace = true
 futures.workspace = true
 h2.workspace = true
-kaspa-core.workspace = true
-kaspa-grpc-core.workspace = true
-kaspa-notify.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-utils.workspace = true
 log.workspace = true
 paste.workspace = true
 prost.workspace = true
