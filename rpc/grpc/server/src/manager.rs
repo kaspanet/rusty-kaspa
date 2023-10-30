@@ -37,7 +37,9 @@ impl Manager {
             while let Some(new_event) = manager_receiver.recv().await {
                 match new_event {
                     ManagerEvent::IsFull(sender) => {
-                        sender.send(self.is_full()).expect("send the response");
+                        // The receiver of this channel may have been dropped in the
+                        // meantime so we ignore the result of the send.
+                        let _ = sender.send(self.is_full());
                     }
                     ManagerEvent::NewConnection(new_connection) => {
                         self.register(new_connection);
