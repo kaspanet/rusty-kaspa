@@ -186,7 +186,7 @@ impl ConnectionHandler {
     }
 
     pub fn outgoing_route_channel_size() -> usize {
-        128
+        1024
     }
 }
 

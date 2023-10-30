@@ -260,7 +260,12 @@ impl Connection {
         match self.inner.outgoing_route.try_send(response) {
             Ok(_) => Ok(()),
             Err(TrySendError::Closed(_)) => Err(GrpcServerError::ConnectionClosed),
-            Err(TrySendError::Full(_)) => Err(GrpcServerError::OutgoingRouteCapacityReached(self.to_string())),
+            Err(TrySendError::Full(_)) => {
+                // If the outgoing route reaches full capacity, with high probability something is going wrong
+                // with this connection so we disconnect the client.
+                self.close();
+                Err(GrpcServerError::OutgoingRouteCapacityReached(self.to_string()))
+            }
         }
     }
 }

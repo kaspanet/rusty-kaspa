@@ -49,7 +49,6 @@ impl Handler for RequestHandler {
             match response {
                 Ok(response) => {
                     if self.connection.enqueue(response).await.is_err() {
-                        // TODO: handle full route error
                         break;
                     }
                 }
