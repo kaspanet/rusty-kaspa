@@ -5,6 +5,7 @@ pub mod header;
 pub mod kaspad;
 pub mod mempool;
 pub mod message;
+pub mod metrics;
 pub mod notification;
 pub mod peer;
 pub mod tx;

@@ -1,7 +1,8 @@
+use async_channel::{unbounded, Receiver};
 use async_trait::async_trait;
 use kaspa_notify::events::EVENT_TYPE_ARRAY;
 use kaspa_notify::listener::ListenerId;
-use kaspa_notify::notifier::Notifier;
+use kaspa_notify::notifier::{Notifier, Notify};
 use kaspa_notify::scope::Scope;
 use kaspa_rpc_core::{api::rpc::RpcApi, *};
 use kaspa_rpc_core::{notify::connection::ChannelConnection, RpcResult};
@@ -11,6 +12,7 @@ pub(super) type RpcCoreNotifier = Notifier<Notification, ChannelConnection>;
 
 pub(super) struct RpcCoreMock {
     core_notifier: Arc<RpcCoreNotifier>,
+    _sync_receiver: Receiver<()>,
 }
 
 impl RpcCoreMock {
@@ -22,18 +24,32 @@ impl RpcCoreMock {
         self.core_notifier.clone()
     }
 
+    #[allow(dead_code)]
+    pub(super) fn notify_new_block_template(&self) -> kaspa_notify::error::Result<()> {
+        let notification = Notification::NewBlockTemplate(NewBlockTemplateNotification {});
+        self.core_notifier.notify(notification)
+    }
+
+    #[allow(dead_code)]
+    pub(super) async fn notify_complete(&self) {
+        assert!(self._sync_receiver.recv().await.is_ok(), "the notifier sync channel is unexpectedly empty and closed");
+    }
+
     pub(super) fn start(&self) {
         self.core_notifier.clone().start();
     }
+
     pub(super) async fn join(&self) {
-        self.core_notifier.join().await.unwrap();
+        self.core_notifier.join().await.expect("core notifier shutdown")
     }
 }
 
 impl Default for RpcCoreMock {
     fn default() -> Self {
-        let core_notifier: Arc<RpcCoreNotifier> = Arc::new(Notifier::new("rpc-core", EVENT_TYPE_ARRAY[..].into(), vec![], vec![], 1));
-        Self { core_notifier }
+        let (sync_sender, sync_receiver) = unbounded();
+        let core_notifier: Arc<RpcCoreNotifier> =
+            Arc::new(Notifier::with_sync("rpc-core", EVENT_TYPE_ARRAY[..].into(), vec![], vec![], 10, Some(sync_sender)));
+        Self { core_notifier, _sync_receiver: sync_receiver }
     }
 }
 
@@ -207,11 +223,13 @@ impl RpcApi for RpcCoreMock {
         Ok(())
     }
 
-    async fn start_notify(&self, _id: ListenerId, _scope: Scope) -> RpcResult<()> {
-        Err(RpcError::NotImplemented)
+    async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
+        self.core_notifier.try_start_notify(id, scope)?;
+        Ok(())
     }
 
-    async fn stop_notify(&self, _id: ListenerId, _scope: Scope) -> RpcResult<()> {
-        Err(RpcError::NotImplemented)
+    async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
+        self.core_notifier.try_stop_notify(id, scope)?;
+        Ok(())
     }
 }

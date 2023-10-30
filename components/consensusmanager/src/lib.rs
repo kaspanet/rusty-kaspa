@@ -114,6 +114,8 @@ pub struct ConsensusManager {
 }
 
 impl ConsensusManager {
+    pub const IDENT: &'static str = "consensus manager";
+
     pub fn new(factory: Arc<dyn ConsensusFactory>) -> Self {
         let (consensus, ctl) = factory.new_active_consensus();
         Self { factory, inner: RwLock::new(ManagerInner::new(consensus, ctl)) }
@@ -170,7 +172,7 @@ impl ConsensusManager {
 
 impl Service for ConsensusManager {
     fn ident(self: Arc<Self>) -> &'static str {
-        "consensus manager"
+        Self::IDENT
     }
 
     fn start(self: Arc<Self>, _core: Arc<Core>) -> Vec<JoinHandle<()>> {

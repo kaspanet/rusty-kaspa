@@ -1,3 +1,4 @@
+use kaspa_grpc_core::ops::KaspadPayloadOps;
 use thiserror::Error;
 use tokio::sync::mpsc::error::TrySendError;
 
@@ -14,6 +15,18 @@ pub enum GrpcServerError {
 
     #[error("Subscription has no valid payload")]
     InvalidSubscriptionPayload,
+
+    #[error("This RPC method is not implemented by the gRPC server")]
+    MethodNotImplemented,
+
+    #[error("{0:?} handler is closed")]
+    ClosedHandler(KaspadPayloadOps),
+
+    #[error("client connection is closed")]
+    ConnectionClosed,
+
+    #[error("outgoing route capacity has been reached (client: {0})")]
+    OutgoingRouteCapacityReached(String),
 }
 
 impl From<GrpcServerError> for kaspa_rpc_core::error::RpcError {

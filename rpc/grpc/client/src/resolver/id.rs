@@ -3,8 +3,10 @@ use crate::{
     resolver::{KaspadResponseReceiver, KaspadResponseSender, Resolver},
 };
 use kaspa_core::trace;
-use kaspa_grpc_core::protowire::{KaspadRequest, KaspadResponse};
-use kaspa_rpc_core::api::ops::RpcApiOps;
+use kaspa_grpc_core::{
+    ops::KaspadPayloadOps,
+    protowire::{KaspadRequest, KaspadResponse},
+};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -36,7 +38,7 @@ impl IdResolver {
 }
 
 impl Resolver for IdResolver {
-    fn register_request(&self, _: RpcApiOps, request: &KaspadRequest) -> KaspadResponseReceiver {
+    fn register_request(&self, _: KaspadPayloadOps, request: &KaspadRequest) -> KaspadResponseReceiver {
         let (sender, receiver) = oneshot::channel::<Result<KaspadResponse>>();
         {
             let mut pending_calls = self.pending_calls.lock().unwrap();

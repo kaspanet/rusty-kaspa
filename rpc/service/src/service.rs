@@ -18,6 +18,7 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
+use kaspa_core::time::unix_now;
 use kaspa_core::{
     core::Core,
     debug,
@@ -59,7 +60,6 @@ use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use std::{
     iter::once,
     sync::{atomic::Ordering, Arc},
-    time::{SystemTime, UNIX_EPOCH},
     vec,
 };
 
@@ -556,12 +556,23 @@ impl RpcApi for RpcCoreService {
         if request.window_size as u64 > self.config.pruning_depth {
             return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.pruning_depth));
         }
+
+        // In the previous golang implementation the convention for virtual was the following const.
+        // In the current implementation, consensus behaves the same when it gets a None instead.
+        const LEGACY_VIRTUAL: kaspa_hashes::Hash = kaspa_hashes::Hash::from_bytes([0xff; kaspa_hashes::HASH_SIZE]);
+        let mut start_hash = request.start_hash;
+        if let Some(start) = start_hash {
+            if start == LEGACY_VIRTUAL {
+                start_hash = None;
+            }
+        }
+
         Ok(EstimateNetworkHashesPerSecondResponse::new(
             self.consensus_manager
                 .consensus()
                 .session()
                 .await
-                .async_estimate_network_hashes_per_second(request.start_hash, request.window_size as usize)
+                .async_estimate_network_hashes_per_second(start_hash, request.window_size as usize)
                 .await?,
         ))
     }
@@ -650,9 +661,6 @@ impl RpcApi for RpcCoreService {
         Err(RpcError::NotImplemented)
     }
 
-    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    // UNIMPLEMENTED METHODS
-
     async fn get_metrics_call(&self, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
         let CountersSnapshot {
             resident_set_size,
@@ -694,9 +702,7 @@ impl RpcApi for RpcCoreService {
             mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
         });
 
-        let start = SystemTime::now();
-        let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
-        let server_time = since_the_epoch.as_millis();
+        let server_time = unix_now();
 
         let response = GetMetricsResponse { server_time, process_metrics, consensus_metrics };
 

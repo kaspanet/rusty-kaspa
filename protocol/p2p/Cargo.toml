@@ -35,7 +35,7 @@ serde.workspace = true
 borsh.workspace = true
 
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
-prost = "0.11"
+prost.workspace = true
 ctrlc = "3.2"
 tokio = { workspace = true, features = [
     "rt-multi-thread",
@@ -43,12 +43,12 @@ tokio = { workspace = true, features = [
     "signal",
 ] }
 tokio-stream = { version = "0.1.11", features = ["net"] }
-tonic = { version = "0.9.1", features = ["tls", "gzip"] }
-h2 = "0.3"
+tonic = { workspace = true, features = ["tls", "gzip"] }
+h2.workspace = true
 seqlock = "0.2"
 
 [build-dependencies]
-tonic-build = { version = "0.9.1", features = ["prost"] }
+tonic-build = { workspace = true, features = ["prost"] }
 
 [dev-dependencies]
 hex = "0.4.3"

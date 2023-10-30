@@ -1,122 +1,4 @@
-use crate::protowire::{kaspad_request, kaspad_response, KaspadRequest, KaspadResponse};
-use kaspa_rpc_core::api::ops::RpcApiOps;
-
-impl From<&kaspad_request::Payload> for RpcApiOps {
-    fn from(item: &kaspad_request::Payload) -> Self {
-        use kaspad_request::Payload;
-        match item {
-            Payload::SubmitBlockRequest(_) => RpcApiOps::SubmitBlock,
-            Payload::GetBlockTemplateRequest(_) => RpcApiOps::GetBlockTemplate,
-            Payload::GetCurrentNetworkRequest(_) => RpcApiOps::GetCurrentNetwork,
-            Payload::GetBlockRequest(_) => RpcApiOps::GetBlock,
-            Payload::GetBlocksRequest(_) => RpcApiOps::GetBlocks,
-            Payload::GetInfoRequest(_) => RpcApiOps::GetInfo,
-
-            Payload::ShutdownRequest(_) => RpcApiOps::Shutdown,
-            Payload::GetPeerAddressesRequest(_) => RpcApiOps::GetPeerAddresses,
-            Payload::GetSelectedTipHashRequest(_) => RpcApiOps::GetSelectedTipHash,
-            Payload::GetMempoolEntryRequest(_) => RpcApiOps::GetMempoolEntry,
-            Payload::GetMempoolEntriesRequest(_) => RpcApiOps::GetMempoolEntries,
-            Payload::GetConnectedPeerInfoRequest(_) => RpcApiOps::GetConnectedPeerInfo,
-            Payload::AddPeerRequest(_) => RpcApiOps::AddPeer,
-            Payload::SubmitTransactionRequest(_) => RpcApiOps::SubmitTransaction,
-            Payload::GetSubnetworkRequest(_) => RpcApiOps::GetSubnetwork,
-            Payload::GetVirtualChainFromBlockRequest(_) => RpcApiOps::GetVirtualChainFromBlock,
-            Payload::GetBlockCountRequest(_) => RpcApiOps::GetBlockCount,
-            Payload::GetBlockDagInfoRequest(_) => RpcApiOps::GetBlockDagInfo,
-            Payload::ResolveFinalityConflictRequest(_) => RpcApiOps::ResolveFinalityConflict,
-            Payload::GetHeadersRequest(_) => RpcApiOps::GetHeaders,
-            Payload::GetUtxosByAddressesRequest(_) => RpcApiOps::GetUtxosByAddresses,
-            Payload::GetBalanceByAddressRequest(_) => RpcApiOps::GetBalanceByAddress,
-            Payload::GetBalancesByAddressesRequest(_) => RpcApiOps::GetBalancesByAddresses,
-            Payload::GetSinkBlueScoreRequest(_) => RpcApiOps::GetSinkBlueScore,
-            Payload::BanRequest(_) => RpcApiOps::Ban,
-            Payload::UnbanRequest(_) => RpcApiOps::Unban,
-            Payload::EstimateNetworkHashesPerSecondRequest(_) => RpcApiOps::EstimateNetworkHashesPerSecond,
-            Payload::GetMempoolEntriesByAddressesRequest(_) => RpcApiOps::GetMempoolEntriesByAddresses,
-            Payload::GetCoinSupplyRequest(_) => RpcApiOps::GetCoinSupply,
-            Payload::PingRequest(_) => RpcApiOps::Ping,
-            Payload::GetMetricsRequest(_) => RpcApiOps::GetMetrics,
-
-            // Subscription commands for starting/stopping notifications
-            Payload::NotifyBlockAddedRequest(_) => RpcApiOps::NotifyBlockAdded,
-            Payload::NotifyNewBlockTemplateRequest(_) => RpcApiOps::NotifyNewBlockTemplate,
-            Payload::NotifyFinalityConflictRequest(_) => RpcApiOps::NotifyFinalityConflict,
-            Payload::NotifyUtxosChangedRequest(_) => RpcApiOps::NotifyUtxosChanged,
-            Payload::NotifySinkBlueScoreChangedRequest(_) => RpcApiOps::NotifySinkBlueScoreChanged,
-            Payload::NotifyPruningPointUtxoSetOverrideRequest(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
-            Payload::NotifyVirtualDaaScoreChangedRequest(_) => RpcApiOps::NotifyVirtualDaaScoreChanged,
-            Payload::NotifyVirtualChainChangedRequest(_) => RpcApiOps::NotifyVirtualChainChanged,
-
-            Payload::StopNotifyingUtxosChangedRequest(_) => RpcApiOps::NotifyUtxosChanged,
-            Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
-        }
-    }
-}
-
-impl From<&kaspad_response::Payload> for RpcApiOps {
-    fn from(item: &kaspad_response::Payload) -> Self {
-        use kaspad_response::Payload;
-        match item {
-            Payload::SubmitBlockResponse(_) => RpcApiOps::SubmitBlock,
-            Payload::GetBlockTemplateResponse(_) => RpcApiOps::GetBlockTemplate,
-            Payload::GetCurrentNetworkResponse(_) => RpcApiOps::GetCurrentNetwork,
-            Payload::GetBlockResponse(_) => RpcApiOps::GetBlock,
-            Payload::GetBlocksResponse(_) => RpcApiOps::GetBlocks,
-            Payload::GetInfoResponse(_) => RpcApiOps::GetInfo,
-            Payload::ShutdownResponse(_) => RpcApiOps::Shutdown,
-
-            Payload::GetPeerAddressesResponse(_) => RpcApiOps::GetPeerAddresses,
-            Payload::GetSelectedTipHashResponse(_) => RpcApiOps::GetSelectedTipHash,
-            Payload::GetMempoolEntryResponse(_) => RpcApiOps::GetMempoolEntry,
-            Payload::GetMempoolEntriesResponse(_) => RpcApiOps::GetMempoolEntries,
-            Payload::GetConnectedPeerInfoResponse(_) => RpcApiOps::GetConnectedPeerInfo,
-            Payload::AddPeerResponse(_) => RpcApiOps::AddPeer,
-            Payload::SubmitTransactionResponse(_) => RpcApiOps::SubmitTransaction,
-            Payload::GetSubnetworkResponse(_) => RpcApiOps::GetSubnetwork,
-            Payload::GetVirtualChainFromBlockResponse(_) => RpcApiOps::GetVirtualChainFromBlock,
-            Payload::GetBlockCountResponse(_) => RpcApiOps::GetBlockCount,
-            Payload::GetBlockDagInfoResponse(_) => RpcApiOps::GetBlockDagInfo,
-            Payload::ResolveFinalityConflictResponse(_) => RpcApiOps::ResolveFinalityConflict,
-            Payload::GetHeadersResponse(_) => RpcApiOps::GetHeaders,
-            Payload::GetUtxosByAddressesResponse(_) => RpcApiOps::GetUtxosByAddresses,
-            Payload::GetBalanceByAddressResponse(_) => RpcApiOps::GetBalanceByAddress,
-            Payload::GetBalancesByAddressesResponse(_) => RpcApiOps::GetBalancesByAddresses,
-            Payload::GetSinkBlueScoreResponse(_) => RpcApiOps::GetSinkBlueScore,
-            Payload::BanResponse(_) => RpcApiOps::Ban,
-            Payload::UnbanResponse(_) => RpcApiOps::Unban,
-            Payload::EstimateNetworkHashesPerSecondResponse(_) => RpcApiOps::EstimateNetworkHashesPerSecond,
-            Payload::GetMempoolEntriesByAddressesResponse(_) => RpcApiOps::GetMempoolEntriesByAddresses,
-            Payload::GetCoinSupplyResponse(_) => RpcApiOps::GetCoinSupply,
-            Payload::PingResponse(_) => RpcApiOps::Ping,
-            Payload::GetMetricsResponse(_) => RpcApiOps::GetMetrics,
-
-            // Subscription commands for starting/stopping notifications
-            Payload::NotifyBlockAddedResponse(_) => RpcApiOps::NotifyBlockAdded,
-            Payload::NotifyNewBlockTemplateResponse(_) => RpcApiOps::NotifyNewBlockTemplate,
-            Payload::NotifyFinalityConflictResponse(_) => RpcApiOps::NotifyFinalityConflict,
-            Payload::NotifyUtxosChangedResponse(_) => RpcApiOps::NotifyUtxosChanged,
-            Payload::NotifySinkBlueScoreChangedResponse(_) => RpcApiOps::NotifySinkBlueScoreChanged,
-            Payload::NotifyPruningPointUtxoSetOverrideResponse(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
-            Payload::NotifyVirtualDaaScoreChangedResponse(_) => RpcApiOps::NotifyVirtualDaaScoreChanged,
-            Payload::NotifyVirtualChainChangedResponse(_) => RpcApiOps::NotifyVirtualChainChanged,
-
-            Payload::StopNotifyingPruningPointUtxoSetOverrideResponse(_) => RpcApiOps::NotifyPruningPointUtxoSetOverride,
-            Payload::StopNotifyingUtxosChangedResponse(_) => RpcApiOps::NotifyUtxosChanged,
-
-            // Notifications
-            Payload::BlockAddedNotification(_) => RpcApiOps::Notification,
-            Payload::NewBlockTemplateNotification(_) => RpcApiOps::Notification,
-            Payload::FinalityConflictNotification(_) => RpcApiOps::Notification,
-            Payload::FinalityConflictResolvedNotification(_) => RpcApiOps::Notification,
-            Payload::UtxosChangedNotification(_) => RpcApiOps::Notification,
-            Payload::SinkBlueScoreChangedNotification(_) => RpcApiOps::Notification,
-            Payload::PruningPointUtxoSetOverrideNotification(_) => RpcApiOps::Notification,
-            Payload::VirtualDaaScoreChangedNotification(_) => RpcApiOps::Notification,
-            Payload::VirtualChainChangedNotification(_) => RpcApiOps::Notification,
-        }
-    }
-}
+use crate::protowire::{kaspad_request, KaspadRequest, KaspadResponse};
 
 impl From<kaspad_request::Payload> for KaspadRequest {
     fn from(item: kaspad_request::Payload) -> Self {
@@ -310,14 +192,56 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_notify_response!(NotifyVirtualChainChanged);
     impl_into_kaspad_notify_response!(NotifySinkBlueScoreChanged);
 
+    impl_into_kaspad_notify_response!(NotifyUtxosChanged, StopNotifyingUtxosChanged);
+    impl_into_kaspad_notify_response!(NotifyPruningPointUtxoSetOverride, StopNotifyingPruningPointUtxoSetOverride);
+
     macro_rules! impl_into_kaspad_response {
         ($name:tt) => {
             paste::paste! {
                 impl_into_kaspad_response_ex!(kaspa_rpc_core::[<$name Response>],[<$name ResponseMessage>],[<$name Response>]);
             }
         };
+        ($core_name:tt, $protowire_name:tt) => {
+            paste::paste! {
+                impl_into_kaspad_response_base!(kaspa_rpc_core::[<$core_name Response>],[<$protowire_name ResponseMessage>],[<$protowire_name Response>]);
+            }
+        };
     }
     use impl_into_kaspad_response;
+
+    macro_rules! impl_into_kaspad_response_base {
+        ($core_struct:path, $protowire_struct:ident, $variant:ident) => {
+            // ----------------------------------------------------------------------------
+            // rpc_core to protowire
+            // ----------------------------------------------------------------------------
+
+            impl From<RpcResult<$core_struct>> for $protowire_struct {
+                fn from(item: RpcResult<$core_struct>) -> Self {
+                    item.as_ref().map_err(|x| (*x).clone()).into()
+                }
+            }
+
+            impl From<RpcError> for $protowire_struct {
+                fn from(item: RpcError) -> Self {
+                    let x: RpcResult<&$core_struct> = Err(item);
+                    x.into()
+                }
+            }
+
+            impl From<$protowire_struct> for kaspad_response::Payload {
+                fn from(item: $protowire_struct) -> Self {
+                    kaspad_response::Payload::$variant(item)
+                }
+            }
+
+            impl From<$protowire_struct> for KaspadResponse {
+                fn from(item: $protowire_struct) -> Self {
+                    Self { id: 0, payload: Some(kaspad_response::Payload::$variant(item)) }
+                }
+            }
+        };
+    }
+    use impl_into_kaspad_response_base;
 
     macro_rules! impl_into_kaspad_response_ex {
         ($core_struct:path, $protowire_struct:ident, $variant:ident) => {
@@ -349,30 +273,7 @@ pub mod kaspad_response_convert {
                 }
             }
 
-            impl From<RpcResult<$core_struct>> for $protowire_struct {
-                fn from(item: RpcResult<$core_struct>) -> Self {
-                    item.as_ref().map_err(|x| (*x).clone()).into()
-                }
-            }
-
-            impl From<RpcError> for $protowire_struct {
-                fn from(item: RpcError) -> Self {
-                    let x: RpcResult<&$core_struct> = Err(item);
-                    x.into()
-                }
-            }
-
-            impl From<$protowire_struct> for kaspad_response::Payload {
-                fn from(item: $protowire_struct) -> Self {
-                    kaspad_response::Payload::$variant(item)
-                }
-            }
-
-            impl From<$protowire_struct> for KaspadResponse {
-                fn from(item: $protowire_struct) -> Self {
-                    Self { id: 0, payload: Some(kaspad_response::Payload::$variant(item)) }
-                }
-            }
+            impl_into_kaspad_response_base!($core_struct, $protowire_struct, $variant);
 
             // ----------------------------------------------------------------------------
             // protowire to rpc_core
@@ -408,6 +309,13 @@ pub mod kaspad_response_convert {
 
             paste::paste! {
                 impl_into_kaspad_notify_response_ex!(kaspa_rpc_core::[<$name Response>],[<$name ResponseMessage>]);
+            }
+        };
+        ($core_name:tt, $protowire_name:tt) => {
+            impl_into_kaspad_response!($core_name, $protowire_name);
+
+            paste::paste! {
+                impl_into_kaspad_notify_response_ex!(kaspa_rpc_core::[<$core_name Response>],[<$protowire_name ResponseMessage>]);
             }
         };
     }

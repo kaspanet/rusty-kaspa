@@ -11,6 +11,11 @@ pub struct Handler {
     pub fn_camel: Ident,
     pub request_type: Ident,
     pub response_type: Ident,
+
+    // gPRC fields
+    pub is_subscription: bool,
+    pub response_message_type: Ident,
+    pub fallback_request_type: Ident,
 }
 
 impl Handler {
@@ -26,7 +31,23 @@ impl Handler {
         let fn_camel = Ident::new(&name.to_case(Case::Camel), Span::call_site());
         let request_type = Ident::new(&format!("{name}Request"), Span::call_site());
         let response_type = Ident::new(&format!("{name}Response"), Span::call_site());
-        Handler { name, fn_call, fn_with_suffix, fn_no_suffix, fn_camel, request_type, response_type }
+        // gPRC fields
+        let fallback_name = name.replace("StopNotifying", "Notify");
+        let is_subscription = fallback_name.starts_with("Notify");
+        let response_message_type = Ident::new(&format!("{name}ResponseMessage"), Span::call_site());
+        let fallback_request_type = Ident::new(&format!("{fallback_name}Request"), Span::call_site());
+        Handler {
+            name,
+            fn_call,
+            fn_with_suffix,
+            fn_no_suffix,
+            fn_camel,
+            request_type,
+            response_type,
+            is_subscription,
+            response_message_type,
+            fallback_request_type,
+        }
     }
 }
 
