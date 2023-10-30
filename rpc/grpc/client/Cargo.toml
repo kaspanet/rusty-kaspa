@@ -21,9 +21,9 @@ rand.workspace = true
 regex.workspace = true
 async-trait = "0.1.57"
 futures = { version = "0.3" }
-tonic = { version = "0.9", features = ["gzip"] }
-prost = { version = "0.11" }
-h2 = "0.3"
+tonic = { workspace = true, features = ["gzip"] }
+prost.workspace = true
+h2.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 tokio-stream = "0.1"
 async-stream = "0.3"

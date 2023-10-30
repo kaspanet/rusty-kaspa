@@ -737,29 +737,58 @@ message GetCoinSupplyRequestMessage{
 }
 
 message GetCoinSupplyResponseMessage{
-        uint64 maxSompi = 1; // note: this is a hard coded maxSupply, actual maxSupply is expected to deviate by upto -5%, but cannot be measured exactly.
-        uint64 circulatingSompi = 2;
+  uint64 maxSompi = 1; // note: this is a hard coded maxSupply, actual maxSupply is expected to deviate by upto -5%, but cannot be measured exactly.
+  uint64 circulatingSompi = 2;
 
-        RPCError error = 1000;
+  RPCError error = 1000;
 }
-
 
 message PingRequestMessage{
 }
 
 message PingResponseMessage{
-        RPCError error = 1000;
+  RPCError error = 1000;
 }
 
+message ProcessMetrics{
+  uint64 residentSetSize = 1;
+  uint64 virtualMemorySize = 2;
+  uint64 coreNum = 3;
+  double cpuUsage = 4;
+  uint64 fdNum = 5;
+  uint64 diskIoReadBytes = 6;
+  uint64 diskIoWriteBytes = 7;
+  double diskIoReadPerSec = 8;
+  double diskIoWritePerSec = 9;
+
+  uint64 borshLiveConnections = 31;
+  uint64 borshConnectionAttempts = 32;
+  uint64 borshHandshakeFailures = 33;
+
+  uint64 jsonLiveConnections = 41;
+  uint64 jsonConnectionAttempts = 42;
+  uint64 jsonHandshakeFailures = 43;
+}
+
+message ConsensusMetrics{
+  uint64 blocksSubmitted = 1;
+  uint64 headerCounts = 2;
+  uint64 depCounts = 3;
+  uint64 bodyCounts = 4;
+  uint64 txsCounts = 5;
+  uint64 chainBlockCounts = 6;
+  uint64 massCounts = 7;
+
+}
 
 message GetMetricsRequestMessage{
+  bool processMetrics = 1;
+  bool consensusMetrics = 2;
 }
 
 message GetMetricsResponseMessage{
-        // uint64 uptime = 1;
-        // uint64 memoryUsed = 2;
-        // uint64 storageUsed = 3;
-        // uint64 grpcConnections = 4;
-        // uint64 wrpcConnections = 5;
-        RPCError error = 1000;
+  uint64 serverTime = 1;
+  ProcessMetrics processMetrics = 11;
+  ConsensusMetrics consensusMetrics = 12;
+  RPCError error = 1000;
 }
