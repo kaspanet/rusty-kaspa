@@ -11,24 +11,26 @@ license.workspace = true
 thiserror.workspace = true
 kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
+kaspa-rpc-macros.workspace = true
 kaspa-rpc-service.workspace = true
 kaspa-grpc-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-core.workspace = true
 
-uuid.workspace = true
 faster-hex.workspace = true
 async-channel.workspace = true
 parking_lot.workspace = true
 log.workspace = true
 rand.workspace = true
 once_cell.workspace = true
-tonic.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+itertools.workspace = true
 
-async-trait = "0.1.57"
-futures = { version = "0.3" }
-prost = { version = "0.11" }
-h2 = "0.3"
+tonic = { workspace = true, features = ["tls", "gzip"] }
+prost.workspace = true
+h2.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 tokio-stream = "0.1"
 async-stream = "0.3"

@@ -81,19 +81,18 @@ where
         subscribers: Vec<Arc<Subscriber>>,
         broadcasters: usize,
     ) -> Self {
-        Self { inner: Arc::new(Inner::new(enabled_events, collectors, subscribers, broadcasters, name)) }
+        Self::with_sync(name, enabled_events, collectors, subscribers, broadcasters, None)
     }
 
-    #[cfg(test)]
     pub fn with_sync(
+        name: &'static str,
         enabled_events: EventSwitches,
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
         broadcasters: usize,
-        name: &'static str,
         _sync: Option<Sender<()>>,
     ) -> Self {
-        Self { inner: Arc::new(Inner::with_sync(enabled_events, collectors, subscribers, broadcasters, name, _sync)) }
+        Self { inner: Arc::new(Inner::new(name, enabled_events, collectors, subscribers, broadcasters, _sync)) }
     }
 
     pub fn start(self: Arc<Self>) {
@@ -204,43 +203,17 @@ where
     C: Connection<Notification = N>,
 {
     fn new(
+        name: &'static str,
         enabled_events: EventSwitches,
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
         broadcasters: usize,
-        name: &'static str,
-    ) -> Self {
-        assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
-        let notification_channel = Channel::unbounded();
-        let broadcasters =
-            (0..broadcasters).map(|_| Arc::new(Broadcaster::new(name, notification_channel.receiver.clone()))).collect::<Vec<_>>();
-        Self {
-            enabled_events,
-            listeners: Mutex::new(HashMap::new()),
-            subscriptions: Mutex::new(ArrayBuilder::compounded()),
-            started: Arc::new(AtomicBool::new(false)),
-            notification_channel,
-            broadcasters,
-            collectors,
-            subscribers,
-            name,
-            _sync: None,
-        }
-    }
-
-    #[cfg(test)]
-    fn with_sync(
-        enabled_events: EventSwitches,
-        collectors: Vec<DynCollector<N>>,
-        subscribers: Vec<Arc<Subscriber>>,
-        broadcasters: usize,
-        name: &'static str,
         _sync: Option<Sender<()>>,
     ) -> Self {
         assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
         let notification_channel = Channel::unbounded();
         let broadcasters = (0..broadcasters)
-            .map(|_| Arc::new(Broadcaster::with_sync(name, notification_channel.receiver.clone(), _sync.clone())))
+            .map(|_| Arc::new(Broadcaster::new(name, notification_channel.receiver.clone(), _sync.clone())))
             .collect::<Vec<_>>();
         Self {
             enabled_events,
@@ -337,7 +310,6 @@ where
                     trace!("[Notifier {}] {command} notifying to {id} about {scope:?} is ignored (no mutation)", self.name);
                     // In case we have a sync channel, report that the command was processed.
                     // This is for test only.
-                    #[cfg(test)]
                     if let Some(ref sync) = self._sync {
                         let _ = sync.try_send(());
                     }
@@ -737,11 +709,11 @@ mod tests {
             let subscriber =
                 Arc::new(Subscriber::new("test", EVENT_TYPE_ARRAY[..].into(), subscription_manager, SUBSCRIPTION_MANAGER_ID));
             let notifier = Arc::new(TestNotifier::with_sync(
+                "test",
                 EVENT_TYPE_ARRAY[..].into(),
                 vec![collector],
                 vec![subscriber],
                 1,
-                "test",
                 Some(sync_sender),
             ));
             // Create the listeners
