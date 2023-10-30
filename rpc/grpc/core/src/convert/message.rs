@@ -267,6 +267,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetBlockDagInfoResponse>, protowire::GetB
         virtual_parent_hashes: item.virtual_parent_hashes.iter().map(|x| x.to_string()).collect(),
         pruning_point_hash: item.pruning_point_hash.to_string(),
         virtual_daa_score: item.virtual_daa_score,
+        sink: item.sink.to_string(),
         error: None,
     }
 });
@@ -607,6 +608,7 @@ try_from!(item: &protowire::GetBlockDagInfoResponseMessage, RpcResult<kaspa_rpc_
         virtual_parent_hashes: item.virtual_parent_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
         pruning_point_hash: RpcHash::from_str(&item.pruning_point_hash)?,
         virtual_daa_score: item.virtual_daa_score,
+        sink: item.sink.parse()?,
     }
 });
 

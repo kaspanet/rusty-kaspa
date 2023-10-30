@@ -398,6 +398,7 @@ pub struct GetBlockDagInfoResponse {
     pub virtual_parent_hashes: Vec<RpcHash>,
     pub pruning_point_hash: RpcHash,
     pub virtual_daa_score: u64,
+    pub sink: RpcHash,
 }
 
 impl GetBlockDagInfoResponse {
@@ -411,6 +412,7 @@ impl GetBlockDagInfoResponse {
         virtual_parent_hashes: Vec<RpcHash>,
         pruning_point_hash: RpcHash,
         virtual_daa_score: u64,
+        sink: RpcHash,
     ) -> Self {
         Self {
             network,
@@ -422,6 +424,7 @@ impl GetBlockDagInfoResponse {
             virtual_parent_hashes,
             pruning_point_hash,
             virtual_daa_score,
+            sink,
         }
     }
 }

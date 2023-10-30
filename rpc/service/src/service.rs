@@ -543,6 +543,7 @@ impl RpcApi for RpcCoreService {
             session.async_get_virtual_parents().await.iter().copied().collect::<Vec<_>>(),
             session.async_pruning_point().await,
             session.async_get_virtual_daa_score().await,
+            session.async_get_sink().await,
         ))
     }
 
