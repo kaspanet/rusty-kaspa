@@ -190,3 +190,6 @@ pub mod triggers;
 pub mod vec;
 
 pub mod fd_budget;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod tcp_limiter;

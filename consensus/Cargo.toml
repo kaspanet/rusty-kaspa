@@ -38,7 +38,7 @@ kaspa-consensusmanager.workspace = true
 once_cell.workspace = true
 
 crossbeam-channel = "0.5"
-async-channel = "1.8.0"
+async-channel.workspace = true
 secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
 
 rand = { workspace = true, features = ["small_rng"] }

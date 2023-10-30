@@ -5,6 +5,7 @@ use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::scope::{NewBlockTemplateScope, Scope};
 use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
 use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
+use kaspa_utils::tcp_limiter::Limit;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -187,9 +188,60 @@ async fn test_client_server_notifications() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 }
 
+#[tokio::test]
+async fn test_client_server_connections_tcp_conn_limit() {
+    kaspa_core::log::try_init_logger("info, kaspa_grpc_core=trace, kaspa_grpc_server=trace, kaspa_grpc_client, kaspa_utils =trace");
+
+    // Create and start a fake core service
+    let core_service = Arc::new(RpcCoreMock::new());
+    core_service.start();
+
+    // Create and start the server
+    let server = create_server_with_limit(core_service.clone(), Limit::new(2));
+    assert!(!server.has_connections(), "server should have no client when just started");
+
+    let client1 = create_client(server.serve_address()).await;
+    let client2 = create_client(server.serve_address()).await;
+
+    assert_eq!(server.active_connections().len(), 2, "one or more clients failed to connect to the server");
+    let address = server.serve_address();
+    tokio::spawn(async move {
+        let client3 = create_client(address).await;
+        assert!(client3.disconnect().await.is_ok(), "client 3 failed to disconnect");
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    assert_eq!(server.active_connections().len(), 2, "limit doesn't work");
+
+    assert!(client1.disconnect().await.is_ok(), "client 1 failed to disconnect");
+    assert!(client2.disconnect().await.is_ok(), "client 2 failed to disconnect");
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert!(!server.has_connections(), "server should have no more clients");
+    // Stop the fake service
+    core_service.join().await;
+
+    // Stop the server
+    assert!(server.stop().await.is_ok(), "error stopping the server");
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert!(!client2.is_connected(), "server failed to disconnect client 2");
+    assert!(!server.has_connections(), "server should have no more clients");
+
+    drop(server);
+
+    // Wait for server termination (just for logging properly)
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+}
+
 fn create_server(core_service: Arc<RpcCoreMock>) -> Arc<Adaptor> {
     let manager = Manager::new(128);
-    Adaptor::server(get_free_net_address(), manager, core_service.clone(), core_service.core_notifier())
+    Adaptor::server(get_free_net_address(), manager, core_service.clone(), core_service.core_notifier(), None)
+}
+
+fn create_server_with_limit(core_service: Arc<RpcCoreMock>, tcp_limit: impl Into<Arc<Limit>>) -> Arc<Adaptor> {
+    let manager = Manager::new(128);
+    Adaptor::server(get_free_net_address(), manager, core_service.clone(), core_service.core_notifier(), Some(tcp_limit.into()))
 }
 
 async fn create_client(server_address: NetAddress) -> GrpcClient {

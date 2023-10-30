@@ -19,7 +19,8 @@ use kaspa_rpc_core::{
     notify::{channel::NotificationChannel, connection::ChannelConnection},
     Notification, RpcResult,
 };
-use kaspa_utils::networking::NetAddress;
+use kaspa_utils::tcp_limiter::Wrapper;
+use kaspa_utils::{networking::NetAddress, tcp_limiter::Limit};
 use std::fmt::Debug;
 use std::{
     pin::Pin,
@@ -31,6 +32,7 @@ use std::{
 };
 use tokio::sync::mpsc::{channel as mpsc_channel, Sender as MpscSender};
 use tokio::{
+    net::TcpListener,
     sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender},
     time::timeout,
 };
@@ -94,7 +96,7 @@ impl ConnectionHandler {
     }
 
     /// Launches a gRPC server listener loop
-    pub(crate) fn serve(&self, serve_address: NetAddress) -> OneshotSender<()> {
+    pub(crate) fn serve(&self, serve_address: NetAddress, tcp_limit: Option<Arc<Limit>>) -> OneshotSender<()> {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let (signal_sender, signal_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
@@ -107,16 +109,33 @@ impl ConnectionHandler {
                 .send_compressed(CompressionEncoding::Gzip)
                 .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
-            // TODO: check whether we should set tcp_keepalive
-            let serve_result = TonicServer::builder()
-                .add_service(protowire_server)
-                .serve_with_shutdown(
-                    serve_address.into(),
-                    signal_receiver.map(|_| {
+            let builder = TonicServer::builder().add_service(protowire_server);
+            let serve_result = if let Some(limit) = tcp_limit {
+                let listener = TcpListener::bind(serve_address.to_string()).await.unwrap();
+                let tcp_stream = tokio_stream::wrappers::TcpListenerStream::new(listener).filter_map(|tcp_stream| match tcp_stream {
+                    Ok(tcp_stream) => Wrapper::new(tcp_stream, limit.clone()).map(Ok),
+                    Err(e) => Some(Err(e)),
+                });
+                builder
+                    // TODO: check whether we should set tcp_keepalive
+                    .serve_with_incoming_shutdown(
+                        tcp_stream,
+                        signal_receiver.map(|_| {
                         debug!("GRPC, Server received the shutdown signal");
-                    }),
-                )
-                .await;
+                        })
+                    )
+                    .await
+            } else {
+                // TODO: check whether we should set tcp_keepalive
+                builder
+                    .serve_with_shutdown(
+                        serve_address.into(),
+                        signal_receiver.map(|_| {
+                            debug!("GRPC, Server received the shutdown signal");
+                        }),
+                    )
+                    .await
+            };
 
             match serve_result {
                 Ok(_) => info!("GRPC Server stopped on: {}", serve_address),

@@ -75,6 +75,7 @@ async fn main() -> Result<()> {
         listen_address: interface.unwrap_or_else(|| format!("wrpc://127.0.0.1:{proxy_port}")),
         grpc_proxy_address: Some(grpc_proxy_address.unwrap_or_else(|| format!("grpc://127.0.0.1:{kaspad_port}"))),
         verbose,
+        tcp_limit: None,
         // ..Options::default()
     });
     log_info!("");
@@ -82,7 +83,7 @@ async fn main() -> Result<()> {
 
     let counters = Arc::new(WrpcServerCounters::default());
     let tasks = threads.unwrap_or_else(num_cpus::get);
-    let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, None, options.clone(), counters));
+    let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, None, options.clone(), counters, None));
 
     let router = Arc::new(Router::new(rpc_handler.server.clone()));
     let server =

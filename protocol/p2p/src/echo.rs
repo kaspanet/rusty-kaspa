@@ -157,10 +157,10 @@ mod tests {
         kaspa_core::log::try_init_logger("debug");
 
         let address1 = NetAddress::from_str("[::1]:50053").unwrap();
-        let adaptor1 = Adaptor::bidirectional(address1, Hub::new(), Arc::new(EchoFlowInitializer::new())).unwrap();
+        let adaptor1 = Adaptor::bidirectional(address1, Hub::new(), Arc::new(EchoFlowInitializer::new()), None).unwrap();
 
         let address2 = NetAddress::from_str("[::1]:50054").unwrap();
-        let adaptor2 = Adaptor::bidirectional(address2, Hub::new(), Arc::new(EchoFlowInitializer::new())).unwrap();
+        let adaptor2 = Adaptor::bidirectional(address2, Hub::new(), Arc::new(EchoFlowInitializer::new()), None).unwrap();
 
         // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
         let peer2_id = adaptor1

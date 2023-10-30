@@ -27,7 +27,7 @@ pub struct Daemon {
 impl Daemon {
     pub fn new_random(fd_total_budget: i32) -> Daemon {
         // UPnP registration might take some time and is not needed for usual daemon tests
-        let args = Args { devnet: true, disable_upnp: true, ..Default::default() };
+        let args = Args { devnet: true, disable_upnp: true, max_tcp_connections: Some(10), ..Default::default() };
         Self::new_random_with_args(args, fd_total_budget)
     }
 

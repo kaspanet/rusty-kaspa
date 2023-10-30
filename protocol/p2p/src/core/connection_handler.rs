@@ -7,18 +7,19 @@ use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
 use kaspa_core::{debug, info};
 use kaspa_utils::networking::NetAddress;
+use kaspa_utils::tcp_limiter::{Limit, Wrapper};
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
+use tokio::net::TcpListener;
 use tokio::sync::mpsc::{channel as mpsc_channel, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tokio_stream::StreamExt;
 use tonic::transport::{Error as TonicError, Server as TonicServer};
 use tonic::{Request, Response, Status as TonicStatus, Streaming};
-
 #[derive(Error, Debug)]
 pub enum ConnectionError {
     #[error("missing socket address")]
@@ -54,7 +55,11 @@ impl ConnectionHandler {
     }
 
     /// Launches a P2P server listener loop
-    pub(crate) fn serve(&self, serve_address: NetAddress) -> Result<OneshotSender<()>, ConnectionError> {
+    pub(crate) fn serve(
+        &self,
+        serve_address: NetAddress,
+        tcp_limit: Option<Arc<Limit>>,
+    ) -> Result<OneshotSender<()>, ConnectionError> {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
         info!("P2P Server starting on: {}", serve_address);
@@ -64,11 +69,21 @@ impl ConnectionHandler {
                 .send_compressed(tonic::codec::CompressionEncoding::Gzip)
                 .max_decoding_message_size(P2P_MAX_MESSAGE_SIZE);
 
-            // TODO: check whether we should set tcp_keepalive
-            let serve_result = TonicServer::builder()
-                .add_service(proto_server)
-                .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
-                .await;
+            let builder = TonicServer::builder().add_service(proto_server);
+            let serve_result = if let Some(limit) = tcp_limit {
+                let listener = TcpListener::bind(serve_address.to_string()).await.unwrap();
+                let tcp_stream = TcpListenerStream::new(listener).filter_map(|tcp_stream| match tcp_stream {
+                    Ok(tcp_stream) => Wrapper::new(tcp_stream, limit.clone()).map(Ok),
+                    Err(e) => Some(Err(e)),
+                });
+                builder
+                    // TODO: check whether we should set tcp_keepalive
+                    .serve_with_incoming_shutdown(tcp_stream, termination_receiver.map(drop))
+                    .await
+            } else {
+                // TODO: check whether we should set tcp_keepalive
+                builder.serve_with_shutdown(serve_address.into(), termination_receiver.map(drop)).await
+            };
 
             match serve_result {
                 Ok(_) => info!("P2P Server stopped: {}", serve_address),
@@ -128,6 +143,7 @@ impl ConnectionHandler {
         retry_attempts: u8,
         retry_interval: Duration,
     ) -> Result<Arc<Router>, ConnectionError> {
+        // todo consider tcp limit
         let mut counter = 0;
         loop {
             counter += 1;

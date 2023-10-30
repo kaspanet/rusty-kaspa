@@ -27,6 +27,8 @@ use kaspa_mining::{
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
 use kaspa_perf_monitor::builder::Builder as PerfMonitorBuilder;
+use kaspa_utils::fd_budget::acquire_guard;
+use kaspa_utils::tcp_limiter::Limit;
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, ServerCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
@@ -177,6 +179,18 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
+    let tcp_limit = if let Some(tcp_limit) = args.max_tcp_connections {
+        tcp_limit as i32
+    } else {
+        args.rpc_max_clients as i32 - args.inbound_limit as i32 - args.outbound_target as i32
+    };
+    let Ok(_tcp_limit_guard) = acquire_guard(tcp_limit) else {
+        println!("Oops! Looks like we've hit a system limit. You have a couple of options:");
+        println!("1. Increase the file limit for this process. If you're on Linux, you can do this with the 'ulimit' command.");
+        println!("2. Reduce the TCP connection limit by passing the `max-tcp-conns` argument when starting this program.");
+        exit(1);
+    };
+    fd_remaining -= tcp_limit;
     let utxo_files_limit = if args.utxoindex {
         let utxo_files_limit = fd_remaining * 10 / 100;
         fd_remaining -= utxo_files_limit;
@@ -190,6 +204,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
         exit(1);
     }
 
+    let tcp_limit = Some(Arc::new(Limit::new(tcp_limit)));
     let config = Arc::new(
         ConfigBuilder::new(network.into())
             .adjust_perf_params_to_consensus_params()
@@ -368,6 +383,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         args.inbound_limit,
         dns_seeders,
         config.default_p2p_port(),
+        tcp_limit.clone(),
     ));
 
     let rpc_core_service = Arc::new(RpcCoreService::new(
@@ -384,7 +400,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         wrpc_json_counters.clone(),
         perf_monitor.clone(),
     ));
-    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients));
+    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients, tcp_limit.clone()));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
@@ -419,6 +435,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                 WrpcServerOptions {
                     listen_address: listen_address.to_address(&network.network_type, &encoding).to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
                     verbose: args.wrpc_verbose,
+                    tcp_limit: tcp_limit.clone(),
                     ..WrpcServerOptions::default()
                 },
             ))

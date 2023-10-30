@@ -3,6 +3,7 @@ use crate::core::hub::Hub;
 use crate::ConnectionError;
 use crate::{core::connection_handler::ConnectionHandler, Router};
 use kaspa_utils::networking::NetAddress;
+use kaspa_utils::tcp_limiter::Limit;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
@@ -58,10 +59,11 @@ impl Adaptor {
         serve_address: NetAddress,
         hub: Hub,
         initializer: Arc<dyn ConnectionInitializer>,
+        tcp_limit: Option<Arc<Limit>>,
     ) -> Result<Arc<Self>, ConnectionError> {
         let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
         let connection_handler = ConnectionHandler::new(hub_sender, initializer.clone());
-        let server_termination = connection_handler.serve(serve_address)?;
+        let server_termination = connection_handler.serve(serve_address, tcp_limit)?;
         let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler, hub));
         adaptor.hub.clone().start_event_loop(hub_receiver, initializer);
         Ok(adaptor)
@@ -69,6 +71,7 @@ impl Adaptor {
 
     /// Connect to a new peer (no retries)
     pub async fn connect_peer(&self, peer_address: String) -> Result<PeerKey, ConnectionError> {
+        // todo pass tcp limit
         self.connection_handler.connect_with_retry(peer_address, 1, Default::default()).await.map(|r| r.key())
     }
 
@@ -79,6 +82,7 @@ impl Adaptor {
         retry_attempts: u8,
         retry_interval: Duration,
     ) -> Result<PeerKey, ConnectionError> {
+        // todo pass tcp limit
         self.connection_handler.connect_with_retry(peer_address, retry_attempts, retry_interval).await.map(|r| r.key())
     }
 
