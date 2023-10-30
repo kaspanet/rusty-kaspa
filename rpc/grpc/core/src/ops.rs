@@ -1,4 +1,5 @@
-use crate::protowire::{kaspad_request::Payload as RequestPayload, kaspad_response::Payload as ResponsePayload};
+use crate::protowire::{kaspad_request::Payload as RequestPayload, kaspad_response::Payload as ResponsePayload, *};
+use kaspa_rpc_core::RpcError;
 use workflow_core::enums::Describe;
 
 macro_rules! payload_type_enum {
@@ -9,6 +10,14 @@ macro_rules! payload_type_enum {
             $(#[$meta])*
             $vis enum $name {
                 $($(#[$variant_meta])* $variant_name $(= $zero)?),*
+            }
+
+            impl $name {
+                pub fn to_error_response(&self, error: RpcError) -> ResponsePayload {
+                    match self {
+                        $($name::$variant_name => [<$variant_name ResponseMessage>]::from(error).into()),*
+                    }
+                }
             }
 
             impl std::convert::From<&RequestPayload> for $name {

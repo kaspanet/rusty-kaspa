@@ -5,7 +5,6 @@ use crate::{
     error::{GrpcServerError, GrpcServerResult},
 };
 use kaspa_grpc_core::{
-    convert::kaspad::build_error_response,
     ops::KaspadPayloadOps,
     protowire::{KaspadRequest, KaspadResponse},
 };
@@ -35,7 +34,7 @@ impl Interface {
                 match kaspad_request.payload {
                     Some(ref request) => Ok(KaspadResponse {
                         id: kaspad_request.id,
-                        payload: Some(build_error_response(request, GrpcServerError::MethodNotImplemented.into())),
+                        payload: Some(KaspadPayloadOps::from(request).to_error_response(GrpcServerError::MethodNotImplemented.into())),
                     }),
                     None => Err(GrpcServerError::InvalidRequestPayload),
                 }
