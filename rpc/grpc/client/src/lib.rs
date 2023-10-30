@@ -24,7 +24,6 @@ use kaspa_notify::{
     subscription::{array::ArrayBuilder, Command, Mutation, SingleSubscription},
 };
 use kaspa_rpc_core::{
-    api::ops::RPC_API_VERSION,
     api::rpc::RpcApi,
     error::RpcError,
     error::RpcResult,
@@ -182,26 +181,13 @@ impl RpcApi for GrpcClient {
     //     self.inner.call(KaspadPayloadOps::SubmitBlock, request).await?.as_ref().try_into()
     // }
 
-    async fn get_server_info_call(&self, _request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse> {
-        let GetInfoResponse { server_version, is_synced, is_utxo_indexed: has_utxo_index, .. } = self.get_info().await?;
-        let GetBlockDagInfoResponse { virtual_daa_score, network: network_id, .. } = self.get_block_dag_info().await?;
-
-        Ok(GetServerInfoResponse {
-            rpc_api_version: RPC_API_VERSION,
-            server_version,
-            network_id,
-            has_utxo_index,
-            is_synced,
-            virtual_daa_score,
-        })
-    }
-
     async fn get_sync_status_call(&self, _request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse> {
         let GetInfoResponse { is_synced, .. } = self.get_info().await?;
         Ok(GetSyncStatusResponse { is_synced })
     }
 
     route!(ping_call, Ping);
+    route!(get_server_info_call, GetServerInfo);
     route!(get_metrics_call, GetMetrics);
     route!(submit_block_call, SubmitBlock);
     route!(get_block_template_call, GetBlockTemplate);

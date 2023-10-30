@@ -56,6 +56,7 @@ message KaspadRequest {
     GetCoinSupplyRequestMessage getCoinSupplyRequest = 1086;
     PingRequestMessage pingRequest = 1088;
     GetMetricsRequestMessage getMetricsRequest = 1090;
+    GetServerInfoRequestMessage getServerInfoRequest = 1092;
   }
 }
 
@@ -112,6 +113,7 @@ message KaspadResponse {
     GetCoinSupplyResponseMessage getCoinSupplyResponse= 1087;
     PingResponseMessage pingResponse= 1089;
     GetMetricsResponseMessage getMetricsResponse= 1091;
+    GetServerInfoResponseMessage getServerInfoResponse = 1093;
   }
 }
 
