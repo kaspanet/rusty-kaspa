@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-mining-errors"
+description = "Kaspa mining error definitions"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
