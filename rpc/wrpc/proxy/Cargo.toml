@@ -8,20 +8,20 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-consensus-core.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-grpc-client.workspace = true
-kaspa-wrpc-server.workspace = true
-tokio.workspace = true
-thiserror.workspace = true
-clap.workspace = true
-workflow-core.workspace = true
-workflow-rpc.workspace = true
-workflow-log.workspace = true
 async-trait.workspace = true
+clap.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-grpc-client.workspace = true
+kaspa-rpc-core.workspace = true
 kaspa-rpc-macros.workspace = true
-num_cpus.workspace = true
 kaspa-wrpc-core.workspace = true
+kaspa-wrpc-server.workspace = true
+num_cpus.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+workflow-core.workspace = true
+workflow-log.workspace = true
+workflow-rpc.workspace = true
 
 [package.metadata.emanate.build]
 folder = "setup"

@@ -13,18 +13,18 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 async-trait.workspace = true
 borsh = { workspace = true, features = ["rc"] }
-kaspa-consensus-core.workspace = true
 futures.workspace = true
+kaspa-consensus-core.workspace = true
 kaspa-core.workspace = true
+kaspa-grpc-client.workspace = true
 kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
-kaspa-rpc-service.workspace = true
 kaspa-rpc-macros.workspace = true
-kaspa-grpc-client.workspace = true
+kaspa-rpc-service.workspace = true
 kaspa-utils.workspace = true
 kaspa-wrpc-core.workspace = true
-
 log.workspace = true
+num_cpus.workspace = true
 paste.workspace = true
 serde = { workspace = true, features = ["rc"] }
 thiserror.workspace = true
@@ -32,7 +32,6 @@ tokio.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
 workflow-rpc.workspace = true
-num_cpus.workspace = true
 
 [target.x86_64-unknown-linux-gnu.dependencies]
 # Adding explicitely the openssl dependency here is needed for a successful build with zigbuild

@@ -299,11 +299,11 @@ impl From<argon2::password_hash::Error> for Error {
     }
 }
 
-impl From<workflow_wasm::serde::Error> for Error {
-    fn from(err: workflow_wasm::serde::Error) -> Self {
-        Self::ToValue(err.to_string())
-    }
-}
+// impl From<workflow_wasm::serde::Error> for Error {
+//     fn from(err: workflow_wasm::serde::Error) -> Self {
+//         Self::ToValue(err.to_string())
+//     }
+// }
 
 impl<T> From<DowncastError<T>> for Error {
     fn from(e: DowncastError<T>) -> Self {
