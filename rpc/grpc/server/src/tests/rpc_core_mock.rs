@@ -100,7 +100,7 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_selected_tip_hash_call(&self, _request: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse> {
+    async fn get_sink_call(&self, _request: GetSinkRequest) -> RpcResult<GetSinkResponse> {
         Err(RpcError::NotImplemented)
     }
 
