@@ -12,6 +12,7 @@ macro_rules! scope_enum {
             $vis enum $name {
                 $($(#[$variant_meta])* $variant_name([<$variant_name Scope>])),*
             }
+
             impl std::convert::From<EventType> for $name {
                 fn from(value: EventType) -> Self {
                     match value {
@@ -19,6 +20,12 @@ macro_rules! scope_enum {
                     }
                 }
             }
+
+            $(impl std::convert::From<[<$variant_name Scope>]> for Scope {
+                fn from(value: [<$variant_name Scope>]) -> Self {
+                    Scope::$variant_name(value)
+                }
+            })*
         }
     }
 }

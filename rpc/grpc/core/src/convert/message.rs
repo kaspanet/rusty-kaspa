@@ -1,4 +1,6 @@
 use crate::protowire::{self, submit_block_response_message::RejectReason};
+use kaspa_consensus_core::network::NetworkId;
+use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{
     RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
 };
@@ -173,9 +175,9 @@ from!(item: RpcResult<&kaspa_rpc_core::GetPeerAddressesResponse>, protowire::Get
     }
 });
 
-from!(&kaspa_rpc_core::GetSelectedTipHashRequest, protowire::GetSelectedTipHashRequestMessage);
-from!(item: RpcResult<&kaspa_rpc_core::GetSelectedTipHashResponse>, protowire::GetSelectedTipHashResponseMessage, {
-    Self { selected_tip_hash: item.selected_tip_hash.to_string(), error: None }
+from!(&kaspa_rpc_core::GetSinkRequest, protowire::GetSinkRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSinkResponse>, protowire::GetSinkResponseMessage, {
+    Self { sink: item.sink.to_string(), error: None }
 });
 
 from!(item: &kaspa_rpc_core::GetMempoolEntryRequest, protowire::GetMempoolEntryRequestMessage, {
@@ -266,6 +268,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetBlockDagInfoResponse>, protowire::GetB
         virtual_parent_hashes: item.virtual_parent_hashes.iter().map(|x| x.to_string()).collect(),
         pruning_point_hash: item.pruning_point_hash.to_string(),
         virtual_daa_score: item.virtual_daa_score,
+        sink: item.sink.to_string(),
         error: None,
     }
 });
@@ -349,10 +352,37 @@ from!(item: RpcResult<&kaspa_rpc_core::GetCoinSupplyResponse>, protowire::GetCoi
 from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
 from!(RpcResult<&kaspa_rpc_core::PingResponse>, protowire::PingResponseMessage);
 
-from!(&kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMessage);
-from!(_item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
+from!(item: &kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMessage, {
     Self {
-        // TODO @tiram
+        process_metrics: item.process_metrics,
+        consensus_metrics: item.consensus_metrics
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
+    Self {
+        server_time: item.server_time,
+        process_metrics: item.process_metrics.as_ref().map(|x| x.into()),
+        consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
+        error: None,
+    }
+});
+from!(&kaspa_rpc_core::GetServerInfoRequest, protowire::GetServerInfoRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetServerInfoResponse>, protowire::GetServerInfoResponseMessage, {
+    Self {
+        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u32).collect(),
+        server_version: item.server_version.clone(),
+        network_id: item.network_id.to_string(),
+        has_utxo_index: item.has_utxo_index,
+        is_synced: item.is_synced,
+        virtual_daa_score: item.virtual_daa_score,
+        error: None,
+    }
+});
+
+from!(&kaspa_rpc_core::GetSyncStatusRequest, protowire::GetSyncStatusRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSyncStatusResponse>, protowire::GetSyncStatusResponseMessage, {
+    Self {
+        is_synced: item.is_synced,
         error: None,
     }
 });
@@ -360,14 +390,23 @@ from!(_item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetri
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
 });
+from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::StopNotifyingUtxosChangedRequestMessage, {
+    Self { addresses: item.addresses.iter().map(|x| x.into()).collect() }
+});
 from!(RpcResult<&kaspa_rpc_core::NotifyUtxosChangedResponse>, protowire::NotifyUtxosChangedResponseMessage);
+from!(RpcResult<&kaspa_rpc_core::NotifyUtxosChangedResponse>, protowire::StopNotifyingUtxosChangedResponseMessage);
 
 from!(item: &kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest, protowire::NotifyPruningPointUtxoSetOverrideRequestMessage, {
     Self { command: item.command.into() }
 });
+from!(&kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest, protowire::StopNotifyingPruningPointUtxoSetOverrideRequestMessage);
 from!(
     RpcResult<&kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>,
     protowire::NotifyPruningPointUtxoSetOverrideResponseMessage
+);
+from!(
+    RpcResult<&kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>,
+    protowire::StopNotifyingPruningPointUtxoSetOverrideResponseMessage
 );
 
 from!(item: &kaspa_rpc_core::NotifyFinalityConflictRequest, protowire::NotifyFinalityConflictRequestMessage, {
@@ -413,7 +452,7 @@ try_from!(item: &protowire::SubmitBlockRequestMessage, kaspa_rpc_core::SubmitBlo
     }
 });
 try_from!(item: &protowire::SubmitBlockResponseMessage, RpcResult<kaspa_rpc_core::SubmitBlockResponse>, {
-    Self { report: RejectReason::from_i32(item.reject_reason).ok_or(RpcError::PrimitiveToEnumConversionError)?.into() }
+    Self { report: RejectReason::try_from(item.reject_reason).map_err(|_| RpcError::PrimitiveToEnumConversionError)?.into() }
 });
 
 try_from!(item: &protowire::GetBlockTemplateRequestMessage, kaspa_rpc_core::GetBlockTemplateRequest, {
@@ -484,9 +523,9 @@ try_from!(item: &protowire::GetPeerAddressesResponseMessage, RpcResult<kaspa_rpc
     }
 });
 
-try_from!(&protowire::GetSelectedTipHashRequestMessage, kaspa_rpc_core::GetSelectedTipHashRequest);
-try_from!(item: &protowire::GetSelectedTipHashResponseMessage, RpcResult<kaspa_rpc_core::GetSelectedTipHashResponse>, {
-    Self { selected_tip_hash: RpcHash::from_str(&item.selected_tip_hash)? }
+try_from!(&protowire::GetSinkRequestMessage, kaspa_rpc_core::GetSinkRequest);
+try_from!(item: &protowire::GetSinkResponseMessage, RpcResult<kaspa_rpc_core::GetSinkResponse>, {
+    Self { sink: RpcHash::from_str(&item.sink)? }
 });
 
 try_from!(item: &protowire::GetMempoolEntryRequestMessage, kaspa_rpc_core::GetMempoolEntryRequest, {
@@ -590,6 +629,7 @@ try_from!(item: &protowire::GetBlockDagInfoResponseMessage, RpcResult<kaspa_rpc_
         virtual_parent_hashes: item.virtual_parent_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
         pruning_point_hash: RpcHash::from_str(&item.pruning_point_hash)?,
         virtual_daa_score: item.virtual_daa_score,
+        sink: item.sink.parse()?,
     }
 });
 
@@ -674,16 +714,33 @@ try_from!(item: &protowire::GetCoinSupplyResponseMessage, RpcResult<kaspa_rpc_co
 try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
 try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
-try_from!(_item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
-    // TODO @tiram
-    Self { process_metrics: false, consensus_metrics: false }
+try_from!(item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
+    Self { process_metrics: item.process_metrics, consensus_metrics: item.consensus_metrics }
 });
 try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
-        // TODO @tiram
-        server_time: 0,
-        process_metrics: None,
-        consensus_metrics: None,
+        server_time: item.server_time,
+        process_metrics: item.process_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+    }
+});
+
+try_from!(&protowire::GetServerInfoRequestMessage, kaspa_rpc_core::GetServerInfoRequest);
+try_from!(item: &protowire::GetServerInfoResponseMessage, RpcResult<kaspa_rpc_core::GetServerInfoResponse>, {
+    Self {
+        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u16).collect::<Vec<_>>().as_slice().try_into().map_err(|_| RpcError::RpcApiVersionFormatError)?,
+        server_version: item.server_version.clone(),
+        network_id: NetworkId::from_str(&item.network_id)?,
+        has_utxo_index: item.has_utxo_index,
+        is_synced: item.is_synced,
+        virtual_daa_score: item.virtual_daa_score,
+    }
+});
+
+try_from!(&protowire::GetSyncStatusRequestMessage, kaspa_rpc_core::GetSyncStatusRequest);
+try_from!(item: &protowire::GetSyncStatusResponseMessage, RpcResult<kaspa_rpc_core::GetSyncStatusResponse>, {
+    Self {
+        is_synced: item.is_synced,
     }
 });
 
@@ -693,7 +750,14 @@ try_from!(item: &protowire::NotifyUtxosChangedRequestMessage, kaspa_rpc_core::No
         command: item.command.into(),
     }
 });
+try_from!(item: &protowire::StopNotifyingUtxosChangedRequestMessage, kaspa_rpc_core::NotifyUtxosChangedRequest, {
+    Self {
+        addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()?,
+        command: Command::Stop,
+    }
+});
 try_from!(&protowire::NotifyUtxosChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifyUtxosChangedResponse>);
+try_from!(&protowire::StopNotifyingUtxosChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifyUtxosChangedResponse>);
 
 try_from!(
     item: &protowire::NotifyPruningPointUtxoSetOverrideRequestMessage,
@@ -701,7 +765,16 @@ try_from!(
     { Self { command: item.command.into() } }
 );
 try_from!(
+    _item: &protowire::StopNotifyingPruningPointUtxoSetOverrideRequestMessage,
+    kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest,
+    { Self { command: Command::Stop } }
+);
+try_from!(
     &protowire::NotifyPruningPointUtxoSetOverrideResponseMessage,
+    RpcResult<kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>
+);
+try_from!(
+    &protowire::StopNotifyingPruningPointUtxoSetOverrideResponseMessage,
     RpcResult<kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>
 );
 

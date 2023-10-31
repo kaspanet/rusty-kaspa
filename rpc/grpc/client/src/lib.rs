@@ -9,6 +9,7 @@ use futures::{future::FutureExt, pin_mut, select};
 use kaspa_core::{debug, trace};
 use kaspa_grpc_core::{
     channel::NotificationChannel,
+    ops::KaspadPayloadOps,
     protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
     RPC_MAX_MESSAGE_SIZE,
 };
@@ -23,7 +24,6 @@ use kaspa_notify::{
     subscription::{array::ArrayBuilder, Command, Mutation, SingleSubscription},
 };
 use kaspa_rpc_core::{
-    api::ops::{RpcApiOps, RPC_API_VERSION},
     api::rpc::RpcApi,
     error::RpcError,
     error::RpcResult,
@@ -178,29 +178,12 @@ impl GrpcClient {
 impl RpcApi for GrpcClient {
     // this example illustrates the body of the function created by the route!() macro
     // async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
-    //     self.inner.call(RpcApiOps::SubmitBlock, request).await?.as_ref().try_into()
+    //     self.inner.call(KaspadPayloadOps::SubmitBlock, request).await?.as_ref().try_into()
     // }
 
-    async fn get_server_info_call(&self, _request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse> {
-        let GetInfoResponse { server_version, is_synced, is_utxo_indexed: has_utxo_index, .. } = self.get_info().await?;
-        let GetBlockDagInfoResponse { virtual_daa_score, network: network_id, .. } = self.get_block_dag_info().await?;
-
-        Ok(GetServerInfoResponse {
-            rpc_api_version: RPC_API_VERSION,
-            server_version,
-            network_id,
-            has_utxo_index,
-            is_synced,
-            virtual_daa_score,
-        })
-    }
-
-    async fn get_sync_status_call(&self, _request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse> {
-        let GetInfoResponse { is_synced, .. } = self.get_info().await?;
-        Ok(GetSyncStatusResponse { is_synced })
-    }
-
     route!(ping_call, Ping);
+    route!(get_sync_status_call, GetSyncStatus);
+    route!(get_server_info_call, GetServerInfo);
     route!(get_metrics_call, GetMetrics);
     route!(submit_block_call, SubmitBlock);
     route!(get_block_template_call, GetBlockTemplate);
@@ -208,7 +191,7 @@ impl RpcApi for GrpcClient {
     route!(get_info_call, GetInfo);
     route!(get_current_network_call, GetCurrentNetwork);
     route!(get_peer_addresses_call, GetPeerAddresses);
-    route!(get_selected_tip_hash_call, GetSelectedTipHash);
+    route!(get_sink_call, GetSink);
     route!(get_mempool_entry_call, GetMempoolEntry);
     route!(get_mempool_entries_call, GetMempoolEntries);
     route!(get_connected_peer_info_call, GetConnectedPeerInfo);
@@ -581,7 +564,7 @@ impl Inner {
         self.resolver.clone()
     }
 
-    async fn call(&self, op: RpcApiOps, request: impl Into<KaspadRequest>) -> Result<KaspadResponse> {
+    async fn call(&self, op: KaspadPayloadOps, request: impl Into<KaspadRequest>) -> Result<KaspadResponse> {
         // Calls are only allowed if the client is connected to the server
         if self.is_connected() {
             let id = u64::from_le_bytes(rand::random::<[u8; 8]>());

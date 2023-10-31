@@ -344,7 +344,7 @@ impl PrvKeyData {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PrvKeyDataInfo {
     pub id: PrvKeyDataId,
     pub name: Option<String>,

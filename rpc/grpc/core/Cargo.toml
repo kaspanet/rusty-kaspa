@@ -8,27 +8,29 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-thiserror.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-core.workspace = true
 kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true
-kaspa-core.workspace = true
-kaspa-consensus-core.workspace = true
-faster-hex.workspace = true
+
 async-channel.workspace = true
+async-stream.workspace = true
+async-trait.workspace = true
+faster-hex.workspace = true
+futures.workspace = true
+h2.workspace = true
 log.workspace = true
+paste.workspace = true
+prost.workspace = true
 rand.workspace = true
-async-trait = "0.1.57"
-futures = { version = "0.3" }
-tonic = { version = "0.9.1", features = ["tls", "gzip"] }
-prost = { version = "0.11" }
-h2 = "0.3"
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
-tokio-stream = "0.1"
-async-stream = "0.3"
-triggered = "0.1"
-paste = "1.0.11"
 regex.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio-stream.workspace = true
+tonic = { workspace = true, features = ["tls", "gzip"] }
+triggered.workspace = true
+workflow-core.workspace = true
 
 [build-dependencies]
-tonic-build = { version = "0.9.1", features = ["prost"] }
+tonic-build = { workspace = true, features = ["prost"] }
