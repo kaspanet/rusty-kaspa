@@ -779,7 +779,6 @@ message ConsensusMetrics{
   uint64 txsCounts = 5;
   uint64 chainBlockCounts = 6;
   uint64 massCounts = 7;
-
 }
 
 message GetMetricsRequestMessage{
@@ -791,5 +790,26 @@ message GetMetricsResponseMessage{
   uint64 serverTime = 1;
   ProcessMetrics processMetrics = 11;
   ConsensusMetrics consensusMetrics = 12;
+  RPCError error = 1000;
+}
+
+message GetServerInfoRequestMessage{
+}
+
+message GetServerInfoResponseMessage{
+  repeated uint32 rpcApiVersion = 1; // Expecting exactly 4 elements
+  string serverVersion = 2;
+  string networkId = 3;
+  bool hasUtxoIndex = 4;
+  bool isSynced = 5;
+  uint64 virtualDaaScore = 6;
+  RPCError error = 1000;
+}
+
+message GetSyncStatusRequestMessage{
+}
+
+message GetSyncStatusResponseMessage{
+  bool isSynced = 1;
   RPCError error = 1000;
 }

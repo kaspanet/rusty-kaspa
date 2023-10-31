@@ -1,4 +1,5 @@
 use crate::protowire::{self, submit_block_response_message::RejectReason};
+use kaspa_consensus_core::network::NetworkId;
 use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{
     RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
@@ -365,6 +366,26 @@ from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetric
         error: None,
     }
 });
+from!(&kaspa_rpc_core::GetServerInfoRequest, protowire::GetServerInfoRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetServerInfoResponse>, protowire::GetServerInfoResponseMessage, {
+    Self {
+        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u32).collect(),
+        server_version: item.server_version.clone(),
+        network_id: item.network_id.to_string(),
+        has_utxo_index: item.has_utxo_index,
+        is_synced: item.is_synced,
+        virtual_daa_score: item.virtual_daa_score,
+        error: None,
+    }
+});
+
+from!(&kaspa_rpc_core::GetSyncStatusRequest, protowire::GetSyncStatusRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSyncStatusResponse>, protowire::GetSyncStatusResponseMessage, {
+    Self {
+        is_synced: item.is_synced,
+        error: None,
+    }
+});
 
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
@@ -701,6 +722,25 @@ try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core:
         server_time: item.server_time,
         process_metrics: item.process_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+    }
+});
+
+try_from!(&protowire::GetServerInfoRequestMessage, kaspa_rpc_core::GetServerInfoRequest);
+try_from!(item: &protowire::GetServerInfoResponseMessage, RpcResult<kaspa_rpc_core::GetServerInfoResponse>, {
+    Self {
+        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u16).collect::<Vec<_>>().as_slice().try_into().map_err(|_| RpcError::RpcApiVersionFormatError)?,
+        server_version: item.server_version.clone(),
+        network_id: NetworkId::from_str(&item.network_id)?,
+        has_utxo_index: item.has_utxo_index,
+        is_synced: item.is_synced,
+        virtual_daa_score: item.virtual_daa_score,
+    }
+});
+
+try_from!(&protowire::GetSyncStatusRequestMessage, kaspa_rpc_core::GetSyncStatusRequest);
+try_from!(item: &protowire::GetSyncStatusResponseMessage, RpcResult<kaspa_rpc_core::GetSyncStatusResponse>, {
+    Self {
+        is_synced: item.is_synced,
     }
 });
 

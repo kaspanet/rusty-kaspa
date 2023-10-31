@@ -26,6 +26,9 @@ pub enum RpcError {
     #[error("Ip address parsing error {0}")]
     ParseIpAddressError(#[from] AddrParseError),
 
+    #[error("Wrong rpc api version format")]
+    RpcApiVersionFormatError,
+
     #[error("Invalid script class: {0}")]
     InvalidRpcScriptClass(String),
 
