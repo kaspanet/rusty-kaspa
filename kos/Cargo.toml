@@ -6,9 +6,15 @@ description = "Kaspa Node & Wallet Manager"
 version = "0.0.2"
 edition.workspace = true
 authors.workspace = true
-include.workspace = true
 license.workspace = true
 repository = "https://github.com/kaspanet/rusty-kaspa"
+include = [
+    "src/**/*.rs",
+    "src/**/*.txt",
+    "src/**/*.css",
+    "Cargo.toml",
+    "Cargo.lock",
+]
 
 [features]
 metrics = []
