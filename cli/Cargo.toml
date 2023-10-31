@@ -4,8 +4,13 @@ description = "Kaspa CLI library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-include.workspace = true
 license.workspace = true
+include = [
+    "src/**/*.rs",
+    "src/**/*.txt",
+    "Cargo.toml",
+    "Cargo.lock",
+]
 
 [features]
 legacy-rpc = ["kaspa-wallet-core/legacy-rpc"]
