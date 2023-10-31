@@ -97,8 +97,8 @@ impl From<Error> for JsValue {
     }
 }
 
-impl From<workflow_wasm::serde::Error> for Error {
-    fn from(err: workflow_wasm::serde::Error) -> Self {
-        Self::ToValue(err.to_string())
-    }
-}
+// impl From<workflow_wasm::serde::Error> for Error {
+//     fn from(err: workflow_wasm::serde::Error) -> Self {
+//         Self::ToValue(err.to_string())
+//     }
+// }
