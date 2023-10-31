@@ -447,8 +447,8 @@ impl RpcApi for RpcCoreService {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_selected_tip_hash_call(&self, _: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse> {
-        Ok(GetSelectedTipHashResponse::new(self.consensus_manager.consensus().unguarded_session().async_get_sink().await))
+    async fn get_sink_call(&self, _: GetSinkRequest) -> RpcResult<GetSinkResponse> {
+        Ok(GetSinkResponse::new(self.consensus_manager.consensus().unguarded_session().async_get_sink().await))
     }
 
     async fn get_sink_blue_score_call(&self, _: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse> {
@@ -543,6 +543,7 @@ impl RpcApi for RpcCoreService {
             session.async_get_virtual_parents().await.iter().copied().collect::<Vec<_>>(),
             session.async_pruning_point().await,
             session.async_get_virtual_daa_score().await,
+            session.async_get_sink().await,
         ))
     }
 

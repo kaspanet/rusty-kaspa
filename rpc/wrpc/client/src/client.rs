@@ -414,7 +414,7 @@ impl RpcApi for KaspaRpcClient {
             GetMempoolEntry,
             GetPeerAddresses,
             GetMetrics,
-            GetSelectedTipHash,
+            GetSink,
             GetSyncStatus,
             GetSubnetwork,
             GetUtxosByAddresses,

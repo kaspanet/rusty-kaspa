@@ -65,8 +65,8 @@ impl Rpc {
                 let result = rpc.get_peer_addresses_call(GetPeerAddressesRequest {}).await?;
                 self.println(&ctx, result);
             }
-            RpcApiOps::GetSelectedTipHash => {
-                let result = rpc.get_selected_tip_hash_call(GetSelectedTipHashRequest {}).await?;
+            RpcApiOps::GetSink => {
+                let result = rpc.get_sink_call(GetSinkRequest {}).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::GetMempoolEntry => {

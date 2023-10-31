@@ -41,7 +41,7 @@ impl Factory {
                 GetInfo,
                 Shutdown,
                 GetPeerAddresses,
-                GetSelectedTipHash,
+                GetSink,
                 GetMempoolEntry,
                 GetMempoolEntries,
                 GetConnectedPeerInfo,
