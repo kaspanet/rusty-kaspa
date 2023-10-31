@@ -64,6 +64,8 @@ impl Factory {
                 GetCoinSupply,
                 Ping,
                 GetMetrics,
+                GetServerInfo,
+                GetSyncStatus,
                 NotifyBlockAdded,
                 NotifyNewBlockTemplate,
                 NotifyFinalityConflict,
