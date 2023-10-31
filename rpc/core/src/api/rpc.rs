@@ -77,10 +77,10 @@ pub trait RpcApi: Sync + Send + AnySync {
     async fn get_peer_addresses_call(&self, request: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse>;
 
     /// requests the hash of the current virtual's selected parent.
-    async fn get_selected_tip_hash(&self) -> RpcResult<GetSelectedTipHashResponse> {
-        self.get_selected_tip_hash_call(GetSelectedTipHashRequest {}).await
+    async fn get_sink(&self) -> RpcResult<GetSinkResponse> {
+        self.get_sink_call(GetSinkRequest {}).await
     }
-    async fn get_selected_tip_hash_call(&self, request: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse>;
+    async fn get_sink_call(&self, request: GetSinkRequest) -> RpcResult<GetSinkResponse>;
 
     /// Requests information about a specific transaction in the mempool.
     async fn get_mempool_entry(

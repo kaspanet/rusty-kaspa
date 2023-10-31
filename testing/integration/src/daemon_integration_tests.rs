@@ -53,17 +53,21 @@ async fn daemon_mining_test() {
     assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
 
     // Mine 10 blocks to daemon #1
+    let mut last_block_hash = None;
     for _ in 0..10 {
         let template = rpc_client1
             .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
             .await
             .unwrap();
+        last_block_hash = Some(template.block.header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
     }
 
     tokio::time::sleep(Duration::from_secs(1)).await;
     // Expect the blocks to be relayed to daemon #2
-    assert_eq!(rpc_client2.get_block_dag_info().await.unwrap().block_count, 10);
+    let dag_info = rpc_client2.get_block_dag_info().await.unwrap();
+    assert_eq!(dag_info.block_count, 10);
+    assert_eq!(dag_info.sink, last_block_hash.unwrap());
 
     // Check that acceptance data contains the expected coinbase tx ids
     let vc = rpc_client2.get_virtual_chain_from_block(kaspa_consensus::params::SIMNET_GENESIS.hash, true).await.unwrap();

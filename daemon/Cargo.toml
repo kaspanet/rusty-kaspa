@@ -9,41 +9,18 @@ license.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+borsh.workspace = true
 cfg-if.workspace = true
+downcast-rs.workspace = true
 futures.workspace = true
-workflow-log.workspace = true
+kaspa-addresses.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-wallet-core.workspace = true
+nw-sys.workspace = true
+serde.workspace = true
+thiserror.workspace = true
 workflow-core.workspace = true
-workflow-store.workspace = true
+workflow-log.workspace = true
 workflow-node.workspace = true
 workflow-nw.workspace = true
-nw-sys.workspace = true
-thiserror.workspace = true
-kaspa-consensus-core.workspace = true
-borsh.workspace = true
-serde.workspace = true
-downcast-rs.workspace = true
-kaspa-addresses.workspace = true
-kaspa-wallet-core.workspace = true
-
-
-# async-channel.workspace = true
-# uuid.workspace = true
-# serde.workspace = true
-# borsh.workspace = true
-# faster-hex.workspace = true
-# smallvec.workspace = true
-# itertools.workspace = true
-
-# triggered = "0.1"
-# event-listener = "2.5.3"
-
-# [dev-dependencies]
-# async-trait.workspace = true
-# futures-util.workspace = true
-# tokio = { workspace = true, features = ["rt", "time", "macros"] }
-# criterion.workspace = true
-# rand.workspace = true
-
-# [[bench]]
-# name = "bench"
-# harness = false
+workflow-store.workspace = true
