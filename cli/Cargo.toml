@@ -8,6 +8,7 @@ license.workspace = true
 include = [
     "src/**/*.rs",
     "src/**/*.txt",
+    "src/**/*.css",
     "Cargo.toml",
     "Cargo.lock",
 ]
