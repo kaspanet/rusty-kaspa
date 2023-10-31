@@ -35,7 +35,7 @@ pub enum RpcApiOps {
     /// Returns a list of all the addresses (IP, port) this Kaspad knows and a list of all addresses that are currently banned by this Kaspad
     GetPeerAddresses,
     /// Returns the hash of the current selected tip block of the DAG
-    GetSelectedTipHash,
+    GetSink,
     /// Get information about an entry in the node's mempool
     GetMempoolEntry,
     /// Get a snapshot of the node's mempool
