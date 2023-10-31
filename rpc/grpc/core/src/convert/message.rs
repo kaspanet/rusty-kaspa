@@ -174,9 +174,9 @@ from!(item: RpcResult<&kaspa_rpc_core::GetPeerAddressesResponse>, protowire::Get
     }
 });
 
-from!(&kaspa_rpc_core::GetSelectedTipHashRequest, protowire::GetSelectedTipHashRequestMessage);
-from!(item: RpcResult<&kaspa_rpc_core::GetSelectedTipHashResponse>, protowire::GetSelectedTipHashResponseMessage, {
-    Self { selected_tip_hash: item.selected_tip_hash.to_string(), error: None }
+from!(&kaspa_rpc_core::GetSinkRequest, protowire::GetSinkRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSinkResponse>, protowire::GetSinkResponseMessage, {
+    Self { sink: item.sink.to_string(), error: None }
 });
 
 from!(item: &kaspa_rpc_core::GetMempoolEntryRequest, protowire::GetMempoolEntryRequestMessage, {
@@ -502,9 +502,9 @@ try_from!(item: &protowire::GetPeerAddressesResponseMessage, RpcResult<kaspa_rpc
     }
 });
 
-try_from!(&protowire::GetSelectedTipHashRequestMessage, kaspa_rpc_core::GetSelectedTipHashRequest);
-try_from!(item: &protowire::GetSelectedTipHashResponseMessage, RpcResult<kaspa_rpc_core::GetSelectedTipHashResponse>, {
-    Self { selected_tip_hash: RpcHash::from_str(&item.selected_tip_hash)? }
+try_from!(&protowire::GetSinkRequestMessage, kaspa_rpc_core::GetSinkRequest);
+try_from!(item: &protowire::GetSinkResponseMessage, RpcResult<kaspa_rpc_core::GetSinkResponse>, {
+    Self { sink: RpcHash::from_str(&item.sink)? }
 });
 
 try_from!(item: &protowire::GetMempoolEntryRequestMessage, kaspa_rpc_core::GetMempoolEntryRequest, {

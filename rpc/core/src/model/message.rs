@@ -169,17 +169,17 @@ impl GetPeerAddressesResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetSelectedTipHashRequest {}
+pub struct GetSinkRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetSelectedTipHashResponse {
-    pub selected_tip_hash: RpcHash,
+pub struct GetSinkResponse {
+    pub sink: RpcHash,
 }
 
-impl GetSelectedTipHashResponse {
+impl GetSinkResponse {
     pub fn new(selected_tip_hash: RpcHash) -> Self {
-        Self { selected_tip_hash }
+        Self { sink: selected_tip_hash }
     }
 }
 

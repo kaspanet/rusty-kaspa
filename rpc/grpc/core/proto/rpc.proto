@@ -204,13 +204,13 @@ message GetPeerAddressesKnownAddressMessage {
   string Addr = 1;
 }
 
-// GetSelectedTipHashRequestMessage requests the hash of the current virtual's
+// GetSinkRequestMessage requests the hash of the current virtual's
 // selected parent.
-message GetSelectedTipHashRequestMessage{
+message GetSinkRequestMessage{
 }
 
-message GetSelectedTipHashResponseMessage{
-  string selectedTipHash = 1;
+message GetSinkResponseMessage{
+  string sink = 1;
   RPCError error = 1000;
 }
 

@@ -55,7 +55,7 @@ pub enum KaspadPayloadOps {
     GetInfo,
     Shutdown,
     GetPeerAddresses,
-    GetSelectedTipHash,
+    GetSink,
     GetMempoolEntry,
     GetMempoolEntries,
     GetConnectedPeerInfo,
