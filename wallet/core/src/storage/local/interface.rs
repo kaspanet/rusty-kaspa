@@ -12,10 +12,21 @@ use crate::storage::local::wallet::Wallet;
 use crate::storage::local::Payload;
 use crate::storage::local::Storage;
 use crate::storage::*;
+use slugify_rs::slugify;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use workflow_core::runtime::is_web;
 use workflow_store::fs;
+
+fn make_filename(title: &Option<String>, filename: &Option<String>) -> String {
+    if let Some(filename) = filename {
+        filename.to_string()
+    } else if let Some(title) = title {
+        slugify!(title)
+    } else {
+        super::DEFAULT_WALLET_FILE.to_string()
+    }
+}
 
 pub enum Store {
     Resident,
@@ -38,8 +49,7 @@ impl LocalStoreInner {
             // log_info!("LocalStoreInner::try_create: folder: {}, args: {:?}, is_resident: {}", folder, args, is_resident);
 
             let title = args.title.clone();
-
-            let filename = args.filename.clone().unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
+            let filename = make_filename(&title, &args.filename);
 
             let storage = Storage::try_new_with_folder(folder, &format!("{filename}.wallet"))?;
             if storage.exists().await? && !args.overwrite_wallet {
@@ -62,7 +72,7 @@ impl LocalStoreInner {
     }
 
     pub async fn try_load(ctx: &Arc<dyn AccessContextT>, folder: &str, args: OpenArgs) -> Result<Self> {
-        let filename = args.filename.unwrap_or(super::DEFAULT_WALLET_FILE.to_string());
+        let filename = make_filename(&None, &args.filename);
         let storage = Storage::try_new_with_folder(folder, &format!("{filename}.wallet"))?;
 
         let secret = ctx.wallet_secret().await;
