@@ -120,100 +120,127 @@ kaspad = { version = "0.1.7", path = "kaspad" }
 kaspa-perf-monitor = { path = "metrics/perf_monitor" }
 
 # external
-thiserror = "1"
-faster-hex = "0.6"
-itertools = "0.10"
-rand = "0.8"
-rand_chacha = "0.3"
-rayon = "1"
-tempfile = "3.3"
-blake2b_simd = "1"
-sha2 = "0.10.7"
-serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1.0.91"
-serde-wasm-bindgen = "0.4.5"
-futures-util = { version = "0.3", default-features = false, features = [
-    "alloc",
-] }
-futures = { version = "0.3" }
-bincode = { version = "1", default-features = false }
-tokio = { version = "1", features = ["sync", "rt-multi-thread"] }
-wasm-bindgen = { version = "0.2.87", features = ["serde-serialize"] }
-wasm-bindgen-test = "0.3.37"
-criterion = { version = "0.4", default-features = false }
-indexmap = "1.9.1"
-parking_lot = "0.12"
-smallvec = { version = "1.10.0", features = ["serde"] }
-borsh = { version = "0.9.1", features = ["rc"] } # please keep this fixed
+aes = "0.8.3"
+argon2 = "0.5.2"
+async-channel = "2.0.0"
 async-std = { version = "1.12.0", features = ['attributes'] }
-async-channel = "1.8.0"
-clap = { version = "4.0.23", features = ["derive", "string", "cargo"] }
-derive_more = { version = "0.99" }
-log = "0.4"
+async-stream = "0.3.5"
+async-trait = "0.1.74"
+base64 = "0.21.5"
+bincode = { version = "1.3.3", default-features = false }
+blake2b_simd = "1.0.2"
+borsh = { version = "0.9.1", features = ["rc"] } # please keep this fixed
+bs58 = { version = "0.5.0", features = ["check"], default-features = false }
+cc = "1.0.83"
+cfb-mode = "0.8.2"
 cfg-if = "1.0.0"
-rocksdb = "0.21"
-num_cpus = "1.15.0"
-async-trait = "0.1.57"
-paste = "1.0.11"
-regex = "1.6.0"
-pad = "0.1.6"
-convert_case = "0.5.0"
-wasm-bindgen-futures = "0.4.33"
-js-sys = "0.3.64"
-web-sys = "0.3.64"
-getrandom = { version = "0.2.8", features = ["js"] }
-home = "0.5.4"
-base64 = "0.21.0"
 chacha20poly1305 = "0.10.1"
-heapless = "0.7.16"
+clap = { version = "4.4.7", features = ["derive", "string", "cargo"] }
+convert_case = "0.6.0"
+criterion = { version = "0.5.1", default-features = false }
+crossbeam-channel = "0.5.8"
+ctrlc = "3.4.1" # 3.2
+dashmap = "5.5.3"
+derivative = "2.2.0"
+derive_more = "0.99.17"
+dhat = "0.3.2"
+dirs = "5.0.1"
 downcast = "0.11.0"
 downcast-rs = "1.2.0"
-argon2 = "0.5.0"
-uuid = { version = "1.2.2", features = ["v4", "fast-rng", "serde"] }
-# pbkdf2 = "0.12.1"
-sha1 = "0.10.5"
-aes = "0.8.2"
-cfb-mode = "0.8.2"
+duration-string = "0.3.0"
+enum-primitive-derive = "0.2.2"
+event-listener = "2.5.3" # TODO "3.0.1"
 evpkdf = "0.2.0"
-md-5 = "0.10.5"
-derivative = "2.2.0"
-num = "0.4.0"
-textwrap = "0.16"
-sorted-insert = "0.2.3"
-dashmap = "5.4.0"
+faster-hex = "0.6.0" # TODO "0.8.1" - fails unit tests
+flate2 = "1.0.28"
+futures = { version = "0.3.29" }
+futures-util = { version = "0.3.29", default-features = false, features = [ "alloc" ] }
+getrandom = { version = "0.2.10", features = ["js"] }
+h2 = "0.3.21"
+heapless = "0.7.16"
+hex = "0.4.3"
+hmac = { version = "0.12.1", default-features = false }
+home = "0.5.5"
+igd-next = { version = "0.14.2", features = ["aio_tokio"] }
+indexmap = "2.0.2"
+intertrait = "0.2.2"
+ipnet = "2.9.0"
+itertools = "0.11.0"
+js-sys = "0.3.64"
+keccak = "0.1.4"
+local-ip-address = "0.5.6"
+log = "0.4.20"
+log4rs = "1.2.0"
+malachite-base = "0.4.4"
+malachite-nz = "0.4.4"
+md-5 = "0.10.6"
+num = "0.4.1"
+num_cpus = "1.15.0"
+num-traits = "0.2.17"
+once_cell = "1.18.0"
+pad = "0.1.6"
+parking_lot = "0.12.1"
+paste = "1.0.14"
+pbkdf2 = "0.12.2"
+portable-atomic = {version = "1.5.1", features = ["float"]}
+prost = "0.12.1"
+rand = "0.8.5"
+rand_chacha = "0.3.1"
+rand_core = { version = "0.6.4", features = ["std"] }
+rand_distr = "0.4.3"
+rayon = "1.8.0"
+regex = "1.10.2"
+ripemd = { version = "0.1.3", default-features = false }
+rlimit = "0.10.1"
+rocksdb = "0.21.0"
+secp256k1 = { version = "0.24.0", features = [ "global-context", "rand-std", "serde" ] } # TODO "0.28.0"
 separator = "0.4.1"
-serde_bytes = "0.11.11"
-xxhash-rust = { version = "0.8.6", features = ["xxh3"] }
+seqlock = "0.2.0"
+serde = { version = "1.0.190", features = ["derive", "rc"] }
+serde_bytes = "0.11.12"
+serde_json = "1.0.107"
+serde-wasm-bindgen = "0.6.1"
+sha1 = "0.10.6"
+sha2 = "0.10.8"
+sha3 = "0.10.8"
+smallvec = { version = "1.11.1", features = ["serde"] }
+sorted-insert = "0.2.3"
+statest = "0.2.2"
+statrs = "0.13.0" # TODO "0.16.0"
+subtle = { version = "2.5.0", default-features = false }
+tempfile = "3.8.1"
+textwrap = "0.16.0"
+thiserror = "1.0.50"
+tokio = { version = "1.33.0", features = ["sync", "rt-multi-thread"] }
+tokio-stream = "0.1.14"
+tonic = { version = "0.10.2", features = ["tls", "gzip"] }
+tonic-build = { version = "0.10.2", features = ["prost"] }
+triggered = "0.1.2"
+uuid = { version = "1.5.0", features = ["v4", "fast-rng", "serde"] }
+wasm-bindgen = { version = "0.2.87", features = ["serde-serialize"] }
+wasm-bindgen-futures = "0.4.37"
+wasm-bindgen-test = "0.3.37"
+web-sys = "0.3.64"
+xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
+zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
 
-# bip32 dependencies
-rand_core = { version = "0.6", features = ["std"] }
-bs58 = { version = "0.4", features = ["check"], default-features = false }
-hmac = { version = "0.12", default-features = false }
-secp256k1 = { version = "0.24", features = [
-    "global-context",
-    "rand-std",
-    "serde",
-] }
-#sha2 = {version = "0.10", default-features = false}
-zeroize = { version = "1", default-features = false, features = ["alloc"] }
-ripemd = { version = "0.1", default-features = false }
-subtle = { version = "2", default-features = false }
-once_cell = { version = "1" }
-pbkdf2 = { version = "0.12.1" }
-# pbkdf2 = { version = "0.11", default-features = false}
+# workflow dependencies that are not a part of core libraries
+
+# workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
+workflow-perf-monitor = { version = "0.0.2" }
 
 # workflow dependencies
-workflow-d3 = { version = "0.7.0" }
-workflow-nw = { version = "0.7.0" }
-workflow-log = { version = "0.7.0" }
-workflow-core = { version = "0.7.0" }
-workflow-wasm = { version = "0.7.0" }
-workflow-dom = { version = "0.7.0" }
-workflow-rpc = { version = "0.7.0" }
-workflow-node = { version = "0.7.0" }
-workflow-store = { version = "0.7.0" }
-workflow-terminal = { version = "0.7.0" }
-nw-sys = "0.1.5"
+workflow-d3 = { version = "0.8.0" }
+workflow-nw = { version = "0.8.0" }
+workflow-log = { version = "0.8.0" }
+workflow-core = { version = "0.8.0" }
+workflow-wasm = { version = "0.8.0" }
+workflow-dom = { version = "0.8.0" }
+workflow-rpc = { version = "0.8.0" }
+workflow-node = { version = "0.8.0" }
+workflow-store = { version = "0.8.0" }
+workflow-terminal = { version = "0.8.0" }
+nw-sys = "0.1.6"
 
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs

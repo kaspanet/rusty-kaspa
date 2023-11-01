@@ -8,15 +8,15 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-core.workspace = true
-kaspa-utils.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-tokio.workspace = true
-log.workspace = true
-parking_lot.workspace = true
-itertools.workspace = true
-rand.workspace = true
+duration-string.workspace = true
 futures-util.workspace = true
 futures.workspace = true
-duration-string = "0.2.0"
+itertools.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus-notify.workspace = true
+kaspa-core.workspace = true
+kaspa-utils.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+tokio.workspace = true

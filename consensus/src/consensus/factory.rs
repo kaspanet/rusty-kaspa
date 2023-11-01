@@ -200,6 +200,7 @@ pub struct Factory {
     notification_root: Arc<ConsensusNotificationRoot>,
     counters: Arc<ProcessingCounters>,
     tx_script_cache_counters: Arc<TxScriptCacheCounters>,
+    fd_budget: i32,
 }
 
 impl Factory {
@@ -211,15 +212,25 @@ impl Factory {
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
+        fd_budget: i32,
     ) -> Self {
+        assert!(fd_budget > 0, "fd_budget has to be positive");
         let mut config = config.clone();
         #[cfg(feature = "devnet-prealloc")]
         set_genesis_utxo_commitment_from_config(&mut config);
         config.process_genesis = false;
         let management_store = Arc::new(RwLock::new(MultiConsensusManagementStore::new(management_db)));
         management_store.write().set_is_archival_node(config.is_archival);
-        let factory =
-            Self { management_store, config, db_root_dir, db_parallelism, notification_root, counters, tx_script_cache_counters };
+        let factory = Self {
+            management_store,
+            config,
+            db_root_dir,
+            db_parallelism,
+            notification_root,
+            counters,
+            tx_script_cache_counters,
+            fd_budget,
+        };
         factory.delete_inactive_consensus_entries();
         factory
     }
@@ -245,7 +256,12 @@ impl ConsensusFactory for Factory {
         };
 
         let dir = self.db_root_dir.join(entry.directory_name.clone());
-        let db = kaspa_database::prelude::ConnBuilder::default().with_db_path(dir).with_parallelism(self.db_parallelism).build();
+        let db = kaspa_database::prelude::ConnBuilder::default()
+            .with_db_path(dir)
+            .with_parallelism(self.db_parallelism)
+            .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
+            .build()
+            .unwrap();
 
         let session_lock = SessionLock::new();
         let consensus = Arc::new(Consensus::new(
@@ -274,7 +290,12 @@ impl ConsensusFactory for Factory {
 
         let entry = self.management_store.write().new_staging_consensus_entry().unwrap();
         let dir = self.db_root_dir.join(entry.directory_name);
-        let db = kaspa_database::prelude::ConnBuilder::default().with_db_path(dir).with_parallelism(self.db_parallelism).build();
+        let db = kaspa_database::prelude::ConnBuilder::default()
+            .with_db_path(dir)
+            .with_parallelism(self.db_parallelism)
+            .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
+            .build()
+            .unwrap();
 
         let session_lock = SessionLock::new();
         let consensus = Arc::new(Consensus::new(

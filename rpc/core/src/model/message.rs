@@ -169,17 +169,17 @@ impl GetPeerAddressesResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetSelectedTipHashRequest {}
+pub struct GetSinkRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetSelectedTipHashResponse {
-    pub selected_tip_hash: RpcHash,
+pub struct GetSinkResponse {
+    pub sink: RpcHash,
 }
 
-impl GetSelectedTipHashResponse {
+impl GetSinkResponse {
     pub fn new(selected_tip_hash: RpcHash) -> Self {
-        Self { selected_tip_hash }
+        Self { sink: selected_tip_hash }
     }
 }
 
@@ -398,6 +398,7 @@ pub struct GetBlockDagInfoResponse {
     pub virtual_parent_hashes: Vec<RpcHash>,
     pub pruning_point_hash: RpcHash,
     pub virtual_daa_score: u64,
+    pub sink: RpcHash,
 }
 
 impl GetBlockDagInfoResponse {
@@ -411,6 +412,7 @@ impl GetBlockDagInfoResponse {
         virtual_parent_hashes: Vec<RpcHash>,
         pruning_point_hash: RpcHash,
         virtual_daa_score: u64,
+        sink: RpcHash,
     ) -> Self {
         Self {
             network,
@@ -422,6 +424,7 @@ impl GetBlockDagInfoResponse {
             virtual_parent_hashes,
             pruning_point_hash,
             virtual_daa_score,
+            sink,
         }
     }
 }
@@ -718,13 +721,13 @@ pub struct ConsensusMetrics {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMetricsResponse {
-    pub server_time: u128,
+    pub server_time: u64,
     pub process_metrics: Option<ProcessMetrics>,
     pub consensus_metrics: Option<ConsensusMetrics>,
 }
 
 impl GetMetricsResponse {
-    pub fn new(server_time: u128, process_metrics: Option<ProcessMetrics>, consensus_metrics: Option<ConsensusMetrics>) -> Self {
+    pub fn new(server_time: u64, process_metrics: Option<ProcessMetrics>, consensus_metrics: Option<ConsensusMetrics>) -> Self {
         Self { process_metrics, consensus_metrics, server_time }
     }
 }
@@ -1068,7 +1071,7 @@ impl SubscribeResponse {
 }
 
 ///
-///  wRPC response for RpcApiOps::Subscribe request
+///  wRPC response for RpcApiOps::Unsubscribe request
 ///
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
