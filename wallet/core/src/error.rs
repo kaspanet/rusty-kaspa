@@ -224,7 +224,7 @@ pub enum Error {
 
     #[error("Invalid range {0}..{1}")]
     InvalidRange(u64, u64),
-    
+
     #[error(transparent)]
     MultisigCreateError(#[from] kaspa_txscript::MultisigCreateError),
 
