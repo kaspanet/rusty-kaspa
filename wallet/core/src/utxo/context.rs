@@ -57,18 +57,18 @@ impl ToHex for UtxoContextId {
 
 pub struct Consumed {
     entry: UtxoEntryReference,
-    instant: Instant,
+    timeout: Instant,
 }
 
 impl From<(UtxoEntryReference, &Instant)> for Consumed {
-    fn from((entry, instant): (UtxoEntryReference, &Instant)) -> Self {
-        Self { entry, instant: *instant }
+    fn from((entry, timeout): (UtxoEntryReference, &Instant)) -> Self {
+        Self { entry, timeout: *timeout }
     }
 }
 
 impl From<(&UtxoEntryReference, &Instant)> for Consumed {
-    fn from((entry, instant): (&UtxoEntryReference, &Instant)) -> Self {
-        Self { entry: entry.clone(), instant: *instant }
+    fn from((entry, timeout): (&UtxoEntryReference, &Instant)) -> Self {
+        Self { entry: entry.clone(), timeout: *timeout }
     }
 }
 
@@ -78,7 +78,6 @@ pub enum UtxoEntryVariant {
     Consumed(UtxoEntryReference),
 }
 
-#[derive(Default)]
 pub struct Context {
     /// Mature (Confirmed) UTXOs
     pub(crate) mature: Vec<UtxoEntryReference>,
@@ -96,6 +95,23 @@ pub struct Context {
     balance: Option<Balance>,
     /// Addresses monitored by this UTXO context
     addresses: Arc<DashSet<Arc<Address>>>,
+    /// Timeout for UTXO recovery
+    recovery_period: Duration,
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self {
+            mature: vec![],
+            pending: HashMap::default(),
+            consumed: HashMap::default(),
+            map: HashMap::default(),
+            outgoing: HashMap::default(),
+            balance: None,
+            addresses: Arc::new(DashSet::new()),
+            recovery_period: Duration::from_secs(crate::utxo::UTXO_RECOVERY_PERIOD_SECONDS.load(Ordering::Relaxed)),
+        }
+    }
 }
 
 impl Context {
@@ -228,9 +244,10 @@ impl UtxoContext {
             let mut context = self.context();
             let pending_utxo_entries = pending_tx.utxo_entries();
             context.mature.retain(|entry| !pending_utxo_entries.contains(entry));
-            let now = Instant::now();
+
+            let timeout = Instant::now().checked_add(context.recovery_period).unwrap();
             pending_utxo_entries.iter().for_each(|entry| {
-                context.consumed.insert(entry.id().clone(), (entry, &now).into());
+                context.consumed.insert(entry.id().clone(), (entry, &timeout).into());
             });
 
             context.outgoing.insert(pending_tx.id(), pending_tx.clone());
@@ -252,9 +269,9 @@ impl UtxoContext {
     pub(crate) async fn consume(&self, entries: &[UtxoEntryReference]) -> Result<()> {
         let mut context = self.context();
         context.mature.retain(|entry| !entries.contains(entry));
-        let now = Instant::now();
+        let timeout = Instant::now().checked_add(context.recovery_period).unwrap();
         entries.iter().for_each(|entry| {
-            context.consumed.insert(entry.id().clone(), (entry, &now).into());
+            context.consumed.insert(entry.id().clone(), (entry, &timeout).into());
         });
 
         Ok(())
@@ -382,21 +399,16 @@ impl UtxoContext {
 
     /// recover UTXOs that went into `consumed` state but were never removed
     /// from the set by the UtxoChanged notification.
-    pub fn recover(&self, _current_daa_score: u64, duration: Option<Duration>) -> bool {
+    pub fn recover(&self, _current_daa_score: u64) -> bool {
         let mut context = self.context();
         if context.consumed.is_empty() {
             return false;
         }
 
-        let checkpoint = Instant::now()
-            .checked_sub(
-                duration.unwrap_or_else(|| Duration::from_secs(crate::utxo::UTXO_RECOVERY_PERIOD_SECONDS.load(Ordering::Relaxed))),
-            )
-            .expect("UtxoContext::recover() invalid recovery period");
-
+        let checkpoint = Instant::now();
         let mut removed = vec![];
         context.consumed.retain(|_, consumed| {
-            if consumed.instant < checkpoint {
+            if consumed.timeout > checkpoint {
                 removed.push(consumed.entry.clone());
                 false
             } else {

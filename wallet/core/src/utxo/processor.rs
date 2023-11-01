@@ -230,7 +230,7 @@ impl UtxoProcessor {
     }
 
     async fn handle_recoverable(&self, current_daa_score: u64) -> Result<()> {
-        self.inner.recoverable_contexts.retain(|context| context.recover(current_daa_score, None));
+        self.inner.recoverable_contexts.retain(|context| context.recover(current_daa_score));
 
         Ok(())
     }
