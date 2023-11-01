@@ -419,15 +419,15 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn submit_transaction_call(&self, request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
+        let allow_orphan = self.config.unsafe_rpc && request.allow_orphan;
         if !self.config.unsafe_rpc && request.allow_orphan {
-            warn!("SubmitTransaction RPC command called with AllowOrphan enabled while node in safe RPC mode -- ignoring.");
-            return Err(RpcError::UnavailableInSafeMode);
+            warn!("SubmitTransaction RPC command called with AllowOrphan enabled while node in safe RPC mode -- switching to ForbidOrphan.");
         }
 
         let transaction: Transaction = (&request.transaction).try_into()?;
         let transaction_id = transaction.id();
         let session = self.consensus_manager.consensus().unguarded_session();
-        let orphan = match request.allow_orphan {
+        let orphan = match allow_orphan {
             true => Orphan::Allowed,
             false => Orphan::Forbidden,
         };
