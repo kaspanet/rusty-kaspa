@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-perf-monitor"
+description = "Kaspa process performance monitoring tools"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
