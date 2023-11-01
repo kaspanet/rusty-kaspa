@@ -1,12 +1,16 @@
 # unit tests
 cargo nextest run --release
 if [ $? -ne 0 ]; then
-    echo "Failed to run tests"
+    echo "Failed to run unit tests"
     exit 1
 fi
 
 # integration tests
-cargo test --release --workspace -p kaspa-testing-integration --lib
+cargo nextest run --release --workspace -p kaspa-testing-integration --lib
+if [ $? -ne 0 ]; then
+    echo "Failed to run integration tests"
+    exit 1
+fi
 
 # wasm build (tests for potential multiple exports of the same symbol)
 pushd .
