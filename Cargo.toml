@@ -207,6 +207,7 @@ serde-wasm-bindgen = "0.6.1"
 sha1 = "0.10.6"
 sha2 = "0.10.8"
 sha3 = "0.10.8"
+slugify-rs = "0.0.3"
 smallvec = { version = "1.11.1", features = ["serde"] }
 sorted-insert = "0.2.3"
 statest = "0.2.2"
@@ -234,16 +235,16 @@ zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
 workflow-perf-monitor = { version = "0.0.2" }
 
 # workflow dependencies
-# workflow-d3 = { version = "0.8.0" }
-# workflow-nw = { version = "0.8.0" }
-# workflow-log = { version = "0.8.0" }
-# workflow-core = { version = "0.8.0" }
-# workflow-wasm = { version = "0.8.0" }
-# workflow-dom = { version = "0.8.0" }
-# workflow-rpc = { version = "0.8.0" }
-# workflow-node = { version = "0.8.0" }
-# workflow-store = { version = "0.8.0" }
-# workflow-terminal = { version = "0.8.0" }
+# workflow-d3 = { version = "0.8.1" }
+# workflow-nw = { version = "0.8.1" }
+# workflow-log = { version = "0.8.1" }
+# workflow-core = { version = "0.8.1" }
+# workflow-wasm = { version = "0.8.1" }
+# workflow-dom = { version = "0.8.1" }
+# workflow-rpc = { version = "0.8.1" }
+# workflow-node = { version = "0.8.1" }
+# workflow-store = { version = "0.8.1" }
+# workflow-terminal = { version = "0.8.1" }
 nw-sys = "0.1.6"
 
 # if below is enabled, this means that there is an ongoing work
