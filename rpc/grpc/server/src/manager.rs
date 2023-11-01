@@ -5,7 +5,6 @@ use kaspa_notify::connection::Connection as ConnectionT;
 use parking_lot::RwLock;
 use std::{
     collections::{hash_map::Entry::Occupied, HashMap},
-    net::SocketAddr,
     sync::Arc,
 };
 use tokio::sync::mpsc::Receiver as MpscReceiver;
@@ -53,7 +52,7 @@ impl Manager {
         });
     }
 
-    pub fn register(&self, connection: Connection) {
+    fn register(&self, connection: Connection) {
         debug!("GRPC, Registering a new connection from {connection}");
         let mut connections_write = self.connections.write();
         let previous_connection = connections_write.insert(connection.identity(), connection.clone());
@@ -69,11 +68,11 @@ impl Manager {
         }
     }
 
-    pub fn is_full(&self) -> bool {
+    fn is_full(&self) -> bool {
         self.connections.read().len() >= self.max_connections
     }
 
-    pub fn unregister(&self, connection: Connection) {
+    fn unregister(&self, connection: Connection) {
         let mut connections_write = self.connections.write();
         let connection_count = connections_write.len();
         if let Occupied(entry) = connections_write.entry(connection.identity()) {
@@ -97,13 +96,15 @@ impl Manager {
         }
     }
 
-    /// Returns a list of all currently active connections
-    pub fn active_connections(&self) -> Vec<SocketAddr> {
+    /// Returns a list of all currently active connections (for unit tests only)
+    #[cfg(test)]
+    pub(crate) fn active_connections(&self) -> Vec<std::net::SocketAddr> {
         self.connections.read().values().map(|r| r.net_address()).collect()
     }
 
-    /// Returns whether there are currently active connections
-    pub fn has_connections(&self) -> bool {
+    /// Returns whether there are currently active connections (for unit tests only)
+    #[cfg(test)]
+    pub(crate) fn has_connections(&self) -> bool {
         !self.connections.read().is_empty()
     }
 }
