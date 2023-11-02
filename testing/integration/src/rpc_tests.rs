@@ -177,18 +177,6 @@ async fn base_test() {
         let _ = rpc_client.unban_call(UnbanRequest { ip: peer_to_ban.normalize(12345).ip }).await.unwrap();
     });
 
-    // Test Get Selected Tip Hash:
-    let rpc_client = daemon.new_client().await;
-    rpc_function_test!(tasks, rpc_client, {
-        let _ = rpc_client.get_selected_tip_hash_call(GetSelectedTipHashRequest {}).await.unwrap();
-    });
-
-    // Test Get Selected Tip Hash:
-    let rpc_client = daemon.new_client().await;
-    rpc_function_test!(tasks, rpc_client, {
-        let _ = rpc_client.get_selected_tip_hash_call(GetSelectedTipHashRequest {}).await.unwrap();
-    });
-
     // Test Get Mempool Entries:
     let rpc_client = daemon.new_client().await;
     rpc_function_test!(tasks, rpc_client, {
