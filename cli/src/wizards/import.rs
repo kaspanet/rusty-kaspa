@@ -41,7 +41,7 @@ pub async fn ask(term: &Arc<Terminal>) -> Result<Vec<String>> {
 pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: AccountKind, additional_xpubs: &[String]) -> Result<()> {
     let wallet = ctx.wallet();
 
-    let is_legacy = matches!(account_kind, AccountKind::Legacy);
+    let is_legacy = account_kind.is_legacy();
 
     if !wallet.is_open() {
         return Err(Error::WalletIsNotOpen);

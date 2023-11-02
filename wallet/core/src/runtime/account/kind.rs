@@ -21,6 +21,32 @@ u8_try_from! {
     }
 }
 
+impl AccountKind {
+    pub fn is_legacy(&self) -> bool {
+        matches!(self, AccountKind::Legacy)
+    }
+
+    pub fn is_bip32(&self) -> bool {
+        matches!(self, AccountKind::Bip32)
+    }
+
+    pub fn is_multisig(&self) -> bool {
+        matches!(self, AccountKind::MultiSig)
+    }
+
+    pub fn is_keypair(&self) -> bool {
+        matches!(self, AccountKind::Keypair)
+    }
+
+    pub fn is_hardware(&self) -> bool {
+        matches!(self, AccountKind::Hardware)
+    }
+
+    pub fn is_resident(&self) -> bool {
+        matches!(self, AccountKind::Resident)
+    }
+}
+
 impl std::fmt::Display for AccountKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
