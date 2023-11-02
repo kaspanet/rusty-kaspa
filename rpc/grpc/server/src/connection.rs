@@ -235,18 +235,18 @@ impl Connection {
     }
 
     pub fn get_or_register_listener_id(&self) -> ListenerId {
-        *self
-            .inner
-            .mutable_state
-            .lock()
-            .listener_id
-            .get_or_insert_with(|| self.inner.server_context.notifier.as_ref().register_new_listener(self.clone()))
+        *self.inner.mutable_state.lock().listener_id.get_or_insert_with(|| {
+            let listener_id = self.inner.server_context.notifier.as_ref().register_new_listener(self.clone());
+            debug!("GRPC, Connection {} registered as notification listener {}", self, listener_id);
+            listener_id
+        })
     }
 
     fn unregister_listener(&self) {
         let listener_id = self.inner.mutable_state.lock().listener_id.take();
         if let Some(listener_id) = listener_id {
-            self.inner.server_context.notifier.unregister_listener(listener_id).expect("unregister listener")
+            self.inner.server_context.notifier.unregister_listener(listener_id).expect("unregister listener");
+            debug!("GRPC, Connection {} notification listener {} unregistered", self, listener_id);
         }
     }
 

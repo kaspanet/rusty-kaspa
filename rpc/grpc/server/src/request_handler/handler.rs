@@ -44,6 +44,7 @@ impl RequestHandler {
 #[async_trait::async_trait]
 impl Handler for RequestHandler {
     async fn start(&mut self) {
+        debug!("GRPC, Starting request handler {:?} for client {}", self.rpc_op, self.connection);
         while let Some(request) = self.incoming_route.recv().await {
             let response = self.handle_request(request).await;
             match response {

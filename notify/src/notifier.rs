@@ -289,7 +289,7 @@ where
             let mut listeners = self.listeners.lock();
             if let Some(listener) = listeners.get_mut(&id) {
                 let mut subscriptions = self.subscriptions.lock();
-                trace!("[Notifier {}] {command} notifying to {id} about {scope:?}", self.name);
+                debug!("[Notifier {}] {command} notifying to {id} about {scope}", self.name);
                 if let Some(mutations) = listener.mutate(Mutation::new(command, scope.clone())) {
                     trace!("[Notifier {}] {command} notifying to {id} about {scope:?} involves mutations {mutations:?}", self.name);
                     // Update broadcasters
