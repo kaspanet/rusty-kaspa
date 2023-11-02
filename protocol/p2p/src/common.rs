@@ -117,8 +117,22 @@ macro_rules! make_message {
         $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: 0, request_id: 0 }
     }};
 
+    ($pattern:path, $msg:expr, $response_id:expr, $request_id: expr) => {{
+        $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: $response_id, request_id: $request_id }
+    }};
+}
+
+#[macro_export]
+macro_rules! make_response {
     ($pattern:path, $msg:expr, $response_id:expr) => {{
         $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: $response_id, request_id: 0 }
+    }};
+}
+
+#[macro_export]
+macro_rules! make_request {
+    ($pattern:path, $msg:expr, $request_id:expr) => {{
+        $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: 0, request_id: $request_id }
     }};
 }
 

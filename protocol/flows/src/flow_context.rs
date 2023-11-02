@@ -575,7 +575,6 @@ impl ConnectionInitializer for FlowContext {
         let (flows, applied_protocol_version) = match peer_version.protocol_version {
             v if v >= PROTOCOL_VERSION => (v6::register(self.clone(), router.clone()), PROTOCOL_VERSION),
             5 => (v5::register(self.clone(), router.clone()), 5),
-            // TODO: different errors for obsolete (low version) vs unknown (high)
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 

@@ -2,7 +2,7 @@ use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    dequeue_with_request_id, make_message,
+    dequeue_with_request_id, make_message, make_response,
     pb::{kaspad_message::Payload, InvRelayBlockMessage},
     IncomingRoute, Router,
 };
@@ -43,7 +43,7 @@ impl HandleRelayBlockRequests {
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;
-                self.router.enqueue(make_message!(Payload::Block, (&block).into(), request_id)).await?;
+                self.router.enqueue(make_response!(Payload::Block, (&block).into(), request_id)).await?;
                 debug!("relayed block with hash {} to peer {}", hash, self.router);
             }
         }

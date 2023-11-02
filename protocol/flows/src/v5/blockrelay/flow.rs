@@ -8,7 +8,7 @@ use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    dequeue, dequeue_with_timeout, make_message,
+    dequeue, dequeue_with_timeout, make_message, make_request,
     pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
     IncomingRoute, Router, SharedIncomingRoute,
 };
@@ -194,10 +194,11 @@ impl HandleRelayInvsFlow {
             return Ok(None);
         };
         self.router
-            .enqueue_from(
-                make_message!(Payload::RequestRelayBlocks, RequestRelayBlocksMessage { hashes: vec![requested_hash.into()] }),
-                request_id,
-            )
+            .enqueue(make_request!(
+                Payload::RequestRelayBlocks,
+                RequestRelayBlocksMessage { hashes: vec![requested_hash.into()] },
+                request_id
+            ))
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::Block)?;
         let block: Block = msg.try_into()?;
@@ -244,13 +245,11 @@ impl HandleRelayInvsFlow {
         request_id: u32,
     ) -> Result<bool, ProtocolError> {
         self.router
-            .enqueue_from(
-                make_message!(
-                    Payload::RequestBlockLocator,
-                    RequestBlockLocatorMessage { high_hash: Some(hash.into()), limit: self.ctx.orphan_resolution_range() }
-                ),
-                request_id,
-            )
+            .enqueue(make_request!(
+                Payload::RequestBlockLocator,
+                RequestBlockLocatorMessage { high_hash: Some(hash.into()), limit: self.ctx.orphan_resolution_range() },
+                request_id
+            ))
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::BlockLocator)?;
         let locator_hashes: Vec<Hash> = msg.try_into()?;

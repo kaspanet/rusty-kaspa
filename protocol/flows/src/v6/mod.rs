@@ -23,16 +23,6 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     let (ibd_sender, relay_receiver) = tokio::sync::mpsc::channel(1);
     let invs_route = router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size());
     let shared_invs_route = SharedIncomingRoute::new(invs_route);
-    const NUM_RELAY_FLOWS: usize = 5;
-    let relay_flows = (0..NUM_RELAY_FLOWS).map(|_| {
-        Box::new(HandleRelayInvsFlow::new(
-            ctx.clone(),
-            router.clone(),
-            shared_invs_route.clone(),
-            router.subscribe(vec![]),
-            ibd_sender.clone(),
-        )) as Box<dyn Flow>
-    });
 
     let mut flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
@@ -132,7 +122,16 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         )),
     ];
 
-    flows.extend(relay_flows);
+    let num_relay_flows = (ctx.config.bps() as usize / 2).max(1);
+    flows.extend((0..num_relay_flows).map(|_| {
+        Box::new(HandleRelayInvsFlow::new(
+            ctx.clone(),
+            router.clone(),
+            shared_invs_route.clone(),
+            router.subscribe(vec![]),
+            ibd_sender.clone(),
+        )) as Box<dyn Flow>
+    }));
 
     // The reject message is handled as a special case by the router
     // KaspadMessagePayloadType::Reject,

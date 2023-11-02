@@ -26,7 +26,7 @@ pub struct IncomingRoute {
     id: u32,
 }
 
-static ROUTE_ID: AtomicU32 = AtomicU32::new(0);
+static ROUTE_ID: AtomicU32 = AtomicU32::new(1);
 
 impl IncomingRoute {
     pub fn new(rx: MpscReceiver<KaspadMessage>) -> Self {
@@ -123,7 +123,7 @@ pub struct Router {
     connection_started: Instant,
 
     /// Routing map for mapping messages to subscribed flows
-    routing_map: RwLock<HashMap<KaspadMessagePayloadType, MpscSender<KaspadMessage>>>,
+    routing_map_by_type: RwLock<HashMap<KaspadMessagePayloadType, MpscSender<KaspadMessage>>>,
 
     routing_map_by_id: RwLock<HashMap<u32, MpscSender<KaspadMessage>>>,
 
@@ -184,7 +184,7 @@ impl Router {
             net_address,
             is_outbound,
             connection_started: Instant::now(),
-            routing_map: RwLock::new(HashMap::new()),
+            routing_map_by_type: RwLock::new(HashMap::new()),
             routing_map_by_id: RwLock::new(HashMap::new()),
             outgoing_route,
             hub_sender,
@@ -318,12 +318,16 @@ impl Router {
     pub fn subscribe_with_capacity(&self, msg_types: Vec<KaspadMessagePayloadType>, capacity: usize) -> IncomingRoute {
         let (sender, receiver) = mpsc_channel(capacity);
         let incoming_route = IncomingRoute::new(receiver);
-        let mut map = self.routing_map.write();
+        let mut map_by_type = self.routing_map_by_type.write();
         for msg_type in msg_types {
-            match map.insert(msg_type, sender.clone()) {
+            match map_by_type.insert(msg_type, sender.clone()) {
                 Some(_) => {
                     // Overrides an existing route -- panic
-                    error!("P2P, Router::subscribe overrides an existing value: {:?}, router-id: {}", msg_type, self.identity());
+                    error!(
+                        "P2P, Router::subscribe overrides an existing message type: {:?}, router-id: {}",
+                        msg_type,
+                        self.identity()
+                    );
                     panic!("P2P, Tried to subscribe to an existing route");
                 }
                 None => {
@@ -332,7 +336,24 @@ impl Router {
             }
         }
         let mut map_by_id = self.routing_map_by_id.write();
-        map_by_id.insert(incoming_route.id, sender.clone());
+        match map_by_id.insert(incoming_route.id, sender.clone()) {
+            Some(_) => {
+                // Overrides an existing route -- panic
+                error!(
+                    "P2P, Router::subscribe overrides an existing route id: {:?}, router-id: {}",
+                    incoming_route.id,
+                    self.identity()
+                );
+                panic!("P2P, Tried to subscribe to an existing route");
+            }
+            None => {
+                trace!(
+                    "P2P, Router::subscribe - route id: {:?} route is registered, router-id:{:?}",
+                    incoming_route.id,
+                    self.identity()
+                );
+            }
+        }
         incoming_route
     }
 
@@ -352,7 +373,7 @@ impl Router {
         let op = if msg.response_id != 0 {
             self.routing_map_by_id.read().get(&msg.response_id).cloned()
         } else {
-            self.routing_map.read().get(&msg_type).cloned()
+            self.routing_map_by_type.read().get(&msg_type).cloned()
         };
 
         if let Some(sender) = op {
@@ -382,11 +403,6 @@ impl Router {
             Err(TrySendError::Closed(_)) => Err(ProtocolError::ConnectionClosed),
             Err(TrySendError::Full(_)) => Err(ProtocolError::OutgoingRouteCapacityReached(self.to_string())),
         }
-    }
-
-    pub async fn enqueue_from(&self, mut msg: KaspadMessage, id: u32) -> Result<(), ProtocolError> {
-        msg.request_id = id;
-        self.enqueue(msg).await
     }
 
     /// Based on the type of the protocol error, tries sending a reject message before shutting down the connection
@@ -421,7 +437,7 @@ impl Router {
         }
 
         // Drop all flow senders
-        self.routing_map.write().clear();
+        self.routing_map_by_type.write().clear();
         self.routing_map_by_id.write().clear();
 
         // Send a close notification to the central Hub
