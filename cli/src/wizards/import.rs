@@ -46,9 +46,9 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: Acco
     if !wallet.is_open() {
         return Err(Error::WalletIsNotOpen);
     }
-    if is_legacy && !wallet.is_connected() {
-        return Err(Error::Custom("Please connect wallet.".to_string()));
-    }
+    // if is_legacy && !wallet.is_connected() {
+    //     return Err(Error::Custom("Please connect wallet.".to_string()));
+    // }
     let term = ctx.term();
 
     tprintln!(ctx);
