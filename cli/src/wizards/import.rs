@@ -41,9 +41,14 @@ pub async fn ask(term: &Arc<Terminal>) -> Result<Vec<String>> {
 pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: AccountKind, additional_xpubs: &[String]) -> Result<()> {
     let wallet = ctx.wallet();
 
+    let is_legacy = account_kind.is_legacy();
+
     if !wallet.is_open() {
         return Err(Error::WalletIsNotOpen);
     }
+    // if is_legacy && !wallet.is_connected() {
+    //     return Err(Error::Custom("Please connect wallet.".to_string()));
+    // }
     let term = ctx.term();
 
     tprintln!(ctx);
@@ -60,7 +65,9 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: Acco
         _ => Err(Error::Custom("unsupported account kind".to_owned())),
     }?;
 
-    let payment_secret = {
+    let payment_secret = if is_legacy {
+        None
+    } else {
         tpara!(
             ctx,
             "\

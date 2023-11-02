@@ -49,6 +49,12 @@ impl std::fmt::Debug for KeyDataId {
     }
 }
 
+impl std::fmt::Display for KeyDataId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "KeyDataId ( {:?} )", self.0)
+    }
+}
+
 impl Serialize for KeyDataId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

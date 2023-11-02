@@ -198,6 +198,8 @@ impl PrvKeyDataStore for Inner {
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, prv_key_data: PrvKeyData) -> Result<()> {
         let wallet_secret = ctx.wallet_secret().await; //.ok_or(Error::WalletSecretRequired)?;
         log_info!("prv_key_data: {:?}", self.cache().prv_key_data);
+        let prv_key_data_info = Arc::new((&prv_key_data).into());
+        self.cache().prv_key_data_info.insert(prv_key_data.id, prv_key_data_info)?;
         let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret.clone())?;
         prv_key_data_map.insert(prv_key_data.id, prv_key_data);
         self.cache().prv_key_data.replace(prv_key_data_map.encrypt(wallet_secret)?);

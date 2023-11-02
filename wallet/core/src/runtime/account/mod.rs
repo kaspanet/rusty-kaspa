@@ -379,11 +379,16 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Err(Error::AccountAddressDerivationCaps)
     }
 
-    async fn initialize(self: Arc<Self>, _secret: Secret, _payment_secret: Option<&Secret>, _index: Option<u32>) -> Result<()> {
+    async fn initialize_private_data(
+        self: Arc<Self>,
+        _secret: Secret,
+        _payment_secret: Option<&Secret>,
+        _index: Option<u32>,
+    ) -> Result<()> {
         Ok(())
     }
 
-    async fn uninitialize(self: Arc<Self>) -> Result<()> {
+    async fn clear_private_data(self: Arc<Self>) -> Result<()> {
         Ok(())
     }
 }
@@ -409,7 +414,7 @@ pub trait DerivationCapableAccount: Account {
         abortable: &Abortable,
         notifier: Option<DeepScanNotifier>,
     ) -> Result<()> {
-        self.clone().initialize(wallet_secret.clone(), payment_secret.as_ref(), None).await?;
+        self.clone().initialize_private_data(wallet_secret.clone(), payment_secret.as_ref(), None).await?;
 
         let derivation = self.derivation();
 
@@ -526,7 +531,7 @@ pub trait DerivationCapableAccount: Account {
             }
         }
 
-        self.clone().uninitialize().await?;
+        self.clone().clear_private_data().await?;
 
         Ok(())
     }

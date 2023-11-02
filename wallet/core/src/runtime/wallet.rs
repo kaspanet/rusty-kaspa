@@ -6,7 +6,7 @@ use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
-use crate::storage::{self, AccessContextT, AccountKind, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
+use crate::storage::{self, AccessContextT, AccountData, AccountKind, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
 use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
 use crate::{derivation::gen0, derivation::gen0::import::*, derivation::gen1, derivation::gen1::import::*};
@@ -197,27 +197,33 @@ impl Wallet {
         &self.inner.legacy_accounts
     }
 
-    pub fn active_account(&self, id: &AccountId) -> Option<Arc<dyn Account>> {
-        if let Some(account) = self.legacy_accounts().get(id) {
-            return Some(account);
-        }
-        self.active_accounts().get(id)
-    }
+    // pub fn active_account(&self, id: &AccountId) -> Option<Arc<dyn Account>> {
+    //     if let Some(account) = self.legacy_accounts().get(id) {
+    //         return Some(account);
+    //     }
+    //     self.active_accounts().get(id)
+    // }
 
-    pub async fn reset(self: &Arc<Self>) -> Result<()> {
+    pub async fn reset(self: &Arc<Self>, clear_legacy_cache: bool) -> Result<()> {
         self.utxo_processor().clear().await?;
 
         self.select(None).await?;
 
         let accounts = self.active_accounts().collect();
+        // let mut legacy_accounts = self.legacy_accounts().collect();
+        // accounts.append(&mut legacy_accounts);
         let futures = accounts.into_iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
+
+        if clear_legacy_cache {
+            self.legacy_accounts().clear();
+        }
 
         Ok(())
     }
 
     pub async fn reload(self: &Arc<Self>) -> Result<()> {
-        self.reset().await?;
+        self.reset(false).await?;
 
         if self.is_open() {
             self.notify(Events::WalletReload).await?;
@@ -227,7 +233,7 @@ impl Wallet {
     }
 
     pub async fn close(self: &Arc<Wallet>) -> Result<()> {
-        self.reset().await?;
+        self.reset(true).await?;
         self.store().close().await?;
         self.notify(Events::WalletClose).await?;
 
@@ -282,12 +288,14 @@ impl Wallet {
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
     async fn load_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
-        self.reset().await?;
         log_info!("load()");
 
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
         self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
+
+        // reset current state only after we have successfully opened another wallet
+        self.reset(true).await?;
 
         let hint = self.store().get_user_hint().await?;
         self.notify(Events::WalletHint { hint }).await?;
@@ -298,6 +306,7 @@ impl Wallet {
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
     pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+        // This is a wrapper of load_impl() that catches errors and notifies the UI
         if let Err(err) = self.load_impl(secret, name).await {
             self.notify(Events::WalletError { message: err.to_string() }).await?;
             Err(err)
@@ -308,12 +317,14 @@ impl Wallet {
 
     /// Loads a wallet from storage. Accounts are activated by this call.
     pub async fn load_and_activate(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
-        self.reset().await?;
         log_info!("load_and_activate");
 
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret.clone()));
         self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
+
+        // reset current state only after we have successfully opened another wallet
+        self.reset(true).await?;
 
         self.initialize_all_stored_accounts(secret).await?;
         let hint = self.store().get_user_hint().await?;
@@ -588,7 +599,7 @@ impl Wallet {
     }
 
     pub async fn create_wallet(self: &Arc<Wallet>, args: WalletCreateArgs) -> Result<Option<String>> {
-        self.reset().await?;
+        self.reset(true).await?;
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
         self.inner.store.create(&ctx, args.into()).await?;
         let descriptor = self.inner.store.descriptor()?;
@@ -617,7 +628,7 @@ impl Wallet {
         wallet_args: WalletCreateArgs,
         account_args: AccountCreateArgs,
     ) -> Result<(Mnemonic, Option<String>, Arc<dyn Account>)> {
-        self.reset().await?;
+        self.reset(true).await?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(account_args.wallet_secret));
 
@@ -652,7 +663,7 @@ impl Wallet {
     // }
 
     pub async fn get_account_by_id(self: &Arc<Self>, account_id: &AccountId) -> Result<Option<Arc<dyn Account>>> {
-        if let Some(account) = self.active_account(account_id) {
+        if let Some(account) = self.active_accounts().get(account_id) {
             Ok(Some(account.clone()))
         } else {
             let account_storage = self.inner.store.as_account_store()?;
@@ -787,8 +798,13 @@ impl Wallet {
 
             async move {
                 let (stored_account, stored_metadata) = stored.unwrap();
-                if let Some(account) = wallet.active_account(&stored_account.id) {
-                    log_info!("fetching active account: {}", account.id());
+                if let Some(account) = wallet.legacy_accounts().get(&stored_account.id) {
+                    if !wallet.active_accounts().contains(account.id()) {
+                        account.clone().start().await?;
+                    }
+                    Ok(account)
+                } else if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
+                    log_info!("fetching active account11: {}", account.id());
                     Ok(account)
                 } else {
                     let account = try_from_storage(&wallet, stored_account, stored_metadata).await?;
@@ -818,28 +834,30 @@ impl Wallet {
             // }
             async move {
                 let (stored_account, stored_metadata) = stored.unwrap();
-                if let Some(account) = wallet.active_account(&stored_account.id) {
+                if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
                     // log_trace!("fetching active account: {}", account.id);
                     Ok(account)
                 } else {
-                    let is_legacy = matches!(stored_account.data.account_kind(), AccountKind::Legacy);
+                    let is_legacy = matches!(stored_account.data, AccountData::Legacy { .. });
                     let account = try_from_storage(&wallet, stored_account, stored_metadata).await?;
                     log_info!("starting new active account instance22 is_legacy:{is_legacy} {}", account.id());
+
                     if is_legacy {
-                        account.clone().initialize(secret, None, None).await?;
+                        account.clone().initialize_private_data(secret, None, None).await?;
                         wallet.legacy_accounts().insert(account.clone());
                     }
+
                     account.clone().start().await?;
+
                     if is_legacy {
-                        //if !wallet.is_connected() {
                         let derivation = account.clone().as_derivation_capable()?.derivation();
                         let m = derivation.receive_address_manager();
                         m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
                         let m = derivation.change_address_manager();
                         m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
-                        //}
-                        account.clone().uninitialize().await?;
+                        account.clone().clear_private_data().await?;
                     }
+
                     Ok(account)
                 }
             }
@@ -874,7 +892,7 @@ impl Wallet {
         // store private key
         prv_key_data_store.store(&ctx, prv_key_data).await?;
 
-        account.clone().initialize(wallet_secret, payment_secret, None).await?;
+        account.clone().initialize_private_data(wallet_secret, payment_secret, None).await?;
 
         self.active_accounts().insert(account.clone().as_dyn_arc());
         self.legacy_accounts().insert(account.clone().as_dyn_arc());
@@ -891,7 +909,7 @@ impl Wallet {
         // flush to storage
         self.inner.store.commit(&ctx).await?;
 
-        account.clone().uninitialize().await?;
+        account.clone().clear_private_data().await?;
 
         Ok(account)
     }
@@ -911,11 +929,11 @@ impl Wallet {
     ) -> Result<Arc<dyn Account>> {
         let prv_key_data = storage::PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret)?;
         let prv_key_data_store = self.store().as_prv_key_data_store()?;
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret.clone()));
         if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
         }
-
+        let mut is_legacy = false;
         let account: Arc<dyn Account> = match account_kind {
             AccountKind::Bip32 => {
                 let account_index = 0;
@@ -930,6 +948,7 @@ impl Wallet {
                 // account
             }
             AccountKind::Legacy => {
+                is_legacy = true;
                 let data = storage::Legacy::new();
                 let settings = storage::Settings::default();
                 Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?)
@@ -941,10 +960,24 @@ impl Wallet {
 
         let stored_account = account.as_storable()?;
         let account_store = self.inner.store.as_account_store()?;
-        prv_key_data_store.store(&ctx, prv_key_data).await?;
+        self.inner.store.batch().await?;
+        self.store().as_prv_key_data_store()?.store(&ctx, prv_key_data).await?;
         account_store.store_single(&stored_account, None).await?;
-        self.inner.store.commit(&ctx).await?;
+        self.inner.store.flush(&ctx).await?;
+
+        if is_legacy {
+            account.clone().initialize_private_data(wallet_secret, None, None).await?;
+            self.legacy_accounts().insert(account.clone());
+        }
         account.clone().start().await?;
+        if is_legacy {
+            let derivation = account.clone().as_derivation_capable()?.derivation();
+            let m = derivation.receive_address_manager();
+            m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+            let m = derivation.change_address_manager();
+            m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+            account.clone().clear_private_data().await?;
+        }
 
         Ok(account)
     }

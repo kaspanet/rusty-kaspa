@@ -150,4 +150,8 @@ impl Account {
     pub fn data(&self) -> &AccountData {
         &self.data
     }
+
+    pub fn is_legacy(&self) -> bool {
+        matches!(self.data, AccountData::Legacy { .. })
+    }
 }

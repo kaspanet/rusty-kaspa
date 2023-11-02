@@ -154,13 +154,18 @@ impl Account for Legacy {
         Ok(self.clone())
     }
 
-    async fn initialize(self: Arc<Self>, secret: Secret, payment_secret: Option<&Secret>, index: Option<u32>) -> Result<()> {
+    async fn initialize_private_data(
+        self: Arc<Self>,
+        secret: Secret,
+        payment_secret: Option<&Secret>,
+        index: Option<u32>,
+    ) -> Result<()> {
         log_info!("initialize_derivation");
         self.initialize_derivation(secret, payment_secret, index).await?;
         Ok(())
     }
 
-    async fn uninitialize(self: Arc<Self>) -> Result<()> {
+    async fn clear_private_data(self: Arc<Self>) -> Result<()> {
         for derivator in &self.derivation.derivators {
             derivator.uninitialize()?;
         }
