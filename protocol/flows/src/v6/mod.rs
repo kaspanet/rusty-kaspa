@@ -1,4 +1,4 @@
-use self::{
+use crate::v5::{
     address::{ReceiveAddressesFlow, SendAddressesFlow},
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ibd::IbdFlow,
@@ -18,23 +18,11 @@ use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
 use std::sync::Arc;
 
-pub mod address;
-pub mod blockrelay;
-pub mod ibd;
-pub mod ping;
-pub mod request_anticone;
-pub mod request_block_locator;
-pub mod request_headers;
-pub mod request_ibd_blocks;
-pub mod request_ibd_chain_block_locator;
-pub mod request_pp_proof;
-pub mod request_pruning_point_and_anticone;
-pub mod request_pruning_point_utxo_set;
-pub mod txrelay;
-
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // IBD flow <-> invs flow channel requires no buffering hence the minimal size possible
     let (ibd_sender, relay_receiver) = tokio::sync::mpsc::channel(1);
+    let invs_route = router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size());
+    let shared_invs_route = SharedIncomingRoute::new(invs_route);
     let flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
             ctx.clone(),
@@ -60,12 +48,11 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         Box::new(HandleRelayInvsFlow::new(
             ctx.clone(),
             router.clone(),
-            SharedIncomingRoute::new(
-                router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size()),
-            ),
-            router.subscribe(vec![KaspadMessagePayloadType::Block, KaspadMessagePayloadType::BlockLocator]),
-            ibd_sender,
+            shared_invs_route.clone(),
+            router.subscribe(vec![]),
+            ibd_sender.clone(),
         )),
+        Box::new(HandleRelayInvsFlow::new(ctx.clone(), router.clone(), shared_invs_route, router.subscribe(vec![]), ibd_sender)),
         Box::new(HandleRelayBlockRequests::new(
             ctx.clone(),
             router.clone(),

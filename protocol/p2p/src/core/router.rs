@@ -53,6 +53,19 @@ impl DerefMut for IncomingRoute {
     }
 }
 
+#[derive(Clone)]
+pub struct SharedIncomingRoute(Arc<tokio::sync::Mutex<IncomingRoute>>);
+
+impl SharedIncomingRoute {
+    pub fn new(incoming_route: IncomingRoute) -> Self {
+        Self(Arc::new(tokio::sync::Mutex::new(incoming_route)))
+    }
+
+    pub async fn recv(&mut self) -> Option<KaspadMessage> {
+        self.0.lock().await.recv().await
+    }
+}
+
 /// The policy for handling the case where route capacity is reached for a specific route type
 pub enum IncomingRouteOverflowPolicy {
     /// Drop the incoming message

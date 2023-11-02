@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    dequeue, make_message,
+    dequeue, dequeue_with_request_id, make_message,
     pb::{kaspad_message::Payload, BlockLocatorMessage},
     IncomingRoute, Router,
 };
@@ -33,7 +33,7 @@ impl RequestBlockLocatorFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
-            let msg = dequeue!(self.incoming_route, Payload::RequestBlockLocator)?;
+            let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestBlockLocator)?;
             let (high, limit) = msg.try_into()?;
 
             let locator =
@@ -42,7 +42,8 @@ impl RequestBlockLocatorFlow {
             self.router
                 .enqueue(make_message!(
                     Payload::BlockLocator,
-                    BlockLocatorMessage { hashes: locator.into_iter().map(|hash| hash.into()).collect() }
+                    BlockLocatorMessage { hashes: locator.into_iter().map(|hash| hash.into()).collect() },
+                    request_id
                 ))
                 .await?;
         }

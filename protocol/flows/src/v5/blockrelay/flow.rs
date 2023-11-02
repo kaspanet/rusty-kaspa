@@ -10,7 +10,7 @@ use kaspa_p2p_lib::{
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
     pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
-    IncomingRoute, Router,
+    IncomingRoute, Router, SharedIncomingRoute,
 };
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::mpsc::{error::TrySendError, Sender};
@@ -22,12 +22,12 @@ pub struct RelayInvMessage {
 
 /// Encapsulates an incoming invs route which also receives data locally
 pub struct TwoWayIncomingRoute {
-    incoming_route: IncomingRoute,
+    incoming_route: SharedIncomingRoute,
     indirect_invs: VecDeque<Hash>,
 }
 
 impl TwoWayIncomingRoute {
-    pub fn new(incoming_route: IncomingRoute) -> Self {
+    pub fn new(incoming_route: SharedIncomingRoute) -> Self {
         Self { incoming_route, indirect_invs: VecDeque::new() }
     }
 
@@ -72,7 +72,7 @@ impl HandleRelayInvsFlow {
     pub fn new(
         ctx: FlowContext,
         router: Arc<Router>,
-        invs_route: IncomingRoute,
+        invs_route: SharedIncomingRoute,
         msg_route: IncomingRoute,
         ibd_sender: Sender<Block>,
     ) -> Self {
