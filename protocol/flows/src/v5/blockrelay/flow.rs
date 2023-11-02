@@ -4,7 +4,7 @@ use crate::{
 };
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_consensusmanager::ConsensusProxy;
-use kaspa_core::{debug, info};
+use kaspa_core::{debug, info, time::unix_now};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
@@ -111,7 +111,7 @@ impl HandleRelayInvsFlow {
             }
 
             // We keep the request scope alive until consensus processes the block
-            let Some((block, request_scope)) = self.request_block(inv.hash).await? else {
+            let Some((block, request_scope)) = self.request_block(inv.hash, self.msg_route.id()).await? else {
                 debug!("Relay block {} was already requested from another peer, continuing...", inv.hash);
                 continue;
             };
@@ -184,13 +184,20 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn request_block(&mut self, requested_hash: Hash) -> Result<Option<(Block, RequestScope<Hash>)>, ProtocolError> {
+    async fn request_block(
+        &mut self,
+        requested_hash: Hash,
+        request_id: u32,
+    ) -> Result<Option<(Block, RequestScope<Hash>)>, ProtocolError> {
         // Note: the request scope is returned and should be captured until block processing is completed
         let Some(request_scope) = self.ctx.try_adding_block_request(requested_hash) else {
             return Ok(None);
         };
         self.router
-            .enqueue(make_message!(Payload::RequestRelayBlocks, RequestRelayBlocksMessage { hashes: vec![requested_hash.into()] }))
+            .enqueue_from(
+                make_message!(Payload::RequestRelayBlocks, RequestRelayBlocksMessage { hashes: vec![requested_hash.into()] }),
+                request_id,
+            )
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::Block)?;
         let block: Block = msg.try_into()?;
@@ -210,7 +217,7 @@ impl HandleRelayInvsFlow {
         // Add the block to the orphan pool if it's within orphan resolution range.
         // If the block is indirect it means one of its descendants was already is resolution range, so
         // we can avoid the query.
-        if is_indirect_inv || self.check_orphan_resolution_range(consensus, block.hash()).await? {
+        if is_indirect_inv || self.check_orphan_resolution_range(consensus, block.hash(), self.msg_route.id()).await? {
             let hash = block.hash();
             self.ctx.add_orphan(block).await;
             self.enqueue_orphan_roots(consensus, hash).await;
@@ -230,12 +237,20 @@ impl HandleRelayInvsFlow {
     /// mechanism or via IBD. This method sends a BlockLocator request to the peer with
     /// a limit of `ctx.orphan_resolution_range`. In the response, if we know none of the hashes,
     /// we should retrieve the given block `hash` via IBD. Otherwise, via unorphaning.
-    async fn check_orphan_resolution_range(&mut self, consensus: &ConsensusProxy, hash: Hash) -> Result<bool, ProtocolError> {
+    async fn check_orphan_resolution_range(
+        &mut self,
+        consensus: &ConsensusProxy,
+        hash: Hash,
+        request_id: u32,
+    ) -> Result<bool, ProtocolError> {
         self.router
-            .enqueue(make_message!(
-                Payload::RequestBlockLocator,
-                RequestBlockLocatorMessage { high_hash: Some(hash.into()), limit: self.ctx.orphan_resolution_range() }
-            ))
+            .enqueue_from(
+                make_message!(
+                    Payload::RequestBlockLocator,
+                    RequestBlockLocatorMessage { high_hash: Some(hash.into()), limit: self.ctx.orphan_resolution_range() }
+                ),
+                request_id,
+            )
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::BlockLocator)?;
         let locator_hashes: Vec<Hash> = msg.try_into()?;

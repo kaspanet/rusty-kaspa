@@ -9,6 +9,8 @@ use parking_lot::{Mutex, RwLock};
 use seqlock::SeqLock;
 use std::fmt::{Debug, Display};
 use std::net::SocketAddr;
+use std::ops::{Deref, DerefMut};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::select;
@@ -19,7 +21,37 @@ use tonic::Streaming;
 
 use super::peer::{PeerKey, PeerProperties};
 
-pub type IncomingRoute = MpscReceiver<KaspadMessage>;
+pub struct IncomingRoute {
+    rx: MpscReceiver<KaspadMessage>,
+    id: u32,
+}
+
+static ROUTE_ID: AtomicU32 = AtomicU32::new(0);
+
+impl IncomingRoute {
+    pub fn new(rx: MpscReceiver<KaspadMessage>) -> Self {
+        let id = ROUTE_ID.fetch_add(1, Ordering::SeqCst);
+        Self { rx, id }
+    }
+
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+}
+
+impl Deref for IncomingRoute {
+    type Target = MpscReceiver<KaspadMessage>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.rx
+    }
+}
+
+impl DerefMut for IncomingRoute {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.rx
+    }
+}
 
 /// The policy for handling the case where route capacity is reached for a specific route type
 pub enum IncomingRouteOverflowPolicy {
@@ -80,6 +112,8 @@ pub struct Router {
     /// Routing map for mapping messages to subscribed flows
     routing_map: RwLock<HashMap<KaspadMessagePayloadType, MpscSender<KaspadMessage>>>,
 
+    routing_map_by_id: RwLock<HashMap<u32, MpscSender<KaspadMessage>>>,
+
     /// The outgoing route for sending messages to this peer
     outgoing_route: MpscSender<KaspadMessage>,
 
@@ -138,6 +172,7 @@ impl Router {
             is_outbound,
             connection_started: Instant::now(),
             routing_map: RwLock::new(HashMap::new()),
+            routing_map_by_id: RwLock::new(HashMap::new()),
             outgoing_route,
             hub_sender,
             mutable_state: Mutex::new(RouterMutableState::new(Some(start_sender), Some(shutdown_sender))),
@@ -269,6 +304,7 @@ impl Router {
     /// This should be used by `ConnectionInitializer` instances to register application-specific flows.
     pub fn subscribe_with_capacity(&self, msg_types: Vec<KaspadMessagePayloadType>, capacity: usize) -> IncomingRoute {
         let (sender, receiver) = mpsc_channel(capacity);
+        let incoming_route = IncomingRoute::new(receiver);
         let mut map = self.routing_map.write();
         for msg_type in msg_types {
             match map.insert(msg_type, sender.clone()) {
@@ -282,7 +318,9 @@ impl Router {
                 }
             }
         }
-        receiver
+        let mut map_by_id = self.routing_map_by_id.write();
+        map_by_id.insert(incoming_route.id, sender.clone());
+        incoming_route
     }
 
     /// Routes a message coming from the network to the corresponding registered flow
@@ -297,7 +335,13 @@ impl Router {
             let Some(KaspadMessagePayload::Reject(reject)) = msg.payload else { unreachable!() };
             return Err(ProtocolError::from_reject_message(reject.reason));
         }
-        let op = self.routing_map.read().get(&msg_type).cloned();
+
+        let op = if msg.response_id != 0 {
+            self.routing_map_by_id.read().get(&msg.response_id).cloned()
+        } else {
+            self.routing_map.read().get(&msg_type).cloned()
+        };
+
         if let Some(sender) = op {
             match sender.try_send(msg) {
                 Ok(_) => Ok(()),
@@ -325,6 +369,11 @@ impl Router {
             Err(TrySendError::Closed(_)) => Err(ProtocolError::ConnectionClosed),
             Err(TrySendError::Full(_)) => Err(ProtocolError::OutgoingRouteCapacityReached(self.to_string())),
         }
+    }
+
+    pub async fn enqueue_from(&self, mut msg: KaspadMessage, id: u32) -> Result<(), ProtocolError> {
+        msg.request_id = id;
+        self.enqueue(msg).await
     }
 
     /// Based on the type of the protocol error, tries sending a reject message before shutting down the connection
@@ -360,6 +409,7 @@ impl Router {
 
         // Drop all flow senders
         self.routing_map.write().clear();
+        self.routing_map_by_id.write().clear();
 
         // Send a close notification to the central Hub
         self.hub_sender.send(HubEvent::PeerClosing(self.clone())).await.expect("hub receiver should never drop before senders");

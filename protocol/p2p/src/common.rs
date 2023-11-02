@@ -114,7 +114,11 @@ impl ProtocolError {
 #[macro_export]
 macro_rules! make_message {
     ($pattern:path, $msg:expr) => {{
-        $crate::pb::KaspadMessage { payload: Some($pattern($msg)) }
+        $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: 0, request_id: 0 }
+    }};
+
+    ($pattern:path, $msg:expr, $response_id:expr) => {{
+        $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: $response_id, request_id: 0 }
     }};
 }
 
@@ -129,6 +133,21 @@ macro_rules! unwrap_message {
         if let Some(msg) = $op {
             if let Some($pattern(inner_msg)) = msg.payload {
                 Ok(inner_msg)
+            } else {
+                Err($crate::common::ProtocolError::UnexpectedMessage(stringify!($pattern), msg.payload.as_ref().map(|v| v.into())))
+            }
+        } else {
+            Err($crate::common::ProtocolError::ConnectionClosed)
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! unwrap_message_with_request_id {
+    ($op:expr, $pattern:path) => {{
+        if let Some(msg) = $op {
+            if let Some($pattern(inner_msg)) = msg.payload {
+                Ok((inner_msg, msg.request_id))
             } else {
                 Err($crate::common::ProtocolError::UnexpectedMessage(stringify!($pattern), msg.payload.as_ref().map(|v| v.into())))
             }
@@ -174,5 +193,12 @@ macro_rules! dequeue_with_timeout {
 macro_rules! dequeue {
     ($receiver:expr, $pattern:path) => {{
         $crate::unwrap_message!($receiver.recv().await, $pattern)
+    }};
+}
+
+#[macro_export]
+macro_rules! dequeue_with_request_id {
+    ($receiver:expr, $pattern:path) => {{
+        $crate::unwrap_message_with_request_id!($receiver.recv().await, $pattern)
     }};
 }
