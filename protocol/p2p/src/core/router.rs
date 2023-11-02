@@ -26,7 +26,11 @@ pub struct IncomingRoute {
     id: u32,
 }
 
-static ROUTE_ID: AtomicU32 = AtomicU32::new(1);
+// BLANK_ROUTE_ID is the value that is used in the p2p when no request or response IDs
+// are needed. To support backward compatibility, this is set to the default gRPC value
+// for uint32.
+pub const BLANK_ROUTE_ID: u32 = 0;
+static ROUTE_ID: AtomicU32 = AtomicU32::new(BLANK_ROUTE_ID + 1);
 
 impl IncomingRoute {
     pub fn new(rx: MpscReceiver<KaspadMessage>) -> Self {
@@ -370,7 +374,7 @@ impl Router {
             return Err(ProtocolError::from_reject_message(reject.reason));
         }
 
-        let op = if msg.response_id != 0 {
+        let op = if msg.response_id != BLANK_ROUTE_ID {
             self.routing_map_by_id.read().get(&msg.response_id).cloned()
         } else {
             self.routing_map_by_type.read().get(&msg_type).cloned()

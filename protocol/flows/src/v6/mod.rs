@@ -21,8 +21,6 @@ use std::sync::Arc;
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // IBD flow <-> invs flow channel requires no buffering hence the minimal size possible
     let (ibd_sender, relay_receiver) = tokio::sync::mpsc::channel(1);
-    let invs_route = router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size());
-    let shared_invs_route = SharedIncomingRoute::new(invs_route);
 
     let mut flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
@@ -121,6 +119,9 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             router.subscribe(vec![KaspadMessagePayloadType::RequestBlockLocator]),
         )),
     ];
+
+    let invs_route = router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size());
+    let shared_invs_route = SharedIncomingRoute::new(invs_route);
 
     let num_relay_flows = (ctx.config.bps() as usize / 2).max(1);
     flows.extend((0..num_relay_flows).map(|_| {

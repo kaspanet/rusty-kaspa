@@ -114,7 +114,11 @@ impl ProtocolError {
 #[macro_export]
 macro_rules! make_message {
     ($pattern:path, $msg:expr) => {{
-        $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: 0, request_id: 0 }
+        $crate::pb::KaspadMessage {
+            payload: Some($pattern($msg)),
+            response_id: $crate::BLANK_ROUTE_ID,
+            request_id: $crate::BLANK_ROUTE_ID,
+        }
     }};
 
     ($pattern:path, $msg:expr, $response_id:expr, $request_id: expr) => {{
