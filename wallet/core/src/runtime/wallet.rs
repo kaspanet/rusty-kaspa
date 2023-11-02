@@ -288,12 +288,14 @@ impl Wallet {
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
     async fn load_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
-        self.reset(true).await?;
         log_info!("load()");
 
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
         self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
+
+        // reset current state only after we have successfully opened another wallet
+        self.reset(true).await?;
 
         let hint = self.store().get_user_hint().await?;
         self.notify(Events::WalletHint { hint }).await?;
@@ -304,6 +306,7 @@ impl Wallet {
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
     pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+        // This is a wrapper of load_impl() that catches errors and notifies the UI
         if let Err(err) = self.load_impl(secret, name).await {
             self.notify(Events::WalletError { message: err.to_string() }).await?;
             Err(err)
@@ -314,12 +317,14 @@ impl Wallet {
 
     /// Loads a wallet from storage. Accounts are activated by this call.
     pub async fn load_and_activate(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
-        self.reset(true).await?;
         log_info!("load_and_activate");
 
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret.clone()));
         self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
+
+        // reset current state only after we have successfully opened another wallet
+        self.reset(true).await?;
 
         self.initialize_all_stored_accounts(secret).await?;
         let hint = self.store().get_user_hint().await?;
