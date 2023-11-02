@@ -1,5 +1,5 @@
 use crate::flowcontext::{orphans::OrphanBlocksPool, process_queue::ProcessQueue, transactions::TransactionsSpread};
-use crate::v5;
+use crate::{v5, v6};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
@@ -54,7 +54,7 @@ use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 use uuid::Uuid;
 
 /// The P2P protocol version. Currently the only one supported.
-const PROTOCOL_VERSION: u32 = 5;
+const PROTOCOL_VERSION: u32 = 6;
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -573,8 +573,8 @@ impl ConnectionInitializer for FlowContext {
 
         // Register all flows according to version
         let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            PROTOCOL_VERSION => (v5::register(self.clone(), router.clone()), PROTOCOL_VERSION),
-            // TODO: different errors for obsolete (low version) vs unknown (high)
+            v if v >= PROTOCOL_VERSION => (v6::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+            5 => (v5::register(self.clone(), router.clone()), 5),
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 
@@ -592,7 +592,7 @@ impl ConnectionInitializer for FlowContext {
         // Send and receive the ready signal
         handshake.exchange_ready_messages().await?;
 
-        info!("Registering p2p flows for peer {} for protocol version {}", router, peer_version.protocol_version);
+        info!("Registering p2p flows for peer {} for protocol version {}", router, applied_protocol_version);
 
         // Launch all flows. Note we launch only after the ready signal was exchanged
         for flow in flows {
