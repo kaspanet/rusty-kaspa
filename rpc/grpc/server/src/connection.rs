@@ -299,6 +299,7 @@ pub enum GrpcEncoding {
     ProtowireResponse = 0,
 }
 
+#[async_trait::async_trait]
 impl ConnectionT for Connection {
     type Notification = Notification;
     type Message = Arc<KaspadResponse>;
@@ -313,9 +314,9 @@ impl ConnectionT for Connection {
         Arc::new((notification).into())
     }
 
-    fn send(&self, message: Self::Message) -> Result<(), Self::Error> {
+    async fn send(&self, message: Self::Message) -> Result<(), Self::Error> {
         match !self.is_closed() {
-            true => Ok(self.inner.outgoing_route.try_send((*message).clone())?),
+            true => self.enqueue((*message).clone()).await,
             false => Err(NotificationError::ConnectionClosed.into()),
         }
     }
