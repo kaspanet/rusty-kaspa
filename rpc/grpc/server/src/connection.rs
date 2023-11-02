@@ -208,6 +208,14 @@ impl Connection {
             // Mark as closed
             connection.close();
 
+            // Send a close notification to the central Manager
+            connection
+                .inner
+                .manager_sender
+                .send(ManagerEvent::ConnectionClosing(connection.clone()))
+                .await
+                .expect("manager receiver should never drop before senders");
+
             let connection_id = connection.to_string();
             let inner = Arc::downgrade(&connection.inner);
             drop(connection);
@@ -321,7 +329,9 @@ impl ConnectionT for Connection {
         }
     }
 
-    /// Closes the connection, signals exit, and cleans up all resources so that underlying connections will be aborted correctly.
+    /// Send an exit signal to the connection.
+    ///
+    /// This triggers a clean up of all resources so that underlying connections gets aborted correctly.
     ///
     /// Returns true of this is the first call to close.
     fn close(&self) -> bool {
@@ -338,12 +348,6 @@ impl ConnectionT for Connection {
                 return false;
             }
         }
-
-        // Send a close notification to the central Manager
-        self.inner
-            .manager_sender
-            .try_send(ManagerEvent::ConnectionClosing(self.clone()))
-            .expect("manager receiver should never drop before senders");
 
         true
     }
