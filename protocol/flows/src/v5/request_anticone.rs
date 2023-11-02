@@ -4,7 +4,7 @@ use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    dequeue, make_message,
+    dequeue_with_request_id, make_response,
     pb::{kaspad_message::Payload, BlockHeadersMessage, DoneHeadersMessage},
     IncomingRoute, Router,
 };
@@ -34,7 +34,7 @@ impl HandleAnticoneRequests {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
-            let msg = dequeue!(self.incoming_route, Payload::RequestAnticone)?;
+            let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestAnticone)?;
             let (block, context): (Hash, Hash) = msg.try_into()?;
 
             debug!("received anticone request with block hash: {}, context hash: {} for peer {}", block, context, self.router);
@@ -55,12 +55,13 @@ impl HandleAnticoneRequests {
             headers.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
 
             self.router
-                .enqueue(make_message!(
+                .enqueue(make_response!(
                     Payload::BlockHeaders,
-                    BlockHeadersMessage { block_headers: headers.into_iter().map(|header| header.as_ref().into()).collect() }
+                    BlockHeadersMessage { block_headers: headers.into_iter().map(|header| header.as_ref().into()).collect() },
+                    request_id
                 ))
                 .await?;
-            self.router.enqueue(make_message!(Payload::DoneHeaders, DoneHeadersMessage {})).await?;
+            self.router.enqueue(make_response!(Payload::DoneHeaders, DoneHeadersMessage {}, request_id)).await?;
         }
     }
 }
