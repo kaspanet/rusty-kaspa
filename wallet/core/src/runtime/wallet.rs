@@ -210,6 +210,8 @@ impl Wallet {
         self.select(None).await?;
 
         let accounts = self.active_accounts().collect();
+        // let mut legacy_accounts = self.legacy_accounts().collect();
+        // accounts.append(&mut legacy_accounts);
         let futures = accounts.into_iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
 
@@ -788,7 +790,12 @@ impl Wallet {
             async move {
                 let (stored_account, stored_metadata) = stored.unwrap();
                 if let Some(account) = wallet.active_account(&stored_account.id) {
-                    log_info!("fetching active account: {}", account.id());
+                    log_info!("fetching active account11: {}", account.id());
+
+                    //legacy accounts
+                    if !wallet.active_accounts().contains(account.id()) {
+                        account.clone().start().await?;
+                    }
                     Ok(account)
                 } else {
                     let account = try_from_storage(&wallet, stored_account, stored_metadata).await?;
@@ -911,11 +918,11 @@ impl Wallet {
     ) -> Result<Arc<dyn Account>> {
         let prv_key_data = storage::PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret)?;
         let prv_key_data_store = self.store().as_prv_key_data_store()?;
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret.clone()));
         if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
         }
-
+        let mut is_legacy = false;
         let account: Arc<dyn Account> = match account_kind {
             AccountKind::Bip32 => {
                 let account_index = 0;
@@ -930,6 +937,10 @@ impl Wallet {
                 // account
             }
             AccountKind::Legacy => {
+                if !self.is_connected() {
+                    return Err(Error::NotConnected);
+                }
+                is_legacy = true;
                 let data = storage::Legacy::new();
                 let settings = storage::Settings::default();
                 Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?)
@@ -944,7 +955,20 @@ impl Wallet {
         prv_key_data_store.store(&ctx, prv_key_data).await?;
         account_store.store_single(&stored_account, None).await?;
         self.inner.store.commit(&ctx).await?;
+
+        if is_legacy {
+            account.clone().initialize(wallet_secret, None, None).await?;
+            self.legacy_accounts().insert(account.clone());
+        }
         account.clone().start().await?;
+        if is_legacy {
+            let derivation = account.clone().as_derivation_capable()?.derivation();
+            let m = derivation.receive_address_manager();
+            m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+            let m = derivation.change_address_manager();
+            m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+            account.clone().uninitialize().await?;
+        }
 
         Ok(account)
     }

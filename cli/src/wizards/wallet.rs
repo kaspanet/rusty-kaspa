@@ -100,7 +100,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
     let account = wallet.create_bip32_account(prv_key_data_id, account_args).await?;
 
     // flush data to storage
-    let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+    let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret.clone()));
     wallet.store().flush(&access_ctx).await?;
     notifier.hide();
 
@@ -138,6 +138,8 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
     term.writeln("Your default account deposit address:");
     term.writeln(style(receive_address).blue().to_string());
     term.writeln("");
+
+    wallet.load_and_activate(wallet_secret, name.map(String::from)).await?;
 
     Ok(())
 }
