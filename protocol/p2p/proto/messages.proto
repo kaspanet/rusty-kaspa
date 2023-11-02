@@ -6,6 +6,8 @@ option go_package = "github.com/kaspanet/kaspad/protowire";
 import "p2p.proto";
 
 message KaspadMessage {
+  uint32 response_id = 101;
+  uint32 request_id = 102;
   oneof payload {
     AddressesMessage addresses = 1;
     BlockMessage block = 2;

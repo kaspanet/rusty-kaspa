@@ -4,7 +4,7 @@ use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    dequeue, make_message,
+    dequeue, dequeue_with_request_id, make_response,
     pb::{self, kaspad_message::Payload, BlockHeadersMessage, DoneHeadersMessage},
     IncomingRoute, Router,
 };
@@ -40,7 +40,7 @@ impl RequestHeadersFlow {
         let max_blocks = max(MAX_BLOCKS, self.ctx.config.mergeset_size_limit as usize + 1);
 
         loop {
-            let msg = dequeue!(self.incoming_route, Payload::RequestHeaders)?;
+            let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestHeaders)?;
             let (high, mut low) = msg.try_into()?;
 
             let consensus = self.ctx.consensus();
@@ -68,13 +68,13 @@ impl RequestHeadersFlow {
                     session.spawn_blocking(move |c| Self::get_headers_between(c, low, high, max_blocks)).await?;
                 debug!("Got {} header hashes above {}", block_headers.len(), low);
                 low = last;
-                self.router.enqueue(make_message!(Payload::BlockHeaders, BlockHeadersMessage { block_headers })).await?;
+                self.router.enqueue(make_response!(Payload::BlockHeaders, BlockHeadersMessage { block_headers }, request_id)).await?;
 
                 dequeue!(self.incoming_route, Payload::RequestNextHeaders)?;
                 session = consensus.session().await;
             }
 
-            self.router.enqueue(make_message!(Payload::DoneHeaders, DoneHeadersMessage {})).await?;
+            self.router.enqueue(make_response!(Payload::DoneHeaders, DoneHeadersMessage {}, request_id)).await?;
         }
     }
 

@@ -1,6 +1,8 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
-use kaspa_p2p_lib::{common::ProtocolError, dequeue, make_message, pb::kaspad_message::Payload, IncomingRoute, Router};
+use kaspa_p2p_lib::{
+    common::ProtocolError, dequeue_with_request_id, make_response, pb::kaspad_message::Payload, IncomingRoute, Router,
+};
 use std::sync::Arc;
 
 pub struct HandleIbdBlockRequests {
@@ -27,7 +29,7 @@ impl HandleIbdBlockRequests {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
-            let msg = dequeue!(self.incoming_route, Payload::RequestIbdBlocks)?;
+            let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestIbdBlocks)?;
             let hashes: Vec<_> = msg.try_into()?;
 
             debug!("got request for {} IBD blocks", hashes.len());
@@ -35,7 +37,7 @@ impl HandleIbdBlockRequests {
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;
-                self.router.enqueue(make_message!(Payload::IbdBlock, (&block).into())).await?;
+                self.router.enqueue(make_response!(Payload::IbdBlock, (&block).into(), request_id)).await?;
             }
         }
     }

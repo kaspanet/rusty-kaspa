@@ -1,4 +1,4 @@
-use self::{
+use crate::v5::{
     address::{ReceiveAddressesFlow, SendAddressesFlow},
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ibd::IbdFlow,
@@ -18,24 +18,11 @@ use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
 use std::sync::Arc;
 
-pub(crate) mod address;
-pub(crate) mod blockrelay;
-pub(crate) mod ibd;
-pub(crate) mod ping;
-pub(crate) mod request_anticone;
-pub(crate) mod request_block_locator;
-pub(crate) mod request_headers;
-pub(crate) mod request_ibd_blocks;
-pub(crate) mod request_ibd_chain_block_locator;
-pub(crate) mod request_pp_proof;
-pub(crate) mod request_pruning_point_and_anticone;
-pub(crate) mod request_pruning_point_utxo_set;
-pub(crate) mod txrelay;
-
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // IBD flow <-> invs flow channel requires no buffering hence the minimal size possible
     let (ibd_sender, relay_receiver) = tokio::sync::mpsc::channel(1);
-    let flows: Vec<Box<dyn Flow>> = vec![
+
+    let mut flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
             ctx.clone(),
             router.clone(),
@@ -56,15 +43,6 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
                 KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
             ]),
             relay_receiver,
-        )),
-        Box::new(HandleRelayInvsFlow::new(
-            ctx.clone(),
-            router.clone(),
-            SharedIncomingRoute::new(
-                router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size()),
-            ),
-            router.subscribe(vec![KaspadMessagePayloadType::Block, KaspadMessagePayloadType::BlockLocator]),
-            ibd_sender,
         )),
         Box::new(HandleRelayBlockRequests::new(
             ctx.clone(),
@@ -136,11 +114,25 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             router.subscribe(vec![KaspadMessagePayloadType::RequestAddresses]),
         )),
         Box::new(RequestBlockLocatorFlow::new(
-            ctx,
+            ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestBlockLocator]),
         )),
     ];
+
+    let invs_route = router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size());
+    let shared_invs_route = SharedIncomingRoute::new(invs_route);
+
+    let num_relay_flows = (ctx.config.bps() as usize / 2).max(1);
+    flows.extend((0..num_relay_flows).map(|_| {
+        Box::new(HandleRelayInvsFlow::new(
+            ctx.clone(),
+            router.clone(),
+            shared_invs_route.clone(),
+            router.subscribe(vec![]),
+            ibd_sender.clone(),
+        )) as Box<dyn Flow>
+    }));
 
     // The reject message is handled as a special case by the router
     // KaspadMessagePayloadType::Reject,
