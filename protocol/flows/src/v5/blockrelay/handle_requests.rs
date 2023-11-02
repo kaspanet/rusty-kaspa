@@ -2,7 +2,7 @@ use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    dequeue, dequeue_with_request_id, make_message,
+    dequeue_with_request_id, make_message,
     pb::{kaspad_message::Payload, InvRelayBlockMessage},
     IncomingRoute, Router,
 };

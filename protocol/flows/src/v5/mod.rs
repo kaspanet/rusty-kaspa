@@ -18,19 +18,19 @@ use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
 use std::sync::Arc;
 
-pub mod address;
-pub mod blockrelay;
-pub mod ibd;
-pub mod ping;
-pub mod request_anticone;
-pub mod request_block_locator;
-pub mod request_headers;
-pub mod request_ibd_blocks;
-pub mod request_ibd_chain_block_locator;
-pub mod request_pp_proof;
-pub mod request_pruning_point_and_anticone;
-pub mod request_pruning_point_utxo_set;
-pub mod txrelay;
+pub(crate) mod address;
+pub(crate) mod blockrelay;
+pub(crate) mod ibd;
+pub(crate) mod ping;
+pub(crate) mod request_anticone;
+pub(crate) mod request_block_locator;
+pub(crate) mod request_headers;
+pub(crate) mod request_ibd_blocks;
+pub(crate) mod request_ibd_chain_block_locator;
+pub(crate) mod request_pp_proof;
+pub(crate) mod request_pruning_point_and_anticone;
+pub(crate) mod request_pruning_point_utxo_set;
+pub(crate) mod txrelay;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // IBD flow <-> invs flow channel requires no buffering hence the minimal size possible
