@@ -927,7 +927,6 @@ impl Wallet {
         mnemonic: Mnemonic,
         account_kind: AccountKind,
     ) -> Result<Arc<dyn Account>> {
-        self.inner.store.batch().await?;
         let prv_key_data = storage::PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret)?;
         let prv_key_data_store = self.store().as_prv_key_data_store()?;
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret.clone()));
@@ -949,9 +948,6 @@ impl Wallet {
                 // account
             }
             AccountKind::Legacy => {
-                // if !self.is_connected() {
-                //     return Err(Error::NotConnected);
-                // }
                 is_legacy = true;
                 let data = storage::Legacy::new();
                 let settings = storage::Settings::default();
@@ -962,38 +958,12 @@ impl Wallet {
             }
         };
 
-        //let account_id = account.id();
-
         let stored_account = account.as_storable()?;
         let account_store = self.inner.store.as_account_store()?;
-        //let prv_key_data_id = prv_key_data.id;
+        self.inner.store.batch().await?;
         self.store().as_prv_key_data_store()?.store(&ctx, prv_key_data).await?;
         account_store.store_single(&stored_account, None).await?;
         self.inner.store.flush(&ctx).await?;
-        // log_info!("stored_account:id: {}", stored_account.id);
-        // let mut keys = self.keys().await?;
-        // let mut ids = vec![];
-        // while let Some(key) = keys.try_next().await? {
-        //     log_info!("key: {}", &key);
-        //     ids.push(key.id);
-        // }
-        // if !ids.contains(&prv_key_data_id) {
-        //     return Err(Error::Custom("Unable to store prv key data".to_string()));
-        // }
-        // {
-        //     let store = self.inner.store.as_prv_key_data_store()?;
-        //     let key_data_opt = store.load_key_data(&ctx, &prv_key_data_id).await?;
-        //     if key_data_opt.is_none() {
-        //         return Err(Error::Custom("Unable to store prv key data".to_string()));
-        //     }
-        // }
-
-        // {
-        //     let account_opt = account_store.load_single(account_id).await?;
-        //     if account_opt.is_none() {
-        //         return Err(Error::Custom("Unable to store account".to_string()));
-        //     }
-        // }
 
         if is_legacy {
             account.clone().initialize_private_data(wallet_secret, None, None).await?;
