@@ -20,9 +20,8 @@ macro_rules! rpc_function_test {
     };
 }
 
-/// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test --exact --nocapture --ignored`
+/// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test`
 #[tokio::test]
-#[ignore = "bmk"]
 async fn base_test() {
     kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
@@ -113,8 +112,9 @@ async fn base_test() {
     rpc_function_test!(tasks, rpc_client, {
         let response = rpc_client.get_coin_supply_call(GetCoinSupplyRequest {}).await.unwrap();
 
-        assert!(response.circulating_sompi > 0);
-        assert!(response.max_sompi > 0);
+        let devnet_prealloc_amount = 500 * SOMPI_PER_KASPA * (TX_LEVEL_WIDTH as u64);
+        assert_eq!(devnet_prealloc_amount, response.circulating_sompi);
+        assert!(response.max_sompi > devnet_prealloc_amount);
     });
 
     // Test Get Server Info: get_server_info_call
@@ -122,7 +122,7 @@ async fn base_test() {
     rpc_function_test!(tasks, rpc_client, {
         let response = rpc_client.get_server_info_call(GetServerInfoRequest {}).await.unwrap();
 
-        assert!(response.has_utxo_index);
+        assert!(response.has_utxo_index); // we set utxoindex above
         assert_eq!(response.network_id, daemon.network);
     });
 
