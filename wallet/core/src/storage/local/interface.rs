@@ -221,7 +221,7 @@ impl Interface for LocalStore {
 
     async fn exists(&self, name: Option<&str>) -> Result<bool> {
         let location = self.location.lock().unwrap().clone().unwrap();
-        let store = Storage::try_new_with_folder(&location.folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
+        let store = Storage::try_new_with_folder(&location.folder, &format!("{}.wallet", name.unwrap_or(super::DEFAULT_WALLET_FILE)))?;
         store.exists().await
     }
 
