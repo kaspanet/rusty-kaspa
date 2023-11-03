@@ -332,11 +332,9 @@ impl UtxoContext {
 
         context.mature.retain(|entry| {
             if remove_mature_ids.contains(&entry.id()) {
-                // log_info!("remove mature via removed list: {}", entry.id());
                 removed.push(UtxoEntryVariant::Mature(entry.clone()));
                 false
             } else {
-                // log_info!("mature not in removed list - retaining {}", entry.id());
                 true
             }
         });

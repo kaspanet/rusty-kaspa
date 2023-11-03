@@ -197,21 +197,12 @@ impl Wallet {
         &self.inner.legacy_accounts
     }
 
-    // pub fn active_account(&self, id: &AccountId) -> Option<Arc<dyn Account>> {
-    //     if let Some(account) = self.legacy_accounts().get(id) {
-    //         return Some(account);
-    //     }
-    //     self.active_accounts().get(id)
-    // }
-
     pub async fn reset(self: &Arc<Self>, clear_legacy_cache: bool) -> Result<()> {
         self.utxo_processor().clear().await?;
 
         self.select(None).await?;
 
         let accounts = self.active_accounts().collect();
-        // let mut legacy_accounts = self.legacy_accounts().collect();
-        // accounts.append(&mut legacy_accounts);
         let futures = accounts.into_iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
 
@@ -288,8 +279,6 @@ impl Wallet {
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
     async fn load_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
-        log_info!("load()");
-
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
         self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
@@ -317,8 +306,6 @@ impl Wallet {
 
     /// Loads a wallet from storage. Accounts are activated by this call.
     pub async fn load_and_activate(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
-        log_info!("load_and_activate");
-
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret.clone()));
         self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
@@ -658,10 +645,6 @@ impl Wallet {
         Ok((mnemonic, descriptor, account))
     }
 
-    // pub async fn dump_unencrypted(&self) -> Result<()> {
-    //     Ok(())
-    // }
-
     pub async fn get_account_by_id(self: &Arc<Self>, account_id: &AccountId) -> Result<Option<Arc<dyn Account>>> {
         if let Some(account) = self.active_accounts().get(account_id) {
             Ok(Some(account.clone()))
@@ -804,11 +787,9 @@ impl Wallet {
                     }
                     Ok(account)
                 } else if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
-                    log_info!("fetching active account11: {}", account.id());
                     Ok(account)
                 } else {
                     let account = try_from_storage(&wallet, stored_account, stored_metadata).await?;
-                    log_info!("starting new active account instance11 {}", account.id());
                     account.clone().start().await?;
                     Ok(account)
                 }
@@ -829,18 +810,14 @@ impl Wallet {
         let stream = iter.then(move |stored| {
             let wallet = wallet.clone();
             let secret = secret.clone();
-            // if stored.is_err() {
-            //     return stored;
-            // }
+
             async move {
                 let (stored_account, stored_metadata) = stored.unwrap();
                 if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
-                    // log_trace!("fetching active account: {}", account.id);
                     Ok(account)
                 } else {
                     let is_legacy = matches!(stored_account.data, AccountData::Legacy { .. });
                     let account = try_from_storage(&wallet, stored_account, stored_metadata).await?;
-                    log_info!("starting new active account instance22 is_legacy:{is_legacy} {}", account.id());
 
                     if is_legacy {
                         account.clone().initialize_private_data(secret, None, None).await?;
@@ -874,40 +851,37 @@ impl Wallet {
     ) -> Result<Arc<dyn Account>> {
         let keydata = load_v0_keydata(&import_secret).await?;
 
-        //workflow_log::log_info!("keydata: {:?}", keydata);
-
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret.clone()));
 
         let mnemonic = Mnemonic::new(keydata.mnemonic.trim(), Language::English)?;
         let prv_key_data = PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret)?;
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
         if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
-            //return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
-            log_info!("TODO: PrivateKeyAlreadyExists {}", prv_key_data.id.to_hex());
+            return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
         }
 
-        let data = storage::Legacy::new(); // receive_pubkeys: Arc::new(HashMap::new()), change_pubkeys: Arc::new(HashMap::new()) };
+        let data = storage::Legacy::new();
         let settings = storage::Settings::default();
         let account = Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?);
-        // store private key
-        prv_key_data_store.store(&ctx, prv_key_data).await?;
 
         account.clone().initialize_private_data(wallet_secret, payment_secret, None).await?;
 
+        // activate account (add it to wallet active account list)
         self.active_accounts().insert(account.clone().as_dyn_arc());
         self.legacy_accounts().insert(account.clone().as_dyn_arc());
 
-        // activate account (add it to wallet active account list)
-        //account.clone().start().await?;
-        account.clone().scan(Some(100), Some(50000)).await?;
+        if self.is_connected() {
+            account.clone().scan(Some(100), Some(50000)).await?;
+        }
 
         let account_store = self.inner.store.as_account_store()?;
         let stored_account = account.as_storable()?;
 
-        // store account
+        // store private key and account
+        self.inner.store.batch().await?;
+        prv_key_data_store.store(&ctx, prv_key_data).await?;
         account_store.store_single(&stored_account, None).await?;
-        // flush to storage
-        self.inner.store.commit(&ctx).await?;
+        self.inner.store.flush(&ctx).await?;
 
         account.clone().clear_private_data().await?;
 
@@ -1073,17 +1047,8 @@ mod test {
         println!("Creating wallet...");
         let resident_store = Wallet::resident_store()?;
         let wallet = Arc::new(Wallet::try_new(resident_store, None)?);
-        // let stored_accounts = vec![StoredWalletAccount{
-        //     private_key_index: 0,
-        //     account_kind: crate::storage::AccountKind::Bip32,
-        //     name: "Default Account".to_string(),
-        //     title: "Default Account".to_string(),
-        // }];
-        // let utxo_db_ctx = wallet.utxo_db_core().ctx(self)
-        // wallet.load_accounts(stored_accounts);
 
         let rpc_api = wallet.rpc_api();
-        // let utxo_processor = UtxoProcessor::new(rpc, None);
         let utxo_processor = wallet.utxo_processor();
 
         let wrpc_client = wallet.wrpc_client().expect("Unable to obtain wRPC client");
@@ -1108,26 +1073,10 @@ mod test {
         let utxo_set_balance = utxo_context.calculate_balance().await;
         println!("get_utxos_by_addresses: {utxo_set_balance:?}");
 
-        // let mut ctx = utxo_set.create_selection_context();
-        // let mut ctx = UtxoSelectionContext::new(utxo_set);
-
-        // #[allow(deprecated)]
-        // let selected_entries = ctx.select(100_000)?;
-
-        // let utxo_selection = utxo_set.select(100000, UtxoOrdering::AscendingAmount, true).await?;
-
-        //let payload = vec![];
         let to_address = Address::try_from("kaspatest:qpakxqlesqywgkq7rg4wyhjd93kmw7trkl3gpa3vd5flyt59a43yyn8vu0w8c")?;
-        //let outputs = Outputs { outputs: vec![Output::new(to_address, 100000, None)] };
-        //let vtx = VirtualTransaction::new(utxo_selection, &outputs, payload);
-
         let mut iter = UtxoIterator::new(&utxo_context);
-
-        // let UtxoEntryReference { utxo }
         let utxo = iter.next().unwrap();
-        //vtx.sign();
         let utxo = (*utxo.utxo).clone();
-        //utxo.utxo_entry.is_coinbase = false;
         let selected_entries = vec![utxo];
 
         let entries = &selected_entries;
@@ -1141,11 +1090,7 @@ mod test {
         let tx = Transaction::new(
             0,
             inputs,
-            vec![
-                TransactionOutput::new(1000, &pay_to_address_script(&to_address)),
-                // TransactionOutput::new() { value: 1000, script_public_key: pay_to_address_script(&to_address) },
-                //TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
-            ],
+            vec![TransactionOutput::new(1000, &pay_to_address_script(&to_address))],
             0,
             SUBNETWORK_ID_NATIVE,
             0,
@@ -1158,7 +1103,6 @@ mod test {
             gen1::WalletDerivationManager::build_derivate_path(false, 0, None, Some(kaspa_bip32::AddressType::Receive))?;
 
         let xprv = "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
-        //let (xkey, _attrs) = WalletAccount::create_extended_key_from_xprv(xprv, false, 0).await?;
 
         let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?.derive_path(derivation_path)?;
 
@@ -1167,19 +1111,14 @@ mod test {
         // address test
         let address_test = Address::new(Prefix::Testnet, Version::PubKey, &xkey.public_key().to_bytes()[1..]);
         let address_str: String = address_test.clone().into();
-        assert_eq!(address, address_test, "Address dont match");
+        assert_eq!(address, address_test, "Address don't match");
         println!("address: {address_str}");
 
-        let private_keys = vec![
-            //xkey.private_key().into()
-            xkey.to_bytes(),
-        ];
+        let private_keys = vec![xkey.to_bytes()];
 
         println!("mtx: {mtx:?}");
 
-        //let signer = Signer::new(private_keys)?;
         let mtx = sign_transaction(mtx, private_keys, true)?;
-        //println!("mtx: {mtx:?}");
 
         let utxo_context =
             self::create_utxos_context_with_addresses(rpc_api.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)

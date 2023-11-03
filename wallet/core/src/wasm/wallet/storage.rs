@@ -150,7 +150,7 @@ impl Interface for Proxy {
     }
 
     async fn commit(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
-        log_info!("*** COMMITING ***");
+        // log_info!("--== committing storage ==--");
         self.inner()?.store(ctx).await?;
         Ok(())
     }
@@ -190,14 +190,13 @@ impl PrvKeyDataStore for Inner {
     }
 
     async fn load_key_data(&self, ctx: &Arc<dyn AccessContextT>, prv_key_data_id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
-        let wallet_secret = ctx.wallet_secret().await; //.ok_or(Error::WalletSecretRequired)?;
+        let wallet_secret = ctx.wallet_secret().await;
         let prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret)?;
         Ok(prv_key_data_map.get(prv_key_data_id).cloned())
     }
 
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, prv_key_data: PrvKeyData) -> Result<()> {
-        let wallet_secret = ctx.wallet_secret().await; //.ok_or(Error::WalletSecretRequired)?;
-        log_info!("prv_key_data: {:?}", self.cache().prv_key_data);
+        let wallet_secret = ctx.wallet_secret().await;
         let prv_key_data_info = Arc::new((&prv_key_data).into());
         self.cache().prv_key_data_info.insert(prv_key_data.id, prv_key_data_info)?;
         let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret.clone())?;
@@ -208,7 +207,7 @@ impl PrvKeyDataStore for Inner {
     }
 
     async fn remove(&self, ctx: &Arc<dyn AccessContextT>, prv_key_data_id: &PrvKeyDataId) -> Result<()> {
-        let wallet_secret = ctx.wallet_secret().await; //.ok_or(Error::WalletSecretRequired)?;
+        let wallet_secret = ctx.wallet_secret().await;
         let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret.clone())?;
         prv_key_data_map.remove(prv_key_data_id);
         self.cache().prv_key_data.replace(prv_key_data_map.encrypt(wallet_secret)?);

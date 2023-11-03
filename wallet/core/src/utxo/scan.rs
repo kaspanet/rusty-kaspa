@@ -74,7 +74,6 @@ impl Scan {
             let first = cursor;
             let last = if cursor == 0 { max(last_address_index + 1, window_size) } else { cursor + window_size };
             cursor = last;
-            // log_info!("first: {}, last: {}", first, last);
 
             // generate address derivations
             let addresses = address_manager.get_range(first..last)?;

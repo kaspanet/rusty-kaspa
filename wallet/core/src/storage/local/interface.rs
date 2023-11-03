@@ -286,6 +286,10 @@ impl Interface for LocalStore {
     }
 
     async fn flush(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
+        if !self.batch.load(Ordering::SeqCst) {
+            panic!("flush() called while not in batch mode");
+        }
+
         self.batch.store(false, Ordering::SeqCst);
         self.commit(ctx).await?;
         Ok(())
@@ -293,10 +297,7 @@ impl Interface for LocalStore {
 
     async fn commit(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
         if !self.batch.load(Ordering::SeqCst) {
-            // log_info!("*** COMMITING ***");
             self.inner()?.store(ctx).await?;
-        } else {
-            // log_info!("*** BATCH MODE - SKIPPING COMMIT ***");
         }
         Ok(())
     }

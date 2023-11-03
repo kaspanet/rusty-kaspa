@@ -421,10 +421,6 @@ pub trait DerivationCapableAccount: Account {
         let prv_key_data = self.prv_key_data(wallet_secret).await?;
         let payload = prv_key_data.payload.decrypt(payment_secret.as_ref())?;
         let xkey = payload.get_xprv(payment_secret.as_ref())?;
-        // let keydata = match self.wallet.get_prv_key_data(wallet_secret, id).await? {
-        //     Some(keydata) => keydata,
-        //     None => return Err(Error::KeyId(id.to_hex())),
-        // };
 
         let receive_address_manager = derivation.receive_address_manager();
         let change_address_manager = derivation.change_address_manager();
@@ -441,7 +437,6 @@ pub trait DerivationCapableAccount: Account {
         let mut aggregate_balance = 0;
 
         let change_address = change_address_keypair[0].0.clone();
-        workflow_log::log_info!("change_address: {}", change_address.to_string());
 
         while index < extent {
             let first = index as u32;
@@ -452,7 +447,6 @@ pub trait DerivationCapableAccount: Account {
                 let mut keypairs = derivation.get_range_with_keys(false, first..last, false, &xkey).await?;
                 let change_keypairs = derivation.get_range_with_keys(true, first..last, false, &xkey).await?;
                 keypairs.extend(change_keypairs);
-                //keypairs.extend(change_address_keypair.clone());
                 let mut keys = vec![];
                 let addresses = keypairs
                     .iter()
@@ -466,24 +460,17 @@ pub trait DerivationCapableAccount: Account {
             } else {
                 let mut addresses = receive_address_manager.get_range_with_args(first..last, false)?;
                 let change_addresses = change_address_manager.get_range_with_args(first..last, false)?;
-                // workflow_log::log_info!("receive address at {first}:  {}", addresses[0].to_string());
-                // workflow_log::log_info!("change address at {first}:  {}", change_addresses[0].to_string());
                 addresses.extend(change_addresses);
                 (vec![], addresses)
             };
 
-            //workflow_log::log_info!("addresses: {:#?}", addresses.iter().map(|a| a.to_string()).collect::<Vec<_>>());
             let utxos = rpc.get_utxos_by_addresses(addresses.clone()).await?;
             let balance = utxos.iter().map(|utxo| utxo.utxo_entry.amount).sum::<u64>();
             if balance > 0 {
                 aggregate_balance += balance;
 
                 if sweep {
-                    //let signer = Arc::new(KeydataSigner::new(keypairs));
-
                     let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
-                    //let aa = utxos.iter().map(|u| u.as_ref().address.as_ref().unwrap().clone().to_string()).collect::<Vec<_>>();
-                    //workflow_log::log_info!("addresses 22: {:#?}", aa);
 
                     let settings = GeneratorSettings::try_new_with_iterator(
                         Box::new(utxos.into_iter()),
@@ -501,7 +488,6 @@ pub trait DerivationCapableAccount: Account {
                     let mut stream = generator.stream();
                     while let Some(transaction) = stream.try_next().await? {
                         transaction.try_sign_with_keys(keys.clone())?;
-                        //let id = transaction.id();
                         let id = transaction.try_submit(&rpc).await?;
                         if let Some(notifier) = notifier {
                             notifier(index, balance, Some(id));

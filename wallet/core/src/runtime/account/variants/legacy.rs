@@ -54,48 +54,13 @@ impl Legacy {
         let seed = mnemonic.to_seed("");
         let xprv = ExtendedPrivateKey::<SecretKey>::new(seed).unwrap();
         let xprv = xprv.to_string(Prefix::XPRV).to_string();
-        // for manager in self.derivation.receive_address_manager().pubkey_managers.iter() {
-        //     manager.initialize(xprv.clone())?;
-        // }
-        // for manager in self.derivation.change_address_manager().pubkey_managers.iter() {
-        //     manager.initialize(xprv.clone())?;
-        // }
+
         for derivator in &self.derivation.derivators {
             derivator.initialize(xprv.clone(), index)?;
         }
-        //let keys = vec![xprv];
-
-        // let meta = { self.info.lock()?.meta.clone() };
-
-        // let address_derivation_indexes = address_derivation_indexes.unwrap_or(meta);
-        // let derivation = AddressDerivationManager::new(
-        //     &self.inner.wallet,
-        //     AccountKind::Legacy,
-        //     &keys,
-        //     false,
-        //     0,
-        //     None,
-        //     1,
-        //     address_derivation_indexes,
-        // )
-        // .await?;
-
-        // let meta = derivation.address_derivation_meta();
-        // let receive_address = derivation.receive_address_manager.current_address()?;
-        // let change_address = derivation.change_address_manager.current_address()?;
-
-        // let mut info = self.info.lock()?;
-        // info.derivation = Some(derivation.clone());
-        // info.receive_address = Some(receive_address);
-        // info.change_address = Some(change_address);
-        // info.meta = meta;
 
         Ok(())
     }
-
-    // fn info(&self) -> Result<MutexGuard<Info>> {
-    //     Ok(self.info.lock()?)
-    // }
 }
 
 #[async_trait]
@@ -117,31 +82,17 @@ impl Account for Legacy {
     }
 
     fn receive_address(&self) -> Result<Address> {
-        //self.info()?.receive_address.clone().ok_or(Error::Custom("Account initialization is pending.".into()))
         self.derivation.receive_address_manager().current_address()
-        //Ok(self.receive_address.clone())
     }
 
     fn change_address(&self) -> Result<Address> {
-        //self.info()?.change_address.clone().ok_or(Error::Custom("Account initialization is pending.".into()))
         self.derivation.change_address_manager().current_address()
-        //Ok(self.change_address.clone())
     }
 
     fn as_storable(&self) -> Result<storage::account::Account> {
         let settings = self.context().settings.clone().unwrap_or_default();
-        // let mut receive_pubkeys = HashMap::new();
-        // let mut change_pubkeys = HashMap::new();
-        // for derivator in &self.derivation.derivators {
-        //     receive_pubkeys.extend(derivator.receive_pubkey_manager().get_cache()?);
-        //     change_pubkeys.extend(derivator.change_pubkey_manager().get_cache()?);
-        // }
         let legacy = storage::Legacy::new();
-        // receive_pubkeys: Arc::new(receive_pubkeys),
-        // change_pubkeys: Arc::new(change_pubkeys)
-
         let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Legacy(legacy));
-
         Ok(account)
     }
 
@@ -160,7 +111,6 @@ impl Account for Legacy {
         payment_secret: Option<&Secret>,
         index: Option<u32>,
     ) -> Result<()> {
-        log_info!("initialize_derivation");
         self.initialize_derivation(secret, payment_secret, index).await?;
         Ok(())
     }

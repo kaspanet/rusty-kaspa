@@ -77,18 +77,7 @@ impl KeydataSigner {
 
 impl SignerT for KeydataSigner {
     fn try_sign(&self, mutable_tx: SignableTransaction, addresses: &[Address]) -> Result<SignableTransaction> {
-        let keys_for_signing = addresses
-            .iter()
-            .map(|address| {
-                // if let Some(key) = self.inner.keys.get(address) {
-                //     *key
-                // } else {
-                //     workflow_log::log_info!("address key missing: {address}");
-                //     secp256k1::ONE_KEY.to_bytes()
-                // }
-                *self.inner.keys.get(address).unwrap()
-            })
-            .collect::<Vec<_>>();
+        let keys_for_signing = addresses.iter().map(|address| *self.inner.keys.get(address).unwrap()).collect::<Vec<_>>();
         Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing))
     }
 }
