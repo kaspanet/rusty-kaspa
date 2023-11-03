@@ -126,21 +126,23 @@ Once LLVM is installed:
 ## Installing clang toolchain on MacOS
 
 The default XCode installation of `llvm` does not support WASM build targets.
-To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing MacOS version is 13.0.1).
+To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing, the llvm version for MacOS is 16.0.1).
 
 ```bash
 brew install llvm
 ```
-**NOTE:** depending on your homebrew configuration, the installation location may be different.
-In some homebrew configurations it can be `/opt/homebrew/opt/llvm` while in others it can be `/usr/local/Cellar/llvm`.
+**NOTE:** Homebrew can use different keg installation locations depending on your configuration. For example:
+- `/opt/homebrew/opt/llvm` -> `/opt/homebrew/Cellar/llvm/16.0.1`
+- `/usr/local/Cellar/llvm/16.0.1`
 
 To determine the installation location you can use `brew list llvm` command and then modify the paths below accordingly:
 ```bash
 % brew list llvm
-/usr/local/Cellar/llvm/15.0.7_1/bin/FileCheck
-/usr/local/Cellar/llvm/15.0.7_1/bin/UnicodeNameMappingGenerator
+/usr/local/Cellar/llvm/16.0.1/bin/FileCheck
+/usr/local/Cellar/llvm/16.0.1/bin/UnicodeNameMappingGenerator
 ...
 ```
+If you have `/opt/homebrew/Cellar`, then you should be able to use `/opt/homebrew/opt/llvm`.
 
 Add the following to your `~/.zshrc` file:
 ```bash
