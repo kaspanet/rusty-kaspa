@@ -41,8 +41,6 @@ pub async fn prompt_for_mnemonic(term: &Arc<Terminal>) -> Result<Vec<String>> {
 pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: AccountKind, additional_xpubs: &[String]) -> Result<()> {
     let wallet = ctx.wallet();
 
-    let is_legacy = account_kind.is_legacy();
-
     if !wallet.is_open() {
         return Err(Error::WalletIsNotOpen);
     }
@@ -63,7 +61,7 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: Acco
         _ => Err(Error::Custom("unsupported account kind".to_owned())),
     }?;
 
-    let payment_secret = if is_legacy {
+    let payment_secret = if account_kind == AccountKind::Legacy {
         None
     } else {
         tpara!(

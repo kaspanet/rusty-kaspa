@@ -7,7 +7,7 @@ use std::str::FromStr;
 use workflow_core::enums::u8_try_from;
 
 u8_try_from! {
-    #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
+    #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
     #[serde(rename_all = "lowercase")]
     #[wasm_bindgen]
     pub enum AccountKind {
@@ -18,32 +18,6 @@ u8_try_from! {
         Keypair,
         Hardware,
         Resident,
-    }
-}
-
-impl AccountKind {
-    pub fn is_legacy(&self) -> bool {
-        matches!(self, AccountKind::Legacy)
-    }
-
-    pub fn is_bip32(&self) -> bool {
-        matches!(self, AccountKind::Bip32)
-    }
-
-    pub fn is_multisig(&self) -> bool {
-        matches!(self, AccountKind::MultiSig)
-    }
-
-    pub fn is_keypair(&self) -> bool {
-        matches!(self, AccountKind::Keypair)
-    }
-
-    pub fn is_hardware(&self) -> bool {
-        matches!(self, AccountKind::Hardware)
-    }
-
-    pub fn is_resident(&self) -> bool {
-        matches!(self, AccountKind::Resident)
     }
 }
 
