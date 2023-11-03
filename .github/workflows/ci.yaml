@@ -93,6 +93,9 @@ jobs:
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-nextest
+        run: cargo install cargo-nextest
 
       - name: Cache
         uses: actions/cache@v3
@@ -109,13 +112,13 @@ jobs:
         run: cargo build --features devnet-prealloc --workspace --all --tests --benches
         
       - name: Run cargo test regular features
-        run: cargo test --workspace
+        run: cargo nextest run --workspace
       
       - name: Run RPC tests
-        run: cargo test --package kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test
+        run: cargo nextest run -p kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test
 
       - name: Run cargo test on kaspa-hashes without asm
-        run: cargo test -p kaspa-hashes --features=no-asm --benches
+        run: cargo nextest run -p kaspa-hashes --features=no-asm --benches
 
 
   # test-release:
