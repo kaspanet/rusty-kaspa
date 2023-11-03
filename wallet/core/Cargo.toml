@@ -61,6 +61,7 @@ serde-wasm-bindgen.workspace = true
 serde.workspace = true
 sha1.workspace = true
 sha2.workspace = true
+slugify-rs.workspace = true
 sorted-insert.workspace = true
 thiserror.workspace = true
 wasm-bindgen-futures.workspace = true
