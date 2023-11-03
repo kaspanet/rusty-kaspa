@@ -256,7 +256,7 @@ nw-sys = "0.1.6"
 # workflow-node = { path = "../workflow-rs/node" }
 # workflow-store = { path = "../workflow-rs/store" }
 # workflow-terminal = { path = "../workflow-rs/terminal" }
-#https://github.com/aspectron/nw-sys
+# https://github.com/aspectron/nw-sys
 # nw-sys = { path = "../nw-sys" }
 
 [profile.release]
