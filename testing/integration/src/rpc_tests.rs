@@ -22,6 +22,7 @@ macro_rules! rpc_function_test {
 
 /// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test`
 #[tokio::test]
+#[cfg(feature = "devnet-prealloc")]
 async fn base_test() {
     kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
