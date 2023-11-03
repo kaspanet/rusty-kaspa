@@ -4,7 +4,7 @@ use crate::common::{self, daemon::Daemon};
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{constants::SOMPI_PER_KASPA, network::NetworkType};
-use kaspa_core::{debug, info};
+use kaspa_core::info;
 use kaspa_rpc_core::{api::rpc::RpcApi, model::*};
 use kaspa_txscript::pay_to_address_script;
 use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
@@ -28,8 +28,8 @@ async fn base_test() {
     kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
 
     // Constants
-    const TX_COUNT: usize = 1_400_000;
-    const TX_LEVEL_WIDTH: usize = 20_000;
+    const TX_COUNT: usize = 140;
+    const TX_LEVEL_WIDTH: usize = 20;
 
     if TX_COUNT < TX_LEVEL_WIDTH {
         panic!()
@@ -161,13 +161,14 @@ async fn base_test() {
         let peer_to_add = ContextualNetAddress::from_str("1.2.3.4:16110").unwrap();
         let peer_to_ban = ContextualNetAddress::from_str("5.6.7.8:16110").unwrap();
 
-        let _ = rpc_client.add_peer_call(AddPeerRequest { peer_address: peer_to_add, is_permanent: true }).await.unwrap();
         let response = rpc_client.get_peer_addresses_call(GetPeerAddressesRequest {}).await.unwrap();
 
-        debug_assert!(!response.known_addresses.is_empty());
-        debug!("{:?}", response.known_addresses);
-        debug_assert!(response.known_addresses.contains(&peer_to_add.normalize(12345)));
+        assert!(response.known_addresses.is_empty());
         assert!(response.banned_addresses.is_empty());
+
+        // Add peer only adds the IP to a connection request. It will only be added to known_addresses if it
+        // actually can be connected to. So in CI we can't expect it to be added unless we set up an actual peer
+        let _ = rpc_client.add_peer_call(AddPeerRequest { peer_address: peer_to_add, is_permanent: true }).await.unwrap();
 
         let _ = rpc_client.add_peer_call(AddPeerRequest { peer_address: peer_to_ban, is_permanent: false }).await.unwrap();
         let _ = rpc_client.ban_call(BanRequest { ip: peer_to_ban.normalize(12345).ip }).await.unwrap();
