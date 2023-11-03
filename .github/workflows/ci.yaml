@@ -112,7 +112,7 @@ jobs:
         run: cargo test --workspace
       
       - name: Run RPC tests
-        run: cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test
+        run: cargo test --package kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test
 
       - name: Run cargo test on kaspa-hashes without asm
         run: cargo test -p kaspa-hashes --features=no-asm --benches
