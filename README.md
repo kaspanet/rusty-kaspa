@@ -86,7 +86,7 @@ It will produce `{bin-name}-heap.json` file in the root of the workdir, that can
 
 ## Tests & Benchmarks
 
-- To run basic unit tests use:
+- To run unit and most integration tests use:
 
 ```bash
 $ cd rusty-kaspa
@@ -117,10 +117,10 @@ This will produce a wasm library in `/web-root` directory
 Install [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe)
 
 Once LLVM is installed:
--  Add the `bin` directory of the LLVM installation (`C:\Program Files\LLVM\bin`) to PATH
+- Add the `bin` directory of the LLVM installation (`C:\Program Files\LLVM\bin`) to PATH
 - set `LIBCLANG_PATH` environment variable to point to the `bin` directory as well
 
-IMPORTANT: Due to C++ dependency configuration issues, LLVM `AR` installation on Windows may not function correctly when switching between WASM and native C++ code compilation (native `RocksDB+secp256k1` vs WASM32 builds of `secp256k1`). Unfortunately, manually setting `AR` environment variable also confuses C++ build toolchain (it should not be set for native but should be set for WASM32 targets). Currently, the best way to address this, is as follows: after installing LLVM on Windows, go to the target `bin` installation directory and copy or rename `LLVM_AR.exe` to `AR.exe`.
+**IMPORTANT:** Due to C++ dependency configuration issues, LLVM `AR` installation on Windows may not function correctly when switching between WASM and native C++ code compilation (native `RocksDB+secp256k1` vs WASM32 builds of `secp256k1`). Unfortunately, manually setting `AR` environment variable also confuses C++ build toolchain (it should not be set for native but should be set for WASM32 targets). Currently, the best way to address this, is as follows: after installing LLVM on Windows, go to the target `bin` installation directory and copy or rename `LLVM_AR.exe` to `AR.exe`.
 
 
 ## Installing clang toolchain on MacOS
@@ -182,7 +182,8 @@ wRPC to gRPC Proxy is deprecated and no longer supported.
 
 Integration in a Browser and Node.js environments is possible using WASM.
 The JavaScript code is agnostic to which environment it runs in.
-NOTE: to run in Node.js environment, you must instantiate a W3C WebSocket
+
+**NOTE:** to run in Node.js environment, you must instantiate a W3C WebSocket
 shim using a `WebSocket` crate before initializing Kaspa environment:
 `globalThis.WebSocket = require('websocket').w3cwebsocket;`
 
@@ -204,7 +205,7 @@ node index
 
 You can take a look at `rpc/wrpc/wasm/nodejs/index.js` to see the use of the native JavaScript & TypeScript APIs.
 
-NOTE: `npm install` is needed to install [WebSocket](https://github.com/theturtle32/WebSocket-Node) module.
+**NOTE:** `npm install` is needed to install [WebSocket](https://github.com/theturtle32/WebSocket-Node) module.
 When running in the Browser environment, no additional dependencies are necessary because
 the browser provides the W3C WebSocket class natively.
 
