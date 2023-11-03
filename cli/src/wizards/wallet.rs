@@ -2,7 +2,7 @@ use crate::cli::KaspaCli;
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_wallet_core::runtime::{PrvKeyDataCreateArgs, WalletCreateArgs};
-use kaspa_wallet_core::storage::{AccessContextT, AccountKind, Hint};
+use kaspa_wallet_core::storage::{make_filename, AccessContextT, AccountKind, Hint};
 
 pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_mnemonic: bool) -> Result<()> {
     let term = ctx.term();
@@ -16,8 +16,8 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
         tprintln!(ctx);
         return Err(err.into());
     }
-
-    if wallet.exists(name).await? {
+    let filename = make_filename(&name.map(String::from), &None);
+    if wallet.exists(Some(&filename)).await? {
         tprintln!(ctx, "{}", style("WARNING - A previously created wallet already exists!").red().to_string());
         tprintln!(ctx, "NOTE: You can create a differently named wallet by using 'wallet create <name>'");
         tprintln!(ctx);

@@ -6,7 +6,9 @@ use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
-use crate::storage::{self, AccessContextT, AccountData, AccountKind, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
+use crate::storage::{
+    self, make_filename, AccessContextT, AccountData, AccountKind, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo,
+};
 use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
 use crate::{derivation::gen0, derivation::gen0::import::*, derivation::gen1, derivation::gen1::import::*};
@@ -275,8 +277,9 @@ impl Wallet {
     /// Loads a wallet from storage. Accounts are not activated by this call.
     async fn load_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
+        let name = Some(make_filename(&name, &None));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
-        self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
+        self.store().open(&ctx, OpenArgs::new(name)).await?;
 
         // reset current state only after we have successfully opened another wallet
         self.reset(true).await?;
@@ -302,8 +305,9 @@ impl Wallet {
     /// Loads a wallet from storage. Accounts are activated by this call.
     pub async fn load_and_activate(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
+        let name = Some(make_filename(&name, &None));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret.clone()));
-        self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
+        self.store().open(&ctx, OpenArgs::new(name)).await?;
 
         // reset current state only after we have successfully opened another wallet
         self.reset(true).await?;

@@ -18,7 +18,7 @@ use std::sync::atomic::Ordering;
 use workflow_core::runtime::is_web;
 use workflow_store::fs;
 
-fn make_filename(title: &Option<String>, filename: &Option<String>) -> String {
+pub fn make_filename(title: &Option<String>, filename: &Option<String>) -> String {
     if let Some(filename) = filename {
         filename.to_string()
     } else if let Some(title) = title {
