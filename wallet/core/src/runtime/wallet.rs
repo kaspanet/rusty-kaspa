@@ -754,17 +754,10 @@ impl Wallet {
     }
 
     pub async fn find_accounts_by_name_or_id(&self, pat: &str) -> Result<Vec<Arc<dyn Account>>> {
-        let mut accounts = self.active_accounts().inner().values().cloned().collect::<Vec<_>>();
-        let legacy_accounts = self.legacy_accounts().inner().values().cloned().collect::<Vec<_>>();
-        accounts.extend(legacy_accounts);
-        let mut tested = vec![];
-        let matches = accounts
+        let active_accounts = self.active_accounts().inner().values().cloned().collect::<Vec<_>>();
+        let matches = active_accounts
             .into_iter()
             .filter(|account| {
-                if tested.contains(account.id()) {
-                    return false;
-                }
-                tested.push(*account.id());
                 account.name().map(|name| name.starts_with(pat)).unwrap_or(false) || account.id().to_hex().starts_with(pat)
             })
             .collect::<Vec<_>>();
