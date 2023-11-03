@@ -107,7 +107,34 @@ impl Account {
                             );
                             let wallet_secret =
                                 Secret::new(ctx.term().ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
-                            wallet.import_gen0_keydata(import_secret, wallet_secret, None).await?;
+                            let ctx_ = ctx.clone();
+                            wallet
+                                .import_gen0_keydata(
+                                    import_secret,
+                                    wallet_secret,
+                                    None,
+                                    Some(Arc::new(move |processed: usize, balance, txid| {
+                                        if let Some(txid) = txid {
+                                            tprintln!(
+                                                ctx_,
+                                                "Scan detected {} KAS at index {}; transfer txid: {}",
+                                                sompi_to_kaspa_string(balance),
+                                                processed,
+                                                txid
+                                            );
+                                        } else if processed > 0 {
+                                            tprintln!(
+                                                ctx_,
+                                                "Scanned {} derivations, found {} KAS",
+                                                processed,
+                                                sompi_to_kaspa_string(balance)
+                                            );
+                                        } else {
+                                            tprintln!(ctx_, "Please wait... scanning for account UTXOs...");
+                                        }
+                                    })),
+                                )
+                                .await?;
                         } else if application_runtime::is_web() {
                             return Err("'kaspanet' web wallet storage not found at this domain name".into());
                         } else {
