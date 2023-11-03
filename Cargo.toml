@@ -57,6 +57,7 @@ members = [
 version = "0.1.7"
 authors = ["Kaspa developers"]
 license = "MIT/Apache-2.0"
+repository = "https://github.com/kaspanet/rusty-kaspa"
 edition = "2021"
 include = [
     "src/**/*.rs",
