@@ -13,7 +13,8 @@ impl Wallet {
             return self.display_help(ctx, argv).await;
         }
 
-        match argv.remove(0).as_str() {
+        let op = argv.remove(0);
+        match op.as_str() {
             "list" => {
                 let wallets = ctx.store().wallet_list().await?;
                 if wallets.is_empty() {
@@ -32,7 +33,7 @@ impl Wallet {
                     tprintln!(ctx, "");
                 }
             }
-            "create" => {
+            "create" | "import" => {
                 let wallet_name = if argv.is_empty() {
                     None
                 } else {
@@ -46,7 +47,8 @@ impl Wallet {
                 };
 
                 let wallet_name = wallet_name.as_deref();
-                wizards::wallet::create(&ctx, wallet_name).await?;
+                let import_with_mnemonic = op.as_str() == "import";
+                wizards::wallet::create(&ctx, wallet_name, import_with_mnemonic).await?;
             }
             "open" => {
                 let name = if let Some(name) = argv.first().cloned() {
@@ -98,7 +100,15 @@ impl Wallet {
         ctx.term().help(
             &[
                 ("list", "List available local wallet files"),
-                ("create [<name>]", "Create a new wallet"),
+                ("create [<name>]", "Create a new bip32 wallet"),
+                (
+                    "import [<name>]",
+                    "Create a wallet from an existing mnemonic (bip32 only). \r\n\r\n\
+                To import legacy wallets (KDX or kaspanet) please create \
+                a new bip32 wallet and use the 'account import' command. \
+                Legacy wallets can only be imported as accounts. \
+                \r\n",
+                ),
                 ("open [<name>]", "Open an existing wallet (shorthand: 'open [<name>]')"),
                 ("close", "Close an opened wallet (shorthand: 'close')"),
                 ("hint", "Change the wallet phishing hint"),

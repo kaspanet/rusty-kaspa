@@ -66,13 +66,8 @@ impl PrvKeyDataCreateArgs {
         Self { name, wallet_secret, payment_secret, mnemonic: None }
     }
 
-    pub fn new_with_mnemonic(
-        name: Option<String>,
-        wallet_secret: Secret,
-        payment_secret: Option<Secret>,
-        mnemonic: Option<String>,
-    ) -> Self {
-        Self { name, wallet_secret, payment_secret, mnemonic }
+    pub fn new_with_mnemonic(name: Option<String>, wallet_secret: Secret, payment_secret: Option<Secret>, mnemonic: String) -> Self {
+        Self { name, wallet_secret, payment_secret, mnemonic: Some(mnemonic) }
     }
 }
 
