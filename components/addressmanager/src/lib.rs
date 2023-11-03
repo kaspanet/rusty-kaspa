@@ -1,23 +1,55 @@
+mod port_mapping_extender;
 mod stores;
-
 extern crate self as address_manager;
 
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, iter, net::SocketAddr, sync::Arc, time::Duration};
 
-use itertools::Itertools;
+use address_manager::port_mapping_extender::Extender;
+use igd_next::{
+    self as igd, aio::tokio::Tokio, AddAnyPortError, AddPortError, Gateway, GetExternalIpError, GetGenericPortMappingEntryError,
+    SearchError,
+};
+use itertools::{
+    Either::{Left, Right},
+    Itertools,
+};
 use kaspa_consensus_core::config::Config;
-use kaspa_core::{debug, info, time::unix_now, warn};
+use kaspa_core::{debug, info, task::tick::TickService, time::unix_now, warn};
 use kaspa_database::prelude::{StoreResultExtensions, DB};
 use kaspa_utils::networking::IpAddress;
 use local_ip_address::list_afinet_netifas;
 use parking_lot::Mutex;
-
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
+use thiserror::Error;
 
 pub use stores::NetAddress;
 
 const MAX_ADDRESSES: usize = 4096;
 const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
+
+const UPNP_DEADLINE_SEC: u64 = 2 * 60;
+const UPNP_EXTEND_PERIOD: u64 = UPNP_DEADLINE_SEC / 2;
+
+/// The name used as description when registering the UPnP service
+pub(crate) const UPNP_REGISTRATION_NAME: &str = "rusty-kaspa";
+
+struct ExtendHelper {
+    gateway: Gateway,
+    local_addr: SocketAddr,
+    external_port: u16,
+}
+
+#[derive(Error, Debug)]
+pub enum UpnpError {
+    #[error(transparent)]
+    AddPortError(#[from] AddPortError),
+    #[error(transparent)]
+    AddAnyPortError(#[from] AddAnyPortError),
+    #[error(transparent)]
+    SearchError(#[from] SearchError),
+    #[error(transparent)]
+    GetExternalIpError(#[from] GetExternalIpError),
+}
 
 pub struct AddressManager {
     banned_address_store: DbBannedAddressesStore,
@@ -27,7 +59,7 @@ pub struct AddressManager {
 }
 
 impl AddressManager {
-    pub fn new(config: Arc<Config>, db: Arc<DB>) -> Arc<Mutex<Self>> {
+    pub fn new(config: Arc<Config>, db: Arc<DB>, tick_service: Arc<TickService>) -> (Arc<Mutex<Self>>, Option<Extender>) {
         let mut instance = Self {
             banned_address_store: DbBannedAddressesStore::new(db.clone(), MAX_ADDRESSES as u64),
             address_store: address_store_with_cache::new(db),
@@ -35,52 +67,174 @@ impl AddressManager {
             config,
         };
 
-        instance.init_local_addresses();
+        let extender = instance.init_local_addresses(tick_service);
 
-        Arc::new(Mutex::new(instance))
+        (Arc::new(Mutex::new(instance)), extender)
     }
 
-    fn init_local_addresses(&mut self) {
+    fn init_local_addresses(&mut self, tick_service: Arc<TickService>) -> Option<Extender> {
+        self.local_net_addresses = self.local_addresses().collect();
+
+        let extender = if self.local_net_addresses.is_empty() && !self.config.disable_upnp {
+            let (net_address, ExtendHelper { gateway, local_addr, external_port }) = match self.upnp() {
+                Err(err) => {
+                    warn!("[UPnP] Error adding port mapping: {err}");
+                    return None;
+                }
+                Ok(None) => return None,
+                Ok(Some((net_address, extend_helper))) => (net_address, extend_helper),
+            };
+            self.local_net_addresses.push(net_address);
+
+            let gateway: igd_next::aio::Gateway<Tokio> = igd_next::aio::Gateway {
+                addr: gateway.addr,
+                root_url: gateway.root_url,
+                control_url: gateway.control_url,
+                control_schema_url: gateway.control_schema_url,
+                control_schema: gateway.control_schema,
+                provider: Tokio,
+            };
+            Some(Extender::new(
+                tick_service,
+                Duration::from_secs(UPNP_EXTEND_PERIOD),
+                UPNP_DEADLINE_SEC,
+                gateway,
+                external_port,
+                local_addr,
+            ))
+        } else {
+            None
+        };
+
+        self.local_net_addresses.iter().for_each(|net_addr| {
+            info!("Publicly routable local address {} added to store", net_addr);
+        });
+        extender
+    }
+
+    fn local_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
         match self.config.externalip {
+            // An external IP was passed, we will try to bind that if it's valid
+            Some(local_net_address) if local_net_address.ip.is_publicly_routable() => {
+                info!("External address is publicly routable {}", local_net_address);
+                return Left(iter::once(local_net_address));
+            }
             Some(local_net_address) => {
-                // An external IP was passed, we will try to bind that if it's valid
-                if local_net_address.is_publicly_routable() {
-                    info!("External ip {} added to store", local_net_address);
-                    self.local_net_addresses.push(NetAddress { ip: local_net_address, port: self.config.default_p2p_port() });
-                } else {
-                    debug!("Non-publicly routable external ip {} not added to store", local_net_address);
-                }
+                info!("External address is not publicly routable {}", local_net_address);
             }
-            None => {
-                // If listen_address === 0.0.0.0, bind all interfaces
-                // else, bind whatever was passed as listen address (if routable)
-                let listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
+            None => {}
+        };
 
-                if listen_address.ip.is_unspecified() {
-                    let network_interfaces = list_afinet_netifas();
+        Right(self.routable_addresses_from_net_interfaces())
+    }
 
-                    if let Ok(network_interfaces) = network_interfaces {
-                        for (_, ip) in network_interfaces.iter() {
-                            let curr_ip = IpAddress::new(*ip);
+    fn routable_addresses_from_net_interfaces(&self) -> impl Iterator<Item = NetAddress> + '_ {
+        // check whatever was passed as listen address (if routable)
+        // otherwise(listen_address === 0.0.0.0) check all interfaces
+        let listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
+        if listen_address.ip.is_publicly_routable() {
+            info!("Publicly routable local address found: {}", listen_address.ip);
+            Left(Left(iter::once(listen_address)))
+        } else if listen_address.ip.is_unspecified() {
+            let network_interfaces = list_afinet_netifas();
+            let Ok(network_interfaces) = network_interfaces else {
+                warn!("Error getting network interfaces: {:?}", network_interfaces);
+                return Left(Right(iter::empty()));
+            };
+            // TODO: Add Check IPv4 or IPv6 match from Go code
+            Right(network_interfaces.into_iter().map(|(_, ip)| IpAddress::from(ip)).filter(|&ip| ip.is_publicly_routable()).map(
+                |ip| {
+                    info!("Publicly routable local address found: {}", ip);
+                    NetAddress::new(ip, self.config.default_p2p_port())
+                },
+            ))
+        } else {
+            Left(Right(iter::empty()))
+        }
+    }
 
-                            // TODO: Add Check IPv4 or IPv6 match from Go code
-                            if curr_ip.is_publicly_routable() {
-                                info!("Publicly routable local address {} added to store", curr_ip);
-                                self.local_net_addresses.push(NetAddress { ip: curr_ip, port: self.config.default_p2p_port() });
-                            } else {
-                                debug!("Non-publicly routable interface address {} not added to store", curr_ip);
-                            }
-                        }
-                    } else {
-                        warn!("Error getting network interfaces: {:?}", network_interfaces);
+    fn upnp(&self) -> Result<Option<(NetAddress, ExtendHelper)>, UpnpError> {
+        info!("[UPnP] Attempting to register upnp... (to disable run the node with --disable-upnp)");
+        let gateway = igd::search_gateway(Default::default())?;
+        let ip = IpAddress::new(gateway.get_external_ip()?);
+        if !ip.is_publicly_routable() {
+            info!("[UPnP] Non-publicly routable external ip from gateway using upnp {} not added to store", ip);
+            return Ok(None);
+        }
+        info!("[UPnP] Got external ip from gateway using upnp: {ip}");
+
+        let default_port = self.config.default_p2p_port();
+
+        let normalized_p2p_listen_address = self.config.p2p_listen_address.normalize(default_port);
+        let local_addr = if normalized_p2p_listen_address.ip.is_unspecified() {
+            SocketAddr::new(local_ip_address::local_ip().unwrap(), normalized_p2p_listen_address.port)
+        } else {
+            normalized_p2p_listen_address.into()
+        };
+
+        // This loop checks for existing port mappings in the UPnP-enabled gateway.
+        //
+        // The goal of this loop is to identify if the desired external port (`default_port`) is
+        // already mapped to any device inside the local network. This is crucial because, in
+        // certain scenarios, gateways might not throw the `PortInUse` error but rather might
+        // silently remap the external port when there's a conflict. By iterating through the
+        // current mappings, we can make an informed decision about whether to attempt using
+        // the default port or request a new random one.
+        //
+        // The loop goes through all existing port mappings one-by-one:
+        // - If a mapping is found that uses the desired external port, the loop breaks with `already_in_use` set to true.
+        // - If the index is not valid (i.e., we've iterated through all the mappings), the loop breaks with `already_in_use` set to false.
+        // - Any other errors during fetching of port mappings are handled accordingly, but the end result is to exit the loop with the `already_in_use` flag set appropriately.
+        let mut index = 0;
+        let already_in_use = loop {
+            match gateway.get_generic_port_mapping_entry(index) {
+                Ok(entry) => {
+                    if entry.enabled && entry.external_port == default_port {
+                        info!("[UPnP] Found existing mapping that uses the same external port. Description: {}, external port: {}, internal port: {}, client: {}, lease duration: {}", entry.port_mapping_description, entry.external_port, entry.internal_port, entry.internal_client, entry.lease_duration);
+                        break true;
                     }
-                } else if listen_address.ip.is_publicly_routable() {
-                    info!("Publicly routable P2P listen address {} added to store", listen_address.ip);
-                    self.local_net_addresses.push(listen_address);
-                } else {
-                    debug!("Non-publicly routable listen address {} not added to store.", listen_address.ip);
+                    index += 1;
                 }
+                Err(GetGenericPortMappingEntryError::ActionNotAuthorized) => {
+                    index += 1;
+                    continue;
+                }
+                Err(GetGenericPortMappingEntryError::RequestError(err)) => {
+                    warn!("[UPnP] request existing port mapping err: {:?}", err);
+                    break false;
+                }
+                Err(GetGenericPortMappingEntryError::SpecifiedArrayIndexInvalid) => break false,
             }
+        };
+        if already_in_use {
+            let port =
+                gateway.add_any_port(igd::PortMappingProtocol::TCP, local_addr, UPNP_DEADLINE_SEC as u32, UPNP_REGISTRATION_NAME)?;
+            info!("[UPnP] Added port mapping to random external port: {ip}:{port}");
+            return Ok(Some((NetAddress { ip, port }, ExtendHelper { gateway, local_addr, external_port: port })));
+        }
+
+        match gateway.add_port(
+            igd::PortMappingProtocol::TCP,
+            default_port,
+            local_addr,
+            UPNP_DEADLINE_SEC as u32,
+            UPNP_REGISTRATION_NAME,
+        ) {
+            Ok(_) => {
+                info!("[UPnP] Added port mapping to default external port: {ip}:{default_port}");
+                Ok(Some((NetAddress { ip, port: default_port }, ExtendHelper { gateway, local_addr, external_port: default_port })))
+            }
+            Err(AddPortError::PortInUse {}) => {
+                let port = gateway.add_any_port(
+                    igd::PortMappingProtocol::TCP,
+                    local_addr,
+                    UPNP_DEADLINE_SEC as u32,
+                    UPNP_REGISTRATION_NAME,
+                )?;
+                info!("[UPnP] Added port mapping to random external port: {ip}:{port}");
+                Ok(Some((NetAddress { ip, port }, ExtendHelper { gateway, local_addr, external_port: port })))
+            }
+            Err(err) => Err(err.into()),
         }
     }
 
@@ -358,6 +512,7 @@ mod address_store_with_cache {
         use super::*;
         use address_manager::AddressManager;
         use kaspa_consensus_core::config::{params::SIMNET_PARAMS, Config};
+        use kaspa_core::task::tick::TickService;
         use kaspa_database::create_temp_db;
         use kaspa_database::prelude::ConnBuilder;
         use kaspa_utils::networking::IpAddress;
@@ -388,9 +543,9 @@ mod address_store_with_cache {
             // Assert that initial distribution is skewed, and hence not uniform from the outset.
             assert!(bucket_reduction_ratio >= 1.25);
 
-            let db = create_temp_db!(ConnBuilder::default());
+            let db = create_temp_db!(ConnBuilder::default().with_files_limit(10));
             let config = Config::new(SIMNET_PARAMS);
-            let am = AddressManager::new(Arc::new(config), db.1);
+            let (am, _) = AddressManager::new(Arc::new(config), db.1, Arc::new(TickService::default()));
 
             let mut am_guard = am.lock();
 

@@ -14,13 +14,32 @@ impl Wallet {
         }
 
         match argv.remove(0).as_str() {
+            "list" => {
+                let wallets = ctx.store().wallet_list().await?;
+                if wallets.is_empty() {
+                    tprintln!(ctx, "No wallets found");
+                } else {
+                    tprintln!(ctx, "");
+                    tprintln!(ctx, "Wallets:");
+                    tprintln!(ctx, "");
+                    for wallet in wallets {
+                        if let Some(title) = wallet.title {
+                            tprintln!(ctx, "  {}: {}", wallet.filename, title);
+                        } else {
+                            tprintln!(ctx, "  {}", wallet.filename);
+                        }
+                    }
+                    tprintln!(ctx, "");
+                }
+            }
             "create" => {
                 let wallet_name = if argv.is_empty() {
                     None
                 } else {
                     let name = argv.remove(0);
                     let name = name.trim().to_string();
-                    if name.as_str() == "wallet" {
+                    let name_check = name.to_lowercase();
+                    if name_check.as_str() == "wallet" {
                         return Err(Error::custom("Wallet name cannot be 'wallet'"));
                     }
                     Some(name)
@@ -31,7 +50,9 @@ impl Wallet {
             }
             "open" => {
                 let name = if let Some(name) = argv.first().cloned() {
-                    if name.as_str() == "wallet" {
+                    let name_check = name.to_lowercase();
+
+                    if name_check.as_str() == "wallet" {
                         tprintln!(ctx, "you can not have a wallet named 'wallet'...");
                         tprintln!(ctx, "perhaps you are looking to use 'open <name>'");
                         return Ok(());
@@ -65,7 +86,7 @@ impl Wallet {
                 }
             }
             v => {
-                tprintln!(ctx, "unknown command: '{v}'\r\n");
+                tprintln!(ctx, "unknown command: '{v}'");
                 return self.display_help(ctx, argv).await;
             }
         }
@@ -76,6 +97,7 @@ impl Wallet {
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
         ctx.term().help(
             &[
+                ("list", "List available local wallet files"),
                 ("create [<name>]", "Create a new wallet"),
                 ("open [<name>]", "Open an existing wallet (shorthand: 'open [<name>]')"),
                 ("close", "Close an opened wallet (shorthand: 'close')"),

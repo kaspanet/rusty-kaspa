@@ -64,7 +64,7 @@ fn deserialize_i64(v: &[u8]) -> Result<i64, TxScriptError> {
         l if l > size_of::<i64>() => {
             Err(TxScriptError::NotMinimalData(format!("numeric value encoded as {v:x?} is longer than 8 bytes")))
         }
-        l if l == 0 => Ok(0),
+        0 => Ok(0),
         _ => {
             check_minimal_data_encoding(v)?;
             let msb = v[v.len() - 1];
@@ -181,7 +181,7 @@ impl DataStack for Stack {
         Vec<u8>: OpcodeData<T>,
     {
         if self.len() < SIZE {
-            return Err(TxScriptError::EmptyStack);
+            return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
         Ok(<[T; SIZE]>::try_from(self.split_off(self.len() - SIZE).iter().map(|v| v.deserialize()).collect::<Result<Vec<T>, _>>()?)
             .expect("Already exact item"))
@@ -193,7 +193,7 @@ impl DataStack for Stack {
         Vec<u8>: OpcodeData<T>,
     {
         if self.len() < SIZE {
-            return Err(TxScriptError::EmptyStack);
+            return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
         Ok(<[T; SIZE]>::try_from(self[self.len() - SIZE..].iter().map(|v| v.deserialize()).collect::<Result<Vec<T>, _>>()?)
             .expect("Already exact item"))
@@ -202,7 +202,7 @@ impl DataStack for Stack {
     #[inline]
     fn pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
         if self.len() < SIZE {
-            return Err(TxScriptError::EmptyStack);
+            return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
         Ok(<[Vec<u8>; SIZE]>::try_from(self.split_off(self.len() - SIZE)).expect("Already exact item"))
     }
@@ -210,7 +210,7 @@ impl DataStack for Stack {
     #[inline]
     fn peek_raw<const SIZE: usize>(&self) -> Result<[Vec<u8>; SIZE], TxScriptError> {
         if self.len() < SIZE {
-            return Err(TxScriptError::EmptyStack);
+            return Err(TxScriptError::InvalidStackOperation(SIZE, self.len()));
         }
         Ok(<[Vec<u8>; SIZE]>::try_from(self[self.len() - SIZE..].to_vec()).expect("Already exact item"))
     }
@@ -230,7 +230,7 @@ impl DataStack for Stack {
                 self.truncate(self.len() - SIZE);
                 Ok(())
             }
-            false => Err(TxScriptError::EmptyStack),
+            false => Err(TxScriptError::InvalidStackOperation(SIZE, self.len())),
         }
     }
 
@@ -241,7 +241,7 @@ impl DataStack for Stack {
                 self.extend_from_within(self.len() - SIZE..);
                 Ok(())
             }
-            false => Err(TxScriptError::EmptyStack),
+            false => Err(TxScriptError::InvalidStackOperation(SIZE, self.len())),
         }
     }
 
@@ -252,7 +252,7 @@ impl DataStack for Stack {
                 self.extend_from_within(self.len() - 2 * SIZE..self.len() - SIZE);
                 Ok(())
             }
-            false => Err(TxScriptError::EmptyStack),
+            false => Err(TxScriptError::InvalidStackOperation(2 * SIZE, self.len())),
         }
     }
 
@@ -264,7 +264,7 @@ impl DataStack for Stack {
                 self.extend(drained);
                 Ok(())
             }
-            false => Err(TxScriptError::EmptyStack),
+            false => Err(TxScriptError::InvalidStackOperation(3 * SIZE, self.len())),
         }
     }
 
@@ -276,7 +276,7 @@ impl DataStack for Stack {
                 self.extend(drained);
                 Ok(())
             }
-            false => Err(TxScriptError::EmptyStack),
+            false => Err(TxScriptError::InvalidStackOperation(2 * SIZE, self.len())),
         }
     }
 }

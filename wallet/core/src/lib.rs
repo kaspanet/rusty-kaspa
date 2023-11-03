@@ -8,6 +8,7 @@ pub mod events;
 mod imports;
 pub mod message;
 pub mod result;
+pub mod rpc;
 pub mod runtime;
 pub mod secret;
 pub mod settings;
@@ -24,5 +25,7 @@ pub use kaspa_wrpc_client::client::{ConnectOptions, ConnectStrategy};
 pub use result::Result;
 pub use settings::{DefaultSettings, SettingsStore, SettingsStoreT, WalletSettings};
 
-pub type DynRpcApi = dyn kaspa_rpc_core::api::rpc::RpcApi;
-pub type NotificationChannel = kaspa_utils::channel::Channel<kaspa_rpc_core::Notification>;
+/// Returns the version of the Wallet framework.
+pub fn version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}

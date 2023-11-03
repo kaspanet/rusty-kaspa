@@ -47,7 +47,7 @@ where
     K: DefaultSettings + Clone + Serialize + DeserializeOwned + Send + Sync + 'static,
 {
     pub fn try_new(filename: &str) -> Result<Self> {
-        Ok(Self { map: DashMap::default(), storage: Storage::new(&format!("{filename}.settings"))?, phantom: PhantomData })
+        Ok(Self { map: DashMap::default(), storage: Storage::try_new(&format!("{filename}.settings"))?, phantom: PhantomData })
     }
 
     pub fn new_with_storage(storage: Storage) -> Self {
@@ -101,15 +101,15 @@ where
             None
         };
 
-        let list = if list.is_none() {
+        let list = if let Some(value) = list {
+            value
+        } else {
             Value::Object(Map::from_iter(<K as DefaultSettings>::defaults().await.into_iter().map(|(k, v)| {
                 let ks = to_value(k).unwrap();
                 let ks = ks.as_str().expect("Unable to convert key to string");
 
                 (ks.to_string(), v)
             })))
-        } else {
-            list.unwrap()
         };
 
         self.map.clear();

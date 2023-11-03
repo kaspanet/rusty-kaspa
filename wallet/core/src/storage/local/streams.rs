@@ -72,10 +72,19 @@ impl Stream for AccountStream {
             while self.inner.cursor < accounts.len() {
                 let account = accounts[self.inner.cursor].clone();
                 self.inner.cursor += 1;
-                if account.prv_key_data_id == Some(filter) {
-                    let meta = metadata.get(&account.id).cloned();
 
-                    return Poll::Ready(Some(Ok((account, meta))));
+                match &account.data {
+                    AccountData::MultiSig(MultiSig { prv_key_data_ids: Some(prv_key_data_ids), .. })
+                        if prv_key_data_ids.binary_search(&filter).is_ok() =>
+                    {
+                        let meta = metadata.get(&account.id).cloned();
+                        return Poll::Ready(Some(Ok((account, meta))));
+                    }
+                    _ if account.prv_key_data_id == Some(filter) => {
+                        let meta = metadata.get(&account.id).cloned();
+                        return Poll::Ready(Some(Ok((account, meta))));
+                    }
+                    _ => continue,
                 }
             }
             Poll::Ready(None)

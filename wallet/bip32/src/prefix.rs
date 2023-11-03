@@ -98,7 +98,7 @@ impl Prefix {
         bytes[..4].copy_from_slice(&version.to_be_bytes());
 
         let mut buffer = [0u8; ExtendedKey::MAX_BASE58_SIZE];
-        bs58::encode(&bytes).with_check().into(buffer.as_mut())?;
+        bs58::encode(&bytes).with_check().onto(buffer.as_mut())?;
 
         let s = str::from_utf8(&buffer[..4]).map_err(Error::Utf8Error)?;
         Self::validate_str(s)?;
@@ -112,12 +112,12 @@ impl Prefix {
 
     /// Is this a public key?
     pub fn is_public(self) -> bool {
-        &self.chars[1..] == b"pub"
+        &self.chars[1..] == b"pub" || &self.chars[1..] == b"tub"
     }
 
     /// Is this a private key?
     pub fn is_private(self) -> bool {
-        &self.chars[1..] == b"prv"
+        &self.chars[1..] == b"prv" || &self.chars[1..] == b"trv"
     }
 
     /// Get the [`Version`] number.

@@ -9,6 +9,8 @@ pub mod networking;
 pub mod option;
 pub mod refs;
 
+pub mod as_slice;
+
 /// # Examples
 /// ## Implement serde::Serialize/serde::Deserialize for the Vec field of the struct
 /// ```
@@ -186,3 +188,5 @@ pub mod sim;
 pub mod sync;
 pub mod triggers;
 pub mod vec;
+
+pub mod fd_budget;

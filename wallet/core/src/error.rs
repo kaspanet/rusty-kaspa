@@ -124,7 +124,7 @@ pub enum Error {
     #[error(transparent)]
     ParseFloatError(#[from] std::num::ParseFloatError),
 
-    #[error("data decryption error (chacha20poly1305 -> {0})")]
+    #[error("Unable to decrypt this wallet")]
     Chacha20poly1305(chacha20poly1305::Error),
 
     #[error(transparent)]
@@ -216,6 +216,12 @@ pub enum Error {
 
     #[error("Requested transaction is too heavy")]
     GeneratorTransactionIsTooHeavy,
+
+    #[error(transparent)]
+    MultisigCreateError(#[from] kaspa_txscript::MultisigCreateError),
+
+    #[error(transparent)]
+    TxScriptError(#[from] kaspa_txscript_errors::TxScriptError),
 }
 
 impl From<Aborted> for Error {
@@ -293,11 +299,11 @@ impl From<argon2::password_hash::Error> for Error {
     }
 }
 
-impl From<workflow_wasm::serde::Error> for Error {
-    fn from(err: workflow_wasm::serde::Error) -> Self {
-        Self::ToValue(err.to_string())
-    }
-}
+// impl From<workflow_wasm::serde::Error> for Error {
+//     fn from(err: workflow_wasm::serde::Error) -> Self {
+//         Self::ToValue(err.to_string())
+//     }
+// }
 
 impl<T> From<DowncastError<T>> for Error {
     fn from(e: DowncastError<T>) -> Self {

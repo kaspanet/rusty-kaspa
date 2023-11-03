@@ -18,6 +18,7 @@ use kaspa_consensus_notify::{
     {connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification},
 };
 use kaspa_consensusmanager::ConsensusManager;
+use kaspa_core::time::unix_now;
 use kaspa_core::{
     core::Core,
     debug,
@@ -59,7 +60,6 @@ use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use std::{
     iter::once,
     sync::{atomic::Ordering, Arc},
-    time::{SystemTime, UNIX_EPOCH},
     vec,
 };
 
@@ -216,7 +216,7 @@ impl RpcCoreService {
 #[async_trait]
 impl RpcApi for RpcCoreService {
     async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
-        let session = self.consensus_manager.consensus().session().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
 
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
         let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
@@ -275,7 +275,7 @@ impl RpcApi for RpcCoreService {
         let script_public_key = kaspa_txscript::pay_to_address_script(&request.pay_address);
         let extra_data = version().as_bytes().iter().chain(once(&(b'/'))).chain(&request.extra_data).cloned().collect::<Vec<_>>();
         let miner_data: MinerData = MinerData::new(script_public_key, extra_data);
-        let session = self.consensus_manager.consensus().session().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
         let block_template = self.mining_manager.clone().get_block_template(&session, miner_data).await?;
 
         // Check coinbase tx payload length
@@ -353,7 +353,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_info_call(&self, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
-        let is_nearly_synced = self.consensus_manager.consensus().session().await.async_is_nearly_synced().await;
+        let is_nearly_synced = self.consensus_manager.consensus().unguarded_session().async_is_nearly_synced().await;
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
             mempool_size: self.mining_manager.clone().transaction_count(true, false).await as u64,
@@ -374,12 +374,12 @@ impl RpcApi for RpcCoreService {
         else {
             return Err(RpcError::TransactionNotFound(request.transaction_id));
         };
-        let session = self.consensus_manager.consensus().session().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
         Ok(GetMempoolEntryResponse::new(self.consensus_converter.get_mempool_entry(&session, &transaction)))
     }
 
     async fn get_mempool_entries_call(&self, request: GetMempoolEntriesRequest) -> RpcResult<GetMempoolEntriesResponse> {
-        let session = self.consensus_manager.consensus().session().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
         let (transactions, orphans) =
             self.mining_manager.clone().get_all_transactions(!request.filter_transaction_pool, request.include_orphan_pool).await;
         let mempool_entries = transactions
@@ -394,7 +394,7 @@ impl RpcApi for RpcCoreService {
         &self,
         request: GetMempoolEntriesByAddressesRequest,
     ) -> RpcResult<GetMempoolEntriesByAddressesResponse> {
-        let session = self.consensus_manager.consensus().session().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
         let script_public_keys = request.addresses.iter().map(pay_to_address_script).collect();
         let grouped_txs = self
             .mining_manager
@@ -426,7 +426,7 @@ impl RpcApi for RpcCoreService {
 
         let transaction: Transaction = (&request.transaction).try_into()?;
         let transaction_id = transaction.id();
-        let session = self.consensus_manager.consensus().session().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
         let orphan = match request.allow_orphan {
             true => Orphan::Allowed,
             false => Orphan::Forbidden,
@@ -447,12 +447,12 @@ impl RpcApi for RpcCoreService {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_selected_tip_hash_call(&self, _: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse> {
-        Ok(GetSelectedTipHashResponse::new(self.consensus_manager.consensus().session().await.async_get_sink().await))
+    async fn get_sink_call(&self, _: GetSinkRequest) -> RpcResult<GetSinkResponse> {
+        Ok(GetSinkResponse::new(self.consensus_manager.consensus().unguarded_session().async_get_sink().await))
     }
 
     async fn get_sink_blue_score_call(&self, _: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse> {
-        let session = self.consensus_manager.consensus().session().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
         Ok(GetSinkBlueScoreResponse::new(session.async_get_ghostdag_data(session.async_get_sink().await).await?.blue_score))
     }
 
@@ -471,7 +471,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_block_count_call(&self, _: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {
-        Ok(self.consensus_manager.consensus().session().await.async_estimate_block_count().await)
+        Ok(self.consensus_manager.consensus().unguarded_session().async_estimate_block_count().await)
     }
 
     async fn get_utxos_by_addresses_call(&self, request: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
@@ -531,7 +531,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_block_dag_info_call(&self, _: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
-        let session = self.consensus_manager.consensus().session().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
         let block_count = session.async_estimate_block_count().await;
         Ok(GetBlockDagInfoResponse::new(
             self.config.net,
@@ -543,6 +543,7 @@ impl RpcApi for RpcCoreService {
             session.async_get_virtual_parents().await.iter().copied().collect::<Vec<_>>(),
             session.async_pruning_point().await,
             session.async_get_virtual_daa_score().await,
+            session.async_get_sink().await,
         ))
     }
 
@@ -556,12 +557,23 @@ impl RpcApi for RpcCoreService {
         if request.window_size as u64 > self.config.pruning_depth {
             return Err(RpcError::WindowSizeExceedingPruningDepth(request.window_size, self.config.pruning_depth));
         }
+
+        // In the previous golang implementation the convention for virtual was the following const.
+        // In the current implementation, consensus behaves the same when it gets a None instead.
+        const LEGACY_VIRTUAL: kaspa_hashes::Hash = kaspa_hashes::Hash::from_bytes([0xff; kaspa_hashes::HASH_SIZE]);
+        let mut start_hash = request.start_hash;
+        if let Some(start) = start_hash {
+            if start == LEGACY_VIRTUAL {
+                start_hash = None;
+            }
+        }
+
         Ok(EstimateNetworkHashesPerSecondResponse::new(
             self.consensus_manager
                 .consensus()
                 .session()
                 .await
-                .async_estimate_network_hashes_per_second(request.start_hash, request.window_size as usize)
+                .async_estimate_network_hashes_per_second(start_hash, request.window_size as usize)
                 .await?,
         ))
     }
@@ -650,9 +662,6 @@ impl RpcApi for RpcCoreService {
         Err(RpcError::NotImplemented)
     }
 
-    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    // UNIMPLEMENTED METHODS
-
     async fn get_metrics_call(&self, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
         let CountersSnapshot {
             resident_set_size,
@@ -694,9 +703,7 @@ impl RpcApi for RpcCoreService {
             mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
         });
 
-        let start = SystemTime::now();
-        let since_the_epoch = start.duration_since(UNIX_EPOCH).unwrap();
-        let server_time = since_the_epoch.as_millis();
+        let server_time = unix_now();
 
         let response = GetMetricsResponse { server_time, process_metrics, consensus_metrics };
 
@@ -704,7 +711,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_server_info_call(&self, _request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse> {
-        let session = self.consensus_manager.consensus().session().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
         let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
         let virtual_daa_score = session.async_get_virtual_daa_score().await;
 
@@ -719,7 +726,7 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_sync_status_call(&self, _request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse> {
-        let session = self.consensus_manager.consensus().session().await;
+        let session = self.consensus_manager.consensus().unguarded_session();
         let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
         Ok(GetSyncStatusResponse { is_synced })
     }

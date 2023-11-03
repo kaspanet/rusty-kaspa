@@ -19,6 +19,7 @@ use kaspa_notify::{
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
 use kaspa_rpc_core::notify::mode::NotificationMode;
+use kaspa_wallet_core::storage::MultiSig;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use std::sync::Arc;
 use workflow_core::task::spawn;
@@ -26,21 +27,28 @@ use workflow_log::log_error;
 use zeroize::Zeroize;
 
 pub struct WalletCreateArgs {
-    pub name: Option<String>,
+    pub title: Option<String>,
+    pub filename: Option<String>,
     pub user_hint: Option<Hint>,
     pub wallet_secret: Secret,
     pub overwrite_wallet_storage: bool,
 }
 
 impl WalletCreateArgs {
-    pub fn new(name: Option<String>, user_hint: Option<Hint>, secret: Secret, overwrite_wallet_storage: bool) -> Self {
-        Self { name, user_hint, wallet_secret: secret, overwrite_wallet_storage }
+    pub fn new(
+        title: Option<String>,
+        filename: Option<String>,
+        user_hint: Option<Hint>,
+        secret: Secret,
+        overwrite_wallet_storage: bool,
+    ) -> Self {
+        Self { title, filename, user_hint, wallet_secret: secret, overwrite_wallet_storage }
     }
 }
 
 impl From<WalletCreateArgs> for CreateArgs {
     fn from(args: WalletCreateArgs) -> Self {
-        CreateArgs::new(args.name, args.user_hint, args.overwrite_wallet_storage)
+        CreateArgs::new(args.title, args.filename, args.user_hint, args.overwrite_wallet_storage)
     }
 }
 
@@ -72,6 +80,16 @@ impl Zeroize for PrvKeyDataCreateArgs {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct MultisigCreateArgs {
+    pub prv_key_data_ids: Vec<PrvKeyDataId>,
+    pub name: Option<String>,
+    pub title: Option<String>,
+    pub wallet_secret: Secret,
+    pub additional_xpub_keys: Vec<String>,
+    pub minimum_signatures: u16,
+}
+
 #[derive(Clone)]
 pub struct AccountCreateArgs {
     pub name: Option<String>,
@@ -101,8 +119,7 @@ pub struct Inner {
     store: Arc<dyn Interface>,
     settings: SettingsStore<WalletSettings>,
     utxo_processor: Arc<UtxoProcessor>,
-    rpc: Arc<DynRpcApi>,
-    multiplexer: Multiplexer<Events>,
+    multiplexer: Multiplexer<Box<Events>>,
 }
 
 /// `Wallet` data structure
@@ -121,22 +138,24 @@ impl Wallet {
     }
 
     pub fn try_new(storage: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
-        Wallet::try_with_rpc(None, storage, network_id)
+        Wallet::try_with_wrpc(storage, network_id)
     }
 
-    pub fn try_with_rpc(rpc: Option<Arc<KaspaRpcClient>>, store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
-        let rpc: Arc<DynRpcApi> = if let Some(rpc) = rpc {
-            rpc
-        } else {
-            Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, NotificationMode::MultiListeners, "wrpc://127.0.0.1:17110")?)
-        };
+    pub fn try_with_wrpc(store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
+        let rpc_client =
+            Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, NotificationMode::MultiListeners, "wrpc://127.0.0.1:17110")?);
+        let rpc_ctl = rpc_client.ctl().clone();
+        let rpc_api: Arc<DynRpcApi> = rpc_client;
+        let rpc = Rpc::new(rpc_api, rpc_ctl);
+        Self::try_with_rpc(Some(rpc), store, network_id)
+    }
 
-        let multiplexer = Multiplexer::new();
-        let utxo_processor = Arc::new(UtxoProcessor::new(&rpc, network_id, Some(multiplexer.clone())));
+    pub fn try_with_rpc(rpc: Option<Rpc>, store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
+        let multiplexer = Multiplexer::<Box<Events>>::new();
+        let utxo_processor = Arc::new(UtxoProcessor::new(rpc.clone(), network_id, Some(multiplexer.clone())));
 
         let wallet = Wallet {
             inner: Arc::new(Inner {
-                rpc,
                 multiplexer,
                 store,
                 active_accounts: ActiveAccountMap::default(),
@@ -220,9 +239,8 @@ impl Wallet {
 
             /// For end-user wallets only - activates all accounts in the wallet
             /// storage.
-            pub async fn activate_all_stored_accounts(self: &Arc<Wallet>) -> Result<()> {
-                self.accounts(None).await?.try_collect::<Vec<_>>().await?;
-                Ok(())
+            pub async fn activate_all_stored_accounts(self: &Arc<Wallet>) -> Result<Vec<Arc<dyn Account>>> {
+                self.accounts(None).await?.try_collect::<Vec<_>>().await
             }
 
             /// Select an account as 'active'. Supply `None` to remove active selection.
@@ -231,6 +249,9 @@ impl Wallet {
                 if let Some(account) = account {
                     // log_info!("selecting account: {}", account.name_or_id());
                     account.clone().start().await?;
+                    self.notify(Events::AccountSelection{ id : Some(*account.id()) }).await?;
+                } else {
+                    self.notify(Events::AccountSelection{ id : None }).await?;
                 }
                 Ok(())
             }
@@ -246,7 +267,7 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+    async fn load_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
         self.reset().await?;
 
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
@@ -258,6 +279,16 @@ impl Wallet {
         self.notify(Events::WalletOpen).await?;
 
         Ok(())
+    }
+
+    /// Loads a wallet from storage. Accounts are not activated by this call.
+    pub async fn load(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+        if let Err(err) = self.load_impl(secret, name).await {
+            self.notify(Events::WalletError { message: err.to_string() }).await?;
+            Err(err)
+        } else {
+            Ok(())
+        }
     }
 
     pub async fn get_prv_key_data(&self, wallet_secret: Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
@@ -273,15 +304,28 @@ impl Wallet {
         Ok(self.get_prv_key_info(account).await?.map(|info| info.is_encrypted()))
     }
 
-    pub fn rpc_client(&self) -> Arc<KaspaRpcClient> {
-        self.rpc().clone().downcast_arc::<KaspaRpcClient>().expect("unable to downcast DynRpcApi to KaspaRpcClient")
+    pub fn wrpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
+        self.rpc_api().clone().downcast_arc::<KaspaRpcClient>().ok()
     }
 
-    pub fn rpc(&self) -> &Arc<DynRpcApi> {
-        &self.inner.rpc
+    pub fn rpc_api(&self) -> Arc<DynRpcApi> {
+        self.utxo_processor().rpc_api()
     }
 
-    pub fn multiplexer(&self) -> &Multiplexer<Events> {
+    pub fn rpc_ctl(&self) -> RpcCtl {
+        self.utxo_processor().rpc_ctl()
+    }
+
+    pub fn has_rpc(&self) -> bool {
+        self.utxo_processor().has_rpc()
+    }
+
+    pub async fn bind_rpc(self: &Arc<Self>, rpc: Option<Rpc>) -> Result<()> {
+        self.utxo_processor().bind_rpc(rpc).await?;
+        Ok(())
+    }
+
+    pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
         &self.inner.multiplexer
     }
 
@@ -303,7 +347,9 @@ impl Wallet {
         }
 
         if let Some(url) = settings.get::<String>(WalletSettings::Server) {
-            self.rpc_client().set_url(url.as_str()).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
+            if let Some(wrpc_client) = self.wrpc_client() {
+                wrpc_client.set_url(url.as_str()).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
+            }
         }
 
         Ok(())
@@ -311,12 +357,15 @@ impl Wallet {
 
     // intended for starting async management tasks
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        self.load_settings().await.unwrap_or_else(|_| log_error!("Unable to load settings, discarding..."));
+        // self.load_settings().await.unwrap_or_else(|_| log_error!("Unable to load settings, discarding..."));
+
         // internal event loop
         self.start_task().await?;
         self.utxo_processor().start().await?;
         // rpc services (notifier)
-        self.rpc_client().start().await?;
+        if let Some(rpc_client) = self.wrpc_client() {
+            rpc_client.start().await?;
+        }
 
         Ok(())
     }
@@ -325,8 +374,6 @@ impl Wallet {
     pub async fn stop(&self) -> Result<()> {
         self.utxo_processor().stop().await?;
         self.stop_task().await?;
-        self.rpc_client().stop().await?;
-        self.rpc_client().disconnect().await?;
         Ok(())
     }
 
@@ -335,22 +382,22 @@ impl Wallet {
     }
 
     pub async fn get_info(&self) -> Result<String> {
-        let v = self.rpc().get_info().await?;
+        let v = self.rpc_api().get_info().await?;
         Ok(format!("{v:#?}").replace('\n', "\r\n"))
     }
 
     pub async fn subscribe_daa_score(&self) -> Result<()> {
-        self.rpc().start_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        self.rpc_api().start_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
 
     pub async fn unsubscribe_daa_score(&self) -> Result<()> {
-        self.rpc().stop_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        self.rpc_api().stop_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
 
     pub async fn ping(&self) -> bool {
-        self.rpc().ping().await.is_ok()
+        self.rpc_api().ping().await.is_ok()
     }
 
     pub async fn broadcast(&self) -> Result<()> {
@@ -373,13 +420,17 @@ impl Wallet {
         Ok(self.network_id()?.into())
     }
 
-    pub fn default_port(&self) -> Result<u16> {
+    pub fn default_port(&self) -> Result<Option<u16>> {
         let network_type = self.network_id()?;
-        let port = match self.rpc_client().encoding() {
-            WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
-            WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
-        };
-        Ok(port)
+        if let Some(wrpc_client) = self.wrpc_client() {
+            let port = match wrpc_client.encoding() {
+                WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
+                WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
+            };
+            Ok(Some(port))
+        } else {
+            Ok(None)
+        }
     }
 
     // pub async fn create_private_key_impl(self: &Arc<Wallet>, wallet_secret: Secret, payment_secret: Option<Secret>, save : ) -> Result<Mnemonic> {
@@ -402,6 +453,71 @@ impl Wallet {
     //     Ok(mnemonic)
     // }
 
+    pub async fn create_multisig_account(self: &Arc<Wallet>, args: MultisigCreateArgs) -> Result<Arc<dyn Account>> {
+        let account_storage = self.inner.store.clone().as_account_store()?;
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret));
+
+        let settings = storage::Settings { is_visible: false, name: args.name, title: args.title };
+        let mut xpub_keys = args.additional_xpub_keys;
+
+        let account: Arc<dyn Account> = if args.prv_key_data_ids.is_not_empty() {
+            let mut generated_xpubs = Vec::with_capacity(args.prv_key_data_ids.len());
+            let mut prv_key_data_ids = Vec::with_capacity(args.prv_key_data_ids.len());
+            for prv_key_data_id in args.prv_key_data_ids {
+                let prv_key_data = self
+                    .inner
+                    .store
+                    .as_prv_key_data_store()?
+                    .load_key_data(&ctx, &prv_key_data_id)
+                    .await?
+                    .ok_or(Error::PrivateKeyNotFound(prv_key_data_id.to_hex()))?;
+                let xpub_key = prv_key_data.create_xpub(None, AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
+                let xpub_prefix = kaspa_bip32::Prefix::XPUB;
+                generated_xpubs.push(xpub_key.to_string(Some(xpub_prefix)));
+                prv_key_data_ids.push(prv_key_data_id);
+            }
+
+            generated_xpubs.sort_unstable();
+            xpub_keys.extend_from_slice(generated_xpubs.as_slice());
+            xpub_keys.sort_unstable();
+            let min_cosigner_index = xpub_keys.binary_search(generated_xpubs.first().unwrap()).unwrap() as u8;
+
+            Arc::new(
+                runtime::MultiSig::try_new(
+                    self,
+                    settings,
+                    MultiSig::new(
+                        Arc::new(xpub_keys),
+                        Some(Arc::new(prv_key_data_ids)),
+                        Some(min_cosigner_index),
+                        args.minimum_signatures,
+                        false,
+                    ),
+                    None,
+                )
+                .await?,
+            )
+        } else {
+            Arc::new(
+                runtime::MultiSig::try_new(
+                    self,
+                    settings,
+                    MultiSig::new(Arc::new(xpub_keys), None, None, args.minimum_signatures, false),
+                    None,
+                )
+                .await?,
+            )
+        };
+
+        let stored_account = account.as_storable()?;
+
+        account_storage.store_single(&stored_account, None).await?;
+        self.inner.store.clone().commit(&ctx).await?;
+        account.clone().start().await?;
+
+        Ok(account)
+    }
+
     pub async fn create_bip32_account(
         self: &Arc<Wallet>,
         prv_key_data_id: PrvKeyDataId,
@@ -409,6 +525,7 @@ impl Wallet {
     ) -> Result<Arc<dyn Account>> {
         let account_storage = self.inner.store.clone().as_account_store()?;
         let account_index = account_storage.clone().len(Some(prv_key_data_id)).await? as u64;
+
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret));
         let prv_key_data = self
             .inner
@@ -421,7 +538,7 @@ impl Wallet {
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
         let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(xpub_prefix))]);
 
-        let bip32 = storage::Bip32 { account_index, xpub_keys, ecdsa: false };
+        let bip32 = storage::Bip32::new(account_index, xpub_keys, false);
 
         let settings = storage::Settings { is_visible: false, name: None, title: None };
         let account: Arc<dyn Account> = Arc::new(runtime::Bip32::try_new(self, prv_key_data.id, settings, bip32, None).await?);
@@ -478,7 +595,7 @@ impl Wallet {
             prv_key_data.create_xpub(account_args.payment_secret.as_ref(), account_args.account_kind, account_index).await?;
         let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(xpub_prefix))]);
 
-        let bip32 = storage::Bip32 { account_index, xpub_keys, ecdsa: false };
+        let bip32 = storage::Bip32::new(account_index, xpub_keys, false);
 
         let settings = storage::Settings { is_visible: false, name: None, title: None };
         let account: Arc<dyn Account> = Arc::new(runtime::Bip32::try_new(self, prv_key_data.id, settings, bip32, None).await?);
@@ -515,7 +632,7 @@ impl Wallet {
 
     pub async fn notify(&self, event: Events) -> Result<()> {
         self.multiplexer()
-            .try_broadcast(event)
+            .try_broadcast(Box::new(event))
             .map_err(|_| Error::Custom("multiplexer channel error during update_balance".to_string()))?;
         Ok(())
     }
@@ -528,8 +645,8 @@ impl Wallet {
         self.utxo_processor().is_connected()
     }
 
-    async fn handle_event(self: &Arc<Self>, event: Events) -> Result<()> {
-        match &event {
+    async fn handle_event(self: &Arc<Self>, event: Box<Events>) -> Result<()> {
+        match &*event {
             Events::Pending { record, is_outgoing } | Events::Maturity { record, is_outgoing } => {
                 // if `is_outgoint` is set, this means that this pending and maturity
                 // event is for the change UTXOs of the outgoing transaction.
@@ -541,8 +658,8 @@ impl Wallet {
             Events::Reorg { record } | Events::External { record } | Events::Outgoing { record } => {
                 self.store().as_transaction_record_store()?.store(&[record]).await?;
             }
-            Events::SyncState(state) => {
-                if state.is_synced() && self.is_open() {
+            Events::SyncState { sync_state } => {
+                if sync_state.is_synced() && self.is_open() {
                     self.reload().await?;
                 }
             }
@@ -658,7 +775,7 @@ impl Wallet {
 
         // TODO: xpub_keys
         let xpub_keys = Arc::new(vec![]);
-        let data = storage::Legacy { xpub_keys };
+        let data = storage::Legacy::new(xpub_keys);
         let settings = storage::Settings::default();
         let account = Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?);
 
@@ -700,12 +817,13 @@ impl Wallet {
 
         let account: Arc<dyn Account> = match account_kind {
             AccountKind::Bip32 => {
-                let xpub_keys = Arc::new(vec![]);
                 let account_index = 0;
+                let xpub_key = prv_key_data.create_xpub(payment_secret, account_kind, account_index).await?;
+                let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(kaspa_bip32::Prefix::KPUB))]);
                 let ecdsa = false;
                 // ---
 
-                let data = storage::Bip32 { xpub_keys, account_index, ecdsa };
+                let data = storage::Bip32::new(account_index, xpub_keys, ecdsa);
                 let settings = storage::Settings::default();
                 Arc::new(runtime::account::Bip32::try_new(self, prv_key_data.id, settings, data, None).await?)
                 // account
@@ -715,21 +833,9 @@ impl Wallet {
                 let xpub_keys = Arc::new(vec![]);
                 // ---
 
-                let data = storage::Legacy { xpub_keys };
+                let data = storage::Legacy::new(xpub_keys);
                 let settings = storage::Settings::default();
                 Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?)
-            }
-            AccountKind::MultiSig => {
-                let xpub_keys = Arc::new(vec![]);
-                let account_index = 0;
-                let ecdsa = false;
-                let cosigner_index = 0;
-                let minimum_signatures = 1;
-                // ---
-
-                let data = storage::MultiSig { xpub_keys, account_index, ecdsa, cosigner_index, minimum_signatures };
-                let settings = storage::Settings::default();
-                Arc::new(runtime::account::MultiSig::try_new(self, prv_key_data.id, settings, data, None).await?)
             }
             _ => {
                 return Err(Error::AccountKindFeature);
@@ -741,6 +847,61 @@ impl Wallet {
         prv_key_data_store.store(&ctx, prv_key_data).await?;
         account_store.store_single(&stored_account, None).await?;
         self.inner.store.commit(&ctx).await?;
+        account.clone().start().await?;
+
+        Ok(account)
+    }
+
+    pub async fn import_multisig_with_mnemonic(
+        self: &Arc<Wallet>,
+        wallet_secret: Secret,
+        mnemonics_secrets: Vec<(Mnemonic, Option<Secret>)>,
+        minimum_signatures: u16,
+        mut additional_xpub_keys: Vec<String>,
+    ) -> Result<Arc<dyn Account>> {
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+
+        let mut generated_xpubs = Vec::with_capacity(mnemonics_secrets.len());
+        let mut prv_key_data_ids = Vec::with_capacity(mnemonics_secrets.len());
+        let prv_key_data_store = self.store().as_prv_key_data_store()?;
+
+        for (mnemonic, payment_secret) in mnemonics_secrets {
+            let prv_key_data = storage::PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret.as_ref())?;
+            if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
+                return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
+            }
+            let xpub_key = prv_key_data.create_xpub(payment_secret.as_ref(), AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
+            let xpub_prefix = kaspa_bip32::Prefix::XPUB;
+            generated_xpubs.push(xpub_key.to_string(Some(xpub_prefix)));
+            prv_key_data_ids.push(prv_key_data.id);
+            prv_key_data_store.store(&ctx, prv_key_data).await?;
+        }
+
+        generated_xpubs.sort_unstable();
+        additional_xpub_keys.extend_from_slice(generated_xpubs.as_slice());
+        let mut xpub_keys = additional_xpub_keys;
+        xpub_keys.sort_unstable();
+        let min_cosigner_index = xpub_keys.binary_search(generated_xpubs.first().unwrap()).unwrap() as u8;
+
+        let account: Arc<dyn Account> = Arc::new(
+            runtime::MultiSig::try_new(
+                self,
+                storage::Settings::default(),
+                MultiSig::new(
+                    Arc::new(xpub_keys),
+                    Some(Arc::new(prv_key_data_ids)),
+                    Some(min_cosigner_index),
+                    minimum_signatures,
+                    false,
+                ),
+                None,
+            )
+            .await?,
+        );
+
+        let stored_account = account.as_storable()?;
+        self.inner.store.clone().as_account_store()?.store_single(&stored_account, None).await?;
+        self.inner.store.clone().commit(&ctx).await?;
         account.clone().start().await?;
 
         Ok(account)
@@ -758,7 +919,6 @@ mod test {
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
     use kaspa_consensus_wasm::{sign_transaction, SignableTransaction, Transaction, TransactionInput, TransactionOutput};
-    use kaspa_rpc_core::api::rpc::RpcApi;
     use kaspa_txscript::pay_to_address_script;
     use workflow_rpc::client::ConnectOptions;
 
@@ -792,16 +952,16 @@ mod test {
         // let utxo_db_ctx = wallet.utxo_db_core().ctx(self)
         // wallet.load_accounts(stored_accounts);
 
-        let rpc = wallet.rpc();
+        let rpc_api = wallet.rpc_api();
         // let utxo_processor = UtxoProcessor::new(rpc, None);
         let utxo_processor = wallet.utxo_processor();
 
-        let rpc_client = wallet.rpc_client();
+        let wrpc_client = wallet.wrpc_client().expect("Unable to obtain wRPC client");
 
-        let info = rpc_client.get_block_dag_info().await?;
+        let info = rpc_api.get_block_dag_info().await?;
         let current_daa_score = info.virtual_daa_score;
 
-        let _connect_result = rpc_client.connect(ConnectOptions::fallback()).await;
+        let _connect_result = wrpc_client.connect(ConnectOptions::fallback()).await;
         //println!("connect_result: {_connect_result:?}");
 
         let _result = wallet.start().await;
@@ -812,7 +972,8 @@ mod test {
         let address = Address::try_from("kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd")?;
 
         let utxo_context =
-            self::create_utxos_context_with_addresses(rpc.clone(), vec![address.clone()], current_daa_score, utxo_processor).await?;
+            self::create_utxos_context_with_addresses(rpc_api.clone(), vec![address.clone()], current_daa_score, utxo_processor)
+                .await?;
 
         let utxo_set_balance = utxo_context.calculate_balance().await;
         println!("get_utxos_by_addresses: {utxo_set_balance:?}");
@@ -891,18 +1052,18 @@ mod test {
         //println!("mtx: {mtx:?}");
 
         let utxo_context =
-            self::create_utxos_context_with_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)
+            self::create_utxos_context_with_addresses(rpc_api.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)
                 .await?;
         let to_balance = utxo_context.calculate_balance().await;
         println!("to address balance before tx submit: {to_balance:?}");
 
-        let result = rpc.submit_transaction(mtx.into(), false).await?;
+        let result = rpc_api.submit_transaction(mtx.into(), false).await?;
 
         println!("tx submit result, {:?}", result);
         println!("sleep for 5s...");
         sleep(time::Duration::from_millis(5000));
         let utxo_context =
-            self::create_utxos_context_with_addresses(rpc.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)
+            self::create_utxos_context_with_addresses(rpc_api.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)
                 .await?;
         let to_balance = utxo_context.calculate_balance().await;
         println!("to address balance after tx submit: {to_balance:?}");

@@ -12,7 +12,7 @@ message KaspadRequest {
     NotifyBlockAddedRequestMessage notifyBlockAddedRequest = 1007;
     // BlockAddedNotificationMessage blockAddedNotification = 1009;
     GetPeerAddressesRequestMessage getPeerAddressesRequest = 1010;
-    GetSelectedTipHashRequestMessage getSelectedTipHashRequest = 1012;
+    GetSinkRequestMessage GetSinkRequest = 1012;
     GetMempoolEntryRequestMessage getMempoolEntryRequest = 1014;
     GetConnectedPeerInfoRequestMessage getConnectedPeerInfoRequest = 1016;
     AddPeerRequestMessage addPeerRequest = 1018;
@@ -56,6 +56,8 @@ message KaspadRequest {
     GetCoinSupplyRequestMessage getCoinSupplyRequest = 1086;
     PingRequestMessage pingRequest = 1088;
     GetMetricsRequestMessage getMetricsRequest = 1090;
+    GetServerInfoRequestMessage getServerInfoRequest = 1092;
+    GetSyncStatusRequestMessage getSyncStatusRequest = 1094;
   }
 }
 
@@ -68,7 +70,7 @@ message KaspadResponse {
     NotifyBlockAddedResponseMessage notifyBlockAddedResponse = 1008;
     BlockAddedNotificationMessage blockAddedNotification = 1009;
     GetPeerAddressesResponseMessage getPeerAddressesResponse = 1011;
-    GetSelectedTipHashResponseMessage getSelectedTipHashResponse = 1013;
+    GetSinkResponseMessage GetSinkResponse = 1013;
     GetMempoolEntryResponseMessage getMempoolEntryResponse = 1015;
     GetConnectedPeerInfoResponseMessage getConnectedPeerInfoResponse = 1017;
     AddPeerResponseMessage addPeerResponse = 1019;
@@ -112,6 +114,8 @@ message KaspadResponse {
     GetCoinSupplyResponseMessage getCoinSupplyResponse= 1087;
     PingResponseMessage pingResponse= 1089;
     GetMetricsResponseMessage getMetricsResponse= 1091;
+    GetServerInfoResponseMessage getServerInfoResponse = 1093;
+    GetSyncStatusResponseMessage getSyncStatusResponse = 1095;
   }
 }
 

@@ -2,7 +2,7 @@ cfg_if::cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
         fn main() {}
     } else {
-        use kaspa_cli::{kaspa_cli, TerminalOptions};
+        use kaspa_cli_lib::{kaspa_cli, TerminalOptions};
 
         #[tokio::main]
         async fn main() {

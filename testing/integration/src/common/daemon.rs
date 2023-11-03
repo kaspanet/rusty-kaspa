@@ -1,11 +1,14 @@
+use futures_util::Future;
 use kaspa_consensus_core::network::NetworkId;
 use kaspa_core::{core::Core, signals::Shutdown};
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::notify::mode::NotificationMode;
-use kaspad::{args::Args, daemon::create_core_with_runtime};
+use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
 use std::{sync::Arc, time::Duration};
 use tempfile::TempDir;
+
+use super::client_pool::ClientPool;
 
 pub struct Daemon {
     // Type and suffix of the daemon network
@@ -15,19 +18,20 @@ pub struct Daemon {
     pub rpc_port: u16,
     pub p2p_port: u16,
 
-    core: Arc<Core>,
+    pub core: Arc<Core>,
     workers: Option<Vec<std::thread::JoinHandle<()>>>,
 
     _appdir_tempdir: TempDir,
 }
 
 impl Daemon {
-    pub fn new_random() -> Daemon {
-        let args = Args { devnet: true, ..Default::default() };
-        Self::new_random_with_args(args)
+    pub fn new_random(fd_total_budget: i32) -> Daemon {
+        // UPnP registration might take some time and is not needed for usual daemon tests
+        let args = Args { devnet: true, disable_upnp: true, ..Default::default() };
+        Self::new_random_with_args(args, fd_total_budget)
     }
 
-    pub fn new_random_with_args(mut args: Args) -> Daemon {
+    pub fn new_random_with_args(mut args: Args, fd_total_budget: i32) -> Daemon {
         // This should ask the OS to allocate free port for socket 1 to 4.
         let socket1 = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let rpc_port = socket1.local_addr().unwrap().port();
@@ -54,7 +58,7 @@ impl Daemon {
         args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
 
         let network = args.network();
-        let core = create_core_with_runtime(&Default::default(), &args);
+        let (core, _) = create_core_with_runtime(&Default::default(), &args, fd_total_budget);
         Daemon { network, rpc_port, p2p_port, core, workers: None, _appdir_tempdir: appdir_tempdir }
     }
 
@@ -76,6 +80,23 @@ impl Daemon {
         GrpcClient::connect(NotificationMode::Direct, format!("grpc://localhost:{}", self.rpc_port), true, None, false, Some(500_000))
             .await
             .unwrap()
+    }
+
+    pub async fn new_client_pool<T: Send + 'static, F, R>(
+        &self,
+        pool_size: usize,
+        distribution_channel_capacity: usize,
+        client_op: F,
+    ) -> ClientPool<T>
+    where
+        F: Fn(Arc<GrpcClient>, T) -> R + Sync + Send + Copy + 'static,
+        R: Future<Output = bool> + Send,
+    {
+        let mut clients = Vec::with_capacity(pool_size);
+        for _ in 0..pool_size {
+            clients.push(Arc::new(self.new_client().await));
+        }
+        ClientPool::new(clients, distribution_channel_capacity, client_op)
     }
 }
 

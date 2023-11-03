@@ -24,6 +24,7 @@ use kaspa_database::prelude::ConnBuilder;
 use kaspa_database::{create_temp_db, load_existing_db};
 use kaspa_hashes::Hash;
 use kaspa_perf_monitor::builder::Builder;
+use kaspa_utils::fd_budget;
 use simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
@@ -169,7 +170,8 @@ fn main() {
         builder = builder.set_archival();
     }
     let config = Arc::new(builder.build());
-    let mut conn_builder = ConnBuilder::default().with_parallelism(num_cpus::get());
+    let default_fd = fd_budget::limit() / 2;
+    let mut conn_builder = ConnBuilder::default().with_parallelism(num_cpus::get()).with_files_limit(default_fd);
     if let Some(rocksdb_files_limit) = args.rocksdb_files_limit {
         conn_builder = conn_builder.with_files_limit(rocksdb_files_limit);
     }
@@ -187,8 +189,15 @@ fn main() {
         };
         let (dummy_notification_sender, _) = unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-        let consensus =
-            Arc::new(Consensus::new(db, config.clone(), Default::default(), notification_root, Default::default(), unix_now()));
+        let consensus = Arc::new(Consensus::new(
+            db,
+            config.clone(),
+            Default::default(),
+            notification_root,
+            Default::default(),
+            Default::default(),
+            unix_now(),
+        ));
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { config.genesis.timestamp + args.sim_time * 1000 } else { u64::MAX }; // milliseconds
@@ -213,11 +222,18 @@ fn main() {
     }
 
     // Benchmark the DAG validation time
-    let (_lifetime2, db2) = create_temp_db!(ConnBuilder::default().with_parallelism(num_cpus::get()));
+    let (_lifetime2, db2) = create_temp_db!(ConnBuilder::default().with_parallelism(num_cpus::get()).with_files_limit(default_fd));
     let (dummy_notification_sender, _) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
-    let consensus2 =
-        Arc::new(Consensus::new(db2, config.clone(), Default::default(), notification_root, Default::default(), unix_now()));
+    let consensus2 = Arc::new(Consensus::new(
+        db2,
+        config.clone(),
+        Default::default(),
+        notification_root,
+        Default::default(),
+        Default::default(),
+        unix_now(),
+    ));
     let handles2 = consensus2.run_processors();
     rt.block_on(validate(&consensus, &consensus2, &config, args.delay, args.bps));
     consensus2.shutdown(handles2);
@@ -333,7 +349,7 @@ fn submit_chunk(
             src_consensus.headers_store.get_header(hash).unwrap(),
             src_consensus.block_transactions_store.get(hash).unwrap(),
         );
-        let f = dst_consensus.validate_and_insert_block(block);
+        let f = dst_consensus.validate_and_insert_block(block).virtual_state_task;
         futures.push(f);
     }
     futures

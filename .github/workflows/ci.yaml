@@ -10,8 +10,10 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
 
-      - name: Install protoc
-        run: sudo apt install -y protobuf-compiler
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -39,6 +41,44 @@ jobs:
       # matrix:
       #   os: [ ubuntu-latest, macos-latest, windows-latest ]
     steps:
+      # Clean unnecessary files to save disk space
+      - name: clean unnecessary files to save space
+        run: |
+          docker rmi `docker images -q`
+          sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/sudo apt/sources.list.d
+          sudo apt -y autoremove --purge
+          sudo apt -y autoclean
+          sudo apt clean
+          rm --recursive --force "$AGENT_TOOLSDIRECTORY"
+          df -h          
+
+          # remove large packages manually (all but llvm)
+          sudo apt-get remove -y '^aspnetcore-.*' || echo "::warning::The command [sudo apt-get remove -y '^aspnetcore-.*'] failed to complete successfully. Proceeding..."
+          sudo apt-get remove -y '^dotnet-.*' --fix-missing || echo "::warning::The command [sudo apt-get remove -y '^dotnet-.*' --fix-missing] failed to complete successfully. Proceeding..."
+          sudo apt-get remove -y 'php.*' --fix-missing || echo "::warning::The command [sudo apt-get remove -y 'php.*' --fix-missing] failed to complete successfully. Proceeding..."
+          sudo apt-get remove -y '^mongodb-.*' --fix-missing || echo "::warning::The command [sudo apt-get remove -y '^mongodb-.*' --fix-missing] failed to complete successfully. Proceeding..."
+          sudo apt-get remove -y '^mysql-.*' --fix-missing || echo "::warning::The command [sudo apt-get remove -y '^mysql-.*' --fix-missing] failed to complete successfully. Proceeding..."
+          sudo apt-get remove -y azure-cli google-chrome-stable firefox powershell mono-devel libgl1-mesa-dri --fix-missing || echo "::warning::The command [sudo apt-get remove -y azure-cli google-chrome-stable firefox powershell mono-devel libgl1-mesa-dri --fix-missing] failed to complete successfully. Proceeding..."
+          sudo apt-get remove -y google-cloud-sdk --fix-missing || echo "::debug::The command [sudo apt-get remove -y google-cloud-sdk --fix-missing] failed to complete successfully. Proceeding..."
+          sudo apt-get remove -y google-cloud-cli --fix-missing || echo "::debug::The command [sudo apt-get remove -y google-cloud-cli --fix-missing] failed to complete successfully. Proceeding..."
+          sudo apt-get autoremove -y || echo "::warning::The command [sudo apt-get autoremove -y] failed to complete successfully. Proceeding..."
+          sudo apt-get clean || echo "::warning::The command [sudo apt-get clean] failed to complete successfully. Proceeding..."
+          df -h          
+
+      # Free up disk space on Ubuntu
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # This might remove tools that are actually needed, if set to "true" but frees about 6 GB
+          tool-cache: false
+
+          # large packages, except llvm, are removed manually during the previous step
+          # see: https://github.com/jlumbroso/free-disk-space/issues/6
+          # TODO: use the discussed whitelist feature when available
+          large-packages: false
+
+          swap-storage: true
+
       - name: Checkout sources
         uses: actions/checkout@v3
 
@@ -46,8 +86,10 @@ jobs:
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
 
-      - name: Install protoc
-        run: sudo apt install -y protobuf-compiler
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -64,7 +106,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo build with devnet-prealloc feature
-        run: cargo build --features devnet-prealloc --workspace
+        run: cargo build --features devnet-prealloc --workspace --all --tests --benches
         
       - name: Run cargo test regular features
         run: cargo test --workspace
@@ -129,8 +171,10 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
 
-      - name: Install protoc
-        run: sudo apt install -y protobuf-compiler
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -162,10 +206,10 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
 
-      - name: Install protoc
-        run: |
-          sudo apt update -y
-          sudo apt install -y protobuf-compiler
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install llvm
         id: install_llvm
@@ -185,7 +229,9 @@ jobs:
 
       - name: Install gcc-multilib
         # gcc-multilib allows clang to find gnu libraries properly
-        run: sudo apt install -y gcc-multilib
+        run: |
+          sudo apt-get update
+          sudo apt install -y gcc-multilib
 
       - name: Install stable toolchain
         if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
@@ -223,10 +269,10 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
 
-      - name: Install protoc
-        run: |
-          sudo apt update -y
-          sudo apt install -y protobuf-compiler
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install llvm
         id: install_llvm
@@ -246,7 +292,9 @@ jobs:
 
       - name: Install gcc-multilib
         # gcc-multilib allows clang to find gnu libraries properly
-        run: sudo apt install -y gcc-multilib
+        run: |
+          sudo apt-get update
+          sudo apt install -y gcc-multilib
 
       - name: Install stable toolchain
         if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
@@ -271,3 +319,40 @@ jobs:
 
       - name: Build wasm pack for nodejs
         run: cd wasm && wasm-pack build --target nodejs --out-dir nodejs/kaspa --features full
+
+  build-release:
+    name: Build Ubuntu Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install zig
+        if: runner.os == 'Linux'
+        uses: goto-bus-stop/setup-zig@v2 # needed for cargo-zigbuild
+
+      - name: Build on Linux
+        if: runner.os == 'Linux'
+        # We're using musl to make the binaries statically linked and portable
+        run: |
+          cargo install cargo-zigbuild
+          cargo --verbose zigbuild --bin kaspad --bin simpa --bin rothschild --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version

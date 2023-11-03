@@ -15,22 +15,22 @@ use self::{
 };
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
-use kaspa_p2p_lib::{KaspadMessagePayloadType, Router};
+use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
 use std::sync::Arc;
 
-mod address;
-mod blockrelay;
-mod ibd;
-mod ping;
-mod request_anticone;
-mod request_block_locator;
-mod request_headers;
-mod request_ibd_blocks;
-mod request_ibd_chain_block_locator;
-mod request_pp_proof;
-mod request_pruning_point_and_anticone;
-mod request_pruning_point_utxo_set;
-mod txrelay;
+pub(crate) mod address;
+pub(crate) mod blockrelay;
+pub(crate) mod ibd;
+pub(crate) mod ping;
+pub(crate) mod request_anticone;
+pub(crate) mod request_block_locator;
+pub(crate) mod request_headers;
+pub(crate) mod request_ibd_blocks;
+pub(crate) mod request_ibd_chain_block_locator;
+pub(crate) mod request_pp_proof;
+pub(crate) mod request_pruning_point_and_anticone;
+pub(crate) mod request_pruning_point_utxo_set;
+pub(crate) mod txrelay;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // IBD flow <-> invs flow channel requires no buffering hence the minimal size possible
@@ -60,7 +60,9 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         Box::new(HandleRelayInvsFlow::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size()),
+            SharedIncomingRoute::new(
+                router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size()),
+            ),
             router.subscribe(vec![KaspadMessagePayloadType::Block, KaspadMessagePayloadType::BlockLocator]),
             ibd_sender,
         )),

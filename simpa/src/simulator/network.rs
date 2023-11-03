@@ -12,6 +12,7 @@ use kaspa_consensus_core::block::Block;
 use kaspa_database::prelude::ConnBuilder;
 use kaspa_database::utils::DbLifetime;
 use kaspa_database::{create_permanent_db, create_temp_db};
+use kaspa_utils::fd_budget;
 use kaspa_utils::sim::Simulation;
 
 type ConsensusWrapper = (Arc<Consensus>, Vec<JoinHandle<()>>, DbLifetime);
@@ -53,7 +54,7 @@ impl KaspaNetworkSimulator {
         let secp = secp256k1::Secp256k1::new();
         let mut rng = rand::thread_rng();
         for i in 0..num_miners {
-            let mut builder = ConnBuilder::default();
+            let mut builder = ConnBuilder::default().with_files_limit(fd_budget::limit() / 2 / num_miners as i32);
             if let Some(rocksdb_files_limit) = rocksdb_files_limit {
                 builder = builder.with_files_limit(rocksdb_files_limit);
             }
@@ -81,6 +82,7 @@ impl KaspaNetworkSimulator {
                 self.config.clone(),
                 Default::default(),
                 notification_root,
+                Default::default(),
                 Default::default(),
                 unix_now(),
             ));

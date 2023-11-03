@@ -2,7 +2,7 @@ use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    dequeue, make_message,
+    dequeue_with_request_id, make_message, make_response,
     pb::{kaspad_message::Payload, InvRelayBlockMessage},
     IncomingRoute, Router,
 };
@@ -36,22 +36,21 @@ impl HandleRelayBlockRequests {
         // Note: in go-kaspad this was done via a dedicated one-time flow.
         self.send_sink().await?;
         loop {
-            let msg = dequeue!(self.incoming_route, Payload::RequestRelayBlocks)?;
+            let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestRelayBlocks)?;
             let hashes: Vec<_> = msg.try_into()?;
 
-            let consensus = self.ctx.consensus();
-            let session = consensus.session().await;
+            let session = self.ctx.consensus().unguarded_session();
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;
-                self.router.enqueue(make_message!(Payload::Block, (&block).into())).await?;
+                self.router.enqueue(make_response!(Payload::Block, (&block).into(), request_id)).await?;
                 debug!("relayed block with hash {} to peer {}", hash, self.router);
             }
         }
     }
 
     async fn send_sink(&mut self) -> Result<(), ProtocolError> {
-        let sink = self.ctx.consensus().session().await.async_get_sink().await;
+        let sink = self.ctx.consensus().unguarded_session().async_get_sink().await;
         if sink == self.ctx.config.genesis.hash {
             return Ok(());
         }

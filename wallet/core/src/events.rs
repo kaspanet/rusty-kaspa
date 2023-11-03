@@ -54,29 +54,37 @@ pub enum Events {
         network_id: NetworkId,
         /// Kaspa node RPC url on which connection
         /// has been established
-        url: String,
+        url: Option<String>,
     },
     /// RPC disconnection
     Disconnect {
         #[serde(rename = "networkId")]
         network_id: NetworkId,
-        url: String,
+        url: Option<String>,
     },
     /// A special event emitted if the connected node
     /// does not have UTXO index enabled
-    UtxoIndexNotEnabled,
+    UtxoIndexNotEnabled {
+        /// Kaspa node RPC url on which connection
+        /// has been established
+        url: Option<String>,
+    },
     /// [`SyncState`] notification posted
     /// when the node sync state changes
-    SyncState(SyncState),
+    SyncState { sync_state: SyncState },
     /// Emitted after the wallet has loaded and
     /// contains anti-phishing 'hint' set by the user.
     WalletHint { hint: Option<Hint> },
     /// Wallet has opened
     WalletOpen,
+    /// Wallet open failure
+    WalletError { message: String },
     /// Wallet reload initiated (development only)
     WalletReload,
     /// Wallet has been closed
     WalletClose,
+    /// Account selection change (`None` if no account is selected)
+    AccountSelection { id: Option<runtime::AccountId> },
     /// Emitted after successful RPC connection
     /// after the initial state negotiation.
     ServerStatus {
@@ -88,7 +96,7 @@ pub enum Events {
         is_synced: bool,
         /// Kaspa node RPC url on which connection
         /// has been established
-        url: String,
+        url: Option<String>,
     },
 
     /// Successful start of [`UtxoProcessor`](crate::utxo::processor::UtxoProcessor).
@@ -99,9 +107,9 @@ pub enum Events {
     UtxoProcStop,
     /// Occurs when UtxoProcessor has failed to connect to the node
     /// for an unknown reason. (general error trap)
-    UtxoProcError(String),
+    UtxoProcError { message: String },
     /// DAA score change
-    DAAScoreChange(u64),
+    DAAScoreChange { current_daa_score: u64 },
     /// New incoming pending UTXO/transaction
     Pending {
         record: TransactionRecord,

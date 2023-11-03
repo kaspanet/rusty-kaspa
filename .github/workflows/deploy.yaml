@@ -49,11 +49,12 @@ jobs:
         # We're using musl to make the binaries statically linked and portable
         run: |
           cargo install cargo-zigbuild
-          cargo --verbose zigbuild --bin kaspad --bin simpa --bin rothschild --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version
+          cargo --verbose zigbuild --bin kaspad --bin simpa --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version
           mkdir bin || true
           cp target/x86_64-unknown-linux-gnu/release/kaspad bin/
           cp target/x86_64-unknown-linux-gnu/release/simpa bin/
           cp target/x86_64-unknown-linux-gnu/release/rothschild bin/
+          cp target/x86_64-unknown-linux-gnu/release/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-gnu-amd64.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-gnu-amd64.zip"
           zip -r "${archive}" ./bin/*
@@ -67,10 +68,12 @@ jobs:
           cargo build --bin kaspad --release
           cargo build --bin simpa --release
           cargo build --bin rothschild --release
+          cargo build --bin kaspa-wallet --release
           mkdir bin || true
           cp target/release/kaspad.exe bin/
           cp target/release/simpa.exe bin/
           cp target/release/rothschild.exe bin/
+          cp target/release/kaspa-wallet.exe bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
           powershell "Compress-Archive bin/* \"${archive}\""
@@ -83,10 +86,12 @@ jobs:
           cargo build --bin kaspad --release
           cargo build --bin simpa --release
           cargo build --bin rothschild --release
+          cargo build --bin kaspa-wallet --release
           mkdir bin || true
           cp target/release/kaspad bin/
           cp target/release/simpa bin/
           cp target/release/rothschild bin/
+          cp target/release/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
           zip -r "${archive}" ./bin/*
@@ -101,4 +106,98 @@ jobs:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: "./${{ env.archive }}"
           asset_name: "${{ env.asset_name }}"
+          asset_content_type: application/zip
+
+  build-wasm:
+    runs-on: ubuntu-latest
+    name: Building WASM32 SDK
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install llvm
+        id: install_llvm
+        continue-on-error: true
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          sudo apt-get install -y clang-15 lldb-15 lld-15 clangd-15 clang-tidy-15 clang-format-15 clang-tools-15 llvm-15-dev lld-15 lldb-15 llvm-15-tools libomp-15-dev libc++-15-dev libc++abi-15-dev libclang-common-15-dev libclang-15-dev libclang-cpp15-dev libunwind-15-dev
+          # Make Clang 15 default
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/lib/llvm-15/bin/clang++ 100
+          sudo update-alternatives --install /usr/bin/clang clang /usr/lib/llvm-15/bin/clang 100
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/lib/llvm-15/bin/clang-format 100
+          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/lib/llvm-15/bin/clang-tidy 100
+          sudo update-alternatives --install /usr/bin/run-clang-tidy run-clang-tidy /usr/lib/llvm-15/bin/run-clang-tidy 100
+          # Alias cc to clang
+          sudo update-alternatives --install /usr/bin/cc cc /usr/lib/llvm-15/bin/clang 0
+          sudo update-alternatives --install /usr/bin/c++ c++ /usr/lib/llvm-15/bin/clang++ 0
+
+      - name: Install gcc-multilib
+        # gcc-multilib allows clang to find gnu libraries properly
+        run: sudo apt install -y gcc-multilib
+
+      - name: Install stable toolchain
+        if: steps.install_llvm.outcome == 'success' && steps.install_llvm.conclusion == 'success'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build WASM32 SDK
+        run: |
+          cd wasm
+          wasm-pack build --target nodejs --out-dir wasm32-nodejs-sdk/kaspa
+          wasm-pack build --target web --out-dir wasm32-web-sdk/kaspa
+          cd ..
+          mkdir release || true
+          archive_nodejs="release/rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-nodejs.zip"
+          archive_web="release/rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-web.zip"
+          asset_name_nodejs="rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-nodejs.zip"
+          asset_name_web="rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-web.zip"
+          zip -jr "${archive_nodejs}" ./wasm/wasm32-nodejs-sdk/*
+          zip -jr "${archive_web}" ./wasm/wasm32-web-sdk/*
+          echo "archive_nodejs=${archive_nodejs}" >> $GITHUB_ENV
+          echo "archive_web=${archive_web}" >> $GITHUB_ENV
+          echo "asset_name_nodejs=${asset_name_nodejs}" >> $GITHUB_ENV
+          echo "asset_name_web=${asset_name_web}" >> $GITHUB_ENV
+
+      - name: Upload WASM32 NODEJS SDK
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: "./${{ env.archive_nodejs }}"
+          asset_name: "${{ env.asset_name_nodejs }}"
+          asset_content_type: application/zip
+
+      - name: Upload WASM WEB SDK
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: "./${{ env.archive_web }}"
+          asset_name: "${{ env.asset_name_web }}"
           asset_content_type: application/zip
