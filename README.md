@@ -5,14 +5,15 @@ This repository contains the implementation of the Kaspa full-node and related l
 ## Getting started
 
 - General prerequisites:
-  - Linux: `sudo apt install libssl-dev pkg-config`
-- Install Protobuf (required for grpc)
+  - Linux: `sudo apt install build-essential libssl-dev pkg-config`
+  - Windows: [Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
+- Install Protobuf (required for gRPC)
   - Linux: `sudo apt install protobuf-compiler libprotobuf-dev`
-  - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` dir to `Path`
+  - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` directory to `Path`
   - MacOS: `brew install protobuf`
-- Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB)
+- Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB and WASM `secp256k1` builds)
   - Linux: `apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang`
-  - Windows: [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe) and set `LIBCLANG_PATH` env var pointing to the `bin` dir of the llvm installation
+  - Windows: Please see [Installing clang toolchain on Windows](#installing-clang-toolchain-on-windows)
   - MacOS: Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
 - Install the [rust toolchain](https://rustup.rs/)
 - If you already have rust installed, update it by running: `rustup update`
@@ -85,7 +86,7 @@ It will produce `{bin-name}-heap.json` file in the root of the workdir, that can
 
 ## Tests & Benchmarks
 
-- To run all current tests use:
+- To run basic unit tests use:
 
 ```bash
 $ cd rusty-kaspa
@@ -111,6 +112,17 @@ cd wasm
 ```
 This will produce a wasm library in `/web-root` directory
 
+## Installing clang toolchain on Windows
+
+Install [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe)
+
+Once LLVM is installed:
+-  Add the `bin` directory of the LLVM installation (`C:\Program Files\LLVM\bin`) to PATH
+- set `LIBCLANG_PATH` environment variable to point to the `bin` directory as well
+
+IMPORTANT: Due to C++ dependency configuration issues, LLVM `AR` installation on Windows may not function correctly when switching between WASM and native C++ code compilation (native `RocksDB+secp256k1` vs WASM32 builds of `secp256k1`). Unfortunately, manually setting `AR` environment variable also confuses C++ build toolchain (it should not be set for native but should be set for WASM32 targets). Currently, the best way to address this, is as follows: after installing LLVM on Windows, go to the target `bin` installation directory and copy or rename `LLVM_AR.exe` to `AR.exe`.
+
+
 ## Installing clang toolchain on MacOS
 
 The default XCode installation of `llvm` does not support WASM build targets.
@@ -119,18 +131,16 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
 ```bash
 brew install llvm
 ```
-NOTE: depending on your setup, the installation location may be different.
-To determine the installation location you can use `which llvm`, `which clang`
-or `brew list llvm` commands
-and then modify the paths below accordingly.
+**NOTE:** depending on your homebrew configuration, the installation location may be different.
+In some homebrew configurations it can be `/opt/homebrew/opt/llvm` while in others it can be `/usr/local/Cellar/llvm`.
 
+To determine the installation location you can use `brew list llvm` command and then modify the paths below accordingly:
 ```bash
 % brew list llvm
 /usr/local/Cellar/llvm/15.0.7_1/bin/FileCheck
 /usr/local/Cellar/llvm/15.0.7_1/bin/UnicodeNameMappingGenerator
+...
 ```
-should i replace 'opt/homebrew/opt' to ''/usr/local/Cellar/llvm/15.0.7_1"?
-
 
 Add the following to your `~/.zshrc` file:
 ```bash
@@ -139,7 +149,6 @@ export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
 export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
 export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
 ```
-
 
 Reload the `~/.zshrc` file
 ```bash
