@@ -4,7 +4,7 @@ use crate::{
     manager::ManagerEvent,
     request_handler::{factory::Factory, interface::Interface},
 };
-use kaspa_core::{debug, info, trace};
+use kaspa_core::{debug, info, trace, warn};
 use kaspa_grpc_core::{
     ops::KaspadPayloadOps,
     protowire::{KaspadRequest, KaspadResponse},
@@ -185,14 +185,16 @@ impl Connection {
                             }
                         }
                         Ok(None) => {
-                            info!("GRPC, incoming stream ended from client {}", connection);
+                            info!("GRPC, incoming stream ended by client {}", connection);
                             break;
                         }
                         Err(status) => {
-                            if let Some(err) = match_for_io_error(&status) {
+                            if match_for_h2_no_error(&status) {
+                                info!("GRPC, incoming stream interrupted by client {}", connection);
+                            } else if let Some(err) = match_for_io_error(&status) {
                                 debug!("GRPC, network error: {} from client {}", err, connection);
                             } else {
-                                info!("GRPC, network error: {} from client {}", status, connection);
+                                warn!("GRPC, network error: {} from client {}", status, connection);
                             }
                             break;
                         }
@@ -220,7 +222,7 @@ impl Connection {
             let inner = Arc::downgrade(&connection.inner);
             drop(connection);
 
-            debug!("GRPC, Connection receive loop - exited, client: {}, client refs: {}", connection_id, inner.strong_count());
+            trace!("GRPC, Connection receive loop - exited, client: {}, client refs: {}", connection_id, inner.strong_count());
         });
 
         connection_clone
@@ -276,6 +278,13 @@ impl Connection {
             }
         }
     }
+
+    #[allow(dead_code)]
+    fn deadlock(&self) {
+        // This is a deliberate deadlock
+        let _state = self.inner.mutable_state.lock();
+        let _ = self.is_closed();
+    }
 }
 
 fn match_for_io_error(err_status: &tonic::Status) -> Option<&std::io::Error> {
@@ -299,6 +308,20 @@ fn match_for_io_error(err_status: &tonic::Status) -> Option<&std::io::Error> {
             None => return None,
         };
     }
+}
+
+fn match_for_h2_no_error(err_status: &tonic::Status) -> bool {
+    let err: &(dyn std::error::Error + 'static) = err_status;
+    if let Some(reason) = err.downcast_ref::<h2::Error>().and_then(|e| e.reason()) {
+        debug!("GRPC, found h2 error {}", err.downcast_ref::<h2::Error>().unwrap());
+        return reason == h2::Reason::NO_ERROR;
+    }
+    if err_status.code() == tonic::Code::Internal {
+        let message = err_status.message();
+        // FIXME: relying on error messages is unreliable, find a better way
+        return message.contains("h2 protocol error:") && message.contains("not a result of an error");
+    }
+    false
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Default)]
@@ -329,27 +352,24 @@ impl ConnectionT for Connection {
         }
     }
 
-    /// Send an exit signal to the connection.
-    ///
-    /// This triggers a clean up of all resources so that underlying connections gets aborted correctly.
+    /// Send an exit signal to the connection, triggering a clean up of all resources so that
+    /// underlying connections gets aborted correctly.
     ///
     /// Returns true of this is the first call to close.
     fn close(&self) -> bool {
-        // Acquire state mutex and send the shutdown signal
-        // NOTE: Using a block to drop the lock asap
-        {
-            let mut state = self.inner.mutable_state.lock();
-
-            if let Some(signal) = state.shutdown_signal.take() {
+        let signal = self.inner.mutable_state.lock().shutdown_signal.take();
+        match signal {
+            Some(signal) => {
+                //self.deadlock();
                 let _ = signal.send(());
-            } else {
+                true
+            }
+            None => {
                 // This means the connection was already closed
                 trace!("GRPC, Connection close was called more than once, client: {}", self);
-                return false;
+                false
             }
         }
-
-        true
     }
 
     fn is_closed(&self) -> bool {
