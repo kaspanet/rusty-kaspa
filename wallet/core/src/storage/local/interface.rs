@@ -18,7 +18,7 @@ use std::sync::atomic::Ordering;
 use workflow_core::runtime::is_web;
 use workflow_store::fs;
 
-fn make_filename(title: &Option<String>, filename: &Option<String>) -> String {
+pub fn make_filename(title: &Option<String>, filename: &Option<String>) -> String {
     if let Some(filename) = filename {
         filename.to_string()
     } else if let Some(title) = title {
@@ -221,7 +221,7 @@ impl Interface for LocalStore {
 
     async fn exists(&self, name: Option<&str>) -> Result<bool> {
         let location = self.location.lock().unwrap().clone().unwrap();
-        let store = Storage::try_new_with_folder(&location.folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
+        let store = Storage::try_new_with_folder(&location.folder, &format!("{}.wallet", name.unwrap_or(super::DEFAULT_WALLET_FILE)))?;
         store.exists().await
     }
 

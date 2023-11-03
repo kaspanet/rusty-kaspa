@@ -1,12 +1,14 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::{try_from_storage, Account, AccountId, ActiveAccountMap};
+use crate::runtime::{account::ScanNotifier, try_from_storage, Account, AccountId, ActiveAccountMap};
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
-use crate::storage::{self, AccessContextT, AccountData, AccountKind, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
+use crate::storage::{
+    self, make_filename, AccessContextT, AccountData, AccountKind, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo,
+};
 use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
 use crate::{derivation::gen0, derivation::gen0::import::*, derivation::gen1, derivation::gen1::import::*};
@@ -66,13 +68,8 @@ impl PrvKeyDataCreateArgs {
         Self { name, wallet_secret, payment_secret, mnemonic: None }
     }
 
-    pub fn new_with_mnemonic(
-        name: Option<String>,
-        wallet_secret: Secret,
-        payment_secret: Option<Secret>,
-        mnemonic: Option<String>,
-    ) -> Self {
-        Self { name, wallet_secret, payment_secret, mnemonic }
+    pub fn new_with_mnemonic(name: Option<String>, wallet_secret: Secret, payment_secret: Option<Secret>, mnemonic: String) -> Self {
+        Self { name, wallet_secret, payment_secret, mnemonic: Some(mnemonic) }
     }
 }
 
@@ -280,8 +277,9 @@ impl Wallet {
     /// Loads a wallet from storage. Accounts are not activated by this call.
     async fn load_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
+        let name = Some(make_filename(&name, &None));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
-        self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
+        self.store().open(&ctx, OpenArgs::new(name)).await?;
 
         // reset current state only after we have successfully opened another wallet
         self.reset(true).await?;
@@ -307,8 +305,9 @@ impl Wallet {
     /// Loads a wallet from storage. Accounts are activated by this call.
     pub async fn load_and_activate(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
+        let name = Some(make_filename(&name, &None));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret.clone()));
-        self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
+        self.store().open(&ctx, OpenArgs::new(name)).await?;
 
         // reset current state only after we have successfully opened another wallet
         self.reset(true).await?;
@@ -848,7 +847,9 @@ impl Wallet {
         import_secret: Secret,
         wallet_secret: Secret,
         payment_secret: Option<&Secret>,
+        notifier: Option<ScanNotifier>,
     ) -> Result<Arc<dyn Account>> {
+        let notifier = notifier.as_ref();
         let keydata = load_v0_keydata(&import_secret).await?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret.clone()));
@@ -864,24 +865,33 @@ impl Wallet {
         let settings = storage::Settings::default();
         let account = Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?);
 
-        account.clone().initialize_private_data(wallet_secret, payment_secret, None).await?;
-
         // activate account (add it to wallet active account list)
         self.active_accounts().insert(account.clone().as_dyn_arc());
         self.legacy_accounts().insert(account.clone().as_dyn_arc());
 
-        if self.is_connected() {
-            account.clone().scan(Some(100), Some(50000)).await?;
-        }
-
         let account_store = self.inner.store.as_account_store()?;
         let stored_account = account.as_storable()?;
-
         // store private key and account
         self.inner.store.batch().await?;
         prv_key_data_store.store(&ctx, prv_key_data).await?;
         account_store.store_single(&stored_account, None).await?;
         self.inner.store.flush(&ctx).await?;
+
+        account.clone().initialize_private_data(wallet_secret, payment_secret, None).await?;
+
+        if self.is_connected() {
+            if let Some(notifier) = notifier {
+                notifier(0, 0, None);
+            }
+            account.clone().scan(Some(100), Some(5000)).await?;
+        }
+
+        let derivation = account.clone().as_derivation_capable()?.derivation();
+        let m = derivation.receive_address_manager();
+        m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+        let m = derivation.change_address_manager();
+        m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+        account.clone().clear_private_data().await?;
 
         account.clone().clear_private_data().await?;
 

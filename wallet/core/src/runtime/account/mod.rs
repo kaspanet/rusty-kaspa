@@ -33,7 +33,7 @@ use super::AtomicBalance;
 pub const DEFAULT_AMOUNT_PADDING: usize = 19;
 
 pub type GenerationNotifier = Arc<dyn Fn(&PendingTransaction) + Send + Sync>;
-pub type DeepScanNotifier = Arc<dyn Fn(usize, u64, Option<TransactionId>) + Send + Sync>;
+pub type ScanNotifier = Arc<dyn Fn(usize, u64, Option<TransactionId>) + Send + Sync>;
 
 pub struct Context {
     pub settings: Option<storage::account::Settings>,
@@ -412,7 +412,7 @@ pub trait DerivationCapableAccount: Account {
         window: usize,
         sweep: bool,
         abortable: &Abortable,
-        notifier: Option<DeepScanNotifier>,
+        notifier: Option<ScanNotifier>,
     ) -> Result<()> {
         self.clone().initialize_private_data(wallet_secret.clone(), payment_secret.as_ref(), None).await?;
 

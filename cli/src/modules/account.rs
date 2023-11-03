@@ -59,6 +59,125 @@ impl Account {
                 let account_name = account_name.as_deref();
                 wizards::account::create(&ctx, prv_key_data_info, account_kind, account_name).await?;
             }
+            "import" => {
+                if argv.is_empty() {
+                    tprintln!(ctx, "usage: 'account import <import-type> <key-type> [extra keys]'");
+                    tprintln!(ctx, "");
+                    tprintln!(ctx, "examples:");
+                    tprintln!(ctx, "");
+                    ctx.term().help(
+                        &[
+                            ("account import legacy-data", "Import KDX keydata file or kaspanet web wallet data on the same domain"),
+                            (
+                                "account import mnemonic bip32",
+                                "Import Bip32 (12 or 24 word mnemonics used by kaspawallet, kaspium, onekey, tangem etc.)",
+                            ),
+                            (
+                                "account import mnemonic legacy",
+                                "Import accounts 12 word mnemonic used by legacy applications (KDX and kaspanet web wallet)",
+                            ),
+                            (
+                                "account import mnemonic multisig [additional keys]",
+                                "Import mnemonic and additional keys for a multisig account",
+                            ),
+                        ],
+                        None,
+                    )?;
+
+                    return Ok(());
+                }
+
+                let import_kind = argv.remove(0);
+                match import_kind.as_ref() {
+                    "legacy-data" => {
+                        if !argv.is_empty() {
+                            tprintln!(ctx, "usage: 'account import legacy-data'");
+                            tprintln!(ctx, "too many arguments: {}\r\n", argv.join(" "));
+                            return Ok(());
+                        }
+
+                        if exists_legacy_v0_keydata().await? {
+                            let import_secret = Secret::new(
+                                ctx.term()
+                                    .ask(true, "Enter the password for the account you are importing: ")
+                                    .await?
+                                    .trim()
+                                    .as_bytes()
+                                    .to_vec(),
+                            );
+                            let wallet_secret =
+                                Secret::new(ctx.term().ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
+                            let ctx_ = ctx.clone();
+                            wallet
+                                .import_gen0_keydata(
+                                    import_secret,
+                                    wallet_secret,
+                                    None,
+                                    Some(Arc::new(move |processed: usize, balance, txid| {
+                                        if let Some(txid) = txid {
+                                            tprintln!(
+                                                ctx_,
+                                                "Scan detected {} KAS at index {}; transfer txid: {}",
+                                                sompi_to_kaspa_string(balance),
+                                                processed,
+                                                txid
+                                            );
+                                        } else if processed > 0 {
+                                            tprintln!(
+                                                ctx_,
+                                                "Scanned {} derivations, found {} KAS",
+                                                processed,
+                                                sompi_to_kaspa_string(balance)
+                                            );
+                                        } else {
+                                            tprintln!(ctx_, "Please wait... scanning for account UTXOs...");
+                                        }
+                                    })),
+                                )
+                                .await?;
+                        } else if application_runtime::is_web() {
+                            return Err("'kaspanet' web wallet storage not found at this domain name".into());
+                        } else {
+                            return Err("KDX keydata file not found".into());
+                        }
+                    }
+                    "mnemonic" => {
+                        if argv.is_empty() {
+                            tprintln!(ctx, "usage: 'account import mnemonic <bip32|legacy|multisig>'");
+                            tprintln!(ctx, "please specify the mnemonic type");
+                            tprintln!(ctx, "please use 'legacy' for 12-word KDX and kaspanet web wallet mnemonics\r\n");
+                            return Ok(());
+                        }
+
+                        let account_kind = argv.remove(0);
+                        let account_kind = account_kind.parse::<AccountKind>()?;
+
+                        match account_kind {
+                            AccountKind::Legacy | AccountKind::Bip32 => {
+                                if !argv.is_empty() {
+                                    tprintln!(ctx, "too many arguments: {}\r\n", argv.join(" "));
+                                    return Ok(());
+                                }
+                                crate::wizards::import::import_with_mnemonic(&ctx, account_kind, &argv).await?;
+                            }
+                            AccountKind::MultiSig => {
+                                crate::wizards::import::import_with_mnemonic(&ctx, account_kind, &argv).await?;
+                            }
+                            _ => {
+                                tprintln!(ctx, "account import is not supported for this account type: '{account_kind}'\r\n");
+                                return Ok(());
+                            }
+                        }
+
+                        return Ok(());
+                    }
+                    _ => {
+                        tprintln!(ctx, "unknown account import type: '{import_kind}'");
+                        tprintln!(ctx, "supported import types are: 'mnemonic' or 'legacy-data'\r\n");
+                        return Ok(());
+                    }
+                }
+            }
             "scan" | "sweep" => {
                 let len = argv.len();
                 let mut start = 0;
@@ -90,7 +209,11 @@ impl Account {
         ctx.term().help(
             &[
                 ("create [<type>] [<name>]", "Create a new account (types: 'bip32' (default), 'legacy', 'multisig')"),
-                // ("import", "Import a private key using 24 or 12 word mnemonic"),
+                (
+                    "import <import-type> [<key-type> [extra keys]]",
+                    "Import accounts from a private key using 24 or 12 word mnemonic or legacy data \
+                (KDX and kaspanet web wallet). Use 'account import' for additional help.",
+                ),
                 ("name <name>", "Name or rename the selected account (use 'remove' to remove the name"),
                 ("scan [<derivations>] or scan [<start>] [<derivations>]", "Scan extended address derivation chain (legacy accounts)"),
                 (
