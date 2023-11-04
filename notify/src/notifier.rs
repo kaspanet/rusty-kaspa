@@ -16,6 +16,7 @@ use async_channel::Sender;
 use async_trait::async_trait;
 use core::fmt::Debug;
 use futures::future::join_all;
+use itertools::Itertools;
 use kaspa_core::{debug, trace};
 use parking_lot::Mutex;
 use std::{
@@ -386,7 +387,13 @@ where
             // Finally, we close all listeners, propagating shutdown by closing their channel when they have one
             // Note that unregistering listeners is no longer meaningful since both broadcasters and subscribers were stopped
             debug!("[Notifier {}] closing listeners", self.name);
-            self.listeners.lock().values().for_each(|x| x.close());
+            let listener_ids = self.listeners.lock().keys().cloned().collect_vec();
+            listener_ids.iter().for_each(|id| {
+                let listener = self.listeners.lock().remove(id);
+                if let Some(listener) = listener {
+                    listener.close();
+                }
+            });
         } else {
             trace!("[Notifier {}] join ignored since it was never started", self.name);
             return Err(Error::AlreadyStoppedError);
