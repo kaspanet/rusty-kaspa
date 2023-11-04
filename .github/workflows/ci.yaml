@@ -113,9 +113,12 @@ jobs:
 
       - name: Run cargo build with devnet-prealloc feature
         run: cargo build --release --features devnet-prealloc --workspace --all --tests --benches
-        
+
       - name: Run cargo test regular features
         run: cargo nextest run --release --workspace
+
+      - name: Run cargo doc tests
+        run: cargo test --release --doc --workspace
 
       - name: Run cargo test on kaspa-hashes without asm
         run: cargo nextest run --release -p kaspa-hashes --features=no-asm --benches
