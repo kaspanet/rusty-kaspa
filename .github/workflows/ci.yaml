@@ -117,12 +117,11 @@ jobs:
       - name: Run cargo test regular features
         run: cargo nextest run --release --workspace
 
-      - name: Run cargo doc tests
-        run: cargo test --release --doc --workspace
-
       - name: Run cargo test on kaspa-hashes without asm
         run: cargo nextest run --release -p kaspa-hashes --features=no-asm --benches
 
+      - name: Run cargo doc tests
+        run: cargo test --release --doc --workspace --features=no-asm
 
   # test-release:
   #   name: Test Suite Release
