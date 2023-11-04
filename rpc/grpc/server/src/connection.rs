@@ -18,7 +18,10 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Display,
     net::SocketAddr,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
@@ -71,6 +74,9 @@ struct Inner {
 
     /// Used for managing connection mutable state
     mutable_state: Mutex<InnerMutableState>,
+
+    /// When true, stops sending messages to the outgoing route
+    is_closed: AtomicBool,
 }
 
 impl Drop for Inner {
@@ -158,6 +164,7 @@ impl Connection {
                 manager_sender,
                 server_context,
                 mutable_state: Mutex::new(InnerMutableState::new(Some(shutdown_sender))),
+                is_closed: AtomicBool::new(false),
             }),
         };
         let connection_clone = connection.clone();
@@ -244,12 +251,15 @@ impl Connection {
         self.inner.server_context.notifier.clone()
     }
 
-    pub fn get_or_register_listener_id(&self) -> ListenerId {
-        *self.inner.mutable_state.lock().listener_id.get_or_insert_with(|| {
-            let listener_id = self.inner.server_context.notifier.as_ref().register_new_listener(self.clone());
-            debug!("GRPC, Connection {} registered as notification listener {}", self, listener_id);
-            listener_id
-        })
+    pub fn get_or_register_listener_id(&self) -> GrpcServerResult<ListenerId> {
+        match self.is_closed() {
+            false => Ok(*self.inner.mutable_state.lock().listener_id.get_or_insert_with(|| {
+                let listener_id = self.inner.server_context.notifier.as_ref().register_new_listener(self.clone());
+                debug!("GRPC, Connection {} registered as notification listener {}", self, listener_id);
+                listener_id
+            })),
+            true => Err(GrpcServerError::ConnectionClosed),
+        }
     }
 
     fn unregister_listener(&self) {
@@ -360,7 +370,7 @@ impl ConnectionT for Connection {
         let signal = self.inner.mutable_state.lock().shutdown_signal.take();
         match signal {
             Some(signal) => {
-                //self.deadlock();
+                self.inner.is_closed.store(true, Ordering::SeqCst);
                 let _ = signal.send(());
                 true
             }
@@ -373,6 +383,6 @@ impl ConnectionT for Connection {
     }
 
     fn is_closed(&self) -> bool {
-        self.inner.mutable_state.lock().shutdown_signal.is_none()
+        self.inner.is_closed.load(Ordering::SeqCst)
     }
 }
