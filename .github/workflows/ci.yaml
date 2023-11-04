@@ -112,16 +112,16 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo build with devnet-prealloc feature
-        run: cargo build --features devnet-prealloc --workspace --all --tests --benches
+        run: cargo build --release --features devnet-prealloc --workspace --all --tests --benches
         
       - name: Run cargo test regular features
-        run: cargo nextest run --workspace
+        run: cargo nextest run --release --workspace
       
       - name: Run RPC tests
-        run: cargo nextest run -p kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test
+        run: cargo nextest run --release -p kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test
 
       - name: Run cargo test on kaspa-hashes without asm
-        run: cargo nextest run -p kaspa-hashes --features=no-asm --benches
+        run: cargo nextest run --release -p kaspa-hashes --features=no-asm --benches
 
 
   # test-release:
