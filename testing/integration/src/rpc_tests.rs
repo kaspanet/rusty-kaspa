@@ -4,6 +4,7 @@ use crate::common::daemon::Daemon;
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::subnets::SubnetworkId;
+use kaspa_grpc_core::ops::KaspadPayloadOps;
 use kaspa_hashes::Hash;
 use kaspa_rpc_core::{api::rpc::RpcApi, model::*};
 use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
