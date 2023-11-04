@@ -62,7 +62,6 @@ pub struct AddressManager {
 
 impl AddressManager {
     pub fn new(
-        // prefix: Prefix,
         wallet: Arc<runtime::Wallet>,
         account_kind: AccountKind,
         pubkey_managers: Vec<Arc<dyn PubkeyDerivationManagerTrait>>,
@@ -130,7 +129,6 @@ impl AddressManager {
 
         let list = self.pubkey_managers.iter().map(|m| m.get_range(indexes.clone()));
 
-        // let manager_keys = join_all(list).await.into_iter().collect::<Result<Vec<_>>>()?;
         let manager_keys = list.into_iter().collect::<Result<Vec<_>>>()?;
 
         let is_multisig = manager_length > 1;
@@ -190,33 +188,24 @@ pub struct AddressDerivationManager {
 impl AddressDerivationManager {
     pub async fn new(
         wallet: &Arc<runtime::Wallet>,
-        // prefix: Prefix,
         account_kind: AccountKind,
         keys: &Vec<String>,
-        // pub_key_data: &PubKeyData,
         ecdsa: bool,
         account_index: u64,
         cosigner_index: Option<u32>,
         minimum_signatures: u16,
         address_derivation_indexes: AddressDerivationMeta,
-        // receive_index: Option<u32>,
-        // change_index: Option<u32>,
     ) -> Result<Arc<AddressDerivationManager>> {
-        // let keys = &pub_key_data.keys;
         if keys.is_empty() {
             return Err("Invalid keys: keys are required for address derivation".to_string().into());
         }
 
-        // let cosigner_index = pub_key_data.cosigner_index;
         let mut receive_pubkey_managers = vec![];
         let mut change_pubkey_managers = vec![];
         let mut derivators = vec![];
         for xpub in keys {
             let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind {
-                AccountKind::Legacy => {
-                    // TODO! WalletAccountV0::from_extended_public_key is not yet implemented
-                    Arc::new(gen0::WalletDerivationManagerV0::from_extended_public_key_str(xpub, cosigner_index)?)
-                }
+                AccountKind::Legacy => Arc::new(gen0::WalletDerivationManagerV0::from_extended_public_key_str(xpub, cosigner_index)?),
                 AccountKind::MultiSig => {
                     let cosigner_index = cosigner_index.ok_or(Error::InvalidAccountKind)?;
                     Arc::new(gen1::WalletDerivationManager::from_extended_public_key_str(xpub, Some(cosigner_index))?)
@@ -344,9 +333,6 @@ impl AddressDerivationManager {
 
         let (receive, change) = if change_address { (vec![], addresses) } else { (addresses, vec![]) };
 
-        //let addresses_list = &addresses.iter().collect::<Vec<&Address>>()[..];
-        //let (receive, change) = self.addresses_indexes(addresses_list)?;
-
         let private_keys =
             create_private_keys(self.account_kind, self.cosigner_index.unwrap_or(0), self.account_index, xkey, &receive, &change)?;
 
@@ -357,25 +343,6 @@ impl AddressDerivationManager {
 
         Ok(result)
     }
-
-    // pub fn addresses_indexes(&self, addresses: &Vec<Address>) -> Result<(Vec<u32>, Vec<u32>)> {
-    //     let mut receive_indexes = vec![];
-    //     let mut change_indexes = vec![];
-    //     let receive_map = &self.receive_address_manager.inner().address_to_index_map;
-    //     let change_map = &self.change_address_manager.inner().address_to_index_map;
-
-    //     for address in addresses {
-    //         if let Some(index) = receive_map.get(address) {
-    //             receive_indexes.push(*index);
-    //         } else if let Some(index) = change_map.get(address) {
-    //             change_indexes.push(*index);
-    //         } else {
-    //             return Err(Error::Custom(format!("Address ({address}) index not found.")));
-    //         }
-    //     }
-
-    //     Ok((receive_indexes, change_indexes))
-    // }
 
     #[allow(clippy::type_complexity)]
     pub fn get_addresses_indexes<'l>(&self, addresses: &[&'l Address]) -> Result<(Vec<(&'l Address, u32)>, Vec<(&'l Address, u32)>)> {
@@ -554,9 +521,9 @@ pub async fn create_xpub_from_mnemonic(
     let xkey = ExtendedPrivateKey::<secp256k1::SecretKey>::new(seed)?;
 
     let (secret_key, attrs) = match account_kind {
-        AccountKind::Legacy => WalletDerivationManagerV0::derive_extened_key_from_master_key(xkey, true, account_index)?,
-        AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xkey, true, account_index)?,
-        _ => gen1::WalletDerivationManager::derive_extened_key_from_master_key(xkey, false, account_index)?,
+        AccountKind::Legacy => WalletDerivationManagerV0::derive_extended_key_from_master_key(xkey, true, account_index)?,
+        AccountKind::MultiSig => WalletDerivationManager::derive_extended_key_from_master_key(xkey, true, account_index)?,
+        _ => gen1::WalletDerivationManager::derive_extended_key_from_master_key(xkey, false, account_index)?,
     };
 
     let xkey = ExtendedPublicKey { public_key: secret_key.get_public_key(), attrs };
@@ -570,9 +537,9 @@ pub async fn create_xpub_from_xprv(
     account_index: u64,
 ) -> Result<ExtendedPublicKey<secp256k1::PublicKey>> {
     let (secret_key, attrs) = match account_kind {
-        AccountKind::Legacy => WalletDerivationManagerV0::derive_extened_key_from_master_key(xprv, true, account_index)?,
-        AccountKind::MultiSig => WalletDerivationManager::derive_extened_key_from_master_key(xprv, true, account_index)?,
-        AccountKind::Bip32 => WalletDerivationManager::derive_extened_key_from_master_key(xprv, false, account_index)?,
+        AccountKind::Legacy => WalletDerivationManagerV0::derive_extended_key_from_master_key(xprv, true, account_index)?,
+        AccountKind::MultiSig => WalletDerivationManager::derive_extended_key_from_master_key(xprv, true, account_index)?,
+        AccountKind::Bip32 => WalletDerivationManager::derive_extended_key_from_master_key(xprv, false, account_index)?,
         _ => panic!("create_xpub_from_xprv not supported for account kind: {:?}", account_kind),
     };
 
