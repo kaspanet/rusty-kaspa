@@ -81,10 +81,26 @@ async fn sanity_test() {
                 })
             }
             KaspadPayloadOps::GetBlock => {
-                tst!(op, {})
+                let rpc_client = daemon.new_client().await;
+                tst!(op, {
+                    // TODO: Fix by adding actual mempool entries this can pool because otherwise it errors out
+                    let response_result = rpc_client
+                        .get_block_call(GetBlockRequest { hash: Hash::from_bytes([255; 32]), include_transactions: false })
+                        .await;
+
+                    assert!(response_result.is_err());
+                })
             }
             KaspadPayloadOps::GetBlocks => {
-                tst!(op, {})
+                let rpc_client = daemon.new_client().await;
+                tst!(op, {
+                    let response_result = rpc_client
+                        .get_blocks_call(GetBlocksRequest { include_blocks: false, include_transactions: false, low_hash: None })
+                        .await;
+
+                    // TODO: requires some setup
+                    assert!(response_result.is_err());
+                })
             }
             KaspadPayloadOps::GetInfo => {
                 let rpc_client = client.clone();
@@ -105,7 +121,20 @@ async fn sanity_test() {
                 tst!(op, {})
             }
             KaspadPayloadOps::GetMempoolEntry => {
-                tst!(op, {})
+                let rpc_client = daemon.new_client().await;
+                tst!(op, {
+                    let response_result = rpc_client
+                        .get_mempool_entry_call(GetMempoolEntryRequest {
+                            transaction_id: Hash::from_bytes([255; 32]),
+                            include_orphan_pool: false,
+                            filter_transaction_pool: false,
+                        })
+                        .await;
+
+                    // Test Get Mempool Entry:
+                    // TODO: Fix by adding actual mempool entries this can get because otherwise it errors out
+                    assert!(response_result.is_err());
+                })
             }
             KaspadPayloadOps::GetMempoolEntries => {
                 let rpc_client = client.clone();
@@ -133,16 +162,18 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let peer_to_add = ContextualNetAddress::from_str("1.2.3.4:16110").unwrap();
-                    let peer_to_ban = ContextualNetAddress::from_str("5.6.7.8:16110").unwrap();
-
-                    let response = rpc_client.get_peer_addresses_call(GetPeerAddressesRequest {}).await.unwrap();
-
-                    assert!(response.known_addresses.is_empty());
-                    assert!(response.banned_addresses.is_empty());
 
                     // Add peer only adds the IP to a connection request. It will only be added to known_addresses if it
                     // actually can be connected to. So in CI we can't expect it to be added unless we set up an actual peer
-                    let _ = rpc_client.add_peer_call(AddPeerRequest { peer_address: peer_to_add, is_permanent: true }).await.unwrap();
+                    let response_result =
+                        rpc_client.add_peer_call(AddPeerRequest { peer_address: peer_to_add, is_permanent: true }).await;
+                    assert!(response_result.is_ok());
+                })
+            }
+            KaspadPayloadOps::Ban => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let peer_to_ban = ContextualNetAddress::from_str("5.6.7.8:16110").unwrap();
 
                     let _ = rpc_client.add_peer_call(AddPeerRequest { peer_address: peer_to_ban, is_permanent: false }).await.unwrap();
                     let _ = rpc_client.ban_call(BanRequest { ip: peer_to_ban.normalize(12345).ip }).await.unwrap();
@@ -152,6 +183,10 @@ async fn sanity_test() {
 
                     let _ = rpc_client.unban_call(UnbanRequest { ip: peer_to_ban.normalize(12345).ip }).await.unwrap();
                 })
+            }
+            KaspadPayloadOps::Unban => {
+                // Covered already by the Ban test above
+                tst!(op, {})
             }
             KaspadPayloadOps::SubmitTransaction => {
                 tst!(op, {})
@@ -167,7 +202,18 @@ async fn sanity_test() {
                 })
             }
             KaspadPayloadOps::GetVirtualChainFromBlock => {
-                tst!(op, {})
+                let rpc_client = daemon.new_client().await;
+                tst!(op, {
+                    let response_result = rpc_client
+                        .get_virtual_chain_from_block_call(GetVirtualChainFromBlockRequest {
+                            start_hash: Hash::from_bytes([255; 32]),
+                            include_accepted_transaction_ids: false,
+                        })
+                        .await;
+
+                    // TODO: requires some setup
+                    assert!(response_result.is_err());
+                })
             }
             KaspadPayloadOps::GetBlockCount => {
                 let rpc_client = client.clone();
@@ -238,14 +284,20 @@ async fn sanity_test() {
                     let _ = rpc_client.get_sink_blue_score_call(GetSinkBlueScoreRequest {}).await.unwrap();
                 })
             }
-            KaspadPayloadOps::Ban => {
-                tst!(op, {})
-            }
-            KaspadPayloadOps::Unban => {
-                tst!(op, {})
-            }
             KaspadPayloadOps::EstimateNetworkHashesPerSecond => {
-                tst!(op, {})
+                let rpc_client = daemon.new_client().await;
+                tst!(op, {
+                    let response_result = rpc_client
+                        .estimate_network_hashes_per_second_call(EstimateNetworkHashesPerSecondRequest {
+                            window_size: 1000,
+                            start_hash: None,
+                        })
+                        .await;
+
+                    // TODO: Fix by increasing the actual window_size until this works
+                    // Current error: difficulty error: under min allowed window size (0 < 1000)
+                    assert!(response_result.is_err());
+                })
             }
             KaspadPayloadOps::GetMempoolEntriesByAddresses => {
                 let rpc_client = daemon.new_client().await;
@@ -364,69 +416,6 @@ async fn sanity_test() {
         };
         tasks.push(task);
     }
-
-    // Test Get Virtual Chain From Block
-    // TODO: requires some setup
-    // let rpc_client = daemon.new_client().await;
-    // tst!(op, {
-    //     let _ = rpc_client
-    //         .get_virtual_chain_from_block_call(GetVirtualChainFromBlockRequest {
-    //             start_hash: Hash::from_bytes([255; 32]),
-    //             include_accepted_transaction_ids: false,
-    //         })
-    //         .await
-    //         .unwrap();
-    // });
-
-    // Test Get Blocks:
-    // TODO: requires some setup
-    // let rpc_client = daemon.new_client().await;
-    // tst!(op, {
-    //     let _ = rpc_client
-    //         .get_blocks_call(GetBlocksRequest { include_blocks: false, include_transactions: false, low_hash: None })
-    //         .await
-    //         .unwrap();
-    // });
-
-    // TODO: Fix by increasing the actual window_size until this works
-    // Current error: difficulty error: under min allowed window size (0 < 1000)
-    // let rpc_client = daemon.new_client().await;
-    // tst!(op, {
-    //     let _ = rpc_client
-    //         .estimate_network_hashes_per_second_call(EstimateNetworkHashesPerSecondRequest {
-    //             window_size: 1000,
-    //             start_hash: None,
-    //         })
-    //         .await
-    //         .unwrap();
-    // });
-
-    // Test Get Mempool Entry:
-    // TODO: Fix by adding actual mempool entries this can get because otherwise it errors out
-    // let rpc_client = daemon.new_client().await;
-    // tst!(op, {
-    //     let _ = rpc_client
-    //         .get_mempool_entry_call(GetMempoolEntryRequest {
-    //             transaction_id: Hash::from_bytes([255; 32]),
-    //             include_orphan_pool: false,
-    //             filter_transaction_pool: false,
-    //         })
-    //         .await
-    //         .unwrap();
-    // });
-
-    // Test Block:
-    // TODO: Fix by adding actual mempool entries this can pool because otherwise it errors out
-    // let rpc_client = daemon.new_client().await;
-    // tst!(op, {
-    //     let _ = rpc_client
-    //         .get_block_call(GetBlockRequest {
-    //             hash: Hash::from_bytes([255; 32]),
-    //             include_transactions: false,
-    //         })
-    //         .await
-    //         .unwrap();
-    // });
 
     // These are covered by other tests:
     // submit_transaction_call
