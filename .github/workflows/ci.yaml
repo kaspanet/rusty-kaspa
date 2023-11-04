@@ -116,9 +116,6 @@ jobs:
         
       - name: Run cargo test regular features
         run: cargo nextest run --release --workspace
-      
-      - name: Run RPC tests
-        run: cargo nextest run --release -p kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test
 
       - name: Run cargo test on kaspa-hashes without asm
         run: cargo nextest run --release -p kaspa-hashes --features=no-asm --benches

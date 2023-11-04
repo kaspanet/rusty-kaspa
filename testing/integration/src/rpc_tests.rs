@@ -1,15 +1,13 @@
 use std::str::FromStr;
 
-use crate::common::{self, daemon::Daemon};
+use crate::common::daemon::Daemon;
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
-use kaspa_consensus_core::{constants::SOMPI_PER_KASPA, network::NetworkType};
-use kaspa_core::info;
+use kaspa_consensus_core::subnets::SubnetworkId;
+use kaspa_hashes::Hash;
 use kaspa_rpc_core::{api::rpc::RpcApi, model::*};
-use kaspa_txscript::pay_to_address_script;
 use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
 use kaspad_lib::args::Args;
-use rand::thread_rng;
 use tokio::task::JoinHandle;
 
 #[macro_export]
@@ -20,47 +18,23 @@ macro_rules! rpc_function_test {
     };
 }
 
-/// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test`
+/// `cargo test --release --package kaspa-testing-integration --lib -- rpc_tests::sanity_test`
 #[tokio::test]
-#[cfg(feature = "devnet-prealloc")]
-async fn base_test() {
+async fn sanity_test() {
     kaspa_core::panic::configure_panic();
-    kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
-
-    // Constants
-    const TX_COUNT: usize = 140;
-    const TX_LEVEL_WIDTH: usize = 20;
-
-    if TX_COUNT < TX_LEVEL_WIDTH {
-        panic!()
-    }
-
-    //
-    // Setup
-    //
-    let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
-    let prealloc_address =
-        Address::new(NetworkType::Simnet.into(), kaspa_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
-    let schnorr_key = secp256k1::KeyPair::from_secret_key(secp256k1::SECP256K1, &prealloc_sk);
-    let spk = pay_to_address_script(&prealloc_address);
+    kaspa_core::log::try_init_logger(
+        "info,kaspa_rpc_core=debug,kaspa_rpc_service=debug,kaspa_grpc_client=debug,kaspa_grpc_server=debug",
+    );
 
     let args = Args {
         simnet: true,
         disable_upnp: true, // UPnP registration might take some time and is not needed for this test
         enable_unsynced_mining: true,
-        num_prealloc_utxos: Some(TX_LEVEL_WIDTH as u64 * 1),
-        prealloc_address: Some(prealloc_address.to_string()),
-        prealloc_amount: 500 * SOMPI_PER_KASPA,
         block_template_cache_lifetime: Some(0),
         utxoindex: true,
         unsafe_rpc: true,
         ..Default::default()
     };
-
-    let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
-    let txs = common::utils::generate_tx_dag(utxoset.clone(), schnorr_key, spk, TX_COUNT / TX_LEVEL_WIDTH, TX_LEVEL_WIDTH);
-    common::utils::verify_tx_dag(&utxoset, &txs);
-    info!("Generated overall {} txs", txs.len());
 
     let fd_total_budget = fd_budget::limit();
     let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
@@ -113,9 +87,10 @@ async fn base_test() {
     rpc_function_test!(tasks, rpc_client, {
         let response = rpc_client.get_coin_supply_call(GetCoinSupplyRequest {}).await.unwrap();
 
-        let devnet_prealloc_amount = 500 * SOMPI_PER_KASPA * (TX_LEVEL_WIDTH as u64);
-        assert_eq!(devnet_prealloc_amount, response.circulating_sompi);
-        assert!(response.max_sompi > devnet_prealloc_amount);
+        // Nothing mined, so there should be nothing circulating
+        assert_eq!(0, response.circulating_sompi);
+        // Max sompi should always be higher than 0
+        assert!(response.max_sompi > 0);
     });
 
     // Test Get Server Info: get_server_info_call
@@ -130,9 +105,9 @@ async fn base_test() {
     // Test Get Sync Status:
     let rpc_client = daemon.new_client().await;
     rpc_function_test!(tasks, rpc_client, {
-        let _ = rpc_client.get_sync_status_call(GetSyncStatusRequest {}).await.unwrap();
+        let response_result = rpc_client.get_sync_status_call(GetSyncStatusRequest {}).await;
 
-        // assert!(response.is_synced);
+        assert!(response_result.is_ok());
     });
 
     // Test Get Current Network:
@@ -213,27 +188,27 @@ async fn base_test() {
     // Test get Balance By Address:
     let rpc_client = daemon.new_client().await;
     rpc_function_test!(tasks, rpc_client, {
-        let _ = rpc_client
+        let response = rpc_client
             .get_balance_by_address_call(GetBalanceByAddressRequest {
                 address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]),
             })
             .await
             .unwrap();
+
+        assert_eq!(0, response.balance);
     });
 
     // Test Get Balances By Addresses:
     let rpc_client = daemon.new_client().await;
     rpc_function_test!(tasks, rpc_client, {
-        let mut addresses = Vec::new();
-        addresses.push(Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]));
+        let addresses = vec![Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32])];
         let _ = rpc_client.get_balances_by_addresses_call(GetBalancesByAddressesRequest { addresses }).await.unwrap();
     });
 
     // Test Utxos By Addresses:
     let rpc_client = daemon.new_client().await;
     rpc_function_test!(tasks, rpc_client, {
-        let mut addresses = Vec::new();
-        addresses.push(Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]));
+        let addresses = vec![Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32])];
         let _ = rpc_client.get_utxos_by_addresses_call(GetUtxosByAddressesRequest { addresses }).await.unwrap();
     });
 
@@ -246,8 +221,7 @@ async fn base_test() {
     // Test Get Mempool Entries By Addresses
     let rpc_client = daemon.new_client().await;
     rpc_function_test!(tasks, rpc_client, {
-        let mut addresses = Vec::new();
-        addresses.push(Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]));
+        let addresses = vec![Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32])];
         let _ = rpc_client
             .get_mempool_entries_by_addresses_call(GetMempoolEntriesByAddressesRequest {
                 addresses,
@@ -259,33 +233,38 @@ async fn base_test() {
     });
 
     // Test Resolve Finality Conflict:
-    // TODO: CURRENTLY UNIMPLEMENTED
-    // let rpc_client = daemon.new_client().await;
-    // rpc_function_test!(tasks, rpc_client, {
-    //     let _ = rpc_client.resolve_finality_conflict_call(ResolveFinalityConflictRequest {
-    //         finality_block_hash: Hash::from_bytes([0; 32])
-    //     }).await.unwrap();
-    // });
+    let rpc_client = daemon.new_client().await;
+    rpc_function_test!(tasks, rpc_client, {
+        let response_result = rpc_client
+            .resolve_finality_conflict_call(ResolveFinalityConflictRequest { finality_block_hash: Hash::from_bytes([0; 32]) })
+            .await;
+
+        // Err because it's currently unimplemented
+        assert!(response_result.is_err());
+    });
 
     // Test Get Headers:
-    // TODO: CURRENTLY UNIMPLEMENTED
-    // let rpc_client = daemon.new_client().await;
-    // rpc_function_test!(tasks, rpc_client, {
-    //     let _ = rpc_client
-    //         .get_headers_call(GetHeadersRequest { start_hash: Hash::from_bytes([255; 32]), limit: 1, is_ascending: true })
-    //         .await
-    //         .unwrap();
-    // });
+    let rpc_client = daemon.new_client().await;
+    rpc_function_test!(tasks, rpc_client, {
+        let response_result = rpc_client
+            .get_headers_call(GetHeadersRequest { start_hash: Hash::from_bytes([255; 32]), limit: 1, is_ascending: true })
+            .await;
+
+        // Err because it's currently unimplemented
+        assert!(response_result.is_err());
+    });
 
     // Test Subnetwork:
-    // TODO: CURRENTLY UNIMPLEMENTED
-    // let rpc_client = daemon.new_client().await;
-    // rpc_function_test!(tasks, rpc_client, {
-    //     let _ = rpc_client.get_subnetwork_call(GetSubnetworkRequest { subnetwork_id: SubnetworkId::from_byte(0) }).await.unwrap();
-    // });
+    let rpc_client = daemon.new_client().await;
+    rpc_function_test!(tasks, rpc_client, {
+        let response_result = rpc_client.get_subnetwork_call(GetSubnetworkRequest { subnetwork_id: SubnetworkId::from_byte(0) }).await;
+
+        // Err because it's currently unimplemented
+        assert!(response_result.is_err());
+    });
 
     // Test Get Virtual Chain From Block
-    // TODO: Find some actual block
+    // TODO: requires some setup
     // let rpc_client = daemon.new_client().await;
     // rpc_function_test!(tasks, rpc_client, {
     //     let _ = rpc_client
@@ -298,6 +277,7 @@ async fn base_test() {
     // });
 
     // Test Get Blocks:
+    // TODO: requires some setup
     // let rpc_client = daemon.new_client().await;
     // rpc_function_test!(tasks, rpc_client, {
     //     let _ = rpc_client

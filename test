@@ -7,7 +7,6 @@ fi
 
 # integration tests
 cargo nextest run --release --workspace -p kaspa-testing-integration --lib
-cargo nextest run --release -p kaspa-testing-integration --lib --features devnet-prealloc -- rpc_tests::base_test
 
 # wasm build (tests for potential multiple exports of the same symbol)
 pushd .
