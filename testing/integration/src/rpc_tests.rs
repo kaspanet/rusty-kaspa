@@ -98,8 +98,8 @@ async fn sanity_test() {
                         .get_blocks_call(GetBlocksRequest { include_blocks: false, include_transactions: false, low_hash: None })
                         .await;
 
-                    // TODO: requires some setup
-                    assert!(response_result.is_err());
+                    // TODO: requires some setup to be meaningful
+                    assert!(response_result.is_ok());
                 })
             }
             KaspadPayloadOps::GetInfo => {
