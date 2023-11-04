@@ -83,7 +83,7 @@ pub struct WalletCreateResponse {
 #[serde(rename_all = "camelCase")]
 pub struct WalletOpenRequest {
     pub wallet_secret: Secret,
-    pub file_name: Option<String>,
+    pub wallet_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

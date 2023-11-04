@@ -34,12 +34,17 @@ pub trait WalletApi: Send + Sync + AnySync {
         self.wallet_create_call(WalletCreateRequest { wallet_args, prv_key_data_args, account_args }).await
     }
 
+    async fn wallet_create_call(self: Arc<Self>, request: WalletCreateRequest) -> Result<WalletCreateResponse>;
+
     async fn ping(self: Arc<Self>, v: u32) -> Result<u32> {
         Ok(self.ping_call(PingRequest { v }).await?.v)
     }
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
 
-    async fn wallet_create_call(self: Arc<Self>, request: WalletCreateRequest) -> Result<WalletCreateResponse>;
+    async fn wallet_open(self: Arc<Self>, wallet_secret: Secret, wallet_name: String) -> Result<WalletOpenResponse> {
+        self.wallet_open_call(WalletOpenRequest { wallet_secret, wallet_name }).await
+    }
+
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse>;
     async fn wallet_close_call(self: Arc<Self>, request: WalletCloseRequest) -> Result<WalletCloseResponse>;
     async fn prv_key_data_create_call(self: Arc<Self>, request: PrvKeyDataCreateRequest) -> Result<PrvKeyDataCreateResponse>;

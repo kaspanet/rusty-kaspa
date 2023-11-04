@@ -979,10 +979,17 @@ impl WalletApi for Wallet {
         })
     }
 
-    async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
-        let WalletOpenRequest { wallet_secret, file_name } = request;
+    // async fn wallet_open(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
+    //     let WalletOpenRequest { wallet_secret, wallet_name } = request;
 
-        self.load(wallet_secret, file_name).await?;
+    //     self.load(wallet_secret, wallet_name).await?;
+    //     Ok(WalletOpenResponse {})
+    // }
+
+    async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
+        let WalletOpenRequest { wallet_secret, wallet_name } = request;
+
+        self.load(wallet_secret, wallet_name).await?;
         Ok(WalletOpenResponse {})
     }
 
