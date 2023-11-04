@@ -1,6 +1,6 @@
+use crate::api::{message::*, traits::WalletApi};
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::api::{message::*, traits::WalletApi};
 use crate::runtime::{try_from_storage, Account, AccountId, ActiveAccountMap};
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
@@ -272,7 +272,7 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    async fn load_impl(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
+    async fn open_impl(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
         self.reset().await?;
 
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
@@ -287,8 +287,8 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    pub async fn load(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
-        if let Err(err) = self.load_impl(wallet_secret, name).await {
+    pub async fn open(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
+        if let Err(err) = self.open_impl(wallet_secret, name).await {
             self.notify(Events::WalletError { message: err.to_string() }).await?;
             Err(err)
         } else {
@@ -989,7 +989,7 @@ impl WalletApi for Wallet {
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
         let WalletOpenRequest { wallet_secret, wallet_name } = request;
 
-        self.load(wallet_secret, wallet_name).await?;
+        self.open(wallet_secret, wallet_name).await?;
         Ok(WalletOpenResponse {})
     }
 

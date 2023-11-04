@@ -1,6 +1,7 @@
 extern crate alloc;
 extern crate self as kaspa_wallet_core;
 
+pub mod api;
 pub mod derivation;
 pub mod encryption;
 pub mod error;

@@ -1,7 +1,8 @@
+use crate::api::message::*;
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::api::message::*;
 use crate::runtime::{AccountCreateArgs, PrvKeyDataCreateArgs, WalletCreateArgs};
+use crate::secret::Secret;
 use crate::storage::WalletDescriptor;
 use workflow_core::channel::Receiver;
 
@@ -41,7 +42,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
 
-    async fn wallet_open(self: Arc<Self>, wallet_secret: Secret, wallet_name: String) -> Result<WalletOpenResponse> {
+    async fn wallet_open(self: Arc<Self>, wallet_secret: Secret, wallet_name: Option<String>) -> Result<WalletOpenResponse> {
         self.wallet_open_call(WalletOpenRequest { wallet_secret, wallet_name }).await
     }
 
