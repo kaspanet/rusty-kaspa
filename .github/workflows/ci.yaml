@@ -117,7 +117,7 @@ jobs:
       - name: Run cargo test regular features
         run: cargo nextest run --release --workspace
 
-      - name: Run cargo doc tests with features=no-asm
+      - name: Run cargo doc tests
         run: cargo test --doc --release --workspace
 
       - name: Run cargo test on kaspa-hashes without asm
