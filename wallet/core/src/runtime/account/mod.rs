@@ -4,14 +4,15 @@ pub mod variants;
 
 pub use id::*;
 use kaspa_bip32::ChildNumber;
+use kaspa_bip32::ExtendedPrivateKey;
 pub use kind::*;
-use secp256k1::ONE_KEY;
 pub use variants::*;
 
 use crate::derivation::build_derivate_paths;
+use crate::derivation::gen0;
 use crate::derivation::AddressDerivationManagerTrait;
 #[allow(unused_imports)]
-use crate::derivation::{gen0::*, gen1::*, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
+use crate::derivation::{gen0::*, gen1::*, AddressDerivationMeta, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Balance, BalanceStrings, Wallet};
@@ -19,8 +20,9 @@ use crate::secret::Secret;
 use crate::storage::interface::AccessContext;
 use crate::storage::Metadata;
 use crate::storage::{self, AccessContextT, AccountData, PrvKeyData, PrvKeyDataId};
-use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, KeydataSigner, PaymentDestination, PendingTransaction, Signer};
+use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, Signer};
 use crate::utxo::{UtxoContext, UtxoContextBinding};
+use kaspa_bip32::PrivateKey;
 use kaspa_consensus_wasm::UtxoEntryReference;
 use kaspa_notify::listener::ListenerId;
 use separator::Separatable;
@@ -31,7 +33,7 @@ use super::AtomicBalance;
 pub const DEFAULT_AMOUNT_PADDING: usize = 19;
 
 pub type GenerationNotifier = Arc<dyn Fn(&PendingTransaction) + Send + Sync>;
-pub type DeepScanNotifier = Arc<dyn Fn(usize, u64, Option<TransactionId>) + Send + Sync>;
+pub type ScanNotifier = Arc<dyn Fn(usize, u64, Option<TransactionId>) + Send + Sync>;
 
 pub struct Context {
     pub settings: Option<storage::account::Settings>,
@@ -376,6 +378,19 @@ pub trait Account: AnySync + Send + Sync + 'static {
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {
         Err(Error::AccountAddressDerivationCaps)
     }
+
+    async fn initialize_private_data(
+        self: Arc<Self>,
+        _secret: Secret,
+        _payment_secret: Option<&Secret>,
+        _index: Option<u32>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn clear_private_data(self: Arc<Self>) -> Result<()> {
+        Ok(())
+    }
 }
 
 downcast_sync!(dyn Account);
@@ -391,50 +406,72 @@ pub trait DerivationCapableAccount: Account {
     async fn derivation_scan(
         self: Arc<Self>,
         wallet_secret: Secret,
-        _payment_secret: Option<Secret>,
+        payment_secret: Option<Secret>,
+        start: usize,
         extent: usize,
         window: usize,
         sweep: bool,
         abortable: &Abortable,
-        notifier: Option<DeepScanNotifier>,
+        notifier: Option<ScanNotifier>,
     ) -> Result<()> {
+        self.clone().initialize_private_data(wallet_secret.clone(), payment_secret.as_ref(), None).await?;
+
         let derivation = self.derivation();
 
-        let _prv_key_data = self.prv_key_data(wallet_secret).await?;
-        let change_address = derivation.change_address_manager().current_address()?;
+        let prv_key_data = self.prv_key_data(wallet_secret).await?;
+        let payload = prv_key_data.payload.decrypt(payment_secret.as_ref())?;
+        let xkey = payload.get_xprv(payment_secret.as_ref())?;
 
-        let mut index: usize = 0;
+        let receive_address_manager = derivation.receive_address_manager();
+        let change_address_manager = derivation.change_address_manager();
+
+        let change_address_index = change_address_manager.index();
+        let change_address_keypair =
+            derivation.get_range_with_keys(true, change_address_index..change_address_index + 1, false, &xkey).await?;
+
+        let rpc = self.wallet().rpc_api();
+        let notifier = notifier.as_ref();
+
+        let mut index: usize = start;
         let mut last_notification = 0;
         let mut aggregate_balance = 0;
+
+        let change_address = change_address_keypair[0].0.clone();
 
         while index < extent {
             let first = index as u32;
             let last = (index + window) as u32;
             index = last as usize;
 
-            // ----
-            // - _keydata is initialized above ^
-            // - TODO - generate pairs of private keys and addresses as a (Address, secp256k1::Secret) tuple without updating address indexes
-            let mut keypairs = derivation.receive_address_manager().get_range(first..last)?;
-            let change_keypairs = derivation.change_address_manager().get_range(first..last)?;
-            keypairs.extend(change_keypairs);
-            let keypairs: Vec<(Address, secp256k1::SecretKey)> =
-                keypairs.into_iter().map(|address| (address.clone(), ONE_KEY)).collect();
+            let (keys, addresses) = if sweep {
+                let mut keypairs = derivation.get_range_with_keys(false, first..last, false, &xkey).await?;
+                let change_keypairs = derivation.get_range_with_keys(true, first..last, false, &xkey).await?;
+                keypairs.extend(change_keypairs);
+                let mut keys = vec![];
+                let addresses = keypairs
+                    .iter()
+                    .map(|(address, key)| {
+                        keys.push(key.to_bytes());
+                        address.clone()
+                    })
+                    .collect::<Vec<_>>();
+                keys.push(change_address_keypair[0].1.to_bytes());
+                (keys, addresses)
+            } else {
+                let mut addresses = receive_address_manager.get_range_with_args(first..last, false)?;
+                let change_addresses = change_address_manager.get_range_with_args(first..last, false)?;
+                addresses.extend(change_addresses);
+                (vec![], addresses)
+            };
 
-            // ----
-
-            let addresses = keypairs.iter().map(|(address, _)| address.clone()).collect::<Vec<_>>();
-            let utxos = self.wallet().rpc_api().get_utxos_by_addresses(addresses).await?;
+            let utxos = rpc.get_utxos_by_addresses(addresses.clone()).await?;
             let balance = utxos.iter().map(|utxo| utxo.utxo_entry.amount).sum::<u64>();
             if balance > 0 {
                 aggregate_balance += balance;
 
                 if sweep {
-                    // TODO - populate with keypairs ^^^
-                    let keydata: Vec<(Address, secp256k1::SecretKey)> = vec![];
-                    let signer = Arc::new(KeydataSigner::new(keydata));
-
                     let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
+
                     let settings = GeneratorSettings::try_new_with_iterator(
                         Box::new(utxos.into_iter()),
                         change_address.clone(),
@@ -446,19 +483,19 @@ pub trait DerivationCapableAccount: Account {
                         None,
                     )?;
 
-                    let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
+                    let generator = Generator::try_new(settings, None, Some(abortable))?;
 
                     let mut stream = generator.stream();
                     while let Some(transaction) = stream.try_next().await? {
-                        transaction.try_sign()?;
-                        let id = transaction.try_submit(&self.wallet().rpc_api()).await?;
-                        if let Some(notifier) = notifier.as_ref() {
+                        transaction.try_sign_with_keys(keys.clone())?;
+                        let id = transaction.try_submit(&rpc).await?;
+                        if let Some(notifier) = notifier {
                             notifier(index, balance, Some(id));
                         }
                         yield_executor().await;
                     }
                 } else {
-                    if let Some(notifier) = notifier.as_ref() {
+                    if let Some(notifier) = notifier {
                         notifier(index, aggregate_balance, None);
                     }
                     yield_executor().await;
@@ -467,12 +504,20 @@ pub trait DerivationCapableAccount: Account {
 
             if index > last_notification + 1_000 {
                 last_notification = index;
-                if let Some(notifier) = notifier.as_ref() {
+                if let Some(notifier) = notifier {
                     notifier(index, aggregate_balance, None);
                 }
                 yield_executor().await;
             }
         }
+
+        if index > last_notification {
+            if let Some(notifier) = notifier {
+                notifier(index, aggregate_balance, None);
+            }
+        }
+
+        self.clone().clear_private_data().await?;
 
         Ok(())
     }
@@ -505,30 +550,14 @@ pub trait DerivationCapableAccount: Account {
 
     fn create_private_keys<'l>(
         &self,
-        keydata: &PrvKeyData,
+        key_data: &PrvKeyData,
         payment_secret: &Option<Secret>,
         receive: &[(&'l Address, u32)],
         change: &[(&'l Address, u32)],
     ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
-        let account_index = self.account_index();
-        let cosigner_index = self.cosigner_index();
-
-        let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
+        let payload = key_data.payload.decrypt(payment_secret.as_ref())?;
         let xkey = payload.get_xprv(payment_secret.as_ref())?;
-
-        let paths = build_derivate_paths(self.account_kind(), account_index, cosigner_index)?;
-        let receive_xkey = xkey.clone().derive_path(paths.0)?;
-        let change_xkey = xkey.derive_path(paths.1)?;
-
-        let mut private_keys = vec![];
-        for (address, index) in receive.iter() {
-            private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
-        }
-        for (address, index) in change.iter() {
-            private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
-        }
-
-        create_private_keys(self.account_kind(), self.cosigner_index(), self.account_index(), keydata, payment_secret, receive, change)
+        create_private_keys(self.account_kind(), self.cosigner_index(), self.account_index(), &xkey, receive, change)
     }
 }
 
@@ -538,25 +567,194 @@ pub fn create_private_keys<'l>(
     account_kind: AccountKind,
     cosigner_index: u32,
     account_index: u64,
-    keydata: &PrvKeyData,
-    payment_secret: &Option<Secret>,
+    xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
     receive: &[(&'l Address, u32)],
     change: &[(&'l Address, u32)],
 ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
-    let payload = keydata.payload.decrypt(payment_secret.as_ref())?;
-    let xkey = payload.get_xprv(payment_secret.as_ref())?;
-
     let paths = build_derivate_paths(account_kind, account_index, cosigner_index)?;
-    let receive_xkey = xkey.clone().derive_path(paths.0)?;
-    let change_xkey = xkey.derive_path(paths.1)?;
-
     let mut private_keys = vec![];
-    for (address, index) in receive.iter() {
-        private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
-    }
-    for (address, index) in change.iter() {
-        private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+    if matches!(account_kind, AccountKind::Legacy) {
+        let (private_key, attrs) = gen0::WalletDerivationManagerV0::derive_key_by_path(xkey, paths.0)?;
+        for (address, index) in receive.iter() {
+            let (private_key, _) =
+                gen0::WalletDerivationManagerV0::derive_private_key(&private_key, &attrs, ChildNumber::new(*index, true)?)?;
+            private_keys.push((*address, private_key));
+        }
+        let (private_key, attrs) = gen0::WalletDerivationManagerV0::derive_key_by_path(xkey, paths.1)?;
+        for (address, index) in change.iter() {
+            let (private_key, _) =
+                gen0::WalletDerivationManagerV0::derive_private_key(&private_key, &attrs, ChildNumber::new(*index, true)?)?;
+            private_keys.push((*address, private_key));
+        }
+    } else {
+        let receive_xkey = xkey.clone().derive_path(paths.0)?;
+        let change_xkey = xkey.clone().derive_path(paths.1)?;
+
+        for (address, index) in receive.iter() {
+            private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+        }
+        for (address, index) in change.iter() {
+            private_keys.push((*address, *change_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
+        }
     }
 
     Ok(private_keys)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod tests {
+    use super::create_private_keys;
+    use super::{AccountKind, ExtendedPrivateKey};
+    use crate::runtime::account::PubkeyDerivationManagerV0;
+    use kaspa_addresses::Address;
+    use kaspa_addresses::Prefix;
+    use kaspa_bip32::secp256k1::SecretKey;
+    use kaspa_bip32::PrivateKey;
+    use kaspa_bip32::SecretKeyExt;
+    use std::str::FromStr;
+
+    fn gen0_receive_addresses() -> Vec<&'static str> {
+        vec![
+            "kaspatest:qqnapngv3zxp305qf06w6hpzmyxtx2r99jjhs04lu980xdyd2ulwwmx9evrfz",
+            "kaspatest:qqfwmv2jm7dsuju9wz27ptdm4e28qh6evfsm66uf2vf4fxmpxfqgym4m2fcyp",
+            "kaspatest:qpcerqk4ltxtyprv9096wrlzjx5mnrlw4fqce6hnl3axy7tkvyjxypjc5dyqs",
+            "kaspatest:qr9m4h44ghmyz4wagktx8kgmh9zj8h8q0f6tc87wuad5xvzkdlwd6uu9plg2c",
+            "kaspatest:qrkxylqkyjtkjr5zs4z5wjmhmj756e84pa05amcw3zn8wdqjvn4tcc2gcqhrw",
+            "kaspatest:qp3w5h9hp9ude4vjpllsm4qpe8rcc5dmeealkl0cnxlgtj4ly7rczqxcdamvr",
+            "kaspatest:qpqen78dezzj4w7rae4n6kvahlr6wft7jy3lcul78709asxksgxc2kr9fgv6j",
+            "kaspatest:qq7upgj3g8klaylc4etwhlmr70t24wu4n4qrlayuw44yd8wx40seje27ah2x7",
+            "kaspatest:qqt2jzgzwy04j8np6ne4g0akmq4gj3fha0gqupr2mjj95u5utzxqvv33mzpcu",
+            "kaspatest:qpcnt3vscphae5q8h576xkufhtuqvntg0ves8jnthgfaxy8ajek8zz3jcg4de",
+            "kaspatest:qz7wzgzvnadgp6v4u6ua9f3hltaa3cv8635mvzlepa63ttt72c6m208g48q0p",
+            "kaspatest:qpqtsd4flc0n4g720mjwk67tnc46xv9ns5xs2khyvlvszy584ej4xq9adw9h9",
+            "kaspatest:qq4uy92hzh9eauypps060g2k7zv2xv9fsgc5gxkwgsvlhc7tw4a3gk5rnpc0k",
+            "kaspatest:qqgfhd3ur2v2xcf35jggre97ar3awl0h62qlmmaaq28dfrhwzgjnxntdugycr",
+            "kaspatest:qzuflj6tgzwjujsym9ap6dvqz9zfwnmkta68fjulax09clh8l4rfslj9j9nnt",
+            "kaspatest:qz6645a8rrf0hmrdvyr9uj673lrr9zwhjvvrytqpjsjdet23czvc784e84lfe",
+            "kaspatest:qz2fvhmk996rmmg44ht0s79gnw647ehu8ncmpf3sf6txhkfmuzuxssceg9sw0",
+            "kaspatest:qr9aflwylzdu99z2z25lzljyeszhs7j02zhfdazydgahq2vg6x8w7nfp3juqq",
+            "kaspatest:qzen7nh0lmzvujlye5sv3nwgwdyew2zp9nz5we7pay65wrt6kfxd6khwja56q",
+            "kaspatest:qq74jrja2mh3wn6853g8ywpfy9nlg0uuzchvpa0cmnvds4tfnpjj5tqgnqm4f",
+        ]
+    }
+
+    fn gen0_receive_keys() -> Vec<&'static str> {
+        vec![
+            "269b7650e8a3b37472b353e6e8331a4427c6f081ff51ba6adf9ef203aa346845",
+            "b8e4a2ee20e0c9c0d380c89ffc3d84c8fef6f768cd4c9ac7778aa783a9c70aa4",
+            "ce7a150989f19d4fc00f44e88c55d40f7416364e265e4561063b0b0d753a72a1",
+            "3459868739a23c6a6157ab20300dcb6714c2c4977b07721ca143d4d214b15ff2",
+            "40c8e90184d2f2c2721b80a34cbea60e07bdf396c0367005e904bb8caee5ec63",
+            "a02968ebbe44f9a1543c46cf93a41da1e2cd6d4f2176c6bba7b871ae52bd40fd",
+            "8a9bd04793504af4d146f66fbc3b4b91f8d44c36eff41ac2b6650e1760099506",
+            "a8c38dc42ee94dd569fc0baa115832a2ecd49c970058e703e650565bffb4e30f",
+            "11f96f263a50a8f7a8d434635ec8026db9e2ffc8cadd996ad4c4a7af5ecebbc3",
+            "b2f7aa8fd4c171865d517765485b3f5ab6c76a51a22e51c6bfc3099e08a533db",
+            "6af8dc2a19abbbb2aa3d08b53481c5d88991463d4aacb2d7f4b2fc76368ee90c",
+            "510d09240cd33ba17ef2e3bac206c59f6f0f604e8fe7766b989ee0fa651307e6",
+            "d3d3e41bd7b764fc940af5b82ddc91e8a717f404e41839081f86860841954b1d",
+            "aa0268ab215e1df65f4697f13af20d5d4a896d8ed98ad4764d079c4cad6142d3",
+            "12bed3b829a881a50d5fa8a8a6a9fd28f8f2f2dc5cdb3f31d4e8c41a405ba7bb",
+            "c71614ecb6f369b0379566cceba6bed0fd90336a298cd460a6b305879c3ec884",
+            "65717bf1c74589e6f98f157434ec45c606c76f5ba882e6e6943e272ac159a5d3",
+            "be6815e86d1df8823c93037e7b179fc4d57929cd49681c59eeacf4b0904ed844",
+            "513f5e59508c6cde7a404d45394f32537872e8e9093dd5fd1768c8fbcac07dc0",
+            "f0af3b29f2074838d394288a4a3bcd1cd00dc045e8f15e70eb3e70b4d5856075",
+        ]
+    }
+
+    fn gen0_change_addresses() -> Vec<&'static str> {
+        vec![
+            "kaspatest:qrc0xjaq00fq8qzvrudfuk9msag7whnd72nefwq5d07ks4j4d97kzm0x3ertv",
+            "kaspatest:qpf00utzmaa2u8w9353ssuazsv7fzs605eg00l9luyvcwzwj9cx0z4m8n9p5j",
+            "kaspatest:qrkxek2q6eze7lhg8tq0qw9h890lujvjhtnn5vllrkgj2rgudl6xv3ut9j5mu",
+            "kaspatest:qrn0ga4lddypp9w8eygt9vwk92lagr55e2eqjgkfr09az90632jc6namw09ll",
+            "kaspatest:qzga696vavxtrg0heunvlta5ghjucptll9cfs5x0m2j05s55vtl36uhpauwuk",
+            "kaspatest:qq8ernhu26fgt3ap73jalhzl5u5zuergm9f0dcsa8uy7lmcx875hwl3r894fp",
+            "kaspatest:qrauma73jdn0yfwspr7yf39recvjkk3uy5e4309vjc82qq7sxtskjphgwu0sx",
+            "kaspatest:qzk7yd3ep4def7sv7yhl8m0mr7p75zclycrv0x0jfm0gmwte23k0u5f9dclzy",
+            "kaspatest:qzvm7mnhpkrw52c4p85xd5scrpddxnagzmhmz4v8yt6nawwzgjtavu84ft88x",
+            "kaspatest:qq4feppacdug6p6zk2xf4rw400ps92c9h78gctfcdlucvzzjwzyz7j650nw52",
+            "kaspatest:qryepg9agerq4wdzpv39xxjdytktga53dphvs6r4fdjc0gfyndhk7ytpnl5tv",
+            "kaspatest:qpywh5galz3dd3ndkx96ckpvvf5g8t4adaf0k58y4kgf8w06jt5myjrpluvk6",
+            "kaspatest:qq32grys34737mfe5ud5j2v03cjefynuym27q7jsdt28qy72ucv3sv0teqwvm",
+            "kaspatest:qper47ahktzf9lv67a5e9rmfk35pq4xneufhu97px6tlzd0d4qkaklx7m3f7w",
+            "kaspatest:qqal0t8w2y65a4lm5j5y4maxyy4nuwxj6u364eppj5qpxz9s4l7tknfw0u6r3",
+            "kaspatest:qr7p66q7lmdqcf2vnyus38efx3l4apvqvv5sff66n808mtclef2w7vxh3afnn",
+            "kaspatest:qqx4xydd58qe5csedz3l3q7v02e49rwqnydc425d6jchv02el2gdv4055vh0y",
+            "kaspatest:qzyc9l5azcae7y3yltgnl5k2dzzvngp90a0glsepq0dnz8dvp4jyveezpqse8",
+            "kaspatest:qq705x6hl9qdvr03n0t65esevpvzkkt2xj0faxp6luvd2hk2gr76chxw8xhy5",
+            "kaspatest:qzufchm3cy2ej6f4cjpxpnt3g7c2gn77c320qhrnrjqqskpn7vnzsaxg6z0kd",
+        ]
+    }
+
+    fn gen0_change_keys() -> Vec<&'static str> {
+        vec![
+            "585820ee35dea0fae75c2bcc101875e32e0a73a7a72eb837a266f2970901b4d1",
+            "5c65fda0e8ca7f1c1d1bb0347c010e881fc3e1b8550d8695b02d631568ca67c2",
+            "4d04d7bdaf6308a5100497cc43e62c86b970153aff585bcccdbc9e9272b8a6c7",
+            "98dcc3d7a83e6bab4005587868beda4364865b4c93f2727de5cf750e2ebb8cb8",
+            "294a4087dc41a755afb47ebd23e6cc253e4d3c502cc79d5556105cd521c54a8f",
+            "0645287dfd9c325505993a7d824f23ffb6002c4cfac19df29cc12a5b263fee5b",
+            "bda676ee28af75b5b59bbadd823315b53b7e9e3d20c222bd307a3c49b76e2b47",
+            "4e7626010f65d21bca852eb9d316a3a1088a04d95f4f9d7c94942eb461e2f660",
+            "2d07da1b5599a58116ff12b090e458376e4abec4318f6ffdd7209ada7375e495",
+            "8fac76d8267f453b11733fc7edd61f89cb59112112dea1b6f07a6928f8173b55",
+            "fa2b253b20158ccb09dcb8fb4b0186e9a7c7a58096e1a3cadc382fae581abc07",
+            "c6515d1e078295c93c2b0ca8c85c5910b5af79e8bdaa8bb2e86db449e988d074",
+            "37c29e6d16573e613b216e38e57b719499244cf05d6dd0160f9144434002fc4d",
+            "97cc07d5e059f53070a22eb4cc9cd96be302da44712667ae84fa5c526d39f2d0",
+            "ec2d44d434be19e71d669e54b9f2cf23872e07ad73f0eb03d2011358a98342a3",
+            "c14826adc08300e154733cc1b3f2631e95504bcc9bc0ef177088aacc6c19658a",
+            "5c0284f38aed77a50836b1b4425bd8c650ddbcdacfb6f2b9d9cf9962f2ba128c",
+            "178a20f914a3215aa18166431859aac30c478d14610171e51dea41e5af35c03c",
+            "762763953155c98f42c29210a04866873be366b801904add1dd023fce39a7b81",
+            "0e7b3c72aff5cb6e3a963a4a89240082c1fc87b3bfbc964969c5c2aeb86f4490",
+        ]
+    }
+
+    fn bytes_str(bytes: &[u8]) -> String {
+        let mut hex = [0u8; 64];
+        faster_hex::hex_encode(bytes, &mut hex).expect("The output is exactly twice the size of the input");
+        unsafe { std::str::from_utf8_unchecked(&hex) }.to_string()
+    }
+
+    #[tokio::test]
+    async fn gen0_prv_keys() {
+        let receive_addresses = gen0_receive_addresses()
+            .iter()
+            .enumerate()
+            .map(|(index, str)| (Address::try_from(*str).unwrap(), index as u32))
+            .collect::<Vec<(Address, u32)>>();
+
+        let change_addresses = gen0_change_addresses()
+            .iter()
+            .enumerate()
+            .map(|(index, str)| (Address::try_from(*str).unwrap(), index as u32))
+            .collect::<Vec<(Address, u32)>>();
+
+        let receive_addresses = receive_addresses.iter().map(|(a, index)| (a, *index)).collect::<Vec<(&Address, u32)>>();
+        let change_addresses = change_addresses.iter().map(|(a, index)| (a, *index)).collect::<Vec<(&Address, u32)>>();
+
+        let key = "xprv9s21ZrQH143K2SDYtUz6dphDH3yRLAC7Jc552GYiXai3STvqgc3JBZxH2M4KaKhriaZDSS9KL7zUi5kYpggFspkiZBYWNCxbp27CCcnsJUs";
+        let xkey = ExtendedPrivateKey::<SecretKey>::from_str(key).unwrap();
+
+        let receive_keys = gen0_receive_keys();
+        let change_keys = gen0_change_keys();
+
+        let keys = create_private_keys(AccountKind::Legacy, 0, 0, &xkey, &receive_addresses, &[]).unwrap();
+        for (index, (a, key)) in keys.iter().enumerate() {
+            let address = PubkeyDerivationManagerV0::create_address(&key.get_public_key(), Prefix::Testnet, false).unwrap();
+            assert_eq!(*a, &address, "receive address at {index} failed");
+            assert_eq!(bytes_str(&key.to_bytes()), receive_keys[index], "receive key at {index} failed");
+        }
+
+        let keys = create_private_keys(AccountKind::Legacy, 0, 0, &xkey, &[], &change_addresses).unwrap();
+        for (index, (a, key)) in keys.iter().enumerate() {
+            let address = PubkeyDerivationManagerV0::create_address(&key.get_public_key(), Prefix::Testnet, false).unwrap();
+            assert_eq!(*a, &address, "change address at {index} failed");
+            assert_eq!(bytes_str(&key.to_bytes()), change_keys[index], "change key at {index} failed");
+        }
+    }
 }

@@ -6,7 +6,7 @@ use kaspa_bip32::{Language, Mnemonic};
 use kaspa_wallet_core::storage::AccountKind;
 use std::sync::Arc;
 
-pub async fn ask(term: &Arc<Terminal>) -> Result<Vec<String>> {
+pub async fn prompt_for_mnemonic(term: &Arc<Terminal>) -> Result<Vec<String>> {
     let mut words: Vec<String> = vec![];
     loop {
         if words.is_empty() {
@@ -44,36 +44,39 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: Acco
     if !wallet.is_open() {
         return Err(Error::WalletIsNotOpen);
     }
+
     let term = ctx.term();
 
     tprintln!(ctx);
     let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
     tprintln!(ctx);
-    let mnemonic = ask(&term).await?;
+    let mnemonic = prompt_for_mnemonic(&term).await?;
     tprintln!(ctx);
-
+    let length = mnemonic.len();
     match account_kind {
-        AccountKind::Legacy if mnemonic.len() != 12 => Err(Error::Custom("wrong mnemonic length".to_owned())),
-        AccountKind::Bip32 if mnemonic.len() != 24 => Err(Error::Custom("wrong mnemonic length".to_owned())),
+        AccountKind::Legacy if length != 12 => Err(Error::Custom(format!("wrong mnemonic length ({length})"))),
+        AccountKind::Bip32 if length != 24 => Err(Error::Custom(format!("wrong mnemonic length ({length})"))),
 
         AccountKind::Legacy | AccountKind::Bip32 | AccountKind::MultiSig => Ok(()),
         _ => Err(Error::Custom("unsupported account kind".to_owned())),
     }?;
 
-    let payment_secret = {
+    let payment_secret = if account_kind == AccountKind::Legacy {
+        None
+    } else {
         tpara!(
             ctx,
             "\
             \
-            If your original wallet has a recovery passphrase, please enter it now.\
+            If your original wallet has a bip39 recovery passphrase, please enter it now.\
             \
-            Specifically, this is not a wallet password. This is a secondary payment password\
-            used to encrypt your private key. This is known as a 'payment passphrase'\
-            'mnemonic password', or a 'recovery passphrase'. If your mnemonic was created\
+            Specifically, this is not a wallet password. This is a secondary mnemonic passphrase\
+            used to encrypt your mnemonic. This is known as a 'payment passphrase'\
+            'mnemonic passphrase', or a 'recovery passphrase'. If your mnemonic was created\
             with a payment passphrase and you do not enter it now, the import process\
             will generate a different private key.\
             \
-            If you do not have a payment password, just press ENTER.\
+            If you do not have a bip39 recovery passphrase, press ENTER.\
             \
             ",
         );
@@ -98,7 +101,7 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: Acco
             "y" | "Y" | "YES" | "yes"
         ) {
             tprintln!(ctx);
-            let mnemonic = ask(&term).await?;
+            let mnemonic = prompt_for_mnemonic(&term).await?;
             tprintln!(ctx);
             let payment_secret = term.ask(true, "Enter payment password (optional): ").await?;
             let payment_secret = payment_secret.trim().is_not_empty().then(|| Secret::new(payment_secret.trim().as_bytes().to_vec()));
