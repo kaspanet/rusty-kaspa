@@ -161,10 +161,10 @@ pub struct WalletDerivationManager {
 impl WalletDerivationManager {
     pub fn create_extended_key_from_xprv(xprv: &str, is_multisig: bool, account_index: u64) -> Result<(SecretKey, ExtendedKeyAttrs)> {
         let xprv_key = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
-        Self::derive_extened_key_from_master_key(xprv_key, is_multisig, account_index)
+        Self::derive_extended_key_from_master_key(xprv_key, is_multisig, account_index)
     }
 
-    pub fn derive_extened_key_from_master_key(
+    pub fn derive_extended_key_from_master_key(
         xprv_key: ExtendedPrivateKey<SecretKey>,
         is_multisig: bool,
         account_index: u64,

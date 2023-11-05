@@ -170,7 +170,7 @@ impl PendingTransaction {
     pub async fn try_submit(&self, rpc: &Arc<DynRpcApi>) -> Result<RpcTransactionId> {
         self.commit().await?; // commit transactions only if we are submitting
         let rpc_transaction: RpcTransaction = self.rpc_transaction();
-        Ok(rpc.submit_transaction(rpc_transaction, true).await?)
+        Ok(rpc.submit_transaction(rpc_transaction, false).await?)
     }
 
     pub async fn log(&self) -> Result<()> {

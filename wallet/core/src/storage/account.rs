@@ -16,15 +16,18 @@ const LEGACY_ACCOUNT_VERSION: u16 = 0;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Legacy {
-    #[serde(default)]
     pub version: u16,
-
-    pub xpub_keys: Arc<Vec<String>>,
 }
 
 impl Legacy {
-    pub fn new(xpub_keys: Arc<Vec<String>>) -> Self {
-        Self { version: LEGACY_ACCOUNT_VERSION, xpub_keys }
+    pub fn new() -> Self {
+        Self { version: LEGACY_ACCOUNT_VERSION }
+    }
+}
+
+impl Default for Legacy {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -78,13 +81,13 @@ pub struct Keypair {
     #[serde(default)]
     pub version: u16,
 
-    pub public_key: PublicKey,
+    pub public_key: String,
     pub ecdsa: bool,
 }
 
 impl Keypair {
     pub fn new(public_key: PublicKey, ecdsa: bool) -> Self {
-        Self { version: KEYPAIR_ACCOUNT_VERSION, public_key, ecdsa }
+        Self { version: KEYPAIR_ACCOUNT_VERSION, public_key: public_key.to_string(), ecdsa }
     }
 }
 
@@ -146,5 +149,9 @@ impl Account {
 
     pub fn data(&self) -> &AccountData {
         &self.data
+    }
+
+    pub fn is_legacy(&self) -> bool {
+        matches!(self.data, AccountData::Legacy { .. })
     }
 }

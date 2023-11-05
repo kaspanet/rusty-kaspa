@@ -2,9 +2,9 @@ use crate::cli::KaspaCli;
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_wallet_core::runtime::{PrvKeyDataCreateArgs, WalletCreateArgs};
-use kaspa_wallet_core::storage::{AccessContextT, AccountKind, Hint};
+use kaspa_wallet_core::storage::{make_filename, AccessContextT, AccountKind, Hint};
 
-pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()> {
+pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_mnemonic: bool) -> Result<()> {
     let term = ctx.term();
     let wallet = ctx.wallet();
 
@@ -16,8 +16,8 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
         tprintln!(ctx);
         return Err(err.into());
     }
-
-    if wallet.exists(name).await? {
+    let filename = make_filename(&name.map(String::from), &None);
+    if wallet.exists(Some(&filename)).await? {
         tprintln!(ctx, "{}", style("WARNING - A previously created wallet already exists!").red().to_string());
         tprintln!(ctx, "NOTE: You can create a differently named wallet by using 'wallet create <name>'");
         tprintln!(ctx);
@@ -37,14 +37,14 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
     tpara!(
         ctx,
         "\n\
-    \"Phishing hint\" is a secret word or a phrase that is displayed \
-    when you open your wallet. If you do not see the hint when opening \
-    your wallet, you may be accessing a fake wallet designed to steal \
-    your private key. If this occurs, stop using the wallet immediately, \
-    check the browser URL domain name and seek help on social networks \
-    (Kaspa Discord or Telegram). \
-    \n\
-    ",
+        \"Phishing hint\" is a secret word or a phrase that is displayed \
+        when you open your wallet. If you do not see the hint when opening \
+        your wallet, you may be accessing a fake wallet designed to steal \
+        your private key. If this occurs, stop using the wallet immediately, \
+        check the browser URL domain name and seek help on social networks \
+        (Kaspa Discord or Telegram). \
+        \n\
+        ",
     );
 
     let hint = term.ask(false, "Create phishing hint (optional, press <enter> to skip): ").await?.trim().to_string();
@@ -62,24 +62,44 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
     }
 
     tprintln!(ctx, "");
-    tpara!(
-        ctx,
-        "\
-        PLEASE NOTE: The optional payment password, if provided, will be required to \
-        issue transactions. This password will also be required when recovering your wallet \
-        in addition to your private key or mnemonic. If you loose this password, you will not \
-        be able to use mnemonic to recover your wallet! \
-        ",
-    );
+    if import_with_mnemonic {
+        tpara!(
+            ctx,
+            "\
+            \
+            If your original wallet has a bip39 recovery passphrase, please enter it now.\
+            \
+            Specifically, this is not a wallet password. This is a secondary mnemonic passphrase\
+            used to encrypt your mnemonic. This is known as a 'payment passphrase'\
+            'mnemonic passphrase', or a 'recovery passphrase'. If your mnemonic was created\
+            with a payment passphrase and you do not enter it now, the import process\
+            will generate a different private key.\
+            \
+            If you do not have a bip39 recovery passphrase, press ENTER.\
+            \
+            ",
+        );
+    } else {
+        tpara!(
+            ctx,
+            "\
+            PLEASE NOTE: The optional bip39 mnemonic passphrase, if provided, will be required to \
+            issue transactions. This passphrase will also be required when recovering your wallet \
+            in addition to your private key or mnemonic. If you loose this passphrase, you will not \
+            be able to use or recover your wallet! \
+            \
+            If you do not want to use bip39 recovery passphrase, press ENTER.\
+            ",
+        );
+    }
 
-    let payment_secret = term.ask(true, "Enter payment password (optional): ").await?;
+    let payment_secret = term.ask(true, "Enter bip39 mnemonic passphrase (optional): ").await?;
     let payment_secret =
         if payment_secret.trim().is_empty() { None } else { Some(Secret::new(payment_secret.trim().as_bytes().to_vec())) };
 
     if let Some(payment_secret) = payment_secret.as_ref() {
-        let payment_secret_validate = Secret::new(
-            term.ask(true, "Enter payment (private key encryption) password (optional): ").await?.trim().as_bytes().to_vec(),
-        );
+        let payment_secret_validate =
+            Secret::new(term.ask(true, "Please re-enter mnemonic passphrase: ").await?.trim().as_bytes().to_vec());
         if payment_secret_validate.as_ref() != payment_secret.as_ref() {
             return Err(Error::PaymentSecretMatch);
         }
@@ -87,46 +107,56 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
 
     tprintln!(ctx, "");
 
+    let prv_key_data_args = if import_with_mnemonic {
+        let words = crate::wizards::import::prompt_for_mnemonic(&term).await?;
+        PrvKeyDataCreateArgs::new_with_mnemonic(None, wallet_secret.clone(), payment_secret.clone(), words.join(" "))
+    } else {
+        PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone())
+    };
+
     let notifier = ctx.notifier().show(Notification::Processing).await;
+
     // suspend commits for multiple operations
     wallet.store().batch().await?;
 
     let account_kind = AccountKind::Bip32;
     let wallet_args = WalletCreateArgs::new(name.map(String::from), None, hint, wallet_secret.clone(), true);
-    let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone());
     let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_secret.clone(), payment_secret);
     let descriptor = ctx.wallet().create_wallet(wallet_args).await?;
     let (prv_key_data_id, mnemonic) = wallet.create_prv_key_data(prv_key_data_args).await?;
     let account = wallet.create_bip32_account(prv_key_data_id, account_args).await?;
 
     // flush data to storage
-    let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+    let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret.clone()));
     wallet.store().flush(&access_ctx).await?;
+
     notifier.hide();
 
-    tprintln!(ctx, "");
-    tprintln!(ctx, "---");
-    tprintln!(ctx, "");
-    tprintln!(ctx, "{}", style("IMPORTANT:").red());
-    tprintln!(ctx, "");
+    if !import_with_mnemonic {
+        tprintln!(ctx, "");
+        tprintln!(ctx, "---");
+        tprintln!(ctx, "");
+        tprintln!(ctx, "{}", style("IMPORTANT:").red());
+        tprintln!(ctx, "");
 
-    tpara!(
-        ctx,
-        "Your mnemonic phrase allows your to re-create your private key. \
-        The person who has access to this mnemonic will have full control of \
-        the Kaspa stored in it. Keep your mnemonic safe. Write it down and \
-        store it in a safe, preferably in a fire-resistant location. Do not \
-        store your mnemonic on this computer or a mobile device. This wallet \
-        will never ask you for this mnemonic phrase unless you manually \
-        initiate a private key recovery. \
-        ",
-    );
+        tpara!(
+            ctx,
+            "Your mnemonic phrase allows your to re-create your private key. \
+            The person who has access to this mnemonic will have full control of \
+            the Kaspa stored in it. Keep your mnemonic safe. Write it down and \
+            store it in a safe, preferably in a fire-resistant location. Do not \
+            store your mnemonic on this computer or a mobile device. This wallet \
+            will never ask you for this mnemonic phrase unless you manually \
+            initiate a private key recovery. \
+            ",
+        );
 
-    // descriptor
+        // descriptor
 
-    ["", "Never share your mnemonic with anyone!", "---", "", "Your default wallet account mnemonic:", mnemonic.phrase()]
-        .into_iter()
-        .for_each(|line| term.writeln(line));
+        ["", "Never share your mnemonic with anyone!", "---", "", "Your default wallet account mnemonic:", mnemonic.phrase()]
+            .into_iter()
+            .for_each(|line| term.writeln(line));
+    }
 
     term.writeln("");
     if let Some(descriptor) = descriptor {
@@ -138,6 +168,8 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()
     term.writeln("Your default account deposit address:");
     term.writeln(style(receive_address).blue().to_string());
     term.writeln("");
+
+    wallet.load_and_activate(wallet_secret, name.map(String::from)).await?;
 
     Ok(())
 }

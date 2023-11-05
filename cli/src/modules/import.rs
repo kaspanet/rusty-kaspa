@@ -28,10 +28,15 @@ impl Import {
             "legacy" => {
                 if exists_legacy_v0_keydata().await? {
                     let import_secret = Secret::new(
-                        ctx.term().ask(true, "Enter the password for the wallet you are importing:").await?.trim().as_bytes().to_vec(),
+                        ctx.term()
+                            .ask(true, "Enter the password for the account you are importing: ")
+                            .await?
+                            .trim()
+                            .as_bytes()
+                            .to_vec(),
                     );
-                    let wallet_secret = Secret::new(ctx.term().ask(true, "Enter wallet password:").await?.trim().as_bytes().to_vec());
-                    wallet.import_gen0_keydata(import_secret, wallet_secret).await?;
+                    let wallet_secret = Secret::new(ctx.term().ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
+                    wallet.import_gen0_keydata(import_secret, wallet_secret, None).await?;
                 } else if application_runtime::is_web() {
                     return Err("'kaspanet' web wallet storage not found at this domain name".into());
                 } else {

@@ -29,6 +29,10 @@ impl ActiveAccountMap {
         self.inner().get(account_id).cloned()
     }
 
+    pub fn contains(&self, account_id: &AccountId) -> bool {
+        self.inner().get(account_id).is_some()
+    }
+
     pub fn extend(&self, accounts: Vec<Arc<dyn Account>>) {
         let mut map = self.inner();
         let accounts = accounts.into_iter().map(|a| (*a.id(), a)); //.collect::<Vec<_>>();

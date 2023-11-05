@@ -18,7 +18,7 @@ use std::sync::atomic::Ordering;
 use workflow_core::runtime::is_web;
 use workflow_store::fs;
 
-fn make_filename(title: &Option<String>, filename: &Option<String>) -> String {
+pub fn make_filename(title: &Option<String>, filename: &Option<String>) -> String {
     if let Some(filename) = filename {
         filename.to_string()
     } else if let Some(title) = title {
@@ -221,7 +221,7 @@ impl Interface for LocalStore {
 
     async fn exists(&self, name: Option<&str>) -> Result<bool> {
         let location = self.location.lock().unwrap().clone().unwrap();
-        let store = Storage::try_new_with_folder(&location.folder, name.unwrap_or(super::DEFAULT_WALLET_FILE))?;
+        let store = Storage::try_new_with_folder(&location.folder, &format!("{}.wallet", name.unwrap_or(super::DEFAULT_WALLET_FILE)))?;
         store.exists().await
     }
 
@@ -286,6 +286,10 @@ impl Interface for LocalStore {
     }
 
     async fn flush(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
+        if !self.batch.load(Ordering::SeqCst) {
+            panic!("flush() called while not in batch mode");
+        }
+
         self.batch.store(false, Ordering::SeqCst);
         self.commit(ctx).await?;
         Ok(())
@@ -293,10 +297,7 @@ impl Interface for LocalStore {
 
     async fn commit(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
         if !self.batch.load(Ordering::SeqCst) {
-            // log_info!("*** COMMITING ***");
             self.inner()?.store(ctx).await?;
-        } else {
-            // log_info!("*** BATCH MODE - SKIPPING COMMIT ***");
         }
         Ok(())
     }
@@ -345,6 +346,8 @@ impl PrvKeyDataStore for LocalStoreInner {
     async fn store(&self, ctx: &Arc<dyn AccessContextT>, prv_key_data: PrvKeyData) -> Result<()> {
         let wallet_secret = ctx.wallet_secret().await;
         let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(&wallet_secret)?;
+        let prv_key_data_info = Arc::new((&prv_key_data).into());
+        self.cache().prv_key_data_info.insert(prv_key_data.id, prv_key_data_info)?;
         prv_key_data_map.insert(prv_key_data.id, prv_key_data);
         self.cache().prv_key_data.replace(prv_key_data_map.encrypt(&wallet_secret)?);
         self.set_modified(true);
@@ -380,8 +383,9 @@ impl AccountStore for LocalStoreInner {
     }
 
     async fn load_single(&self, ids: &AccountId) -> Result<Option<(Arc<Account>, Option<Arc<Metadata>>)>> {
-        if let Some(account) = self.cache().accounts.load_single(ids)? {
-            Ok(Some((account, self.cache().metadata.load_single(ids)?)))
+        let cache = self.cache();
+        if let Some(account) = cache.accounts.load_single(ids)? {
+            Ok(Some((account, cache.metadata.load_single(ids)?)))
         } else {
             Ok(None)
         }
