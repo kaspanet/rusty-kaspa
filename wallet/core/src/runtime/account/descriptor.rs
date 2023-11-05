@@ -34,7 +34,7 @@ pub struct Legacy {
     pub account_id: AccountId,
     pub account_name: Option<String>,
     pub prv_key_data_id: PrvKeyDataId,
-    pub xpub_keys: Arc<Vec<String>>,
+    // pub xpub_keys: Arc<Vec<String>>,
     pub receive_address: Option<Address>,
     pub change_address: Option<Address>,
     pub meta: AddressDerivationMeta,

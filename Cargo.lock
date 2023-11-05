@@ -2772,6 +2772,7 @@ dependencies = [
  "kaspa-core",
  "kaspa-database",
  "kaspa-grpc-client",
+ "kaspa-grpc-core",
  "kaspa-hashes",
  "kaspa-index-processor",
  "kaspa-math",

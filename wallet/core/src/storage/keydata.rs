@@ -49,6 +49,12 @@ impl std::fmt::Debug for KeyDataId {
     }
 }
 
+impl std::fmt::Display for KeyDataId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "KeyDataId ( {:?} )", self.0)
+    }
+}
+
 impl Serialize for KeyDataId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -267,6 +273,11 @@ impl PrvKeyData {
         let payload = self.payload.decrypt(payment_secret)?;
         let xprv = payload.get_xprv(payment_secret)?;
         create_xpub_from_xprv(xprv, account_kind, account_index).await
+    }
+
+    pub fn get_xprv(&self, payment_secret: Option<&Secret>) -> Result<ExtendedPrivateKey<secp256k1::SecretKey>> {
+        let payload = self.payload.decrypt(payment_secret)?;
+        payload.get_xprv(payment_secret)
     }
 
     pub fn as_mnemonic(&self, payment_secret: Option<&Secret>) -> Result<Option<Mnemonic>> {

@@ -152,7 +152,7 @@ impl UtxoProcessor {
                 let utxos_changed_scope = UtxosChangedScope { addresses };
                 self.rpc_api().start_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
             } else {
-                log_info!("registering empty address list!");
+                log_error!("registering empty address list!");
             }
         }
         Ok(())
@@ -169,7 +169,7 @@ impl UtxoProcessor {
                 let utxos_changed_scope = UtxosChangedScope { addresses };
                 self.rpc_api().stop_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
             } else {
-                log_info!("unregistering empty address list!");
+                log_error!("unregistering empty address list!");
             }
         }
         Ok(())
@@ -230,7 +230,7 @@ impl UtxoProcessor {
     }
 
     async fn handle_recoverable(&self, current_daa_score: u64) -> Result<()> {
-        self.inner.recoverable_contexts.retain(|context| context.recover(current_daa_score, None));
+        self.inner.recoverable_contexts.retain(|context| context.recover(current_daa_score));
 
         Ok(())
     }

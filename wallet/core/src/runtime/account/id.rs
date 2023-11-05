@@ -64,7 +64,6 @@ impl AccountId {
             prv_key_data_id: Some([*prv_key_data_id]),
             ecdsa: Some(data.ecdsa),
             account_index: None,
-            // secp256k1_public_key: Some(data.public_key.serialize().to_vec()),
             secp256k1_public_key: Some(data.public_key.as_bytes().to_vec()),
             data: None,
         };

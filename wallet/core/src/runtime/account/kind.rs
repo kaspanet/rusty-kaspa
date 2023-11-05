@@ -7,7 +7,7 @@ use std::str::FromStr;
 use workflow_core::enums::u8_try_from;
 
 u8_try_from! {
-    #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, Hash)]
+    #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Hash)]
     #[serde(rename_all = "lowercase")]
     #[wasm_bindgen]
     pub enum AccountKind {

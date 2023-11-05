@@ -1,13 +1,15 @@
 use crate::api::{message::*, traits::WalletApi};
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::{try_from_storage, Account, AccountId, ActiveAccountMap};
+use crate::runtime::{account::ScanNotifier, try_from_storage, Account, AccountId, ActiveAccountMap};
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
-use crate::storage::{self, AccessContextT, AccountKind, Binding, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo};
+use crate::storage::{
+    self, make_filename, AccessContextT, AccountData, AccountKind, Binding, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo,
+};
 use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
 use crate::{derivation::gen0, derivation::gen0::import::*, derivation::gen1, derivation::gen1::import::*};
@@ -28,8 +30,11 @@ use workflow_core::task::spawn;
 use workflow_log::log_error;
 use zeroize::Zeroize;
 
+const CACHE_ADDRESS_OFFSET: u32 = 2000;
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
+
 pub struct WalletCreateArgs {
     pub title: Option<String>,
     pub filename: Option<String>,
@@ -69,13 +74,8 @@ impl PrvKeyDataCreateArgs {
         Self { name, wallet_secret, payment_secret, mnemonic: None }
     }
 
-    pub fn new_with_mnemonic(
-        name: Option<String>,
-        wallet_secret: Secret,
-        payment_secret: Option<Secret>,
-        mnemonic: Option<String>,
-    ) -> Self {
-        Self { name, wallet_secret, payment_secret, mnemonic }
+    pub fn new_with_mnemonic(name: Option<String>, wallet_secret: Secret, payment_secret: Option<Secret>, mnemonic: String) -> Self {
+        Self { name, wallet_secret, payment_secret, mnemonic: Some(mnemonic) }
     }
 }
 
@@ -95,7 +95,7 @@ pub struct MultisigCreateArgs {
     pub minimum_signatures: u16,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountCreateArgs {
     pub name: Option<String>,
     pub title: Option<String>,
@@ -118,6 +118,7 @@ impl AccountCreateArgs {
 
 pub struct Inner {
     active_accounts: ActiveAccountMap,
+    legacy_accounts: ActiveAccountMap,
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
     selected_account: Mutex<Option<Arc<dyn Account>>>,
@@ -164,6 +165,7 @@ impl Wallet {
                 multiplexer,
                 store,
                 active_accounts: ActiveAccountMap::default(),
+                legacy_accounts: ActiveAccountMap::default(),
                 listener_id: Mutex::new(None),
                 task_ctl: DuplexChannel::oneshot(),
                 selected_account: Mutex::new(None),
@@ -194,8 +196,11 @@ impl Wallet {
     pub fn active_accounts(&self) -> &ActiveAccountMap {
         &self.inner.active_accounts
     }
+    pub fn legacy_accounts(&self) -> &ActiveAccountMap {
+        &self.inner.legacy_accounts
+    }
 
-    pub async fn reset(self: &Arc<Self>) -> Result<()> {
+    pub async fn reset(self: &Arc<Self>, clear_legacy_cache: bool) -> Result<()> {
         self.utxo_processor().clear().await?;
 
         self.select(None).await?;
@@ -204,11 +209,15 @@ impl Wallet {
         let futures = accounts.into_iter().map(|account| account.stop());
         join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
 
+        if clear_legacy_cache {
+            self.legacy_accounts().clear();
+        }
+
         Ok(())
     }
 
     pub async fn reload(self: &Arc<Self>) -> Result<()> {
-        self.reset().await?;
+        self.reset(false).await?;
 
         if self.is_open() {
             self.notify(Events::WalletReload).await?;
@@ -218,7 +227,7 @@ impl Wallet {
     }
 
     pub async fn close(self: &Arc<Wallet>) -> Result<()> {
-        self.reset().await?;
+        self.reset(true).await?;
         self.store().close().await?;
         self.notify(Events::WalletClose).await?;
 
@@ -272,12 +281,14 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    async fn open_impl(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
-        self.reset().await?;
-
+    async fn open_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
-        self.store().open(&ctx, OpenArgs::new(name.clone())).await?;
+        let name = Some(make_filename(&name, &None));
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
+        self.store().open(&ctx, OpenArgs::new(name)).await?;
+
+        // reset current state only after we have successfully opened another wallet
+        self.reset(true).await?;
 
         let hint = self.store().get_user_hint().await?;
         self.notify(Events::WalletHint { hint }).await?;
@@ -287,13 +298,36 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    pub async fn open(self: &Arc<Wallet>, wallet_secret: Secret, name: Option<String>) -> Result<()> {
-        if let Err(err) = self.open_impl(wallet_secret, name).await {
+    pub async fn open(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+        // This is a wrapper of load_impl() that catches errors and notifies the UI
+        if let Err(err) = self.open_impl(secret, name).await {
             self.notify(Events::WalletError { message: err.to_string() }).await?;
             Err(err)
         } else {
             Ok(())
         }
+    }
+
+    // /// Loads a wallet from storage. Accounts are activated by this call.
+    pub async fn open_and_activate(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
+        let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
+        let name = Some(make_filename(&name, &None));
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret.clone()));
+        self.store().open(&ctx, OpenArgs::new(name)).await?;
+
+        // reset current state only after we have successfully opened another wallet
+        self.reset(true).await?;
+
+        self.initialize_all_stored_accounts(secret).await?;
+        let hint = self.store().get_user_hint().await?;
+        self.notify(Events::WalletHint { hint }).await?;
+        self.notify(Events::WalletOpen).await?;
+        Ok(())
+    }
+
+    async fn initialize_all_stored_accounts(self: &Arc<Wallet>, secret: Secret) -> Result<()> {
+        self.initialized_accounts(None, secret).await?.try_collect::<Vec<_>>().await?;
+        Ok(())
     }
 
     pub async fn get_prv_key_data(&self, wallet_secret: Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
@@ -557,7 +591,7 @@ impl Wallet {
     }
 
     pub async fn create_wallet(self: &Arc<Wallet>, args: WalletCreateArgs) -> Result<Option<String>> {
-        self.reset().await?;
+        self.reset(true).await?;
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
         self.inner.store.create(&ctx, args.into()).await?;
         let descriptor = self.inner.store.descriptor()?;
@@ -586,7 +620,7 @@ impl Wallet {
         wallet_args: WalletCreateArgs,
         account_args: AccountCreateArgs,
     ) -> Result<(Mnemonic, Option<String>, Arc<dyn Account>)> {
-        self.reset().await?;
+        self.reset(true).await?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(account_args.wallet_secret));
 
@@ -615,10 +649,6 @@ impl Wallet {
         self.select(Some(&account)).await?;
         Ok((mnemonic, descriptor, account))
     }
-
-    // pub async fn dump_unencrypted(&self) -> Result<()> {
-    //     Ok(())
-    // }
 
     pub async fn get_account_by_id(self: &Arc<Self>, account_id: &AccountId) -> Result<Option<Arc<dyn Account>>> {
         if let Some(account) = self.active_accounts().get(account_id) {
@@ -730,8 +760,8 @@ impl Wallet {
     }
 
     pub async fn find_accounts_by_name_or_id(&self, pat: &str) -> Result<Vec<Arc<dyn Account>>> {
-        let accounts = self.active_accounts().inner().values().cloned().collect::<Vec<_>>();
-        let matches = accounts
+        let active_accounts = self.active_accounts().inner().values().cloned().collect::<Vec<_>>();
+        let matches = active_accounts
             .into_iter()
             .filter(|account| {
                 account.name().map(|name| name.starts_with(pat)).unwrap_or(false) || account.id().to_hex().starts_with(pat)
@@ -749,12 +779,15 @@ impl Wallet {
 
             async move {
                 let (stored_account, stored_metadata) = stored.unwrap();
-                if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
-                    // log_trace!("fetching active account: {}", account.id);
+                if let Some(account) = wallet.legacy_accounts().get(&stored_account.id) {
+                    if !wallet.active_accounts().contains(account.id()) {
+                        account.clone().start().await?;
+                    }
+                    Ok(account)
+                } else if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
                     Ok(account)
                 } else {
                     let account = try_from_storage(&wallet, stored_account, stored_metadata).await?;
-                    log_info!("starting new active account instance {}", account.id());
                     account.clone().start().await?;
                     Ok(account)
                 }
@@ -764,38 +797,102 @@ impl Wallet {
         Ok(Box::pin(stream))
     }
 
-    pub async fn import_gen0_keydata(self: &Arc<Wallet>, import_secret: Secret, wallet_secret: Secret) -> Result<Arc<dyn Account>> {
+    pub async fn initialized_accounts(
+        self: &Arc<Self>,
+        filter: Option<PrvKeyDataId>,
+        secret: Secret,
+    ) -> Result<impl Stream<Item = Result<Arc<dyn Account>>>> {
+        let iter = self.inner.store.as_account_store().unwrap().iter(filter).await.unwrap();
+        let wallet = self.clone();
+
+        let stream = iter.then(move |stored| {
+            let wallet = wallet.clone();
+            let secret = secret.clone();
+
+            async move {
+                let (stored_account, stored_metadata) = stored.unwrap();
+                if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
+                    Ok(account)
+                } else {
+                    let is_legacy = matches!(stored_account.data, AccountData::Legacy { .. });
+                    let account = try_from_storage(&wallet, stored_account, stored_metadata).await?;
+
+                    if is_legacy {
+                        account.clone().initialize_private_data(secret, None, None).await?;
+                        wallet.legacy_accounts().insert(account.clone());
+                    }
+
+                    account.clone().start().await?;
+
+                    if is_legacy {
+                        let derivation = account.clone().as_derivation_capable()?.derivation();
+                        let m = derivation.receive_address_manager();
+                        m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+                        let m = derivation.change_address_manager();
+                        m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+                        account.clone().clear_private_data().await?;
+                    }
+
+                    Ok(account)
+                }
+            }
+        });
+
+        Ok(Box::pin(stream))
+    }
+
+    pub async fn import_gen0_keydata(
+        self: &Arc<Wallet>,
+        import_secret: Secret,
+        wallet_secret: Secret,
+        payment_secret: Option<&Secret>,
+        notifier: Option<ScanNotifier>,
+    ) -> Result<Arc<dyn Account>> {
+        let notifier = notifier.as_ref();
         let keydata = load_v0_keydata(&import_secret).await?;
 
-        //workflow_log::log_info!("keydata: {:?}", keydata);
-
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret.clone()));
 
         let mnemonic = Mnemonic::new(keydata.mnemonic.trim(), Language::English)?;
-        let prv_key_data = PrvKeyData::try_new_from_mnemonic(mnemonic, None)?;
+        let prv_key_data = PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret)?;
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
         if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
         }
 
-        // TODO: xpub_keys
-        let xpub_keys = Arc::new(vec![]);
-        let data = storage::Legacy::new(xpub_keys);
+        let data = storage::Legacy::new();
         let settings = storage::Settings::default();
         let account = Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?);
 
-        let account_store = self.inner.store.as_account_store()?;
-
-        let stored_account = account.as_storable()?;
-
-        // store private key
-        prv_key_data_store.store(&ctx, prv_key_data).await?;
-        // store account
-        account_store.store_single(&stored_account, None).await?;
-        // flush to storage
-        self.inner.store.commit(&ctx).await?;
         // activate account (add it to wallet active account list)
-        account.clone().start().await?;
+        self.active_accounts().insert(account.clone().as_dyn_arc());
+        self.legacy_accounts().insert(account.clone().as_dyn_arc());
+
+        let account_store = self.inner.store.as_account_store()?;
+        let stored_account = account.as_storable()?;
+        // store private key and account
+        self.inner.store.batch().await?;
+        prv_key_data_store.store(&ctx, prv_key_data).await?;
+        account_store.store_single(&stored_account, None).await?;
+        self.inner.store.flush(&ctx).await?;
+
+        account.clone().initialize_private_data(wallet_secret, payment_secret, None).await?;
+
+        if self.is_connected() {
+            if let Some(notifier) = notifier {
+                notifier(0, 0, None);
+            }
+            account.clone().scan(Some(100), Some(5000)).await?;
+        }
+
+        let derivation = account.clone().as_derivation_capable()?.derivation();
+        let m = derivation.receive_address_manager();
+        m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+        let m = derivation.change_address_manager();
+        m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+        account.clone().clear_private_data().await?;
+
+        account.clone().clear_private_data().await?;
 
         Ok(account)
     }
@@ -815,11 +912,11 @@ impl Wallet {
     ) -> Result<Arc<dyn Account>> {
         let prv_key_data = storage::PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret)?;
         let prv_key_data_store = self.store().as_prv_key_data_store()?;
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret.clone()));
         if prv_key_data_store.load_key_data(&ctx, &prv_key_data.id).await?.is_some() {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id.to_hex()));
         }
-
+        let mut is_legacy = false;
         let account: Arc<dyn Account> = match account_kind {
             AccountKind::Bip32 => {
                 let account_index = 0;
@@ -834,11 +931,8 @@ impl Wallet {
                 // account
             }
             AccountKind::Legacy => {
-                // TODO xpub_keys
-                let xpub_keys = Arc::new(vec![]);
-                // ---
-
-                let data = storage::Legacy::new(xpub_keys);
+                is_legacy = true;
+                let data = storage::Legacy::new();
                 let settings = storage::Settings::default();
                 Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?)
             }
@@ -849,10 +943,24 @@ impl Wallet {
 
         let stored_account = account.as_storable()?;
         let account_store = self.inner.store.as_account_store()?;
-        prv_key_data_store.store(&ctx, prv_key_data).await?;
+        self.inner.store.batch().await?;
+        self.store().as_prv_key_data_store()?.store(&ctx, prv_key_data).await?;
         account_store.store_single(&stored_account, None).await?;
-        self.inner.store.commit(&ctx).await?;
+        self.inner.store.flush(&ctx).await?;
+
+        if is_legacy {
+            account.clone().initialize_private_data(wallet_secret, None, None).await?;
+            self.legacy_accounts().insert(account.clone());
+        }
         account.clone().start().await?;
+        if is_legacy {
+            let derivation = account.clone().as_derivation_capable()?.derivation();
+            let m = derivation.receive_address_manager();
+            m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+            let m = derivation.change_address_manager();
+            m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+            account.clone().clear_private_data().await?;
+        }
 
         Ok(account)
     }
@@ -1144,17 +1252,8 @@ mod test {
         println!("Creating wallet...");
         let resident_store = Wallet::resident_store()?;
         let wallet = Arc::new(Wallet::try_new(resident_store, None)?);
-        // let stored_accounts = vec![StoredWalletAccount{
-        //     private_key_index: 0,
-        //     account_kind: crate::storage::AccountKind::Bip32,
-        //     name: "Default Account".to_string(),
-        //     title: "Default Account".to_string(),
-        // }];
-        // let utxo_db_ctx = wallet.utxo_db_core().ctx(self)
-        // wallet.load_accounts(stored_accounts);
 
         let rpc_api = wallet.rpc_api();
-        // let utxo_processor = UtxoProcessor::new(rpc, None);
         let utxo_processor = wallet.utxo_processor();
 
         let wrpc_client = wallet.wrpc_client().expect("Unable to obtain wRPC client");
@@ -1179,26 +1278,10 @@ mod test {
         let utxo_set_balance = utxo_context.calculate_balance().await;
         println!("get_utxos_by_addresses: {utxo_set_balance:?}");
 
-        // let mut ctx = utxo_set.create_selection_context();
-        // let mut ctx = UtxoSelectionContext::new(utxo_set);
-
-        // #[allow(deprecated)]
-        // let selected_entries = ctx.select(100_000)?;
-
-        // let utxo_selection = utxo_set.select(100000, UtxoOrdering::AscendingAmount, true).await?;
-
-        //let payload = vec![];
         let to_address = Address::try_from("kaspatest:qpakxqlesqywgkq7rg4wyhjd93kmw7trkl3gpa3vd5flyt59a43yyn8vu0w8c")?;
-        //let outputs = Outputs { outputs: vec![Output::new(to_address, 100000, None)] };
-        //let vtx = VirtualTransaction::new(utxo_selection, &outputs, payload);
-
         let mut iter = UtxoIterator::new(&utxo_context);
-
-        // let UtxoEntryReference { utxo }
         let utxo = iter.next().unwrap();
-        //vtx.sign();
         let utxo = (*utxo.utxo).clone();
-        //utxo.utxo_entry.is_coinbase = false;
         let selected_entries = vec![utxo];
 
         let entries = &selected_entries;
@@ -1212,11 +1295,7 @@ mod test {
         let tx = Transaction::new(
             0,
             inputs,
-            vec![
-                TransactionOutput::new(1000, &pay_to_address_script(&to_address)),
-                // TransactionOutput::new() { value: 1000, script_public_key: pay_to_address_script(&to_address) },
-                //TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
-            ],
+            vec![TransactionOutput::new(1000, &pay_to_address_script(&to_address))],
             0,
             SUBNETWORK_ID_NATIVE,
             0,
@@ -1229,7 +1308,6 @@ mod test {
             gen1::WalletDerivationManager::build_derivate_path(false, 0, None, Some(kaspa_bip32::AddressType::Receive))?;
 
         let xprv = "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ";
-        //let (xkey, _attrs) = WalletAccount::create_extended_key_from_xprv(xprv, false, 0).await?;
 
         let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?.derive_path(derivation_path)?;
 
@@ -1241,16 +1319,11 @@ mod test {
         assert_eq!(address, address_test, "Addresses don't match");
         println!("address: {address_str}");
 
-        let private_keys = vec![
-            //xkey.private_key().into()
-            xkey.to_bytes(),
-        ];
+        let private_keys = vec![xkey.to_bytes()];
 
         println!("mtx: {mtx:?}");
 
-        //let signer = Signer::new(private_keys)?;
         let mtx = sign_transaction(mtx, private_keys, true)?;
-        //println!("mtx: {mtx:?}");
 
         let utxo_context =
             self::create_utxos_context_with_addresses(rpc_api.clone(), vec![to_address.clone()], current_daa_score, utxo_processor)
