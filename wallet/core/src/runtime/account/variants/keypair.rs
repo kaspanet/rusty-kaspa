@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::account::descriptor::{self, Descriptor};
+use crate::runtime::account::descriptor::{self, AccountDescriptor};
 use crate::runtime::account::{Account, AccountId, AccountKind, Inner};
 use crate::runtime::Wallet;
 use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
@@ -69,13 +69,15 @@ impl Account for Keypair {
         Ok(None)
     }
 
-    fn descriptor(&self) -> Result<Descriptor> {
+    fn descriptor(&self) -> Result<AccountDescriptor> {
         let descriptor = descriptor::Keypair {
             account_id: *self.id(),
+            account_name: self.name(),
             prv_key_data_id: self.prv_key_data_id,
             public_key: self.public_key.to_string(),
             ecdsa: self.ecdsa,
-            address: self.receive_address()?,
+            receive_address: self.receive_address().ok(),
+            change_address: self.receive_address().ok(),
         };
 
         Ok(descriptor.into())

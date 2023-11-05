@@ -3,6 +3,7 @@ pub mod id;
 pub mod kind;
 pub mod variants;
 
+pub use descriptor::AccountDescriptor;
 pub use id::*;
 use kaspa_bip32::ChildNumber;
 pub use kind::*;
@@ -23,7 +24,8 @@ use crate::storage::{self, AccessContextT, AccountData, PrvKeyData, PrvKeyDataId
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, KeydataSigner, PaymentDestination, PendingTransaction, Signer};
 use crate::utxo::{UtxoContext, UtxoContextBinding};
 use kaspa_consensus_wasm::UtxoEntryReference;
-use kaspa_notify::listener::ListenerId;
+// use kaspa_notify::listener::ListenerId;
+use crate::storage::account::Settings;
 use separator::Separatable;
 use workflow_core::abortable::Abortable;
 
@@ -35,8 +37,18 @@ pub type GenerationNotifier = Arc<dyn Fn(&PendingTransaction) + Send + Sync>;
 pub type DeepScanNotifier = Arc<dyn Fn(usize, u64, Option<TransactionId>) + Send + Sync>;
 
 pub struct Context {
-    pub settings: Option<storage::account::Settings>,
-    pub listener_id: Option<ListenerId>,
+    pub settings: Option<Settings>,
+    // pub listener_id: Option<ListenerId>,
+}
+
+impl Context {
+    pub fn new(settings: Option<Settings>) -> Self {
+        Self { settings }
+    }
+
+    pub fn settings(&self) -> &Option<Settings> {
+        &self.settings
+    }
 }
 
 pub struct Inner {
@@ -50,8 +62,17 @@ impl Inner {
     pub fn new(wallet: &Arc<Wallet>, id: AccountId, settings: Option<storage::account::Settings>) -> Self {
         let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
 
-        let context = Context { listener_id: None, settings };
+        // let context = Context { listener_id: None, settings };
+        let context = Context { settings };
         Inner { context: Mutex::new(context), id, wallet: wallet.clone(), utxo_context: utxo_context.clone() }
+    }
+
+    // pub fn settings(&self) -> Option<Settings> {
+    //     self.context.lock().unwrap().settings().clone()
+    // }
+
+    pub fn context(&self) -> MutexGuard<Context> {
+        self.context.lock().unwrap()
     }
 
     // pub fn account_id(&self) -> &AccountId {
@@ -200,7 +221,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
     fn as_storable(&self) -> Result<storage::Account>;
     fn metadata(&self) -> Result<Option<Metadata>>;
-    fn descriptor(&self) -> Result<descriptor::Descriptor>;
+    fn descriptor(&self) -> Result<descriptor::AccountDescriptor>;
 
     async fn scan(self: Arc<Self>, window_size: Option<usize>, extent: Option<u32>) -> Result<()> {
         self.utxo_context().clear().await?;

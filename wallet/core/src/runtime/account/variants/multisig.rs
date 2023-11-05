@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::result::Result;
-use crate::runtime::account::descriptor::{self, Descriptor};
+use crate::runtime::account::descriptor::{self, AccountDescriptor};
 use crate::runtime::account::Inner;
 use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount};
 use crate::runtime::Wallet;
@@ -96,8 +96,8 @@ impl Account for MultiSig {
         Ok(Some(metadata))
     }
 
-    fn descriptor(&self) -> Result<Descriptor> {
-        let descriptor = descriptor::MultiSig { account_id: *self.id() };
+    fn descriptor(&self) -> Result<AccountDescriptor> {
+        let descriptor = descriptor::MultiSig { account_id: *self.id(), account_name: self.name() };
         Ok(descriptor.into())
     }
 

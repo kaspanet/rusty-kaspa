@@ -5,7 +5,7 @@ pub mod maps;
 pub mod sync;
 pub mod wallet;
 
-pub use account::{try_from_storage, Account, AccountId, AccountKind, Bip32, Keypair, Legacy, MultiSig};
+pub use account::{try_from_storage, Account, AccountDescriptor, AccountId, AccountKind, Bip32, Keypair, Legacy, MultiSig};
 // pub use api::WalletApi;
 pub use balance::{AtomicBalance, Balance, BalanceStrings};
 pub use maps::ActiveAccountMap;

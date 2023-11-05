@@ -1,7 +1,7 @@
 use crate::derivation::AddressDerivationManager;
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::account::descriptor::{self, Descriptor};
+use crate::runtime::account::descriptor::{self, AccountDescriptor};
 use crate::runtime::account::Inner;
 use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount};
 use crate::runtime::Wallet;
@@ -84,15 +84,16 @@ impl Account for Bip32 {
         Ok(Some(metadata))
     }
 
-    fn descriptor(&self) -> Result<Descriptor> {
+    fn descriptor(&self) -> Result<AccountDescriptor> {
         let descriptor = descriptor::Bip32 {
             account_id: *self.id(),
+            account_name: self.name(),
             prv_key_data_id: self.prv_key_data_id,
             account_index: self.account_index,
             xpub_keys: self.xpub_keys.clone(),
             ecdsa: self.ecdsa,
-            receive_address: self.receive_address()?,
-            change_address: self.change_address()?,
+            receive_address: self.receive_address().ok(),
+            change_address: self.change_address().ok(),
             meta: self.derivation.address_derivation_meta(),
         };
 

@@ -963,9 +963,9 @@ impl WalletApi for Wallet {
 
         let wallet_secret = wallet_args.wallet_secret.clone();
 
-        let descriptor = self.create_wallet(wallet_args).await?;
+        let wallet_descriptor = self.create_wallet(wallet_args).await?;
         let (prv_key_data_id, mnemonic) = self.create_prv_key_data(prv_key_data_args).await?;
-        let _account = self.create_bip32_account(prv_key_data_id, account_args).await?;
+        let account = self.create_bip32_account(prv_key_data_id, account_args).await?;
 
         // flush data to storage
         let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
@@ -973,7 +973,8 @@ impl WalletApi for Wallet {
 
         Ok(WalletCreateResponse {
             mnemonic: mnemonic.phrase_string(),
-            descriptor,
+            wallet_descriptor,
+            account_descriptor: account.descriptor()?,
             // - TODO account info serialization
             // account: Some(account.as_storable()?),
         })
@@ -1020,9 +1021,9 @@ impl WalletApi for Wallet {
     }
 
     async fn account_enumerate_call(self: Arc<Self>, _request: AccountEnumerateRequest) -> Result<AccountEnumerateResponse> {
-        let accounts = self.accounts(None).await?.try_collect::<Vec<_>>().await?;
-        let descriptors = accounts.iter().map(|account| account.descriptor().unwrap()).collect::<Vec<_>>();
-        Ok(AccountEnumerateResponse { descriptors })
+        let account_list = self.accounts(None).await?.try_collect::<Vec<_>>().await?;
+        let descriptor_list = account_list.iter().map(|account| account.descriptor().unwrap()).collect::<Vec<_>>();
+        Ok(AccountEnumerateResponse { descriptor_list })
     }
 
     async fn account_create_call(self: Arc<Self>, request: AccountCreateRequest) -> Result<AccountCreateResponse> {

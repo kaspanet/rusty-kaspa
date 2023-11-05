@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use workflow_rpc::id::{Generator, Id64 as TaskId};
 
 use crate::{
-    runtime::{account::descriptor::Descriptor, AccountCreateArgs, PrvKeyDataCreateArgs, WalletCreateArgs},
+    runtime::{account::descriptor::AccountDescriptor, AccountCreateArgs, PrvKeyDataCreateArgs, WalletCreateArgs},
     secret::Secret,
     storage::{AccountId, PrvKeyData, PrvKeyDataId, TransactionRecord, TransactionType, WalletDescriptor},
     tx::{Fees, GeneratorSummary, PaymentDestination},
@@ -75,7 +75,8 @@ pub struct WalletCreateRequest {
 #[serde(rename_all = "camelCase")]
 pub struct WalletCreateResponse {
     pub mnemonic: String,
-    pub descriptor: Option<String>,
+    pub wallet_descriptor: Option<String>,
+    pub account_descriptor: AccountDescriptor,
     // pub account_id : AccountId,
 }
 
@@ -140,7 +141,7 @@ pub struct AccountEnumerateRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountEnumerateResponse {
-    pub descriptors: Vec<Descriptor>,
+    pub descriptor_list: Vec<AccountDescriptor>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -171,7 +172,7 @@ pub struct AccountGetRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountGetResponse {
-    pub descriptor: Descriptor,
+    pub descriptor: AccountDescriptor,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

@@ -1,7 +1,7 @@
 use crate::api::message::*;
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::{AccountCreateArgs, PrvKeyDataCreateArgs, WalletCreateArgs};
+use crate::runtime::{AccountCreateArgs, AccountDescriptor, PrvKeyDataCreateArgs, WalletCreateArgs};
 use crate::secret::Secret;
 use crate::storage::WalletDescriptor;
 use workflow_core::channel::Receiver;
@@ -51,7 +51,12 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn prv_key_data_create_call(self: Arc<Self>, request: PrvKeyDataCreateRequest) -> Result<PrvKeyDataCreateResponse>;
     async fn prv_key_data_remove_call(self: Arc<Self>, request: PrvKeyDataRemoveRequest) -> Result<PrvKeyDataRemoveResponse>;
     async fn prv_key_data_get_call(self: Arc<Self>, request: PrvKeyDataGetRequest) -> Result<PrvKeyDataGetResponse>;
+
+    async fn account_enumerate(self: Arc<Self>) -> Result<Vec<AccountDescriptor>> {
+        Ok(self.account_enumerate_call(AccountEnumerateRequest {}).await?.descriptor_list)
+    }
     async fn account_enumerate_call(self: Arc<Self>, request: AccountEnumerateRequest) -> Result<AccountEnumerateResponse>;
+
     async fn account_create_call(self: Arc<Self>, request: AccountCreateRequest) -> Result<AccountCreateResponse>;
     async fn account_import_call(self: Arc<Self>, request: AccountImportRequest) -> Result<AccountImportResponse>;
     async fn account_get_call(self: Arc<Self>, request: AccountGetRequest) -> Result<AccountGetResponse>;
