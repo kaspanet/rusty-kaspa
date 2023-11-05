@@ -81,13 +81,13 @@ pub struct Keypair {
     #[serde(default)]
     pub version: u16,
 
-    pub public_key: PublicKey,
+    pub public_key: String,
     pub ecdsa: bool,
 }
 
 impl Keypair {
     pub fn new(public_key: PublicKey, ecdsa: bool) -> Self {
-        Self { version: KEYPAIR_ACCOUNT_VERSION, public_key, ecdsa }
+        Self { version: KEYPAIR_ACCOUNT_VERSION, public_key: public_key.to_string(), ecdsa }
     }
 }
 
