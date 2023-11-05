@@ -15,6 +15,7 @@ kaspa-consensus.workspace = true
 kaspa-consensusmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-grpc-client.workspace = true
+kaspa-grpc-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-math.workspace = true
 kaspa-merkle.workspace = true

@@ -41,3 +41,6 @@ As an illustration, let's pretend that we add a new `submit_block` method.
 8. Implement the function having a `_call` suffix into `kaspa_grpc_client::GrpcClient`.
 9. In `kaspa_grpc_server::service::RpcService::message_stream`, requests handler, add an arm and implement
    a handler for the new method.
+
+## rpc-test
+1. In file `testing\integration\src\rpc_tests.rs` add a new `match` arm for your payload inside the `sanity_test` test

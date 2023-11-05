@@ -6,7 +6,8 @@ if [ $? -ne 0 ]; then
 fi
 
 # integration tests
-cargo test --release --workspace -p kaspa-testing-integration --lib
+cargo nextest run --release --workspace -p kaspa-testing-integration --lib
+cargo test --doc --release --workspace --lib
 
 # wasm build (tests for potential multiple exports of the same symbol)
 pushd .
