@@ -75,7 +75,7 @@ pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<
     let mut reused_values = SigHashReusedValues::new();
     for i in 0..mutable_tx.tx.inputs.len() {
         let script = mutable_tx.entries[i].as_ref().unwrap().script_public_key.script();
-        if let Some(schnorr_key) = map.get(script) {
+        if let Some(schnorr_key) = map.get(&script.to_vec()) {
             let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values);
             let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
             let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
