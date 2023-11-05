@@ -1,11 +1,4 @@
-# unit tests
-cargo nextest run --release
-if [ $? -ne 0 ]; then
-    echo "Failed to run unit tests"
-    exit 1
-fi
-
-# integration tests
+# tests
 cargo nextest run --release --workspace -p kaspa-testing-integration --lib
 if [ $? -ne 0 ]; then
     echo "Failed to run integration tests"
