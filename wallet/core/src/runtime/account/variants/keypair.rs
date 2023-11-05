@@ -25,7 +25,7 @@ impl Keypair {
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
         let storage::account::Keypair { public_key, ecdsa, .. } = data;
-        Ok(Self { inner, prv_key_data_id, public_key, ecdsa })
+        Ok(Self { inner, prv_key_data_id, public_key: PublicKey::from_str(public_key.as_str())?, ecdsa })
     }
 }
 
