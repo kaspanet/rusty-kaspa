@@ -465,8 +465,6 @@ impl FlowContext {
 
     /// Notifies that a new block template is available for miners.
     pub async fn on_new_block_template(&self) {
-        // Clear current template cache
-        self.mining_manager().clear_block_template();
         // Notifications from the flow context might be ignored if the inner channel is already closing
         // due to global shutdown, hence we ignore the possible error
         let _ = self.notification_root.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}));
