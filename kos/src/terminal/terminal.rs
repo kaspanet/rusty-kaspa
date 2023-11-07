@@ -142,14 +142,14 @@ impl Terminal {
                             metrics.register_sink(Arc::new(Box::new(move |data: MetricsSnapshot| {
                                 let this = this.clone();
 
-                                Box::pin(async move {
+                                Some(Box::pin(async move {
                                     let ipc = this.metrics.lock().unwrap().as_ref().unwrap().clone();
                                     ipc.notify(MetricsOps::MetricsSnapshot, data).await.unwrap_or_else(|err| {
                                         log_error!("error posting metrics data to metrics window: {:?}", err);
                                     });
 
                                     Ok(())
-                                })
+                                }))
                             })))
                         }
                         MetricsSinkCtl::Deactivate => {

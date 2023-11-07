@@ -19,7 +19,7 @@ use workflow_core::task::spawn;
 use workflow_core::time::unixtime_as_millis_f64;
 
 pub type MetricsSinkFn =
-    Arc<Box<dyn Send + Sync + Fn(MetricsSnapshot) -> Pin<Box<(dyn Send + 'static + Future<Output = Result<()>>)>> + 'static>>;
+    Arc<Box<dyn Send + Sync + Fn(MetricsSnapshot) -> Option<Pin<Box<(dyn Send + 'static + Future<Output = Result<()>>)>>> + 'static>>;
 
 pub struct Metrics {
     task_ctl: DuplexChannel,
@@ -99,7 +99,9 @@ impl Metrics {
 
                             if let Some(sink) = this.sink() {
                                 let snapshot = MetricsSnapshot::from((&last_data, this.data.lock().unwrap().as_ref().unwrap()));
-                                sink(snapshot).await.ok();
+                                if let Some(future) = sink(snapshot) {
+                                    future.await.ok();
+                                }
                             }
                         // }
                     }
