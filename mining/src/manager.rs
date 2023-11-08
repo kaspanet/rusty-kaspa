@@ -77,7 +77,8 @@ impl MiningManager {
     }
 
     pub fn get_block_template(&self, consensus: &dyn ConsensusApi, miner_data: &MinerData) -> MiningManagerResult<BlockTemplate> {
-        let mut cache_lock = self.block_template_cache.lock();
+        let virtual_state_approx_id = consensus.get_virtual_state_approx_id();
+        let mut cache_lock = self.block_template_cache.lock(virtual_state_approx_id);
         let immutable_template = cache_lock.get_immutable_cached_template();
 
         // We first try and use a cached template if not expired
@@ -200,7 +201,8 @@ impl MiningManager {
     }
 
     /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
-    pub fn clear_block_template(&self) {
+    #[cfg(test)]
+    pub(crate) fn clear_block_template(&self) {
         self.block_template_cache.clear();
     }
 
@@ -766,11 +768,6 @@ impl MiningManagerProxy {
 
     pub async fn get_block_template(self, consensus: &ConsensusProxy, miner_data: MinerData) -> MiningManagerResult<BlockTemplate> {
         consensus.clone().spawn_blocking(move |c| self.inner.get_block_template(c, &miner_data)).await
-    }
-
-    /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
-    pub fn clear_block_template(&self) {
-        self.inner.clear_block_template()
     }
 
     /// Validates a transaction and adds it to the set of known transactions that have not yet been

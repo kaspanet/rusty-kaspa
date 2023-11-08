@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     acceptance_data::AcceptanceData,
-    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
+    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     block_count::BlockCount,
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -109,6 +109,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_sink_timestamp(&self) -> u64 {
+        unimplemented!()
+    }
+
+    fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
         unimplemented!()
     }
 

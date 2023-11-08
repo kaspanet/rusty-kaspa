@@ -64,8 +64,8 @@ use kaspa_consensus_core::{
 };
 use kaspa_consensus_notify::{
     notification::{
-        Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualChainChangedNotification,
-        VirtualDaaScoreChangedNotification,
+        NewBlockTemplateNotification, Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification,
+        VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
     },
     root::ConsensusNotificationRoot,
 };
@@ -301,6 +301,9 @@ impl VirtualStateProcessor {
         // Emit notifications
         let accumulated_diff = Arc::new(accumulated_diff);
         let virtual_parents = Arc::new(new_virtual_state.parents.clone());
+        self.notification_root
+            .notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))
+            .expect("expecting an open unbounded channel");
         self.notification_root
             .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)))
             .expect("expecting an open unbounded channel");
@@ -942,14 +945,16 @@ impl VirtualStateProcessor {
             virtual_state.ghostdag_data.blue_score,
             header_pruning_point,
         );
-        let selected_parent_timestamp = self.headers_store.get_timestamp(virtual_state.ghostdag_data.selected_parent).unwrap();
-        let selected_parent_daa_score = self.headers_store.get_daa_score(virtual_state.ghostdag_data.selected_parent).unwrap();
+        let selected_parent_hash = virtual_state.ghostdag_data.selected_parent;
+        let selected_parent_timestamp = self.headers_store.get_timestamp(selected_parent_hash).unwrap();
+        let selected_parent_daa_score = self.headers_store.get_daa_score(selected_parent_hash).unwrap();
         Ok(BlockTemplate::new(
             MutableBlock::new(header, txs),
             miner_data,
             coinbase.has_red_reward,
             selected_parent_timestamp,
             selected_parent_daa_score,
+            selected_parent_hash,
         ))
     }
 
