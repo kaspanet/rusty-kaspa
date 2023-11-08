@@ -74,11 +74,7 @@ impl VirtualState {
     }
 
     pub fn to_virtual_state_approx_id(&self) -> VirtualStateApproxId {
-        VirtualStateApproxId {
-            blue_work: self.ghostdag_data.blue_work,
-            daa_score: self.daa_score,
-            sink: self.ghostdag_data.selected_parent,
-        }
+        VirtualStateApproxId::new(self.daa_score, self.ghostdag_data.blue_work, self.ghostdag_data.selected_parent)
     }
 }
 

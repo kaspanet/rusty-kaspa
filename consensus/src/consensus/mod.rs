@@ -442,12 +442,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
-        let state = self.virtual_stores.read().state.get().unwrap();
-        VirtualStateApproxId {
-            sink: state.ghostdag_data.selected_parent, // Hash
-            daa_score: state.daa_score,                // u64
-            blue_work: state.ghostdag_data.blue_work,  // BlueWorkType
-        }
+        self.virtual_stores.read().state.get().unwrap().to_virtual_state_approx_id()
     }
 
     fn get_source(&self) -> Hash {

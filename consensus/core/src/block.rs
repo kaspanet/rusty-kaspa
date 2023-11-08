@@ -121,10 +121,6 @@ impl BlockTemplate {
     }
 
     pub fn to_virtual_state_approx_id(&self) -> VirtualStateApproxId {
-        VirtualStateApproxId {
-            blue_work: self.block.header.blue_work,
-            daa_score: self.block.header.daa_score,
-            sink: self.selected_parent_hash,
-        }
+        VirtualStateApproxId::new(self.block.header.daa_score, self.block.header.blue_work, self.selected_parent_hash)
     }
 }
