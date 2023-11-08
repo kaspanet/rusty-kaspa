@@ -7,6 +7,7 @@ use kaspa_core::debug;
 use kaspa_database::prelude::{CachedDbAccess, DirectDbWriter, StoreResult, DB};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
+use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -124,6 +125,7 @@ impl AsRef<[u8]> for UtxoEntryFullAccessKey {
 pub trait UtxoSetByScriptPublicKeyStoreReader {
     /// Get [UtxoSetByScriptPublicKey] set by queried [ScriptPublicKeys],
     fn get_utxos_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
+    fn get_balance_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey>;
     fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>>; // This can have a big memory footprint, so it should be used only for tests.
 }
 
@@ -171,8 +173,29 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
             entries_count += utxos_by_script_public_keys_inner.len();
             utxos_by_script_public_keys.insert(script_public_key, utxos_by_script_public_keys_inner);
         }
-        debug!("IDXPRC, Executed a query for utxos from {} script public keys yielding {} entries", script_count, entries_count);
+        debug!("IDXPRC, Executed a query for the utxo set of {} script public keys yielding {} entries", script_count, entries_count);
         Ok(utxos_by_script_public_keys)
+    }
+
+    fn get_balance_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey> {
+        let script_count = script_public_keys.len();
+        let mut entries_count: usize = 0;
+        let mut balance_by_script_public_keys = BalanceByScriptPublicKey::new();
+        for script_public_key in script_public_keys.into_iter() {
+            let script_public_key_bucket = ScriptPublicKeyBucket::from(&script_public_key);
+            let balance: u64 = self
+                .access
+                .seek_iterator(Some(script_public_key_bucket.as_ref()), None, usize::MAX, false)
+                .map(|res| {
+                    entries_count += 1;
+                    let (_, entry) = res.unwrap();
+                    entry.amount
+                })
+                .sum();
+            balance_by_script_public_keys.insert(script_public_key, balance);
+        }
+        debug!("IDXPRC, Executed a query for the balance of {} script public keys involving {} entries", script_count, entries_count);
+        Ok(balance_by_script_public_keys)
     }
 
     // This can have a big memory footprint, so it should be used only for tests.

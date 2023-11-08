@@ -28,6 +28,7 @@ use kaspa_core::{
     task::tick::TickService,
     trace, warn,
 };
+use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
@@ -203,6 +204,15 @@ impl RpcCoreService {
             .clone()
             .unwrap()
             .get_utxos_by_script_public_keys(addresses.map(pay_to_address_script).collect())
+            .await
+            .unwrap_or_default()
+    }
+
+    async fn get_balance_by_script_public_key<'a>(&self, addresses: impl Iterator<Item = &'a RpcAddress>) -> BalanceByScriptPublicKey {
+        self.utxoindex
+            .clone()
+            .unwrap()
+            .get_balance_by_script_public_keys(addresses.map(pay_to_address_script).collect())
             .await
             .unwrap_or_default()
     }
@@ -488,8 +498,8 @@ impl RpcApi for RpcCoreService {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        let entry_map = self.get_utxo_set_by_script_public_key(once(&request.address)).await;
-        let balance = entry_map.values().flat_map(|x| x.values().map(|entry| entry.amount)).sum();
+        let entry_map = self.get_balance_by_script_public_key(once(&request.address)).await;
+        let balance = entry_map.values().sum();
         Ok(GetBalanceByAddressResponse::new(balance))
     }
 
@@ -500,13 +510,13 @@ impl RpcApi for RpcCoreService {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
-        let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter()).await;
+        let entry_map = self.get_balance_by_script_public_key(request.addresses.iter()).await;
         let entries = request
             .addresses
             .iter()
             .map(|address| {
                 let script_public_key = pay_to_address_script(address);
-                let balance = entry_map.get(&script_public_key).map(|x| x.values().map(|entry| entry.amount).sum());
+                let balance = entry_map.get(&script_public_key).copied();
                 RpcBalancesByAddressesEntry { address: address.to_owned(), balance }
             })
             .collect();
