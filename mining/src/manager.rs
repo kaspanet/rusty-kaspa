@@ -201,7 +201,8 @@ impl MiningManager {
     }
 
     /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
-    pub fn clear_block_template(&self) {
+    #[cfg(test)]
+    pub(crate) fn clear_block_template(&self) {
         self.block_template_cache.clear();
     }
 
