@@ -64,8 +64,8 @@ use kaspa_consensus_core::{
 };
 use kaspa_consensus_notify::{
     notification::{
-        Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification, VirtualChainChangedNotification,
-        VirtualDaaScoreChangedNotification,
+        NewBlockTemplateNotification, Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification,
+        VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
     },
     root::ConsensusNotificationRoot,
 };
@@ -301,6 +301,9 @@ impl VirtualStateProcessor {
         // Emit notifications
         let accumulated_diff = Arc::new(accumulated_diff);
         let virtual_parents = Arc::new(new_virtual_state.parents.clone());
+        self.notification_root
+            .notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))
+            .expect("expecting an open unbounded channel");
         self.notification_root
             .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)))
             .expect("expecting an open unbounded channel");
