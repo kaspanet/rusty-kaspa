@@ -10,7 +10,7 @@ use kaspa_consensus_core::config::Config;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::tx::{Transaction, TransactionId};
 use kaspa_consensus_notify::{
-    notification::{NewBlockTemplateNotification, Notification, PruningPointUtxoSetOverrideNotification},
+    notification::{Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
 };
 use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager, ConsensusProxy};
@@ -375,7 +375,6 @@ impl FlowContext {
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
 
         self.on_new_block(consensus, block, virtual_state_task).await;
-        self.on_new_block_template().await;
         self.log_block_acceptance(hash, BlockSource::Submit);
 
         Ok(())
@@ -461,15 +460,6 @@ impl FlowContext {
                 debug!("<> Mempool scanning task is done");
             });
         }
-    }
-
-    /// Notifies that a new block template is available for miners.
-    pub async fn on_new_block_template(&self) {
-        // Clear current template cache
-        self.mining_manager().clear_block_template();
-        // Notifications from the flow context might be ignored if the inner channel is already closing
-        // due to global shutdown, hence we ignore the possible error
-        let _ = self.notification_root.notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}));
     }
 
     /// Notifies that the UTXO set was reset due to pruning point change via IBD.
