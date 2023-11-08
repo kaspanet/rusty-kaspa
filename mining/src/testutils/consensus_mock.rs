@@ -1,7 +1,7 @@
 use super::coinbase_mock::CoinbaseManagerMock;
 use kaspa_consensus_core::{
     api::ConsensusApi,
-    block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
+    block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     coinbase::MinerData,
     constants::BLOCK_VERSION,
     errors::{
@@ -100,7 +100,7 @@ impl ConsensusApi for ConsensusMock {
         );
         let mutable_block = MutableBlock::new(header, txs);
 
-        Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now, 0))
+        Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now, 0, ZERO_HASH))
     }
 
     fn validate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
@@ -153,6 +153,10 @@ impl ConsensusApi for ConsensusMock {
 
     fn get_virtual_daa_score(&self) -> u64 {
         0
+    }
+
+    fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
+        VirtualStateApproxId::new(self.get_virtual_daa_score(), 0.into(), ZERO_HASH)
     }
 
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {

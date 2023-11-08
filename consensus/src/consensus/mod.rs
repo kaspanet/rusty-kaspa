@@ -41,7 +41,7 @@ use crate::{
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{BlockValidationFutures, ConsensusApi},
-    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
+    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     block_count::BlockCount,
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
@@ -438,6 +438,10 @@ impl ConsensusApi for Consensus {
 
     fn get_sink_timestamp(&self) -> u64 {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
+    }
+
+    fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
+        self.virtual_stores.read().state.get().unwrap().to_virtual_state_approx_id()
     }
 
     fn get_source(&self) -> Hash {

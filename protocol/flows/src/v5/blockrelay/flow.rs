@@ -164,7 +164,6 @@ impl HandleRelayInvsFlow {
             let ctx = self.ctx.clone();
             tokio::spawn(async move {
                 ctx.on_new_block(&session, block, virtual_state_task).await;
-                ctx.on_new_block_template().await;
                 ctx.log_block_acceptance(inv.hash, BlockSource::Relay);
             });
         }
