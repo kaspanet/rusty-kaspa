@@ -1,7 +1,7 @@
 use super::coinbase_mock::CoinbaseManagerMock;
 use kaspa_consensus_core::{
     api::ConsensusApi,
-    block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
+    block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     coinbase::MinerData,
     constants::BLOCK_VERSION,
     errors::{
@@ -14,7 +14,6 @@ use kaspa_consensus_core::{
     merkle::calc_hash_merkle_root,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
-    virtual_state_approx_id::VirtualStateApproxId,
 };
 use kaspa_core::time::unix_now;
 use kaspa_hashes::ZERO_HASH;

@@ -41,7 +41,7 @@ use crate::{
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{BlockValidationFutures, ConsensusApi},
-    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
+    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     block_count::BlockCount,
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
@@ -57,7 +57,6 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    virtual_state_approx_id::VirtualStateApproxId,
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;

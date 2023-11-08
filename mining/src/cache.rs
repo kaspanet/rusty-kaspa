@@ -1,4 +1,4 @@
-use kaspa_consensus_core::{block::BlockTemplate, virtual_state_approx_id::VirtualStateApproxId};
+use kaspa_consensus_core::block::{BlockTemplate, VirtualStateApproxId};
 use kaspa_core::time::unix_now;
 use parking_lot::{Mutex, MutexGuard};
 use std::sync::Arc;

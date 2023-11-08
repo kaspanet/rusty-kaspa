@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     acceptance_data::AcceptanceData,
-    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
+    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     block_count::BlockCount,
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -19,7 +19,6 @@ use crate::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    virtual_state_approx_id::VirtualStateApproxId,
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;

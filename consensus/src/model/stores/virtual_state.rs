@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::config::genesis::GenesisBlock;
-use kaspa_consensus_core::virtual_state_approx_id::VirtualStateApproxId;
 use kaspa_consensus_core::{
-    coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
+    block::VirtualStateApproxId, coinbase::BlockRewardData, config::genesis::GenesisBlock, tx::TransactionId,
+    utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
 use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};

@@ -4,7 +4,7 @@ use crate::{
     coinbase::MinerData,
     header::Header,
     tx::{Transaction, TransactionId},
-    virtual_state_approx_id::VirtualStateApproxId,
+    BlueWorkType,
 };
 use kaspa_hashes::Hash;
 
@@ -122,5 +122,21 @@ impl BlockTemplate {
 
     pub fn to_virtual_state_approx_id(&self) -> VirtualStateApproxId {
         VirtualStateApproxId::new(self.block.header.daa_score, self.block.header.blue_work, self.selected_parent_hash)
+    }
+}
+
+/// An opaque data structure representing a unique approximate identifier for virtual state. Note that it is
+/// approximate in the sense that in rare cases a slightly different virtual state might produce the same identifier,
+/// hence it should be used for cache-like heuristics only
+#[derive(PartialEq)]
+pub struct VirtualStateApproxId {
+    daa_score: u64,
+    blue_work: BlueWorkType,
+    sink: Hash,
+}
+
+impl VirtualStateApproxId {
+    pub fn new(daa_score: u64, blue_work: BlueWorkType, sink: Hash) -> Self {
+        Self { daa_score, blue_work, sink }
     }
 }
