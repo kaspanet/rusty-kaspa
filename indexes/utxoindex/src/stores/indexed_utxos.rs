@@ -3,6 +3,7 @@ use crate::core::model::{CompactUtxoCollection, CompactUtxoEntry, UtxoSetByScrip
 use kaspa_consensus_core::tx::{
     ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
 };
+use kaspa_core::debug;
 use kaspa_database::prelude::{CachedDbAccess, DirectDbWriter, StoreResult, DB};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -156,6 +157,8 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
     // TODO: probably ideal way to retrieve is to return a chained iterator which can be used to chunk results and propagate utxo entries
     // to the rpc via pagination, this would alleviate the memory footprint of script public keys with large amount of utxos.
     fn get_utxos_from_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
+        let script_count = script_public_keys.len();
+        let mut entries_count: usize = 0;
         let mut utxos_by_script_public_keys = UtxoSetByScriptPublicKey::new();
         for script_public_key in script_public_keys.into_iter() {
             let script_public_key_bucket = ScriptPublicKeyBucket::from(&script_public_key);
@@ -165,8 +168,10 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
                     (TransactionOutpointKey(<[u8; TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(&key[..]).unwrap()).into(), entry)
                 }),
             );
+            entries_count += utxos_by_script_public_keys_inner.len();
             utxos_by_script_public_keys.insert(script_public_key, utxos_by_script_public_keys_inner);
         }
+        debug!("IDXPRC, Executed a query for utxos from {} script public keys yielding {} entries", script_count, entries_count);
         Ok(utxos_by_script_public_keys)
     }
 
