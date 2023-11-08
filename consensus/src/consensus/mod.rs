@@ -57,6 +57,7 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    virtual_state_approx_id::VirtualStateApproxId,
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -438,6 +439,15 @@ impl ConsensusApi for Consensus {
 
     fn get_sink_timestamp(&self) -> u64 {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
+    }
+
+    fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
+        let state = self.virtual_stores.read().state.get().unwrap();
+        VirtualStateApproxId {
+            sink: state.ghostdag_data.selected_parent, // Hash
+            daa_score: state.daa_score,                // u64
+            blue_work: state.ghostdag_data.blue_work,  // BlueWorkType
+        }
     }
 
     fn get_source(&self) -> Hash {

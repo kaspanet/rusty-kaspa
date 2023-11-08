@@ -947,12 +947,14 @@ impl VirtualStateProcessor {
         );
         let selected_parent_timestamp = self.headers_store.get_timestamp(virtual_state.ghostdag_data.selected_parent).unwrap();
         let selected_parent_daa_score = self.headers_store.get_daa_score(virtual_state.ghostdag_data.selected_parent).unwrap();
+        let selected_parent_hash = virtual_state.ghostdag_data.selected_parent;
         Ok(BlockTemplate::new(
             MutableBlock::new(header, txs),
             miner_data,
             coinbase.has_red_reward,
             selected_parent_timestamp,
             selected_parent_daa_score,
+            selected_parent_hash,
         ))
     }
 

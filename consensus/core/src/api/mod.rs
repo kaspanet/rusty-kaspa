@@ -19,6 +19,7 @@ use crate::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    virtual_state_approx_id::VirtualStateApproxId,
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
@@ -109,6 +110,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_sink_timestamp(&self) -> u64 {
+        unimplemented!()
+    }
+
+    fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
         unimplemented!()
     }
 

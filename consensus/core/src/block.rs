@@ -4,6 +4,7 @@ use crate::{
     coinbase::MinerData,
     header::Header,
     tx::{Transaction, TransactionId},
+    virtual_state_approx_id::VirtualStateApproxId,
 };
 use kaspa_hashes::Hash;
 
@@ -104,6 +105,7 @@ pub struct BlockTemplate {
     pub coinbase_has_red_reward: bool,
     pub selected_parent_timestamp: u64,
     pub selected_parent_daa_score: u64,
+    pub selected_parent_hash: Hash,
 }
 
 impl BlockTemplate {
@@ -113,7 +115,16 @@ impl BlockTemplate {
         coinbase_has_red_reward: bool,
         selected_parent_timestamp: u64,
         selected_parent_daa_score: u64,
+        selected_parent_hash: Hash,
     ) -> Self {
-        Self { block, miner_data, coinbase_has_red_reward, selected_parent_timestamp, selected_parent_daa_score }
+        Self { block, miner_data, coinbase_has_red_reward, selected_parent_timestamp, selected_parent_daa_score, selected_parent_hash }
+    }
+
+    pub fn to_virtual_state_approx_id(&self) -> VirtualStateApproxId {
+        VirtualStateApproxId {
+            blue_work: self.block.header.blue_work,
+            daa_score: self.block.header.daa_score,
+            sink: self.selected_parent_hash,
+        }
     }
 }

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use kaspa_consensus_core::config::genesis::GenesisBlock;
+use kaspa_consensus_core::virtual_state_approx_id::VirtualStateApproxId;
 use kaspa_consensus_core::{
     coinbase::BlockRewardData, tx::TransactionId, utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
@@ -69,6 +70,14 @@ impl VirtualState {
             accepted_tx_ids: genesis.build_genesis_transactions().into_iter().map(|tx| tx.id()).collect(),
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis.hash)),
+        }
+    }
+
+    pub fn to_virtual_state_approx_id(&self) -> VirtualStateApproxId {
+        VirtualStateApproxId {
+            blue_work: self.ghostdag_data.blue_work,
+            daa_score: self.daa_score,
+            sink: self.ghostdag_data.selected_parent,
         }
     }
 }
