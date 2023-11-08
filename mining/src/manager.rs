@@ -77,8 +77,8 @@ impl MiningManager {
     }
 
     pub fn get_block_template(&self, consensus: &dyn ConsensusApi, miner_data: &MinerData) -> MiningManagerResult<BlockTemplate> {
-        let virtual_daa_score = consensus.get_virtual_daa_score();
-        let mut cache_lock = self.block_template_cache.lock(virtual_daa_score);
+        let virtual_state_approx_id = consensus.get_virtual_state_approx_id();
+        let mut cache_lock = self.block_template_cache.lock(virtual_state_approx_id);
         let immutable_template = cache_lock.get_immutable_cached_template();
 
         // We first try and use a cached template if not expired

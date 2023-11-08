@@ -1,4 +1,4 @@
-use kaspa_consensus_core::block::BlockTemplate;
+use kaspa_consensus_core::{block::BlockTemplate, virtual_state_approx_id::VirtualStateApproxId};
 use kaspa_core::time::unix_now;
 use parking_lot::{Mutex, MutexGuard};
 use std::sync::Arc;
@@ -54,10 +54,14 @@ impl BlockTemplateCache {
         Self { inner: Mutex::new(Inner::new(cache_lifetime)) }
     }
 
-    pub(crate) fn lock(&self, virtual_daa_score: u64) -> MutexGuard<Inner> {
+    pub(crate) fn clear(&self) {
+        self.inner.lock().clear();
+    }
+
+    pub(crate) fn lock(&self, virtual_state_approx_id: VirtualStateApproxId) -> MutexGuard<Inner> {
         let mut guard = self.inner.lock();
-        if guard.block_template.clone().is_some_and(|template| template.block.header.daa_score < virtual_daa_score) {
-            // If the virtual_daa_score is newer than what our template's is, then we know it's expired and should clear it
+        if guard.block_template.clone().is_some_and(|template| template.to_virtual_state_approx_id() != virtual_state_approx_id) {
+            // If the VirtualStateApproxId is different from ours, our template is likely expired and we should clear it
             guard.clear();
         }
         guard
