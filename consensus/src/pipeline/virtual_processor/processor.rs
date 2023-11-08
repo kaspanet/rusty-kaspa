@@ -945,9 +945,9 @@ impl VirtualStateProcessor {
             virtual_state.ghostdag_data.blue_score,
             header_pruning_point,
         );
-        let selected_parent_timestamp = self.headers_store.get_timestamp(virtual_state.ghostdag_data.selected_parent).unwrap();
-        let selected_parent_daa_score = self.headers_store.get_daa_score(virtual_state.ghostdag_data.selected_parent).unwrap();
         let selected_parent_hash = virtual_state.ghostdag_data.selected_parent;
+        let selected_parent_timestamp = self.headers_store.get_timestamp(selected_parent_hash).unwrap();
+        let selected_parent_daa_score = self.headers_store.get_daa_score(selected_parent_hash).unwrap();
         Ok(BlockTemplate::new(
             MutableBlock::new(header, txs),
             miner_data,
