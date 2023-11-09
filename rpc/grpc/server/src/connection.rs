@@ -288,13 +288,6 @@ impl Connection {
             }
         }
     }
-
-    #[allow(dead_code)]
-    fn deadlock(&self) {
-        // This is a deliberate deadlock
-        let _state = self.inner.mutable_state.lock();
-        let _ = self.is_closed();
-    }
 }
 
 fn match_for_io_error(err_status: &tonic::Status) -> Option<&std::io::Error> {
