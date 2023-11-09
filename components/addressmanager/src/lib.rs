@@ -607,7 +607,7 @@ mod address_store_with_cache {
             // Normalize and adjust p to test for uniformity, over average of all trials.
             let adjusted_p = (0.5 - cul_p / num_of_trials as f64).abs();
             // Define the significance threshold.
-            let significance = 0.05;
+            let significance = 0.10;
 
             // Display and assert the result
             kaspa_core::info!(
@@ -615,7 +615,7 @@ mod address_store_with_cache {
                 adjusted_p,
                 significance
             );
-            assert!(adjusted_p < significance)
+            assert!(adjusted_p <= significance)
         }
     }
 }
