@@ -132,6 +132,7 @@ impl Connection {
     }
 }
 
+#[async_trait::async_trait]
 impl ConnectionT for Connection {
     type Notification = Notification;
     type Message = Message;
@@ -147,7 +148,7 @@ impl ConnectionT for Connection {
         Self::create_serialized_notification_message(encoding.clone().into(), op, notification.clone()).unwrap()
     }
 
-    fn send(&self, message: Self::Message) -> core::result::Result<(), Self::Error> {
+    async fn send(&self, message: Self::Message) -> core::result::Result<(), Self::Error> {
         self.inner.send(message).map_err(|err| NotifyError::General(err.to_string()))
     }
 
