@@ -1,18 +1,40 @@
-# Kaspa on Rust
 
-This repository contains the implementation of the Kaspa full-node and related libraries in the Rust programming language. This is an Alpha version at the initial testing phase, however the node is expected to be fully functional and capable as a drop-in replacement for the Kaspa golang node.
+<p align="center">
+  <img src="kaspa.png" />
+</p>
+<h1 align="center">Kaspa On Rust</h1>
+
+This repository contains the implementation of the Kaspa full-node and related libraries in the Rust programming language. This is an Alpha version at the initial testing phase, however the node is expected to be fully functional and capable as a drop-in replacement for the Kaspa <a href="https://github.com/kaspanet/kaspad">golang node</a>.
 
 ## Getting started
+  ### Linux
 
-- General prerequisites:
-  - Linux: `sudo apt install build-essential libssl-dev pkg-config`
-  - Windows: [Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
-- Install Protobuf (required for gRPC)
-  - Linux: `sudo apt install protobuf-compiler libprotobuf-dev`
-  - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` directory to `Path`
-  - MacOS: `brew install protobuf`
+  Install  general prerequisites
+  ```
+  sudo apt install build-essential libssl-dev pkg-config 
+  ```
+  Install Protobuf (required for gRPC)
+  ```
+  sudo apt install protobuf-compiler libprotobuf-dev #Required for gRPC
+  ```
+  Install the clang toolchain (required for RocksDB and WASM secp256k1 builds)
+  ```
+  apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang
+  ```
+
+  ### Windows
+
+  [Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
+
+  [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` directory to `Path`
+
+  ### Mac OS
+  ```
+  brew install protobuf
+  ```
+
 - Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB and WASM `secp256k1` builds)
-  - Linux: `apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang`
+  - Linux: ``
   - Windows: Please see [Installing clang toolchain on Windows](#installing-clang-toolchain-on-windows)
   - MacOS: Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
 - Install the [rust toolchain](https://rustup.rs/)
