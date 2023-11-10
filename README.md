@@ -6,8 +6,14 @@
 
 This repository contains the implementation of the Kaspa full-node and related libraries in the Rust programming language. This is an Alpha version at the initial testing phase, however the node is expected to be fully functional and capable as a drop-in replacement for the Kaspa <a href="https://github.com/kaspanet/kaspad">golang node</a>.
 
+## Table of contents
+#### 1. Getting Started 
+  - [Linux](#on-linux) 
+  - [Windows](#on-linux) 
+  - [Linux](#on-linux) 
+
 ## Getting started
-  ### Linux
+  ### On Linux
 
   Install  general prerequisites
   ```
@@ -24,19 +30,22 @@ This repository contains the implementation of the Kaspa full-node and related l
 
   ### Windows
 
-  [Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
+  [Install Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
 
-  [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` directory to `Path`
+  Install [Protocol Buffers](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add the `bin` directory to your `Path`
 
   ### Mac OS
+  Install Protobuf (required for gRPC)
   ```
   brew install protobuf
   ```
+  
 
 - Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB and WASM `secp256k1` builds)
   - Linux: ``
   - Windows: Please see [Installing clang toolchain on Windows](#installing-clang-toolchain-on-windows)
-  - MacOS: Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
+  - MacOS: 
+  Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
 - Install the [rust toolchain](https://rustup.rs/)
 - If you already have rust installed, update it by running: `rustup update`
 - Install wasm-pack: `cargo install wasm-pack`
