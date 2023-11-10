@@ -97,11 +97,12 @@ impl ToTokens for RpcTable {
                                         Some(Payload::#request_type(ref request)) => {
                                             match kaspa_rpc_core::#fallback_request_type::try_from(request) {
                                                 Ok(request) => {
+                                                    let listener_id = connection.get_or_register_listener_id()?;
                                                     let command = request.command;
                                                     let result = server_ctx
                                                         .notifier
                                                         .clone()
-                                                        .execute_subscribe_command(connection.get_or_register_listener_id(), request.into(), command)
+                                                        .execute_subscribe_command(listener_id, request.into(), command)
                                                         .await;
                                                     #response_message_type::from(result).into()
                                                 }
