@@ -12,6 +12,7 @@ kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus-wasm.workspace = true
+kaspa-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-index-core.workspace = true
 kaspa-math.workspace = true

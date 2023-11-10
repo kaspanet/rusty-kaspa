@@ -1,5 +1,6 @@
 use super::events::EventType;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use derive_more::Display;
 use kaspa_addresses::Address;
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +32,7 @@ macro_rules! scope_enum {
 }
 
 scope_enum! {
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Display, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum Scope {
     BlockAdded,
     VirtualChainChanged,
@@ -45,7 +46,7 @@ pub enum Scope {
 }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct BlockAddedScope {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -59,15 +60,32 @@ impl VirtualChainChangedScope {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+impl std::fmt::Display for VirtualChainChangedScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "VirtualChainChangedScope{}", if self.include_accepted_transaction_ids { " with accepted transactions" } else { "" })
+    }
+}
+
+#[derive(Clone, Display, Debug, PartialEq, Eq, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct FinalityConflictScope {}
 
-#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Display, Debug, PartialEq, Eq, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct FinalityConflictResolvedScope {}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct UtxosChangedScope {
     pub addresses: Vec<Address>,
+}
+
+impl std::fmt::Display for UtxosChangedScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let addresses = match self.addresses.len() {
+            0 => "all".to_string(),
+            1 => format!("{}", self.addresses[0]),
+            n => format!("{} addresses", n),
+        };
+        write!(f, "UtxosChangedScope ({})", addresses)
+    }
 }
 
 impl PartialEq for UtxosChangedScope {
@@ -84,14 +102,14 @@ impl UtxosChangedScope {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct SinkBlueScoreChangedScope {}
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct VirtualDaaScoreChangedScope {}
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PruningPointUtxoSetOverrideScope {}
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct NewBlockTemplateScope {}

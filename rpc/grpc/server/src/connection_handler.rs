@@ -1,7 +1,7 @@
 use crate::{
     collector::{GrpcServiceCollector, GrpcServiceConverter},
     connection::Connection,
-    manager::ManagerEvent,
+    manager::{ManagerEvent, RegistrationRequest},
     request_handler::{factory::Factory, interface::Interface},
 };
 use futures::{FutureExt, Stream};
@@ -108,7 +108,11 @@ impl ConnectionHandler {
                 .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
             // TODO: check whether we should set tcp_keepalive
+            const GRPC_KEEP_ALIVE_PING_INTERVAL: Duration = Duration::from_secs(3);
+            const GRPC_KEEP_ALIVE_PING_TIMEOUT: Duration = Duration::from_secs(10);
             let serve_result = TonicServer::builder()
+                .http2_keepalive_interval(Some(GRPC_KEEP_ALIVE_PING_INTERVAL))
+                .http2_keepalive_timeout(Some(GRPC_KEEP_ALIVE_PING_TIMEOUT))
                 .add_service(protowire_server)
                 .serve_with_shutdown(
                     serve_address.into(),
@@ -215,26 +219,6 @@ impl Rpc for ConnectionHandler {
             tonic::Status::new(tonic::Code::InvalidArgument, "Incoming connection opening request has no remote address")
         })?;
 
-        // Bound to max allowed connections
-        let (is_full_sender, is_full_receiver) = oneshot_channel();
-        match self.manager_sender.send(ManagerEvent::IsFull(is_full_sender)).await {
-            Ok(_) => match is_full_receiver.await {
-                Ok(true) => {
-                    return Err(tonic::Status::new(
-                        tonic::Code::PermissionDenied,
-                        "The gRPC service has reached full capacity and accepts no new connection",
-                    ));
-                }
-                Ok(false) => {}
-                Err(_) => {
-                    return Err(tonic::Status::new(tonic::Code::Unavailable, SERVICE_IS_DOWN));
-                }
-            },
-            Err(_) => {
-                return Err(tonic::Status::new(tonic::Code::Unavailable, SERVICE_IS_DOWN));
-            }
-        }
-
         debug!("GRPC, Incoming message stream from {:?}", remote_address);
 
         // Build the in/out pipes
@@ -251,11 +235,34 @@ impl Rpc for ConnectionHandler {
             outgoing_route,
         );
 
-        // Notify the central Manager about the new connection
-        self.manager_sender
-            .send(ManagerEvent::NewConnection(connection))
-            .await
-            .expect("manager receiver should never drop before senders");
+        // Try to get the connection registered into the central Manager
+        let (register_sender, register_receiver) = oneshot_channel();
+        match self.manager_sender.send(ManagerEvent::NewConnection(RegistrationRequest::new(connection, register_sender))).await {
+            Ok(()) => match register_receiver.await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    warn!("GRPC, refusing incoming message stream from {:?} - {}", remote_address, err);
+                    return Err(tonic::Status::new(
+                        tonic::Code::ResourceExhausted,
+                        "The gRPC service has reached full capacity and accepts no new connection",
+                    ));
+                }
+                Err(err) => {
+                    debug!(
+                        "GRPC, Refusing incoming message stream from {:?} - connection manager responded with {}",
+                        remote_address, err
+                    );
+                    return Err(tonic::Status::new(tonic::Code::Unavailable, SERVICE_IS_DOWN));
+                }
+            },
+            Err(err) => {
+                debug!(
+                    "GRPC, Refusing incoming message stream from {:?} - failed to contact connection manager, error {}",
+                    remote_address, err
+                );
+                return Err(tonic::Status::new(tonic::Code::Unavailable, SERVICE_IS_DOWN));
+            }
+        }
 
         // Give tonic a receiver stream (messages sent to it will be forwarded to the client)
         Ok(Response::new(Box::pin(ReceiverStream::new(outgoing_receiver).map(Ok)) as Self::MessageStreamStream))

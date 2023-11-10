@@ -1,6 +1,7 @@
 use crate::model::*;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_consensus_core::block_count::BlockCount;
+use kaspa_core::debug;
 use kaspa_notify::subscription::{single::UtxosChangedSubscription, Command};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -924,6 +925,7 @@ impl UtxosChangedNotification {
         } else {
             let added = Self::filter_utxos(&self.added, subscription);
             let removed = Self::filter_utxos(&self.removed, subscription);
+            debug!("CRPC, Creating UtxosChanged notifications with {} added and {} removed utxos", added.len(), removed.len());
             if added.is_empty() && removed.is_empty() {
                 None
             } else {

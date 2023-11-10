@@ -88,15 +88,19 @@ impl Factory {
                         Some(Payload::NotifyFinalityConflictRequest(ref request)) => {
                             match kaspa_rpc_core::NotifyFinalityConflictRequest::try_from(request) {
                                 Ok(request) => {
-                                    let id = connection.get_or_register_listener_id();
+                                    let listener_id = connection.get_or_register_listener_id()?;
                                     let command = request.command;
-                                    let result =
-                                        server_ctx.notifier.clone().execute_subscribe_command(id, request.into(), command).await.and(
+                                    let result = server_ctx
+                                        .notifier
+                                        .clone()
+                                        .execute_subscribe_command(listener_id, request.into(), command)
+                                        .await
+                                        .and(
                                             server_ctx
                                                 .notifier
                                                 .clone()
                                                 .execute_subscribe_command(
-                                                    id,
+                                                    listener_id,
                                                     FinalityConflictResolvedScope::default().into(),
                                                     command,
                                                 )
