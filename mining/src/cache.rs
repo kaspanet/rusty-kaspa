@@ -1,10 +1,7 @@
-use kaspa_consensus_core::block::BlockTemplate;
+use kaspa_consensus_core::block::{BlockTemplate, VirtualStateApproxId};
 use kaspa_core::time::unix_now;
 use parking_lot::{Mutex, MutexGuard};
-use std::sync::{
-    atomic::{AtomicBool, Ordering::SeqCst},
-    Arc,
-};
+use std::sync::Arc;
 
 /// CACHE_LIFETIME indicates the default duration in milliseconds after which the cached data expires.
 const DEFAULT_CACHE_LIFETIME: u64 = 1_000;
@@ -50,24 +47,22 @@ impl Inner {
 
 pub(crate) struct BlockTemplateCache {
     inner: Mutex<Inner>,
-    clear_flag: AtomicBool,
 }
 
 impl BlockTemplateCache {
     pub(crate) fn new(cache_lifetime: Option<u64>) -> Self {
-        Self { inner: Mutex::new(Inner::new(cache_lifetime)), clear_flag: AtomicBool::new(false) }
+        Self { inner: Mutex::new(Inner::new(cache_lifetime)) }
     }
 
+    #[cfg(test)]
     pub(crate) fn clear(&self) {
-        // We avoid blocking on the mutex for clear but rather signal to the next
-        // thread acquiring the lock to clear the template
-        self.clear_flag.store(true, SeqCst)
+        self.inner.lock().clear();
     }
 
-    pub(crate) fn lock(&self) -> MutexGuard<Inner> {
+    pub(crate) fn lock(&self, virtual_state_approx_id: VirtualStateApproxId) -> MutexGuard<Inner> {
         let mut guard = self.inner.lock();
-        if self.clear_flag.swap(false, SeqCst) {
-            // If clear was signaled, perform the actual clear
+        if guard.block_template.as_ref().is_some_and(|template| template.to_virtual_state_approx_id() != virtual_state_approx_id) {
+            // If the VirtualStateApproxId is different from ours, our template is likely expired and we should clear it
             guard.clear();
         }
         guard

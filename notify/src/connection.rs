@@ -4,15 +4,16 @@ use async_channel::Sender;
 use std::fmt::Debug;
 use std::hash::Hash;
 
+#[async_trait::async_trait]
 pub trait Connection: Clone + Debug + Send + Sync + 'static {
     type Notification;
-    type Message: Clone;
-    type Encoding: Hash + Clone + Eq + PartialEq + Send;
+    type Message: Clone + Send + Sync;
+    type Encoding: Hash + Clone + Eq + PartialEq + Send + Sync;
     type Error: Into<Error>;
 
     fn encoding(&self) -> Self::Encoding;
     fn into_message(notification: &Self::Notification, encoding: &Self::Encoding) -> Self::Message;
-    fn send(&self, message: Self::Message) -> Result<(), Self::Error>;
+    async fn send(&self, message: Self::Message) -> Result<(), Self::Error>;
     fn close(&self) -> bool;
     fn is_closed(&self) -> bool;
 }
@@ -52,6 +53,7 @@ pub enum Unchanged {
     Clone = 0,
 }
 
+#[async_trait::async_trait]
 impl<N> Connection for ChannelConnection<N>
 where
     N: Notification,
@@ -69,9 +71,9 @@ where
         notification.clone()
     }
 
-    fn send(&self, message: Self::Message) -> Result<(), Self::Error> {
+    async fn send(&self, message: Self::Message) -> Result<(), Self::Error> {
         match !self.is_closed() {
-            true => Ok(self.sender.try_send(message)?),
+            true => Ok(self.sender.send(message).await?),
             false => Err(Error::ConnectionClosed),
         }
     }
