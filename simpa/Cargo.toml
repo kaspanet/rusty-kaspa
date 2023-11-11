@@ -1,6 +1,7 @@
 [package]
 name = "simpa"
 description = "Kaspa Network Simulator"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,25 +9,29 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-hashes.workspace = true
-kaspa-core.workspace = true
-kaspa-utils.workspace = true
-kaspa-database.workspace = true
-kaspa-consensus.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
+kaspa-consensus.workspace = true
+kaspa-core.workspace = true
+kaspa-database.workspace = true
+kaspa-hashes.workspace = true
+kaspa-perf-monitor.workspace = true
+kaspa-utils.workspace = true
 
-rand.workspace = true
-itertools.workspace = true
-futures-util.workspace = true
-rayon.workspace = true
-clap.workspace = true
-indexmap.workspace = true
-log.workspace = true
 async-channel.workspace = true
-num_cpus.workspace = true
+clap.workspace = true
+dhat = {workspace = true, optional = true}
+futures-util.workspace = true
 futures.workspace = true
-
-rand_distr = "0.4"
+indexmap.workspace = true
+itertools.workspace = true
+log.workspace = true
+num_cpus.workspace = true
+rand_distr.workspace = true
+rand.workspace = true
+rayon.workspace = true
+secp256k1.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
-secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+
+[features]
+heap = ["dhat"]

@@ -1,18 +1,21 @@
 [package]
 name = "kaspa-pow"
+description = "Kaspa proof-of-work"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 include.workspace = true
 license.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+js-sys.workspace = true
+kaspa-consensus-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-math.workspace = true
-kaspa-consensus-core.workspace = true
-
+kaspa-utils.workspace = true
+wasm-bindgen.workspace = true
+workflow-wasm.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

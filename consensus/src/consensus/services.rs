@@ -18,6 +18,7 @@ use crate::{
 };
 
 use itertools::Itertools;
+use kaspa_txscript::caches::TxScriptCacheCounters;
 use std::sync::Arc;
 
 pub type DbGhostdagManager =
@@ -37,7 +38,8 @@ pub type DbSyncManager = SyncManager<
     DbStatusesStore,
 >;
 
-pub type DbPruningPointManager = PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore>;
+pub type DbPruningPointManager =
+    PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore, DbHeadersSelectedTipStore>;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 
@@ -64,7 +66,12 @@ pub struct ConsensusServices {
 }
 
 impl ConsensusServices {
-    pub fn new(db: Arc<DB>, storage: Arc<ConsensusStorage>, config: Arc<Config>) -> Arc<Self> {
+    pub fn new(
+        db: Arc<DB>,
+        storage: Arc<ConsensusStorage>,
+        config: Arc<Config>,
+        tx_script_cache_counters: Arc<TxScriptCacheCounters>,
+    ) -> Arc<Self> {
         let params = &config.params;
 
         let statuses_service = MTStatusesService::new(storage.statuses_store.clone());
@@ -143,6 +150,7 @@ impl ConsensusServices {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            tx_script_cache_counters,
         );
 
         let pruning_point_manager = PruningPointManager::new(
@@ -153,6 +161,7 @@ impl ConsensusServices {
             storage.ghostdag_primary_store.clone(),
             storage.headers_store.clone(),
             storage.past_pruning_points_store.clone(),
+            storage.headers_selected_tip_store.clone(),
         );
 
         let parents_manager = ParentsManager::new(

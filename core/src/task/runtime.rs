@@ -10,8 +10,6 @@ use std::{
 };
 use tokio::task::JoinHandle as TaskJoinHandle;
 
-const ASYNC_RUNTIME: &str = "async-runtime";
-
 /// AsyncRuntime registers async services and provides
 /// a tokio Runtime to run them.
 pub struct AsyncRuntime {
@@ -27,6 +25,8 @@ impl Default for AsyncRuntime {
 }
 
 impl AsyncRuntime {
+    pub const IDENT: &'static str = "async-runtime";
+
     pub fn new(threads: usize) -> Self {
         trace!("Creating the async-runtime service");
         Self { threads, services: Mutex::new(Vec::new()) }
@@ -42,7 +42,7 @@ impl AsyncRuntime {
 
     pub fn init(self: Arc<AsyncRuntime>, core: Arc<Core>) -> Vec<ThreadJoinHandle<()>> {
         trace!("initializing async-runtime service");
-        vec![thread::Builder::new().name(ASYNC_RUNTIME.to_string()).spawn(move || self.worker(core)).unwrap()]
+        vec![thread::Builder::new().name(Self::IDENT.to_string()).spawn(move || self.worker(core)).unwrap()]
     }
 
     /// Launch a tokio Runtime and run the top-level async objects
@@ -106,6 +106,9 @@ impl AsyncRuntime {
             .collect::<Vec<TaskJoinHandle<AsyncServiceResult<()>>>>();
         try_join_all(futures).await.unwrap();
 
+        // Drop all services and cleanup
+        self.services.lock().unwrap().clear();
+
         trace!("async-runtime worker stopped");
     }
 
@@ -119,7 +122,7 @@ impl AsyncRuntime {
 
 impl Service for AsyncRuntime {
     fn ident(self: Arc<AsyncRuntime>) -> &'static str {
-        ASYNC_RUNTIME
+        Self::IDENT
     }
 
     fn start(self: Arc<AsyncRuntime>, core: Arc<Core>) -> Vec<ThreadJoinHandle<()>> {

@@ -4,13 +4,16 @@ This repository contains the implementation of the Kaspa full-node and related l
 
 ## Getting started
 
-- Install Protobuf (required for grpc)
+- General prerequisites:
+  - Linux: `sudo apt install build-essential libssl-dev pkg-config`
+  - Windows: [Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
+- Install Protobuf (required for gRPC)
   - Linux: `sudo apt install protobuf-compiler libprotobuf-dev`
-  - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` dir to `Path`
+  - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` directory to `Path`
   - MacOS: `brew install protobuf`
-- Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB)
+- Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB and WASM `secp256k1` builds)
   - Linux: `apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang`
-  - Windows: [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe) and set `LIBCLANG_PATH` env var pointing to the `bin` dir of the llvm installation
+  - Windows: Please see [Installing clang toolchain on Windows](#installing-clang-toolchain-on-windows)
   - MacOS: Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
 - Install the [rust toolchain](https://rustup.rs/)
 - If you already have rust installed, update it by running: `rustup update`
@@ -72,11 +75,18 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
 $ (cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace) 2>&1 | tee ~/rusty-kaspa.log
 ```
 
+## Heap-profiling
+Heap-profiling in `kaspad` and `simpa` can be done by enabling `heap` feature and profile, ie.:
 
+```bash
+$ cargo run --bin kaspad --profile heap --features=heap
+```
+
+It will produce `{bin-name}-heap.json` file in the root of the workdir, that can be inspected by the [dhat-viewer](https://github.com/unofficial-mirror/valgrind/tree/master/dhat)
 
 ## Tests & Benchmarks
 
-- To run all current tests use:
+- To run unit and most integration tests use:
 
 ```bash
 $ cd rusty-kaspa
@@ -102,17 +112,37 @@ cd wasm
 ```
 This will produce a wasm library in `/web-root` directory
 
+## Installing clang toolchain on Windows
+
+Install [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe)
+
+Once LLVM is installed:
+- Add the `bin` directory of the LLVM installation (`C:\Program Files\LLVM\bin`) to PATH
+- set `LIBCLANG_PATH` environment variable to point to the `bin` directory as well
+
+**IMPORTANT:** Due to C++ dependency configuration issues, LLVM `AR` installation on Windows may not function correctly when switching between WASM and native C++ code compilation (native `RocksDB+secp256k1` vs WASM32 builds of `secp256k1`). Unfortunately, manually setting `AR` environment variable also confuses C++ build toolchain (it should not be set for native but should be set for WASM32 targets). Currently, the best way to address this, is as follows: after installing LLVM on Windows, go to the target `bin` installation directory and copy or rename `LLVM_AR.exe` to `AR.exe`.
+
+
 ## Installing clang toolchain on MacOS
 
 The default XCode installation of `llvm` does not support WASM build targets.
-To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing MacOS version is 13.0.1).
+To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing, the llvm version for MacOS is 16.0.1).
 
 ```bash
 brew install llvm
 ```
-NOTE: depending on your setup, the installation location may be different.
-To determine the installation location you can type `which llvm` or `which clang`
-and then modify the paths below accordingly.
+**NOTE:** Homebrew can use different keg installation locations depending on your configuration. For example:
+- `/opt/homebrew/opt/llvm` -> `/opt/homebrew/Cellar/llvm/16.0.1`
+- `/usr/local/Cellar/llvm/16.0.1`
+
+To determine the installation location you can use `brew list llvm` command and then modify the paths below accordingly:
+```bash
+% brew list llvm
+/usr/local/Cellar/llvm/16.0.1/bin/FileCheck
+/usr/local/Cellar/llvm/16.0.1/bin/UnicodeNameMappingGenerator
+...
+```
+If you have `/opt/homebrew/Cellar`, then you should be able to use `/opt/homebrew/opt/llvm`.
 
 Add the following to your `~/.zshrc` file:
 ```bash
@@ -121,6 +151,7 @@ export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
 export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
 export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
 ```
+
 Reload the `~/.zshrc` file
 ```bash
 source ~/.zshrc
@@ -147,26 +178,14 @@ wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
 
 ## wRPC to gRPC Proxy
 
-Proxy providing wRPC to gRPC relay is available in `rpc/wrpc/proxy`.
-By default, the proxy server will connect to *grpc://127.0.01:16110*
-while offering wRPC connections on *wrpc://127.0.0.1:17110*. Use `--help`
-to see configuration options.
-
-The Proxy server is currently used for testing with the Golang implementation
-of Kaspad. At the time of writing, the gRPC has only partial messsage translation
-implementation.
-
-To run the proxy:
-```bash
-cd rpc/wrpc/proxy
-cargo run
-```
+wRPC to gRPC Proxy is deprecated and no longer supported.
 
 ## Native JavaScript & TypeScript RPC clients for Browsers and Node.js environments
 
 Integration in a Browser and Node.js environments is possible using WASM.
 The JavaScript code is agnostic to which environment it runs in.
-NOTE: to run in Node.js environment, you must instantiate a W3C WebSocket
+
+**NOTE:** to run in Node.js environment, you must instantiate a W3C WebSocket
 shim using a `WebSocket` crate before initializing Kaspa environment:
 `globalThis.WebSocket = require('websocket').w3cwebsocket;`
 
@@ -188,23 +207,20 @@ node index
 
 You can take a look at `rpc/wrpc/wasm/nodejs/index.js` to see the use of the native JavaScript & TypeScript APIs.
 
-NOTE: `npm install` is needed to install [WebSocket](https://github.com/theturtle32/WebSocket-Node) module.
+**NOTE:** `npm install` is needed to install [WebSocket](https://github.com/theturtle32/WebSocket-Node) module.
 When running in the Browser environment, no additional dependencies are necessary because
 the browser provides the W3C WebSocket class natively.
 
 ## Wallet CLI
 
-The wallet CLI is under heavy development.  To test the environment you can do the following:
-
-- Start Golang Kaspad
-- Start wRPC proxy
-
-Native (OS command line):
+Wallet CLI is now available via the `/cli` or `/kos` projects.
 
 ```bash
-cd wallet/native
-cargo run
+cd cli
+cargo run --release
 ```
+
+For KOS, please see [`kos/README.md`](kos/README.md)
 
 Web Browser (WASM):
 
@@ -217,17 +233,3 @@ basic-http-server
 The *basic-http-server* will serve on port 4000 by default, so open your web browser and load http://localhost:4000
 
 The framework is compatible with all major desktop and mobile browsers.
-
-## Using Wallet CLI
-
-This project is under heavy development and currently demonstrates only the RPC data exchange and
-address generation using the native or WASM wallet library. 
-
-Here are the few commands that work:
-
-```
-get-info
-subscribe-daa-score
-new-address
-exit
-```

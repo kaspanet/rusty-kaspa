@@ -1,22 +1,25 @@
 [package]
 name = "kaspa-wallet-cli-wasm"
+description = "Kaspa CLI wallet for WASM"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 include.workspace = true
 license.workspace = true
 
+[features]
+legacy-rpc = ["kaspa-cli/legacy-rpc"]
+default = []
+
 [lib]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-kaspa-wallet-cli.workspace = true
-
-workflow-terminal.workspace = true
-workflow-log.workspace = true
 async-trait.workspace = true
-wasm-bindgen-futures.workspace = true
 js-sys.workspace = true
+kaspa-cli.workspace = true
+wasm-bindgen-futures.workspace = true
 wasm-bindgen.workspace = true
+workflow-log.workspace = true
+workflow-terminal.workspace = true
 workflow-wasm.workspace = true
-# console_error_panic_hook = "0.1.7"

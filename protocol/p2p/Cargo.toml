@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-p2p-lib"
+description = "Kaspa p2p library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -25,29 +26,24 @@ kaspa-hashes.workspace = true
 kaspa-math.workspace = true
 kaspa-utils.workspace = true
 
-log.workspace = true
-thiserror.workspace = true
-parking_lot.workspace = true
-itertools.workspace = true
-uuid.workspace = true
-serde.workspace = true
 borsh.workspace = true
-
-futures = { version = "0.3", default-features = false, features = ["alloc"] }
-prost = "0.11"
-ctrlc = "3.2"
-tokio = { workspace = true, features = [
-    "rt-multi-thread",
-    "macros",
-    "signal",
-] }
-tokio-stream = { version = "0.1.11", features = ["net"] }
-tonic = { version = "0.9.1", features = ["tls", "gzip"] }
-h2 = "0.3"
-seqlock = "0.2"
+ctrlc.workspace = true
+futures = { workspace = true, features = ["alloc"] }
+h2.workspace = true
+itertools.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+prost.workspace = true
+seqlock.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ] }
+tokio-stream = { workspace = true, features = ["net"] }
+tonic = { workspace = true, features = ["tls", "gzip"] }
+uuid.workspace = true
 
 [build-dependencies]
-tonic-build = { version = "0.9.1", features = ["prost"] }
+tonic-build = { workspace = true, features = ["prost"] }
 
 [dev-dependencies]
-hex = "0.4.3"
+hex.workspace = true

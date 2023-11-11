@@ -1,8 +1,5 @@
-use crate::prelude::{open_db, DB};
-use std::{
-    path::PathBuf,
-    sync::{Arc, Weak},
-};
+use crate::prelude::DB;
+use std::sync::Weak;
 use tempfile::TempDir;
 
 #[derive(Default)]
@@ -38,7 +35,8 @@ impl Drop for DbLifetime {
             let options = rocksdb::Options::default();
             let path_buf = dir.path().to_owned();
             let path = path_buf.to_str().unwrap();
-            DB::destroy(&options, path).expect("DB is expected to be deletable since there are no references to it");
+            <rocksdb::DBWithThreadMode<rocksdb::MultiThreaded>>::destroy(&options, path)
+                .expect("DB is expected to be deletable since there are no references to it");
         }
     }
 }
@@ -53,38 +51,40 @@ pub fn get_kaspa_tempdir() -> TempDir {
 
 /// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
-pub fn create_temp_db_with_parallelism(parallelism: usize) -> (DbLifetime, Arc<DB>) {
-    let db_tempdir = get_kaspa_tempdir();
-    let db_path = db_tempdir.path().to_owned();
-    let db = open_db(db_path, true, parallelism);
-    (DbLifetime::new(db_tempdir, Arc::downgrade(&db)), db)
-}
-
-/// Creates a DB within a temp directory under `<OS SPECIFIC TEMP DIR>/kaspa-rust`
-/// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB to exist.
-pub fn create_temp_db() -> (DbLifetime, Arc<DB>) {
-    // Temp DB usually indicates test environments, so we default to a single thread
-    create_temp_db_with_parallelism(1)
+#[macro_export]
+macro_rules! create_temp_db {
+    ($conn_builder: expr) => {{
+        let db_tempdir = $crate::utils::get_kaspa_tempdir();
+        let db_path = db_tempdir.path().to_owned();
+        let db = $conn_builder.with_db_path(db_path).build().unwrap();
+        ($crate::utils::DbLifetime::new(db_tempdir, std::sync::Arc::downgrade(&db)), db)
+    }};
 }
 
 /// Creates a DB within the provided directory path.
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
-pub fn create_permanent_db(db_path: String, parallelism: usize) -> (DbLifetime, Arc<DB>) {
-    let db_dir = PathBuf::from(db_path);
-    if let Err(e) = std::fs::create_dir(db_dir.as_path()) {
-        match e.kind() {
-            std::io::ErrorKind::AlreadyExists => panic!("The directory {db_dir:?} already exists"),
-            _ => panic!("{e}"),
+#[macro_export]
+macro_rules! create_permanent_db {
+    ($db_path: expr, $conn_builder: expr) => {{
+        let db_dir = std::path::PathBuf::from($db_path);
+        if let Err(e) = std::fs::create_dir(db_dir.as_path()) {
+            match e.kind() {
+                std::io::ErrorKind::AlreadyExists => panic!("The directory {db_dir:?} already exists"),
+                _ => panic!("{e}"),
+            }
         }
-    }
-    let db = open_db(db_dir, true, parallelism);
-    (DbLifetime::without_destroy(Arc::downgrade(&db)), db)
+        let db = $conn_builder.with_db_path(db_dir).build().unwrap();
+        ($crate::utils::DbLifetime::without_destroy(std::sync::Arc::downgrade(&db)), db)
+    }};
 }
 
 /// Loads an existing DB from the provided directory path.
 /// Callers must keep the `TempDbLifetime` guard for as long as they wish the DB instance to exist.
-pub fn load_existing_db(db_path: String, parallelism: usize) -> (DbLifetime, Arc<DB>) {
-    let db_dir = PathBuf::from(db_path);
-    let db = open_db(db_dir, false, parallelism);
-    (DbLifetime::without_destroy(Arc::downgrade(&db)), db)
+#[macro_export]
+macro_rules! load_existing_db {
+    ($db_path: expr, $conn_builder: expr) => {{
+        let db_dir = std::path::PathBuf::from($db_path);
+        let db = $conn_builder.with_db_path(db_dir).with_create_if_missing(false).build().unwrap();
+        ($crate::utils::DbLifetime::without_destroy(std::sync::Arc::downgrade(&db)), db)
+    }};
 }

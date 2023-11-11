@@ -11,6 +11,7 @@ use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
 use kaspa_database::prelude::{StoreError, StoreResult, DB};
 use kaspa_hashes::Hash;
+use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{
@@ -54,6 +55,13 @@ impl UtxoIndexApi for UtxoIndex {
         trace!("[{0}] retrieving utxos from {1} script public keys", IDENT, script_public_keys.len());
 
         self.store.get_utxos_by_script_public_key(script_public_keys)
+    }
+
+    /// Retrieve utxos by script public keys from the utxoindex db.
+    fn get_balance_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey> {
+        trace!("[{0}] retrieving utxos from {1} script public keys", IDENT, script_public_keys.len());
+
+        self.store.get_balance_by_script_public_key(script_public_keys)
     }
 
     /// Retrieve the stored tips of the utxoindex.
@@ -221,7 +229,8 @@ mod tests {
     };
     use kaspa_consensusmanager::ConsensusManager;
     use kaspa_core::info;
-    use kaspa_database::utils::create_temp_db;
+    use kaspa_database::create_temp_db;
+    use kaspa_database::prelude::ConnBuilder;
     use std::{collections::HashSet, sync::Arc, time::Instant};
 
     /// TODO: use proper Simnet when implemented.
@@ -235,7 +244,7 @@ mod tests {
 
         // Initialize all components, and virtual change emulator proxy.
         let mut virtual_change_emulator = VirtualChangeEmulator::new();
-        let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db();
+        let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let config = Config::new(DEVNET_PARAMS);
         let tc = Arc::new(TestConsensus::new(&config));
         let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));

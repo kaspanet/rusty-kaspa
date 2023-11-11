@@ -42,7 +42,7 @@ impl From<&Vec<Hash>> for protowire::BlockLevelParents {
 impl TryFrom<protowire::BlockHeader> for Header {
     type Error = ConversionError;
     fn try_from(item: protowire::BlockHeader) -> Result<Self, Self::Error> {
-        Ok(Self::new(
+        Ok(Self::new_finalized(
             item.version.try_into()?,
             item.parents.into_iter().map(Vec::<Hash>::try_from).collect::<Result<Vec<Vec<Hash>>, ConversionError>>()?,
             item.hash_merkle_root.try_into_ex()?,

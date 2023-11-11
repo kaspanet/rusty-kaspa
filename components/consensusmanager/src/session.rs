@@ -4,16 +4,16 @@
 
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    api::{BlockValidationFuture, ConsensusApi, DynConsensus},
+    api::{BlockValidationFutures, ConsensusApi, DynConsensus},
     block::Block,
     block_count::BlockCount,
     blockstatus::BlockStatus,
     errors::consensus::ConsensusResult,
     header::Header,
-    pruning::{PruningPointProof, PruningPointTrustedData},
+    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet, ChainPath, Hash,
+    BlockHashSet, BlueWorkType, ChainPath, Hash,
 };
 use kaspa_utils::sync::rwlock::*;
 use std::{ops::Deref, sync::Arc};
@@ -95,6 +95,13 @@ impl ConsensusInstance {
         let g = self.session_lock.read_owned().await;
         ConsensusSessionOwned::new(g, self.consensus.clone())
     }
+
+    /// Returns an unguarded consensus session. There's no guarantee that data will not be pruned between
+    /// two sequential consensus calls. This session doesn't hold the consensus pruning lock, so it should
+    /// be preferred upon [`session`] when data consistency is not important.
+    pub fn unguarded_session(&self) -> ConsensusSessionOwned {
+        ConsensusSessionOwned::new_without_session_guard(self.consensus.clone())
+    }
 }
 
 pub struct ConsensusSessionBlocking<'a> {
@@ -120,13 +127,17 @@ impl Deref for ConsensusSessionBlocking<'_> {
 /// See method `spawn_blocking` within for context on the usefulness of this type
 #[derive(Clone)]
 pub struct ConsensusSessionOwned {
-    _session_guard: SessionOwnedReadGuard,
+    _session_guard: Option<SessionOwnedReadGuard>,
     consensus: DynConsensus,
 }
 
 impl ConsensusSessionOwned {
     pub fn new(session_guard: SessionOwnedReadGuard, consensus: DynConsensus) -> Self {
-        Self { _session_guard: session_guard, consensus }
+        Self { _session_guard: Some(session_guard), consensus }
+    }
+
+    pub fn new_without_session_guard(consensus: DynConsensus) -> Self {
+        Self { _session_guard: None, consensus }
     }
 
     /// Uses [`tokio::task::spawn_blocking`] to run the provided consensus closure on a thread where blocking is acceptable.
@@ -142,11 +153,11 @@ impl ConsensusSessionOwned {
 }
 
 impl ConsensusSessionOwned {
-    pub fn validate_and_insert_block(&self, block: Block) -> BlockValidationFuture {
+    pub fn validate_and_insert_block(&self, block: Block) -> BlockValidationFutures {
         self.consensus.validate_and_insert_block(block)
     }
 
-    pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFuture {
+    pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFutures {
         self.consensus.validate_and_insert_trusted_block(tb)
     }
 
@@ -169,6 +180,13 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_virtual_merge_depth_root(&self) -> Option<Hash> {
         self.clone().spawn_blocking(|c| c.get_virtual_merge_depth_root()).await
+    }
+
+    /// Returns the `BlueWork` threshold at which blocks with lower or equal blue work are considered
+    /// to be un-mergeable by current virtual state.
+    /// (Note: in some rare cases when the node is unsynced the function might return zero as the threshold)
+    pub async fn async_get_virtual_merge_depth_blue_work_threshold(&self) -> BlueWorkType {
+        self.clone().spawn_blocking(|c| c.get_virtual_merge_depth_blue_work_threshold()).await
     }
 
     pub async fn async_get_sink(&self) -> Hash {
@@ -216,10 +234,6 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_tips()).await
     }
 
-    pub async fn async_header_exists(&self, hash: Hash) -> bool {
-        self.clone().spawn_blocking(move |c| c.header_exists(hash)).await
-    }
-
     pub async fn async_is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
         self.clone().spawn_blocking(move |c| c.is_chain_ancestor_of(low, high)).await
     }
@@ -256,12 +270,12 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_pruning_point_proof()).await
     }
 
-    pub async fn async_create_headers_selected_chain_block_locator(
+    pub async fn async_create_virtual_selected_chain_block_locator(
         &self,
         low: Option<Hash>,
         high: Option<Hash>,
     ) -> ConsensusResult<Vec<Hash>> {
-        self.clone().spawn_blocking(move |c| c.create_headers_selected_chain_block_locator(low, high)).await
+        self.clone().spawn_blocking(move |c| c.create_virtual_selected_chain_block_locator(low, high)).await
     }
 
     pub async fn async_create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
@@ -331,7 +345,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_missing_block_body_hashes(high)).await
     }
 
-    pub async fn async_pruning_point(&self) -> Option<Hash> {
+    pub async fn async_pruning_point(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.pruning_point()).await
     }
 
@@ -349,6 +363,22 @@ impl ConsensusSessionOwned {
         window_size: usize,
     ) -> ConsensusResult<u64> {
         self.clone().spawn_blocking(move |c| c.estimate_network_hashes_per_second(start_hash, window_size)).await
+    }
+
+    pub async fn async_validate_pruning_points(&self) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.validate_pruning_points()).await
+    }
+
+    pub async fn async_are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
+        self.clone().spawn_blocking(move |c| c.are_pruning_points_violating_finality(pp_list)).await
+    }
+
+    pub async fn async_creation_timestamp(&self) -> u64 {
+        self.clone().spawn_blocking(move |c| c.creation_timestamp()).await
+    }
+
+    pub async fn async_finality_point(&self) -> Hash {
+        self.clone().spawn_blocking(move |c| c.finality_point()).await
     }
 }
 

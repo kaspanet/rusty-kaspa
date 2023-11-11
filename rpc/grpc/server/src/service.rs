@@ -1,5 +1,6 @@
-use crate::adaptor::Adaptor;
+use crate::{adaptor::Adaptor, manager::Manager};
 use kaspa_core::{
+    debug,
     task::service::{AsyncService, AsyncServiceFuture},
     trace, warn,
 };
@@ -18,7 +19,7 @@ pub struct GrpcService {
 
 impl GrpcService {
     pub fn new(address: NetAddress, core_service: Arc<RpcCoreService>, rpc_max_clients: usize) -> Self {
-        Self { net_address: address, core_service, rpc_max_clients, shutdown: SingleTrigger::default() }
+        Self { net_address: address, core_service, rpc_max_clients, shutdown: Default::default() }
     }
 }
 
@@ -33,8 +34,8 @@ impl AsyncService for GrpcService {
         // Prepare a shutdown signal receiver
         let shutdown_signal = self.shutdown.listener.clone();
 
-        let grpc_adaptor =
-            Adaptor::server(self.net_address, self.core_service.clone(), self.core_service.notifier(), self.rpc_max_clients);
+        let manager = Manager::new(self.rpc_max_clients);
+        let grpc_adaptor = Adaptor::server(self.net_address, manager, self.core_service.clone(), self.core_service.notifier());
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
@@ -42,12 +43,15 @@ impl AsyncService for GrpcService {
             shutdown_signal.await;
 
             // Stop the connection handler, closing all connections and refusing new ones
-            match grpc_adaptor.terminate().await {
-                Ok(_) => {}
+            match grpc_adaptor.stop().await {
+                Ok(_) => {
+                    debug!("GRPC, Adaptor terminated successfully");
+                }
                 Err(err) => {
                     warn!("{} error while stopping the connection handler: {}", GRPC_SERVICE, err);
                 }
             }
+
             // On exit, the adaptor is dropped, causing the server termination
             Ok(())
         })

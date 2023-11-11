@@ -1,8 +1,10 @@
 [workspace]
+resolver = "2"
 members = [
+    "daemon",
+    "cli",
     "core",
     "wallet/core",
-    "wallet/cli",
     "wallet/native",
     "wallet/wasm",
     "wallet/bip32",
@@ -10,6 +12,8 @@ members = [
     "consensus/core",
     "consensus/notify",
     "consensus/pow",
+    "consensus/wasm",
+    "kos",
     "kaspad",
     "simpa",
     "wasm",
@@ -22,14 +26,15 @@ members = [
     "indexes/core",
     "indexes/processor",
     "indexes/utxoindex",
+    "rpc/macros",
     "rpc/core",
     "rpc/service",
     "rpc/grpc/core",
     "rpc/grpc/client",
     "rpc/grpc/server",
-    "rpc/macros",
-    "rpc/wrpc/client",
+    "rpc/wrpc/core",
     "rpc/wrpc/server",
+    "rpc/wrpc/client",
     "rpc/wrpc/proxy",
     "rpc/wrpc/wasm",
     "mining",
@@ -43,138 +48,224 @@ members = [
     "crypto/txscript",
     "crypto/txscript/errors",
     "testing/integration",
+    "utils",
     "rothschild",
+    "metrics/perf_monitor",
 ]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.1.7"
 authors = ["Kaspa developers"]
 license = "MIT/Apache-2.0"
+repository = "https://github.com/kaspanet/rusty-kaspa"
 edition = "2021"
-include = ["src/**/*.rs", "Cargo.toml"]
+include = [
+    "src/**/*.rs",
+    "src/**/*.s",
+    "src/**/*.r",
+    "proto/**/*.proto",
+    "benches/**/*.rs",
+    "build.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+]
 
 [workspace.dependencies]
-
-# not published
-kaspa-addressmanager = { path = "components/addressmanager" }
-kaspa-connectionmanager = { path = "components/connectionmanager" }
-kaspa-consensusmanager = { path = "components/consensusmanager" }
-kaspa-mining = { path = "mining" }
+# kaspa-testing-integration = { version = "0.1.7", path = "testing/integration" }
+kaspa-os = { version = "0.1.7", path = "kaspa-os" }
+kaspa-daemon = { version = "0.1.7", path = "daemon" }
+kaspa-addresses = { version = "0.1.7", path = "crypto/addresses" }
+kaspa-addressmanager = { version = "0.1.7", path = "components/addressmanager" }
+kaspa-bip32 = { version = "0.1.7", path = "wallet/bip32" }
+kaspa-connectionmanager = { version = "0.1.7", path = "components/connectionmanager" }
+kaspa-consensus = { version = "0.1.7", path = "consensus" }
+kaspa-consensus-core = { version = "0.1.7", path = "consensus/core" }
+kaspa-consensus-notify = { version = "0.1.7", path = "consensus/notify" }
+kaspa-consensus-wasm = { version = "0.1.7", path = "consensus/wasm" }
+kaspa-consensusmanager = { version = "0.1.7", path = "components/consensusmanager" }
+kaspa-core = { version = "0.1.7", path = "core" }
+kaspa-database = { version = "0.1.7", path = "database" }
+kaspa-grpc-client = { version = "0.1.7", path = "rpc/grpc/client" }
+kaspa-grpc-core = { version = "0.1.7", path = "rpc/grpc/core" }
+kaspa-grpc-server = { version = "0.1.7", path = "rpc/grpc/server" }
+kaspa-hashes = { version = "0.1.7", path = "crypto/hashes" }
+kaspa-index-core = { version = "0.1.7", path = "indexes/core" }
+kaspa-index-processor = { version = "0.1.7", path = "indexes/processor" }
+kaspa-math = { version = "0.1.7", path = "math" }
+kaspa-merkle = { version = "0.1.7", path = "crypto/merkle" }
+kaspa-mining = { version = "0.1.7", path = "mining" }
 kaspa-mining-errors = { path = "mining/errors" }
-kaspa-p2p-flows = { path = "protocol/flows" }
-kaspa-p2p-lib = { path = "protocol/p2p" }
-kaspa-testing-integration = { path = "testing/integration" }
-kaspa-utxoindex = { path = "indexes/utxoindex" }
-kaspa-rpc-service = { version = "0.1.2", path = "rpc/service" }
-
-# published
-kaspa-addresses = { version = "0.1.2", path = "crypto/addresses" }
-kaspa-bip32 = { version = "0.1.2", path = "wallet/bip32" }
-kaspa-consensus = { version = "0.1.2", path = "consensus" }
-kaspa-consensus-core = { version = "0.1.2", path = "consensus/core" }
-kaspa-consensus-notify = { version = "0.1.2", path = "consensus/notify" }
-kaspa-core = { version = "0.1.2", path = "core" }
-kaspa-database = { version = "0.1.2", path = "database" }
-kaspa-grpc-client = { version = "0.1.2", path = "rpc/grpc/client" }
-kaspa-grpc-core = { version = "0.1.2", path = "rpc/grpc/core" }
-kaspa-hashes = { version = "0.1.2", path = "crypto/hashes" }
-kaspa-math = { version = "0.1.2", path = "math" }
-kaspa-merkle = { version = "0.1.2", path = "crypto/merkle" }
-kaspa-muhash = { version = "0.1.2", path = "crypto/muhash" }
-kaspa-notify = { version = "0.1.2", path = "notify" }
-kaspa-pow = { version = "0.1.2", path = "consensus/pow" }
-kaspa-rpc-core = { version = "0.1.2", path = "rpc/core" }
-kaspa-rpc-macros = { version = "0.1.2", path = "rpc/macros" }
-kaspa-txscript = { version = "0.1.2", path = "crypto/txscript" }
-kaspa-txscript-errors = { version = "0.1.2", path = "crypto/txscript/errors" }
-kaspa-utils = { version = "0.1.2", path = "utils" }
-kaspa-wallet-core = { version = "0.1.2", path = "wallet/core" }
-kaspa-wasm = { version = "0.1.2", path = "wasm" }
-kaspa-wrpc-client = { version = "0.1.2", path = "rpc/wrpc/client" }
-kaspa-wrpc-wasm = { version = "0.1.2", path = "rpc/wrpc/wasm" }
-
-# not published
-kaspa-grpc-server = { path = "rpc/grpc/server" }
-kaspa-index-core = { path = "indexes/core" }
-kaspa-index-processor = { path = "indexes/processor" }
-kaspa-wallet-cli = { path = "wallet/cli" }
-kaspa-wallet-cli-native = { path = "wallet/native" }
-kaspa-wallet-cli-wasm = { path = "wallet/wasm" }
-kaspa-wrpc-proxy = { path = "rpc/wrpc/proxy" }
-kaspa-wrpc-server = { path = "rpc/wrpc/server" }
-kaspad = { path = "kaspad" }
+kaspa-muhash = { version = "0.1.7", path = "crypto/muhash" }
+kaspa-notify = { version = "0.1.7", path = "notify" }
+kaspa-p2p-flows = { version = "0.1.7", path = "protocol/flows" }
+kaspa-p2p-lib = { version = "0.1.7", path = "protocol/p2p" }
+kaspa-pow = { version = "0.1.7", path = "consensus/pow" }
+kaspa-rpc-core = { version = "0.1.7", path = "rpc/core" }
+kaspa-rpc-macros = { version = "0.1.7", path = "rpc/macros" }
+kaspa-rpc-service = { version = "0.1.7", path = "rpc/service" }
+kaspa-txscript = { version = "0.1.7", path = "crypto/txscript" }
+kaspa-txscript-errors = { version = "0.1.7", path = "crypto/txscript/errors" }
+kaspa-utils = { version = "0.1.7", path = "utils" }
+kaspa-utxoindex = { version = "0.1.7", path = "indexes/utxoindex" }
+kaspa-wallet = { version = "0.1.7", path = "wallet/native" }
+kaspa-cli = { version = "0.1.7", path = "cli" }
+kaspa-wallet-cli-wasm = { version = "0.1.7", path = "wallet/wasm" }
+kaspa-wallet-core = { version = "0.1.7", path = "wallet/core" }
+kaspa-wasm = { version = "0.1.7", path = "wasm" }
+kaspa-wrpc-core = { version = "0.1.7", path = "rpc/wrpc/core" }
+kaspa-wrpc-client = { version = "0.1.7", path = "rpc/wrpc/client" }
+kaspa-wrpc-proxy = { version = "0.1.7", path = "rpc/wrpc/proxy" }
+kaspa-wrpc-server = { version = "0.1.7", path = "rpc/wrpc/server" }
+kaspa-wrpc-wasm = { version = "0.1.7", path = "rpc/wrpc/wasm" }
+kaspad = { version = "0.1.7", path = "kaspad" }
+kaspa-perf-monitor = { path = "metrics/perf_monitor" }
 
 # external
-thiserror = "1"
-faster-hex = "0.6"
-itertools = "0.10"
-rand = "0.8"
-rand_chacha = "0.3"
-rayon = "1"
-tempfile = "3.3"
-blake2b_simd = "1"
-sha2 = "0.10"
-serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1.0.91"
-serde-wasm-bindgen = "0.4.5"
-futures-util = { version = "0.3", default-features = false, features = [
-    "alloc",
-] }
-futures = { version = "0.3" }
-bincode = { version = "1", default-features = false }
-tokio = { version = "1", features = ["sync", "rt-multi-thread"] }
-wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
-criterion = { version = "0.4", default-features = false }
-indexmap = "1.9.1"
-parking_lot = "0.12"
-smallvec = { version = "1.10.0", features = ["serde"] }
-borsh = { version = "0.9.1", features = ["rc"] } # please keep this fixed
+aes = "0.8.3"
+argon2 = "0.5.2"
+async-channel = "2.0.0"
 async-std = { version = "1.12.0", features = ['attributes'] }
-async-channel = "1.8.0"
-clap = { version = "4.0.23", features = ["derive", "string", "cargo"] }
-derive_more = { version = "0.99" }
-log = "0.4"
+async-stream = "0.3.5"
+async-trait = "0.1.74"
+base64 = "0.21.5"
+bincode = { version = "1.3.3", default-features = false }
+blake2b_simd = "1.0.2"
+borsh = { version = "0.9.1", features = ["rc"] } # please keep this fixed
+bs58 = { version = "0.5.0", features = ["check"], default-features = false }
+cc = "1.0.83"
+cfb-mode = "0.8.2"
 cfg-if = "1.0.0"
-rocksdb = "0.19"
-num_cpus = "1.15.0"
-async-trait = "0.1.57"
-paste = "1.0.11"
-regex = "1.6.0"
+chacha20poly1305 = "0.10.1"
+clap = { version = "4.4.7", features = ["derive", "string", "cargo"] }
+convert_case = "0.6.0"
+criterion = { version = "0.5.1", default-features = false }
+crossbeam-channel = "0.5.8"
+ctrlc = "3.4.1" # 3.2
+dashmap = "5.5.3"
+derivative = "2.2.0"
+derive_more = "0.99.17"
+dhat = "0.3.2"
+dirs = "5.0.1"
+downcast = "0.11.0"
+downcast-rs = "1.2.0"
+duration-string = "0.3.0"
+enum-primitive-derive = "0.2.2"
+event-listener = "2.5.3" # TODO "3.0.1"
+evpkdf = "0.2.0"
+faster-hex = "0.6.1" # TODO "0.8.1" - fails unit tests
+flate2 = "1.0.28"
+futures = { version = "0.3.29" }
+futures-util = { version = "0.3.29", default-features = false, features = [ "alloc" ] }
+getrandom = { version = "0.2.10", features = ["js"] }
+h2 = "0.3.21"
+heapless = "0.7.16"
+hex = "0.4.3"
+hmac = { version = "0.12.1", default-features = false }
+home = "0.5.5"
+igd-next = { version = "0.14.2", features = ["aio_tokio"] }
+indexmap = "2.1.0"
+intertrait = "0.2.2"
+ipnet = "2.9.0"
+itertools = "0.11.0"
+js-sys = "=0.3.64"
+keccak = "0.1.4"
+local-ip-address = "0.5.6"
+log = "0.4.20"
+log4rs = "1.2.0"
+malachite-base = "0.4.4"
+malachite-nz = "0.4.4"
+md-5 = "0.10.6"
+num = "0.4.1"
+num_cpus = "1.16.0"
+num-traits = "0.2.17"
+once_cell = "1.18.0"
 pad = "0.1.6"
-convert_case = "0.5.0"
-wasm-bindgen-futures = "0.4.33"
-js-sys = "0.3.56"
-getrandom = { version = "0.2.8", features = ["js"] }
-uuid = { version = "1.2.2", features = ["v4", "fast-rng", "serde"] }
+parking_lot = "0.12.1"
+paste = "1.0.14"
+pbkdf2 = "0.12.2"
+portable-atomic = {version = "1.5.1", features = ["float"]}
+prost = "0.12.1"
+rand = "0.8.5"
+rand_chacha = "0.3.1"
+rand_core = { version = "0.6.4", features = ["std"] }
+rand_distr = "0.4.3"
+rayon = "1.8.0"
+regex = "1.10.2"
+ripemd = { version = "0.1.3", default-features = false }
+rlimit = "0.10.1"
+rocksdb = "0.21.0"
+secp256k1 = { version = "0.24.3", features = [ "global-context", "rand-std", "serde" ] } # TODO "0.28.0"
+separator = "0.4.1"
+seqlock = "0.2.0"
+serde = { version = "1.0.190", features = ["derive", "rc"] }
+serde_bytes = "0.11.12"
+serde_json = "1.0.107"
+serde-wasm-bindgen = "0.6.1"
+sha1 = "0.10.6"
+sha2 = "0.10.8"
+sha3 = "0.10.8"
+slugify-rs = "0.0.3"
+smallvec = { version = "1.11.1", features = ["serde"] }
+sorted-insert = "0.2.3"
+statest = "0.2.2"
+statrs = "0.13.0" # TODO "0.16.0"
+subtle = { version = "2.5.0", default-features = false }
+tempfile = "3.8.1"
+textwrap = "0.16.0"
+thiserror = "1.0.50"
+tokio = { version = "1.33.0", features = ["sync", "rt-multi-thread"] }
+tokio-stream = "0.1.14"
+tonic = { version = "0.10.2", features = ["tls", "gzip"] }
+tonic-build = { version = "0.10.2", features = ["prost"] }
+triggered = "0.1.2"
+uuid = { version = "1.5.0", features = ["v4", "fast-rng", "serde"] }
+wasm-bindgen = { version = "=0.2.87", features = ["serde-serialize"] }
+wasm-bindgen-futures = "=0.4.37"
+wasm-bindgen-test = "=0.3.37"
+web-sys = "=0.3.64"
+xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
+zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
 
-# bip32 dependencies
-rand_core = { version = "0.6", features = ["std"] }
-bs58 = { version = "0.4", features = ["check"], default-features = false }
-hmac = { version = "0.12", default-features = false }
-secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
-#sha2 = {version = "0.10", default-features = false}
-zeroize = { version = "1", default-features = false, features = ["alloc"] }
-ripemd = { version = "0.1", default-features = false }
-subtle = { version = "2", default-features = false }
-once_cell = { version = "1" }
-pbkdf2 = { version = "0.11", default-features = false }
+# workflow dependencies that are not a part of core libraries
+
+# workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
+workflow-perf-monitor = { version = "0.0.2" }
 
 # workflow dependencies
-workflow-log = { version = "0.3.10" }
-workflow-core = { version = "0.3.10" }
-workflow-wasm = { version = "0.3.10" }
-workflow-dom = { version = "0.3.10" }
-workflow-rpc = { version = "0.3.11" }
-workflow-terminal = { version = "0.3.10" }
+workflow-d3 = { version = "0.8.1" }
+workflow-nw = { version = "0.8.1" }
+workflow-log = { version = "0.8.1" }
+workflow-core = { version = "0.8.1" }
+workflow-wasm = { version = "0.8.1" }
+workflow-dom = { version = "0.8.1" }
+workflow-rpc = { version = "0.8.1" }
+workflow-node = { version = "0.8.1" }
+workflow-store = { version = "0.8.1" }
+workflow-terminal = { version = "0.8.1" }
+nw-sys = "0.1.6"
 
+# if below is enabled, this means that there is an ongoing work
+# on the workflow-rs crate. This requires that you clone workflow-rs
+# into a sibling folder from https://github.com/workflow-rs/workflow-rs
+# workflow-d3 = { path = "../workflow-rs/d3" }
+# workflow-nw = { path = "../workflow-rs/nw" }
 # workflow-log = { path = "../workflow-rs/log" }
 # workflow-core = { path = "../workflow-rs/core" }
 # workflow-wasm = { path = "../workflow-rs/wasm" }
 # workflow-dom = { path = "../workflow-rs/dom" }
 # workflow-rpc = { path = "../workflow-rs/rpc" }
+# workflow-node = { path = "../workflow-rs/node" }
+# workflow-store = { path = "../workflow-rs/store" }
 # workflow-terminal = { path = "../workflow-rs/terminal" }
+# https://github.com/aspectron/nw-sys
+# nw-sys = { path = "../nw-sys" }
 
 [profile.release]
 lto = "thin"
 strip = true
 overflow-checks = true
+
+[profile.heap]
+inherits = "release"
+debug = true
+strip = false

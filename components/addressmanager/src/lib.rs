@@ -1,33 +1,254 @@
+mod port_mapping_extender;
 mod stores;
-
 extern crate self as address_manager;
 
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, iter, net::SocketAddr, sync::Arc, time::Duration};
 
-use itertools::Itertools;
-use kaspa_core::{debug, time::unix_now};
+use address_manager::port_mapping_extender::Extender;
+use igd_next::{
+    self as igd, aio::tokio::Tokio, AddAnyPortError, AddPortError, Gateway, GetExternalIpError, GetGenericPortMappingEntryError,
+    SearchError,
+};
+use itertools::{
+    Either::{Left, Right},
+    Itertools,
+};
+use kaspa_consensus_core::config::Config;
+use kaspa_core::{debug, info, task::tick::TickService, time::unix_now, warn};
 use kaspa_database::prelude::{StoreResultExtensions, DB};
 use kaspa_utils::networking::IpAddress;
+use local_ip_address::list_afinet_netifas;
 use parking_lot::Mutex;
-
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
+use thiserror::Error;
 
 pub use stores::NetAddress;
 
 const MAX_ADDRESSES: usize = 4096;
 const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
 
+const UPNP_DEADLINE_SEC: u64 = 2 * 60;
+const UPNP_EXTEND_PERIOD: u64 = UPNP_DEADLINE_SEC / 2;
+
+/// The name used as description when registering the UPnP service
+pub(crate) const UPNP_REGISTRATION_NAME: &str = "rusty-kaspa";
+
+struct ExtendHelper {
+    gateway: Gateway,
+    local_addr: SocketAddr,
+    external_port: u16,
+}
+
+#[derive(Error, Debug)]
+pub enum UpnpError {
+    #[error(transparent)]
+    AddPortError(#[from] AddPortError),
+    #[error(transparent)]
+    AddAnyPortError(#[from] AddAnyPortError),
+    #[error(transparent)]
+    SearchError(#[from] SearchError),
+    #[error(transparent)]
+    GetExternalIpError(#[from] GetExternalIpError),
+}
+
 pub struct AddressManager {
     banned_address_store: DbBannedAddressesStore,
     address_store: address_store_with_cache::Store,
+    config: Arc<Config>,
+    local_net_addresses: Vec<NetAddress>,
 }
 
 impl AddressManager {
-    pub fn new(db: Arc<DB>) -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Self {
+    pub fn new(config: Arc<Config>, db: Arc<DB>, tick_service: Arc<TickService>) -> (Arc<Mutex<Self>>, Option<Extender>) {
+        let mut instance = Self {
             banned_address_store: DbBannedAddressesStore::new(db.clone(), MAX_ADDRESSES as u64),
             address_store: address_store_with_cache::new(db),
-        }))
+            local_net_addresses: Vec::new(),
+            config,
+        };
+
+        let extender = instance.init_local_addresses(tick_service);
+
+        (Arc::new(Mutex::new(instance)), extender)
+    }
+
+    fn init_local_addresses(&mut self, tick_service: Arc<TickService>) -> Option<Extender> {
+        self.local_net_addresses = self.local_addresses().collect();
+
+        let extender = if self.local_net_addresses.is_empty() && !self.config.disable_upnp {
+            let (net_address, ExtendHelper { gateway, local_addr, external_port }) = match self.upnp() {
+                Err(err) => {
+                    warn!("[UPnP] Error adding port mapping: {err}");
+                    return None;
+                }
+                Ok(None) => return None,
+                Ok(Some((net_address, extend_helper))) => (net_address, extend_helper),
+            };
+            self.local_net_addresses.push(net_address);
+
+            let gateway: igd_next::aio::Gateway<Tokio> = igd_next::aio::Gateway {
+                addr: gateway.addr,
+                root_url: gateway.root_url,
+                control_url: gateway.control_url,
+                control_schema_url: gateway.control_schema_url,
+                control_schema: gateway.control_schema,
+                provider: Tokio,
+            };
+            Some(Extender::new(
+                tick_service,
+                Duration::from_secs(UPNP_EXTEND_PERIOD),
+                UPNP_DEADLINE_SEC,
+                gateway,
+                external_port,
+                local_addr,
+            ))
+        } else {
+            None
+        };
+
+        self.local_net_addresses.iter().for_each(|net_addr| {
+            info!("Publicly routable local address {} added to store", net_addr);
+        });
+        extender
+    }
+
+    fn local_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
+        match self.config.externalip {
+            // An external IP was passed, we will try to bind that if it's valid
+            Some(local_net_address) if local_net_address.ip.is_publicly_routable() => {
+                info!("External address is publicly routable {}", local_net_address);
+                return Left(iter::once(local_net_address));
+            }
+            Some(local_net_address) => {
+                info!("External address is not publicly routable {}", local_net_address);
+            }
+            None => {}
+        };
+
+        Right(self.routable_addresses_from_net_interfaces())
+    }
+
+    fn routable_addresses_from_net_interfaces(&self) -> impl Iterator<Item = NetAddress> + '_ {
+        // check whatever was passed as listen address (if routable)
+        // otherwise(listen_address === 0.0.0.0) check all interfaces
+        let listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
+        if listen_address.ip.is_publicly_routable() {
+            info!("Publicly routable local address found: {}", listen_address.ip);
+            Left(Left(iter::once(listen_address)))
+        } else if listen_address.ip.is_unspecified() {
+            let network_interfaces = list_afinet_netifas();
+            let Ok(network_interfaces) = network_interfaces else {
+                warn!("Error getting network interfaces: {:?}", network_interfaces);
+                return Left(Right(iter::empty()));
+            };
+            // TODO: Add Check IPv4 or IPv6 match from Go code
+            Right(network_interfaces.into_iter().map(|(_, ip)| IpAddress::from(ip)).filter(|&ip| ip.is_publicly_routable()).map(
+                |ip| {
+                    info!("Publicly routable local address found: {}", ip);
+                    NetAddress::new(ip, self.config.default_p2p_port())
+                },
+            ))
+        } else {
+            Left(Right(iter::empty()))
+        }
+    }
+
+    fn upnp(&self) -> Result<Option<(NetAddress, ExtendHelper)>, UpnpError> {
+        info!("[UPnP] Attempting to register upnp... (to disable run the node with --disable-upnp)");
+        let gateway = igd::search_gateway(Default::default())?;
+        let ip = IpAddress::new(gateway.get_external_ip()?);
+        if !ip.is_publicly_routable() {
+            info!("[UPnP] Non-publicly routable external ip from gateway using upnp {} not added to store", ip);
+            return Ok(None);
+        }
+        info!("[UPnP] Got external ip from gateway using upnp: {ip}");
+
+        let normalized_p2p_listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
+        let local_addr = if normalized_p2p_listen_address.ip.is_unspecified() {
+            SocketAddr::new(local_ip_address::local_ip().unwrap(), normalized_p2p_listen_address.port)
+        } else {
+            normalized_p2p_listen_address.into()
+        };
+
+        // If an operator runs a node and specifies a non-standard local port, it implies that they also wish to use a non-standard public address. The variable 'desired_external_port' is set to the port number from the normalized peer-to-peer listening address.
+        let desired_external_port = normalized_p2p_listen_address.port;
+        // This loop checks for existing port mappings in the UPnP-enabled gateway.
+        //
+        // The goal of this loop is to identify if the desired external port (`desired_external_port`) is
+        // already mapped to any device inside the local network. This is crucial because, in
+        // certain scenarios, gateways might not throw the `PortInUse` error but rather might
+        // silently remap the external port when there's a conflict. By iterating through the
+        // current mappings, we can make an informed decision about whether to attempt using
+        // the default port or request a new random one.
+        //
+        // The loop goes through all existing port mappings one-by-one:
+        // - If a mapping is found that uses the desired external port, the loop breaks with `already_in_use` set to true.
+        // - If the index is not valid (i.e., we've iterated through all the mappings), the loop breaks with `already_in_use` set to false.
+        // - Any other errors during fetching of port mappings are handled accordingly, but the end result is to exit the loop with the `already_in_use` flag set appropriately.
+        let mut index = 0;
+        let already_in_use = loop {
+            match gateway.get_generic_port_mapping_entry(index) {
+                Ok(entry) => {
+                    if entry.enabled && entry.external_port == desired_external_port {
+                        info!("[UPnP] Found existing mapping that uses the same external port. Description: {}, external port: {}, internal port: {}, client: {}, lease duration: {}", entry.port_mapping_description, entry.external_port, entry.internal_port, entry.internal_client, entry.lease_duration);
+                        break true;
+                    }
+                    index += 1;
+                }
+                Err(GetGenericPortMappingEntryError::ActionNotAuthorized) => {
+                    index += 1;
+                    continue;
+                }
+                Err(GetGenericPortMappingEntryError::RequestError(err)) => {
+                    warn!("[UPnP] request existing port mapping err: {:?}", err);
+                    break false;
+                }
+                Err(GetGenericPortMappingEntryError::SpecifiedArrayIndexInvalid) => break false,
+            }
+        };
+        if already_in_use {
+            let port =
+                gateway.add_any_port(igd::PortMappingProtocol::TCP, local_addr, UPNP_DEADLINE_SEC as u32, UPNP_REGISTRATION_NAME)?;
+            info!("[UPnP] Added port mapping to random external port: {ip}:{port}");
+            return Ok(Some((NetAddress { ip, port }, ExtendHelper { gateway, local_addr, external_port: port })));
+        }
+
+        match gateway.add_port(
+            igd::PortMappingProtocol::TCP,
+            desired_external_port,
+            local_addr,
+            UPNP_DEADLINE_SEC as u32,
+            UPNP_REGISTRATION_NAME,
+        ) {
+            Ok(_) => {
+                info!("[UPnP] Added port mapping to default external port: {ip}:{desired_external_port}");
+                Ok(Some((
+                    NetAddress { ip, port: desired_external_port },
+                    ExtendHelper { gateway, local_addr, external_port: desired_external_port },
+                )))
+            }
+            Err(AddPortError::PortInUse {}) => {
+                let port = gateway.add_any_port(
+                    igd::PortMappingProtocol::TCP,
+                    local_addr,
+                    UPNP_DEADLINE_SEC as u32,
+                    UPNP_REGISTRATION_NAME,
+                )?;
+                info!("[UPnP] Added port mapping to random external port: {ip}:{port}");
+                Ok(Some((NetAddress { ip, port }, ExtendHelper { gateway, local_addr, external_port: port })))
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    pub fn best_local_address(&mut self) -> Option<NetAddress> {
+        if self.local_net_addresses.is_empty() {
+            None
+        } else {
+            // TODO: Add logic for finding the best as a function of a peer remote address.
+            // for now, returning the first one
+            Some(self.local_net_addresses[0])
+        }
     }
 
     pub fn add_address(&mut self, address: NetAddress) {
@@ -117,6 +338,7 @@ mod address_store_with_cache {
 
     use itertools::Itertools;
     use kaspa_database::prelude::DB;
+    use kaspa_utils::networking::PrefixBucket;
     use rand::{
         distributions::{WeightedError, WeightedIndex},
         prelude::Distribution,
@@ -185,19 +407,46 @@ mod address_store_with_cache {
             self.addresses.values().map(|entry| entry.address)
         }
 
+        /// This iterator functions as the node's ip routing selection algo.
+        /// It first adjusts in respect to the number of connection failures of each ip address,
+        /// whereby each connection failure (up to [`MAX_CONNECTION_FAILED_COUNT`]) reduces an ip's selection weight by a factor of 64,
+        /// Afterwards the weights are normalized uniformly over the ip's [`PrefixBucket`] size.
+        ///
+        /// This ensures a distributed selection across the global network, while respecting
+        /// weight reductions due to ip connection failures.
+        ///
+        /// The exact weight formula for any given ip, is as follows:
+        ///```ignore
+        ///         ip_weight = (64 ^ (x - y)) / n
+        ///
+        ///             whereby:
+        ///                 x: max allowed connection failures.
+        ///                 y: connection failures of the ip.
+        ///                 n: number of ips with the same prefix bytes.
+        ///```
         pub fn iterate_prioritized_random_addresses(
             &self,
             exceptions: HashSet<NetAddress>,
         ) -> impl ExactSizeIterator<Item = NetAddress> {
             let exceptions: HashSet<AddressKey> = exceptions.into_iter().map(|addr| addr.into()).collect();
-            let (weights, addresses) = self
+            let mut prefix_counter: HashMap<PrefixBucket, usize> = HashMap::new();
+            let (mut weights, filtered_addresses): (Vec<f64>, Vec<NetAddress>) = self
                 .addresses
                 .iter()
                 .filter(|(addr_key, _)| !exceptions.contains(addr_key))
-                .map(|(_, e)| (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), e.address))
+                .map(|(_, e)| {
+                    let count = prefix_counter.entry(e.address.prefix_bucket()).or_insert(0);
+                    *count += 1;
+                    (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), e.address)
+                })
                 .unzip();
 
-            RandomWeightedIterator::new(weights, addresses)
+            // Divide weights by size of bucket of the prefix bytes, to partially uniform the distribution over prefix buckets.
+            for (i, address) in filtered_addresses.iter().enumerate() {
+                *weights.get_mut(i).unwrap() /= *prefix_counter.get(&address.prefix_bucket()).unwrap() as f64;
+            }
+
+            RandomWeightedIterator::new(weights, filtered_addresses)
         }
 
         pub fn remove_by_ip(&mut self, ip: IpAddr) {
@@ -243,6 +492,9 @@ mod address_store_with_cache {
                     Err(e) => panic!("{e}"),
                 }
                 self.remaining -= 1;
+                if self.remaining == 0 {
+                    self.weighted_index = None;
+                }
                 Some(self.addresses[i])
             } else {
                 None
@@ -258,7 +510,17 @@ mod address_store_with_cache {
 
     #[cfg(test)]
     mod tests {
+        use std::str::FromStr;
+
         use super::*;
+        use address_manager::AddressManager;
+        use kaspa_consensus_core::config::{params::SIMNET_PARAMS, Config};
+        use kaspa_core::task::tick::TickService;
+        use kaspa_database::create_temp_db;
+        use kaspa_database::prelude::ConnBuilder;
+        use kaspa_utils::networking::IpAddress;
+        use statest::ks::KSTest;
+        use statrs::distribution::Uniform;
         use std::net::{IpAddr, Ipv6Addr};
 
         #[test]
@@ -271,6 +533,92 @@ mod address_store_with_cache {
             let iter = RandomWeightedIterator::new(vec![], vec![]);
             assert_eq!(iter.len(), 0);
             assert_eq!(iter.count(), 0);
+        }
+
+        #[test]
+        fn test_network_distribution_weighting() {
+            kaspa_core::log::try_init_logger("info");
+
+            // Variables to initialize ip generation with.
+            let largest_bucket: u16 = 2048;
+            let bucket_reduction_ratio: f64 = 2.;
+
+            // Assert that initial distribution is skewed, and hence not uniform from the outset.
+            assert!(bucket_reduction_ratio >= 1.25);
+
+            let db = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+            let config = Config::new(SIMNET_PARAMS);
+            let (am, _) = AddressManager::new(Arc::new(config), db.1, Arc::new(TickService::default()));
+
+            let mut am_guard = am.lock();
+
+            let mut num_of_buckets = 0;
+            let mut num_of_addresses = 0;
+            let mut current_bucket_size = largest_bucket;
+
+            for current_prefix_bytes in 0..u16::MAX {
+                num_of_buckets += 1;
+                for current_suffix_bytes in 0..current_bucket_size {
+                    let current_ip_bytes =
+                        [current_prefix_bytes.to_be_bytes(), current_suffix_bytes.to_be_bytes()].concat().to_owned();
+                    am_guard.add_address(NetAddress::new(
+                        IpAddress::from_str(&format!(
+                            "{0}.{1}.{2}.{3}",
+                            current_ip_bytes[0], current_ip_bytes[1], current_ip_bytes[2], current_ip_bytes[3]
+                        ))
+                        .unwrap(),
+                        16111,
+                    ));
+                    num_of_addresses += 1;
+                }
+
+                let last_bucket_size = current_bucket_size;
+                current_bucket_size = ((current_bucket_size as f64) * (1.0 / bucket_reduction_ratio)).round() as u16;
+
+                if current_bucket_size == last_bucket_size || current_bucket_size == 0 || current_prefix_bytes == u16::MAX {
+                    // Address generation exhausted - exit loop
+                    break;
+                }
+            }
+            drop(am_guard);
+
+            // Assert sample size is large enough.
+            assert!(1024 <= num_of_addresses);
+            // Assert we don't over-generate the address manager's limit.
+            assert!(num_of_addresses <= MAX_ADDRESSES);
+            // Assert that the test has enough buckets to sample from
+            assert!(num_of_buckets >= 12);
+
+            // Run multiple Kolmogorov–Smirnov tests to offset random noise of the random weighted iterator
+            let num_of_trials = 512;
+            let mut cul_p = 0.;
+            // The target uniform distribution
+            let target_u_dist = Uniform::new(0.0, (num_of_buckets) as f64).unwrap();
+            for _ in 0..num_of_trials {
+                // The weight sampled expected uniform distibution
+                let prioritized_address_distribution = am
+                    .lock()
+                    .iterate_prioritized_random_addresses(HashSet::new())
+                    .take(num_of_buckets)
+                    .map(|addr| addr.prefix_bucket().as_u64() as f64)
+                    .collect_vec();
+
+                let ks_test = KSTest::new(prioritized_address_distribution.as_slice());
+                cul_p += ks_test.ks1(&target_u_dist).0;
+            }
+
+            // Normalize and adjust p to test for uniformity, over average of all trials.
+            let adjusted_p = (0.5 - cul_p / num_of_trials as f64).abs();
+            // Define the significance threshold.
+            let significance = 0.10;
+
+            // Display and assert the result
+            kaspa_core::info!(
+                "Kolmogorov–Smirnov test result for weighted network distribution uniformity: p = {0:.4} (p < {1})",
+                adjusted_p,
+                significance
+            );
+            assert!(adjusted_p <= significance)
         }
     }
 }

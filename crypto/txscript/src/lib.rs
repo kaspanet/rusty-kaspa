@@ -223,6 +223,14 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
     fn execute_script(&mut self, script: &[u8], verify_only_push: bool) -> Result<(), TxScriptError> {
         let script_result = parse_script(script).try_for_each(|opcode| {
             let opcode = opcode?;
+            if opcode.is_disabled() {
+                return Err(TxScriptError::OpcodeDisabled(format!("{:?}", opcode)));
+            }
+
+            if opcode.always_illegal() {
+                return Err(TxScriptError::OpcodeReserved(format!("{:?}", opcode)));
+            }
+
             if verify_only_push && !opcode.is_push_opcode() {
                 return Err(TxScriptError::SignatureScriptNotPushOnly);
             }
@@ -237,7 +245,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         });
 
         // Moving between scripts - we can't be inside an if
-        if !self.cond_stack.is_empty() {
+        if script_result.is_ok() && !self.cond_stack.is_empty() {
             return Err(TxScriptError::ErrUnbalancedConditional);
         }
 
@@ -270,10 +278,10 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         }
 
         if scripts.iter().all(|e| e.is_empty()) {
-            return Err(TxScriptError::FalseStackEntry);
+            return Err(TxScriptError::EvalFalse);
         }
-        if scripts.iter().any(|e| e.len() > MAX_SCRIPTS_SIZE) {
-            return Err(TxScriptError::FalseStackEntry);
+        if let Some(s) = scripts.iter().find(|e| e.len() > MAX_SCRIPTS_SIZE) {
+            return Err(TxScriptError::ScriptSize(s.len(), MAX_SCRIPTS_SIZE));
         }
 
         let mut saved_stack: Option<Vec<Vec<u8>>> = None;
@@ -353,7 +361,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 
         let pub_keys = match self.dstack.len() >= num_keys_usize {
             true => self.dstack.split_off(self.dstack.len() - num_keys_usize),
-            false => return Err(TxScriptError::EmptyStack),
+            false => return Err(TxScriptError::InvalidStackOperation(num_keys_usize, self.dstack.len())),
         };
 
         let [num_sigs]: [i32; 1] = self.dstack.pop_items()?;
@@ -366,7 +374,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 
         let signatures = match self.dstack.len() >= num_sigs {
             true => self.dstack.split_off(self.dstack.len() - num_sigs),
-            false => return Err(TxScriptError::EmptyStack),
+            false => return Err(TxScriptError::InvalidStackOperation(num_sigs, self.dstack.len())),
         };
 
         let mut failed = false;
@@ -616,6 +624,111 @@ mod tests {
     }
 
     #[test]
+    fn test_check_opelse() {
+        let test_cases = vec![
+            ScriptTestCase {
+                script: b"\x67", // OpElse
+                expected_result: Err(TxScriptError::InvalidState("condition stack empty".to_string())),
+            },
+            ScriptTestCase {
+                script: b"\x51\x63\x67", // OpTrue, OpIf, OpElse
+                expected_result: Err(TxScriptError::ErrUnbalancedConditional),
+            },
+            ScriptTestCase {
+                script: b"\x00\x63\x67", // OpFalse, OpIf, OpElse
+                expected_result: Err(TxScriptError::ErrUnbalancedConditional),
+            },
+            ScriptTestCase {
+                script: b"\x51\x63\x51\x67\x68", // OpTrue, OpIf, OpTrue, OpElse, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x00\x63\x67\x51\x68", // OpFalse, OpIf, OpElse, OpTrue, OpEndIf
+                expected_result: Ok(()),
+            },
+        ];
+
+        run_test_script_cases(test_cases)
+    }
+
+    #[test]
+    fn test_check_opnotif() {
+        let test_cases = vec![
+            ScriptTestCase {
+                script: b"\x64", // OpNotIf
+                expected_result: Err(TxScriptError::EmptyStack),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64", // OpTrue, OpNotIf
+                expected_result: Err(TxScriptError::ErrUnbalancedConditional),
+            },
+            ScriptTestCase {
+                script: b"\x00\x64", // OpFalse, OpNotIf
+                expected_result: Err(TxScriptError::ErrUnbalancedConditional),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64\x67\x51\x68", // OpTrue, OpNotIf, OpElse, OpTrue, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64\x51\x67\x00\x68", // OpTrue, OpNotIf, OpTrue, OpElse, OpFalse, OpEndIf
+                expected_result: Err(TxScriptError::EvalFalse),
+            },
+            ScriptTestCase {
+                script: b"\x00\x64\x51\x68", // OpFalse, OpIf, OpTrue, OpEndIf
+                expected_result: Ok(()),
+            },
+        ];
+
+        run_test_script_cases(test_cases)
+    }
+
+    #[test]
+    fn test_check_nestedif() {
+        let test_cases = vec![
+            ScriptTestCase {
+                script: b"\x51\x63\x00\x67\x51\x63\x51\x68\x68", // OpTrue, OpIf, OpFalse, OpElse, OpTrue, OpIf,
+                // OpTrue, OpEndIf, OpEndIf
+                expected_result: Err(TxScriptError::EvalFalse),
+            },
+            ScriptTestCase {
+                script: b"\x51\x63\x00\x67\x00\x63\x67\x51\x68\x68", // OpTrue, OpIf, OpFalse, OpElse, OpFalse, OpIf,
+                // OpElse, OpTrue, OpEndIf, OpEndIf
+                expected_result: Err(TxScriptError::EvalFalse),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64\x00\x67\x51\x63\x51\x68\x68", // OpTrue, OpNotIf, OpFalse, OpElse, OpTrue, OpIf,
+                // OpTrue, OpEndIf, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64\x00\x67\x00\x63\x67\x51\x68\x68", // OpTrue, OpNotIf, OpFalse, OpElse, OpFalse, OpIf,
+                // OpTrue, OpEndIf, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x51\x64\x00\x67\x00\x64\x00\x67\x51\x68\x68", // OpTrue, OpNotIf, OpFalse, OpElse, OpFalse, OpNotIf,
+                // OpFalse, OpElse, OpTrue, OpEndIf, OpEndIf
+                expected_result: Err(TxScriptError::EvalFalse),
+            },
+            ScriptTestCase {
+                script: b"\x51\x00\x63\x63\x00\x68\x68", // OpTrue, OpFalse, OpIf, OpIf  OpFalse, OpEndIf, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x51\x00\x63\x63\x63\x00\x67\x00\x68\x68\x68", // OpTrue, OpFalse, OpIf, OpIf  OpFalse, OpEndIf, OpEndIf
+                expected_result: Ok(()),
+            },
+            ScriptTestCase {
+                script: b"\x51\x00\x63\x63\x63\x63\x00\x67\x00\x68\x68\x68\x68", // OpTrue, OpFalse, OpIf, OpIf  OpFalse, OpEndIf, OpEndIf
+                expected_result: Ok(()),
+            },
+        ];
+
+        run_test_script_cases(test_cases)
+    }
+
+    #[test]
     fn test_check_pub_key_encode() {
         let test_cases = vec![
             KeyTestCase {
@@ -797,6 +910,214 @@ mod tests {
                 "failed for '{}'",
                 test.name
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod bitcoind_tests {
+    // Bitcoind tests
+    use serde::Deserialize;
+    use std::fs::File;
+    use std::io::BufReader;
+    use std::path::Path;
+
+    use super::*;
+    use crate::script_builder::ScriptBuilderError;
+    use kaspa_consensus_core::constants::MAX_TX_IN_SEQUENCE_NUM;
+    use kaspa_consensus_core::tx::{
+        PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
+    };
+
+    #[derive(PartialEq, Eq, Debug, Clone)]
+    enum UnifiedError {
+        TxScriptError(TxScriptError),
+        ScriptBuilderError(ScriptBuilderError),
+    }
+
+    #[derive(PartialEq, Eq, Debug, Clone)]
+    struct TestError {
+        expected_result: String,
+        result: Result<(), UnifiedError>,
+    }
+
+    #[derive(Deserialize, Debug, Clone)]
+    #[serde(untagged)]
+    enum JsonTestRow {
+        Test(String, String, String, String),
+        TestWithComment(String, String, String, String, String),
+        Comment((String,)),
+    }
+
+    fn create_spending_transaction(sig_script: Vec<u8>, script_public_key: ScriptPublicKey) -> Transaction {
+        let coinbase = Transaction::new(
+            1,
+            vec![TransactionInput::new(
+                TransactionOutpoint::new(TransactionId::default(), 0xffffffffu32),
+                vec![0, 0],
+                MAX_TX_IN_SEQUENCE_NUM,
+                Default::default(),
+            )],
+            vec![TransactionOutput::new(0, script_public_key)],
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        );
+
+        Transaction::new(
+            1,
+            vec![TransactionInput::new(
+                TransactionOutpoint::new(coinbase.id(), 0u32),
+                sig_script,
+                MAX_TX_IN_SEQUENCE_NUM,
+                Default::default(),
+            )],
+            vec![TransactionOutput::new(0, Default::default())],
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        )
+    }
+
+    impl JsonTestRow {
+        fn test_row(&self) -> Result<(), TestError> {
+            // Parse test to objects
+            let (sig_script, script_pub_key, expected_result) = match self.clone() {
+                JsonTestRow::Test(sig_script, sig_pub_key, _, expected_result) => (sig_script, sig_pub_key, expected_result),
+                JsonTestRow::TestWithComment(sig_script, sig_pub_key, _, expected_result, _) => {
+                    (sig_script, sig_pub_key, expected_result)
+                }
+                JsonTestRow::Comment(_) => {
+                    return Ok(());
+                }
+            };
+
+            let result = Self::run_test(sig_script, script_pub_key);
+
+            match Self::result_name(result.clone()).contains(&expected_result.as_str()) {
+                true => Ok(()),
+                false => Err(TestError { expected_result, result }),
+            }
+        }
+
+        fn run_test(sig_script: String, script_pub_key: String) -> Result<(), UnifiedError> {
+            let script_sig = opcodes::parse_short_form(sig_script).map_err(UnifiedError::ScriptBuilderError)?;
+            let script_pub_key =
+                ScriptPublicKey::from_vec(0, opcodes::parse_short_form(script_pub_key).map_err(UnifiedError::ScriptBuilderError)?);
+
+            // Create transaction
+            let tx = create_spending_transaction(script_sig, script_pub_key.clone());
+            let entry = UtxoEntry::new(0, script_pub_key.clone(), 0, true);
+            let populated_tx = PopulatedTransaction::new(&tx, vec![entry]);
+
+            // Run transaction
+            let sig_cache = Cache::new(10_000);
+            let mut reused_values = SigHashReusedValues::new();
+            let mut vm = TxScriptEngine::from_transaction_input(
+                &populated_tx,
+                &populated_tx.tx().inputs[0],
+                0,
+                &populated_tx.entries[0],
+                &mut reused_values,
+                &sig_cache,
+            )
+            .map_err(UnifiedError::TxScriptError)?;
+            vm.execute().map_err(UnifiedError::TxScriptError)
+        }
+
+        /*
+
+        // At this point an error was expected so ensure the result of
+        // the execution matches it.
+        success := false
+        for _, code := range allowedErrorCodes {
+            if IsErrorCode(err, code) {
+                success = true
+                break
+            }
+        }
+        if !success {
+            var scriptErr Error
+            if ok := errors.As(err, &scriptErr); ok {
+                t.Errorf("%s: want error codes %v, got %v", name,
+                    allowedErrorCodes, scriptErr.ErrorCode)
+                continue
+            }
+            t.Errorf("%s: want error codes %v, got err: %v (%T)",
+                name, allowedErrorCodes, err, err)
+            continue
+        }*/
+
+        fn result_name(result: Result<(), UnifiedError>) -> Vec<&'static str> {
+            match result {
+                Ok(_) => vec!["OK"],
+                Err(ue) => match ue {
+                    UnifiedError::TxScriptError(e) => match e {
+                        TxScriptError::NumberTooBig(_) => vec!["UNKNOWN_ERROR"],
+                        TxScriptError::PubKeyFormat => vec!["PUBKEYFORMAT"],
+                        TxScriptError::EvalFalse => vec!["EVAL_FALSE"],
+                        TxScriptError::EmptyStack => {
+                            vec!["EMPTY_STACK", "EVAL_FALSE", "UNBALANCED_CONDITIONAL", "INVALID_ALTSTACK_OPERATION"]
+                        }
+                        TxScriptError::NullFail => vec!["NULLFAIL"],
+                        TxScriptError::SigLength(_) => vec!["NULLFAIL"],
+                        //SIG_HIGH_S
+                        TxScriptError::InvalidSigHashType(_) => vec!["SIG_HASHTYPE"],
+                        TxScriptError::SignatureScriptNotPushOnly => vec!["SIG_PUSHONLY"],
+                        TxScriptError::CleanStack(_) => vec!["CLEANSTACK"],
+                        TxScriptError::OpcodeReserved(_) => vec!["BAD_OPCODE"],
+                        TxScriptError::MalformedPush(_, _) => vec!["BAD_OPCODE"],
+                        TxScriptError::InvalidOpcode(_) => vec!["BAD_OPCODE"],
+                        TxScriptError::ErrUnbalancedConditional => vec!["UNBALANCED_CONDITIONAL"],
+                        TxScriptError::InvalidState(s) if s == "condition stack empty" => vec!["UNBALANCED_CONDITIONAL"],
+                        //ErrInvalidStackOperation
+                        TxScriptError::EarlyReturn => vec!["OP_RETURN"],
+                        TxScriptError::VerifyError => vec!["VERIFY", "EQUALVERIFY"],
+                        TxScriptError::InvalidStackOperation(_, _) => vec!["INVALID_STACK_OPERATION", "INVALID_ALTSTACK_OPERATION"],
+                        TxScriptError::InvalidState(s) if s == "pick at an invalid location" => vec!["INVALID_STACK_OPERATION"],
+                        TxScriptError::InvalidState(s) if s == "roll at an invalid location" => vec!["INVALID_STACK_OPERATION"],
+                        TxScriptError::OpcodeDisabled(_) => vec!["DISABLED_OPCODE"],
+                        TxScriptError::ElementTooBig(_, _) => vec!["PUSH_SIZE"],
+                        TxScriptError::TooManyOperations(_) => vec!["OP_COUNT"],
+                        TxScriptError::StackSizeExceeded(_, _) => vec!["STACK_SIZE"],
+                        TxScriptError::InvalidPubKeyCount(_) => vec!["PUBKEY_COUNT"],
+                        TxScriptError::InvalidSignatureCount(_) => vec!["SIG_COUNT"],
+                        TxScriptError::NotMinimalData(_) => vec!["MINIMALDATA", "UNKNOWN_ERROR"],
+                        //ErrNegativeLockTime
+                        TxScriptError::UnsatisfiedLockTime(_) => vec!["UNSATISFIED_LOCKTIME"],
+                        TxScriptError::InvalidState(s) if s == "expected boolean" => vec!["MINIMALIF"],
+                        TxScriptError::ScriptSize(_, _) => vec!["SCRIPT_SIZE"],
+                        _ => vec![],
+                    },
+                    UnifiedError::ScriptBuilderError(e) => match e {
+                        ScriptBuilderError::ElementExceedsMaxSize(_) => vec!["PUSH_SIZE"],
+                        _ => vec![],
+                    },
+                },
+            }
+        }
+    }
+
+    #[test]
+    fn test_bitcoind_tests() {
+        let file = File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join("script_tests.json"))
+            .expect("Could not find test file");
+        let reader = BufReader::new(file);
+
+        // Read the JSON contents of the file as an instance of `User`.
+        let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
+        let mut had_errors = 0;
+        let total_tests = tests.len();
+        for row in tests {
+            if let Err(error) = row.test_row() {
+                println!("Test: {:?} failed: {:?}", row.clone(), error);
+                had_errors += 1;
+            }
+        }
+        if had_errors > 0 {
+            panic!("{}/{} json tests failed", had_errors, total_tests)
         }
     }
 }

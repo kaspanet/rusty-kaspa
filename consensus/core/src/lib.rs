@@ -1,3 +1,7 @@
+extern crate alloc;
+extern crate core;
+extern crate self as consensus_core;
+
 use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasher, Hasher};
 
@@ -18,7 +22,7 @@ pub mod header;
 pub mod mass;
 pub mod merkle;
 pub mod muhash;
-pub mod networktype;
+pub mod network;
 pub mod pruning;
 pub mod sign;
 pub mod subnets;
@@ -74,6 +78,7 @@ impl HashMapCustomHasher for BlockHashSet {
     }
 }
 
+#[derive(Default, Debug)]
 pub struct ChainPath {
     pub added: Vec<Hash>,
     pub removed: Vec<Hash>,

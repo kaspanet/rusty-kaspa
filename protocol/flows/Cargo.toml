@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-p2p-flows"
+description = "Kaspa p2p flows"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -22,19 +23,14 @@ kaspa-consensusmanager.workspace = true
 kaspa-mining.workspace = true
 kaspa-notify.workspace = true
 
+async-trait.workspace = true
+futures = { workspace = true, features = ["alloc"] }
+indexmap.workspace = true
+itertools.workspace = true
+log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
 thiserror.workspace = true
-log.workspace = true
-itertools.workspace = true
-indexmap.workspace = true
-async-trait.workspace = true
-
-futures = { version = "0.3", default-features = false, features = ["alloc"] }
-tokio = { workspace = true, features = [
-    "rt-multi-thread",
-    "macros",
-    "signal",
-] }
-tokio-stream = { version = "0.1.11", features = ["net"] }
-uuid = { version = "1.2.2", features = ["v4", "fast-rng"] }
+tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ] }
+tokio-stream = { workspace = true, features = ["net"] }
+uuid = { workspace = true, features = ["v4", "fast-rng"] }

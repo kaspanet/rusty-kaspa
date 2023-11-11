@@ -27,6 +27,10 @@ impl Core {
         self.services.lock().unwrap().push(service);
     }
 
+    pub fn find(&self, ident: &'static str) -> Option<Arc<dyn Service>> {
+        self.services.lock().unwrap().iter().find(|s| (*s).clone().ident() == ident).cloned()
+    }
+
     /// Starts all services and blocks waiting to join them. For performing other operations in between
     /// use start and join explicitly
     pub fn run(self: &Arc<Core>) {
@@ -53,6 +57,9 @@ impl Core {
                 }
             }
         }
+
+        // Drop all services and cleanup
+        self.services.lock().unwrap().clear();
 
         trace!("... core is shut down");
     }

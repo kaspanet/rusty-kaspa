@@ -24,7 +24,7 @@ impl GenesisBlock {
 
 impl From<&GenesisBlock> for Header {
     fn from(genesis: &GenesisBlock) -> Self {
-        Header::new(
+        Header::new_finalized(
             genesis.version,
             Vec::new(),
             genesis.hash_merkle_root,
@@ -143,10 +143,10 @@ pub const TESTNET_GENESIS: GenesisBlock = GenesisBlock {
 
 pub const TESTNET11_GENESIS: GenesisBlock = GenesisBlock {
     hash: Hash::from_bytes([
-        0xf0, 0xa3, 0x15, 0x04, 0xfb, 0x4b, 0xf8, 0x83, 0xd0, 0xdd, 0x2a, 0x75, 0x1c, 0x7d, 0xac, 0x06, 0x1a, 0xb4, 0xc6, 0x33, 0x00,
-        0xc5, 0x4f, 0xd2, 0x64, 0xd8, 0xe3, 0x06, 0x99, 0xda, 0x51, 0x54,
+        0x5a, 0x90, 0xf8, 0x71, 0x09, 0x32, 0x3d, 0x61, 0x41, 0xff, 0x51, 0x04, 0xa2, 0xd5, 0xf8, 0xd8, 0x85, 0x7a, 0x6f, 0x39, 0x2e,
+        0xb4, 0x90, 0x5c, 0xe3, 0x55, 0x5e, 0xc9, 0x12, 0xcd, 0xfb, 0x9c,
     ]),
-    bits: 520421375, // see `gen_testnet11_genesis`
+    bits: 504155340, // see `gen_testnet11_genesis`
     ..TESTNET_GENESIS
 };
 
@@ -227,11 +227,11 @@ mod tests {
         let bps = Testnet11Bps::bps();
         let mut genesis = TESTNET_GENESIS;
         let target = kaspa_math::Uint256::from_compact_target_bits(genesis.bits);
-        let scaled_up_target = target * bps;
-        let scaled_up_bits = scaled_up_target.compact_target_bits();
-        genesis.bits = scaled_up_bits;
+        let scaled_target = target * bps / 100;
+        let scaled_bits = scaled_target.compact_target_bits();
+        genesis.bits = scaled_bits;
         if genesis.bits != TESTNET11_GENESIS.bits {
-            panic!("Testnet 11: new bits: {}\nnew hash: {:#04x?}", scaled_up_bits, Block::from(&genesis).hash().as_bytes());
+            panic!("Testnet 11: new bits: {}\nnew hash: {:#04x?}", scaled_bits, Block::from(&genesis).hash().as_bytes());
         }
     }
 

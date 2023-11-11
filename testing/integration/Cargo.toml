@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-testing-integration"
+publish = false
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,45 +8,51 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-pow.workspace = true
-kaspa-math.workspace = true
 kaspa-addresses.workspace = true
-kaspa-hashes.workspace = true
-kaspa-merkle.workspace = true
-kaspa-core.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus.workspace = true
 kaspa-consensusmanager.workspace = true
+kaspa-core.workspace = true
+kaspa-grpc-client.workspace = true
+kaspa-grpc-core.workspace = true
+kaspa-hashes.workspace = true
+kaspa-math.workspace = true
+kaspa-merkle.workspace = true
+kaspa-notify.workspace = true
+kaspa-pow.workspace = true
+kaspa-rpc-core.workspace = true
+kaspad.workspace = true
 
-faster-hex.workspace = true
-thiserror.workspace = true
-serde.workspace = true
-itertools.workspace = true
-futures-util.workspace = true
-tokio.workspace = true
+async-channel.workspace = true
 bincode.workspace = true
-tempfile.workspace = true
-rayon.workspace = true
-rand.workspace = true
+crossbeam-channel.workspace = true
+faster-hex.workspace = true
+flate2.workspace = true
+futures-util.workspace = true
 indexmap.workspace = true
-smallvec.workspace = true
-kaspa-utils.workspace = true
-log.workspace = true
-kaspa-muhash.workspace = true
-parking_lot.workspace = true
-kaspa-txscript.workspace = true
-rocksdb.workspace = true
+itertools.workspace = true
+kaspa-bip32.workspace = true
 kaspa-database.workspace = true
-kaspa-utxoindex.workspace = true
 kaspa-index-processor.workspace = true
-
-crossbeam-channel = "0.5"
-async-channel = "1.8.0"
-secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
-flate2 = "1"
-rand_distr = "0.4"
-serde_json = "1.0"
+kaspa-muhash.workspace = true
+kaspa-txscript.workspace = true
+kaspa-utils.workspace = true
+kaspa-utxoindex.workspace = true
+kaspa-wrpc-server.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+rand_distr.workspace = true
+rand.workspace = true
+rayon.workspace = true
+rocksdb.workspace = true
+secp256k1.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+smallvec.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
@@ -55,3 +62,4 @@ kaspa-txscript-errors.workspace = true
 
 [features]
 html_reports = []
+devnet-prealloc = ["kaspad/devnet-prealloc"]

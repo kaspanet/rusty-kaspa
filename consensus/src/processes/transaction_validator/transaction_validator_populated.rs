@@ -7,15 +7,34 @@ use super::{
     TransactionValidator,
 };
 
+#[derive(Clone, Copy)]
+pub enum TxValidationFlags {
+    /// Perform full validation including script verification
+    Full,
+
+    /// Perform fee and sequence/maturity validations but skip script checks. This is usually
+    /// an optimization to be applied when it is known that scripts were already checked
+    SkipScriptChecks,
+}
+
 impl TransactionValidator {
-    pub fn validate_populated_transaction_and_get_fee(&self, tx: &impl VerifiableTransaction, pov_daa_score: u64) -> TxResult<u64> {
+    pub fn validate_populated_transaction_and_get_fee(
+        &self,
+        tx: &impl VerifiableTransaction,
+        pov_daa_score: u64,
+        flags: TxValidationFlags,
+    ) -> TxResult<u64> {
         self.check_transaction_coinbase_maturity(tx, pov_daa_score)?;
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         Self::check_sequence_lock(tx, pov_daa_score)?;
-        Self::check_sig_op_counts(tx)?;
-        self.check_scripts(tx)?;
-
+        match flags {
+            TxValidationFlags::Full => {
+                Self::check_sig_op_counts(tx)?;
+                self.check_scripts(tx)?;
+            }
+            TxValidationFlags::SkipScriptChecks => {}
+        }
         Ok(total_in - total_out)
     }
 
@@ -142,6 +161,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         let prev_tx_id = TransactionId::from_str("746915c8dfc5e1550eacbe1d87625a105750cf1a65aaddd1baa60f8bcf7e953c").unwrap();
@@ -202,6 +222,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         // Taken from: 3f582463d73c77d93f278b7bf649bd890e75fe9bb8a1edd7a6854df1a2a2bfc1
@@ -263,6 +284,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
@@ -324,6 +346,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
@@ -386,6 +409,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
@@ -448,6 +472,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         // Taken from: d839d29b549469d0f9a23e51febe68d4084967a6a477868b511a5a8d88c5ae06
@@ -510,6 +535,7 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         let prev_tx_id = TransactionId::from_str("1111111111111111111111111111111111111111111111111111111111111111").unwrap();
@@ -563,12 +589,13 @@ mod tests {
             params.ghostdag_k,
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
+            Default::default(),
         );
 
         let secp = Secp256k1::new();
         let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
         let (public_key, _) = public_key.x_only_public_key();
-        let script_pub_key = once(0x20).chain(public_key.serialize().into_iter()).chain(once(0xac)).collect_vec();
+        let script_pub_key = once(0x20).chain(public_key.serialize()).chain(once(0xac)).collect_vec();
         let script_pub_key = ScriptVec::from_slice(&script_pub_key);
 
         let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();

@@ -1,51 +1,67 @@
-use std::sync::Arc;
-
 use crate::mempool::{
     errors::{RuleError, RuleResult},
-    model::{pool::Pool, tx::MempoolTransaction},
+    model::{
+        pool::Pool,
+        tx::{MempoolTransaction, TxRemovalReason},
+    },
+    tx::{Orphan, Priority},
     Mempool,
 };
 use kaspa_consensus_core::{
     api::ConsensusApi,
-    constants::UNACCEPTED_DAA_SCORE,
+    constants::{SOMPI_PER_KASPA, UNACCEPTED_DAA_SCORE},
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
-use kaspa_core::info;
-use kaspa_utils::vec::VecExtensions;
-
-use super::tx::{Orphan, Priority};
+use kaspa_core::{debug, info};
+use std::sync::Arc;
 
 impl Mempool {
-    pub(crate) fn validate_and_insert_transaction(
-        &mut self,
-        consensus: &dyn ConsensusApi,
-        transaction: Transaction,
-        priority: Priority,
-        orphan: Orphan,
-    ) -> RuleResult<Vec<Arc<Transaction>>> {
-        self.validate_and_insert_mutable_transaction(consensus, MutableTransaction::from_tx(transaction), priority, orphan)
-    }
-
-    pub(crate) fn validate_and_insert_mutable_transaction(
-        &mut self,
+    pub(crate) fn pre_validate_and_populate_transaction(
+        &self,
         consensus: &dyn ConsensusApi,
         mut transaction: MutableTransaction,
-        priority: Priority,
-        orphan: Orphan,
-    ) -> RuleResult<Vec<Arc<Transaction>>> {
+    ) -> RuleResult<MutableTransaction> {
+        self.validate_transaction_unacceptance(&transaction)?;
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
         transaction.calculated_mass = Some(consensus.calculate_transaction_mass(&transaction.tx));
+        self.validate_transaction_in_isolation(&transaction)?;
+        self.transaction_pool.check_double_spends(&transaction)?;
+        self.populate_mempool_entries(&mut transaction);
+        Ok(transaction)
+    }
 
-        self.validate_transaction_pre_utxo_entry(&transaction)?;
+    pub(crate) fn post_validate_and_insert_transaction(
+        &mut self,
+        consensus: &dyn ConsensusApi,
+        validation_result: RuleResult<()>,
+        transaction: MutableTransaction,
+        priority: Priority,
+        orphan: Orphan,
+    ) -> RuleResult<Option<Arc<Transaction>>> {
+        let transaction_id = transaction.id();
 
-        match self.populate_entries_and_try_validate(consensus, &mut transaction) {
+        // First check if the transaction was not already added to the mempool.
+        // The case may arise since the execution of the manager public functions is no
+        // longer atomic and different code paths may lead to inserting the same transaction
+        // concurrently.
+        if self.transaction_pool.has(&transaction_id) {
+            debug!("Transaction {0} is not post validated since already in the mempool", transaction_id);
+            return Ok(None);
+        }
+
+        self.validate_transaction_unacceptance(&transaction)?;
+
+        // Re-check double spends since validate_and_insert_transaction is no longer atomic
+        self.transaction_pool.check_double_spends(&transaction)?;
+
+        match validation_result {
             Ok(_) => {}
             Err(RuleError::RejectMissingOutpoint) => {
                 if orphan == Orphan::Forbidden {
-                    return Err(RuleError::RejectDisallowedOrphan(transaction.id()));
+                    return Err(RuleError::RejectDisallowedOrphan(transaction_id));
                 }
-                self.orphan_pool.try_add_orphan(consensus, transaction, priority)?;
-                return Ok(vec![]);
+                self.orphan_pool.try_add_orphan(consensus.get_virtual_daa_score(), transaction, priority)?;
+                return Ok(None);
             }
             Err(err) => {
                 return Err(err);
@@ -55,21 +71,24 @@ impl Mempool {
         self.validate_transaction_in_context(&transaction)?;
 
         // Before adding the transaction, check if there is room in the pool
-        self.transaction_pool.limit_transaction_count(1)?.iter().try_for_each(|x| self.remove_transaction(x, true))?;
+        self.transaction_pool.limit_transaction_count(1, &transaction)?.iter().try_for_each(|x| {
+            self.remove_transaction(x, true, TxRemovalReason::MakingRoom, format!(" for {}", transaction_id).as_str())
+        })?;
 
-        // Here the accepted transaction is cloned in order to prevent having self borrowed immutably for the
-        // transaction reference and mutably for the call to process_orphans_after_accepted_transaction
+        // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
         let accepted_transaction =
             self.transaction_pool.add_transaction(transaction, consensus.get_virtual_daa_score(), priority)?.mtx.tx.clone();
-        let mut accepted_transactions = self.process_orphans_after_accepted_transaction(consensus, &accepted_transaction)?;
-        // We include the original accepted transaction as well
-        accepted_transactions.swap_insert(0, accepted_transaction);
-        Ok(accepted_transactions)
+        Ok(Some(accepted_transaction))
     }
 
-    fn validate_transaction_pre_utxo_entry(&self, transaction: &MutableTransaction) -> RuleResult<()> {
-        self.validate_transaction_in_isolation(transaction)?;
-        self.transaction_pool.check_double_spends(transaction)
+    /// Validates that the transaction wasn't already accepted into the DAG
+    fn validate_transaction_unacceptance(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+        // Reject if the transaction is registered as an accepted transaction
+        let transaction_id = transaction.id();
+        match self.accepted_transactions.has(&transaction_id) {
+            true => Err(RuleError::RejectAlreadyAccepted(transaction_id)),
+            false => Ok(()),
+        }
     }
 
     fn validate_transaction_in_isolation(&self, transaction: &MutableTransaction) -> RuleResult<()> {
@@ -84,42 +103,34 @@ impl Mempool {
     }
 
     fn validate_transaction_in_context(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+        if self.config.block_spam_txs {
+            // TEMP: apply go-kaspad mempool dust prevention patch
+            // Note: we do not apply the part of the patch which modifies BBT since
+            // we do not support BBT on mainnet yet
+            let has_coinbase_input = transaction.entries.iter().any(|e| e.as_ref().unwrap().is_coinbase);
+            let num_extra_outs = transaction.tx.outputs.len() as i64 - transaction.tx.inputs.len() as i64;
+            if !has_coinbase_input
+                && num_extra_outs > 2
+                && transaction.calculated_fee.unwrap() < num_extra_outs as u64 * SOMPI_PER_KASPA
+            {
+                kaspa_core::trace!("Rejected spam tx {} from mempool ({} outputs)", transaction.id(), transaction.tx.outputs.len());
+                return Err(RuleError::RejectSpamTransaction(transaction.id()));
+            }
+        }
+
         if !self.config.accept_non_standard {
             self.check_transaction_standard_in_context(transaction)?;
         }
         Ok(())
     }
 
-    /// Finds all transactions that can be unorphaned after a some transaction
-    /// has been accepted. Unorphan and add those to the transaction pool.
-    ///
-    /// Returns the list of all successfully processed transactions.
-    pub(crate) fn process_orphans_after_accepted_transaction(
-        &mut self,
-        consensus: &dyn ConsensusApi,
-        accepted_transaction: &Transaction,
-    ) -> RuleResult<Vec<Arc<Transaction>>> {
-        // Rust rewrite:
-        // - The function is relocated from OrphanPool into Mempool
-        let unorphaned_transactions = self.get_unorphaned_transactions_after_accepted_transaction(consensus, accepted_transaction)?;
-        let mut added_transactions = Vec::with_capacity(unorphaned_transactions.len() + 1); // +1 since some callers add the accepted tx itself
-        for transaction in unorphaned_transactions {
-            // The returned transactions are leaving the mempool but must also be added to
-            // the transaction pool so we clone.
-            added_transactions.push(transaction.mtx.tx.clone());
-            self.transaction_pool.add_mempool_transaction(transaction)?;
-        }
-        Ok(added_transactions)
-    }
-
     /// Returns a list with all successfully unorphaned transactions after some
     /// transaction has been accepted.
-    fn get_unorphaned_transactions_after_accepted_transaction(
+    pub(crate) fn get_unorphaned_transactions_after_accepted_transaction(
         &mut self,
-        consensus: &dyn ConsensusApi,
         transaction: &Transaction,
-    ) -> RuleResult<Vec<MempoolTransaction>> {
-        let mut accepted_orphans = Vec::new();
+    ) -> Vec<MempoolTransaction> {
+        let mut unorphaned_transactions = Vec::new();
         let transaction_id = transaction.id();
         let mut outpoint = TransactionOutpoint::new(transaction_id, 0);
         for (i, output) in transaction.outputs.iter().enumerate() {
@@ -142,9 +153,13 @@ impl Mempool {
                 continue;
             }
             if let Some(orphan_id) = orphan_id {
-                match self.unorphan_transaction(consensus, &orphan_id) {
-                    Ok(accepted_tx) => {
-                        accepted_orphans.push(accepted_tx);
+                match self.unorphan_transaction(&orphan_id) {
+                    Ok(unorphaned_tx) => {
+                        unorphaned_transactions.push(unorphaned_tx);
+                        debug!("Transaction {0} unorphaned", transaction_id);
+                    }
+                    Err(RuleError::RejectAlreadyAccepted(transaction_id)) => {
+                        debug!("Ignoring already accepted transaction {}", transaction_id);
                     }
                     Err(err) => {
                         // In case of validation error, we log the problem and drop the
@@ -154,30 +169,28 @@ impl Mempool {
                 }
             }
         }
-        Ok(accepted_orphans)
+
+        unorphaned_transactions
     }
 
-    fn unorphan_transaction(
-        &mut self,
-        consensus: &dyn ConsensusApi,
-        transaction_id: &TransactionId,
-    ) -> RuleResult<MempoolTransaction> {
+    fn unorphan_transaction(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
         // Rust rewrite:
         // - Instead of adding the validated transaction to mempool transaction pool,
         //   we return it.
-        // - The function is relocated from OrphanPool into Mempool
+        // - The function is relocated from OrphanPool into Mempool.
+        // - The function no longer validates the transaction in mempool (signatures) nor in context.
+        //   This job is delegated to a fn called later in the process (Manager::validate_and_insert_unorphaned_transactions).
 
         // Remove the transaction identified by transaction_id from the orphan pool.
-        let mut transactions = self.orphan_pool.remove_orphan(transaction_id, false)?;
+        let mut transactions = self.orphan_pool.remove_orphan(transaction_id, false, TxRemovalReason::Unorphaned, "")?;
 
-        // At this point, `transactions` contain exactly one transaction.
+        // At this point, `transactions` contains exactly one transaction.
         // The one we just removed from the orphan pool.
         assert_eq!(transactions.len(), 1, "the list returned by remove_orphan is expected to contain exactly one transaction");
-        let mut transaction = transactions.pop().unwrap();
+        let transaction = transactions.pop().unwrap();
 
-        consensus.validate_mempool_transaction_and_populate(&mut transaction.mtx)?;
-        self.validate_transaction_in_context(&transaction.mtx)?;
-        transaction.added_at_daa_score = consensus.get_virtual_daa_score();
+        self.validate_transaction_unacceptance(&transaction.mtx)?;
+        self.transaction_pool.check_double_spends(&transaction.mtx)?;
         Ok(transaction)
     }
 }

@@ -1,18 +1,26 @@
 [package]
 name = "kaspa-math"
-description = "Kaspa miscellaneous lib"
+description = "Kaspa misc math library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-include.workspace = true
 license.workspace = true
+include.workspace = true
 
 [dependencies]
-serde.workspace = true
-faster-hex.workspace = true
 borsh.workspace = true
-malachite-nz = "0.3"
-malachite-base = "0.3"
+faster-hex.workspace = true
+js-sys.workspace = true
+kaspa-utils.workspace = true
+malachite-base.workspace = true
+malachite-nz.workspace = true
+serde-wasm-bindgen.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+wasm-bindgen.workspace = true
+workflow-core.workspace = true
+workflow-log.workspace = true
+workflow-wasm.workspace = true
 
 [dev-dependencies]
 rand_chacha.workspace = true

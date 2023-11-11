@@ -1,0 +1,68 @@
+
+[package]
+name = "kaspa-os"
+description = "Kaspa Node & Wallet Manager"
+# please keep this version detached from the workspace
+version = "0.0.2"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository = "https://github.com/kaspanet/rusty-kaspa"
+include = [
+    "src/**/*.rs",
+    "src/**/*.txt",
+    "src/**/*.css",
+    "Cargo.toml",
+    "Cargo.lock",
+]
+
+[features]
+metrics = []
+legacy-rpc = ["kaspa-cli/legacy-rpc","kaspa-wallet-core/legacy-rpc"]
+default = ["metrics"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+async-trait.workspace = true
+borsh.workspace = true
+cfg-if.workspace = true
+downcast.workspace = true
+futures.workspace = true
+js-sys.workspace = true
+kaspa-cli.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-core.workspace = true
+kaspa-daemon.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-wallet-core.workspace = true
+nw-sys.workspace = true
+regex.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+wasm-bindgen-futures.workspace = true
+wasm-bindgen.workspace = true
+workflow-core.workspace = true
+workflow-d3.workspace = true
+workflow-dom.workspace = true
+workflow-log.workspace = true
+workflow-nw.workspace = true
+workflow-terminal.workspace = true
+workflow-wasm.workspace = true
+
+[dependencies.web-sys]
+workspace = true
+features = [
+    'console',
+    'Document',
+    'Window',
+    'HtmlElement',
+    'CustomEvent',
+    # 'DomRect',
+    # 'MouseEvent',
+    # 'HtmlCanvasElement',
+    # 'CanvasRenderingContext2d'
+]
+

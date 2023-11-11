@@ -1,1 +1,1 @@
-wasm-pack build --target web --out-name kaspa-wallet --out-dir web/kaspa-wallet
+wasm-pack build --target web --out-name kaspa-wallet --out-dir web/kaspa-wallet $@

@@ -1,69 +1,35 @@
 use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
-use kaspa_consensus::config::Config;
+
+#[cfg(feature = "devnet-prealloc")]
+use kaspa_addresses::Address;
+#[cfg(feature = "devnet-prealloc")]
+use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
+#[cfg(feature = "devnet-prealloc")]
+use kaspa_txscript::pay_to_address_script;
+#[cfg(feature = "devnet-prealloc")]
+use std::sync::Arc;
+
+use kaspa_consensus_core::{
+    config::Config,
+    network::{NetworkId, NetworkType},
+};
+
 use kaspa_core::kaspad_env::version;
+
 use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_wrpc_server::address::WrpcNetAddress;
 
-pub struct Defaults {
-    pub appdir: &'static str,
-    pub no_log_files: bool,
-    pub rpclisten_borsh: &'static str,
-    pub rpclisten_json: &'static str,
-    pub unsafe_rpc: bool,
-    pub async_threads: usize,
-    pub utxoindex: bool,
-    pub reset_db: bool,
-    pub outbound_target: usize,
-    pub inbound_limit: usize,
-    pub rpc_max_clients: usize,
-    pub enable_unsynced_mining: bool,
-    pub enable_mainnet_mining: bool,
-    pub testnet: bool,
-    pub testnet_suffix: u32,
-    pub devnet: bool,
-    pub simnet: bool,
-    pub archival: bool,
-    pub sanity: bool,
-    pub yes: bool,
-}
-
-impl Default for Defaults {
-    fn default() -> Self {
-        Defaults {
-            appdir: "datadir",
-            no_log_files: false,
-            rpclisten_borsh: "127.0.0.1:17110",
-            rpclisten_json: "127.0.0.1:18110",
-            unsafe_rpc: false,
-            async_threads: num_cpus::get(),
-            utxoindex: false,
-            reset_db: false,
-            outbound_target: 8,
-            inbound_limit: 128,
-            rpc_max_clients: 128,
-            enable_unsynced_mining: false,
-            enable_mainnet_mining: false,
-            testnet: false,
-            testnet_suffix: 10,
-            devnet: false,
-            simnet: false,
-            archival: false,
-            sanity: false,
-            yes: false,
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Args {
     // NOTE: it is best if property names match config file fields
     pub appdir: Option<String>,
     pub logdir: Option<String>,
     pub no_log_files: bool,
     pub rpclisten: Option<ContextualNetAddress>,
-    pub rpclisten_borsh: Option<ContextualNetAddress>,
-    pub rpclisten_json: Option<ContextualNetAddress>,
+    pub rpclisten_borsh: Option<WrpcNetAddress>,
+    pub rpclisten_json: Option<WrpcNetAddress>,
     pub unsafe_rpc: bool,
     pub wrpc_verbose: bool,
     pub log_level: String,
@@ -86,10 +52,119 @@ pub struct Args {
     pub archival: bool,
     pub sanity: bool,
     pub yes: bool,
+    pub externalip: Option<ContextualNetAddress>,
+    pub perf_metrics: bool,
+    pub perf_metrics_interval_sec: u64,
+    pub block_template_cache_lifetime: Option<u64>,
+
+    #[cfg(feature = "devnet-prealloc")]
+    pub num_prealloc_utxos: Option<u64>,
+    #[cfg(feature = "devnet-prealloc")]
+    pub prealloc_address: Option<String>,
+    #[cfg(feature = "devnet-prealloc")]
+    pub prealloc_amount: u64,
+
+    pub disable_upnp: bool,
 }
 
-pub fn cli(defaults: &Defaults) -> Command {
-    Command::new("kaspad")
+impl Default for Args {
+    fn default() -> Self {
+        Self {
+            appdir: Some("datadir".into()),
+            no_log_files: false,
+            rpclisten_borsh: None,
+            rpclisten_json: None,
+            unsafe_rpc: false,
+            async_threads: num_cpus::get(),
+            utxoindex: false,
+            reset_db: false,
+            outbound_target: 8,
+            inbound_limit: 128,
+            rpc_max_clients: 128,
+            enable_unsynced_mining: false,
+            enable_mainnet_mining: false,
+            testnet: false,
+            testnet_suffix: 10,
+            devnet: false,
+            simnet: false,
+            archival: false,
+            sanity: false,
+            logdir: Some("".into()),
+            rpclisten: None,
+            wrpc_verbose: false,
+            log_level: "INFO".into(),
+            connect_peers: vec![],
+            add_peers: vec![],
+            listen: None,
+            user_agent_comments: vec![],
+            yes: false,
+            perf_metrics: false,
+            perf_metrics_interval_sec: 1,
+            externalip: None,
+            block_template_cache_lifetime: None,
+
+            #[cfg(feature = "devnet-prealloc")]
+            num_prealloc_utxos: None,
+            #[cfg(feature = "devnet-prealloc")]
+            prealloc_address: None,
+            #[cfg(feature = "devnet-prealloc")]
+            prealloc_amount: 1_000_000,
+
+            disable_upnp: false,
+        }
+    }
+}
+
+impl Args {
+    pub fn apply_to_config(&self, config: &mut Config) {
+        config.utxoindex = self.utxoindex;
+        config.disable_upnp = self.disable_upnp;
+        config.unsafe_rpc = self.unsafe_rpc;
+        config.enable_unsynced_mining = self.enable_unsynced_mining;
+        config.is_archival = self.archival;
+        // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
+        config.enable_sanity_checks = true;
+        config.user_agent_comments = self.user_agent_comments.clone();
+        config.block_template_cache_lifetime = self.block_template_cache_lifetime;
+        config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
+        config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));
+
+        #[cfg(feature = "devnet-prealloc")]
+        if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
+            config.initial_utxo_set = Arc::new(self.generate_prealloc_utxos(num_prealloc_utxos));
+        }
+    }
+
+    #[cfg(feature = "devnet-prealloc")]
+    pub fn generate_prealloc_utxos(&self, num_prealloc_utxos: u64) -> kaspa_consensus_core::utxo::utxo_collection::UtxoCollection {
+        let addr = Address::try_from(&self.prealloc_address.as_ref().unwrap()[..]).unwrap();
+        let spk = pay_to_address_script(&addr);
+        (1..=num_prealloc_utxos)
+            .map(|i| {
+                (
+                    TransactionOutpoint { transaction_id: i.into(), index: 0 },
+                    UtxoEntry { amount: self.prealloc_amount, script_public_key: spk.clone(), block_daa_score: 0, is_coinbase: false },
+                )
+            })
+            .collect()
+    }
+
+    pub fn network(&self) -> NetworkId {
+        match (self.testnet, self.devnet, self.simnet) {
+            (false, false, false) => NetworkId::new(NetworkType::Mainnet),
+            (true, false, false) => NetworkId::with_suffix(NetworkType::Testnet, self.testnet_suffix),
+            (false, true, false) => NetworkId::new(NetworkType::Devnet),
+            (false, false, true) => NetworkId::new(NetworkType::Simnet),
+            _ => panic!("only a single net should be activated"),
+        }
+    }
+}
+
+pub fn cli() -> Command {
+    let defaults: Args = Default::default();
+
+    #[allow(clippy::let_and_return)]
+    let cmd = Command::new("kaspad")
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
@@ -117,6 +192,7 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("rpclisten")
                 .long("rpclisten")
                 .value_name("IP[:PORT]")
+                .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Interface:port to listen for gRPC connections (default port: 16110, testnet: 16210)."),
@@ -125,22 +201,22 @@ pub fn cli(defaults: &Defaults) -> Command {
             Arg::new("rpclisten-borsh")
                 .long("rpclisten-borsh")
                 .value_name("IP[:PORT]")
+                .num_args(0..=1)
                 .require_equals(true)
-                .default_missing_value(defaults.rpclisten_borsh)
-                .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help(format!(
-                    "Interface:port to listen for wRPC Borsh connections (interop only; default: `{}`).",
-                    defaults.rpclisten_borsh
-                )),
+                .default_missing_value("default") // TODO: Find a way to use defaults.rpclisten_borsh
+                .value_parser(clap::value_parser!(WrpcNetAddress))
+                .help("Interface:port to listen for wRPC Borsh connections (default port: 17110, testnet: 17210)."),
+
         )
         .arg(
             Arg::new("rpclisten-json")
                 .long("rpclisten-json")
                 .value_name("IP[:PORT]")
+                .num_args(0..=1)
                 .require_equals(true)
-                .default_missing_value(defaults.rpclisten_json)
-                .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help(format!("Interface:port to listen for wRPC JSON connections (default: {}).", defaults.rpclisten_json)),
+                .default_missing_value("default") // TODO: Find a way to use defaults.rpclisten_json
+                .value_parser(clap::value_parser!(WrpcNetAddress))
+                .help("Interface:port to listen for wRPC JSON connections (default port: 18110, testnet: 18210)."),
         )
         .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node"))
         .arg(
@@ -224,52 +300,83 @@ pub fn cli(defaults: &Defaults) -> Command {
                 .require_equals(true)
                 .help("Comment to add to the user agent -- See BIP 14 for more information."),
         )
+        .arg(
+            Arg::new("externalip")
+                .long("externalip")
+                .value_name("externalip")
+                .require_equals(true)
+                .default_missing_value(None)
+                .value_parser(clap::value_parser!(ContextualNetAddress))
+                .help("Add a socket address(ip:port) to the list of local addresses we claim to listen on to peers"),
+        )
+        .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
+        .arg(
+            Arg::new("perf-metrics-interval-sec")
+                .long("perf-metrics-interval-sec")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u64))
+                .help("Interval in seconds for performance metrics collection."),
+        )
+        .arg(arg!(--"disable-upnp" "Disable upnp"));
+
+    #[cfg(feature = "devnet-prealloc")]
+    let cmd = cmd
+        .arg(Arg::new("num-prealloc-utxos").long("num-prealloc-utxos").require_equals(true).value_parser(clap::value_parser!(u64)))
+        .arg(Arg::new("prealloc-address").long("prealloc-address").require_equals(true).value_parser(clap::value_parser!(String)))
+        .arg(Arg::new("prealloc-amount").long("prealloc-amount").require_equals(true).value_parser(clap::value_parser!(u64)));
+
+    cmd
 }
 
-impl Args {
-    pub fn parse(defaults: &Defaults) -> Args {
-        let m = cli(defaults).get_matches();
-        Args {
-            appdir: m.get_one::<String>("appdir").cloned(),
-            logdir: m.get_one::<String>("logdir").cloned(),
-            no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
-            rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
-            rpclisten_borsh: m.get_one::<ContextualNetAddress>("rpclisten-borsh").cloned(),
-            rpclisten_json: m.get_one::<ContextualNetAddress>("rpclisten-json").cloned(),
-            unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
-            wrpc_verbose: false,
-            log_level: m.get_one::<String>("log_level").cloned().unwrap(),
-            async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
-            connect_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
-            add_peers: m.get_many::<ContextualNetAddress>("add-peers").unwrap_or_default().copied().collect(),
-            listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
-            outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
-            inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
-            rpc_max_clients: m.get_one::<usize>("rpcmaxclients").cloned().unwrap_or(defaults.rpc_max_clients),
-            reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
-            enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
-            enable_mainnet_mining: m.get_one::<bool>("enable-mainnet-mining").cloned().unwrap_or(defaults.enable_mainnet_mining),
-            utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
-            testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
-            testnet_suffix: m.get_one::<u32>("netsuffix").cloned().unwrap_or(defaults.testnet_suffix),
-            devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
-            simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
-            archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
-            sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
-            yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
-            user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
-        }
-    }
+pub fn parse_args() -> Args {
+    let m: clap::ArgMatches = cli().get_matches();
+    let defaults: Args = Default::default();
 
-    pub fn apply_to_config(&self, config: &mut Config) {
-        config.utxoindex = self.utxoindex;
-        config.unsafe_rpc = self.unsafe_rpc;
-        config.enable_unsynced_mining = self.enable_unsynced_mining;
-        config.enable_mainnet_mining = self.enable_mainnet_mining;
-        config.is_archival = self.archival;
-        // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
-        config.enable_sanity_checks = true;
-        config.user_agent_comments = self.user_agent_comments.clone();
+    Args {
+        appdir: m.get_one::<String>("appdir").cloned(),
+        logdir: m.get_one::<String>("logdir").cloned(),
+        no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
+        rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
+        rpclisten_borsh: m.get_one::<WrpcNetAddress>("rpclisten-borsh").cloned(),
+        rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned(),
+        unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
+        wrpc_verbose: false,
+        log_level: m.get_one::<String>("log_level").cloned().unwrap(),
+        async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
+        connect_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
+        add_peers: m.get_many::<ContextualNetAddress>("add-peers").unwrap_or_default().copied().collect(),
+        listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
+        outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
+        inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
+        rpc_max_clients: m.get_one::<usize>("rpcmaxclients").cloned().unwrap_or(defaults.rpc_max_clients),
+        reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
+        enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
+        enable_mainnet_mining: m.get_one::<bool>("enable-mainnet-mining").cloned().unwrap_or(defaults.enable_mainnet_mining),
+        utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
+        testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
+        testnet_suffix: m.get_one::<u32>("netsuffix").cloned().unwrap_or(defaults.testnet_suffix),
+        devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
+        simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
+        archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
+        sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
+        yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
+        user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
+        externalip: m.get_one::<ContextualNetAddress>("externalip").cloned(),
+        perf_metrics: m.get_one::<bool>("perf-metrics").cloned().unwrap_or(defaults.perf_metrics),
+        perf_metrics_interval_sec: m
+            .get_one::<u64>("perf-metrics-interval-sec")
+            .cloned()
+            .unwrap_or(defaults.perf_metrics_interval_sec),
+        // Note: currently used programmatically by benchmarks and not exposed to CLI users
+        block_template_cache_lifetime: defaults.block_template_cache_lifetime,
+
+        #[cfg(feature = "devnet-prealloc")]
+        num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
+        #[cfg(feature = "devnet-prealloc")]
+        prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
+        #[cfg(feature = "devnet-prealloc")]
+        prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
+        disable_upnp: m.get_one::<bool>("disable-upnp").cloned().unwrap_or(defaults.disable_upnp),
     }
 }
 
@@ -354,6 +461,5 @@ impl Args {
       --devnet                              Use the development test network
       --override-dag-params-file=           Overrides DAG params (allowed only on devnet)
   -s, --service=                            Service command {install, remove, start, stop}
-
 
 */

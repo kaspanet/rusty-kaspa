@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kaspa_consensus_core::errors::{consensus::ConsensusError, sync::SyncManagerError};
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    dequeue, make_message,
+    dequeue_with_request_id, make_response,
     pb::{kaspad_message::Payload, IbdChainBlockLocatorMessage},
     IncomingRoute, Router,
 };
@@ -34,15 +34,16 @@ impl RequestIbdChainBlockLocatorFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
-            let msg = dequeue!(self.incoming_route, Payload::RequestIbdChainBlockLocator)?;
+            let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestIbdChainBlockLocator)?;
             let (low, high) = msg.try_into()?;
 
             let locator =
-                match (self.ctx.consensus().session().await).async_create_headers_selected_chain_block_locator(low, high).await {
+                match (self.ctx.consensus().session().await).async_create_virtual_selected_chain_block_locator(low, high).await {
                     Ok(locator) => Ok(locator),
                     Err(e) => {
                         let orig = e.clone();
                         if let ConsensusError::SyncManagerError(SyncManagerError::BlockNotInSelectedParentChain(_)) = e {
+                            // This signals a reset to the locator zoom-in process. The syncee is expected to restart the search
                             Ok(vec![])
                         } else {
                             Err(orig)
@@ -51,9 +52,10 @@ impl RequestIbdChainBlockLocatorFlow {
                 }?;
 
             self.router
-                .enqueue(make_message!(
+                .enqueue(make_response!(
                     Payload::IbdChainBlockLocator,
-                    IbdChainBlockLocatorMessage { block_locator_hashes: locator.into_iter().map(|hash| hash.into()).collect() }
+                    IbdChainBlockLocatorMessage { block_locator_hashes: locator.into_iter().map(|hash| hash.into()).collect() },
+                    request_id
                 ))
                 .await?;
         }

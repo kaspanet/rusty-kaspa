@@ -164,12 +164,13 @@ mod tests {
     use super::*;
     use crate::model::stores::relations::{DbRelationsStore, RelationsStoreReader, StagingRelationsStore};
     use kaspa_core::assert_match;
-    use kaspa_database::{prelude::MemoryWriter, utils::create_temp_db};
+    use kaspa_database::prelude::ConnBuilder;
+    use kaspa_database::{create_temp_db, prelude::MemoryWriter};
     use std::sync::Arc;
 
     #[test]
     fn test_delete_level_relations_zero_cache() {
-        let (_lifetime, db) = create_temp_db();
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_size = 0;
         let mut relations = DbRelationsStore::new(db.clone(), 0, cache_size);
         relations.insert(ORIGIN, Default::default()).unwrap();
@@ -185,7 +186,7 @@ mod tests {
 
         let mut batch = WriteBatch::default();
         let mut staging_relations = StagingRelationsStore::new(&mut relations);
-        delete_level_relations(MemoryWriter::default(), &mut staging_relations, 1.into()).unwrap();
+        delete_level_relations(MemoryWriter, &mut staging_relations, 1.into()).unwrap();
         staging_relations.commit(&mut batch).unwrap();
         db.write(batch).unwrap();
 
@@ -199,7 +200,7 @@ mod tests {
 
         let mut batch = WriteBatch::default();
         let mut staging_relations = StagingRelationsStore::new(&mut relations);
-        delete_level_relations(MemoryWriter::default(), &mut staging_relations, 2.into()).unwrap();
+        delete_level_relations(MemoryWriter, &mut staging_relations, 2.into()).unwrap();
         staging_relations.commit(&mut batch).unwrap();
         db.write(batch).unwrap();
 

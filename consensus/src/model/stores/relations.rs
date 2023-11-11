@@ -53,8 +53,8 @@ impl DbRelationsStore {
     }
 
     pub fn with_prefix(db: Arc<DB>, prefix: &[u8], cache_size: u64) -> Self {
-        let parents_prefix = prefix.iter().copied().chain(DatabaseStorePrefixes::RelationsParents.into_iter()).collect_vec();
-        let children_prefix = prefix.iter().copied().chain(DatabaseStorePrefixes::RelationsChildren.into_iter()).collect_vec();
+        let parents_prefix = prefix.iter().copied().chain(DatabaseStorePrefixes::RelationsParents).collect_vec();
+        let children_prefix = prefix.iter().copied().chain(DatabaseStorePrefixes::RelationsChildren).collect_vec();
         Self {
             db: Arc::clone(&db),
             parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, parents_prefix),
@@ -149,7 +149,7 @@ impl RelationsStore for StagingRelationsStore<'_> {
     type DefaultWriter = MemoryWriter;
 
     fn default_writer(&self) -> Self::DefaultWriter {
-        MemoryWriter::default()
+        MemoryWriter
     }
 
     fn set_parents(&mut self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
@@ -267,7 +267,7 @@ impl RelationsStore for MemoryRelationsStore {
     type DefaultWriter = MemoryWriter;
 
     fn default_writer(&self) -> Self::DefaultWriter {
-        MemoryWriter::default()
+        MemoryWriter
     }
 
     fn set_parents(&mut self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
@@ -291,6 +291,7 @@ impl RelationsStore for MemoryRelationsStore {
 mod tests {
     use super::*;
     use crate::processes::relations::RelationsStoreExtensions;
+    use kaspa_database::create_temp_db;
 
     #[test]
     fn test_memory_relations_store() {
@@ -299,9 +300,9 @@ mod tests {
 
     #[test]
     fn test_db_relations_store() {
-        let db_tempdir = kaspa_database::utils::get_kaspa_tempdir();
-        let db = Arc::new(DB::open_default(db_tempdir.path().to_owned().to_str().unwrap()).unwrap());
+        let (lt, db) = create_temp_db!(kaspa_database::prelude::ConnBuilder::default().with_files_limit(10));
         test_relations_store(DbRelationsStore::new(db, 0, 2));
+        drop(lt)
     }
 
     fn test_relations_store<T: RelationsStore>(mut store: T) {

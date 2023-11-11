@@ -7,7 +7,8 @@ use std::{
 };
 
 use itertools::Itertools;
-use parking_lot::RwLock;
+use kaspa_math::int::SignedInteger;
+use parking_lot::{Mutex, RwLock};
 use rocksdb::WriteBatch;
 
 use kaspa_consensus_core::{
@@ -22,7 +23,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::{debug, info, trace};
-use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::{ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
@@ -93,8 +94,8 @@ pub struct PruningProofManager {
     window_manager: DbWindowManager,
     parents_manager: DbParentsManager,
 
-    cached_proof: RwLock<Option<CachedPruningPointData<PruningPointProof>>>,
-    cached_anticone: RwLock<Option<CachedPruningPointData<PruningPointTrustedData>>>,
+    cached_proof: Mutex<Option<CachedPruningPointData<PruningPointProof>>>,
+    cached_anticone: Mutex<Option<CachedPruningPointData<PruningPointTrustedData>>>,
 
     max_block_level: BlockLevel,
     genesis_hash: Hash,
@@ -140,8 +141,8 @@ impl PruningProofManager {
             window_manager,
             parents_manager,
 
-            cached_proof: RwLock::new(None),
-            cached_anticone: RwLock::new(None),
+            cached_proof: Mutex::new(None),
+            cached_anticone: Mutex::new(None),
 
             max_block_level,
             genesis_hash,
@@ -360,8 +361,7 @@ impl PruningProofManager {
         let proof_pp_header = proof[0].last().expect("checked if empty");
         let proof_pp = proof_pp_header.hash;
         let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
-
-        let (db_lifetime, db) = kaspa_database::utils::create_temp_db();
+        let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 2 * self.pruning_proof_m)); // TODO: Think about cache size
         let ghostdag_stores = (0..=self.max_block_level)
             .map(|level| Arc::new(DbGhostdagStore::new(db.clone(), level, 2 * self.pruning_proof_m)))
@@ -489,7 +489,7 @@ impl PruningProofManager {
         let pruning_read = self.pruning_point_store.read();
         let relations_read = self.relations_stores.read();
         let current_pp = pruning_read.get().unwrap().pruning_point;
-        let current_pp_header = headers_store.get_header(current_pp).unwrap();
+        let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
         for (level_idx, selected_tip) in selected_tip_by_level.into_iter().enumerate() {
             let level = level_idx as BlockLevel;
@@ -525,10 +525,12 @@ impl PruningProofManager {
             };
 
             if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = common_ancestor_data {
-                let selected_tip_blue_work_diff = proof_selected_tip_gd.blue_work - proof_common_ancestor_gd.blue_work;
+                let selected_tip_blue_work_diff =
+                    SignedInteger::from(proof_selected_tip_gd.blue_work) - SignedInteger::from(proof_common_ancestor_gd.blue_work);
                 for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
                     let parent_blue_work = self.ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
-                    let parent_blue_work_diff = parent_blue_work - common_ancestor_gd.blue_work;
+                    let parent_blue_work_diff =
+                        SignedInteger::from(parent_blue_work) - SignedInteger::from(common_ancestor_gd.blue_work);
                     if parent_blue_work_diff >= selected_tip_blue_work_diff {
                         return Err(PruningImportError::PruningProofInsufficientBlueWork);
                     }
@@ -536,6 +538,12 @@ impl PruningProofManager {
 
                 return Ok(());
             }
+        }
+
+        if current_pp == self.genesis_hash {
+            // If the proof has better tips and the current pruning point is still
+            // genesis, we consider the proof state to be better.
+            return Ok(());
         }
 
         for level in (0..=self.max_block_level).rev() {
@@ -717,19 +725,21 @@ impl PruningProofManager {
 
     pub fn get_pruning_point_proof(&self) -> Arc<PruningPointProof> {
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
-        if let Some(cache) = self.cached_proof.read().clone() {
+        let mut cache_lock = self.cached_proof.lock();
+        if let Some(cache) = cache_lock.clone() {
             if cache.pruning_point == pp {
                 return cache.data;
             }
         }
         let proof = Arc::new(self.build_pruning_point_proof(pp));
-        self.cached_proof.write().replace(CachedPruningPointData { pruning_point: pp, data: proof.clone() });
+        cache_lock.replace(CachedPruningPointData { pruning_point: pp, data: proof.clone() });
         proof
     }
 
     pub fn get_pruning_point_anticone_and_trusted_data(&self) -> ConsensusResult<Arc<PruningPointTrustedData>> {
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
-        if let Some(cache) = self.cached_anticone.read().clone() {
+        let mut cache_lock = self.cached_anticone.lock();
+        if let Some(cache) = cache_lock.clone() {
             if cache.pruning_point == pp {
                 return Ok(cache.data);
             }
@@ -741,7 +751,7 @@ impl PruningProofManager {
         // The anticone is considered final only if the pruning point is at sufficient depth from virtual
         if virtual_state.ghostdag_data.blue_score >= pp_bs + self.anticone_finalization_depth {
             let anticone = Arc::new(self.calculate_pruning_point_anticone_and_trusted_data(pp, virtual_state.parents.iter().copied()));
-            self.cached_anticone.write().replace(CachedPruningPointData { pruning_point: pp, data: anticone.clone() });
+            cache_lock.replace(CachedPruningPointData { pruning_point: pp, data: anticone.clone() });
             Ok(anticone)
         } else {
             Err(ConsensusError::PruningPointInsufficientDepth)

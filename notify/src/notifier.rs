@@ -16,6 +16,7 @@ use async_channel::Sender;
 use async_trait::async_trait;
 use core::fmt::Debug;
 use futures::future::join_all;
+use itertools::Itertools;
 use kaspa_core::{debug, trace};
 use parking_lot::Mutex;
 use std::{
@@ -81,19 +82,18 @@ where
         subscribers: Vec<Arc<Subscriber>>,
         broadcasters: usize,
     ) -> Self {
-        Self { inner: Arc::new(Inner::new(enabled_events, collectors, subscribers, broadcasters, name)) }
+        Self::with_sync(name, enabled_events, collectors, subscribers, broadcasters, None)
     }
 
-    #[cfg(test)]
     pub fn with_sync(
+        name: &'static str,
         enabled_events: EventSwitches,
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
         broadcasters: usize,
-        name: &'static str,
         _sync: Option<Sender<()>>,
     ) -> Self {
-        Self { inner: Arc::new(Inner::with_sync(enabled_events, collectors, subscribers, broadcasters, name, _sync)) }
+        Self { inner: Arc::new(Inner::new(name, enabled_events, collectors, subscribers, broadcasters, _sync)) }
     }
 
     pub fn start(self: Arc<Self>) {
@@ -204,43 +204,17 @@ where
     C: Connection<Notification = N>,
 {
     fn new(
+        name: &'static str,
         enabled_events: EventSwitches,
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
         broadcasters: usize,
-        name: &'static str,
-    ) -> Self {
-        assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
-        let notification_channel = Channel::unbounded();
-        let broadcasters =
-            (0..broadcasters).map(|_| Arc::new(Broadcaster::new(name, notification_channel.receiver.clone()))).collect::<Vec<_>>();
-        Self {
-            enabled_events,
-            listeners: Mutex::new(HashMap::new()),
-            subscriptions: Mutex::new(ArrayBuilder::compounded()),
-            started: Arc::new(AtomicBool::new(false)),
-            notification_channel,
-            broadcasters,
-            collectors,
-            subscribers,
-            name,
-            _sync: None,
-        }
-    }
-
-    #[cfg(test)]
-    fn with_sync(
-        enabled_events: EventSwitches,
-        collectors: Vec<DynCollector<N>>,
-        subscribers: Vec<Arc<Subscriber>>,
-        broadcasters: usize,
-        name: &'static str,
         _sync: Option<Sender<()>>,
     ) -> Self {
         assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
         let notification_channel = Channel::unbounded();
         let broadcasters = (0..broadcasters)
-            .map(|_| Arc::new(Broadcaster::with_sync(name, notification_channel.receiver.clone(), _sync.clone())))
+            .map(|_| Arc::new(Broadcaster::new(name, notification_channel.receiver.clone(), _sync.clone())))
             .collect::<Vec<_>>();
         Self {
             enabled_events,
@@ -284,28 +258,26 @@ where
     }
 
     fn unregister_listener(self: &Arc<Self>, id: ListenerId) -> Result<()> {
-        // Cancel all remaining subscriptions
-        let mut subscriptions = vec![];
-        if let Some(listener) = self.listeners.lock().get(&id) {
+        // Try to remove the listener, preventing any possible new subscription
+        let listener = self.listeners.lock().remove(&id);
+        if let Some(mut listener) = listener {
             trace!("[Notifier {}] unregistering listener {id}", self.name);
-            subscriptions.extend(listener.subscriptions.iter().filter_map(|subscription| {
-                if subscription.active() {
-                    Some(subscription.scope())
-                } else {
-                    None
-                }
-            }));
-        } else {
-            trace!("[Notifier {}] unregistering listener {id} error: unknown listener id", self.name);
-        }
-        subscriptions.drain(..).for_each(|scope| {
-            let _ = self.clone().stop_notify(id, scope);
-        });
 
-        // Remove & close listener
-        if let Some(listener) = self.listeners.lock().remove(&id) {
+            // Cancel all remaining active subscriptions
+            let mut subscriptions = listener
+                .subscriptions
+                .iter()
+                .filter_map(|subscription| if subscription.active() { Some(subscription.scope()) } else { None })
+                .collect_vec();
+            subscriptions.drain(..).for_each(|scope| {
+                let _ = self.execute_subscribe_command_impl(id, &mut listener, scope, Command::Stop);
+            });
+
+            // Close the listener
             trace!("[Notifier {}] closing listener {id}", self.name);
             listener.close();
+        } else {
+            trace!("[Notifier {}] unregistering listener {id} error: unknown listener id", self.name);
         }
         Ok(())
     }
@@ -315,39 +287,53 @@ where
         if self.enabled_events[event] {
             let mut listeners = self.listeners.lock();
             if let Some(listener) = listeners.get_mut(&id) {
-                let mut subscriptions = self.subscriptions.lock();
-                trace!("[Notifier {}] {command} notifying to {id} about {scope:?}", self.name);
-                if let Some(mutations) = listener.mutate(Mutation::new(command, scope.clone())) {
-                    trace!("[Notifier {}] {command} notifying to {id} about {scope:?} involves mutations {mutations:?}", self.name);
-                    // Update broadcasters
-                    let subscription = listener.subscriptions[event].clone_arc();
-                    self.broadcasters
-                        .iter()
-                        .try_for_each(|broadcaster| broadcaster.register(subscription.clone(), id, listener.connection()))?;
-                    // Compound mutations
-                    let mut compound_result = None;
-                    for mutation in mutations {
-                        compound_result = subscriptions[event].compound(mutation);
-                    }
-                    // Report to the parents
-                    if let Some(mutation) = compound_result {
-                        self.subscribers.iter().try_for_each(|x| x.mutate(mutation.clone()))?;
-                    }
-                } else {
-                    trace!("[Notifier {}] {command} notifying to {id} about {scope:?} is ignored (no mutation)", self.name);
-                    // In case we have a sync channel, report that the command was processed.
-                    // This is for test only.
-                    #[cfg(test)]
-                    if let Some(ref sync) = self._sync {
-                        let _ = sync.try_send(());
-                    }
-                }
+                self.execute_subscribe_command_impl(id, listener, scope, command)?;
             } else {
-                trace!("[Notifier {}] {command} notifying to {id} about {scope:?} error: listener id not found", self.name);
+                trace!("[Notifier {}] {command} notifying listener {id} about {scope} error: listener id not found", self.name);
             }
         } else {
-            trace!("[Notifier {}] {command} notifying to {id} about {scope:?} error: event type {event:?} is disabled", self.name);
+            trace!(
+                "[Notifier {}] {command} notifying listener {id} about {scope:?} error: event type {event:?} is disabled",
+                self.name
+            );
             return Err(Error::EventTypeDisabled);
+        }
+        Ok(())
+    }
+
+    fn execute_subscribe_command_impl(
+        &self,
+        id: ListenerId,
+        listener: &mut Listener<C>,
+        scope: Scope,
+        command: Command,
+    ) -> Result<()> {
+        let event: EventType = (&scope).into();
+        let mut subscriptions = self.subscriptions.lock();
+        debug!("[Notifier {}] {command} notifying about {scope} to listener {id}", self.name);
+        if let Some(mutations) = listener.mutate(Mutation::new(command, scope.clone())) {
+            trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} involves mutations {mutations:?}", self.name);
+            // Update broadcasters
+            let subscription = listener.subscriptions[event].clone_arc();
+            self.broadcasters
+                .iter()
+                .try_for_each(|broadcaster| broadcaster.register(subscription.clone(), id, listener.connection()))?;
+            // Compound mutations
+            let mut compound_result = None;
+            for mutation in mutations {
+                compound_result = subscriptions[event].compound(mutation);
+            }
+            // Report to the parents
+            if let Some(mutation) = compound_result {
+                self.subscribers.iter().try_for_each(|x| x.mutate(mutation.clone()))?;
+            }
+        } else {
+            trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} is ignored (no mutation)", self.name);
+            // In case we have a sync channel, report that the command was processed.
+            // This is for test only.
+            if let Some(ref sync) = self._sync {
+                let _ = sync.try_send(());
+            }
         }
         Ok(())
     }
@@ -401,7 +387,13 @@ where
             // Finally, we close all listeners, propagating shutdown by closing their channel when they have one
             // Note that unregistering listeners is no longer meaningful since both broadcasters and subscribers were stopped
             debug!("[Notifier {}] closing listeners", self.name);
-            self.listeners.lock().values().for_each(|x| x.close());
+            let listener_ids = self.listeners.lock().keys().cloned().collect_vec();
+            listener_ids.iter().for_each(|id| {
+                let listener = self.listeners.lock().remove(id);
+                if let Some(listener) = listener {
+                    listener.close();
+                }
+            });
         } else {
             trace!("[Notifier {}] join ignored since it was never started", self.name);
             return Err(Error::AlreadyStoppedError);
@@ -703,6 +695,7 @@ mod tests {
     use super::{test_helpers::*, *};
     use crate::{
         collector::CollectorFrom,
+        connection::ChannelType,
         converter::ConverterFrom,
         events::EVENT_TYPE_ARRAY,
         notification::test_helpers::*,
@@ -736,11 +729,11 @@ mod tests {
             let subscriber =
                 Arc::new(Subscriber::new("test", EVENT_TYPE_ARRAY[..].into(), subscription_manager, SUBSCRIPTION_MANAGER_ID));
             let notifier = Arc::new(TestNotifier::with_sync(
+                "test",
                 EVENT_TYPE_ARRAY[..].into(),
                 vec![collector],
                 vec![subscriber],
                 1,
-                "test",
                 Some(sync_sender),
             ));
             // Create the listeners
@@ -748,7 +741,7 @@ mod tests {
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for _ in 0..listener_count {
                 let (sender, receiver) = unbounded();
-                let connection = TestConnection::new(sender);
+                let connection = TestConnection::new(sender, ChannelType::Closable);
                 listeners.push(notifier.register_new_listener(connection));
                 notification_receivers.push(receiver);
             }

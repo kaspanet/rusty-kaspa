@@ -118,12 +118,12 @@ impl<
             .expect("because of the pruning rules such block has to exist")
     }
 
-    pub fn create_headers_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> SyncManagerResult<Vec<Hash>> {
+    /// Returns a logarithmic amount of blocks sampled from the virtual selected chain between `low` and `high`.
+    /// Expects both blocks to be on the virtual selected chain, otherwise an error is returned
+    pub fn create_virtual_selected_chain_block_locator(&self, low: Option<Hash>, high: Option<Hash>) -> SyncManagerResult<Vec<Hash>> {
         let low = low.unwrap_or_else(|| self.pruning_point_store.read().get().unwrap().pruning_point);
-        let high = high.unwrap_or_else(|| self.header_selected_tip_store.read().get().unwrap().hash);
-
         let sc_read = self.selected_chain_store.read();
-
+        let high = high.unwrap_or_else(|| sc_read.get_tip().unwrap().1);
         if low == high {
             return Ok(vec![low]);
         }
@@ -170,7 +170,9 @@ impl<
         let mut backward_iterator = self.reachability_service.backward_chain_iterator(high, pp, true);
         loop {
             // We loop from both directions in parallel in order to use the shorter path
-            let Some((parent, current)) = forward_iterator.next() else { break; };
+            let Some((parent, current)) = forward_iterator.next() else {
+                break;
+            };
             let status = self.statuses_store.read().get(current).unwrap();
             if status.is_header_only() {
                 // Going up, the first parent which has a header-only child is our target
@@ -178,7 +180,9 @@ impl<
                 break;
             }
 
-            let Some(backward_current) = backward_iterator.next() else { break; };
+            let Some(backward_current) = backward_iterator.next() else {
+                break;
+            };
             let status = self.statuses_store.read().get(backward_current).unwrap();
             if status.has_block_body() {
                 // Since this iterator is going down, current must be the highest with body
@@ -214,10 +218,8 @@ impl<
         let mut locator = Vec::new();
         loop {
             locator.push(current);
-            if let Some(limit) = limit {
-                if locator.len() == limit {
-                    break;
-                }
+            if limit == Some(locator.len()) {
+                break;
             }
 
             let current_gd = self.ghostdag_store.get_compact_data(current).unwrap();
@@ -235,7 +237,7 @@ impl<
                 current_gd.blue_score - step
             };
 
-            // Walk down currentHash's selected parent chain to the appropriate ancestor
+            // Walk down current's selected parent chain to the appropriate ancestor
             current = self.traversal_manager.lowest_chain_block_above_or_equal_to_blue_score(current, next_bs);
 
             // Double the distance between included hashes
