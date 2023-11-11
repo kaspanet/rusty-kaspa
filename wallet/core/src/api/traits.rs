@@ -42,8 +42,13 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
 
-    async fn wallet_open(self: Arc<Self>, wallet_secret: Secret, wallet_name: Option<String>) -> Result<WalletOpenResponse> {
-        self.wallet_open_call(WalletOpenRequest { wallet_secret, wallet_name }).await
+    async fn wallet_open(
+        self: Arc<Self>,
+        wallet_secret: Secret,
+        wallet_name: Option<String>,
+        activate_accounts: bool,
+    ) -> Result<WalletOpenResponse> {
+        self.wallet_open_call(WalletOpenRequest { wallet_secret, wallet_name, activate_accounts }).await
     }
 
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse>;
@@ -65,6 +70,11 @@ pub trait WalletApi: Send + Sync + AnySync {
         request: AccountCreateNewAddressRequest,
     ) -> Result<AccountCreateNewAddressResponse>;
     async fn account_send_call(self: Arc<Self>, request: AccountSendRequest) -> Result<AccountSendResponse>;
+
+    // async fn account_estimate(self: Arc<Self>, request: AccountEstimateRequest) -> Result<AccountEstimateResponse> {
+
+    //     Ok(self.account_estimate_call(request).await?)
+    // }
     async fn account_estimate_call(self: Arc<Self>, request: AccountEstimateRequest) -> Result<AccountEstimateResponse>;
     async fn transaction_data_get_call(self: Arc<Self>, request: TransactionDataGetRequest) -> Result<TransactionDataGetResponse>;
     // async fn transaction_get_call(self: Arc<Self>, request: TransactionGetRequest) -> Result<TransactionGetResponse>;

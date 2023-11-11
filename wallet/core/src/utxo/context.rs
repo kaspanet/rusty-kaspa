@@ -38,6 +38,12 @@ impl From<&AccountId> for UtxoContextId {
     }
 }
 
+impl From<UtxoContextId> for AccountId {
+    fn from(id: UtxoContextId) -> Self {
+        AccountId(id.0)
+    }
+}
+
 impl UtxoContextId {
     pub fn new(id: Hash) -> Self {
         UtxoContextId(id)
@@ -52,6 +58,12 @@ impl UtxoContextId {
 impl ToHex for UtxoContextId {
     fn to_hex(&self) -> String {
         self.0.to_hex()
+    }
+}
+
+impl std::fmt::Display for UtxoContextId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

@@ -169,7 +169,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
     term.writeln(style(receive_address).blue().to_string());
     term.writeln("");
 
-    wallet.open_and_activate(wallet_secret, name.map(String::from)).await?;
+    wallet.open(wallet_secret, name.map(String::from), true).await?;
 
     Ok(())
 }

@@ -140,13 +140,13 @@ impl Debug for Inner {
 #[async_trait]
 impl SubscriptionManager for Inner {
     async fn start_notify(&self, _: ListenerId, scope: Scope) -> NotifyResult<()> {
-        log_trace!("[WrpcClient] start_notify: {:?}", scope);
+        // log_trace!("[WrpcClient] start_notify: {:?}", scope);
         self.start_notify_to_client(scope).await.map_err(|err| NotifyError::General(err.to_string()))?;
         Ok(())
     }
 
     async fn stop_notify(&self, _: ListenerId, scope: Scope) -> NotifyResult<()> {
-        log_trace!("[WrpcClient] stop_notify: {:?}", scope);
+        // log_trace!("[WrpcClient] stop_notify: {:?}", scope);
         self.stop_notify_to_client(scope).await.map_err(|err| NotifyError::General(err.to_string()))?;
         Ok(())
     }

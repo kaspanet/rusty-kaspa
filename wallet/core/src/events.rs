@@ -1,4 +1,5 @@
 use crate::imports::*;
+use crate::runtime::AccountDescriptor;
 use crate::runtime::Balance;
 use crate::storage::Hint;
 use crate::storage::TransactionRecord;
@@ -76,11 +77,13 @@ pub enum Events {
     /// contains anti-phishing 'hint' set by the user.
     WalletHint { hint: Option<Hint> },
     /// Wallet has opened
-    WalletOpen,
+    WalletOpen { account_descriptors: Option<Vec<AccountDescriptor>> },
+    /// Wallet is ready for processing (accounts are active)
+    WalletReady,
+    /// Wallet reload initiated (development only)
+    WalletReload { account_descriptors: Option<Vec<AccountDescriptor>> },
     /// Wallet open failure
     WalletError { message: String },
-    /// Wallet reload initiated (development only)
-    WalletReload,
     /// Wallet has been closed
     WalletClose,
     /// Account selection change (`None` if no account is selected)

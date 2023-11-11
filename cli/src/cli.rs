@@ -338,13 +338,15 @@ impl KaspaCli {
                                 },
                                 Events::AccountSelection { .. } => { },
                                 Events::WalletError { .. } => { },
-                                Events::WalletOpen |
-                                Events::WalletReload => {
+                                Events::WalletReady { .. } => { },
+
+                                Events::WalletOpen { .. } |
+                                Events::WalletReload { .. } => {
 
                                     // load all accounts
-                                    if let Err(err) = this.wallet().activate_all_stored_accounts().await {
-                                        terrorln!(this, "{err}");
-                                    }
+                                    // if let Err(err) = this.wallet().activate_all_stored_accounts().await {
+                                    //     terrorln!(this, "{err}");
+                                    // }
 
                                     // list all accounts
                                     this.list().await.unwrap_or_else(|err|terrorln!(this, "{err}"));

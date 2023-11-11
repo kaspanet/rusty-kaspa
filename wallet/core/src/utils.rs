@@ -81,7 +81,12 @@ fn str_to_sompi(amount: &str) -> Result<u64> {
     let integer = amount[..dot_idx].parse::<u64>()? * SOMPI_PER_KASPA;
     let decimal = &amount[dot_idx + 1..];
     let decimal_len = decimal.len();
-    let decimal =
-        if decimal_len <= 8 { decimal.parse::<u64>()? * 10u64.pow(8 - decimal_len as u32) } else { decimal[..8].parse::<u64>()? };
+    let decimal = if decimal_len == 0 {
+        0
+    } else if decimal_len <= 8 {
+        decimal.parse::<u64>()? * 10u64.pow(8 - decimal_len as u32)
+    } else {
+        decimal[..8].parse::<u64>()?
+    };
     Ok(integer + decimal)
 }

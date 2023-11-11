@@ -21,7 +21,7 @@ pub use interface::{AccessContextT, AccountStore, Interface, PrvKeyDataStore, Tr
 pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
 pub use local::interface::make_filename;
 pub use metadata::Metadata;
-pub use transaction::{TransactionMetadata, TransactionRecord, TransactionType};
+pub use transaction::{TransactionId, TransactionMetadata, TransactionRecord, TransactionType};
 
 #[cfg(test)]
 mod tests {

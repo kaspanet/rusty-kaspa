@@ -2,13 +2,15 @@ use crate::derivation::AddressDerivationMeta;
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::account::descriptor::{self, AccountDescriptor};
-use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount, Inner};
+use crate::runtime::account::{Account, AccountId, AccountKind, AsLegacyAccount, DerivationCapableAccount, Inner};
 use crate::runtime::Wallet;
 use crate::secret::Secret;
 use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
 use crate::AddressDerivationManager;
 use crate::AddressDerivationManagerTrait;
 use kaspa_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
+
+const CACHE_ADDRESS_OFFSET: u32 = 2048;
 
 pub struct Legacy {
     inner: Arc<Inner>,
@@ -59,6 +61,12 @@ impl Legacy {
         for derivator in &self.derivation.derivators {
             derivator.initialize(xprv.clone(), index)?;
         }
+
+        // let derivation = account.clone().as_derivation_capable()?.derivation();
+        let m = self.derivation.receive_address_manager();
+        m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
+        let m = self.derivation.change_address_manager();
+        m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
 
         Ok(())
     }
@@ -120,17 +128,19 @@ impl Account for Legacy {
         Ok(self.clone())
     }
 
-    async fn initialize_private_data(
-        self: Arc<Self>,
-        secret: Secret,
-        payment_secret: Option<&Secret>,
-        index: Option<u32>,
-    ) -> Result<()> {
+    fn as_legacy_account(self: Arc<Self>) -> Result<Arc<dyn AsLegacyAccount>> {
+        Ok(self.clone())
+    }
+}
+
+#[async_trait]
+impl AsLegacyAccount for Legacy {
+    async fn initialize_private_context(&self, secret: Secret, payment_secret: Option<&Secret>, index: Option<u32>) -> Result<()> {
         self.initialize_derivation(secret, payment_secret, index).await?;
         Ok(())
     }
 
-    async fn clear_private_data(self: Arc<Self>) -> Result<()> {
+    async fn clear_private_context(&self) -> Result<()> {
         for derivator in &self.derivation.derivators {
             derivator.uninitialize()?;
         }

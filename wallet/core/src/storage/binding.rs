@@ -34,3 +34,9 @@ impl Binding {
         }
     }
 }
+
+impl AsRef<Binding> for Binding {
+    fn as_ref(&self) -> &Binding {
+        self
+    }
+}

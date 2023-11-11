@@ -85,6 +85,7 @@ pub struct WalletCreateResponse {
 pub struct WalletOpenRequest {
     pub wallet_secret: Secret,
     pub wallet_name: Option<String>,
+    pub activate_accounts: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

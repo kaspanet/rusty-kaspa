@@ -18,7 +18,7 @@ struct AccountIdHashData<T: AsSlice<Element = PrvKeyDataId>> {
     data: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountId(pub(crate) Hash);
 
 impl AccountId {

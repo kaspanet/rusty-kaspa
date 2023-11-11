@@ -6,7 +6,7 @@ pub use data::{Metric, MetricsData, MetricsSnapshot};
 
 use crate::result::Result;
 use futures::{future::join_all, pin_mut, select, FutureExt, StreamExt};
-use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse};
+use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse, RpcPeerInfo};
 use std::{
     future::Future,
     pin::Pin,
@@ -26,6 +26,7 @@ pub struct Metrics {
     rpc: Arc<Mutex<Option<Arc<dyn RpcApi>>>>,
     sink: Arc<Mutex<Option<MetricsSinkFn>>>,
     data: Arc<Mutex<Option<MetricsData>>>,
+    connected_peer_info: Arc<Mutex<Option<Arc<Vec<RpcPeerInfo>>>>>,
 }
 
 impl Default for Metrics {
@@ -35,6 +36,7 @@ impl Default for Metrics {
             rpc: Arc::new(Mutex::new(None)),
             sink: Arc::new(Mutex::new(None)),
             data: Arc::new(Mutex::new(None)),
+            connected_peer_info: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -60,6 +62,10 @@ impl Metrics {
         self.sink.lock().unwrap().clone()
     }
 
+    pub fn connected_peer_info(&self) -> Option<Arc<Vec<RpcPeerInfo>>> {
+        self.connected_peer_info.lock().unwrap().clone()
+    }
+
     pub async fn start_task(self: &Arc<Self>) -> Result<()> {
         let this = self.clone();
 
@@ -79,22 +85,18 @@ impl Metrics {
                     },
                     _ = interval.next().fuse() => {
 
-                        // if let Some(rpc) = this.rpc() {
-
-                            // if !rpc.is_connected() {
-                            //     continue;
-                            // }
-
                             let last_data = this.data.lock().unwrap().take().unwrap();
                             this.data.lock().unwrap().replace(MetricsData::new(unixtime_as_millis_f64()));
                             if let Some(rpc) = this.rpc() {
                                 let samples = vec![
                                     this.sample_metrics(rpc.clone()).boxed(),
-                                    this.sample_gbdi(rpc.clone()).boxed(),
-                                    this.sample_cpi(rpc.clone()).boxed(),
+                                    this.sample_get_block_dag_info(rpc.clone()).boxed(),
+                                    this.sample_connected_peer_info(rpc.clone()).boxed(),
                                 ];
 
                                 join_all(samples).await;
+                            } else {
+                                this.connected_peer_info.lock().unwrap().take();
                             }
 
                             if let Some(sink) = this.sink() {
@@ -103,7 +105,6 @@ impl Metrics {
                                     future.await.ok();
                                 }
                             }
-                        // }
                     }
                 }
             }
@@ -152,7 +153,7 @@ impl Metrics {
         Ok(())
     }
 
-    async fn sample_gbdi(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
+    async fn sample_get_block_dag_info(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
         if let Ok(gdbi) = rpc.get_block_dag_info().await {
             let mut data = self.data.lock().unwrap();
             let data = data.as_mut().unwrap();
@@ -168,10 +169,9 @@ impl Metrics {
         Ok(())
     }
 
-    async fn sample_cpi(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
-        if let Ok(_cpi) = rpc.get_connected_peer_info().await {
-            // let mut data = self.data.lock().unwrap();
-            // - TODO - fold peers into inbound / outbound...
+    async fn sample_connected_peer_info(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
+        if let Ok(cpi) = rpc.get_connected_peer_info().await {
+            self.connected_peer_info.lock().unwrap().replace(Arc::new(cpi.peer_info));
         }
 
         Ok(())

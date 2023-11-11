@@ -3,7 +3,7 @@ use separator::Separatable;
 use serde::{Deserialize, Serialize};
 use workflow_core::enums::Describe;
 
-#[derive(Describe, Debug, Clone, Eq, PartialEq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(Describe, Debug, Clone, Copy, Eq, PartialEq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum Metric {
     // CpuCores is used to normalize CpuUsage metric
     // CpuCores
@@ -58,6 +58,34 @@ impl Metric {
             | Metric::PastMedianTime
             | Metric::VirtualParentHashes
             | Metric::VirtualDaaScore => "kaspa",
+        }
+    }
+
+    pub fn format(&self, f: f64, si: bool) -> String {
+        match self {
+            Metric::CpuUsage => format!("{:1.2}%", f),
+            Metric::ResidentSetSizeBytes => as_mb(f, si),
+            Metric::VirtualMemorySizeBytes => as_mb(f, si),
+            Metric::FdNum => f.separated_string(),
+            Metric::DiskIoReadBytes => as_mb(f, si),
+            Metric::DiskIoWriteBytes => as_mb(f, si),
+            Metric::DiskIoReadPerSec => as_kb(f, si),
+            Metric::DiskIoWritePerSec => as_kb(f, si),
+            // --
+            Metric::BlocksSubmitted => f.separated_string(),
+            Metric::HeaderCount => f.separated_string(),
+            Metric::DepCounts => f.separated_string(),
+            Metric::BodyCounts => f.separated_string(),
+            Metric::TxnCounts => f.separated_string(),
+            Metric::Tps => (((f * 100.0) as u64) as f64 / 100.0).separated_string(),
+            Metric::ChainBlockCounts => f.separated_string(),
+            Metric::MassCounts => f.separated_string(),
+            Metric::BlockCount => f.separated_string(),
+            Metric::TipHashes => f.separated_string(),
+            Metric::Difficulty => f.separated_string(),
+            Metric::PastMedianTime => f.separated_string(),
+            Metric::VirtualParentHashes => f.separated_string(),
+            Metric::VirtualDaaScore => f.separated_string(),
         }
     }
 }
@@ -137,7 +165,7 @@ impl MetricsSnapshot {
     pub fn get(&self, metric: &Metric) -> f64 {
         match metric {
             // CpuCores
-            Metric::CpuUsage => self.cpu_usage / self.cpu_cores,
+            Metric::CpuUsage => self.cpu_usage, // / self.cpu_cores,
             Metric::ResidentSetSizeBytes => self.resident_set_size_bytes,
             Metric::VirtualMemorySizeBytes => self.virtual_memory_size_bytes,
             Metric::FdNum => self.fd_num,
@@ -166,7 +194,7 @@ impl MetricsSnapshot {
 
     pub fn format(&self, metric: &Metric, si: bool) -> String {
         match metric {
-            Metric::CpuUsage => format!("CPU: {:1.2}%", self.cpu_usage / self.cpu_cores * 100.0),
+            Metric::CpuUsage => format!("CPU: {:1.2}%", self.cpu_usage),
             Metric::ResidentSetSizeBytes => {
                 // workflow_log::log_info!("Resident Memory: {}", self.resident_set_size_bytes);
                 format!("Resident Memory: {}", as_mb(self.resident_set_size_bytes, si))
@@ -208,7 +236,7 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             unixtime: b.unixtime,
             duration,
             // ---
-            cpu_usage: b.cpu_usage,
+            cpu_usage: b.cpu_usage / b.cpu_cores as f64 * 100.0,
             cpu_cores: b.cpu_cores as f64,
             resident_set_size_bytes: b.resident_set_size_bytes as f64,
             virtual_memory_size_bytes: b.virtual_memory_size_bytes as f64,

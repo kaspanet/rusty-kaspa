@@ -9,6 +9,8 @@ use separator::Separatable;
 use serde::{Deserialize, Serialize};
 use workflow_log::style;
 
+pub use kaspa_consensus_core::tx::TransactionId;
+
 const TRANSACTION_VERSION: u16 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Eq, PartialEq)]
@@ -168,19 +170,19 @@ impl TransactionData {
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct TransactionRecord {
-    version: u16,
-    id: TransactionId,
+    pub version: u16,
+    pub id: TransactionId,
     #[serde(skip_serializing_if = "Option::is_none")]
-    unixtime: Option<u64>,
-    binding: Binding,
+    pub unixtime: Option<u64>,
+    pub binding: Binding,
     #[serde(rename = "blockDaaScore")]
-    block_daa_score: u64,
+    pub block_daa_score: u64,
     #[serde(rename = "network")]
-    network_id: NetworkId,
+    pub network_id: NetworkId,
     #[serde(rename = "data")]
-    transaction_data: TransactionData,
+    pub transaction_data: TransactionData,
     #[serde(skip_serializing_if = "Option::is_none")]
-    metadata: Option<TransactionMetadata>,
+    pub metadata: Option<TransactionMetadata>,
 }
 
 impl TransactionRecord {
@@ -212,6 +214,24 @@ impl TransactionRecord {
         match &self.transaction_data {
             TransactionData::Incoming { utxo_entries, .. } => utxo_entries.iter().any(|entry| entry.is_coinbase),
             _ => false,
+        }
+    }
+
+    pub fn transaction_data(&self) -> &TransactionData {
+        &self.transaction_data
+    }
+
+    pub fn maturity_progress(&self, current_daa_score: u64) -> Option<f64> {
+        let maturity = if self.is_coinbase() {
+            crate::utxo::UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst)
+        } else {
+            crate::utxo::UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst)
+        };
+
+        if current_daa_score < self.block_daa_score + maturity {
+            Some((current_daa_score - self.block_daa_score) as f64 / maturity as f64)
+        } else {
+            None
         }
     }
 }

@@ -66,7 +66,7 @@ impl Wallet {
 
                 let (secret, _) = ctx.ask_wallet_secret(None).await?;
                 let _ = ctx.notifier().show(Notification::Processing).await;
-                ctx.wallet().open_and_activate(secret, name).await?;
+                ctx.wallet().open(secret, name, true).await?;
                 // ctx.wallet().open(secret, name).await?;
             }
             "close" => {

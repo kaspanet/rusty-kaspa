@@ -339,7 +339,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
             }
 
             transaction.try_sign()?;
-            transaction.log().await?;
             let id = transaction.try_submit(&self.wallet().rpc_api()).await?;
             ids.push(id);
             yield_executor().await;
@@ -373,7 +372,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
             }
 
             transaction.try_sign()?;
-            transaction.log().await?;
             let id = transaction.try_submit(&self.wallet().rpc_api()).await?;
             ids.push(id);
             yield_executor().await;
@@ -395,7 +393,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
         let mut stream = generator.stream();
         while let Some(_transaction) = stream.try_next().await? {
-            _transaction.log().await?;
             yield_executor().await;
         }
 
@@ -406,21 +403,23 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Err(Error::AccountAddressDerivationCaps)
     }
 
-    async fn initialize_private_data(
-        self: Arc<Self>,
-        _secret: Secret,
-        _payment_secret: Option<&Secret>,
-        _index: Option<u32>,
-    ) -> Result<()> {
-        Ok(())
-    }
-
-    async fn clear_private_data(self: Arc<Self>) -> Result<()> {
-        Ok(())
+    fn as_legacy_account(self: Arc<Self>) -> Result<Arc<dyn AsLegacyAccount>> {
+        Err(Error::InvalidAccountKind)
     }
 }
 
 downcast_sync!(dyn Account);
+
+#[async_trait]
+pub trait AsLegacyAccount: Account {
+    async fn initialize_private_context(&self, _secret: Secret, _payment_secret: Option<&Secret>, _index: Option<u32>) -> Result<()> {
+        Ok(())
+    }
+
+    async fn clear_private_context(&self) -> Result<()> {
+        Ok(())
+    }
+}
 
 #[async_trait]
 pub trait DerivationCapableAccount: Account {
@@ -441,7 +440,9 @@ pub trait DerivationCapableAccount: Account {
         abortable: &Abortable,
         notifier: Option<ScanNotifier>,
     ) -> Result<()> {
-        self.clone().initialize_private_data(wallet_secret.clone(), payment_secret.as_ref(), None).await?;
+        if let Ok(legacy_account) = self.clone().as_legacy_account() {
+            legacy_account.initialize_private_context(wallet_secret.clone(), payment_secret.as_ref(), None).await?;
+        }
 
         let derivation = self.derivation();
 
@@ -544,7 +545,9 @@ pub trait DerivationCapableAccount: Account {
             }
         }
 
-        self.clone().clear_private_data().await?;
+        if let Ok(legacy_account) = self.as_legacy_account() {
+            legacy_account.clear_private_context().await?;
+        }
 
         Ok(())
     }
