@@ -589,10 +589,11 @@ impl ConsensusApi for Consensus {
         self.headers_selected_tip_store.read().get().unwrap().hash
     }
 
-    fn get_anticone_from_pov(&self, hash: Hash, context: Hash, max_traversal_allowed: Option<u64>) -> ConsensusResult<Vec<Hash>> {
+    fn get_antipast_from_pov(&self, hash: Hash, context: Hash, max_traversal_allowed: Option<u64>) -> ConsensusResult<Vec<Hash>> {
         let _guard = self.pruning_lock.blocking_read();
         self.validate_block_exists(hash)?;
-        Ok(self.services.dag_traversal_manager.anticone(hash, std::iter::once(context), max_traversal_allowed)?)
+        self.validate_block_exists(context)?;
+        Ok(self.services.dag_traversal_manager.antipast(hash, std::iter::once(context), max_traversal_allowed)?)
     }
 
     fn get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {

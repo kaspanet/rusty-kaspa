@@ -42,10 +42,12 @@ impl HandleAnticoneRequests {
             let consensus = self.ctx.consensus();
             let session = consensus.session().await;
 
-            // get_anticone_from_pov is expected to be called by the syncee for getting the anticone of the header selected tip
-            // intersected by past of the relayed block, and is thus expected to be bounded by mergeset limit since
-            // we relay blocks only if they enter virtual's mergeset. We add a 2 factor for possible sync gaps.
-            let hashes = session.async_get_anticone_from_pov(block, context, Some(self.ctx.config.mergeset_size_limit * 2)).await?;
+            // `RequestAnticone` is expected to be called by the syncee for getting the antipast of `sink`
+            // intersected by past of the relayed block. We do not expect the relay block to be too much after
+            // the sink (in fact usually it should be in its past or anticone), hence we bound the expected traversal to be
+            // in the order of `mergeset_size_limit`. Note that `RequestAnticone` is a legacy name but in fact
+            // we return the full antipast of `block`
+            let hashes = session.async_get_antipast_from_pov(block, context, Some(self.ctx.config.mergeset_size_limit * 2)).await?;
             let mut headers = session
                 .spawn_blocking(|c| hashes.into_iter().map(|h| c.get_header(h)).collect::<Result<Vec<_>, ConsensusError>>())
                 .await?;

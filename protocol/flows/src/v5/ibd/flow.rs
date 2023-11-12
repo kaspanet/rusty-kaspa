@@ -385,8 +385,9 @@ impl IbdFlow {
             return Ok(());
         }
 
-        // Send a special header request for the selected tip anticone. This is expected to
-        // be a small set, as it is bounded to the size of virtual's mergeset.
+        // Send a special header request for the sink antipast. This is expected to
+        // be a relatively small set since virtual and relay blocks should be close topologically.
+        // See server-side handling of `RequestAnticone` for further details.
         self.router
             .enqueue(make_message!(
                 Payload::RequestAnticone,
