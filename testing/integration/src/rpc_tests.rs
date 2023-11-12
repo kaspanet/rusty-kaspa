@@ -1,6 +1,6 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc, time::Duration};
 
-use crate::common::daemon::Daemon;
+use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
@@ -11,11 +11,11 @@ use kaspa_hashes::Hash;
 use kaspa_notify::{
     connection::{ChannelConnection, ChannelType},
     scope::{
-        BlockAddedScope, FinalityConflictScope, NewBlockTemplateScope, PruningPointUtxoSetOverrideScope, SinkBlueScoreChangedScope,
-        UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope,
+        BlockAddedScope, FinalityConflictScope, NewBlockTemplateScope, PruningPointUtxoSetOverrideScope, Scope,
+        SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope,
     },
 };
-use kaspa_rpc_core::{api::rpc::RpcApi, model::*};
+use kaspa_rpc_core::{api::rpc::RpcApi, model::*, Notification};
 use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
 use kaspad_lib::args::Args;
 use tokio::task::JoinHandle;
@@ -68,6 +68,14 @@ async fn sanity_test() {
             KaspadPayloadOps::SubmitBlock => {
                 let rpc_client = client.clone();
                 tst!(op, {
+                    // Register to basic virtual events in order to keep track of block submission
+                    let (sender, event_receiver) = async_channel::unbounded();
+                    rpc_client.start(Some(Arc::new(ChannelNotify { sender }))).await;
+                    rpc_client
+                        .start_notify(Default::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {}))
+                        .await
+                        .unwrap();
+
                     // Before submitting a first block, the sink is the genesis,
                     let response = rpc_client.get_sink_call(GetSinkRequest {}).await.unwrap();
                     assert_eq!(response.sink, SIMNET_GENESIS.hash);
@@ -102,6 +110,23 @@ async fn sanity_test() {
                     // Submit the template (no mining, in simnet PoW is skipped)
                     let response = rpc_client.submit_block(block.clone(), false).await.unwrap();
                     assert_eq!(response.report, SubmitBlockReport::Success);
+
+                    // Wait for virtual event indicating the block was processed and entered past(virtual)
+                    while let Ok(notification) = match tokio::time::timeout(Duration::from_secs(1), event_receiver.recv()).await {
+                        Ok(res) => res,
+                        Err(elapsed) => panic!("expected virtual event before {}", elapsed),
+                    } {
+                        match notification {
+                            Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score == 1 => {
+                                break;
+                            }
+                            Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score > 1 => {
+                                panic!("DAA score too high for number of submitted blocks")
+                            }
+                            Notification::VirtualDaaScoreChanged(_) => {}
+                            _ => {}
+                        }
+                    }
 
                     // After submitting a first block, the sink is the submitted block,
                     let response = rpc_client.get_sink_call(GetSinkRequest {}).await.unwrap();

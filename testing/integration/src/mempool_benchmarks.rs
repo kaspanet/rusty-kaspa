@@ -1,5 +1,4 @@
-use crate::common::{self, daemon::Daemon};
-use async_channel::Sender;
+use crate::common::{self, client_notify::ChannelNotify, daemon::Daemon, utils::CONTRACT_FACTOR};
 use futures_util::future::join_all;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
@@ -7,7 +6,6 @@ use kaspa_consensus_core::{constants::SOMPI_PER_KASPA, network::NetworkType, tx:
 use kaspa_core::{debug, info};
 use kaspa_notify::{
     listener::ListenerId,
-    notifier::Notify,
     scope::{NewBlockTemplateScope, Scope},
 };
 use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcError};
@@ -19,7 +17,6 @@ use rand::thread_rng;
 use rand_distr::{Distribution, Exp};
 use std::{
     cmp::max,
-    fmt::Debug,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -27,20 +24,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::join;
-
-#[derive(Debug)]
-struct ChannelNotify {
-    sender: Sender<Notification>,
-}
-
-impl Notify<Notification> for ChannelNotify {
-    fn notify(&self, notification: Notification) -> kaspa_notify::error::Result<()> {
-        self.sender.try_send(notification)?;
-        Ok(())
-    }
-}
-
-const CONTRACT_FACTOR: u64 = 1;
 
 /// Run this benchmark with the following command line:
 /// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- mempool_benchmarks::bench_bbt_latency --exact --nocapture --ignored`
