@@ -251,27 +251,27 @@ nw-sys = "0.1.6"
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs
 # into a sibling folder from https://github.com/workflow-rs/workflow-rs
-# workflow-d3 = { path = "../workflow-rs/d3" }
-# workflow-nw = { path = "../workflow-rs/nw" }
-# workflow-log = { path = "../workflow-rs/log" }
-# workflow-core = { path = "../workflow-rs/core" }
-# workflow-wasm = { path = "../workflow-rs/wasm" }
-# workflow-dom = { path = "../workflow-rs/dom" }
-# workflow-rpc = { path = "../workflow-rs/rpc" }
-# workflow-node = { path = "../workflow-rs/node" }
-# workflow-store = { path = "../workflow-rs/store" }
-# workflow-terminal = { path = "../workflow-rs/terminal" }
+workflow-d3 = { path = "../workflow-rs/d3" }
+workflow-nw = { path = "../workflow-rs/nw" }
+workflow-log = { path = "../workflow-rs/log" }
+workflow-core = { path = "../workflow-rs/core" }
+workflow-wasm = { path = "../workflow-rs/wasm" }
+workflow-dom = { path = "../workflow-rs/dom" }
+workflow-rpc = { path = "../workflow-rs/rpc" }
+workflow-node = { path = "../workflow-rs/node" }
+workflow-store = { path = "../workflow-rs/store" }
+workflow-terminal = { path = "../workflow-rs/terminal" }
 # ---
-workflow-d3 = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-workflow-nw = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-workflow-log = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-workflow-core = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-workflow-wasm = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-workflow-dom = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-workflow-rpc = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-workflow-node = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-workflow-store = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-workflow-terminal = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-d3 = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-nw = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-log = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-core = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-wasm = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-dom = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-rpc = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-node = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-store = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-terminal = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # https://github.com/aspectron/nw-sys
 # nw-sys = { path = "../nw-sys" }
 
