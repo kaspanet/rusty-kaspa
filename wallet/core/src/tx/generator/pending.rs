@@ -24,7 +24,7 @@ pub(crate) struct PendingTransactionInner {
     /// UTXO addresses used by this transaction
     pub(crate) addresses: Vec<Address>,
     /// Whether the transaction has been committed to the mempool via RPC
-    pub(crate) is_committed: AtomicBool,
+    pub(crate) is_submitted: AtomicBool,
     /// Payment value of the transaction (transaction destination amount)
     pub(crate) payment_value: Option<u64>,
     /// Change value of the transaction (transaction change amount)
@@ -89,7 +89,7 @@ impl PendingTransaction {
                 signable_tx,
                 utxo_entries,
                 addresses,
-                is_committed: AtomicBool::new(false),
+                is_submitted: AtomicBool::new(false),
                 payment_value,
                 change_output_value,
                 aggregate_input_value,
@@ -143,17 +143,6 @@ impl PendingTransaction {
         !self.inner.kind.is_final()
     }
 
-    async fn commit(&self) -> Result<()> {
-        self.inner.is_committed.load(Ordering::SeqCst).then(|| {
-            panic!("PendingTransaction::commit() called multiple times");
-        });
-        self.inner.is_committed.store(true, Ordering::SeqCst);
-        if let Some(utxo_context) = self.inner.generator.utxo_context() {
-            utxo_context.handle_outgoing_transaction(self).await?;
-        }
-        Ok(())
-    }
-
     pub fn network_type(&self) -> NetworkType {
         self.inner.generator.network_type()
     }
@@ -168,9 +157,39 @@ impl PendingTransaction {
 
     /// Submit the transaction on the supplied rpc
     pub async fn try_submit(&self, rpc: &Arc<DynRpcApi>) -> Result<RpcTransactionId> {
-        self.commit().await?; // commit transactions only if we are submitting
+        // sanity check to prevent multiple invocations (for API use)
+        self.inner.is_submitted.load(Ordering::SeqCst).then(|| {
+            panic!("PendingTransaction::try_submit() called multiple times");
+        });
+        self.inner.is_submitted.store(true, Ordering::SeqCst);
+
         let rpc_transaction: RpcTransaction = self.rpc_transaction();
-        Ok(rpc.submit_transaction(rpc_transaction, false).await?)
+
+        // if we are running under UtxoProcessor
+        if let Some(utxo_context) = self.inner.generator.utxo_context() {
+            // lock UtxoProcessor notification ingest
+            let _lock = utxo_context.processor().notification_lock().await;
+
+            // register pending UTXOs with UtxoProcessor
+            utxo_context.register_outgoing_transaction(self).await?;
+
+            // try to submit transaction
+            match rpc.submit_transaction(rpc_transaction, false).await {
+                Ok(id) => {
+                    // on successful submit, create a notification
+                    utxo_context.notify_outgoing_transaction(self).await?;
+                    Ok(id)
+                }
+                Err(error) => {
+                    // in case of failure, remove transaction UTXOs from the consumed list
+                    utxo_context.cancel_outgoing_transaction(self).await?;
+                    Err(error.into())
+                }
+            }
+        } else {
+            // No UtxoProcessor present (API etc)
+            Ok(rpc.submit_transaction(rpc_transaction, false).await?)
+        }
     }
 
     pub async fn log(&self) -> Result<()> {

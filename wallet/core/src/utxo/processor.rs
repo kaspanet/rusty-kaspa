@@ -15,6 +15,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::utxo::{PendingUtxoEntryReference, UtxoContext, UtxoEntryId, UtxoEntryReference};
 use crate::{events::Events, runtime::SyncMonitor};
+use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
     Notification,
@@ -41,6 +42,7 @@ pub struct Inner {
     notification_channel: Channel<Notification>,
     sync_proc: SyncMonitor,
     multiplexer: Multiplexer<Box<Events>>,
+    notification_lock: AsyncMutex<()>,
 }
 
 impl Inner {
@@ -59,6 +61,7 @@ impl Inner {
             notification_channel: Channel::<Notification>::unbounded(),
             sync_proc: SyncMonitor::new(rpc.clone(), &multiplexer),
             multiplexer,
+            notification_lock: AsyncMutex::new(()),
         }
     }
 }
@@ -102,6 +105,10 @@ impl UtxoProcessor {
 
     pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
         &self.inner.multiplexer
+    }
+
+    pub async fn notification_lock(&self) -> AsyncMutexGuard<()> {
+        self.inner.notification_lock.lock().await
     }
 
     pub fn sync_proc(&self) -> &SyncMonitor {
@@ -381,6 +388,9 @@ impl UtxoProcessor {
 
     async fn handle_notification(&self, notification: Notification) -> Result<()> {
         // log_info!("handling notification: {:?}", notification);
+        println!("handling notification: {:?}", notification);
+
+        let _lock = self.notification_lock().await;
 
         match notification {
             Notification::VirtualDaaScoreChanged(virtual_daa_score_changed_notification) => {
@@ -391,6 +401,7 @@ impl UtxoProcessor {
                 if !self.is_synced() {
                     self.sync_proc().track(true).await?;
                 }
+                log_info!("UtxoProcessor: handling utxo changed notification: {:?}", utxos_changed_notification);
 
                 self.handle_utxo_changed(utxos_changed_notification).await?;
             }

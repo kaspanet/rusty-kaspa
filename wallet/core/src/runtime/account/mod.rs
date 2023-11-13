@@ -334,13 +334,12 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let mut stream = generator.stream();
         let mut ids = vec![];
         while let Some(transaction) = stream.try_next().await? {
+            transaction.try_sign()?;
+            ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
+
             if let Some(notifier) = notifier.as_ref() {
                 notifier(&transaction);
             }
-
-            transaction.try_sign()?;
-            let id = transaction.try_submit(&self.wallet().rpc_api()).await?;
-            ids.push(id);
             yield_executor().await;
         }
 
@@ -367,13 +366,12 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let mut stream = generator.stream();
         let mut ids = vec![];
         while let Some(transaction) = stream.try_next().await? {
+            transaction.try_sign()?;
+            ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
+
             if let Some(notifier) = notifier.as_ref() {
                 notifier(&transaction);
             }
-
-            transaction.try_sign()?;
-            let id = transaction.try_submit(&self.wallet().rpc_api()).await?;
-            ids.push(id);
             yield_executor().await;
         }
 

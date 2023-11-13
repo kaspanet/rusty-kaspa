@@ -251,7 +251,7 @@ impl UtxoContext {
 
     /// Process pending transaction. Remove mature UTXO entries and add them to the consumed set.
     /// Produces a notification on the even multiplexer.
-    pub(crate) async fn handle_outgoing_transaction(&self, pending_tx: &PendingTransaction) -> Result<()> {
+    pub(crate) async fn register_outgoing_transaction(&self, pending_tx: &PendingTransaction) -> Result<()> {
         {
             let mut context = self.context();
             let pending_utxo_entries = pending_tx.utxo_entries();
@@ -265,25 +265,26 @@ impl UtxoContext {
             context.outgoing.insert(pending_tx.id(), pending_tx.clone());
         }
 
-        let processor = self.processor();
-        processor.register_recoverable_context(self);
-        let record = TransactionRecord::new_outgoing(self, pending_tx);
-        processor.notify(Events::Outgoing { record }).await?;
+        self.processor().register_recoverable_context(self);
 
         Ok(())
     }
 
-    /// Removes entries from mature utxo set and adds them to the consumed utxo set.
-    /// NOTE: This method does not issue a notification on the event multiplexer.
-    /// This has been replaced with `handle_outgoing_transaction`, pending decision
-    /// on removal.
-    #[allow(dead_code)]
-    pub(crate) async fn consume(&self, entries: &[UtxoEntryReference]) -> Result<()> {
+    pub(crate) async fn notify_outgoing_transaction(&self, pending_tx: &PendingTransaction) -> Result<()> {
+        let record = TransactionRecord::new_outgoing(self, pending_tx);
+        self.processor().notify(Events::Outgoing { record }).await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn cancel_outgoing_transaction(&self, pending_tx: &PendingTransaction) -> Result<()> {
         let mut context = self.context();
-        context.mature.retain(|entry| !entries.contains(entry));
-        let timeout = Instant::now().checked_add(context.recovery_period).unwrap();
-        entries.iter().for_each(|entry| {
-            context.consumed.insert(entry.id().clone(), (entry, &timeout).into());
+        let pending_utxo_entries = pending_tx.utxo_entries();
+
+        context.outgoing.retain(|id, _| id != &pending_tx.id());
+        context.consumed.retain(|_, consumed| !pending_utxo_entries.contains(&consumed.entry));
+        pending_utxo_entries.iter().for_each(|entry| {
+            context.mature.push(entry.clone());
         });
 
         Ok(())
