@@ -6,6 +6,7 @@ use std::{
 
 pub mod client_pool;
 pub mod daemon;
+pub mod listener;
 pub mod utils;
 
 pub fn open_file(file_path: &Path) -> File {

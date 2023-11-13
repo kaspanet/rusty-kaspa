@@ -82,6 +82,19 @@ impl Daemon {
             .unwrap()
     }
 
+    pub async fn new_multi_listener_client(&self) -> GrpcClient {
+        GrpcClient::connect(
+            NotificationMode::MultiListeners,
+            format!("grpc://localhost:{}", self.rpc_port),
+            true,
+            None,
+            false,
+            Some(500_000),
+        )
+        .await
+        .unwrap()
+    }
+
     pub async fn new_client_pool<T: Send + 'static, F, R>(
         &self,
         pool_size: usize,

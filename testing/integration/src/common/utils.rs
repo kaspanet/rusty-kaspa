@@ -14,17 +14,19 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use secp256k1::KeyPair;
 use std::{
     collections::{hash_map::Entry::Occupied, HashMap, HashSet},
+    future::Future,
     sync::Arc,
+    time::Duration,
 };
 
 const EXPAND_FACTOR: u64 = 1;
 const CONTRACT_FACTOR: u64 = 1;
 
-fn estimated_mass(num_inputs: usize, num_outputs: u64) -> u64 {
+const fn estimated_mass(num_inputs: usize, num_outputs: u64) -> u64 {
     200 + 34 * num_outputs + 1000 * (num_inputs as u64)
 }
 
-fn required_fee(num_inputs: usize, num_outputs: u64) -> u64 {
+pub const fn required_fee(num_inputs: usize, num_outputs: u64) -> u64 {
     const FEE_PER_MASS: u64 = 10;
     FEE_PER_MASS * estimated_mass(num_inputs, num_outputs)
 }
@@ -103,5 +105,21 @@ pub fn verify_tx_dag(initial_utxoset: &UtxoCollection, txs: &Vec<Arc<Transaction
             }
         }
         assert!(prev_txs.insert(tx.id(), tx.clone()).is_none());
+    }
+}
+
+pub async fn wait_for<Fut>(sleep_millis: u64, max_iterations: u64, success: impl Fn() -> Fut, panic_message: &'static str)
+where
+    Fut: Future<Output = bool>,
+{
+    let mut i: u64 = 0;
+    loop {
+        i += 1;
+        tokio::time::sleep(Duration::from_millis(sleep_millis)).await;
+        if success().await {
+            break;
+        } else if i >= max_iterations {
+            panic!("{}", panic_message);
+        }
     }
 }
