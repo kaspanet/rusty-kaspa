@@ -9,108 +9,199 @@ This repository contains the implementation of the Kaspa full-node and related l
 ## Table of contents
 #### 1. Getting Started 
   - [Linux](#on-linux) 
-  - [Windows](#on-linux) 
-  - [Linux](#on-linux) 
+  - [Windows](#on-windows) 
+  - [Mac](#on-mac-os) 
+#### 2. Execution
+  - [Running the node](#running-the-node)
+  - [Enabling wRPC](#enabling-wrpc) 
+  - [Mining](#running-the-node) 
+#### 3. Miscellaneous
+
 
 ## Getting started
   ### On Linux
 
-  Install  general prerequisites
-  ```
-  sudo apt install build-essential libssl-dev pkg-config 
-  ```
-  Install Protobuf (required for gRPC)
-  ```
-  sudo apt install protobuf-compiler libprotobuf-dev #Required for gRPC
-  ```
-  Install the clang toolchain (required for RocksDB and WASM secp256k1 builds)
-  ```
-  apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang
-  ```
+  1. Install  general prerequisites
 
-  ### Windows
+      ```
+      sudo apt install build-essential libssl-dev pkg-config 
+      ```
 
-  [Install Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
-
-  Install [Protocol Buffers](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add the `bin` directory to your `Path`
-
-  ### Mac OS
-  Install Protobuf (required for gRPC)
-  ```
-  brew install protobuf
-  ```
+  2. Install Protobuf (required for gRPC)
   
+      ```
+      sudo apt install protobuf-compiler libprotobuf-dev #Required for gRPC
+      ```
+  3. Install the clang toolchain (required for RocksDB and WASM secp256k1 builds)
 
-- Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB and WASM `secp256k1` builds)
-  - Linux: ``
-  - Windows: Please see [Installing clang toolchain on Windows](#installing-clang-toolchain-on-windows)
-  - MacOS: 
-  Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
-- Install the [rust toolchain](https://rustup.rs/)
-- If you already have rust installed, update it by running: `rustup update`
-- Install wasm-pack: `cargo install wasm-pack`
-- Install wasm32 target: `rustup target add wasm32-unknown-unknown`
-- Run the following commands:
+      ```
+      apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang
+      ```
+  3. Install the [rust toolchain](https://rustup.rs/)
+     
+     If you already have rust installed, update it by running: `rustup update` 
+  4. Install wasm-pack
+      ```
+      cargo install wasm-pack
+      ```
+  4. Install wasm32 target
+      ```
+      rustup target add wasm32-unknown-unknown
+      ```      
+  5. Clone the repo
+      ```
+      git clone https://github.com/kaspanet/rusty-kaspa
+      cd rusty-kaspa
+      ```
+  ### On Windows
 
-```bash
-$ git clone https://github.com/kaspanet/rusty-kaspa
-$ cd rusty-kaspa
-```
+  1. [Install Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
+
+  2. Install [Protocol Buffers](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add the `bin` directory to your `Path`
+
+  
+3. Install [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe)
+
+    Add the `bin` directory of the LLVM installation (`C:\Program Files\LLVM\bin`) to PATH
+    
+    set `LIBCLANG_PATH` environment variable to point to the `bin` directory as well
+
+    **IMPORTANT:** Due to C++ dependency configuration issues, LLVM `AR` installation on Windows may not function correctly when switching between WASM and native C++ code compilation (native `RocksDB+secp256k1` vs WASM32 builds of `secp256k1`). Unfortunately, manually setting `AR` environment variable also confuses C++ build toolchain (it should not be set for native but should be set for WASM32 targets). Currently, the best way to address this, is as follows: after installing LLVM on Windows, go to the target `bin` installation directory and copy or rename `LLVM_AR.exe` to `AR.exe`.
+  
+  4. Install the [rust toolchain](https://rustup.rs/)
+     
+     If you already have rust installed, update it by running: `rustup update` 
+  5. Install wasm-pack
+      ```
+      cargo install wasm-pack
+      ```
+  6. Install wasm32 target
+      ```
+      rustup target add wasm32-unknown-unknown
+      ```      
+  7. Clone the repo
+      ```
+      git clone https://github.com/kaspanet/rusty-kaspa
+      cd rusty-kaspa
+      ```
+  ### On Mac OS
+  1. Install Protobuf (required for gRPC)
+      ```
+      brew install protobuf
+      ```
+  2. Install llvm. 
+  
+      The default XCode installation of `llvm` does not support WASM build targets.
+To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing, the llvm version for MacOS is 16.0.1).
+      ```bash
+      brew install llvm
+      ```
+
+      **NOTE:** Homebrew can use different keg installation locations depending on your configuration. For example:
+      - `/opt/homebrew/opt/llvm` -> `/opt/homebrew/Cellar/llvm/16.0.1`
+      - `/usr/local/Cellar/llvm/16.0.1`
+
+      To determine the installation location you can use `brew list llvm` command and then modify the paths below accordingly:
+      ```bash
+      % brew list llvm
+      /usr/local/Cellar/llvm/16.0.1/bin/FileCheck
+      /usr/local/Cellar/llvm/16.0.1/bin/UnicodeNameMappingGenerator
+      ...
+      ```
+      If you have `/opt/homebrew/Cellar`, then you should be able to use `/opt/homebrew/opt/llvm`.
+
+      Add the following to your `~/.zshrc` file:
+      ```bash
+      export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+      export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
+      export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+      export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
+      ```
+
+      Reload the `~/.zshrc` file
+      ```bash
+      source ~/.zshrc
+      ```
+  3. Install the [rust toolchain](https://rustup.rs/)
+     
+     If you already have rust installed, update it by running: `rustup update` 
+  4. Install wasm-pack
+      ```
+      cargo install wasm-pack
+      ```
+  4. Install wasm32 target
+      ```
+      rustup target add wasm32-unknown-unknown
+      ```      
+  5. Clone the repo
+      ```
+      git clone https://github.com/kaspanet/rusty-kaspa
+      cd rusty-kaspa
+      ```
+
+
 
 ## Running the node
 
-Run the node through the following command:
+  Start a mainnet node
+
+  ```bash
+  cargo run --release --bin kaspad
+  ```
+
+Start a testnet node
 
 ```bash
-$ cargo run --release --bin kaspad
-```
-
-And if you want to setup a test node, run the following command instead:
-
-```bash
-$ cargo run --release --bin kaspad -- --testnet
+cargo run --release --bin kaspad -- --testnet
 ```
 
 ## Mining
 Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions:
 
-- Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
+1. Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
 
-- In a separate terminal run the kaspanet/kaspad miner:
+2. In a separate terminal run the kaspanet/kaspad miner:
 
-```bash
-$ kaspaminer --testnet --miningaddr kaspatest:qrcqat6l9zcjsu7swnaztqzrv0s7hu04skpaezxk43y4etj8ncwfk308jlcew
-```
+    ```
+    kaspaminer --testnet --miningaddr kaspatest:qrcqat6l9zcjsu7swnaztqzrv0s7hu04skpaezxk43y4etj8ncwfk308jlcew
+    ```
 
-- This will create and feed a DAG with the miner getting block templates from the node and submitting them back when mined. The node processes and stores the blocks while applying all currently implemented logic. Execution can be stopped and resumed, the data is persisted in a database.
+    This will create and feed a DAG with the miner getting block templates from the node and submitting them back when mined. The node processes and stores the blocks while applying all currently implemented logic. Execution can be stopped and resumed, the data is persisted in a database.
 
-- You can replace the above mining address with your own address by creating one as described [here](https://github.com/kaspanet/docs/blob/main/Getting%20Started/Full%20Node%20Installation.md#creating-a-wallet-optional). 
+    You can replace the above mining address with your own address by creating one as described [here](https://github.com/kaspanet/docs/blob/main/Getting%20Started/Full%20Node%20Installation.md#creating-a-wallet-optional). 
 
 ## Simulation framework (Simpa)
 
-Additionally, the current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation). Execute 
+The current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation). 
+
+To see the available commands
 ```bash 
 cargo run --release --bin simpa -- --help
 ``` 
-to see the full command line configuration supported by `simpa`. For instance, the following command will run a simulation producing 1000 blocks with communication delay of 2 seconds and BPS=8, and attempts to fill each block with up to 200 transactions.   
+
+The following command will run a simulation to produce 1000 blocks with communication delay of 2 seconds and 8 BPS (blocks per second) while attempting to fill each block with up to 200 transactions.   
 
 ```bash
-$ cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
+cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
 ```
 
 ## Logging
 
-Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) either by defining the environment variable `RUST_LOG` and/or by adding a `--loglevel` argument to the command, ie.:
+Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
 
-```bash
-$ (cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace) 2>&1 | tee ~/rusty-kaspa.log
-```
+1. Defining the environment variable `RUST_LOG`
+2. Adding the --loglevel argument like in the following example:
+
+    ```
+    (cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace) 2>&1 | tee ~/rusty-kaspa.log
+    ```
+    In this command we set the `loglevel` to `INFO`.
 
 ## Heap-profiling
-Heap-profiling in `kaspad` and `simpa` can be done by enabling `heap` feature and profile, ie.:
+Heap-profiling in `kaspad` and `simpa` can be done by enabling `heap` feature and profile using the `--features` argument
 
 ```bash
-$ cargo run --bin kaspad --profile heap --features=heap
+cargo run --bin kaspad --profile heap --features=heap
 ```
 
 It will produce `{bin-name}-heap.json` file in the root of the workdir, that can be inspected by the [dhat-viewer](https://github.com/unofficial-mirror/valgrind/tree/master/dhat)
@@ -143,59 +234,21 @@ cd wasm
 ```
 This will produce a wasm library in `/web-root` directory
 
-## Installing clang toolchain on Windows
-
-Install [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe)
-
-Once LLVM is installed:
-- Add the `bin` directory of the LLVM installation (`C:\Program Files\LLVM\bin`) to PATH
-- set `LIBCLANG_PATH` environment variable to point to the `bin` directory as well
-
-**IMPORTANT:** Due to C++ dependency configuration issues, LLVM `AR` installation on Windows may not function correctly when switching between WASM and native C++ code compilation (native `RocksDB+secp256k1` vs WASM32 builds of `secp256k1`). Unfortunately, manually setting `AR` environment variable also confuses C++ build toolchain (it should not be set for native but should be set for WASM32 targets). Currently, the best way to address this, is as follows: after installing LLVM on Windows, go to the target `bin` installation directory and copy or rename `LLVM_AR.exe` to `AR.exe`.
-
-
-## Installing clang toolchain on MacOS
-
-The default XCode installation of `llvm` does not support WASM build targets.
-To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing, the llvm version for MacOS is 16.0.1).
-
-```bash
-brew install llvm
-```
-**NOTE:** Homebrew can use different keg installation locations depending on your configuration. For example:
-- `/opt/homebrew/opt/llvm` -> `/opt/homebrew/Cellar/llvm/16.0.1`
-- `/usr/local/Cellar/llvm/16.0.1`
-
-To determine the installation location you can use `brew list llvm` command and then modify the paths below accordingly:
-```bash
-% brew list llvm
-/usr/local/Cellar/llvm/16.0.1/bin/FileCheck
-/usr/local/Cellar/llvm/16.0.1/bin/UnicodeNameMappingGenerator
-...
-```
-If you have `/opt/homebrew/Cellar`, then you should be able to use `/opt/homebrew/opt/llvm`.
-
-Add the following to your `~/.zshrc` file:
-```bash
-export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
-export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
-export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
-export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
-```
-
-Reload the `~/.zshrc` file
-```bash
-source ~/.zshrc
-```
 
 ## JSON and Borsh RPC protocols
 
 In addition to gRPC, Rusty Kaspa integrates an optional wRPC
 subsystem. wRPC is a high-performance, platform-neutral, Rust-centric, WebSocket-framed RPC 
-implementation that can use Borsh and JSON protocol encoding. JSON protocol messaging 
+implementation that can use Borsh and JSON protocol encoding.
+
+ JSON protocol messaging 
 is similar to JSON-RPC 1.0, but differs from the specification due to server-side 
-notifications. Borsh encoding is meant for inter-process communication. When using Borsh
-both client and server should be built from the same codebase.  JSON protocol is based on 
+notifications.
+
+ Borsh encoding is meant for inter-process communication. When using Borsh
+both client and server should be built from the same codebase.  
+
+JSON protocol is based on 
 Kaspa data structures and is data-structure-version agnostic. You can connect to the
 JSON endpoint using any WebSocket library. Built-in RPC clients for JavaScript and
 TypeScript capable of running in web browsers and Node.js are available as a part of
