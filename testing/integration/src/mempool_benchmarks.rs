@@ -109,7 +109,7 @@ async fn bench_bbt_latency() {
 
     let executing = Arc::new(AtomicBool::new(true));
     let (sender, receiver) = async_channel::unbounded();
-    bbt_client.start(Some(Arc::new(ChannelNotify { sender }))).await;
+    bbt_client.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
     bbt_client.start_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
 
     let submit_block_pool = daemon

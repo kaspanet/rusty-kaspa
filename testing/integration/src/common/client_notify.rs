@@ -4,7 +4,13 @@ use kaspa_rpc_core::Notification;
 
 #[derive(Debug)]
 pub struct ChannelNotify {
-    pub sender: Sender<Notification>,
+    sender: Sender<Notification>,
+}
+
+impl ChannelNotify {
+    pub fn new(sender: Sender<Notification>) -> Self {
+        Self { sender }
+    }
 }
 
 impl Notify<Notification> for ChannelNotify {

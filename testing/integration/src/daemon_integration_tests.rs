@@ -54,7 +54,7 @@ async fn daemon_mining_test() {
     assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
 
     let (sender, event_receiver) = async_channel::unbounded();
-    rpc_client1.start(Some(Arc::new(ChannelNotify { sender }))).await;
+    rpc_client1.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
     rpc_client1.start_notify(Default::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await.unwrap();
 
     // Mine 10 blocks to daemon #1

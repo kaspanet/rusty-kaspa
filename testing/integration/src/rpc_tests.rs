@@ -70,7 +70,7 @@ async fn sanity_test() {
                 tst!(op, {
                     // Register to basic virtual events in order to keep track of block submission
                     let (sender, event_receiver) = async_channel::unbounded();
-                    rpc_client.start(Some(Arc::new(ChannelNotify { sender }))).await;
+                    rpc_client.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
                     rpc_client
                         .start_notify(Default::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {}))
                         .await
