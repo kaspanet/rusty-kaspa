@@ -262,33 +262,6 @@ The *basic-http-server* will serve on port 4000 by default, so open your web bro
 
 The framework is compatible with all major desktop and mobile browsers.
 
-## Simulation framework (Simpa)
-
-The current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation). 
-
-To see the available commands
-```bash 
-cargo run --release --bin simpa -- --help
-``` 
-
-The following command will run a simulation to produce 1000 blocks with communication delay of 2 seconds and 8 BPS (blocks per second) while attempting to fill each block with up to 200 transactions.   
-
-```bash
-cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
-```
-
-## Logging
-
-Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
-
-1. Defining the environment variable `RUST_LOG`
-2. Adding the --loglevel argument like in the following example:
-
-    ```
-    (cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace) 2>&1 | tee ~/rusty-kaspa.log
-    ```
-    In this command we set the `loglevel` to `INFO`.
-
 ## Heap-profiling
 Heap-profiling in `kaspad` and `simpa` can be done by enabling `heap` feature and profile using the `--features` argument
 
@@ -314,6 +287,37 @@ $ cargo nextest run --release
 ```bash
 $ cd rusty-kaspa
 $ cargo bench
+```
+
+
+
+## Logging
+
+Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
+
+1. Defining the environment variable `RUST_LOG`
+2. Adding the --loglevel argument like in the following example:
+
+    ```
+    (cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace) 2>&1 | tee ~/rusty-kaspa.log
+    ```
+    In this command we set the `loglevel` to `INFO`.
+
+
+
+## Simulation framework (Simpa)
+
+The current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation). 
+
+To see the available commands
+```bash 
+cargo run --release --bin simpa -- --help
+``` 
+
+The following command will run a simulation to produce 1000 blocks with communication delay of 2 seconds and 8 BPS (blocks per second) while attempting to fill each block with up to 200 transactions.   
+
+```bash
+cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
 ```
 
 
