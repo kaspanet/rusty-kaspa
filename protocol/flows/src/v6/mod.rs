@@ -9,7 +9,6 @@ use crate::v5::{
     request_ibd_blocks::HandleIbdBlockRequests,
     request_ibd_chain_block_locator::RequestIbdChainBlockLocatorFlow,
     request_pp_proof::RequestPruningPointProofFlow,
-    request_pruning_point_and_anticone::PruningPointAndItsAnticoneRequestsFlow,
     request_pruning_point_utxo_set::RequestPruningPointUtxoSetFlow,
     txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
@@ -18,6 +17,10 @@ use crate::{flow_context::FlowContext, flow_trait::Flow};
 use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
 use kaspa_utils::channel;
 use std::sync::Arc;
+
+use crate::v6::request_pruning_point_and_anticone::PruningPointAndItsAnticoneRequestsFlow;
+
+pub(crate) mod request_pruning_point_and_anticone;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
     // IBD flow <-> invs flow communication uses a job channel in order to always

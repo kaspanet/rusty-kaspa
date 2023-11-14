@@ -267,7 +267,7 @@ impl IbdFlow {
                 .clone()
                 .spawn_blocking(move |c| {
                     let ref_proof = proof.clone();
-                    c.apply_pruning_proof(proof, &trusted_set);
+                    c.apply_pruning_proof(proof, &trusted_set)?;
                     c.import_pruning_points(pruning_points);
 
                     info!("Building the proof which was just applied (sanity test)");
@@ -290,19 +290,21 @@ impl IbdFlow {
                     } else {
                         info!("Proof was locally built successfully");
                     }
-                    trusted_set
+                    Result::<_, ProtocolError>::Ok(trusted_set)
                 })
-                .await;
+                .await?;
         } else {
             trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
-                    c.apply_pruning_proof(proof, &trusted_set);
+                    c.apply_pruning_proof(proof, &trusted_set)?;
                     c.import_pruning_points(pruning_points);
-                    trusted_set
+                    Result::<_, ProtocolError>::Ok(trusted_set)
                 })
-                .await;
+                .await?;
         }
+
+        // TODO: add logs to staging commit process
 
         info!("Starting to process {} trusted blocks", trusted_set.len());
         let mut last_time = Instant::now();

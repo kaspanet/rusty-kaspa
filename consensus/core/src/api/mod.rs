@@ -161,7 +161,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
+    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
         unimplemented!()
     }
 

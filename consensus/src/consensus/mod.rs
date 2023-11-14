@@ -530,7 +530,7 @@ impl ConsensusApi for Consensus {
         self.services.pruning_proof_manager.validate_pruning_point_proof(proof)
     }
 
-    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
+    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
         self.services.pruning_proof_manager.apply_proof(proof, trusted_set)
     }
 
@@ -737,20 +737,12 @@ impl ConsensusApi for Consensus {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
 
-        let mut hashes = Vec::with_capacity(self.config.params.ghostdag_k as usize);
-        let mut current = hash;
-        for _ in 0..=self.config.params.ghostdag_k {
-            hashes.push(current);
-            // TODO: ideally the syncee should validate it got all of the associated data up
-            // to k blocks back and then we would be able to safely unwrap here. For now we
-            // just break the loop, since if the data was truly missing we wouldn't accept
-            // the staging consensus in the first place
-            let Some(parent) = self.ghostdag_primary_store.get_selected_parent(current).unwrap_option() else {
-                break;
-            };
-            current = parent;
-        }
-        Ok(hashes)
+        // Note: the method `get_ghostdag_chain_k_depth` might return a partial chain if data is missing.
+        // Ideally this node when synced would validate it got all of the associated data up to k blocks
+        // back and then we would be able to assert we actually got `k + 1` blocks, however we choose to
+        // simply ignore, since if the data was truly missing we wouldn't accept the staging consensus in
+        // the first place
+        Ok(self.services.pruning_proof_manager.get_ghostdag_chain_k_depth(hash))
     }
 
     fn create_block_locator_from_pruning_point(&self, high: Hash, limit: usize) -> ConsensusResult<Vec<Hash>> {
