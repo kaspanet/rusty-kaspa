@@ -1,26 +1,18 @@
 use crate::common::{
+    client::ListeningClient,
     daemon::Daemon,
-    listener::Listener,
-    utils::{required_fee, wait_for},
+    utils::{fetch_spendable_utxos, generate_tx, mine_block, wait_for},
 };
-use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::SIMNET_PARAMS;
-use kaspa_consensus_core::{
-    constants::TX_VERSION,
-    sign::sign,
-    subnets::SUBNETWORK_ID_NATIVE,
-    tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
-};
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
 use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::scope::{BlockAddedScope, Scope, UtxosChangedScope};
-use kaspa_rpc_core::{api::rpc::RpcApi, BlockAddedNotification, Notification, RpcTransactionId};
+use kaspa_notify::scope::{BlockAddedScope, UtxosChangedScope};
+use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcTransactionId};
 use kaspa_txscript::pay_to_address_script;
 use kaspad_lib::args::Args;
 use rand::thread_rng;
-use secp256k1::KeyPair;
 use std::{sync::Arc, time::Duration};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -97,68 +89,6 @@ async fn daemon_mining_test() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_utxos_propagation_test() {
-    struct Client {
-        ml_client: GrpcClient,
-        block_added_listener: Listener,
-        utxos_changed_listener: Listener,
-    }
-
-    impl Client {
-        async fn connect(kaspad: &Daemon, miner_address: &Address, user_address: &Address) -> Self {
-            let ml_client = kaspad.new_multi_listener_client().await;
-            ml_client.start(None).await;
-            let block_added_listener = Listener::subscribe(&ml_client, BlockAddedScope {}.into()).await;
-            let utxos_changed_scope: Scope = UtxosChangedScope::new(vec![miner_address.clone(), user_address.clone()]).into();
-            let utxos_changed_listener = Listener::subscribe(&ml_client, utxos_changed_scope.clone()).await;
-            Client { ml_client, block_added_listener, utxos_changed_listener }
-        }
-
-        async fn disconnect(&self) -> kaspa_grpc_client::error::Result<()> {
-            self.ml_client.disconnect().await
-        }
-
-        async fn join(&self) -> kaspa_grpc_client::error::Result<()> {
-            self.ml_client.join().await
-        }
-    }
-
-    async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, listening_clients: &[Client]) {
-        // Mine an extra block so the latest miner reward is added to its balance
-        let template = submitting_client.get_block_template(pay_address.clone(), vec![]).await.unwrap();
-        let block_hash = template.block.header.hash;
-        submitting_client.submit_block(template.block, false).await.unwrap();
-        for client in listening_clients.iter() {
-            match client.block_added_listener.receiver.recv().await.unwrap() {
-                Notification::BlockAdded(BlockAddedNotification { block }) => {
-                    assert_eq!(block.header.hash, block_hash);
-                }
-                _ => panic!("wrong notification type"),
-            }
-        }
-    }
-
-    fn generate_tx(
-        schnorr_key: KeyPair,
-        outpoint: &TransactionOutpoint,
-        utxo: &UtxoEntry,
-        amount: u64,
-        num_outputs: u64,
-        address: &Address,
-    ) -> Transaction {
-        let total_in = utxo.amount;
-        let total_out = total_in - required_fee(1, num_outputs);
-        assert!(amount <= total_out);
-        let script_public_key = pay_to_address_script(address);
-        let entries = vec![utxo.clone()];
-        let inputs = vec![TransactionInput { previous_outpoint: *outpoint, signature_script: vec![], sequence: 0, sig_op_count: 1 }];
-        let outputs = (0..num_outputs)
-            .map(|_| TransactionOutput { value: amount / num_outputs, script_public_key: script_public_key.clone() })
-            .collect_vec();
-        let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
-        let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), schnorr_key);
-        signed_tx.tx
-    }
-
     kaspa_core::log::try_init_logger(
         "INFO,kaspa_testing_integration=trace,kaspa_notify=debug,kaspa_rpc_core=debug,kaspa_grpc_client=debug",
     );
@@ -173,6 +103,7 @@ async fn daemon_utxos_propagation_test() {
     };
     let total_fd_limit = 10;
 
+    let coinbase_maturity = SIMNET_PARAMS.coinbase_maturity;
     let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
     let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
     let rpc_client1 = kaspad1.start().await;
@@ -210,7 +141,7 @@ async fn daemon_utxos_propagation_test() {
     let blank_address = Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]);
 
     // Mine 1000 blocks to daemon #1
-    let initial_blocks: usize = SIMNET_PARAMS.coinbase_maturity as usize;
+    let initial_blocks: usize = coinbase_maturity as usize;
     let mut last_block_hash = None;
     for _ in 0..initial_blocks {
         let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
@@ -248,14 +179,18 @@ async fn daemon_utxos_propagation_test() {
         assert_eq!(accepted_txs_pair.accepted_transaction_ids.len(), 1);
     }
 
-    // Create a multi-listener RPC client on each node and subscribe each to some notifications
-    let clients = vec![
-        Client::connect(&kaspad2, &miner_address, &user_address).await,
-        Client::connect(&kaspad1, &miner_address, &user_address).await,
-    ];
+    // Create a multi-listener RPC client on each node...
+    let mut clients = vec![ListeningClient::connect(&kaspad2).await, ListeningClient::connect(&kaspad1).await];
 
-    // Mine some extra blocks so the latest miner reward is added to its balance
-    for _ in 0..2 {
+    // ...and subscribe each to some notifications
+    for x in clients.iter_mut() {
+        x.start_notify(BlockAddedScope {}.into()).await.unwrap();
+        x.start_notify(UtxosChangedScope { addresses: vec![miner_address.clone(), user_address.clone()] }.into()).await.unwrap();
+    }
+
+    // Mine some extra blocks so the latest miner reward is added to its balance and some UTXOs reach maturity
+    const EXTRA_BLOCKS: usize = 10;
+    for _ in 0..EXTRA_BLOCKS {
         mine_block(blank_address.clone(), &rpc_client1, &clients).await;
     }
 
@@ -266,32 +201,22 @@ async fn daemon_utxos_propagation_test() {
     assert_eq!(miner_balance, initial_blocks as u64 * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
 
     // Get the miner UTXOs
-    let utxos = rpc_client1.get_utxos_by_addresses(vec![miner_address.clone()]).await.unwrap();
-    assert_eq!(utxos.len(), initial_blocks);
+    let utxos = fetch_spendable_utxos(&rpc_client1, miner_address.clone(), coinbase_maturity).await;
+    assert_eq!(utxos.len(), EXTRA_BLOCKS - 1);
     for utxo in utxos.iter() {
-        assert!(utxo.utxo_entry.is_coinbase);
-        assert_eq!(utxo.address, Some(miner_address.clone()));
-        assert_eq!(utxo.utxo_entry.amount, SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
-        assert_eq!(utxo.utxo_entry.script_public_key, miner_spk);
+        assert!(utxo.1.is_coinbase);
+        assert_eq!(utxo.1.amount, SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
+        assert_eq!(utxo.1.script_public_key, miner_spk);
     }
 
-    let mature_coinbase = utxos.iter().min_by(|x, y| x.utxo_entry.block_daa_score.cmp(&y.utxo_entry.block_daa_score)).unwrap();
-    assert_eq!(mature_coinbase.utxo_entry.block_daa_score, 2);
-
     // Drain UTXOs changed notification channels
-    clients.iter().for_each(|x| x.utxos_changed_listener.drain());
+    clients.iter().for_each(|x| x.utxos_changed_listener().unwrap().drain());
 
     // Spend some coins
-    const TX_AMOUNT: u64 = SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * 4 / 5;
-    const NUMBER_OUTPUTS: u64 = 2;
-    let transaction = generate_tx(
-        miner_schnorr_key,
-        &mature_coinbase.outpoint,
-        &mature_coinbase.utxo_entry,
-        TX_AMOUNT,
-        NUMBER_OUTPUTS,
-        &user_address,
-    );
+    const NUMBER_INPUTS: usize = 2;
+    const NUMBER_OUTPUTS: usize = 2;
+    const TX_AMOUNT: u64 = SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * (NUMBER_INPUTS as u64 * 5 - 1) / 5;
+    let transaction = generate_tx(miner_schnorr_key, &utxos[0..NUMBER_INPUTS], TX_AMOUNT, NUMBER_OUTPUTS as u64, &user_address);
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
 
     let check_client = rpc_client1.clone();
@@ -314,22 +239,28 @@ async fn daemon_utxos_propagation_test() {
 
     // Check UTXOs changed notifications
     for x in clients.iter() {
-        let Notification::UtxosChanged(uc) = x.utxos_changed_listener.receiver.recv().await.unwrap() else {
+        let Notification::UtxosChanged(uc) = x.utxos_changed_listener().unwrap().receiver.recv().await.unwrap() else {
             panic!("wrong notification type")
         };
         assert!(uc.removed.iter().any(|x| x.address.is_some() && *x.address.as_ref().unwrap() == miner_address));
         assert!(uc.added.iter().any(|x| x.address.is_some() && *x.address.as_ref().unwrap() == user_address));
-        assert_eq!(uc.removed.len(), 1);
-        assert_eq!(uc.added.len() as u64, NUMBER_OUTPUTS);
+        assert_eq!(uc.removed.len(), NUMBER_INPUTS);
+        assert_eq!(uc.added.len(), NUMBER_OUTPUTS);
+        assert_eq!(
+            uc.removed.iter().map(|x| x.utxo_entry.amount).sum::<u64>(),
+            SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * NUMBER_INPUTS as u64
+        );
+        assert_eq!(uc.added.iter().map(|x| x.utxo_entry.amount).sum::<u64>(), TX_AMOUNT);
     }
 
-    // Check the balance of the miner address
-    let miner_balance = rpc_client2.get_balance_by_address(miner_address.clone()).await.unwrap();
-    assert_eq!(miner_balance, (initial_blocks as u64 - 1) * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
+    // Check the balance of both miner and user addresses
+    for x in clients.iter() {
+        let miner_balance = x.get_balance_by_address(miner_address.clone()).await.unwrap();
+        assert_eq!(miner_balance, (initial_blocks - NUMBER_INPUTS) as u64 * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
 
-    // Check the balance of the user address
-    let user_balance = rpc_client2.get_balance_by_address(user_address.clone()).await.unwrap();
-    assert_eq!(user_balance, TX_AMOUNT);
+        let user_balance = x.get_balance_by_address(user_address.clone()).await.unwrap();
+        assert_eq!(user_balance, TX_AMOUNT);
+    }
 
     // Terminate multi-listener clients
     for x in clients.iter() {

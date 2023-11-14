@@ -1,15 +1,23 @@
+use super::client::ListeningClient;
 use itertools::Itertools;
+use kaspa_addresses::Address;
 use kaspa_consensus_core::{
     constants::TX_VERSION,
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{ScriptPublicKey, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
+    tx::{
+        MutableTransaction, ScriptPublicKey, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
+        TransactionOutput, UtxoEntry,
+    },
     utxo::{
         utxo_collection::{UtxoCollection, UtxoCollectionExtensions},
         utxo_diff::UtxoDiff,
     },
 };
 use kaspa_core::info;
+use kaspa_grpc_client::GrpcClient;
+use kaspa_rpc_core::{api::rpc::RpcApi, BlockAddedNotification, Notification};
+use kaspa_txscript::pay_to_address_script;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use secp256k1::KeyPair;
 use std::{
@@ -120,6 +128,74 @@ where
             break;
         } else if i >= max_iterations {
             panic!("{}", panic_message);
+        }
+    }
+}
+
+pub fn generate_tx(
+    schnorr_key: KeyPair,
+    utxos: &[(TransactionOutpoint, UtxoEntry)],
+    amount: u64,
+    num_outputs: u64,
+    address: &Address,
+) -> Transaction {
+    let total_in = utxos.iter().map(|x| x.1.amount).sum::<u64>();
+    assert!(amount <= total_in - required_fee(utxos.len(), num_outputs));
+    let script_public_key = pay_to_address_script(address);
+    let inputs = utxos
+        .iter()
+        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, sig_op_count: 1 })
+        .collect_vec();
+
+    let outputs = (0..num_outputs)
+        .map(|_| TransactionOutput { value: amount / num_outputs, script_public_key: script_public_key.clone() })
+        .collect_vec();
+    let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+    let signed_tx =
+        sign(MutableTransaction::with_entries(unsigned_tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec()), schnorr_key);
+    signed_tx.tx
+}
+
+pub async fn fetch_spendable_utxos(
+    client: &GrpcClient,
+    address: Address,
+    coinbase_maturity: u64,
+) -> Vec<(TransactionOutpoint, UtxoEntry)> {
+    let resp = client.get_utxos_by_addresses(vec![address.clone()]).await.unwrap();
+    let virtual_daa_score = client.get_server_info().await.unwrap().virtual_daa_score;
+    let mut utxos = Vec::with_capacity(resp.len());
+    for resp_entry in
+        resp.into_iter().filter(|resp_entry| is_utxo_spendable(&resp_entry.utxo_entry, virtual_daa_score, coinbase_maturity))
+    {
+        assert!(resp_entry.address.is_some());
+        assert_eq!(*resp_entry.address.as_ref().unwrap(), address);
+        utxos.push((resp_entry.outpoint, resp_entry.utxo_entry));
+    }
+    utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
+    utxos
+}
+
+pub fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
+    let needed_confirmations = if !entry.is_coinbase { 10 } else { coinbase_maturity };
+    entry.block_daa_score + needed_confirmations <= virtual_daa_score
+}
+
+pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, listening_clients: &[ListeningClient]) {
+    // Discard all unreceived block added notifications in each listening client
+    listening_clients.iter().for_each(|x| x.block_added_listener().unwrap().drain());
+
+    // Mine a block
+    let template = submitting_client.get_block_template(pay_address.clone(), vec![]).await.unwrap();
+    let block_hash = template.block.header.hash;
+    submitting_client.submit_block(template.block, false).await.unwrap();
+
+    // Wait for each listening client to get notified the submitted block was added to the DAG
+    for client in listening_clients.iter() {
+        match client.block_added_listener().unwrap().receiver.recv().await.unwrap() {
+            Notification::BlockAdded(BlockAddedNotification { block }) => {
+                assert_eq!(block.header.hash, block_hash);
+            }
+            _ => panic!("wrong notification type"),
         }
     }
 }

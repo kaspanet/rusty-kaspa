@@ -1,20 +1,31 @@
 use async_channel::Receiver;
 use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{connection::ChannelType, listener::ListenerId, scope::Scope};
-use kaspa_rpc_core::{api::rpc::RpcApi, notify::connection::ChannelConnection, Notification};
+use kaspa_notify::{connection::ChannelType, events::EventType, listener::ListenerId, scope::Scope, subscription::Command};
+use kaspa_rpc_core::{api::rpc::RpcApi, notify::connection::ChannelConnection, Notification, RpcResult};
 
+/// An event type bound notification listener
+#[derive(Clone)]
 pub struct Listener {
-    _id: ListenerId,
+    client: GrpcClient,
+    id: ListenerId,
+    event: EventType,
     pub receiver: Receiver<Notification>,
 }
 
 impl Listener {
-    pub async fn subscribe(client: &GrpcClient, scope: Scope) -> Listener {
+    pub async fn subscribe(client: GrpcClient, scope: Scope) -> RpcResult<Listener> {
         let (sender, receiver) = async_channel::unbounded();
         let connection = ChannelConnection::new(sender, ChannelType::Closable);
-        let _id = client.register_new_listener(connection);
-        client.start_notify(_id, scope).await.unwrap();
-        Listener { _id, receiver }
+        let id = client.register_new_listener(connection);
+        let event: EventType = (&scope).into();
+        client.start_notify(id, scope).await?;
+        let listener = Listener { client, id, event, receiver };
+        Ok(listener)
+    }
+
+    pub async fn execute_subscribe_command(&self, scope: Scope, command: Command) -> RpcResult<()> {
+        assert_eq!(self.event, (&scope).into());
+        self.client.execute_subscribe_command(self.id, scope, command).await
     }
 
     pub fn drain(&self) {

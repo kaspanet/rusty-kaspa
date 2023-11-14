@@ -4,6 +4,7 @@ use std::{
     path::Path,
 };
 
+pub mod client;
 pub mod client_pool;
 pub mod daemon;
 pub mod listener;
