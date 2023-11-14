@@ -14,9 +14,19 @@ This repository contains the implementation of the Kaspa full-node and related l
 #### 2. Execution
   - [Running the node](#running-the-node)
   - [Enabling wRPC](#enabling-wrpc) 
-  - [Mining](#running-the-node) 
-#### 3. Miscellaneous
-
+  - [wRPC to gRPC Proxy](#wrpc-to-grpc-proxy)
+  - [JSON and Borsh](#json-and-borsh-rpc-protocols)
+  - [Mining](#mining) 
+#### 3. JS/TS Library
+  - [Building WASM](#building-wasm)
+#### 4. Wallet
+  - [Wallet CLI](#wallet-cli)
+  - [Local Web Wallet](#local-web-wallet-using-wasm)
+#### 5. Miscellaneous
+  - [Heap-profiling](#heap-profiling)
+  - [Tests and benchmarks](#tests--benchmarks)
+  - [Logging](#logging)
+  - [Simulating blockchain](#simulation-framework-simpa)
 
 ## Getting started
   ### On Linux
@@ -155,6 +165,35 @@ Start a testnet node
 cargo run --release --bin kaspad -- --testnet
 ```
 
+## Enabling wRPC
+
+wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
+- `--rpclisten-json = <interface:port>` for JSON protocol
+- `--rpclisten-borsh = <interface:port>` for Borsh protocol
+
+## wRPC to gRPC Proxy
+
+wRPC to gRPC Proxy is deprecated and no longer supported.
+
+## JSON and [Borsh](https://borsh.io/) RPC protocols
+
+In addition to gRPC, Rusty Kaspa integrates an optional wRPC
+subsystem. wRPC is a high-performance, platform-neutral, Rust-centric, WebSocket-framed RPC 
+implementation that can use [Borsh](https://borsh.io/) and JSON protocol encoding.
+
+ JSON protocol messaging 
+is similar to JSON-RPC 1.0, but differs from the specification due to server-side 
+notifications.
+
+ [Borsh](https://borsh.io/) encoding is meant for inter-process communication. When using [Borsh](https://borsh.io/)
+both client and server should be built from the same codebase.  
+
+JSON protocol is based on 
+Kaspa data structures and is data-structure-version agnostic. You can connect to the
+JSON endpoint using any WebSocket library. Built-in RPC clients for JavaScript and
+TypeScript capable of running in web browsers and Node.js are available as a part of
+the Kaspa WASM framework.
+
 ## Mining
 Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions:
 
@@ -169,6 +208,59 @@ Mining is currently supported only on testnet, so once you've setup a test node,
     This will create and feed a DAG with the miner getting block templates from the node and submitting them back when mined. The node processes and stores the blocks while applying all currently implemented logic. Execution can be stopped and resumed, the data is persisted in a database.
 
     You can replace the above mining address with your own address by creating one as described [here](https://github.com/kaspanet/docs/blob/main/Getting%20Started/Full%20Node%20Installation.md#creating-a-wallet-optional). 
+
+## Building WASM
+
+Rust WebAssembly (Wasm) refers to the use of the Rust programming language to write code that can be compiled into WebAssembly, a binary instruction format that runs in web browsers. This allows for easy development using JS/TS while retaining the benefits of Rust.
+
+The library can be build in for `NodeJS`, `React Native` and as an `ES6 Module`
+
+NodeJS
+```
+cd rusty-kaspa
+cd wasm
+./build-node
+cd nodejs
+npm install
+```
+
+React Native
+```
+cd rusty-kaspa
+cd wasm
+./build-react-native
+```
+
+ES6
+```
+cd rusty-kaspa
+cd wasm
+./build-web
+```
+This will produce a folder: "nodejs", "web" or "react-native" library in `/wasm` directory depending on your selection.
+
+## Wallet CLI
+
+Wallet CLI is now available via the `/cli` or `/kos` projects.
+
+```bash
+cd cli
+cargo run --release
+```
+
+For KOS, please see [`kos/README.md`](kos/README.md)
+
+## Local Web Wallet (using WASM)
+
+Run an http server inside of `wallet/wasm/web` folder. If you don't have once, you can use `basic-http-server`.
+```bash
+cd wallet/wasm/web
+cargo install basic-http-server
+basic-http-server
+```
+The *basic-http-server* will serve on port 4000 by default, so open your web browser and load http://localhost:4000
+
+The framework is compatible with all major desktop and mobile browsers.
 
 ## Simulation framework (Simpa)
 
@@ -224,96 +316,6 @@ $ cd rusty-kaspa
 $ cargo bench
 ```
 
-## Building WASM
-
-To build rusty-kaspa wasm library, do the following:
-
-```bash
-cd wasm
-./build-web
-```
-This will produce a wasm library in `/web-root` directory
 
 
-## JSON and Borsh RPC protocols
 
-In addition to gRPC, Rusty Kaspa integrates an optional wRPC
-subsystem. wRPC is a high-performance, platform-neutral, Rust-centric, WebSocket-framed RPC 
-implementation that can use Borsh and JSON protocol encoding.
-
- JSON protocol messaging 
-is similar to JSON-RPC 1.0, but differs from the specification due to server-side 
-notifications.
-
- Borsh encoding is meant for inter-process communication. When using Borsh
-both client and server should be built from the same codebase.  
-
-JSON protocol is based on 
-Kaspa data structures and is data-structure-version agnostic. You can connect to the
-JSON endpoint using any WebSocket library. Built-in RPC clients for JavaScript and
-TypeScript capable of running in web browsers and Node.js are available as a part of
-the Kaspa WASM framework.
-
-## Enabling wRPC
-
-wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
-- `--rpclisten-json = <interface:port>` for JSON protocol
-- `--rpclisten-borsh = <interface:port>` for Borsh protocol
-
-## wRPC to gRPC Proxy
-
-wRPC to gRPC Proxy is deprecated and no longer supported.
-
-## Native JavaScript & TypeScript RPC clients for Browsers and Node.js environments
-
-Integration in a Browser and Node.js environments is possible using WASM.
-The JavaScript code is agnostic to which environment it runs in.
-
-**NOTE:** to run in Node.js environment, you must instantiate a W3C WebSocket
-shim using a `WebSocket` crate before initializing Kaspa environment:
-`globalThis.WebSocket = require('websocket').w3cwebsocket;`
-
-Prerequisites:
-- WasmPack: https://rustwasm.github.io/wasm-pack/installer/
-
-To test Node.js:
-- Make sure you have Rust and WasmPack installed
-- Start Golang Kaspad
-- Start wRPC proxy
-
-```bash
-cd rpc/wrpc/wasm
-./build-node
-cd nodejs
-npm install
-node index
-```
-
-You can take a look at `rpc/wrpc/wasm/nodejs/index.js` to see the use of the native JavaScript & TypeScript APIs.
-
-**NOTE:** `npm install` is needed to install [WebSocket](https://github.com/theturtle32/WebSocket-Node) module.
-When running in the Browser environment, no additional dependencies are necessary because
-the browser provides the W3C WebSocket class natively.
-
-## Wallet CLI
-
-Wallet CLI is now available via the `/cli` or `/kos` projects.
-
-```bash
-cd cli
-cargo run --release
-```
-
-For KOS, please see [`kos/README.md`](kos/README.md)
-
-Web Browser (WASM):
-
-Run an http server inside of `wallet/wasm/web` folder. If you don't have once, you can use `basic-http-server`.
-```bash
-cd wallet/wasm/web
-cargo install basic-http-server
-basic-http-server
-```
-The *basic-http-server* will serve on port 4000 by default, so open your web browser and load http://localhost:4000
-
-The framework is compatible with all major desktop and mobile browsers.
