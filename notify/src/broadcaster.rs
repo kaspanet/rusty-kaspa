@@ -157,7 +157,7 @@ where
                                         let message = C::into_message(&applied_notification, encoding);
                                         for (id, connection) in connection_set.iter() {
                                             // ... to listeners connections
-                                            match connection.send(message.clone()) {
+                                            match connection.send(message.clone()).await {
                                                 Ok(_) => {
                                                     trace!("[Broadcaster-{}] sent notification {notification} to listener {id}", self.name);
                                                 },
