@@ -2,7 +2,6 @@ use crate::{
     flow_context::{BlockSource, FlowContext, RequestScope},
     flow_trait::Flow,
 };
-use async_channel::TrySendError;
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_consensusmanager::ConsensusProxy;
 use kaspa_core::{debug, info};
@@ -13,7 +12,7 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
     IncomingRoute, Router, SharedIncomingRoute,
 };
-use kaspa_utils::channel::JobSender;
+use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
 use std::{collections::VecDeque, sync::Arc};
 
 pub struct RelayInvMessage {

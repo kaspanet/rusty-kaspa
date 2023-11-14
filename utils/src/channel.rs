@@ -77,10 +77,16 @@ impl<T> Default for Channel<T> {
 /// Creates a special `job` channel where the sender might replace a previous pending job
 /// not consumed yet by the receiver. The internal channel has capacity of `1` but senders
 /// can attempt to replace the current `job` via `selector` logic. See [`JobSender::try_send`]
-pub fn job<T>() -> (JobSender<T>, Receiver<T>) {
+pub fn job<T>() -> (JobSender<T>, JobReceiver<T>) {
     let (send, recv) = bounded(1);
     (JobSender { sender: send, receiver: recv.downgrade() }, recv)
 }
+
+pub type JobReceiver<T> = Receiver<T>;
+
+pub type JobTrySendError<T> = TrySendError<T>;
+
+pub type JobTryRecvError = TryRecvError;
 
 /// The sending side of a [`job`] channel.
 #[derive(Clone)]
@@ -95,7 +101,7 @@ impl<T> JobSender<T> {
     /// selection, the failing sender will receive `TrySendError::Full`.
     ///
     /// If the channel is closed, this method returns an error.
-    pub fn try_send<F>(&self, mut msg: T, mut selector: F) -> Result<(), TrySendError<T>>
+    pub fn try_send<F>(&self, mut msg: T, mut selector: F) -> Result<(), JobTrySendError<T>>
     where
         F: FnMut(T, T) -> T,
     {

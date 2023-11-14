@@ -5,7 +5,6 @@ use crate::{
         Flow,
     },
 };
-use async_channel::Receiver;
 use futures::future::try_join_all;
 use kaspa_consensus_core::{
     api::BlockValidationFuture,
@@ -28,6 +27,7 @@ use kaspa_p2p_lib::{
     },
     IncomingRoute, Router,
 };
+use kaspa_utils::channel::JobReceiver;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -42,7 +42,7 @@ pub struct IbdFlow {
     pub(super) incoming_route: IncomingRoute,
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
-    relay_receiver: Receiver<Block>,
+    relay_receiver: JobReceiver<Block>,
 }
 
 #[async_trait::async_trait]
@@ -65,7 +65,7 @@ pub enum IbdType {
 // TODO: define a peer banning strategy
 
 impl IbdFlow {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: Receiver<Block>) -> Self {
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: JobReceiver<Block>) -> Self {
         Self { ctx, router, incoming_route, relay_receiver }
     }
 
