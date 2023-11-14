@@ -2,7 +2,7 @@ pub mod data;
 pub mod error;
 pub mod result;
 
-pub use data::{Metric, MetricsData, MetricsSnapshot};
+pub use data::{Metric, MetricGroup, MetricsData, MetricsSnapshot};
 
 use crate::result::Result;
 use futures::{future::join_all, pin_mut, select, FutureExt, StreamExt};
