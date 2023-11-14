@@ -763,7 +763,7 @@ impl PruningProofManager {
         // We use the min blue-work in order to identify where the traversal can halt
         let min_blue_work = daa_window_blocks.values().map(|th| th.header.blue_work).min().expect("non empty");
         let mut queue = VecDeque::from_iter(anticone.iter().copied());
-        let mut visited = BlockHashSet::from_iter(queue.iter().copied());
+        let mut visited = BlockHashSet::from_iter(queue.iter().copied().chain(std::iter::once(blockhash::ORIGIN))); // Mark origin as visited to avoid processing it
         while let Some(current) = queue.pop_front() {
             if let Entry::Vacant(e) = daa_window_blocks.entry(current) {
                 let header = self.headers_store.get_header(current).unwrap();
