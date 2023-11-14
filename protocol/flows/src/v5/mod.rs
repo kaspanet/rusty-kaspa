@@ -16,6 +16,7 @@ use self::{
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
 use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
+use kaspa_utils::channel;
 use std::sync::Arc;
 
 pub(crate) mod address;
@@ -33,8 +34,9 @@ pub(crate) mod request_pruning_point_utxo_set;
 pub(crate) mod txrelay;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
-    // IBD flow <-> invs flow channel requires no buffering hence the minimal size possible
-    let (ibd_sender, relay_receiver) = tokio::sync::mpsc::channel(1);
+    // IBD flow <-> invs flow communication uses a job channel in order to always
+    // maintain at most a single pending job which can be updated
+    let (ibd_sender, relay_receiver) = channel::job();
     let flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
             ctx.clone(),

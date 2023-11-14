@@ -2575,6 +2575,7 @@ dependencies = [
 name = "kaspa-p2p-flows"
 version = "0.13.0"
 dependencies = [
+ "async-channel 2.0.0",
  "async-trait",
  "futures",
  "indexmap 2.1.0",

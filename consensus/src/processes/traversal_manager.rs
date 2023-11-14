@@ -109,7 +109,7 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
                     visited.len()
                 );
             }
-
+            // At this point, we know `current` is in antipast of `block`. The second condition is there to check if it's in the anticone
             if !return_anticone_only || !self.reachability_service.is_dag_ancestor_of(block, current) {
                 output.push(current);
             }

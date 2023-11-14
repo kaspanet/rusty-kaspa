@@ -23,6 +23,7 @@ kaspa-consensusmanager.workspace = true
 kaspa-mining.workspace = true
 kaspa-notify.workspace = true
 
+async-channel.workspace = true
 async-trait.workspace = true
 futures = { workspace = true, features = ["alloc"] }
 indexmap.workspace = true

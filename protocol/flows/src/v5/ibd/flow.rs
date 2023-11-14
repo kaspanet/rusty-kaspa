@@ -5,6 +5,7 @@ use crate::{
         Flow,
     },
 };
+use async_channel::Receiver;
 use futures::future::try_join_all;
 use kaspa_consensus_core::{
     api::BlockValidationFuture,
@@ -31,7 +32,6 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::sync::mpsc::Receiver;
 
 use super::{progress::ProgressReporter, HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
 
@@ -70,7 +70,7 @@ impl IbdFlow {
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        while let Some(relay_block) = self.relay_receiver.recv().await {
+        while let Ok(relay_block) = self.relay_receiver.recv().await {
             if let Some(_guard) = self.ctx.try_set_ibd_running(self.router.key()) {
                 info!("IBD started with peer {}", self.router);
 
@@ -127,7 +127,7 @@ impl IbdFlow {
         // Sync missing bodies in the past of syncer sink (virtual selected parent)
         self.sync_missing_block_bodies(&session, negotiation_output.syncer_virtual_selected_parent).await?;
 
-        // Relay block might be in the anticone of syncer selected tip, thus
+        // Relay block might be in the antipast of syncer sink, thus
         // check its past for missing bodies as well.
         self.sync_missing_block_bodies(&session, relay_block.hash()).await
     }
