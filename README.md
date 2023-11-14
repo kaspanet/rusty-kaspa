@@ -33,33 +33,33 @@ This repository contains the implementation of the Kaspa full-node and related l
 
   1. Install  general prerequisites
 
-      ```
+      ```bash
       sudo apt install build-essential libssl-dev pkg-config 
       ```
 
   2. Install Protobuf (required for gRPC)
   
-      ```
+      ```bash
       sudo apt install protobuf-compiler libprotobuf-dev #Required for gRPC
       ```
   3. Install the clang toolchain (required for RocksDB and WASM secp256k1 builds)
 
-      ```
+      ```bash
       apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang
       ```
   3. Install the [rust toolchain](https://rustup.rs/)
      
      If you already have rust installed, update it by running: `rustup update` 
   4. Install wasm-pack
-      ```
+      ```bash
       cargo install wasm-pack
       ```
   4. Install wasm32 target
-      ```
+      ```bash
       rustup target add wasm32-unknown-unknown
       ```      
   5. Clone the repo
-      ```
+      ```bash
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
       ```
@@ -82,21 +82,21 @@ This repository contains the implementation of the Kaspa full-node and related l
      
      If you already have rust installed, update it by running: `rustup update` 
   5. Install wasm-pack
-      ```
+      ```bash
       cargo install wasm-pack
       ```
   6. Install wasm32 target
-      ```
+      ```bash
       rustup target add wasm32-unknown-unknown
       ```      
   7. Clone the repo
-      ```
+      ```bash
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
       ```
   ### On Mac OS
   1. Install Protobuf (required for gRPC)
-      ```
+      ```bash
       brew install protobuf
       ```
   2. Install llvm. 
@@ -136,15 +136,15 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
      
      If you already have rust installed, update it by running: `rustup update` 
   4. Install wasm-pack
-      ```
+      ```bash
       cargo install wasm-pack
       ```
   4. Install wasm32 target
-      ```
+      ```bash
       rustup target add wasm32-unknown-unknown
       ```      
   5. Clone the repo
-      ```
+      ```bash
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
       ```
@@ -216,7 +216,7 @@ Rust WebAssembly (Wasm) refers to the use of the Rust programming language to wr
 The library can be build in for `NodeJS`, `React Native` and as an `ES6 Module`
 
 NodeJS
-```
+```bash
 cd rusty-kaspa
 cd wasm
 ./build-node
@@ -225,14 +225,14 @@ npm install
 ```
 
 React Native
-```
+```bash
 cd rusty-kaspa
 cd wasm
 ./build-react-native
 ```
 
 ES6
-```
+```bash
 cd rusty-kaspa
 cd wasm
 ./build-web
@@ -276,17 +276,22 @@ It will produce `{bin-name}-heap.json` file in the root of the workdir, that can
 - To run unit and most integration tests use:
 
 ```bash
-$ cd rusty-kaspa
-$ cargo test --release
+cd rusty-kaspa
+cargo test --release
 // or install nextest and run
-$ cargo nextest run --release
+```
+
+- Using nextest
+```bash
+cd rusty-kaspa
+cargo nextest run --release
 ```
 
 - To run current benchmarks:
 
 ```bash
-$ cd rusty-kaspa
-$ cargo bench
+cd rusty-kaspa
+cargo bench
 ```
 
 
