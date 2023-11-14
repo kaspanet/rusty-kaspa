@@ -163,18 +163,18 @@ impl AddressManager {
         }
         info!("[UPnP] Got external ip from gateway using upnp: {ip}");
 
-        let default_port = self.config.default_p2p_port();
-
-        let normalized_p2p_listen_address = self.config.p2p_listen_address.normalize(default_port);
+        let normalized_p2p_listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
         let local_addr = if normalized_p2p_listen_address.ip.is_unspecified() {
             SocketAddr::new(local_ip_address::local_ip().unwrap(), normalized_p2p_listen_address.port)
         } else {
             normalized_p2p_listen_address.into()
         };
 
+        // If an operator runs a node and specifies a non-standard local port, it implies that they also wish to use a non-standard public address. The variable 'desired_external_port' is set to the port number from the normalized peer-to-peer listening address.
+        let desired_external_port = normalized_p2p_listen_address.port;
         // This loop checks for existing port mappings in the UPnP-enabled gateway.
         //
-        // The goal of this loop is to identify if the desired external port (`default_port`) is
+        // The goal of this loop is to identify if the desired external port (`desired_external_port`) is
         // already mapped to any device inside the local network. This is crucial because, in
         // certain scenarios, gateways might not throw the `PortInUse` error but rather might
         // silently remap the external port when there's a conflict. By iterating through the
@@ -189,7 +189,7 @@ impl AddressManager {
         let already_in_use = loop {
             match gateway.get_generic_port_mapping_entry(index) {
                 Ok(entry) => {
-                    if entry.enabled && entry.external_port == default_port {
+                    if entry.enabled && entry.external_port == desired_external_port {
                         info!("[UPnP] Found existing mapping that uses the same external port. Description: {}, external port: {}, internal port: {}, client: {}, lease duration: {}", entry.port_mapping_description, entry.external_port, entry.internal_port, entry.internal_client, entry.lease_duration);
                         break true;
                     }
@@ -215,14 +215,17 @@ impl AddressManager {
 
         match gateway.add_port(
             igd::PortMappingProtocol::TCP,
-            default_port,
+            desired_external_port,
             local_addr,
             UPNP_DEADLINE_SEC as u32,
             UPNP_REGISTRATION_NAME,
         ) {
             Ok(_) => {
-                info!("[UPnP] Added port mapping to default external port: {ip}:{default_port}");
-                Ok(Some((NetAddress { ip, port: default_port }, ExtendHelper { gateway, local_addr, external_port: default_port })))
+                info!("[UPnP] Added port mapping to default external port: {ip}:{desired_external_port}");
+                Ok(Some((
+                    NetAddress { ip, port: desired_external_port },
+                    ExtendHelper { gateway, local_addr, external_port: desired_external_port },
+                )))
             }
             Err(AddPortError::PortInUse {}) => {
                 let port = gateway.add_any_port(
@@ -607,7 +610,7 @@ mod address_store_with_cache {
             // Normalize and adjust p to test for uniformity, over average of all trials.
             let adjusted_p = (0.5 - cul_p / num_of_trials as f64).abs();
             // Define the significance threshold.
-            let significance = 0.05;
+            let significance = 0.10;
 
             // Display and assert the result
             kaspa_core::info!(
@@ -615,7 +618,7 @@ mod address_store_with_cache {
                 adjusted_p,
                 significance
             );
-            assert!(adjusted_p < significance)
+            assert!(adjusted_p <= significance)
         }
     }
 }

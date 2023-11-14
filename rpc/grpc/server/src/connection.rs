@@ -4,7 +4,7 @@ use crate::{
     manager::ManagerEvent,
     request_handler::{factory::Factory, interface::Interface},
 };
-use kaspa_core::{debug, info, trace};
+use kaspa_core::{debug, info, trace, warn};
 use kaspa_grpc_core::{
     ops::KaspadPayloadOps,
     protowire::{KaspadRequest, KaspadResponse},
@@ -18,7 +18,10 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Display,
     net::SocketAddr,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 use tokio::sync::mpsc::{channel as mpsc_channel, Receiver as MpscReceiver, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
@@ -71,6 +74,9 @@ struct Inner {
 
     /// Used for managing connection mutable state
     mutable_state: Mutex<InnerMutableState>,
+
+    /// When true, stops sending messages to the outgoing route
+    is_closed: AtomicBool,
 }
 
 impl Drop for Inner {
@@ -158,6 +164,7 @@ impl Connection {
                 manager_sender,
                 server_context,
                 mutable_state: Mutex::new(InnerMutableState::new(Some(shutdown_sender))),
+                is_closed: AtomicBool::new(false),
             }),
         };
         let connection_clone = connection.clone();
@@ -185,14 +192,16 @@ impl Connection {
                             }
                         }
                         Ok(None) => {
-                            info!("GRPC, incoming stream ended from client {}", connection);
+                            info!("GRPC, incoming stream ended by client {}", connection);
                             break;
                         }
                         Err(status) => {
-                            if let Some(err) = match_for_io_error(&status) {
+                            if match_for_h2_no_error(&status) {
+                                info!("GRPC, incoming stream interrupted by client {}", connection);
+                            } else if let Some(err) = match_for_io_error(&status) {
                                 debug!("GRPC, network error: {} from client {}", err, connection);
                             } else {
-                                info!("GRPC, network error: {} from client {}", status, connection);
+                                warn!("GRPC, network error: {} from client {}", status, connection);
                             }
                             break;
                         }
@@ -208,11 +217,19 @@ impl Connection {
             // Mark as closed
             connection.close();
 
+            // Send a close notification to the central Manager
+            connection
+                .inner
+                .manager_sender
+                .send(ManagerEvent::ConnectionClosing(connection.clone()))
+                .await
+                .expect("manager receiver should never drop before senders");
+
             let connection_id = connection.to_string();
             let inner = Arc::downgrade(&connection.inner);
             drop(connection);
 
-            debug!("GRPC, Connection receive loop - exited, client: {}, client refs: {}", connection_id, inner.strong_count());
+            trace!("GRPC, Connection receive loop - exited, client: {}, client refs: {}", connection_id, inner.strong_count());
         });
 
         connection_clone
@@ -234,19 +251,22 @@ impl Connection {
         self.inner.server_context.notifier.clone()
     }
 
-    pub fn get_or_register_listener_id(&self) -> ListenerId {
-        *self
-            .inner
-            .mutable_state
-            .lock()
-            .listener_id
-            .get_or_insert_with(|| self.inner.server_context.notifier.as_ref().register_new_listener(self.clone()))
+    pub fn get_or_register_listener_id(&self) -> GrpcServerResult<ListenerId> {
+        match self.is_closed() {
+            false => Ok(*self.inner.mutable_state.lock().listener_id.get_or_insert_with(|| {
+                let listener_id = self.inner.server_context.notifier.as_ref().register_new_listener(self.clone());
+                debug!("GRPC, Connection {} registered as notification listener {}", self, listener_id);
+                listener_id
+            })),
+            true => Err(GrpcServerError::ConnectionClosed),
+        }
     }
 
     fn unregister_listener(&self) {
         let listener_id = self.inner.mutable_state.lock().listener_id.take();
         if let Some(listener_id) = listener_id {
-            self.inner.server_context.notifier.unregister_listener(listener_id).expect("unregister listener")
+            self.inner.server_context.notifier.unregister_listener(listener_id).expect("unregister listener");
+            debug!("GRPC, Connection {} notification listener {} unregistered", self, listener_id);
         }
     }
 
@@ -293,12 +313,27 @@ fn match_for_io_error(err_status: &tonic::Status) -> Option<&std::io::Error> {
     }
 }
 
+fn match_for_h2_no_error(err_status: &tonic::Status) -> bool {
+    let err: &(dyn std::error::Error + 'static) = err_status;
+    if let Some(reason) = err.downcast_ref::<h2::Error>().and_then(|e| e.reason()) {
+        debug!("GRPC, found h2 error {}", err.downcast_ref::<h2::Error>().unwrap());
+        return reason == h2::Reason::NO_ERROR;
+    }
+    if err_status.code() == tonic::Code::Internal {
+        let message = err_status.message();
+        // FIXME: relying on error messages is unreliable, find a better way
+        return message.contains("h2 protocol error:") && message.contains("not a result of an error");
+    }
+    false
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Default)]
 pub enum GrpcEncoding {
     #[default]
     ProtowireResponse = 0,
 }
 
+#[async_trait::async_trait]
 impl ConnectionT for Connection {
     type Notification = Notification;
     type Message = Arc<KaspadResponse>;
@@ -313,41 +348,34 @@ impl ConnectionT for Connection {
         Arc::new((notification).into())
     }
 
-    fn send(&self, message: Self::Message) -> Result<(), Self::Error> {
+    async fn send(&self, message: Self::Message) -> Result<(), Self::Error> {
         match !self.is_closed() {
-            true => Ok(self.inner.outgoing_route.try_send((*message).clone())?),
+            true => self.enqueue((*message).clone()).await,
             false => Err(NotificationError::ConnectionClosed.into()),
         }
     }
 
-    /// Closes the connection, signals exit, and cleans up all resources so that underlying connections will be aborted correctly.
+    /// Send an exit signal to the connection, triggering a clean up of all resources so that
+    /// underlying connections gets aborted correctly.
     ///
     /// Returns true of this is the first call to close.
     fn close(&self) -> bool {
-        // Acquire state mutex and send the shutdown signal
-        // NOTE: Using a block to drop the lock asap
-        {
-            let mut state = self.inner.mutable_state.lock();
-
-            if let Some(signal) = state.shutdown_signal.take() {
+        let signal = self.inner.mutable_state.lock().shutdown_signal.take();
+        match signal {
+            Some(signal) => {
+                self.inner.is_closed.store(true, Ordering::SeqCst);
                 let _ = signal.send(());
-            } else {
+                true
+            }
+            None => {
                 // This means the connection was already closed
                 trace!("GRPC, Connection close was called more than once, client: {}", self);
-                return false;
+                false
             }
         }
-
-        // Send a close notification to the central Manager
-        self.inner
-            .manager_sender
-            .try_send(ManagerEvent::ConnectionClosing(self.clone()))
-            .expect("manager receiver should never drop before senders");
-
-        true
     }
 
     fn is_closed(&self) -> bool {
-        self.inner.mutable_state.lock().shutdown_signal.is_none()
+        self.inner.is_closed.load(Ordering::SeqCst)
     }
 }

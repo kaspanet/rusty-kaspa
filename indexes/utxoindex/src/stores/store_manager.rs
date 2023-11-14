@@ -6,6 +6,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::trace;
 use kaspa_database::prelude::{StoreResult, DB};
+use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 
 use crate::{
     model::UtxoSetByScriptPublicKey,
@@ -35,6 +36,10 @@ impl Store {
 
     pub fn get_utxos_by_script_public_key(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys(script_public_keys)
+    }
+
+    pub fn get_balance_by_script_public_key(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey> {
+        self.utxos_by_script_public_key_store.get_balance_from_script_public_keys(script_public_keys)
     }
 
     // This can have a big memory footprint, so it should be used only for tests.
