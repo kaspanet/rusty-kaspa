@@ -3,7 +3,7 @@ use crate::v5::{
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
-    request_anticone::HandleAnticoneRequests,
+    request_antipast::HandleAntipastRequests,
     request_block_locator::RequestBlockLocatorFlow,
     request_headers::RequestHeadersFlow,
     request_ibd_blocks::HandleIbdBlockRequests,
@@ -89,10 +89,10 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestIbdBlocks]),
         )),
-        Box::new(HandleAnticoneRequests::new(
+        Box::new(HandleAntipastRequests::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestAnticone]),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestAntipast]),
         )),
         Box::new(RelayTransactionsFlow::new(
             ctx.clone(),

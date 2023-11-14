@@ -23,7 +23,7 @@ use kaspa_p2p_lib::{
     convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message,
     pb::{
-        kaspad_message::Payload, RequestAnticoneMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
+        kaspad_message::Payload, RequestAntipastMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
         RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
     },
     IncomingRoute, Router,
@@ -390,8 +390,8 @@ impl IbdFlow {
         // See server-side handling of `RequestAnticone` for further details.
         self.router
             .enqueue(make_message!(
-                Payload::RequestAnticone,
-                RequestAnticoneMessage {
+                Payload::RequestAntipast,
+                RequestAntipastMessage {
                     block_hash: Some(syncer_virtual_selected_parent.into()),
                     context_hash: Some(relay_block_hash.into())
                 }

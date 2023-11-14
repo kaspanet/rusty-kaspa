@@ -3,7 +3,7 @@ use self::{
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
-    request_anticone::HandleAnticoneRequests,
+    request_antipast::HandleAntipastRequests,
     request_block_locator::RequestBlockLocatorFlow,
     request_headers::RequestHeadersFlow,
     request_ibd_blocks::HandleIbdBlockRequests,
@@ -23,7 +23,7 @@ pub(crate) mod address;
 pub(crate) mod blockrelay;
 pub(crate) mod ibd;
 pub(crate) mod ping;
-pub(crate) mod request_anticone;
+pub(crate) mod request_antipast;
 pub(crate) mod request_block_locator;
 pub(crate) mod request_headers;
 pub(crate) mod request_ibd_blocks;
@@ -111,10 +111,10 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestIbdBlocks]),
         )),
-        Box::new(HandleAnticoneRequests::new(
+        Box::new(HandleAntipastRequests::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestAnticone]),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestAntipast]),
         )),
         Box::new(RelayTransactionsFlow::new(
             ctx.clone(),

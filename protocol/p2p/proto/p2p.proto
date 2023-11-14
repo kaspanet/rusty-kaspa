@@ -199,7 +199,8 @@ message IbdChainBlockLocatorMessage {
   repeated Hash blockLocatorHashes = 1;
 }
 
-message RequestAnticoneMessage{
+// Legacy name of this message is `RequestAnticoneMessage`
+message RequestAntipastMessage{
   Hash blockHash = 1;
   Hash contextHash = 2;
 }
