@@ -222,6 +222,7 @@ message RequestPruningPointAndItsAnticoneMessage {
 message RequestNextPruningPointAndItsAnticoneBlocksMessage{
 }
 
+// TODO: remove once v4 is obsolete
 message BlockWithTrustedDataMessage {
   BlockMessage block = 1;
   uint64 daaScore = 2;
@@ -229,16 +230,19 @@ message BlockWithTrustedDataMessage {
   repeated BlockGhostdagDataHashPair ghostdagData = 4;
 }
 
+// TODO: rename to `TrustedBlock` once v5 is obsolete
 message DaaBlock {
   BlockMessage block = 3;
   GhostdagData ghostdagData = 2;
 }
 
+// TODO: rename to `TrustedHeader` once v5 is obsolete
 message DaaBlockV4 {
   BlockHeader header = 1;
   GhostdagData ghostdagData = 2;
 }
 
+// TODO: remove once v5 is obsolete
 message BlockGhostdagDataHashPair {
   Hash hash = 1;
   GhostdagData ghostdagData = 2;
@@ -281,11 +285,11 @@ message ReadyMessage {
 
 message BlockWithTrustedDataV4Message {
   BlockMessage block = 1;
-  repeated uint64 daaWindowIndices = 2;
-  repeated uint64 ghostdagDataIndices = 3;
+  repeated uint64 daaWindowIndices = 2; // TODO: remove once v5 is obsolete
+  repeated uint64 ghostdagDataIndices = 3; // TODO: remove once v5 is obsolete
 }
 
 message TrustedDataMessage {
-  repeated DaaBlockV4 daaWindow = 1;
-  repeated BlockGhostdagDataHashPair ghostdagData = 2;
+  repeated DaaBlockV4 daaWindow = 1; // TODO: rename to `trustedSubDag` once v5 is obsolete
+  repeated BlockGhostdagDataHashPair ghostdagData = 2; // TODO: remove once v5 is obsolete
 }
