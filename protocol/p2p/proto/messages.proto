@@ -50,7 +50,7 @@ message KaspadMessage {
     TrustedDataMessage trustedData = 52;
     RequestIBDChainBlockLocatorMessage requestIBDChainBlockLocator = 53;
     IbdChainBlockLocatorMessage ibdChainBlockLocator = 54;
-    RequestAnticoneMessage requestAnticone = 55;
+    RequestAntipastMessage requestAntipast = 55;
     RequestNextPruningPointAndItsAnticoneBlocksMessage requestNextPruningPointAndItsAnticoneBlocks = 56;
   }
 }

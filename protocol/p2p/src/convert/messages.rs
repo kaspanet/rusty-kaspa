@@ -214,9 +214,9 @@ impl TryFrom<protowire::RequestBlockLocatorMessage> for (Hash, u32) {
     }
 }
 
-impl TryFrom<protowire::RequestAnticoneMessage> for (Hash, Hash) {
+impl TryFrom<protowire::RequestAntipastMessage> for (Hash, Hash) {
     type Error = ConversionError;
-    fn try_from(msg: protowire::RequestAnticoneMessage) -> Result<Self, Self::Error> {
+    fn try_from(msg: protowire::RequestAntipastMessage) -> Result<Self, Self::Error> {
         Ok((msg.block_hash.try_into_ex()?, msg.context_hash.try_into_ex()?))
     }
 }

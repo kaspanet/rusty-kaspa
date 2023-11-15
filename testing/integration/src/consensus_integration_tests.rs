@@ -949,9 +949,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
             })
             .collect_vec();
 
-        // TODO: Add consensus validation that the pruning point is one of the trusted blocks.
         let trusted_blocks = gzip_file_lines(&main_path.join("trusted.json.gz")).map(json_trusted_line_to_block_and_gd).collect_vec();
-        tc.apply_pruning_proof(proof, &trusted_blocks);
+        tc.apply_pruning_proof(proof, &trusted_blocks).unwrap();
 
         let past_pruning_points =
             gzip_file_lines(&main_path.join("past-pps.json.gz")).map(|line| json_line_to_block(line).header).collect_vec();

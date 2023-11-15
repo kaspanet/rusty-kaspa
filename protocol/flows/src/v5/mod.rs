@@ -3,7 +3,7 @@ use self::{
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ibd::IbdFlow,
     ping::{ReceivePingsFlow, SendPingsFlow},
-    request_anticone::HandleAnticoneRequests,
+    request_antipast::HandleAntipastRequests,
     request_block_locator::RequestBlockLocatorFlow,
     request_headers::RequestHeadersFlow,
     request_ibd_blocks::HandleIbdBlockRequests,
@@ -16,13 +16,14 @@ use self::{
 use crate::{flow_context::FlowContext, flow_trait::Flow};
 
 use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
+use kaspa_utils::channel;
 use std::sync::Arc;
 
 pub(crate) mod address;
 pub(crate) mod blockrelay;
 pub(crate) mod ibd;
 pub(crate) mod ping;
-pub(crate) mod request_anticone;
+pub(crate) mod request_antipast;
 pub(crate) mod request_block_locator;
 pub(crate) mod request_headers;
 pub(crate) mod request_ibd_blocks;
@@ -33,8 +34,9 @@ pub(crate) mod request_pruning_point_utxo_set;
 pub(crate) mod txrelay;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
-    // IBD flow <-> invs flow channel requires no buffering hence the minimal size possible
-    let (ibd_sender, relay_receiver) = tokio::sync::mpsc::channel(1);
+    // IBD flow <-> invs flow communication uses a job channel in order to always
+    // maintain at most a single pending job which can be updated
+    let (ibd_sender, relay_receiver) = channel::job();
     let flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
             ctx.clone(),
@@ -109,10 +111,10 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestIbdBlocks]),
         )),
-        Box::new(HandleAnticoneRequests::new(
+        Box::new(HandleAntipastRequests::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestAnticone]),
+            router.subscribe(vec![KaspadMessagePayloadType::RequestAntipast]),
         )),
         Box::new(RelayTransactionsFlow::new(
             ctx.clone(),

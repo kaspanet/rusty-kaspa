@@ -39,7 +39,14 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
             Ok(op) => {
                 if let Some(msg) = op {
                     match msg.payload {
-                        Some(Payload::BlockWithTrustedDataV4(payload)) => Ok(Some(payload.try_into()?)),
+                        Some(Payload::BlockWithTrustedDataV4(payload)) => {
+                            let entry: TrustedDataEntry = payload.try_into()?;
+                            if entry.block.is_header_only() {
+                                Err(ProtocolError::OtherOwned(format!("trusted entry block {} is header only", entry.block.hash())))
+                            } else {
+                                Ok(Some(entry))
+                            }
+                        }
                         Some(Payload::DoneBlocksWithTrustedData(_)) => {
                             debug!("trusted entry stream completed after {} items", self.i);
                             Ok(None)
