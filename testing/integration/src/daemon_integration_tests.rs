@@ -1,10 +1,11 @@
 use kaspa_addresses::Address;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::runtime::AsyncRuntime;
-use kaspa_rpc_core::api::rpc::RpcApi;
+use kaspa_notify::scope::{Scope, VirtualDaaScoreChangedScope};
+use kaspa_rpc_core::{api::rpc::RpcApi, Notification};
 use kaspad_lib::args::Args;
 
-use crate::common::daemon::Daemon;
+use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
 use std::{sync::Arc, time::Duration};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -52,15 +53,35 @@ async fn daemon_mining_test() {
     tokio::time::sleep(Duration::from_secs(1)).await; // Let it connect
     assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
 
+    let (sender, event_receiver) = async_channel::unbounded();
+    rpc_client1.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
+    rpc_client1.start_notify(Default::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await.unwrap();
+
     // Mine 10 blocks to daemon #1
     let mut last_block_hash = None;
-    for _ in 0..10 {
+    for i in 0..10 {
         let template = rpc_client1
             .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
             .await
             .unwrap();
         last_block_hash = Some(template.block.header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
+
+        while let Ok(notification) = match tokio::time::timeout(Duration::from_secs(1), event_receiver.recv()).await {
+            Ok(res) => res,
+            Err(elapsed) => panic!("expected virtual event before {}", elapsed),
+        } {
+            match notification {
+                Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score == i + 1 => {
+                    break;
+                }
+                Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score > i + 1 => {
+                    panic!("DAA score too high for number of submitted blocks")
+                }
+                Notification::VirtualDaaScoreChanged(_) => {}
+                _ => panic!("expected only DAA score notifications"),
+            }
+        }
     }
 
     tokio::time::sleep(Duration::from_secs(1)).await;

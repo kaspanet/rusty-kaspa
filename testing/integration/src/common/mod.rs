@@ -4,6 +4,7 @@ use std::{
     path::Path,
 };
 
+pub mod client_notify;
 pub mod client_pool;
 pub mod daemon;
 pub mod utils;

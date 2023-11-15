@@ -44,7 +44,7 @@ pub enum KaspadMessagePayloadType {
     TrustedData,
     RequestIbdChainBlockLocator,
     IbdChainBlockLocator,
-    RequestAnticone,
+    RequestAntipast,
     RequestNextPruningPointAndItsAnticoneBlocks,
 }
 
@@ -96,7 +96,7 @@ impl From<&KaspadMessagePayload> for KaspadMessagePayloadType {
             KaspadMessagePayload::TrustedData(_) => KaspadMessagePayloadType::TrustedData,
             KaspadMessagePayload::RequestIbdChainBlockLocator(_) => KaspadMessagePayloadType::RequestIbdChainBlockLocator,
             KaspadMessagePayload::IbdChainBlockLocator(_) => KaspadMessagePayloadType::IbdChainBlockLocator,
-            KaspadMessagePayload::RequestAnticone(_) => KaspadMessagePayloadType::RequestAnticone,
+            KaspadMessagePayload::RequestAntipast(_) => KaspadMessagePayloadType::RequestAntipast,
             KaspadMessagePayload::RequestNextPruningPointAndItsAnticoneBlocks(_) => {
                 KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks
             }
