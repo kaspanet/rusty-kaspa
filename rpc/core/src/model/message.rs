@@ -683,6 +683,7 @@ pub struct PingResponse {}
 #[serde(rename_all = "camelCase")]
 pub struct GetMetricsRequest {
     pub process_metrics: bool,
+    pub connection_metrics: bool,
     pub consensus_metrics: bool,
 }
 
@@ -698,13 +699,19 @@ pub struct ProcessMetrics {
     pub disk_io_write_bytes: u64,
     pub disk_io_read_per_sec: f64,
     pub disk_io_write_per_sec: f64,
+}
 
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionMetrics {
     pub borsh_live_connections: u64,
     pub borsh_connection_attempts: u64,
     pub borsh_handshake_failures: u64,
     pub json_live_connections: u64,
     pub json_connection_attempts: u64,
     pub json_handshake_failures: u64,
+
+    pub active_peers: u64,
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -717,6 +724,14 @@ pub struct ConsensusMetrics {
     pub txs_counts: u64,
     pub chain_block_counts: u64,
     pub mass_counts: u64,
+
+    pub block_count: u64,
+    pub header_count: u64,
+    pub tip_hashes_count: u64,
+    pub difficulty: f64,
+    pub past_median_time: u64,
+    pub virtual_parent_hashes_count: u64,
+    pub virtual_daa_score: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -724,12 +739,18 @@ pub struct ConsensusMetrics {
 pub struct GetMetricsResponse {
     pub server_time: u64,
     pub process_metrics: Option<ProcessMetrics>,
+    pub connection_metrics: Option<ConnectionMetrics>,
     pub consensus_metrics: Option<ConsensusMetrics>,
 }
 
 impl GetMetricsResponse {
-    pub fn new(server_time: u64, process_metrics: Option<ProcessMetrics>, consensus_metrics: Option<ConsensusMetrics>) -> Self {
-        Self { process_metrics, consensus_metrics, server_time }
+    pub fn new(
+        server_time: u64,
+        process_metrics: Option<ProcessMetrics>,
+        connection_metrics: Option<ConnectionMetrics>,
+        consensus_metrics: Option<ConsensusMetrics>,
+    ) -> Self {
+        Self { process_metrics, connection_metrics, consensus_metrics, server_time }
     }
 }
 

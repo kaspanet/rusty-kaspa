@@ -38,7 +38,7 @@ impl Rpc {
                 tprintln!(ctx, "ok");
             }
             RpcApiOps::GetMetrics => {
-                let result = rpc.get_metrics(true, true).await?;
+                let result = rpc.get_metrics(true, true, true).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetServerInfo => {

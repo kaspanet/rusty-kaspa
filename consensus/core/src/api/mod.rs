@@ -140,6 +140,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_virtual_parents_len(&self) -> usize {
+        unimplemented!()
+    }
+
     fn get_virtual_utxos(
         &self,
         from_outpoint: Option<TransactionOutpoint>,
@@ -150,6 +154,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_tips(&self) -> Vec<Hash> {
+        unimplemented!()
+    }
+
+    fn get_tips_len(&self) -> usize {
         unimplemented!()
     }
 

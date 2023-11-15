@@ -122,8 +122,8 @@ impl Metrics {
     // --- samplers
 
     async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
-        if let Ok(metrics) = rpc.get_metrics(true, true).await {
-            let GetMetricsResponse { server_time: _, consensus_metrics, process_metrics } = metrics;
+        if let Ok(metrics) = rpc.get_metrics(true, true, true).await {
+            let GetMetricsResponse { server_time: _, consensus_metrics, connection_metrics: _, process_metrics } = metrics;
 
             let mut data = self.data.lock().unwrap();
             let data = data.as_mut().unwrap();

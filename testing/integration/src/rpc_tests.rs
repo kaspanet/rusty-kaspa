@@ -429,28 +429,44 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let get_metrics_call_response = rpc_client
-                        .get_metrics_call(GetMetricsRequest { consensus_metrics: true, process_metrics: true })
+                        .get_metrics_call(GetMetricsRequest {
+                            consensus_metrics: true,
+                            connection_metrics: true,
+                            process_metrics: true,
+                        })
                         .await
                         .unwrap();
                     assert!(get_metrics_call_response.process_metrics.is_some());
                     assert!(get_metrics_call_response.consensus_metrics.is_some());
 
                     let get_metrics_call_response = rpc_client
-                        .get_metrics_call(GetMetricsRequest { consensus_metrics: false, process_metrics: true })
+                        .get_metrics_call(GetMetricsRequest {
+                            consensus_metrics: false,
+                            connection_metrics: true,
+                            process_metrics: true,
+                        })
                         .await
                         .unwrap();
                     assert!(get_metrics_call_response.process_metrics.is_some());
                     assert!(get_metrics_call_response.consensus_metrics.is_none());
 
                     let get_metrics_call_response = rpc_client
-                        .get_metrics_call(GetMetricsRequest { consensus_metrics: true, process_metrics: false })
+                        .get_metrics_call(GetMetricsRequest {
+                            consensus_metrics: true,
+                            connection_metrics: true,
+                            process_metrics: false,
+                        })
                         .await
                         .unwrap();
                     assert!(get_metrics_call_response.process_metrics.is_none());
                     assert!(get_metrics_call_response.consensus_metrics.is_some());
 
                     let get_metrics_call_response = rpc_client
-                        .get_metrics_call(GetMetricsRequest { consensus_metrics: false, process_metrics: false })
+                        .get_metrics_call(GetMetricsRequest {
+                            consensus_metrics: false,
+                            connection_metrics: true,
+                            process_metrics: false,
+                        })
                         .await
                         .unwrap();
                     assert!(get_metrics_call_response.process_metrics.is_none());

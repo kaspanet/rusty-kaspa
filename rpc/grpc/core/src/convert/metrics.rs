@@ -17,12 +17,18 @@ from!(item: &kaspa_rpc_core::ProcessMetrics, protowire::ProcessMetrics, {
         disk_io_write_bytes: item.disk_io_write_bytes,
         disk_io_read_per_sec: item.disk_io_read_per_sec,
         disk_io_write_per_sec: item.disk_io_write_per_sec,
+    }
+});
+
+from!(item: &kaspa_rpc_core::ConnectionMetrics, protowire::ConnectionMetrics, {
+    Self {
         borsh_live_connections: item.borsh_live_connections,
         borsh_connection_attempts: item.borsh_connection_attempts,
         borsh_handshake_failures: item.borsh_handshake_failures,
         json_live_connections: item.json_live_connections,
         json_connection_attempts: item.json_connection_attempts,
         json_handshake_failures: item.json_handshake_failures,
+        active_peers: item.active_peers,
     }
 });
 
@@ -35,6 +41,14 @@ from!(item: &kaspa_rpc_core::ConsensusMetrics, protowire::ConsensusMetrics, {
         txs_counts: item.txs_counts,
         chain_block_counts: item.chain_block_counts,
         mass_counts: item.mass_counts,
+
+        block_count: item.block_count,
+        header_count: item.header_count,
+        tip_hashes_count: item.tip_hashes_count,
+        difficulty: item.difficulty,
+        past_median_time: item.past_median_time,
+        virtual_parent_hashes_count: item.virtual_parent_hashes_count,
+        virtual_daa_score: item.virtual_daa_score,
     }
 });
 
@@ -53,12 +67,18 @@ try_from!(item: &protowire::ProcessMetrics, kaspa_rpc_core::ProcessMetrics, {
         disk_io_write_bytes: item.disk_io_write_bytes,
         disk_io_read_per_sec: item.disk_io_read_per_sec,
         disk_io_write_per_sec: item.disk_io_write_per_sec,
+    }
+});
+
+try_from!(item: &protowire::ConnectionMetrics, kaspa_rpc_core::ConnectionMetrics, {
+    Self {
         borsh_live_connections: item.borsh_live_connections,
         borsh_connection_attempts: item.borsh_connection_attempts,
         borsh_handshake_failures: item.borsh_handshake_failures,
         json_live_connections: item.json_live_connections,
         json_connection_attempts: item.json_connection_attempts,
         json_handshake_failures: item.json_handshake_failures,
+        active_peers: item.active_peers,
     }
 });
 
@@ -71,5 +91,13 @@ try_from!(item: &protowire::ConsensusMetrics, kaspa_rpc_core::ConsensusMetrics, 
         txs_counts: item.txs_counts,
         chain_block_counts: item.chain_block_counts,
         mass_counts: item.mass_counts,
+
+        block_count: item.block_count,
+        header_count: item.header_count,
+        tip_hashes_count: item.tip_hashes_count,
+        difficulty: item.difficulty,
+        past_median_time: item.past_median_time,
+        virtual_parent_hashes_count: item.virtual_parent_hashes_count,
+        virtual_daa_score: item.virtual_daa_score,
     }
 });

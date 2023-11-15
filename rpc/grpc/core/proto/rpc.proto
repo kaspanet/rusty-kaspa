@@ -761,7 +761,9 @@ message ProcessMetrics{
   uint64 diskIoWriteBytes = 7;
   double diskIoReadPerSec = 8;
   double diskIoWritePerSec = 9;
+}
 
+message ConnectionMetrics {
   uint64 borshLiveConnections = 31;
   uint64 borshConnectionAttempts = 32;
   uint64 borshHandshakeFailures = 33;
@@ -769,6 +771,8 @@ message ProcessMetrics{
   uint64 jsonLiveConnections = 41;
   uint64 jsonConnectionAttempts = 42;
   uint64 jsonHandshakeFailures = 43;
+  
+  uint64 activePeers = 51;
 }
 
 message ConsensusMetrics{
@@ -779,17 +783,27 @@ message ConsensusMetrics{
   uint64 txsCounts = 5;
   uint64 chainBlockCounts = 6;
   uint64 massCounts = 7;
+  
+  uint64 blockCount = 11;
+  uint64 headerCount = 12;
+  uint64 tipHashesCount = 13;
+  double difficulty = 14;
+  uint64 pastMedianTime = 15;
+  uint64 virtualParentHashesCount = 16;
+  uint64 virtualDaaScore = 17;
 }
 
 message GetMetricsRequestMessage{
   bool processMetrics = 1;
-  bool consensusMetrics = 2;
+  bool connectionMetrics = 2;
+  bool consensusMetrics = 3;
 }
 
 message GetMetricsResponseMessage{
   uint64 serverTime = 1;
   ProcessMetrics processMetrics = 11;
-  ConsensusMetrics consensusMetrics = 12;
+  ConnectionMetrics connectionMetrics = 12;
+  ConsensusMetrics consensusMetrics = 13;
   RPCError error = 1000;
 }
 

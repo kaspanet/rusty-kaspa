@@ -695,27 +695,47 @@ impl RpcApi for RpcCoreService {
             disk_io_write_bytes,
             disk_io_read_per_sec,
             disk_io_write_per_sec,
+        });
+
+        let connection_metrics = req.connection_metrics.then_some(ConnectionMetrics {
             borsh_live_connections: self.wrpc_borsh_counters.live_connections.load(Ordering::Relaxed),
             borsh_connection_attempts: self.wrpc_borsh_counters.connection_attempts.load(Ordering::Relaxed),
             borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed),
             json_live_connections: self.wrpc_json_counters.live_connections.load(Ordering::Relaxed),
             json_connection_attempts: self.wrpc_json_counters.connection_attempts.load(Ordering::Relaxed),
             json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed),
+
+            active_peers: self.flow_context.hub().active_peers_len() as u64,
         });
 
-        let consensus_metrics = req.consensus_metrics.then_some(ConsensusMetrics {
-            blocks_submitted: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
-            header_counts: self.processing_counters.header_counts.load(Ordering::SeqCst),
-            dep_counts: self.processing_counters.dep_counts.load(Ordering::SeqCst),
-            body_counts: self.processing_counters.body_counts.load(Ordering::SeqCst),
-            txs_counts: self.processing_counters.txs_counts.load(Ordering::SeqCst),
-            chain_block_counts: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
-            mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
-        });
+        let consensus_metrics = if req.consensus_metrics {
+            let session = self.consensus_manager.consensus().unguarded_session();
+            let block_count = session.async_estimate_block_count().await;
+
+            Some(ConsensusMetrics {
+                blocks_submitted: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
+                header_counts: self.processing_counters.header_counts.load(Ordering::SeqCst),
+                dep_counts: self.processing_counters.dep_counts.load(Ordering::SeqCst),
+                body_counts: self.processing_counters.body_counts.load(Ordering::SeqCst),
+                txs_counts: self.processing_counters.txs_counts.load(Ordering::SeqCst),
+                chain_block_counts: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
+                mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
+                // ---
+                block_count: block_count.block_count,
+                header_count: block_count.header_count,
+                tip_hashes_count: session.async_get_tips_len().await as u64,
+                difficulty: self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
+                past_median_time: session.async_get_virtual_past_median_time().await,
+                virtual_parent_hashes_count: session.async_get_virtual_parents_len().await as u64,
+                virtual_daa_score: session.async_get_virtual_daa_score().await,
+            })
+        } else {
+            None
+        };
 
         let server_time = unix_now();
 
-        let response = GetMetricsResponse { server_time, process_metrics, consensus_metrics };
+        let response = GetMetricsResponse { server_time, process_metrics, connection_metrics, consensus_metrics };
 
         Ok(response)
     }
