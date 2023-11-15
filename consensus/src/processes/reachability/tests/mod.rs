@@ -4,6 +4,7 @@
 use super::{inquirer::*, tree::*};
 use crate::{
     model::stores::{
+        children::ChildrenStore,
         reachability::{ReachabilityStore, ReachabilityStoreReader},
         relations::{RelationsStore, RelationsStoreReader},
     },
@@ -100,12 +101,12 @@ impl DagBlock {
 }
 
 /// A struct with fluent API to streamline DAG building
-pub struct DagBuilder<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ?Sized> {
+pub struct DagBuilder<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ChildrenStore + ?Sized> {
     reachability: &'a mut T,
     relations: &'a mut S,
 }
 
-impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ?Sized> DagBuilder<'a, T, S> {
+impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ChildrenStore + ?Sized> DagBuilder<'a, T, S> {
     pub fn new(reachability: &'a mut T, relations: &'a mut S) -> Self {
         Self { reachability, relations }
     }

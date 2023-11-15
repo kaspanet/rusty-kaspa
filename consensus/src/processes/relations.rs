@@ -1,5 +1,8 @@
 use super::ghostdag::mergeset::unordered_mergeset_without_selected_parent;
-use crate::model::{services::reachability::ReachabilityService, stores::relations::RelationsStore};
+use crate::model::{
+    services::reachability::ReachabilityService,
+    stores::{children::ChildrenStore, relations::RelationsStore},
+};
 use itertools::Itertools;
 use kaspa_consensus_core::{
     blockhash::{BlockHashIteratorExtensions, BlockHashes, ORIGIN},
@@ -10,7 +13,7 @@ use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
 /// Initializes this relations store with an `origin` root
-pub fn init<S: RelationsStore + ?Sized>(relations: &mut S) {
+pub fn init<S: RelationsStore + ChildrenStore + ?Sized>(relations: &mut S) {
     if !relations.has(ORIGIN).unwrap() {
         relations.insert(ORIGIN, BlockHashes::new(vec![])).unwrap();
     }
@@ -27,7 +30,7 @@ pub fn init<S: RelationsStore + ?Sized>(relations: &mut S) {
 pub fn delete_level_relations<W, S>(mut writer: W, relations: &mut S, hash: Hash) -> Result<(), StoreError>
 where
     W: DirectWriter,
-    S: RelationsStore + ?Sized,
+    S: RelationsStore + ChildrenStore + ?Sized,
 {
     let children = relations.get_children(hash)?; // if the first entry was found, we expect all others as well, hence we unwrap below
     for child in children.iter().copied() {
@@ -50,7 +53,7 @@ where
 pub fn delete_reachability_relations<W, S, U>(mut writer: W, relations: &mut S, reachability: &U, hash: Hash) -> BlockHashSet
 where
     W: DirectWriter,
-    S: RelationsStore + ?Sized,
+    S: RelationsStore + ChildrenStore + ?Sized,
     U: ReachabilityService + ?Sized,
 {
     let selected_parent = reachability.get_chain_parent(hash);
@@ -74,7 +77,7 @@ where
     mergeset
 }
 
-pub trait RelationsStoreExtensions: RelationsStore {
+pub trait RelationsStoreExtensions: RelationsStore + ChildrenStore {
     /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`
     fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         self.insert_with_writer(self.default_writer(), hash, parents)
@@ -101,14 +104,9 @@ pub trait RelationsStoreExtensions: RelationsStore {
         // Insert a new entry for `hash`
         self.set_parents(&mut writer, hash, parents.clone())?;
 
-        // The new hash has no children yet
-        self.set_children(&mut writer, hash, BlockHashes::new(Vec::new()))?;
-
         // Update `children` for each parent
         for parent in parents.iter().cloned() {
-            let mut children = (*self.get_children(parent)?).clone();
-            children.push(hash);
-            self.set_children(&mut writer, parent, BlockHashes::new(children))?;
+            self.insert_child(&mut writer, parent, hash)?;
         }
 
         Ok(())
@@ -123,14 +121,7 @@ pub trait RelationsStoreExtensions: RelationsStore {
 
         // Remove `hash` from `children` of each parent
         for parent in parents.iter().cloned() {
-            let mut children = (*self.get_children(parent)?).clone();
-            let index = children
-                .iter()
-                .copied()
-                .position(|h| h == hash)
-                .unwrap_or_else(|| panic!("inconsistent child-parent relation, hash: {}, parent: {}", hash, parent,));
-            children.swap_remove(index);
-            self.set_children(&mut writer, parent, BlockHashes::new(children))?;
+            self.delete_child(&mut writer, parent, hash)?;
         }
 
         Ok(())
@@ -148,16 +139,14 @@ pub trait RelationsStoreExtensions: RelationsStore {
         self.set_parents(&mut writer, hash, BlockHashes::new(parents))?;
 
         for parent in replace_with.iter().cloned() {
-            let mut children = (*self.get_children(parent)?).clone();
-            children.push(hash);
-            self.set_children(&mut writer, parent, BlockHashes::new(children))?;
+            self.insert_child(&mut writer, parent, hash)?;
         }
 
         Ok(())
     }
 }
 
-impl<S: RelationsStore + ?Sized> RelationsStoreExtensions for S {}
+impl<S: RelationsStore + ChildrenStore + ?Sized> RelationsStoreExtensions for S {}
 
 #[cfg(test)]
 mod tests {

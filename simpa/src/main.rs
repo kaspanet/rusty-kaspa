@@ -150,7 +150,7 @@ fn main() {
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
 
-    assert!(args.bps * args.delay < 250.0, "The delay times bps product is larger than 250");
+    // assert!(args.bps * args.delay < 250.0, "The delay times bps product is larger than 250");
     if args.miners > 1 {
         warn!(
             "Warning: number of miners was configured to {}. Currently each miner added doubles the simulation 
@@ -180,6 +180,9 @@ fn main() {
     }
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
+        let mut config = (*config).clone();
+        config.process_genesis = false;
+        let config = Arc::new(config);
         let (lifetime, db) = match (args.rocksdb_stats, args.rocksdb_stats_period_sec) {
             (true, Some(rocksdb_stats_period_sec)) => {
                 load_existing_db!(input_dir, conn_builder.enable_stats().with_stats_period(rocksdb_stats_period_sec))
@@ -317,9 +320,10 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
     let mut chunk = iter.next().unwrap();
     let mut prev_joins = submit_chunk(src_consensus, dst_consensus, &mut chunk);
 
-    for mut chunk in iter {
+    for (i, mut chunk) in (0..usize::MAX).zip(iter) {
         let current_joins = submit_chunk(src_consensus, dst_consensus, &mut chunk);
         let statuses = try_join_all(prev_joins).await.unwrap();
+        info!("Validated chunk {}", i);
         assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
         prev_joins = current_joins;
     }

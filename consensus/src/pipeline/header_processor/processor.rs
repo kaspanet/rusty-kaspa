@@ -124,7 +124,7 @@ pub struct HeaderProcessor {
     db: Arc<DB>,
 
     // Stores
-    pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
+    pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>, // TODO: Remove RwLock
     pub(super) reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub(super) reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     pub(super) ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
@@ -417,7 +417,7 @@ impl HeaderProcessor {
 
         let mut relations_write = self.relations_stores.write();
         ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
-            relations_write[level].insert_batch(&mut batch, header.hash, parents_by_level).unwrap();
+            relations_write[level].insert_batch(&mut batch, header.hash, parents_by_level.clone()).unwrap();
         });
 
         // Write reachability relations. These relations are only needed during header pruning

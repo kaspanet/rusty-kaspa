@@ -259,6 +259,7 @@ mod tests {
     use super::*;
     use crate::{
         model::stores::{
+            children::ChildrenStore,
             reachability::{DbReachabilityStore, MemoryReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore, StagingRelationsStore},
         },
@@ -333,7 +334,7 @@ mod tests {
     /// Runs a DAG test-case by adding all blocks and then removing them while verifying full
     /// reachability and relations state frequently between operations.
     /// Note: runtime is quadratic in the number of blocks so should be used with mildly small DAGs (~50)
-    fn run_dag_test_case<S: RelationsStore + ?Sized, V: ReachabilityStore + ?Sized>(
+    fn run_dag_test_case<S: RelationsStore + ChildrenStore + ?Sized, V: ReachabilityStore + ?Sized>(
         relations: &mut S,
         reachability: &mut V,
         test: &DagTestCase,
