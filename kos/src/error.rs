@@ -1,3 +1,4 @@
+#![allow(clippy::enum_variant_names)]
 use downcast::DowncastError;
 use kaspa_daemon::error::Error as DaemonError;
 use thiserror::Error;

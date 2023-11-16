@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 pub use crate::client::*;
 pub use crate::result::Result;
 pub use async_trait::async_trait;

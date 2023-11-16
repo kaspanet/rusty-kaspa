@@ -13,4 +13,4 @@ pub(crate) mod seed;
 pub use self::{language::Language, phrase::Mnemonic};
 
 //#[cfg(feature = "bip39")]
-pub use self::seed::Seed;
+

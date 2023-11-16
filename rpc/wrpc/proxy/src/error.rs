@@ -15,6 +15,7 @@ pub enum Error {
     #[error(transparent)]
     WebSocket(#[from] workflow_rpc::server::WebSocketError),
 
+    #[allow(clippy::enum_variant_names)]
     #[error(transparent)]
     RpcError(#[from] workflow_rpc::error::Error),
 }
