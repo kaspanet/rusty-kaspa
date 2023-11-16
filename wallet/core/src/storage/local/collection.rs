@@ -110,13 +110,12 @@ where
     }
 
     pub fn load_multiple(&self, ids: &[Id]) -> Result<Vec<Arc<Data>>> {
-        Ok(ids
-            .iter()
+        ids.iter()
             .map(|id| match self.map.get(id).cloned() {
-                Some(data) => data,
-                None => panic!("requested id `{}` was not found in collection", id),
+                Some(data) => Ok(data),
+                None => Err(Error::KeyId(id.to_string())),
             })
-            .collect())
+            .collect::<Result<Vec<_>>>()
     }
 
     pub fn range(&self, range: std::ops::Range<usize>) -> Result<Vec<Arc<Data>>> {

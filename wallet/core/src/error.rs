@@ -230,6 +230,9 @@ pub enum Error {
 
     #[error(transparent)]
     TxScriptError(#[from] kaspa_txscript_errors::TxScriptError),
+
+    #[error("Legacy account is not initialized")]
+    LegacyAccountNotInitialized,
 }
 
 impl From<Aborted> for Error {

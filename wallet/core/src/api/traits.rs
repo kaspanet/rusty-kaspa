@@ -46,36 +46,61 @@ pub trait WalletApi: Send + Sync + AnySync {
         self: Arc<Self>,
         wallet_secret: Secret,
         wallet_name: Option<String>,
-        activate_accounts: bool,
-    ) -> Result<WalletOpenResponse> {
-        self.wallet_open_call(WalletOpenRequest { wallet_secret, wallet_name, activate_accounts }).await
+        account_descriptors: bool,
+        legacy_accounts: bool,
+    ) -> Result<Option<Vec<AccountDescriptor>>> {
+        Ok(self
+            .wallet_open_call(WalletOpenRequest {
+                wallet_secret,
+                wallet_name,
+                account_descriptors,
+                legacy_accounts: legacy_accounts.then_some(true),
+            })
+            .await?
+            .account_descriptors)
     }
 
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse>;
     async fn wallet_close_call(self: Arc<Self>, request: WalletCloseRequest) -> Result<WalletCloseResponse>;
+
+    async fn accounts_activate(self: Arc<Self>, account_ids: Option<Vec<runtime::AccountId>>) -> Result<AccountsActivateResponse> {
+        self.accounts_activate_call(AccountsActivateRequest { account_ids }).await
+    }
+    async fn accounts_activate_call(self: Arc<Self>, request: AccountsActivateRequest) -> Result<AccountsActivateResponse>;
+
     async fn prv_key_data_create_call(self: Arc<Self>, request: PrvKeyDataCreateRequest) -> Result<PrvKeyDataCreateResponse>;
     async fn prv_key_data_remove_call(self: Arc<Self>, request: PrvKeyDataRemoveRequest) -> Result<PrvKeyDataRemoveResponse>;
     async fn prv_key_data_get_call(self: Arc<Self>, request: PrvKeyDataGetRequest) -> Result<PrvKeyDataGetResponse>;
 
-    async fn account_enumerate(self: Arc<Self>) -> Result<Vec<AccountDescriptor>> {
-        Ok(self.account_enumerate_call(AccountEnumerateRequest {}).await?.descriptor_list)
+    async fn accounts_enumerate(self: Arc<Self>) -> Result<Vec<AccountDescriptor>> {
+        Ok(self.accounts_enumerate_call(AccountsEnumerateRequest {}).await?.descriptor_list)
     }
-    async fn account_enumerate_call(self: Arc<Self>, request: AccountEnumerateRequest) -> Result<AccountEnumerateResponse>;
+    async fn accounts_enumerate_call(self: Arc<Self>, request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse>;
 
-    async fn account_create_call(self: Arc<Self>, request: AccountCreateRequest) -> Result<AccountCreateResponse>;
-    async fn account_import_call(self: Arc<Self>, request: AccountImportRequest) -> Result<AccountImportResponse>;
-    async fn account_get_call(self: Arc<Self>, request: AccountGetRequest) -> Result<AccountGetResponse>;
-    async fn account_create_new_address_call(
+    async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse>;
+    async fn accounts_import_call(self: Arc<Self>, request: AccountsImportRequest) -> Result<AccountsImportResponse>;
+    async fn accounts_get_call(self: Arc<Self>, request: AccountsGetRequest) -> Result<AccountsGetResponse>;
+    async fn accounts_create_new_address_call(
         self: Arc<Self>,
-        request: AccountCreateNewAddressRequest,
-    ) -> Result<AccountCreateNewAddressResponse>;
-    async fn account_send_call(self: Arc<Self>, request: AccountSendRequest) -> Result<AccountSendResponse>;
+        request: AccountsCreateNewAddressRequest,
+    ) -> Result<AccountsCreateNewAddressResponse>;
+    async fn accounts_send_call(self: Arc<Self>, request: AccountsSendRequest) -> Result<AccountsSendResponse>;
 
     // async fn account_estimate(self: Arc<Self>, request: AccountEstimateRequest) -> Result<AccountEstimateResponse> {
 
     //     Ok(self.account_estimate_call(request).await?)
     // }
-    async fn account_estimate_call(self: Arc<Self>, request: AccountEstimateRequest) -> Result<AccountEstimateResponse>;
+    async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse>;
+
+    async fn transaction_data_get_range(
+        self: Arc<Self>,
+        account_id: runtime::AccountId,
+        network_id: NetworkId,
+        range: std::ops::Range<u64>,
+    ) -> Result<TransactionDataGetResponse> {
+        self.transaction_data_get_call(TransactionDataGetRequest::with_range(account_id, network_id, range)).await
+    }
+
     async fn transaction_data_get_call(self: Arc<Self>, request: TransactionDataGetRequest) -> Result<TransactionDataGetResponse>;
     // async fn transaction_get_call(self: Arc<Self>, request: TransactionGetRequest) -> Result<TransactionGetResponse>;
     async fn address_book_enumerate_call(

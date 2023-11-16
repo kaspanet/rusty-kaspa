@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::storage::interface::StorageStream;
+use crate::storage::interface::{StorageStream, TransactionRangeResult};
 use crate::storage::{Binding, TransactionRecordStore, TransactionType};
 use crate::storage::{TransactionMetadata, TransactionRecord};
 
@@ -94,8 +94,9 @@ impl TransactionRecordStore for TransactionStore {
         _network_id: &NetworkId,
         _filter: Option<Vec<TransactionType>>,
         _range: std::ops::Range<usize>,
-    ) -> Result<Vec<Arc<TransactionRecord>>> {
-        Ok(vec![])
+    ) -> Result<TransactionRangeResult> {
+        let result = TransactionRangeResult { transactions: vec![], total: 0 };
+        Ok(result)
     }
 
     async fn store(&self, _transaction_records: &[&TransactionRecord]) -> Result<()> {

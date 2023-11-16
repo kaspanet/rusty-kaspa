@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::storage::interface::StorageStream;
+use crate::storage::interface::{StorageStream, TransactionRangeResult};
 use crate::storage::{Binding, TransactionRecordStore, TransactionType};
 use crate::storage::{TransactionMetadata, TransactionRecord};
 use kaspa_utils::hex::ToHex;
@@ -132,29 +132,27 @@ impl TransactionRecordStore for TransactionStore {
         network_id: &NetworkId,
         filter: Option<Vec<TransactionType>>,
         range: std::ops::Range<usize>,
-    ) -> Result<Vec<Arc<TransactionRecord>>> {
+    ) -> Result<TransactionRangeResult> {
         let folder = self.ensure_folder(binding, network_id).await?;
         let ids = self.enumerate(binding, network_id).await?;
         let mut transactions = vec![];
 
-        if let Some(filter) = filter {
-            let length = range.end - range.start;
+        let total = if let Some(filter) = filter {
             let mut located = 0;
 
             for id in ids {
                 let path = folder.join(&id.to_hex());
                 let tx: TransactionRecord = fs::read_json(&path).await?;
                 if filter.contains(&tx.transaction_type()) {
-                    if located >= range.start {
+                    if located >= range.start && located < range.end {
                         transactions.push(Arc::new(tx));
-                        if transactions.len() >= length {
-                            break;
-                        }
                     }
 
                     located += 1;
                 }
             }
+
+            located
         } else {
             let iter = ids.iter().skip(range.start).take(range.len());
 
@@ -163,9 +161,11 @@ impl TransactionRecordStore for TransactionStore {
                 let tx: TransactionRecord = fs::read_json(&path).await?;
                 transactions.push(Arc::new(tx));
             }
-        }
 
-        Ok(transactions)
+            ids.len()
+        };
+
+        Ok(TransactionRangeResult { transactions, total: total as u64 })
     }
 
     async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()> {

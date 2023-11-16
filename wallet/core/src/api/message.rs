@@ -85,12 +85,15 @@ pub struct WalletCreateResponse {
 pub struct WalletOpenRequest {
     pub wallet_secret: Secret,
     pub wallet_name: Option<String>,
-    pub activate_accounts: bool,
+    pub account_descriptors: bool,
+    pub legacy_accounts: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WalletOpenResponse {}
+pub struct WalletOpenResponse {
+    pub account_descriptors: Option<Vec<AccountDescriptor>>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -137,60 +140,70 @@ pub struct PrvKeyDataGetResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountEnumerateRequest {}
+pub struct AccountsEnumerateRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountEnumerateResponse {
+pub struct AccountsEnumerateResponse {
     pub descriptor_list: Vec<AccountDescriptor>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountCreateRequest {
+pub struct AccountsCreateRequest {
     pub prv_key_data_id: PrvKeyDataId,
     pub account_args: AccountCreateArgs,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountCreateResponse {}
+pub struct AccountsCreateResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountImportRequest {}
+pub struct AccountsImportRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountImportResponse {}
+pub struct AccountsImportResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountGetRequest {
+pub struct AccountsActivateRequest {
+    pub account_ids: Option<Vec<AccountId>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsActivateResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsGetRequest {
     pub account_id: AccountId,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountGetResponse {
+pub struct AccountsGetResponse {
     pub descriptor: AccountDescriptor,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountCreateNewAddressRequest {
+pub struct AccountsCreateNewAddressRequest {
     pub account_id: AccountId,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountCreateNewAddressResponse {
+pub struct AccountsCreateNewAddressResponse {
     pub address: Address,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountSendRequest {
+pub struct AccountsSendRequest {
     pub task_id: Option<TaskId>,
     pub account_id: AccountId,
     pub wallet_secret: Secret,
@@ -204,14 +217,14 @@ pub struct AccountSendRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountSendResponse {
+pub struct AccountsSendResponse {
     pub generator_summary: GeneratorSummary,
     pub transaction_ids: Vec<TransactionId>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountEstimateRequest {
+pub struct AccountsEstimateRequest {
     pub task_id: Option<TaskId>,
     pub account_id: AccountId,
     pub destination: PaymentDestination,
@@ -222,7 +235,7 @@ pub struct AccountEstimateRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountEstimateResponse {
+pub struct AccountsEstimateResponse {
     pub generator_summary: GeneratorSummary,
 }
 
@@ -236,10 +249,19 @@ pub struct TransactionDataGetRequest {
     pub end: u64,
 }
 
+impl TransactionDataGetRequest {
+    pub fn with_range(account_id: AccountId, network_id: NetworkId, range: std::ops::Range<u64>) -> Self {
+        Self { account_id, network_id, filter: None, start: range.start, end: range.end }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionDataGetResponse {
+    pub account_id: AccountId,
     pub transactions: Vec<Arc<TransactionRecord>>,
+    pub start: u64,
+    pub total: u64,
 }
 
 // #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

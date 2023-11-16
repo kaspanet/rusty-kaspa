@@ -135,7 +135,7 @@ impl Account for Legacy {
 
 #[async_trait]
 impl AsLegacyAccount for Legacy {
-    async fn initialize_private_context(&self, secret: Secret, payment_secret: Option<&Secret>, index: Option<u32>) -> Result<()> {
+    async fn create_private_context(&self, secret: Secret, payment_secret: Option<&Secret>, index: Option<u32>) -> Result<()> {
         self.initialize_derivation(secret, payment_secret, index).await?;
         Ok(())
     }

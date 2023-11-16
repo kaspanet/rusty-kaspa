@@ -410,7 +410,7 @@ downcast_sync!(dyn Account);
 
 #[async_trait]
 pub trait AsLegacyAccount: Account {
-    async fn initialize_private_context(&self, _secret: Secret, _payment_secret: Option<&Secret>, _index: Option<u32>) -> Result<()> {
+    async fn create_private_context(&self, _secret: Secret, _payment_secret: Option<&Secret>, _index: Option<u32>) -> Result<()> {
         Ok(())
     }
 
@@ -439,7 +439,7 @@ pub trait DerivationCapableAccount: Account {
         notifier: Option<ScanNotifier>,
     ) -> Result<()> {
         if let Ok(legacy_account) = self.clone().as_legacy_account() {
-            legacy_account.initialize_private_context(wallet_secret.clone(), payment_secret.as_ref(), None).await?;
+            legacy_account.create_private_context(wallet_secret.clone(), payment_secret.as_ref(), None).await?;
         }
 
         let derivation = self.derivation();

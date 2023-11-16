@@ -147,6 +147,10 @@ impl Account {
         Self { version: ACCOUNT_VERSION, id, prv_key_data_id, settings, data }
     }
 
+    pub fn id(&self) -> &AccountId {
+        &self.id
+    }
+
     pub fn data(&self) -> &AccountData {
         &self.data
     }

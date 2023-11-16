@@ -75,7 +75,7 @@ pub trait AccountStore: Send + Sync {
         -> Result<StorageStream<(Arc<Account>, Option<Arc<Metadata>>)>>;
     async fn len(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize>;
     async fn load_single(&self, ids: &AccountId) -> Result<Option<(Arc<Account>, Option<Arc<Metadata>>)>>;
-    // async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<(Arc<Account>,Option<Arc<Metadata>>)>>;
+    async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<(Arc<Account>, Option<Arc<Metadata>>)>>;
     async fn store_single(&self, account: &Account, metadata: Option<&Metadata>) -> Result<()>;
     async fn store_multiple(&self, data: &[(&Account, Option<&Metadata>)]) -> Result<()>;
     async fn remove(&self, id: &[&AccountId]) -> Result<()>;
@@ -92,6 +92,11 @@ pub trait AddressBookStore: Send + Sync {
     }
 }
 
+pub struct TransactionRangeResult {
+    pub transactions: Vec<Arc<TransactionRecord>>,
+    pub total: u64,
+}
+
 #[async_trait]
 pub trait TransactionRecordStore: Send + Sync {
     async fn transaction_id_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<Arc<TransactionId>>>;
@@ -102,7 +107,8 @@ pub trait TransactionRecordStore: Send + Sync {
         network_id: &NetworkId,
         filter: Option<Vec<TransactionType>>,
         range: std::ops::Range<usize>,
-    ) -> Result<Vec<Arc<TransactionRecord>>>;
+    ) -> Result<TransactionRangeResult>;
+
     async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>>;
     async fn load_multiple(
         &self,
@@ -110,6 +116,7 @@ pub trait TransactionRecordStore: Send + Sync {
         network_id: &NetworkId,
         ids: &[TransactionId],
     ) -> Result<Vec<Arc<TransactionRecord>>>;
+
     async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()>;
     async fn remove(&self, binding: &Binding, network_id: &NetworkId, ids: &[&TransactionId]) -> Result<()>;
 

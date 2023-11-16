@@ -4,7 +4,7 @@ use crate::result::Result;
 use crate::runtime::{account::ScanNotifier, try_from_storage, Account, AccountId, ActiveAccountMap};
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
-use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
+use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs, TransactionRangeResult};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
 use crate::storage::{
@@ -56,6 +56,28 @@ impl WalletCreateArgs {
 impl From<WalletCreateArgs> for CreateArgs {
     fn from(args: WalletCreateArgs) -> Self {
         CreateArgs::new(args.title, args.filename, args.user_hint, args.overwrite_wallet_storage)
+    }
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct WalletOpenArgs {
+    /// Return account descriptors
+    pub account_descriptors: bool,
+    /// Enable support for legacy accounts
+    pub legacy_accounts: bool,
+}
+
+impl WalletOpenArgs {
+    pub fn default_with_legacy_accounts() -> Self {
+        Self { legacy_accounts: true, ..Default::default() }
+    }
+
+    fn load_account_descriptors(&self) -> bool {
+        self.account_descriptors || self.legacy_accounts
+    }
+
+    fn is_legacy_only(&self) -> bool {
+        self.legacy_accounts && !self.account_descriptors
     }
 }
 
@@ -251,12 +273,6 @@ impl Wallet {
                 Ok(())
             }
 
-            /// For end-user wallets only - activates all accounts in the wallet
-            /// storage.
-            pub async fn activate_all_stored_accounts(self: &Arc<Wallet>) -> Result<Vec<Arc<dyn Account>>> {
-                self.accounts(None).await?.try_collect::<Vec<_>>().await
-            }
-
             /// Select an account as 'active'. Supply `None` to remove active selection.
             pub async fn select(self: &Arc<Self>, account: Option<&Arc<dyn Account>>) -> Result<()> {
                 *self.inner.selected_account.lock().unwrap() = account.cloned();
@@ -281,7 +297,12 @@ impl Wallet {
     }
 
     /// Loads a wallet from storage. Accounts are not activated by this call.
-    async fn open_impl(self: &Arc<Wallet>, secret: Secret, name: Option<String>, activate_accounts: bool) -> Result<()> {
+    async fn open_impl(
+        self: &Arc<Wallet>,
+        secret: Secret,
+        name: Option<String>,
+        args: WalletOpenArgs,
+    ) -> Result<Option<Vec<AccountDescriptor>>> {
         let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
         let name = Some(make_filename(&name, &None));
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret.clone()));
@@ -293,8 +314,13 @@ impl Wallet {
         let hint = self.store().get_user_hint().await?;
         self.notify(Events::WalletHint { hint }).await?;
 
-        let accounts = if activate_accounts {
+        let accounts = if args.load_account_descriptors() {
             let stored_accounts = self.inner.store.as_account_store().unwrap().iter(None).await?.try_collect::<Vec<_>>().await?;
+            let stored_accounts = if !args.is_legacy_only() {
+                stored_accounts
+            } else {
+                stored_accounts.into_iter().filter(|(stored_account, _)| stored_account.is_legacy()).collect::<Vec<_>>()
+            };
             Some(
                 futures::stream::iter(stored_accounts.into_iter())
                     .then(|(account, meta)| try_from_storage(self, account, meta))
@@ -310,32 +336,71 @@ impl Wallet {
             .map(|accounts| accounts.iter().map(|account| account.descriptor()).collect::<Result<Vec<_>>>())
             .transpose()?;
 
-        self.notify(Events::WalletOpen { account_descriptors }).await?;
-
-        // self.initialize_legacy_accounts(None, secret).await?;
-
         if let Some(accounts) = accounts {
-            for account in accounts.iter() {
+            for account in accounts.into_iter() {
                 if let Ok(legacy_account) = account.clone().as_legacy_account() {
-                    self.legacy_accounts().insert(account.clone());
-                    legacy_account.initialize_private_context(secret.clone(), None, None).await?;
-                    legacy_account.clone().start().await?;
-                    legacy_account.clear_private_context().await?;
-                } else {
-                    account.clone().start().await?;
+                    self.legacy_accounts().insert(account);
+                    legacy_account.create_private_context(secret.clone(), None, None).await?;
                 }
             }
         }
 
-        self.notify(Events::WalletReady).await?;
+        self.notify(Events::WalletOpen { account_descriptors: account_descriptors.clone() }).await?;
+
+        Ok(account_descriptors)
+    }
+
+    /// Loads a wallet from storage. Accounts are not activated by this call.
+    pub async fn open(
+        self: &Arc<Wallet>,
+        secret: Secret,
+        name: Option<String>,
+        args: WalletOpenArgs,
+    ) -> Result<Option<Vec<AccountDescriptor>>> {
+        // This is a wrapper of open_impl() that catches errors and notifies the UI
+        match self.open_impl(secret, name, args).await {
+            Ok(account_descriptors) => Ok(account_descriptors),
+            Err(err) => {
+                self.notify(Events::WalletError { message: err.to_string() }).await?;
+                Err(err)
+            }
+        }
+    }
+
+    async fn activate_accounts_impl(self: &Arc<Wallet>, account_ids: Option<&[AccountId]>) -> Result<()> {
+        let stored_accounts = if let Some(ids) = account_ids {
+            self.inner.store.as_account_store().unwrap().load_multiple(ids).await?
+        } else {
+            self.inner.store.as_account_store().unwrap().iter(None).await?.try_collect::<Vec<_>>().await?
+        };
+
+        let ids = stored_accounts.iter().map(|(account, _)| *account.id()).collect::<Vec<_>>();
+
+        for (stored_account, meta) in stored_accounts.into_iter() {
+            if stored_account.is_legacy() {
+                let legacy_account = self
+                    .legacy_accounts()
+                    .get(stored_account.id())
+                    .ok_or_else(|| Error::LegacyAccountNotInitialized)?
+                    .clone()
+                    .as_legacy_account()?;
+                legacy_account.clone().start().await?;
+                legacy_account.clear_private_context().await?;
+            } else {
+                let account = try_from_storage(self, stored_account, meta).await?;
+                account.clone().start().await?;
+            }
+        }
+
+        self.notify(Events::AccountActivation { ids }).await?;
 
         Ok(())
     }
 
-    /// Loads a wallet from storage. Accounts are not activated by this call.
-    pub async fn open(self: &Arc<Wallet>, secret: Secret, name: Option<String>, activate_accounts: bool) -> Result<()> {
-        // This is a wrapper of load_impl() that catches errors and notifies the UI
-        if let Err(err) = self.open_impl(secret, name, activate_accounts).await {
+    /// Activates accounts (performs account address space counts, initializes balance tracking, etc.)
+    pub async fn activate_accounts(self: &Arc<Wallet>, account_ids: Option<&[AccountId]>) -> Result<()> {
+        // This is a wrapper of activate_accounts_impl() that catches errors and notifies the UI
+        if let Err(err) = self.activate_accounts_impl(account_ids).await {
             self.notify(Events::WalletError { message: err.to_string() }).await?;
             Err(err)
         } else {
@@ -981,7 +1046,7 @@ impl Wallet {
         self.inner.store.flush(&ctx).await?;
 
         let legacy_account = account.clone().as_legacy_account()?;
-        legacy_account.initialize_private_context(wallet_secret, payment_secret, None).await?;
+        legacy_account.create_private_context(wallet_secret, payment_secret, None).await?;
         // account.clone().initialize_private_data(wallet_secret, payment_secret, None).await?;
 
         if self.is_connected() {
@@ -1056,7 +1121,7 @@ impl Wallet {
 
         if let Ok(legacy_account) = account.clone().as_legacy_account() {
             self.legacy_accounts().insert(account.clone());
-            legacy_account.initialize_private_context(wallet_secret.clone(), None, None).await?;
+            legacy_account.create_private_context(wallet_secret.clone(), None, None).await?;
             legacy_account.clone().start().await?;
             legacy_account.clear_private_context().await?;
         } else {
@@ -1137,6 +1202,8 @@ impl Wallet {
 }
 
 use workflow_core::channel::Receiver;
+
+use super::AccountDescriptor;
 #[async_trait]
 impl WalletApi for Wallet {
     async fn register_notifications(self: Arc<Self>, _channel: Receiver<WalletNotification>) -> Result<u64> {
@@ -1211,10 +1278,10 @@ impl WalletApi for Wallet {
     // }
 
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
-        let WalletOpenRequest { wallet_secret, wallet_name, activate_accounts } = request;
-
-        self.open(wallet_secret, wallet_name, activate_accounts).await?;
-        Ok(WalletOpenResponse {})
+        let WalletOpenRequest { wallet_secret, wallet_name, account_descriptors, legacy_accounts } = request;
+        let args = WalletOpenArgs { account_descriptors, legacy_accounts: legacy_accounts.unwrap_or_default() };
+        let account_descriptors = self.open(wallet_secret, wallet_name, args).await?;
+        Ok(WalletOpenResponse { account_descriptors })
     }
 
     async fn wallet_close_call(self: Arc<Self>, _request: WalletCloseRequest) -> Result<WalletCloseResponse> {
@@ -1243,14 +1310,20 @@ impl WalletApi for Wallet {
         Ok(PrvKeyDataGetResponse { prv_key_data })
     }
 
-    async fn account_enumerate_call(self: Arc<Self>, _request: AccountEnumerateRequest) -> Result<AccountEnumerateResponse> {
+    async fn accounts_enumerate_call(self: Arc<Self>, _request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse> {
         let account_list = self.accounts(None).await?.try_collect::<Vec<_>>().await?;
         let descriptor_list = account_list.iter().map(|account| account.descriptor().unwrap()).collect::<Vec<_>>();
-        Ok(AccountEnumerateResponse { descriptor_list })
+        Ok(AccountsEnumerateResponse { descriptor_list })
     }
 
-    async fn account_create_call(self: Arc<Self>, request: AccountCreateRequest) -> Result<AccountCreateResponse> {
-        let AccountCreateRequest { prv_key_data_id, account_args } = request;
+    async fn accounts_activate_call(self: Arc<Self>, request: AccountsActivateRequest) -> Result<AccountsActivateResponse> {
+        let AccountsActivateRequest { account_ids } = request;
+        self.activate_accounts(account_ids.as_deref()).await?;
+        Ok(AccountsActivateResponse {})
+    }
+
+    async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse> {
+        let AccountsCreateRequest { prv_key_data_id, account_args } = request;
 
         if !matches!(account_args.account_kind, AccountKind::Bip32) {
             return Err(Error::NotImplemented);
@@ -1258,34 +1331,34 @@ impl WalletApi for Wallet {
 
         let _account = self.create_bip32_account(prv_key_data_id, account_args).await?;
         // - TODO account info serialization
-        Ok(AccountCreateResponse {})
+        Ok(AccountsCreateResponse {})
     }
 
-    async fn account_import_call(self: Arc<Self>, _request: AccountImportRequest) -> Result<AccountImportResponse> {
+    async fn accounts_import_call(self: Arc<Self>, _request: AccountsImportRequest) -> Result<AccountsImportResponse> {
         // TODO handle account imports
         return Err(Error::NotImplemented);
     }
 
-    async fn account_get_call(self: Arc<Self>, request: AccountGetRequest) -> Result<AccountGetResponse> {
-        let AccountGetRequest { account_id } = request;
+    async fn accounts_get_call(self: Arc<Self>, request: AccountsGetRequest) -> Result<AccountsGetResponse> {
+        let AccountsGetRequest { account_id } = request;
         let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
         let descriptor = account.descriptor().unwrap();
-        Ok(AccountGetResponse { descriptor })
+        Ok(AccountsGetResponse { descriptor })
     }
 
-    async fn account_create_new_address_call(
+    async fn accounts_create_new_address_call(
         self: Arc<Self>,
-        request: AccountCreateNewAddressRequest,
-    ) -> Result<AccountCreateNewAddressResponse> {
-        let AccountCreateNewAddressRequest { account_id } = request;
+        request: AccountsCreateNewAddressRequest,
+    ) -> Result<AccountsCreateNewAddressResponse> {
+        let AccountsCreateNewAddressRequest { account_id } = request;
 
         let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
         let address = account.as_derivation_capable()?.new_receive_address().await?;
-        Ok(AccountCreateNewAddressResponse { address })
+        Ok(AccountsCreateNewAddressResponse { address })
     }
 
-    async fn account_send_call(self: Arc<Self>, request: AccountSendRequest) -> Result<AccountSendResponse> {
-        let AccountSendRequest { task_id: _, account_id, wallet_secret, payment_secret, destination, priority_fee_sompi, payload } =
+    async fn accounts_send_call(self: Arc<Self>, request: AccountsSendRequest) -> Result<AccountsSendResponse> {
+        let AccountsSendRequest { task_id: _, account_id, wallet_secret, payment_secret, destination, priority_fee_sompi, payload } =
             request;
 
         let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
@@ -1294,18 +1367,18 @@ impl WalletApi for Wallet {
         let (generator_summary, transaction_ids) =
             account.send(destination, priority_fee_sompi, payload, wallet_secret, payment_secret, &abortable, None).await?;
 
-        Ok(AccountSendResponse { generator_summary, transaction_ids })
+        Ok(AccountsSendResponse { generator_summary, transaction_ids })
     }
 
-    async fn account_estimate_call(self: Arc<Self>, request: AccountEstimateRequest) -> Result<AccountEstimateResponse> {
-        let AccountEstimateRequest { task_id: _, account_id, destination, priority_fee_sompi, payload } = request;
+    async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse> {
+        let AccountsEstimateRequest { task_id: _, account_id, destination, priority_fee_sompi, payload } = request;
 
         let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
 
         let abortable = Abortable::new();
         let generator_summary = account.estimate(destination, priority_fee_sompi, payload, &abortable).await?;
 
-        Ok(AccountEstimateResponse { generator_summary })
+        Ok(AccountsEstimateResponse { generator_summary })
     }
 
     async fn transaction_data_get_call(self: Arc<Self>, request: TransactionDataGetRequest) -> Result<TransactionDataGetResponse> {
@@ -1317,11 +1390,10 @@ impl WalletApi for Wallet {
 
         let binding = Binding::Account(account_id);
         let store = self.store().as_transaction_record_store()?;
-        let start = start as usize;
-        let end = end as usize;
-        let transactions = store.load_range(&binding, &network_id, filter, std::ops::Range { start, end }).await?;
+        let TransactionRangeResult { transactions, total } =
+            store.load_range(&binding, &network_id, filter, start as usize..end as usize).await?;
 
-        Ok(TransactionDataGetResponse { transactions })
+        Ok(TransactionDataGetResponse { transactions, total, account_id, start })
     }
 
     async fn address_book_enumerate_call(

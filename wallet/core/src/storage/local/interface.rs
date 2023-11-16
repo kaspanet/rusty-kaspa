@@ -391,9 +391,16 @@ impl AccountStore for LocalStoreInner {
         }
     }
 
-    // async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<Arc<Account>>> {
-    //     self.cache().accounts.load_multiple(ids)
-    // }
+    async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<(Arc<Account>, Option<Arc<Metadata>>)>> {
+        let cache = self.cache();
+        let accounts = self.cache().accounts.load_multiple(ids)?;
+        accounts
+            .into_iter()
+            .map(|account| {
+                cache.metadata.load_single(account.id()).map(|metadata| (account.clone(), metadata)).or_else(|_| Ok((account, None)))
+            })
+            .collect::<Result<Vec<_>>>()
+    }
 
     async fn store_single(&self, account: &Account, metadata: Option<&Metadata>) -> Result<()> {
         let mut cache = self.cache();

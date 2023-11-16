@@ -78,14 +78,14 @@ pub enum Events {
     WalletHint { hint: Option<Hint> },
     /// Wallet has opened
     WalletOpen { account_descriptors: Option<Vec<AccountDescriptor>> },
-    /// Wallet is ready for processing (accounts are active)
-    WalletReady,
     /// Wallet reload initiated (development only)
     WalletReload { account_descriptors: Option<Vec<AccountDescriptor>> },
     /// Wallet open failure
     WalletError { message: String },
     /// Wallet has been closed
     WalletClose,
+    /// Accounts have been activated
+    AccountActivation { ids: Vec<runtime::AccountId> },
     /// Account selection change (`None` if no account is selected)
     AccountSelection { id: Option<runtime::AccountId> },
     /// Emitted after successful RPC connection

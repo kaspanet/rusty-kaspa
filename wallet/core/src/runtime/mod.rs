@@ -10,4 +10,4 @@ pub use account::{try_from_storage, Account, AccountDescriptor, AccountId, Accou
 pub use balance::{AtomicBalance, Balance, BalanceStrings};
 pub use maps::ActiveAccountMap;
 pub use sync::SyncMonitor;
-pub use wallet::{AccountCreateArgs, PrvKeyDataCreateArgs, Wallet, WalletCreateArgs};
+pub use wallet::{AccountCreateArgs, PrvKeyDataCreateArgs, Wallet, WalletCreateArgs, WalletOpenArgs};

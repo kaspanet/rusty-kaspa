@@ -338,23 +338,17 @@ impl KaspaCli {
                                 },
                                 Events::AccountSelection { .. } => { },
                                 Events::WalletError { .. } => { },
-                                Events::WalletReady { .. } => { },
+                                // Events::WalletReady { .. } => { },
 
                                 Events::WalletOpen { .. } |
-                                Events::WalletReload { .. } => {
-
-                                    // load all accounts
-                                    // if let Err(err) = this.wallet().activate_all_stored_accounts().await {
-                                    //     terrorln!(this, "{err}");
-                                    // }
-
+                                Events::WalletReload { .. } => { },
+                                Events::AccountActivation { .. } => {
                                     // list all accounts
                                     this.list().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
 
                                     // load default account if only one account exists
                                     this.wallet().autoselect_default_account_if_single().await.ok();
                                     this.term().refresh_prompt();
-
                                 },
                                 Events::WalletClose => {
                                     this.term().refresh_prompt();

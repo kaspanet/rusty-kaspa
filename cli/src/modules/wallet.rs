@@ -66,8 +66,9 @@ impl Wallet {
 
                 let (secret, _) = ctx.ask_wallet_secret(None).await?;
                 let _ = ctx.notifier().show(Notification::Processing).await;
-                ctx.wallet().open(secret, name, true).await?;
-                // ctx.wallet().open(secret, name).await?;
+                let args = WalletOpenArgs::default_with_legacy_accounts();
+                ctx.wallet().open(secret, name, args).await?;
+                ctx.wallet().activate_accounts(None).await?;
             }
             "close" => {
                 ctx.wallet().close().await?;
