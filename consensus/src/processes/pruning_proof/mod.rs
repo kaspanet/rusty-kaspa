@@ -618,6 +618,8 @@ impl PruningProofManager {
                         self.block_at_depth(&*self.ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m);
                     if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
                         block_at_depth_m_at_next_level
+                    } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
+                        block_at_depth_2m
                     } else {
                         self.find_common_ancestor_in_chain_of_a(
                             &*self.ghostdag_stores[level],
