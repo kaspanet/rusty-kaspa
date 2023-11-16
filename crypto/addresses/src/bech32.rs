@@ -113,7 +113,7 @@ impl Address {
         let address_u5 = address
             .as_bytes()
             .iter()
-            .scan(&mut err, |err, b| match REV_CHARSET[*b as usize] {
+            .scan(&mut err, |err, b| match *REV_CHARSET.get(*b as usize).unwrap_or(&100) {
                 100 => {
                     **err = Err(AddressError::DecodingError(*b as char));
                     None
