@@ -15,8 +15,8 @@ pub mod prelude {
 }
 
 pub use api::notifications::*;
-
-pub use convert::utxo::*;
+#[allow(unused_imports)]
+pub use convert::{block::*, notification::*, tx::*, utxo::*};
 pub use error::*;
 pub use model::script_class::*;
 pub use model::*;

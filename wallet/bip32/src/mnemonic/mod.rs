@@ -12,4 +12,6 @@ pub(crate) mod seed;
 
 pub use self::{language::Language, phrase::Mnemonic};
 
+#[allow(unused_imports)]
 //#[cfg(feature = "bip39")]
+pub use self::seed::Seed;

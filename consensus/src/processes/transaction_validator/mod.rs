@@ -11,6 +11,8 @@ use kaspa_txscript::{
     SigCacheKey,
 };
 
+#[allow(unused_imports)]
+pub use tx_validation_in_isolation::*;
 #[derive(Clone)]
 pub struct TransactionValidator {
     max_tx_inputs: usize,
