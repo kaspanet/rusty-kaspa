@@ -16,8 +16,6 @@ pub mod prelude {
 
 pub use api::notifications::*;
 
-
-
 pub use convert::utxo::*;
 pub use error::*;
 pub use model::script_class::*;
