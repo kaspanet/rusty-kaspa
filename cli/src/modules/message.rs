@@ -29,7 +29,7 @@ impl Message {
             return self.display_help(ctx, argv).await;
         }
 
-        match argv.get(0).unwrap().as_str() {
+        match argv.first().unwrap().as_str() {
             "sign" => {
                 if argv.len() != 2 {
                     return self.display_help(ctx, argv).await;
