@@ -15,7 +15,7 @@ impl Transfer {
             return Ok(());
         }
 
-        let target_account = argv.get(0).unwrap();
+        let target_account = argv.first().unwrap();
         let target_account = ctx.find_accounts_by_name_or_id(target_account).await?;
         if target_account.id() == account.id() {
             return Err("Cannot transfer to the same account".into());

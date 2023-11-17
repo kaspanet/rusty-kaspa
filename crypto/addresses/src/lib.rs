@@ -583,6 +583,16 @@ mod tests {
         let address: Result<Address, AddressError> = address_str.try_into();
         assert_eq!(Err(AddressError::DecodingError('1')), address);
 
+        let invalid_char = 124u8 as char;
+        let address_str: String = format!("kaspa:qqqqqqqqqqqqq{invalid_char}qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e");
+        let address: Result<Address, AddressError> = address_str.try_into();
+        assert_eq!(Err(AddressError::DecodingError(invalid_char)), address);
+
+        let invalid_char = 129u8 as char;
+        let address_str: String = format!("kaspa:qqqqqqqqqqqqq{invalid_char}qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e");
+        let address: Result<Address, AddressError> = address_str.try_into();
+        assert!(matches!(address, Err(AddressError::DecodingError(_))));
+
         let address_str: String = "kaspa1:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkx9awp4e".to_string();
         let address: Result<Address, AddressError> = address_str.try_into();
         assert_eq!(Err(AddressError::InvalidPrefix("kaspa1".into())), address);

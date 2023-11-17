@@ -92,7 +92,7 @@ mod tests {
 
         assert_eq!(payload_json, serde_json::to_string(w2payload.as_ref())?);
 
-        let w2keydata1 = w2payload.as_ref().prv_key_data.get(0).unwrap();
+        let w2keydata1 = w2payload.as_ref().prv_key_data.first().unwrap();
         let w2keydata1_payload = w2keydata1.payload.decrypt(Some(&payment_secret)).unwrap();
         let first_mnemonic = &w2keydata1_payload.as_ref().as_mnemonic()?.unwrap().phrase_string();
         // println!("first mnemonic (plain): {}", hex_string(first_mnemonic.as_ref()));
