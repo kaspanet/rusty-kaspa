@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
     fn from(entry: RpcUtxosByAddressesEntry) -> UtxoEntry {
-        UtxoEntry { address: entry.address, outpoint: entry.outpoint.try_into().unwrap(), entry: entry.utxo_entry }
+        UtxoEntry { address: entry.address, outpoint: entry.outpoint.into(), entry: entry.utxo_entry }
     }
 }
 
