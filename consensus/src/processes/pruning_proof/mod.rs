@@ -480,11 +480,13 @@ impl PruningProofManager {
             }
 
             if level < self.max_block_level {
-                let block_at_depth_m_at_next_level = self.block_at_depth(
-                    &*ghostdag_stores[level_idx + 1],
-                    selected_tip_by_level[level_idx + 1].unwrap(),
-                    self.pruning_proof_m,
-                );
+                let block_at_depth_m_at_next_level = self
+                    .block_at_depth(
+                        &*ghostdag_stores[level_idx + 1],
+                        selected_tip_by_level[level_idx + 1].unwrap(),
+                        self.pruning_proof_m,
+                    )
+                    .unwrap();
                 if !relations_stores[level_idx].has(block_at_depth_m_at_next_level).unwrap() {
                     return Err(PruningImportError::PruningProofMissingBlockAtDepthMFromNextLevel(level, level + 1));
                 }
@@ -611,11 +613,16 @@ impl PruningProofManager {
             .map(|level| {
                 let level = level as usize;
                 let selected_tip = selected_tip_by_level[level];
-                let block_at_depth_2m = self.block_at_depth(&*self.ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m);
+                let block_at_depth_2m = self
+                    .block_at_depth(&*self.ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m)
+                    .map_err(|err| format!("level: {}, err: {}", level, err))
+                    .unwrap();
 
                 let root = if level != self.max_block_level as usize {
-                    let block_at_depth_m_at_next_level =
-                        self.block_at_depth(&*self.ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m);
+                    let block_at_depth_m_at_next_level = self
+                        .block_at_depth(&*self.ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m)
+                        .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
+                        .unwrap();
                     if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
                         block_at_depth_m_at_next_level
                     } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
@@ -626,6 +633,8 @@ impl PruningProofManager {
                             block_at_depth_m_at_next_level,
                             block_at_depth_2m,
                         )
+                        .map_err(|err| format!("level: {}, err: {}", level, err))
+                        .unwrap()
                     }
                 } else {
                     block_at_depth_2m
@@ -656,32 +665,39 @@ impl PruningProofManager {
             .collect_vec()
     }
 
-    fn block_at_depth(&self, ghostdag_store: &impl GhostdagStoreReader, high: Hash, depth: u64) -> Hash {
-        let high_gd = ghostdag_store.get_compact_data(high).unwrap();
+    fn block_at_depth(&self, ghostdag_store: &impl GhostdagStoreReader, high: Hash, depth: u64) -> Result<Hash, String> {
+        let high_gd = ghostdag_store.get_compact_data(high).map_err(|err| format!("high: {high}, depth: {depth}, {err}"))?;
         let mut current_gd = high_gd;
         let mut current = high;
         while current_gd.blue_score + depth >= high_gd.blue_score {
             if current_gd.selected_parent.is_origin() {
                 break;
             }
-
+            let prev = current;
             current = current_gd.selected_parent;
-            current_gd = ghostdag_store.get_compact_data(current).unwrap();
+            current_gd = ghostdag_store.get_compact_data(current).map_err(|err| {
+                format!(
+                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
+                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
+                )
+            })?;
         }
-        current
+        Ok(current)
     }
 
-    fn find_common_ancestor_in_chain_of_a(&self, ghostdag_store: &impl GhostdagStoreReader, a: Hash, b: Hash) -> Hash {
-        let a_gd = ghostdag_store.get_compact_data(a).unwrap();
+    fn find_common_ancestor_in_chain_of_a(&self, ghostdag_store: &impl GhostdagStoreReader, a: Hash, b: Hash) -> Result<Hash, String> {
+        let a_gd = ghostdag_store.get_compact_data(a).map_err(|err| format!("a: {a}, b: {b}, {err}"))?;
         let mut current_gd = a_gd;
         let mut current;
         loop {
             current = current_gd.selected_parent;
-            assert!(!current.is_origin());
-            if self.reachability_service.is_dag_ancestor_of(current, b) {
-                break current;
+            if current.is_origin() {
+                break Err(format!("cannot find a common ancestor for blocks {a}, {b}"));
             }
-            current_gd = ghostdag_store.get_compact_data(current).unwrap();
+            if self.reachability_service.is_dag_ancestor_of(current, b) {
+                break Ok(current);
+            }
+            current_gd = ghostdag_store.get_compact_data(current).map_err(|err| format!("a: {a}, b: {b}, {err}"))?;
         }
     }
 
