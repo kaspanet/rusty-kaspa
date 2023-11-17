@@ -1,5 +1,3 @@
-#![allow(unused_imports)]
-
 pub use crate::cli::KaspaCli;
 pub use crate::error::Error;
 pub(crate) use crate::helpers;

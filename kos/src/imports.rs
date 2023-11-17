@@ -1,4 +1,3 @@
-#![allow(unused_imports)]
 pub use crate::core::MetricsCtl;
 pub use crate::core::*;
 pub use crate::error::Error;
