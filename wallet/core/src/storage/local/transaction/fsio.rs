@@ -60,7 +60,8 @@ impl TransactionStore {
         let mut transactions = VecDeque::new();
         match fs::readdir(folder, true).await {
             Ok(mut files) => {
-                files.sort_by_key(|f| f.metadata().unwrap().created());
+                // we reverse the order of the files so that the newest files are first
+                files.sort_by_key(|f| std::cmp::Reverse(f.metadata().unwrap().created()));
 
                 for file in files {
                     if let Ok(id) = TransactionId::from_hex(file.file_name()) {

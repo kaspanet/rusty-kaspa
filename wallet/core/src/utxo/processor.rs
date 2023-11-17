@@ -247,12 +247,17 @@ impl UtxoProcessor {
     }
 
     pub async fn handle_utxo_changed(&self, utxos: UtxosChangedNotification) -> Result<()> {
+        let current_daa_score = self.current_daa_score().expect("DAA score expected when handling UTXO Changed notifications");
+
+        let mut updated_contexts: HashSet<UtxoContext> = HashSet::default();
+
         let removed = (*utxos.removed).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
         let removed = HashMap::group_from(removed);
         for (address, entries) in removed.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
+                updated_contexts.insert(utxo_context.clone());
                 let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
-                utxo_context.handle_utxo_removed(entries).await?;
+                utxo_context.handle_utxo_removed(entries, current_daa_score).await?;
             } else {
                 log_error!("receiving UTXO Changed 'removed' notification for an unknown address: {}", address);
             }
@@ -262,11 +267,18 @@ impl UtxoProcessor {
         let added = HashMap::group_from(added);
         for (address, entries) in added.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
+                updated_contexts.insert(utxo_context.clone());
                 let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
-                utxo_context.handle_utxo_added(entries).await?;
+                utxo_context.handle_utxo_added(entries, current_daa_score).await?;
             } else {
                 log_error!("receiving UTXO Changed 'added' notification for an unknown address: {}", address);
             }
+        }
+
+        // iterate over all affected utxo contexts and
+        // update as well as notify their balances.
+        for context in updated_contexts.iter() {
+            context.update_balance().await?;
         }
 
         Ok(())
@@ -387,9 +399,6 @@ impl UtxoProcessor {
     }
 
     async fn handle_notification(&self, notification: Notification) -> Result<()> {
-        // log_info!("handling notification: {:?}", notification);
-        println!("handling notification: {:?}", notification);
-
         let _lock = self.notification_lock().await;
 
         match notification {
@@ -401,7 +410,6 @@ impl UtxoProcessor {
                 if !self.is_synced() {
                     self.sync_proc().track(true).await?;
                 }
-                log_info!("UtxoProcessor: handling utxo changed notification: {:?}", utxos_changed_notification);
 
                 self.handle_utxo_changed(utxos_changed_notification).await?;
             }

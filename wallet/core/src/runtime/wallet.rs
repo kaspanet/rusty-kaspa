@@ -782,10 +782,15 @@ impl Wallet {
 
     async fn handle_event(self: &Arc<Self>, event: Box<Events>) -> Result<()> {
         match &*event {
-            Events::Pending { record, is_outgoing } | Events::Maturity { record, is_outgoing } => {
-                // if `is_outgoint` is set, this means that this pending and maturity
-                // event is for the change UTXOs of the outgoing transaction.
-                if !is_outgoing {
+            Events::Change { .. } => {}
+            Events::Pending { record } | Events::Maturity { record } => {
+                // if transaction is outgoing, we record only its initial
+                // issuance below (next match: Events::Outgoing)
+                // There is no difference between pending and mature
+                // outgoing transactions (the transaction is the same, but
+                // the Pending event may be issued by the receipt of the
+                // change UTXOs)
+                if !record.is_outgoing() {
                     self.store().as_transaction_record_store()?.store(&[record]).await?;
                 }
             }
@@ -1428,7 +1433,7 @@ mod test {
         let utxo_context = UtxoContext::new(core, UtxoContextBinding::default());
         let entries = utxos.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
         for entry in entries.into_iter() {
-            utxo_context.insert(entry, current_daa_score).await?;
+            utxo_context.insert(entry, current_daa_score, false).await?;
         }
         Ok(utxo_context)
     }

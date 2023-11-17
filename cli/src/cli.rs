@@ -377,7 +377,7 @@ impl KaspaCli {
                                     }
                                 },
                                 Events::Pending {
-                                    record, is_outgoing : _
+                                    record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
                                         let include_utxos = this.flags.get(Track::Utxo);
@@ -386,7 +386,7 @@ impl KaspaCli {
                                     }
                                 },
                                 Events::Maturity {
-                                    record, is_outgoing : _
+                                    record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
                                         let include_utxos = this.flags.get(Track::Utxo);
@@ -400,6 +400,15 @@ impl KaspaCli {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
                                         let include_utxos = this.flags.get(Track::Utxo);
                                         let tx = record.format_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
+                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
+                                    }
+                                },
+                                Events::Change {
+                                    record
+                                } => {
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                        let include_utxos = this.flags.get(Track::Utxo);
+                                        let tx = record.format_with_state(&this.wallet,Some("change"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },

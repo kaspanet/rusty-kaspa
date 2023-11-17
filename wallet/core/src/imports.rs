@@ -1,3 +1,4 @@
+pub use crate::daa::Daa;
 pub use crate::error::Error;
 pub use crate::events::{Events, SyncState};
 pub use crate::rpc::Rpc;

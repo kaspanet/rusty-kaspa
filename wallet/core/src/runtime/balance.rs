@@ -44,13 +44,14 @@ impl From<std::cmp::Ordering> for Delta {
 pub struct Balance {
     pub mature: u64,
     pub pending: u64,
+    pub outgoing: u64,
     mature_delta: Delta,
     pending_delta: Delta,
 }
 
 impl Balance {
-    pub fn new(mature: u64, pending: u64) -> Self {
-        Self { mature, pending, mature_delta: Delta::default(), pending_delta: Delta::default() }
+    pub fn new(mature: u64, pending: u64, outgoing: u64) -> Self {
+        Self { mature, pending, outgoing, mature_delta: Delta::default(), pending_delta: Delta::default() }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -88,6 +89,7 @@ impl From<AtomicBalance> for Balance {
             pending: atomic_balance.pending.load(Ordering::SeqCst),
             mature_delta: Delta::default(),
             pending_delta: Delta::default(),
+            outgoing: 0,
         }
     }
 }

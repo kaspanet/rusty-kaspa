@@ -114,13 +114,10 @@ pub enum Events {
     /// DAA score change
     DAAScoreChange { current_daa_score: u64 },
     /// New incoming pending UTXO/transaction
-    Pending {
-        record: TransactionRecord,
-        /// `true` if the transaction is a result of an earlier
-        /// created outgoing transaction. (such as a UTXO returning
-        /// change to the account)
-        is_outgoing: bool,
-    },
+    Pending { record: TransactionRecord },
+    /// Receiving a UTXO that is a part of the
+    /// earlier issued outgoing transaction.
+    Change { record: TransactionRecord },
     /// Pending UTXO has been removed (reorg)
     Reorg { record: TransactionRecord },
     /// UtxoProcessor has received a foreign unknown transaction
@@ -128,13 +125,7 @@ pub enum Events {
     /// instance of the wallet creates an outgoing transaction.
     External { record: TransactionRecord },
     /// Transaction has been confirmed
-    Maturity {
-        record: TransactionRecord,
-        /// `true` if the transaction is a result of an earlier
-        /// created outgoing transaction. (such as a UTXO returning
-        /// change to the account)
-        is_outgoing: bool,
-    },
+    Maturity { record: TransactionRecord },
     /// Emitted when a transaction has been created and broadcasted
     /// by the Transaction [`Generator`](crate::tx::generator::Generator)
     Outgoing { record: TransactionRecord },

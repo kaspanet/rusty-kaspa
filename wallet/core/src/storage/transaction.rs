@@ -217,6 +217,10 @@ impl TransactionRecord {
         }
     }
 
+    pub fn is_outgoing(&self) -> bool {
+        matches!(&self.transaction_data, TransactionData::Outgoing { .. })
+    }
+
     pub fn transaction_data(&self) -> &TransactionData {
         &self.transaction_data
     }
@@ -232,6 +236,15 @@ impl TransactionRecord {
             Some((current_daa_score - self.block_daa_score) as f64 / maturity as f64)
         } else {
             None
+        }
+    }
+
+    pub fn aggregate_input_value(&self) -> u64 {
+        match &self.transaction_data {
+            TransactionData::Reorg { aggregate_input_value, .. }
+            | TransactionData::Incoming { aggregate_input_value, .. }
+            | TransactionData::External { aggregate_input_value, .. }
+            | TransactionData::Outgoing { aggregate_input_value, .. } => *aggregate_input_value,
         }
     }
 }

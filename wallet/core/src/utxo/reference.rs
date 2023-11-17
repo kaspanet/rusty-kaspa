@@ -19,9 +19,9 @@ impl UtxoEntryReferenceExtension for UtxoEntryReference {
 
     fn balance(&self, current_daa_score: u64) -> Balance {
         if self.is_mature(current_daa_score) {
-            Balance::new(self.amount(), 0)
+            Balance::new(self.amount(), 0, 0)
         } else {
-            Balance::new(0, self.amount())
+            Balance::new(0, self.amount(), 0)
         }
     }
 }
