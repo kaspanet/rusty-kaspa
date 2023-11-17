@@ -374,8 +374,12 @@ impl FlowContext {
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
 
-        self.on_new_block(consensus, block, virtual_state_task).await;
-        self.log_block_acceptance(hash, BlockSource::Submit);
+        let ctx = self.clone();
+        let consensus = consensus.clone();
+        tokio::spawn(async move {
+            ctx.on_new_block(&consensus, block, virtual_state_task).await;
+            ctx.log_block_acceptance(hash, BlockSource::Submit);
+        });
 
         Ok(())
     }

@@ -12,8 +12,8 @@ use kaspa_p2p_lib::{
     pb::{kaspad_message::Payload, InvRelayBlockMessage, RequestBlockLocatorMessage, RequestRelayBlocksMessage},
     IncomingRoute, Router, SharedIncomingRoute,
 };
+use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
 use std::{collections::VecDeque, sync::Arc};
-use tokio::sync::mpsc::{error::TrySendError, Sender};
 
 pub struct RelayInvMessage {
     hash: Hash,
@@ -54,7 +54,7 @@ pub struct HandleRelayInvsFlow {
     /// A route for other messages such as Block and BlockLocator
     msg_route: IncomingRoute,
     /// A channel sender for sending blocks to be handled by the IBD flow (of this peer)
-    ibd_sender: Sender<Block>,
+    ibd_sender: JobSender<Block>,
 }
 
 #[async_trait::async_trait]
@@ -74,7 +74,7 @@ impl HandleRelayInvsFlow {
         router: Arc<Router>,
         invs_route: SharedIncomingRoute,
         msg_route: IncomingRoute,
-        ibd_sender: Sender<Block>,
+        ibd_sender: JobSender<Block>,
     ) -> Self {
         Self { ctx, router, invs_route: TwoWayIncomingRoute::new(invs_route), msg_route, ibd_sender }
     }
@@ -222,10 +222,9 @@ impl HandleRelayInvsFlow {
             self.ctx.add_orphan(block).await;
             self.enqueue_orphan_roots(consensus, hash).await;
         } else {
-            // Send the block to IBD flow via the dedicated channel.
-            // Note that this is a non-blocking send and we don't care about being rejected if channel is full,
-            // since if IBD is already running, there is no need to trigger it
-            match self.ibd_sender.try_send(block) {
+            // Send the block to IBD flow via the dedicated job channel. If the channel has a pending job, we prefer
+            // the block with higher blue work, since it is usually more recent
+            match self.ibd_sender.try_send(block, |b, c| if b.header.blue_work > c.header.blue_work { b } else { c }) {
                 Ok(_) | Err(TrySendError::Full(_)) => {}
                 Err(TrySendError::Closed(_)) => return Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
             }

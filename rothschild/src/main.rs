@@ -338,7 +338,7 @@ fn select_utxos(
     const MAX_UTXOS: usize = 84;
     let mut selected_amount: u64 = 0;
     let mut selected = Vec::new();
-    for (outpoint, entry) in utxos.iter().cloned().filter(|(op, _)| !pending.contains_key(op)) {
+    for (outpoint, entry) in utxos.iter().filter(|(op, _)| !pending.contains_key(op)).cloned() {
         selected_amount += entry.amount;
         selected.push((outpoint, entry));
 

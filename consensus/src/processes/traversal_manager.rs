@@ -54,19 +54,39 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         tips: impl Iterator<Item = Hash>,
         max_traversal_allowed: Option<u64>,
     ) -> TraversalResult<Vec<Hash>> {
+        self.antipast_traversal(tips, block, max_traversal_allowed, true)
+    }
+
+    pub fn antipast(
+        &self,
+        block: Hash,
+        tips: impl Iterator<Item = Hash>,
+        max_traversal_allowed: Option<u64>,
+    ) -> TraversalResult<Vec<Hash>> {
+        self.antipast_traversal(tips, block, max_traversal_allowed, false)
+    }
+
+    fn antipast_traversal(
+        &self,
+        tips: impl Iterator<Item = Hash>,
+        block: Hash,
+        max_traversal_allowed: Option<u64>,
+        return_anticone_only: bool,
+    ) -> Result<Vec<Hash>, TraversalError> {
         /*
            In some cases we search for the anticone of the pruning point starting from virtual parents.
            This means we might traverse ~pruning_depth blocks which are all stored in the visited set.
            Experiments (and theory) show that w/o completely tracking visited, the queue might grow in
            size quadratically due to many duplicate blocks, easily resulting in OOM errors if the DAG is
-           wide. On the other hand, even at 10 BPS depth is around 2M blocks which is approx 64MB, a modest
+           wide. On the other hand, even at 10 BPS, pruning depth is around 2M blocks which is approx 64MB, a modest
            memory peak which happens at most once a in a pruning period (since pruning anticone is cached).
         */
-        let mut anticone = Vec::new();
+        let mut output = Vec::new(); // Anticone or antipast, depending on args
         let mut queue = VecDeque::from_iter(tips);
         let mut visited = BlockHashSet::from_iter(queue.iter().copied());
         let mut traversal_count = 0;
         while let Some(current) = queue.pop_front() {
+            // We reached a block in `past(block)` so we can terminate the BFS from this point on
             if self.reachability_service.is_dag_ancestor_of(current, block) {
                 continue;
             }
@@ -85,13 +105,13 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
                     "[TRAVERSAL MANAGER] Traversal count: {}, queue size: {}, anticone size: {}, visited size: {}",
                     traversal_count,
                     queue.len(),
-                    anticone.len(),
+                    output.len(),
                     visited.len()
                 );
             }
-
-            if !self.reachability_service.is_dag_ancestor_of(block, current) {
-                anticone.push(current);
+            // At this point, we know `current` is in antipast of `block`. The second condition is there to check if it's in the anticone
+            if !return_anticone_only || !self.reachability_service.is_dag_ancestor_of(block, current) {
+                output.push(current);
             }
 
             for parent in self.relations_store.get_parents(current).unwrap().iter().copied() {
@@ -101,7 +121,7 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
             }
         }
 
-        Ok(anticone)
+        Ok(output)
     }
 
     pub fn lowest_chain_block_above_or_equal_to_blue_score(&self, high: Hash, blue_score: u64) -> Hash {
