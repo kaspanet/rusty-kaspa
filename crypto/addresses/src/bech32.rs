@@ -57,8 +57,8 @@ fn conv8to5(payload: &[u8]) -> Vec<u8> {
 
     let mut buff = 0u16;
     let mut bits = 0;
-    for char in payload.iter() {
-        buff = (buff << 8) | *char as u16;
+    for c in payload.iter() {
+        buff = (buff << 8) | *c as u16;
         bits += 8;
         while bits >= 5 {
             bits -= 5;
@@ -80,8 +80,8 @@ fn conv5to8(payload: &[u8]) -> Vec<u8> {
 
     let mut buff = 0u16;
     let mut bits = 0;
-    for char in payload.iter() {
-        buff = (buff << 5) | *char as u16;
+    for c in payload.iter() {
+        buff = (buff << 5) | *c as u16;
         bits += 5;
         while bits >= 8 {
             bits -= 8;
