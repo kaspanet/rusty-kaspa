@@ -510,7 +510,7 @@ async fn sanity_test() {
                         .unwrap();
 
                     for timestamp in results.timestamps.iter() {
-                        println!("Timestamp estimate is {}", timestamp);
+                        info!("Timestamp estimate is {}", timestamp);
                     }
 
                     let results = rpc_client
@@ -519,7 +519,7 @@ async fn sanity_test() {
                         .unwrap();
 
                     for timestamp in results.timestamps.iter() {
-                        println!("Timestamp estimate is {}", timestamp);
+                        info!("Timestamp estimate is {}", timestamp);
                     }
                 })
             }
