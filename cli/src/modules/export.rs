@@ -9,12 +9,12 @@ impl Export {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
-        if argv.is_empty() || argv.get(0) == Some(&"help".to_string()) {
+        if argv.is_empty() || argv.first() == Some(&"help".to_string()) {
             tprintln!(ctx, "usage: export [mnemonic]");
             return Ok(());
         }
 
-        let what = argv.get(0).unwrap();
+        let what = argv.first().unwrap();
         match what.as_str() {
             "mnemonic" => {
                 let account = ctx.account().await?;
