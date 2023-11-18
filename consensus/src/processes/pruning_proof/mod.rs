@@ -23,7 +23,10 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::{debug, info, trace};
-use kaspa_database::prelude::{ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::{
+    prelude::{ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions},
+    utils::DbLifetime,
+};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
@@ -83,6 +86,16 @@ impl<T> Clone for CachedPruningPointData<T> {
     fn clone(&self) -> Self {
         Self { pruning_point: self.pruning_point, data: self.data.clone() }
     }
+}
+
+struct ProofTempStorageAndProcesses {
+    db_lifetime: DbLifetime,
+    headers_store: Arc<DbHeadersStore>,
+    ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
+    relations_stores: Vec<DbRelationsStore>,
+    reachability_stores: Vec<Arc<parking_lot::lock_api::RwLock<parking_lot::RawRwLock, DbReachabilityStore>>>,
+    ghostdag_managers:
+        Vec<GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>>,
 }
 
 pub struct PruningProofManager {
@@ -379,14 +392,7 @@ impl PruningProofManager {
         }
     }
 
-    pub fn validate_pruning_point_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
-        if proof.len() != self.max_block_level as usize + 1 {
-            return Err(PruningImportError::ProofNotEnoughLevels(self.max_block_level as usize + 1));
-        }
-
-        let proof_pp_header = proof[0].last().expect("checked if empty");
-        let proof_pp = proof_pp_header.hash;
-        let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
+    fn init_validate_pruning_point_proof_stores_and_processes(&self) -> ProofTempStorageAndProcesses {
         let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 2 * self.pruning_proof_m)); // TODO: Think about cache size
         let ghostdag_stores = (0..=self.max_block_level)
@@ -429,6 +435,30 @@ impl PruningProofManager {
 
             db.write(batch).unwrap();
         }
+
+        ProofTempStorageAndProcesses {
+            db_lifetime,
+            headers_store,
+            ghostdag_stores,
+            relations_stores,
+            reachability_stores,
+            ghostdag_managers,
+        }
+    }
+
+    fn populate_stores_for_validate_pruning_point_proof(
+        &self,
+        proof: &PruningPointProof,
+        stores_and_processes: &mut ProofTempStorageAndProcesses,
+    ) -> PruningImportResult<Vec<Option<Hash>>> {
+        let headers_store = &stores_and_processes.headers_store;
+        let ghostdag_stores = &stores_and_processes.ghostdag_stores;
+        let mut relations_stores = stores_and_processes.relations_stores.clone();
+        let reachability_stores = &stores_and_processes.reachability_stores;
+        let ghostdag_managers = &stores_and_processes.ghostdag_managers;
+
+        let proof_pp_header = proof[0].last().expect("checked if empty");
+        let proof_pp = proof_pp_header.hash;
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
@@ -514,6 +544,21 @@ impl PruningProofManager {
             selected_tip_by_level[level_idx] = selected_tip;
         }
 
+        Ok(selected_tip_by_level)
+    }
+
+    pub fn validate_pruning_point_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
+        if proof.len() != self.max_block_level as usize + 1 {
+            return Err(PruningImportError::ProofNotEnoughLevels(self.max_block_level as usize + 1));
+        }
+
+        let proof_pp_header = proof[0].last().expect("checked if empty");
+        let proof_pp = proof_pp_header.hash;
+        let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
+        let mut stores_and_processes = self.init_validate_pruning_point_proof_stores_and_processes();
+        let selected_tip_by_level = self.populate_stores_for_validate_pruning_point_proof(&proof, &mut stores_and_processes)?;
+        let ghostdag_stores = stores_and_processes.ghostdag_stores;
+
         let pruning_read = self.pruning_point_store.read();
         let relations_read = self.relations_stores.read();
         let current_pp = pruning_read.get().unwrap().pruning_point;
@@ -595,7 +640,6 @@ impl PruningProofManager {
 
         drop(pruning_read);
         drop(relations_read);
-        drop(db_lifetime);
 
         Err(PruningImportError::PruningProofNotEnoughHeaders)
     }
