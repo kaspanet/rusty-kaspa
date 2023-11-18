@@ -41,7 +41,7 @@ use crate::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
             depth::DbDepthStore,
-            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
+            ghostdag::{CompactGhostdagData, DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
@@ -547,6 +547,56 @@ impl PruningProofManager {
         Ok(selected_tip_by_level.into_iter().map(|selected_tip| selected_tip.unwrap()).collect())
     }
 
+    fn validate_proof_selected_tip(
+        &self,
+        proof_selected_tip: Hash,
+        level: BlockLevel,
+        proof_pp_level: BlockLevel,
+        proof_pp: Hash,
+        proof_pp_header: &Header,
+    ) -> PruningImportResult<()> {
+        // A proof selected tip of some level has to be the proof suggested prunint point itself if its level
+        // is lower or equal to the pruning point level, or a parent of the pruning point on the relevant level
+        // otherwise.
+        if level <= proof_pp_level {
+            if proof_selected_tip != proof_pp {
+                return Err(PruningImportError::PruningProofSelectedTipIsNotThePruningPoint(proof_selected_tip, level));
+            }
+        } else if !self.parents_manager.parents_at_level(proof_pp_header, level).contains(&proof_selected_tip) {
+            return Err(PruningImportError::PruningProofSelectedTipNotParentOfPruningPoint(proof_selected_tip, level));
+        }
+
+        Ok(())
+    }
+
+    // find_proof_and_consensus_common_chain_ancestor_ghostdag_data returns an option of a tuple
+    // that contains the ghostdag data of the proof and current consensus common ancestor. If no
+    // such ancestor exists, it returns None.
+    fn find_proof_and_consensus_common_ancestor_ghostdag_data(
+        &self,
+        ghostdag_stores: &[Arc<DbGhostdagStore>],
+        proof_selected_tip: Hash,
+        level: BlockLevel,
+        proof_selected_tip_gd: CompactGhostdagData,
+    ) -> Option<(CompactGhostdagData, CompactGhostdagData)> {
+        let mut proof_current = proof_selected_tip;
+        let mut proof_current_gd = proof_selected_tip_gd;
+        loop {
+            match self.ghostdag_stores[level as usize].get_compact_data(proof_current).unwrap_option() {
+                Some(current_gd) => {
+                    break Some((proof_current_gd, current_gd));
+                }
+                None => {
+                    proof_current = proof_current_gd.selected_parent;
+                    if proof_current.is_origin() {
+                        break None;
+                    }
+                    proof_current_gd = ghostdag_stores[level as usize].get_compact_data(proof_current).unwrap();
+                }
+            };
+        }
+    }
+
     pub fn validate_pruning_point_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
         if proof.len() != self.max_block_level as usize + 1 {
             return Err(PruningImportError::ProofNotEnoughLevels(self.max_block_level as usize + 1));
@@ -566,37 +616,19 @@ impl PruningProofManager {
 
         for (level_idx, selected_tip) in selected_tip_by_level.into_iter().enumerate() {
             let level = level_idx as BlockLevel;
-            if level <= proof_pp_level {
-                if selected_tip != proof_pp {
-                    return Err(PruningImportError::PruningProofSelectedTipIsNotThePruningPoint(selected_tip, level));
-                }
-            } else if !self.parents_manager.parents_at_level(proof_pp_header, level).contains(&selected_tip) {
-                return Err(PruningImportError::PruningProofSelectedTipNotParentOfPruningPoint(selected_tip, level));
-            }
+            self.validate_proof_selected_tip(selected_tip, level, proof_pp_level, proof_pp, &proof_pp_header)?;
 
             let proof_selected_tip_gd = ghostdag_stores[level_idx].get_compact_data(selected_tip).unwrap();
             if proof_selected_tip_gd.blue_score < 2 * self.pruning_proof_m {
                 continue;
             }
 
-            let mut proof_current = selected_tip;
-            let mut proof_current_gd = proof_selected_tip_gd;
-            let common_ancestor_data = loop {
-                match self.ghostdag_stores[level_idx].get_compact_data(proof_current).unwrap_option() {
-                    Some(current_gd) => {
-                        break Some((proof_current_gd, current_gd));
-                    }
-                    None => {
-                        proof_current = proof_current_gd.selected_parent;
-                        if proof_current.is_origin() {
-                            break None;
-                        }
-                        proof_current_gd = ghostdag_stores[level_idx].get_compact_data(proof_current).unwrap();
-                    }
-                };
-            };
-
-            if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = common_ancestor_data {
+            if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = self.find_proof_and_consensus_common_ancestor_ghostdag_data(
+                &ghostdag_stores,
+                selected_tip,
+                level,
+                proof_selected_tip_gd,
+            ) {
                 let selected_tip_blue_work_diff =
                     SignedInteger::from(proof_selected_tip_gd.blue_work) - SignedInteger::from(proof_common_ancestor_gd.blue_work);
                 for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
@@ -618,6 +650,10 @@ impl PruningProofManager {
             return Ok(());
         }
 
+        // If we got here it means there's no level with shared blocks
+        // between the proof and the current consensus. In this case we
+        // consider the proof to be better if it has at least one level
+        // with 2*self.pruning_proof_m blue blocks where consensus doesn't.
         for level in (0..=self.max_block_level).rev() {
             let level_idx = level as usize;
             match relations_read[level_idx].get_parents(current_pp).unwrap_option() {
