@@ -103,7 +103,7 @@ Before you do anything else, enter: `network testnet-10` - specify that you want
 
 Once you are synced and have the miner operational, make sure you have a wallet open with a selected account and use `miner start`.  This will launch the miner and start mining to your selected account.  If your hashrate is in Kh/s, it may take a while to find a block.
 
-Once you have received some TKAS, you can test sending it by doing `transfer p 10`. The letter `p` is for `personal` - when using account names you can use first set of letters of the account name or it's id. If more than one account matches your supplied prefix, you will be asked to be more specific.
+Once you have received some TKAS, you can test sending it by doing `transfer p 10`. The letter `p` is for `personal` - when using account names you can use first set of letters of the account name or its id. If more than one account matches your supplied prefix, you will be asked to be more specific.
 
 Use `list` to see your accounts and their balances.
 
