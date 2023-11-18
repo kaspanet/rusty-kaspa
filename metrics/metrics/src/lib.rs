@@ -5,7 +5,7 @@ pub mod result;
 pub use data::{Metric, MetricGroup, MetricsData, MetricsSnapshot};
 
 use crate::result::Result;
-use futures::{future::join_all, pin_mut, select, FutureExt, StreamExt};
+use futures::{pin_mut, select, FutureExt, StreamExt};
 use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse, RpcPeerInfo};
 use std::{
     future::Future,
@@ -88,13 +88,7 @@ impl Metrics {
                             let last_data = this.data.lock().unwrap().take().unwrap();
                             this.data.lock().unwrap().replace(MetricsData::new(unixtime_as_millis_f64()));
                             if let Some(rpc) = this.rpc() {
-                                let samples = vec![
-                                    this.sample_metrics(rpc.clone()).boxed(),
-                                    this.sample_get_block_dag_info(rpc.clone()).boxed(),
-                                    this.sample_connected_peer_info(rpc.clone()).boxed(),
-                                ];
-
-                                join_all(samples).await;
+                                    this.sample_metrics(rpc.clone()).await.ok();
                             } else {
                                 this.connected_peer_info.lock().unwrap().take();
                             }
@@ -123,7 +117,7 @@ impl Metrics {
 
     async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
         if let Ok(metrics) = rpc.get_metrics(true, true, true).await {
-            let GetMetricsResponse { server_time: _, consensus_metrics, connection_metrics: _, process_metrics } = metrics;
+            let GetMetricsResponse { server_time: _, consensus_metrics, connection_metrics, process_metrics } = metrics;
 
             let mut data = self.data.lock().unwrap();
             let data = data.as_mut().unwrap();
@@ -135,6 +129,24 @@ impl Metrics {
                 data.txs_counts = consensus_metrics.txs_counts;
                 data.chain_block_counts = consensus_metrics.chain_block_counts;
                 data.mass_counts = consensus_metrics.mass_counts;
+                // --
+                data.block_count = consensus_metrics.block_count;
+                data.header_count = consensus_metrics.header_count;
+                data.tip_hashes_count = consensus_metrics.tip_hashes_count;
+                data.difficulty = consensus_metrics.difficulty;
+                data.past_median_time = consensus_metrics.past_median_time;
+                data.virtual_parent_hashes_count = consensus_metrics.virtual_parent_hashes_count;
+                data.virtual_daa_score = consensus_metrics.virtual_daa_score;
+            }
+
+            if let Some(connection_metrics) = connection_metrics {
+                data.borsh_live_connections = connection_metrics.borsh_live_connections;
+                data.borsh_connection_attempts = connection_metrics.borsh_connection_attempts;
+                data.borsh_handshake_failures = connection_metrics.borsh_handshake_failures;
+                data.json_live_connections = connection_metrics.json_live_connections;
+                data.json_connection_attempts = connection_metrics.json_connection_attempts;
+                data.json_handshake_failures = connection_metrics.json_handshake_failures;
+                data.active_peers = connection_metrics.active_peers;
             }
 
             if let Some(process_metrics) = process_metrics {
@@ -148,30 +160,6 @@ impl Metrics {
                 data.disk_io_read_per_sec = process_metrics.disk_io_read_per_sec;
                 data.disk_io_write_per_sec = process_metrics.disk_io_write_per_sec;
             }
-        }
-
-        Ok(())
-    }
-
-    async fn sample_get_block_dag_info(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
-        if let Ok(gdbi) = rpc.get_block_dag_info().await {
-            let mut data = self.data.lock().unwrap();
-            let data = data.as_mut().unwrap();
-            data.block_count = gdbi.block_count;
-            // data.header_count = gdbi.header_count;
-            data.tip_hashes = gdbi.tip_hashes.len();
-            data.difficulty = gdbi.difficulty;
-            data.past_median_time = gdbi.past_median_time;
-            data.virtual_parent_hashes = gdbi.virtual_parent_hashes.len();
-            data.virtual_daa_score = gdbi.virtual_daa_score;
-        }
-
-        Ok(())
-    }
-
-    async fn sample_connected_peer_info(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
-        if let Ok(cpi) = rpc.get_connected_peer_info().await {
-            self.connected_peer_info.lock().unwrap().replace(Arc::new(cpi.peer_info));
         }
 
         Ok(())

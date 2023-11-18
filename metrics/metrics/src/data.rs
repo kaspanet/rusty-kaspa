@@ -7,8 +7,8 @@ use workflow_core::enums::Describe;
 pub enum MetricGroup {
     System,
     Storage,
-    Node,
     Network,
+    BlockDAG,
 }
 
 impl std::fmt::Display for MetricGroup {
@@ -16,8 +16,8 @@ impl std::fmt::Display for MetricGroup {
         match self {
             MetricGroup::System => write!(f, "system"),
             MetricGroup::Storage => write!(f, "storage"),
-            MetricGroup::Node => write!(f, "node"),
             MetricGroup::Network => write!(f, "network"),
+            MetricGroup::BlockDAG => write!(f, "block-dag"),
         }
     }
 }
@@ -27,15 +27,15 @@ impl MetricGroup {
         match self {
             MetricGroup::System => "System",
             MetricGroup::Storage => "Storage",
-            MetricGroup::Node => "Node",
             MetricGroup::Network => "Network",
+            MetricGroup::BlockDAG => "BlockDAG",
         }
     }
 }
 
 impl MetricGroup {
     pub fn iter() -> impl Iterator<Item = MetricGroup> {
-        [MetricGroup::System, MetricGroup::Storage, MetricGroup::Node, MetricGroup::Network].into_iter()
+        [MetricGroup::System, MetricGroup::Storage, MetricGroup::Network, MetricGroup::BlockDAG].into_iter()
     }
 
     pub fn metrics(&self) -> impl Iterator<Item = Metric> {
@@ -48,10 +48,10 @@ impl MetricGroup {
                 Metric::DiskIoReadPerSec,
                 Metric::DiskIoWritePerSec,
             ],
-            MetricGroup::Node => vec![Metric::PeersConnected],
-            MetricGroup::Network => vec![
+            MetricGroup::Network => vec![Metric::ActivePeers],
+            MetricGroup::BlockDAG => vec![
                 Metric::BlocksSubmitted,
-                Metric::HeaderCount,
+                Metric::HeaderCounts,
                 Metric::DepCounts,
                 Metric::BodyCounts,
                 Metric::TxnCounts,
@@ -59,10 +59,10 @@ impl MetricGroup {
                 Metric::ChainBlockCounts,
                 Metric::MassCounts,
                 Metric::BlockCount,
-                Metric::TipHashes,
+                Metric::TipHashesCount,
                 Metric::Difficulty,
                 Metric::PastMedianTime,
-                Metric::VirtualParentHashes,
+                Metric::VirtualParentHashesCount,
                 Metric::VirtualDaaScore,
             ],
         }
@@ -81,10 +81,16 @@ impl From<Metric> for MetricGroup {
             | Metric::DiskIoReadPerSec
             | Metric::DiskIoWritePerSec => MetricGroup::Storage,
             // --
-            Metric::PeersConnected => MetricGroup::Node,
+            Metric::BorshLiveConnections => MetricGroup::Network,
+            Metric::BorshConnectionAttempts => MetricGroup::Network,
+            Metric::BorshHandshakeFailures => MetricGroup::Network,
+            Metric::JsonLiveConnections => MetricGroup::Network,
+            Metric::JsonConnectionAttempts => MetricGroup::Network,
+            Metric::JsonHandshakeFailures => MetricGroup::Network,
+            Metric::ActivePeers => MetricGroup::Network,
             // --
             Metric::BlocksSubmitted
-            | Metric::HeaderCount
+            | Metric::HeaderCounts
             | Metric::DepCounts
             | Metric::BodyCounts
             | Metric::TxnCounts
@@ -92,11 +98,12 @@ impl From<Metric> for MetricGroup {
             | Metric::ChainBlockCounts
             | Metric::MassCounts
             | Metric::BlockCount
-            | Metric::TipHashes
+            | Metric::HeaderCount
+            | Metric::TipHashesCount
             | Metric::Difficulty
             | Metric::PastMedianTime
-            | Metric::VirtualParentHashes
-            | Metric::VirtualDaaScore => MetricGroup::Network,
+            | Metric::VirtualParentHashesCount
+            | Metric::VirtualDaaScore => MetricGroup::BlockDAG,
         }
     }
 }
@@ -115,21 +122,29 @@ pub enum Metric {
     DiskIoReadPerSec,
     DiskIoWritePerSec,
     // ---
-    PeersConnected,
+    BorshLiveConnections,
+    BorshConnectionAttempts,
+    BorshHandshakeFailures,
+    JsonLiveConnections,
+    JsonConnectionAttempts,
+    JsonHandshakeFailures,
+    ActivePeers,
     // ---
     BlocksSubmitted,
-    HeaderCount,
+    HeaderCounts,
     DepCounts,
     BodyCounts,
     TxnCounts,
     Tps,
     ChainBlockCounts,
     MassCounts,
+
     BlockCount,
-    TipHashes,
+    HeaderCount,
+    TipHashesCount,
     Difficulty,
     PastMedianTime,
-    VirtualParentHashes,
+    VirtualParentHashesCount,
     VirtualDaaScore,
 }
 
@@ -143,11 +158,17 @@ impl Metric {
             | Metric::DiskIoReadBytes
             | Metric::DiskIoWriteBytes
             | Metric::DiskIoReadPerSec
-            | Metric::DiskIoWritePerSec => "system",
+            | Metric::DiskIoWritePerSec
+            | Metric::BorshLiveConnections
+            | Metric::BorshConnectionAttempts
+            | Metric::BorshHandshakeFailures
+            | Metric::JsonLiveConnections
+            | Metric::JsonConnectionAttempts
+            | Metric::JsonHandshakeFailures
+            | Metric::ActivePeers => "system",
             // --
-            Metric::PeersConnected
-            | Metric::BlocksSubmitted
-            | Metric::HeaderCount
+            Metric::BlocksSubmitted
+            | Metric::HeaderCounts
             | Metric::DepCounts
             | Metric::BodyCounts
             | Metric::TxnCounts
@@ -155,10 +176,11 @@ impl Metric {
             | Metric::ChainBlockCounts
             | Metric::MassCounts
             | Metric::BlockCount
-            | Metric::TipHashes
+            | Metric::HeaderCount
+            | Metric::TipHashesCount
             | Metric::Difficulty
             | Metric::PastMedianTime
-            | Metric::VirtualParentHashes
+            | Metric::VirtualParentHashesCount
             | Metric::VirtualDaaScore => "kaspa",
         }
     }
@@ -175,21 +197,28 @@ impl Metric {
             Metric::DiskIoReadPerSec => format!("{}/s", as_kb(f, si, short)),
             Metric::DiskIoWritePerSec => format!("{}/s", as_kb(f, si, short)),
             // --
-            Metric::PeersConnected => f.separated_string(),
+            Metric::BorshLiveConnections => f.separated_string(),
+            Metric::BorshConnectionAttempts => f.separated_string(),
+            Metric::BorshHandshakeFailures => f.separated_string(),
+            Metric::JsonLiveConnections => f.separated_string(),
+            Metric::JsonConnectionAttempts => f.separated_string(),
+            Metric::JsonHandshakeFailures => f.separated_string(),
+            Metric::ActivePeers => f.separated_string(),
             // --
             Metric::BlocksSubmitted => format_as_float(f, short),
-            Metric::HeaderCount => format_as_float(f, short),
+            Metric::HeaderCounts => format_as_float(f, short),
             Metric::DepCounts => format_as_float(f, short),
             Metric::BodyCounts => format_as_float(f, short),
             Metric::TxnCounts => format_as_float(f, short),
             Metric::Tps => format_as_float(f.trunc(), short),
             Metric::ChainBlockCounts => format_as_float(f, short),
             Metric::MassCounts => format_as_float(f, short),
+            Metric::HeaderCount => format_as_float(f, short),
             Metric::BlockCount => format_as_float(f, short),
-            Metric::TipHashes => format_as_float(f, short),
+            Metric::TipHashesCount => format_as_float(f, short),
             Metric::Difficulty => format_as_float(f, short),
             Metric::PastMedianTime => format_as_float(f, short),
-            Metric::VirtualParentHashes => format_as_float(f, short),
+            Metric::VirtualParentHashesCount => format_as_float(f, short),
             Metric::VirtualDaaScore => format_as_float(f, short),
         }
     }
@@ -206,9 +235,16 @@ impl Metric {
             Metric::DiskIoReadPerSec => "Storage Read",
             Metric::DiskIoWritePerSec => "Storage Write",
             // --
-            Metric::PeersConnected => "Peers Connected",
+            Metric::ActivePeers => "Active Peers",
+            Metric::BorshLiveConnections => "Borsh Active Connections",
+            Metric::BorshConnectionAttempts => "Borsh Connection Attempts",
+            Metric::BorshHandshakeFailures => "Borsh Handshake Failures",
+            Metric::JsonLiveConnections => "Json Active Connections",
+            Metric::JsonConnectionAttempts => "Json Connection Attempts",
+            Metric::JsonHandshakeFailures => "Json Handshake Failures",
+            // --
             Metric::BlocksSubmitted => "Blocks Submitted",
-            Metric::HeaderCount => "Headers",
+            Metric::HeaderCounts => "Headers",
             Metric::DepCounts => "Dependencies",
             Metric::BodyCounts => "Body Counts",
             Metric::TxnCounts => "Transactions",
@@ -216,10 +252,11 @@ impl Metric {
             Metric::ChainBlockCounts => "Chain Blocks",
             Metric::MassCounts => "Mass Counts",
             Metric::BlockCount => "Blocks",
-            Metric::TipHashes => "Tip Hashes",
+            Metric::HeaderCount => "Headers",
+            Metric::TipHashesCount => "Tip Hashes",
             Metric::Difficulty => "Difficulty",
             Metric::PastMedianTime => "Past Median Time",
-            Metric::VirtualParentHashes => "Virtual Parent Hashes",
+            Metric::VirtualParentHashesCount => "Virtual Parent Hashes",
             Metric::VirtualDaaScore => "Virtual DAA Score",
         }
     }
@@ -241,7 +278,13 @@ pub struct MetricsData {
     pub disk_io_read_per_sec: f64,
     pub disk_io_write_per_sec: f64,
     // ---
-    pub peers_connected: usize,
+    pub borsh_live_connections: u64,
+    pub borsh_connection_attempts: u64,
+    pub borsh_handshake_failures: u64,
+    pub json_live_connections: u64,
+    pub json_connection_attempts: u64,
+    pub json_handshake_failures: u64,
+    pub active_peers: u64,
     // ---
     pub blocks_submitted: u64,
     pub header_counts: u64,
@@ -252,10 +295,11 @@ pub struct MetricsData {
     pub mass_counts: u64,
     // ---
     pub block_count: u64,
-    pub tip_hashes: usize,
+    pub header_count: u64,
+    pub tip_hashes_count: u64,
     pub difficulty: f64,
     pub past_median_time: u64,
-    pub virtual_parent_hashes: usize,
+    pub virtual_parent_hashes_count: u64,
     pub virtual_daa_score: u64,
 }
 
@@ -283,7 +327,13 @@ pub struct MetricsSnapshot {
     pub disk_io_read_per_sec: f64,
     pub disk_io_write_per_sec: f64,
     // ---
-    pub peers_connected: f64,
+    pub borsh_active_connections: f64,
+    pub borsh_connection_attempts: f64,
+    pub borsh_handshake_failures: f64,
+    pub json_active_connections: f64,
+    pub json_connection_attempts: f64,
+    pub json_handshake_failures: f64,
+    pub active_peers: f64,
     // ---
     pub blocks_submitted: f64,
     pub header_counts: f64,
@@ -295,10 +345,11 @@ pub struct MetricsSnapshot {
     pub mass_counts: f64,
     // ---
     pub block_count: f64,
-    pub tip_hashes: f64,
+    pub header_count: f64,
+    pub tip_hashes_count: f64,
     pub difficulty: f64,
     pub past_median_time: f64,
-    pub virtual_parent_hashes: f64,
+    pub virtual_parent_hashes_count: f64,
     pub virtual_daa_score: f64,
 }
 
@@ -314,11 +365,17 @@ impl MetricsSnapshot {
             Metric::DiskIoWriteBytes => self.disk_io_write_bytes,
             Metric::DiskIoReadPerSec => self.disk_io_read_per_sec,
             Metric::DiskIoWritePerSec => self.disk_io_write_per_sec,
-            Metric::PeersConnected => self.peers_connected,
-
+            // ---
+            Metric::ActivePeers => self.active_peers,
+            Metric::BorshLiveConnections => self.borsh_active_connections,
+            Metric::BorshConnectionAttempts => self.borsh_connection_attempts,
+            Metric::BorshHandshakeFailures => self.borsh_handshake_failures,
+            Metric::JsonLiveConnections => self.json_active_connections,
+            Metric::JsonConnectionAttempts => self.json_connection_attempts,
+            Metric::JsonHandshakeFailures => self.json_handshake_failures,
             // ---
             Metric::BlocksSubmitted => self.blocks_submitted,
-            Metric::HeaderCount => self.header_counts,
+            Metric::HeaderCounts => self.header_counts,
             Metric::DepCounts => self.dep_counts,
             Metric::BodyCounts => self.body_counts,
             Metric::TxnCounts => self.txs_counts,
@@ -326,10 +383,11 @@ impl MetricsSnapshot {
             Metric::ChainBlockCounts => self.chain_block_counts,
             Metric::MassCounts => self.mass_counts,
             Metric::BlockCount => self.block_count,
-            Metric::TipHashes => self.tip_hashes,
+            Metric::HeaderCount => self.header_count,
+            Metric::TipHashesCount => self.tip_hashes_count,
             Metric::Difficulty => self.difficulty,
             Metric::PastMedianTime => self.past_median_time,
-            Metric::VirtualParentHashes => self.virtual_parent_hashes,
+            Metric::VirtualParentHashesCount => self.virtual_parent_hashes_count,
             Metric::VirtualDaaScore => self.virtual_daa_score,
         }
     }
@@ -357,7 +415,14 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             disk_io_read_per_sec: b.disk_io_read_per_sec,
             disk_io_write_per_sec: b.disk_io_write_per_sec,
             // ---
-            peers_connected: b.peers_connected as f64,
+            borsh_active_connections: b.borsh_live_connections as f64,
+            borsh_connection_attempts: b.borsh_connection_attempts as f64,
+            borsh_handshake_failures: b.borsh_handshake_failures as f64,
+            json_active_connections: b.json_live_connections as f64,
+            json_connection_attempts: b.json_connection_attempts as f64,
+            json_handshake_failures: b.json_handshake_failures as f64,
+            active_peers: b.active_peers as f64,
+            // ---
             blocks_submitted: b.blocks_submitted as f64,
             header_counts: b.header_counts as f64,
             dep_counts: b.dep_counts as f64,
@@ -368,10 +433,11 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             mass_counts: b.mass_counts as f64,
             // ---
             block_count: b.block_count as f64,
-            tip_hashes: b.tip_hashes as f64,
+            header_count: b.header_count as f64,
+            tip_hashes_count: b.tip_hashes_count as f64,
             difficulty: b.difficulty,
             past_median_time: b.past_median_time as f64,
-            virtual_parent_hashes: b.virtual_parent_hashes as f64,
+            virtual_parent_hashes_count: b.virtual_parent_hashes_count as f64,
             virtual_daa_score: b.virtual_daa_score as f64,
 
             data: b.clone(),
