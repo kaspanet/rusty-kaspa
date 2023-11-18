@@ -41,7 +41,7 @@ impl SignableTransaction {
 
     #[wasm_bindgen(js_name=getScriptHashes)]
     pub fn script_hashes(&self) -> Result<JsValue, JsError> {
-        let hashes = script_hashes(self.clone().try_into()?)?;
+        let hashes = script_hashes(self.clone().into())?;
         Ok(to_value(&hashes)?)
     }
 

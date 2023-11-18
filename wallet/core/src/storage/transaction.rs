@@ -453,7 +453,7 @@ impl TransactionRecord {
                 }
 
                 if include_utxos {
-                    for (_n, input) in transaction.inputs.iter().enumerate() {
+                    for input in transaction.inputs.iter() {
                         let TransactionInput { previous_outpoint, signature_script: _, sequence, sig_op_count } = input;
                         let TransactionOutpoint { transaction_id, index } = previous_outpoint;
 

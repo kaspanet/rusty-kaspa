@@ -135,7 +135,7 @@ impl AddressManager {
         let is_multisig = manager_length > 1;
 
         if !is_multisig {
-            let keys = manager_keys.get(0).unwrap().clone();
+            let keys = manager_keys.first().unwrap().clone();
             let mut addresses = vec![];
             for key in keys {
                 addresses.push(self.create_address(vec![key])?);

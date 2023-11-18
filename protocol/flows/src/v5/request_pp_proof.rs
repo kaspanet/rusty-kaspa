@@ -40,7 +40,7 @@ impl RequestPruningPointProofFlow {
             self.router
                 .enqueue(make_response!(
                     Payload::PruningPointProof,
-                    PruningPointProofMessage { headers: proof.iter().map(|headers| headers.try_into().unwrap()).collect() },
+                    PruningPointProofMessage { headers: proof.iter().map(|headers| headers.into()).collect() },
                     request_id
                 ))
                 .await?;
