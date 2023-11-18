@@ -31,7 +31,7 @@ The minimal hardware requirements are 16GB of RAM, preferably a CPU with at leas
 
 ## Setup Instructions
 
-Testnet11 uses a dedicated P2P port (16311) so that nodes from the usual tesnet (10) do not automatically attempt connecting to it.
+Testnet11 uses a dedicated P2P port (16311) so that nodes from the usual testnet (10) do not automatically attempt connecting to it.
 
 We reiterate that only the included miner should be used to maintain a level playing field.
 
@@ -42,7 +42,7 @@ First, we set-up a node:
 ```
 kaspad --testnet --netsuffix=11 --utxoindex
 ```
-  It is **very impotrant** not to forget the ``--netsuffix=11`` flag, otherwise your node will connect to mainnet or to the default 1 BPS tesnet.
+  It is **very important** not to forget the ``--netsuffix=11`` flag, otherwise your node will connect to mainnet or to the default 1 BPS testnet.
   If you complied the code yourself, you should instead run
 ```
 cargo run --bin kaspad --release -- --testnet --netsuffix=11 --utxoindex
