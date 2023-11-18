@@ -450,7 +450,7 @@ impl PruningProofManager {
         &self,
         proof: &PruningPointProof,
         stores_and_processes: &mut ProofTempStorageAndProcesses,
-    ) -> PruningImportResult<Vec<Option<Hash>>> {
+    ) -> PruningImportResult<Vec<Hash>> {
         let headers_store = &stores_and_processes.headers_store;
         let ghostdag_stores = &stores_and_processes.ghostdag_stores;
         let mut relations_stores = stores_and_processes.relations_stores.clone();
@@ -544,7 +544,7 @@ impl PruningProofManager {
             selected_tip_by_level[level_idx] = selected_tip;
         }
 
-        Ok(selected_tip_by_level)
+        Ok(selected_tip_by_level.into_iter().map(|selected_tip| selected_tip.unwrap()).collect())
     }
 
     pub fn validate_pruning_point_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
@@ -566,7 +566,6 @@ impl PruningProofManager {
 
         for (level_idx, selected_tip) in selected_tip_by_level.into_iter().enumerate() {
             let level = level_idx as BlockLevel;
-            let selected_tip = selected_tip.unwrap();
             if level <= proof_pp_level {
                 if selected_tip != proof_pp {
                     return Err(PruningImportError::PruningProofSelectedTipIsNotThePruningPoint(selected_tip, level));
