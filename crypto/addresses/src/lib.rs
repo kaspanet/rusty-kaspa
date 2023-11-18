@@ -209,27 +209,27 @@ impl Address {
 
     /// Convert an address to a string.
     #[wasm_bindgen(js_name = toString)]
-    pub fn to_str(&self) -> String {
+    pub fn as_string(&self) -> String {
         self.into()
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn version(&self) -> String {
+    #[wasm_bindgen(getter, js_name = "version")]
+    pub fn version_as_string(&self) -> String {
         self.version.to_string()
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn prefix(&self) -> String {
+    #[wasm_bindgen(getter, js_name = "prefix")]
+    pub fn prefix_as_string(&self) -> String {
         self.prefix.to_string()
     }
 
-    #[wasm_bindgen(setter)]
-    pub fn set_prefix(&mut self, prefix: &str) {
+    #[wasm_bindgen(setter, js_name = "setPrefix")]
+    pub fn set_prefix_from_str(&mut self, prefix: &str) {
         self.prefix = Prefix::try_from(prefix).unwrap_or_else(|err| panic!("Address::prefix() - invalid prefix `{prefix}`: {err}"));
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn payload(&self) -> String {
+    #[wasm_bindgen(getter, js_name = "payload")]
+    pub fn payload_as_string(&self) -> String {
         self.encode_payload()
     }
 
@@ -242,7 +242,7 @@ impl Address {
 
 impl Display for Address {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_str())
+        write!(f, "{}", String::from(self))
     }
 }
 
@@ -622,7 +622,12 @@ mod tests {
         let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
 
         use web_sys::console;
-        console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
+        console::log_4(
+            &"address: ".into(),
+            &expected.version_as_string().into(),
+            &expected.prefix_as_string().into(),
+            &expected.payload_as_string().into(),
+        );
 
         let obj = Object::new();
         obj.set("version", &JsValue::from_str("PubKey")).unwrap();
