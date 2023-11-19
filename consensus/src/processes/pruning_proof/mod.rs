@@ -27,6 +27,7 @@ use kaspa_database::prelude::{ConnBuilder, StoreResultEmptyTuple, StoreResultExt
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
+use thiserror::Error;
 
 use crate::{
     consensus::{
@@ -60,6 +61,18 @@ use super::{
     ghostdag::{mergeset::unordered_mergeset_without_selected_parent, protocol::GhostdagManager},
     window::WindowManager,
 };
+
+#[derive(Error, Debug)]
+enum PruningProofManagerInternalError {
+    #[error("block at depth error: {0}")]
+    BlockAtDepth(String),
+
+    #[error("find common ancestor error: {0}")]
+    FindCommonAncestor(String),
+
+    #[error("cannot find a common ancestor: {0}")]
+    NoCommonAncestor(String),
+}
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -665,8 +678,15 @@ impl PruningProofManager {
             .collect_vec()
     }
 
-    fn block_at_depth(&self, ghostdag_store: &impl GhostdagStoreReader, high: Hash, depth: u64) -> Result<Hash, String> {
-        let high_gd = ghostdag_store.get_compact_data(high).map_err(|err| format!("high: {high}, depth: {depth}, {err}"))?;
+    fn block_at_depth(
+        &self,
+        ghostdag_store: &impl GhostdagStoreReader,
+        high: Hash,
+        depth: u64,
+    ) -> Result<Hash, PruningProofManagerInternalError> {
+        let high_gd = ghostdag_store
+            .get_compact_data(high)
+            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
         let mut current_gd = high_gd;
         let mut current = high;
         while current_gd.blue_score + depth >= high_gd.blue_score {
@@ -676,28 +696,39 @@ impl PruningProofManager {
             let prev = current;
             current = current_gd.selected_parent;
             current_gd = ghostdag_store.get_compact_data(current).map_err(|err| {
-                format!(
+                PruningProofManagerInternalError::BlockAtDepth(format!(
                     "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
                     high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
-                )
+                ))
             })?;
         }
         Ok(current)
     }
 
-    fn find_common_ancestor_in_chain_of_a(&self, ghostdag_store: &impl GhostdagStoreReader, a: Hash, b: Hash) -> Result<Hash, String> {
-        let a_gd = ghostdag_store.get_compact_data(a).map_err(|err| format!("a: {a}, b: {b}, {err}"))?;
+    fn find_common_ancestor_in_chain_of_a(
+        &self,
+        ghostdag_store: &impl GhostdagStoreReader,
+        a: Hash,
+        b: Hash,
+    ) -> Result<Hash, PruningProofManagerInternalError> {
+        let a_gd = ghostdag_store
+            .get_compact_data(a)
+            .map_err(|err| PruningProofManagerInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
         let mut current_gd = a_gd;
         let mut current;
+        let mut loop_counter = 0;
         loop {
             current = current_gd.selected_parent;
+            loop_counter += 1;
             if current.is_origin() {
-                break Err(format!("cannot find a common ancestor for blocks {a}, {b}"));
+                break Err(PruningProofManagerInternalError::NoCommonAncestor(format!("a: {a}, b: {b} ({loop_counter} loop steps)")));
             }
             if self.reachability_service.is_dag_ancestor_of(current, b) {
                 break Ok(current);
             }
-            current_gd = ghostdag_store.get_compact_data(current).map_err(|err| format!("a: {a}, b: {b}, {err}"))?;
+            current_gd = ghostdag_store
+                .get_compact_data(current)
+                .map_err(|err| PruningProofManagerInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
         }
     }
 
