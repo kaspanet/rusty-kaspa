@@ -126,11 +126,11 @@ impl ConsensusStorage {
             (0..=params.max_block_level)
                 .map(|level| {
                     let cache_size = max(ghostdag_cache_size.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
-                    Arc::new(DbGhostdagStore::new(db.clone(), level, noise(cache_size)))
+                    Arc::new(DbGhostdagStore::new_with_level(db.clone(), level, noise(cache_size)))
                 })
                 .collect_vec(),
         );
-        let ghostdag_primary_store = ghostdag_stores[0].clone();
+        let ghostdag_primary_store = Arc::new(DbGhostdagStore::new(db.clone(), noise(ghostdag_cache_size)));
         let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), noise(daa_excluded_cache_size)));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), noise(perf_params.headers_cache_size)));
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), noise(perf_params.header_data_cache_size)));

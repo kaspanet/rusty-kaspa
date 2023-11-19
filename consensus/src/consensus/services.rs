@@ -24,6 +24,14 @@ use std::sync::Arc;
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
 
+pub type DbGhostdagManagerBlueScore = GhostdagManager<
+    DbGhostdagStore,
+    MTRelationsService<DbRelationsStore>,
+    MTReachabilityService<DbReachabilityStore>,
+    DbHeadersStore,
+    false,
+>;
+
 pub type DbDagTraversalManager = DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 
 pub type DbWindowManager = DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>;
@@ -53,7 +61,7 @@ pub struct ConsensusServices {
     pub reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub window_manager: DbWindowManager,
     pub dag_traversal_manager: DbDagTraversalManager,
-    pub ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
+    pub ghostdag_managers: Arc<Vec<DbGhostdagManagerBlueScore>>,
     pub ghostdag_primary_manager: DbGhostdagManager,
     pub coinbase_manager: CoinbaseManager,
     pub pruning_point_manager: DbPruningPointManager,
@@ -129,7 +137,14 @@ impl ConsensusServices {
                 })
                 .collect_vec(),
         );
-        let ghostdag_primary_manager = ghostdag_managers[0].clone();
+        let ghostdag_primary_manager = GhostdagManager::new(
+            params.genesis.hash,
+            params.ghostdag_k,
+            storage.ghostdag_primary_store.clone(),
+            relations_services[0].clone(),
+            storage.headers_store.clone(),
+            reachability_service.clone(),
+        );
 
         let coinbase_manager = CoinbaseManager::new(
             params.coinbase_payload_script_public_key_max_len,
@@ -178,6 +193,7 @@ impl ConsensusServices {
             parents_manager.clone(),
             reachability_service.clone(),
             ghostdag_managers.clone(),
+            ghostdag_primary_manager.clone(),
             dag_traversal_manager.clone(),
             window_manager.clone(),
             params.max_block_level,

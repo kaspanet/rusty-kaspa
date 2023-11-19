@@ -12,36 +12,38 @@ use crate::model::{
 use super::protocol::GhostdagManager;
 
 #[derive(Eq, Clone, Serialize, Deserialize)]
-pub struct SortableBlock {
+pub struct SortableBlock<WorkType = BlueWorkType> {
     pub hash: Hash,
-    pub blue_work: BlueWorkType,
+    pub blue_work: WorkType, // TODO: Rename to blue_work_or_score
 }
 
-impl SortableBlock {
-    pub fn new(hash: Hash, blue_work: BlueWorkType) -> Self {
+impl<WorkType> SortableBlock<WorkType> {
+    pub fn new(hash: Hash, blue_work: WorkType) -> Self {
         Self { hash, blue_work }
     }
 }
 
-impl PartialEq for SortableBlock {
+impl<WorkType> PartialEq for SortableBlock<WorkType> {
     fn eq(&self, other: &Self) -> bool {
         self.hash == other.hash
     }
 }
 
-impl PartialOrd for SortableBlock {
+impl<WorkType: Ord> PartialOrd for SortableBlock<WorkType> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for SortableBlock {
+impl<WorkType: Ord> Ord for SortableBlock<WorkType> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.blue_work.cmp(&other.blue_work).then_with(|| self.hash.cmp(&other.hash))
     }
 }
 
-impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader, const USE_BLUE_WORK: bool>
+    GhostdagManager<T, S, U, V, USE_BLUE_WORK>
+{
     pub fn sort_blocks(&self, blocks: impl IntoIterator<Item = Hash>) -> Vec<Hash> {
         let mut sorted_blocks: Vec<Hash> = blocks.into_iter().collect();
         sorted_blocks

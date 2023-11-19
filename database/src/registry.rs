@@ -36,6 +36,8 @@ pub enum DatabaseStorePrefixes {
     UtxoMultisets = 26,
     VirtualUtxoset = 27,
     VirtualState = 28,
+    GhostdagProof = 29,
+    GhostdagCompactProof = 30,
 
     // ---- Metadata ----
     MultiConsensusMetadata = 124,

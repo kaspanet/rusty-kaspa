@@ -2,7 +2,7 @@
 
 use crate::{
     consensus::{
-        services::{ConsensusServices, DbGhostdagManager, DbPruningPointManager},
+        services::{ConsensusServices, DbGhostdagManager, DbGhostdagManagerBlueScore, DbPruningPointManager},
         storage::ConsensusStorage,
     },
     model::{
@@ -67,7 +67,6 @@ pub struct PruningProcessor {
 
     // Managers and Services
     reachability_service: MTReachabilityService<DbReachabilityStore>,
-    ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     pruning_point_manager: DbPruningPointManager,
     pruning_proof_manager: Arc<PruningProofManager>,
 
@@ -100,7 +99,6 @@ impl PruningProcessor {
             db,
             storage: storage.clone(),
             reachability_service: services.reachability_service.clone(),
-            ghostdag_managers: services.ghostdag_managers.clone(),
             pruning_point_manager: services.pruning_point_manager.clone(),
             pruning_proof_manager: services.pruning_proof_manager.clone(),
             pruning_lock,

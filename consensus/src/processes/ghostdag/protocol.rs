@@ -22,7 +22,13 @@ use crate::{
 use super::ordering::*;
 
 #[derive(Clone)]
-pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> {
+pub struct GhostdagManager<
+    T: GhostdagStoreReader,
+    S: RelationsStoreReader,
+    U: ReachabilityService,
+    V: HeaderStoreReader,
+    const USE_BLUE_WORK: bool = true,
+> {
     genesis_hash: Hash,
     pub(super) k: KType,
     pub(super) ghostdag_store: Arc<T>,
@@ -31,7 +37,9 @@ pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: R
     pub(super) reachability_service: U,
 }
 
-impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader, const USE_BLUE_WORK: bool>
+    GhostdagManager<T, S, U, V, USE_BLUE_WORK>
+{
     pub fn new(
         genesis_hash: Hash,
         k: KType,
@@ -66,12 +74,21 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     }
 
     pub fn find_selected_parent(&self, parents: impl IntoIterator<Item = Hash>) -> Hash {
-        parents
-            .into_iter()
-            .map(|parent| SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() })
-            .max()
-            .unwrap()
-            .hash
+        if USE_BLUE_WORK {
+            parents
+                .into_iter()
+                .map(|parent| SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() })
+                .max()
+                .unwrap()
+                .hash
+        } else {
+            parents
+                .into_iter()
+                .map(|parent| SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_score(parent).unwrap() })
+                .max()
+                .unwrap()
+                .hash
+        }
     }
 
     /// Runs the GHOSTDAG protocol and calculates the block GhostdagData by the given parents.
