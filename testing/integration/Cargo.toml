@@ -27,6 +27,7 @@ kaspad.workspace = true
 async-channel.workspace = true
 bincode.workspace = true
 crossbeam-channel.workspace = true
+dhat = { workspace = true, optional = true }
 faster-hex.workspace = true
 flate2.workspace = true
 futures-util.workspace = true
@@ -61,5 +62,6 @@ tokio = { workspace = true, features = ["rt", "macros"] }
 kaspa-txscript-errors.workspace = true
 
 [features]
+heap = ["dhat"]
 html_reports = []
 devnet-prealloc = ["kaspad/devnet-prealloc"]

@@ -2738,6 +2738,7 @@ dependencies = [
  "bincode",
  "criterion",
  "crossbeam-channel",
+ "dhat",
  "faster-hex 0.6.1",
  "flate2",
  "futures-util",

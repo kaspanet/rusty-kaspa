@@ -15,3 +15,7 @@ pub mod mempool_benchmarks;
 
 #[cfg(test)]
 pub mod rpc_tests;
+
+#[cfg(feature = "heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;

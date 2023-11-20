@@ -89,6 +89,9 @@ async fn daemon_mining_test() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_utxos_propagation_test() {
+    #[cfg(feature = "heap")]
+    let _profiler = dhat::Profiler::builder().file_name("kaspa-testing-integration-heap.json").build();
+
     kaspa_core::log::try_init_logger(
         "INFO,kaspa_testing_integration=trace,kaspa_notify=debug,kaspa_rpc_core=debug,kaspa_grpc_client=debug",
     );
