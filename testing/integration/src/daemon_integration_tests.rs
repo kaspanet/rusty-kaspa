@@ -8,7 +8,7 @@ use kaspa_consensus::params::SIMNET_PARAMS;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
 use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::scope::{BlockAddedScope, UtxosChangedScope};
+use kaspa_notify::scope::{BlockAddedScope, UtxosChangedScope, VirtualDaaScoreChangedScope};
 use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcTransactionId};
 use kaspa_txscript::pay_to_address_script;
 use kaspad_lib::args::Args;
@@ -189,6 +189,7 @@ async fn daemon_utxos_propagation_test() {
     for x in clients.iter_mut() {
         x.start_notify(BlockAddedScope {}.into()).await.unwrap();
         x.start_notify(UtxosChangedScope { addresses: vec![miner_address.clone(), user_address.clone()] }.into()).await.unwrap();
+        x.start_notify(VirtualDaaScoreChangedScope {}.into()).await.unwrap();
     }
 
     // Mine some extra blocks so the latest miner reward is added to its balance and some UTXOs reach maturity
@@ -212,8 +213,9 @@ async fn daemon_utxos_propagation_test() {
         assert_eq!(utxo.1.script_public_key, miner_spk);
     }
 
-    // Drain UTXOs changed notification channels
+    // Drain UTXOs and Virtual DAA score changed notification channels
     clients.iter().for_each(|x| x.utxos_changed_listener().unwrap().drain());
+    clients.iter().for_each(|x| x.virtual_daa_score_changed_listener().unwrap().drain());
 
     // Spend some coins
     const NUMBER_INPUTS: usize = 2;

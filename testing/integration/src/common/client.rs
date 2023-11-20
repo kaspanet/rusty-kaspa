@@ -52,6 +52,10 @@ impl ListeningClient {
     pub fn utxos_changed_listener(&self) -> Option<Listener> {
         self.listener(EventType::UtxosChanged)
     }
+
+    pub fn virtual_daa_score_changed_listener(&self) -> Option<Listener> {
+        self.listener(EventType::VirtualDaaScoreChanged)
+    }
 }
 
 impl Deref for ListeningClient {

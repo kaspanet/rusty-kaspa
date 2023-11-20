@@ -16,7 +16,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::{api::rpc::RpcApi, BlockAddedNotification, Notification};
+use kaspa_rpc_core::{api::rpc::RpcApi, BlockAddedNotification, Notification, VirtualDaaScoreChangedNotification};
 use kaspa_txscript::pay_to_address_script;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use secp256k1::KeyPair;
@@ -26,6 +26,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tokio::time::timeout;
 
 const EXPAND_FACTOR: u64 = 1;
 const CONTRACT_FACTOR: u64 = 1;
@@ -191,9 +192,24 @@ pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, li
 
     // Wait for each listening client to get notified the submitted block was added to the DAG
     for client in listening_clients.iter() {
-        match client.block_added_listener().unwrap().receiver.recv().await.unwrap() {
+        let block_daa_score: u64 = match timeout(Duration::from_millis(500), client.block_added_listener().unwrap().receiver.recv())
+            .await
+            .unwrap()
+            .unwrap()
+        {
             Notification::BlockAdded(BlockAddedNotification { block }) => {
                 assert_eq!(block.header.hash, block_hash);
+                block.header.daa_score
+            }
+            _ => panic!("wrong notification type"),
+        };
+        match timeout(Duration::from_millis(500), client.virtual_daa_score_changed_listener().unwrap().receiver.recv())
+            .await
+            .unwrap()
+            .unwrap()
+        {
+            Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification { virtual_daa_score }) => {
+                assert_eq!(virtual_daa_score, block_daa_score + 1);
             }
             _ => panic!("wrong notification type"),
         }
