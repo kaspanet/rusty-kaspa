@@ -447,7 +447,7 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
 
 /// Display KB or KiB if `short` is false, otherwise if `short` is true
 /// and the value is greater than 1MB or 1MiB, display units using [`as_data_size()`].
-fn as_kb(bytes: f64, si: bool, short: bool) -> String {
+pub fn as_kb(bytes: f64, si: bool, short: bool) -> String {
     let unit = if si { 1000_f64 } else { 1024_f64 };
     if short && bytes > unit.powi(2) {
         as_data_size(bytes, si)
@@ -460,7 +460,7 @@ fn as_kb(bytes: f64, si: bool, short: bool) -> String {
 
 /// Display MB or MiB if `short` is false, otherwise if `short` is true
 /// and the value is greater than 1GB or 1GiB, display units using [`as_data_size()`].
-fn as_mb(bytes: f64, si: bool, short: bool) -> String {
+pub fn as_mb(bytes: f64, si: bool, short: bool) -> String {
     let unit = if si { 1000_f64 } else { 1024_f64 };
     if short && bytes > unit.powi(3) {
         as_data_size(bytes, si)
@@ -473,7 +473,7 @@ fn as_mb(bytes: f64, si: bool, short: bool) -> String {
 
 /// Display GB or GiB if `short` is false, otherwise if `short` is true
 /// and the value is greater than 1TB or 1TiB, display units using [`as_data_size()`].
-fn _as_gb(bytes: f64, si: bool, short: bool) -> String {
+pub fn as_gb(bytes: f64, si: bool, short: bool) -> String {
     let unit = if si { 1000_f64 } else { 1024_f64 };
     if short && bytes > unit.powi(4) {
         as_data_size(bytes, si)
@@ -485,7 +485,7 @@ fn _as_gb(bytes: f64, si: bool, short: bool) -> String {
 }
 
 /// Display units dynamically formatted based on the size of the value.
-fn as_data_size(bytes: f64, si: bool) -> String {
+pub fn as_data_size(bytes: f64, si: bool) -> String {
     let unit = if si { 1000_f64 } else { 1024_f64 };
     let mut size = bytes;
     let mut unit_str = "B";
