@@ -7,6 +7,8 @@ pub struct ParseHostOutput<'a> {
     pub scheme: Option<&'a str>,
     pub host: Host<'a>,
     pub port: Option<u16>,
+    pub path: &'a str,
+
 }
 
 impl Display for ParseHostOutput<'_> {
@@ -57,6 +59,7 @@ pub enum ParseHostError {
 ///
 /// If a path is attached to the host string, it will be discarded.
 pub fn parse_host(input: &str) -> Result<ParseHostOutput, ParseHostError> {
+
     // Attempt to split the input into scheme, host, and port.
     let (scheme, input) = match input.find("://") {
         Some(pos) => {
@@ -66,7 +69,7 @@ pub fn parse_host(input: &str) -> Result<ParseHostOutput, ParseHostError> {
         None => (None, input),
     };
     // Attempt to split path and host.
-    let (input, _path) = match input.find('/') {
+    let (input, path) = match input.find('/') {
         Some(pos) => input.split_at(pos),
         None => (input, ""),
     };
@@ -102,24 +105,24 @@ pub fn parse_host(input: &str) -> Result<ParseHostOutput, ParseHostError> {
 
     // Attempt to parse the host as an IPv4 address.
     if let Ok(ipv4) = host.parse::<Ipv4Addr>() {
-        return Ok(ParseHostOutput { scheme, host: Host::Ipv4(ipv4), port });
+        return Ok(ParseHostOutput { scheme, host: Host::Ipv4(ipv4), port,path });
     }
 
     // Attempt to parse the host as an IPv6 address enclosed in square brackets.
     if host.starts_with('[') && host.ends_with(']') {
         let ipv6 = &host[1..host.len() - 1];
         if let Ok(ipv6) = ipv6.parse::<Ipv6Addr>() {
-            return Ok(ParseHostOutput { scheme, host: Host::Ipv6(ipv6), port });
+            return Ok(ParseHostOutput { scheme, host: Host::Ipv6(ipv6), port,path });
         }
     }
     // Attempt to parse the host as an IPv6 address.
     if let Ok(ipv6) = host.parse::<Ipv6Addr>() {
-        return Ok(ParseHostOutput { scheme, host: Host::Ipv6(ipv6), port });
+        return Ok(ParseHostOutput { scheme, host: Host::Ipv6(ipv6), port,path });
     }
 
     // Attempt to parse the host as a hostname.
     if host.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        return Ok(ParseHostOutput { scheme, host: Host::Hostname(host), port });
+        return Ok(ParseHostOutput { scheme, host: Host::Hostname(host), port,path });
     }
 
     // Attempt to parse the host as a domain.
@@ -149,7 +152,7 @@ pub fn parse_host(input: &str) -> Result<ParseHostOutput, ParseHostError> {
         && hyphens_are_separated_by_valid_chars.unwrap_or(true)
         && tld_exists_and_is_not_number
     {
-        return Ok(ParseHostOutput { scheme, host: Host::Domain(host), port });
+        return Ok(ParseHostOutput { scheme, host: Host::Domain(host), port,path });
     }
 
     Err(ParseHostError::InvalidInput)
