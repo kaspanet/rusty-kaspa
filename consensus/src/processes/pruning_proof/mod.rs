@@ -27,6 +27,7 @@ use kaspa_database::prelude::{ConnBuilder, StoreResultEmptyTuple, StoreResultExt
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
+use thiserror::Error;
 
 use crate::{
     consensus::{
@@ -60,6 +61,18 @@ use super::{
     ghostdag::{mergeset::unordered_mergeset_without_selected_parent, protocol::GhostdagManager},
     window::WindowManager,
 };
+
+#[derive(Error, Debug)]
+enum PruningProofManagerInternalError {
+    #[error("block at depth error: {0}")]
+    BlockAtDepth(String),
+
+    #[error("find common ancestor error: {0}")]
+    FindCommonAncestor(String),
+
+    #[error("cannot find a common ancestor: {0}")]
+    NoCommonAncestor(String),
+}
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -419,7 +432,7 @@ impl PruningProofManager {
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
-            info!("Validating level {level} from the pruning point proof");
+            info!("Validating level {level} from the pruning point proof ({} headers)", proof[level as usize].len());
             let level_idx = level as usize;
             let mut selected_tip = None;
             for (i, header) in proof[level as usize].iter().enumerate() {
@@ -480,11 +493,13 @@ impl PruningProofManager {
             }
 
             if level < self.max_block_level {
-                let block_at_depth_m_at_next_level = self.block_at_depth(
-                    &*ghostdag_stores[level_idx + 1],
-                    selected_tip_by_level[level_idx + 1].unwrap(),
-                    self.pruning_proof_m,
-                );
+                let block_at_depth_m_at_next_level = self
+                    .block_at_depth(
+                        &*ghostdag_stores[level_idx + 1],
+                        selected_tip_by_level[level_idx + 1].unwrap(),
+                        self.pruning_proof_m,
+                    )
+                    .unwrap();
                 if !relations_stores[level_idx].has(block_at_depth_m_at_next_level).unwrap() {
                     return Err(PruningImportError::PruningProofMissingBlockAtDepthMFromNextLevel(level, level + 1));
                 }
@@ -611,19 +626,28 @@ impl PruningProofManager {
             .map(|level| {
                 let level = level as usize;
                 let selected_tip = selected_tip_by_level[level];
-                let block_at_depth_2m = self.block_at_depth(&*self.ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m);
+                let block_at_depth_2m = self
+                    .block_at_depth(&*self.ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m)
+                    .map_err(|err| format!("level: {}, err: {}", level, err))
+                    .unwrap();
 
                 let root = if level != self.max_block_level as usize {
-                    let block_at_depth_m_at_next_level =
-                        self.block_at_depth(&*self.ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m);
+                    let block_at_depth_m_at_next_level = self
+                        .block_at_depth(&*self.ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m)
+                        .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
+                        .unwrap();
                     if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
                         block_at_depth_m_at_next_level
+                    } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
+                        block_at_depth_2m
                     } else {
                         self.find_common_ancestor_in_chain_of_a(
                             &*self.ghostdag_stores[level],
                             block_at_depth_m_at_next_level,
                             block_at_depth_2m,
                         )
+                        .map_err(|err| format!("level: {}, err: {}", level, err))
+                        .unwrap()
                     }
                 } else {
                     block_at_depth_2m
@@ -654,32 +678,57 @@ impl PruningProofManager {
             .collect_vec()
     }
 
-    fn block_at_depth(&self, ghostdag_store: &impl GhostdagStoreReader, high: Hash, depth: u64) -> Hash {
-        let high_gd = ghostdag_store.get_compact_data(high).unwrap();
+    fn block_at_depth(
+        &self,
+        ghostdag_store: &impl GhostdagStoreReader,
+        high: Hash,
+        depth: u64,
+    ) -> Result<Hash, PruningProofManagerInternalError> {
+        let high_gd = ghostdag_store
+            .get_compact_data(high)
+            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
         let mut current_gd = high_gd;
         let mut current = high;
         while current_gd.blue_score + depth >= high_gd.blue_score {
             if current_gd.selected_parent.is_origin() {
                 break;
             }
-
+            let prev = current;
             current = current_gd.selected_parent;
-            current_gd = ghostdag_store.get_compact_data(current).unwrap();
+            current_gd = ghostdag_store.get_compact_data(current).map_err(|err| {
+                PruningProofManagerInternalError::BlockAtDepth(format!(
+                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
+                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
+                ))
+            })?;
         }
-        current
+        Ok(current)
     }
 
-    fn find_common_ancestor_in_chain_of_a(&self, ghostdag_store: &impl GhostdagStoreReader, a: Hash, b: Hash) -> Hash {
-        let a_gd = ghostdag_store.get_compact_data(a).unwrap();
+    fn find_common_ancestor_in_chain_of_a(
+        &self,
+        ghostdag_store: &impl GhostdagStoreReader,
+        a: Hash,
+        b: Hash,
+    ) -> Result<Hash, PruningProofManagerInternalError> {
+        let a_gd = ghostdag_store
+            .get_compact_data(a)
+            .map_err(|err| PruningProofManagerInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
         let mut current_gd = a_gd;
         let mut current;
+        let mut loop_counter = 0;
         loop {
             current = current_gd.selected_parent;
-            assert!(!current.is_origin());
-            if self.reachability_service.is_dag_ancestor_of(current, b) {
-                break current;
+            loop_counter += 1;
+            if current.is_origin() {
+                break Err(PruningProofManagerInternalError::NoCommonAncestor(format!("a: {a}, b: {b} ({loop_counter} loop steps)")));
             }
-            current_gd = ghostdag_store.get_compact_data(current).unwrap();
+            if self.reachability_service.is_dag_ancestor_of(current, b) {
+                break Ok(current);
+            }
+            current_gd = ghostdag_store
+                .get_compact_data(current)
+                .map_err(|err| PruningProofManagerInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
         }
     }
 
