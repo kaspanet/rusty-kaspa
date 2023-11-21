@@ -2,6 +2,7 @@ use crate::{
     model::{
         candidate_tx::CandidateTransaction,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
+        tx_query::TransactionQuery,
     },
     MiningCounters,
 };
@@ -56,74 +57,55 @@ impl Mempool {
         Self { config, transaction_pool, orphan_pool, accepted_transactions, counters }
     }
 
-    pub(crate) fn get_transaction(
-        &self,
-        transaction_id: &TransactionId,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
-    ) -> Option<MutableTransaction> {
+    pub(crate) fn get_transaction(&self, transaction_id: &TransactionId, query: TransactionQuery) -> Option<MutableTransaction> {
         let mut transaction = None;
-        if include_transaction_pool {
+        if query.include_transaction_pool() {
             transaction = self.transaction_pool.get(transaction_id);
         }
-        if transaction.is_none() && include_orphan_pool {
+        if transaction.is_none() && query.include_orphan_pool() {
             transaction = self.orphan_pool.get(transaction_id);
         }
         transaction.map(|x| x.mtx.clone())
     }
 
-    pub(crate) fn has_transaction(
-        &self,
-        transaction_id: &TransactionId,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
-    ) -> bool {
-        (include_transaction_pool && self.transaction_pool.has(transaction_id))
-            || (include_orphan_pool && self.orphan_pool.has(transaction_id))
+    pub(crate) fn has_transaction(&self, transaction_id: &TransactionId, query: TransactionQuery) -> bool {
+        (query.include_transaction_pool() && self.transaction_pool.has(transaction_id))
+            || (query.include_orphan_pool() && self.orphan_pool.has(transaction_id))
     }
 
-    pub(crate) fn get_all_transactions(
-        &self,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
-    ) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
-        let transactions = if include_transaction_pool { self.transaction_pool.get_all_transactions() } else { vec![] };
-        let orphans = if include_orphan_pool { self.orphan_pool.get_all_transactions() } else { vec![] };
+    pub(crate) fn get_all_transactions(&self, query: TransactionQuery) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
+        let transactions = if query.include_transaction_pool() { self.transaction_pool.get_all_transactions() } else { vec![] };
+        let orphans = if query.include_orphan_pool() { self.orphan_pool.get_all_transactions() } else { vec![] };
         (transactions, orphans)
     }
 
-    pub(crate) fn get_all_transaction_ids(
-        &self,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
-    ) -> (Vec<TransactionId>, Vec<TransactionId>) {
-        let transactions = if include_transaction_pool { self.transaction_pool.get_all_transaction_ids() } else { vec![] };
-        let orphans = if include_orphan_pool { self.orphan_pool.get_all_transaction_ids() } else { vec![] };
+    pub(crate) fn get_all_transaction_ids(&self, query: TransactionQuery) -> (Vec<TransactionId>, Vec<TransactionId>) {
+        let transactions = if query.include_transaction_pool() { self.transaction_pool.get_all_transaction_ids() } else { vec![] };
+        let orphans = if query.include_orphan_pool() { self.orphan_pool.get_all_transaction_ids() } else { vec![] };
         (transactions, orphans)
     }
 
     pub(crate) fn get_transactions_by_addresses(
         &self,
         script_public_keys: &ScriptPublicKeySet,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
+        query: TransactionQuery,
     ) -> GroupedOwnerTransactions {
         let mut owner_set = GroupedOwnerTransactions::default();
-        if include_transaction_pool {
+        if query.include_transaction_pool() {
             self.transaction_pool.fill_owner_set_transactions(script_public_keys, &mut owner_set);
         }
-        if include_orphan_pool {
+        if query.include_orphan_pool() {
             self.orphan_pool.fill_owner_set_transactions(script_public_keys, &mut owner_set);
         }
         owner_set
     }
 
-    pub(crate) fn transaction_count(&self, include_transaction_pool: bool, include_orphan_pool: bool) -> usize {
+    pub(crate) fn transaction_count(&self, query: TransactionQuery) -> usize {
         let mut count = 0;
-        if include_transaction_pool {
+        if query.include_transaction_pool() {
             count += self.transaction_pool.len()
         }
-        if include_orphan_pool {
+        if query.include_orphan_pool() {
             count += self.orphan_pool.len()
         }
         count
