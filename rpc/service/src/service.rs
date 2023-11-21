@@ -562,10 +562,10 @@ impl RpcApi for RpcCoreService {
 
             // Found daa_score in range
             if header.daa_score <= curr_daa_score {
-                // For the last header, we estimate excess time as seconds
+                // For daa_score later than the last header, we estimate in milliseconds based on the difference
                 let time_adjustment = if header_idx == 0 {
-                    // Assume difference in daa_score corresponds to seconds since the basis header
-                    (curr_daa_score - header.daa_score).checked_mul(1000).unwrap_or(u64::MAX)
+                    // estimate milliseconds = (daa_score / bps)
+                    ((curr_daa_score - header.daa_score) / self.config.bps()).checked_mul(1000).unwrap_or(u64::MAX)
                 } else {
                     // "next" header is the one that we processed last iteration
                     let next_header = &headers[header_idx - 1];
