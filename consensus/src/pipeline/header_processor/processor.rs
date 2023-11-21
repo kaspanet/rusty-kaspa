@@ -101,7 +101,7 @@ impl HeaderProcessingContext {
     /// Returns the primary (level 0) GHOSTDAG data of this header.
     /// NOTE: is expected to be called only after GHOSTDAG computation was pushed into the context
     pub fn ghostdag_data(&self) -> &Arc<GhostdagData> {
-        &self.primary_ghostdag_data.as_ref().unwrap()
+        self.primary_ghostdag_data.as_ref().unwrap()
     }
 }
 
@@ -129,8 +129,8 @@ pub struct HeaderProcessor {
     pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     pub(super) reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub(super) reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
-    pub(super) ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
-    pub(super) ghostdag_primary_store: Arc<DbGhostdagStore>,
+    pub(super) proof_levels_ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
+    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
@@ -141,8 +141,8 @@ pub struct HeaderProcessor {
     pub(super) depth_store: Arc<DbDepthStore>,
 
     // Managers and services
-    pub(super) ghostdag_managers: Arc<Vec<DbGhostdagManagerBlueScore>>,
-    pub ghostdag_primary_manager: DbGhostdagManager,
+    pub(super) proof_levels_ghostdag_managers: Arc<Vec<DbGhostdagManagerBlueScore>>,
+    pub ghostdag_manager: DbGhostdagManager,
     pub(super) dag_traversal_manager: DbDagTraversalManager,
     pub(super) window_manager: DbWindowManager,
     pub(super) depth_manager: DbBlockDepthManager,
@@ -182,8 +182,8 @@ impl HeaderProcessor {
             relations_stores: storage.relations_stores.clone(),
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
-            ghostdag_stores: storage.ghostdag_stores.clone(),
-            ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
+            proof_levels_ghostdag_stores: storage.proof_levels_ghostdag_stores.clone(),
+            ghostdag_store: storage.ghostdag_store.clone(),
             statuses_store: storage.statuses_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
             daa_excluded_store: storage.daa_excluded_store.clone(),
@@ -193,8 +193,8 @@ impl HeaderProcessor {
             block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
 
-            ghostdag_managers: services.ghostdag_managers.clone(),
-            ghostdag_primary_manager: services.ghostdag_primary_manager.clone(),
+            proof_levels_ghostdag_managers: services.proof_levels_ghostdag_managers.clone(),
+            ghostdag_manager: services.ghostdag_manager.clone(),
             dag_traversal_manager: services.dag_traversal_manager.clone(),
             window_manager: services.window_manager.clone(),
             reachability_service: services.reachability_service.clone(),
@@ -356,17 +356,17 @@ impl HeaderProcessor {
     fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
         let ghostdag_data = (0..=ctx.block_level as usize)
             .map(|level| {
-                self.ghostdag_stores[level]
+                self.proof_levels_ghostdag_stores[level]
                     .get_data(ctx.hash)
                     .unwrap_option()
-                    .unwrap_or_else(|| Arc::new(self.ghostdag_managers[level].ghostdag(&ctx.known_parents[level])))
+                    .unwrap_or_else(|| Arc::new(self.proof_levels_ghostdag_managers[level].ghostdag(&ctx.known_parents[level])))
             })
             .collect_vec();
         ctx.primary_ghostdag_data = Some(
-            self.ghostdag_primary_store
+            self.ghostdag_store
                 .get_data(ctx.hash)
                 .unwrap_option()
-                .unwrap_or_else(|| Arc::new(self.ghostdag_primary_manager.ghostdag(&ctx.known_parents[0]))),
+                .unwrap_or_else(|| Arc::new(self.ghostdag_manager.ghostdag(&ctx.known_parents[0]))),
         );
         ctx.ghostdag_data = Some(ghostdag_data);
     }
@@ -384,10 +384,10 @@ impl HeaderProcessor {
         //
 
         for (level, datum) in ghostdag_data.iter().enumerate() {
-            self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap();
+            self.proof_levels_ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap();
         }
 
-        self.ghostdag_primary_store.insert_batch(&mut batch, ctx.hash, primary_ghostdag_data).unwrap();
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, primary_ghostdag_data).unwrap();
 
         if let Some(window) = ctx.block_window_for_difficulty {
             self.block_window_cache_for_difficulty.insert(ctx.hash, window);
@@ -467,9 +467,9 @@ impl HeaderProcessor {
 
         for (level, datum) in ghostdag_data.iter().enumerate() {
             // The data might have been already written when applying the pruning proof.
-            self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap_or_exists();
+            self.proof_levels_ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap_or_exists();
         }
-        self.ghostdag_primary_store.insert_batch(&mut batch, ctx.hash, primary_ghostdag_data).unwrap_or_exists();
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, primary_ghostdag_data).unwrap_or_exists();
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
@@ -502,9 +502,13 @@ impl HeaderProcessor {
             PruningPointInfo::from_genesis(self.genesis.hash),
             (0..=self.max_block_level).map(|_| BlockHashes::new(vec![ORIGIN])).collect(),
         );
-        ctx.ghostdag_data =
-            Some(self.ghostdag_managers.iter().map(|manager_by_level| Arc::new(manager_by_level.genesis_ghostdag_data())).collect());
-        ctx.primary_ghostdag_data = Some(Arc::new(self.ghostdag_primary_manager.genesis_ghostdag_data()));
+        ctx.ghostdag_data = Some(
+            self.proof_levels_ghostdag_managers
+                .iter()
+                .map(|manager_by_level| Arc::new(manager_by_level.genesis_ghostdag_data()))
+                .collect(),
+        );
+        ctx.primary_ghostdag_data = Some(Arc::new(self.ghostdag_manager.genesis_ghostdag_data()));
         ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);

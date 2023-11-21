@@ -51,8 +51,8 @@ pub struct ConsensusStorage {
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
     // Append-only stores
-    pub ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
-    pub ghostdag_primary_store: Arc<DbGhostdagStore>,
+    pub proof_levels_ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
+    pub ghostdag_store: Arc<DbGhostdagStore>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub past_pruning_points_store: Arc<DbPastPruningPointsStore>,
@@ -122,7 +122,7 @@ impl ConsensusStorage {
             DatabaseStorePrefixes::ReachabilityRelations.as_ref(),
             noise(reachability_relations_cache_size),
         )));
-        let ghostdag_stores = Arc::new(
+        let proof_levels_ghostdag_stores = Arc::new(
             (0..=params.max_block_level)
                 .map(|level| {
                     let cache_size = max(ghostdag_cache_size.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
@@ -130,7 +130,7 @@ impl ConsensusStorage {
                 })
                 .collect_vec(),
         );
-        let ghostdag_primary_store = Arc::new(DbGhostdagStore::new(db.clone(), noise(ghostdag_cache_size)));
+        let ghostdag_store = Arc::new(DbGhostdagStore::new(db.clone(), noise(ghostdag_cache_size)));
         let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), noise(daa_excluded_cache_size)));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), noise(perf_params.headers_cache_size)));
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), noise(perf_params.header_data_cache_size)));
@@ -170,8 +170,8 @@ impl ConsensusStorage {
             relations_stores,
             reachability_relations_store,
             reachability_store,
-            ghostdag_stores,
-            ghostdag_primary_store,
+            proof_levels_ghostdag_stores,
+            ghostdag_store,
             pruning_point_store,
             headers_selected_tip_store,
             body_tips_store,

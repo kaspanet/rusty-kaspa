@@ -2,7 +2,7 @@
 
 use crate::{
     consensus::{
-        services::{ConsensusServices, DbGhostdagManager, DbGhostdagManagerBlueScore, DbPruningPointManager},
+        services::{ConsensusServices, DbPruningPointManager},
         storage::ConsensusStorage,
     },
     model::{
@@ -259,7 +259,7 @@ impl PruningProcessor {
             let mut counter = 0;
             let mut batch = WriteBatch::default();
             for kept in keep_relations.iter().copied() {
-                let Some(ghostdag) = self.ghostdag_primary_store.get_data(kept).unwrap_option() else {
+                let Some(ghostdag) = self.ghostdag_store.get_data(kept).unwrap_option() else {
                     continue;
                 };
                 if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains(&h)) {
@@ -271,7 +271,7 @@ impl PruningProcessor {
                         mutable_ghostdag.selected_parent = ORIGIN;
                     }
                     counter += 1;
-                    self.ghostdag_primary_store.update_batch(&mut batch, kept, &Arc::new(mutable_ghostdag.into())).unwrap();
+                    self.ghostdag_store.update_batch(&mut batch, kept, &Arc::new(mutable_ghostdag.into())).unwrap();
                 }
             }
             self.db.write(batch).unwrap();
@@ -383,7 +383,7 @@ impl PruningProcessor {
                         let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
                         relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
                         staging_level_relations.commit(&mut batch).unwrap();
-                        self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap_option();
+                        self.proof_levels_ghostdag_stores[level].delete_batch(&mut batch, current).unwrap_option();
                     });
 
                     // Remove additional header related data
