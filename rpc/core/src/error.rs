@@ -109,6 +109,9 @@ pub enum RpcError {
 
     #[error("RpcCtl dispatch error")]
     RpcCtlDispatchError,
+
+    #[error("transaction query must either not filter transactions or include orphans")]
+    InconsistentMempoolTxQuery,
 }
 
 impl From<String> for RpcError {
