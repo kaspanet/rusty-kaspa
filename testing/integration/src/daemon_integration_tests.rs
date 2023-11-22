@@ -290,8 +290,8 @@ async fn daemon_utxos_propagation_test() {
         let Notification::UtxosChanged(uc) = x.utxos_changed_listener().unwrap().receiver.recv().await.unwrap() else {
             panic!("wrong notification type")
         };
-        assert!(uc.removed.iter().any(|x| x.address.is_some() && *x.address.as_ref().unwrap() == miner_address));
-        assert!(uc.added.iter().any(|x| x.address.is_some() && *x.address.as_ref().unwrap() == user_address));
+        assert!(uc.removed.iter().all(|x| x.address.is_some() && *x.address.as_ref().unwrap() == miner_address));
+        assert!(uc.added.iter().all(|x| x.address.is_some() && *x.address.as_ref().unwrap() == user_address));
         assert_eq!(uc.removed.len() as u64, NUMBER_INPUTS);
         assert_eq!(uc.added.len() as u64, NUMBER_OUTPUTS);
         assert_eq!(
