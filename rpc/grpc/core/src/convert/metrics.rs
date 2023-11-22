@@ -34,21 +34,21 @@ from!(item: &kaspa_rpc_core::ConnectionMetrics, protowire::ConnectionMetrics, {
 
 from!(item: &kaspa_rpc_core::ConsensusMetrics, protowire::ConsensusMetrics, {
     Self {
-        blocks_submitted: item.blocks_submitted,
-        header_counts: item.header_counts,
-        dep_counts: item.dep_counts,
-        body_counts: item.body_counts,
-        txs_counts: item.txs_counts,
-        chain_block_counts: item.chain_block_counts,
-        mass_counts: item.mass_counts,
+        blocks_submitted: item.node_blocks_submitted_count,
+        header_counts: item.node_headers_processed_count,
+        dep_counts: item.node_dependencies_processed_count,
+        body_counts: item.node_bodies_processed_count,
+        txs_counts: item.node_transactions_processed_count,
+        chain_block_counts: item.node_chain_blocks_processed_count,
+        mass_counts: item.node_mass_processed_count,
 
-        block_count: item.block_count,
-        header_count: item.header_count,
-        tip_hashes_count: item.tip_hashes_count,
-        difficulty: item.difficulty,
-        past_median_time: item.past_median_time,
-        virtual_parent_hashes_count: item.virtual_parent_hashes_count,
-        virtual_daa_score: item.virtual_daa_score,
+        block_count: item.node_database_blocks_count,
+        header_count: item.node_database_headers_count,
+        tip_hashes_count: item.network_tip_hashes_count,
+        difficulty: item.network_difficulty,
+        past_median_time: item.network_past_median_time,
+        virtual_parent_hashes_count: item.network_virtual_parent_hashes_count,
+        virtual_daa_score: item.network_virtual_daa_score,
     }
 });
 
@@ -84,20 +84,20 @@ try_from!(item: &protowire::ConnectionMetrics, kaspa_rpc_core::ConnectionMetrics
 
 try_from!(item: &protowire::ConsensusMetrics, kaspa_rpc_core::ConsensusMetrics, {
     Self {
-        blocks_submitted: item.blocks_submitted,
-        header_counts: item.header_counts,
-        dep_counts: item.dep_counts,
-        body_counts: item.body_counts,
-        txs_counts: item.txs_counts,
-        chain_block_counts: item.chain_block_counts,
-        mass_counts: item.mass_counts,
+        node_blocks_submitted_count: item.blocks_submitted,
+        node_headers_processed_count: item.header_counts,
+        node_dependencies_processed_count: item.dep_counts,
+        node_bodies_processed_count: item.body_counts,
+        node_transactions_processed_count: item.txs_counts,
+        node_chain_blocks_processed_count: item.chain_block_counts,
+        node_mass_processed_count: item.mass_counts,
 
-        block_count: item.block_count,
-        header_count: item.header_count,
-        tip_hashes_count: item.tip_hashes_count,
-        difficulty: item.difficulty,
-        past_median_time: item.past_median_time,
-        virtual_parent_hashes_count: item.virtual_parent_hashes_count,
-        virtual_daa_score: item.virtual_daa_score,
+        node_database_blocks_count: item.block_count,
+        node_database_headers_count: item.header_count,
+        network_tip_hashes_count: item.tip_hashes_count,
+        network_difficulty: item.difficulty,
+        network_past_median_time: item.past_median_time,
+        network_virtual_parent_hashes_count: item.virtual_parent_hashes_count,
+        network_virtual_daa_score: item.virtual_daa_score,
     }
 });

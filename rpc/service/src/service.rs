@@ -713,21 +713,21 @@ impl RpcApi for RpcCoreService {
             let block_count = session.async_estimate_block_count().await;
 
             Some(ConsensusMetrics {
-                blocks_submitted: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
-                header_counts: self.processing_counters.header_counts.load(Ordering::SeqCst),
-                dep_counts: self.processing_counters.dep_counts.load(Ordering::SeqCst),
-                body_counts: self.processing_counters.body_counts.load(Ordering::SeqCst),
-                txs_counts: self.processing_counters.txs_counts.load(Ordering::SeqCst),
-                chain_block_counts: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
-                mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
+                node_blocks_submitted_count: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
+                node_headers_processed_count: self.processing_counters.header_counts.load(Ordering::SeqCst),
+                node_dependencies_processed_count: self.processing_counters.dep_counts.load(Ordering::SeqCst),
+                node_bodies_processed_count: self.processing_counters.body_counts.load(Ordering::SeqCst),
+                node_transactions_processed_count: self.processing_counters.txs_counts.load(Ordering::SeqCst),
+                node_chain_blocks_processed_count: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
+                node_mass_processed_count: self.processing_counters.mass_counts.load(Ordering::SeqCst),
                 // ---
-                block_count: block_count.block_count,
-                header_count: block_count.header_count,
-                tip_hashes_count: session.async_get_tips_len().await as u64,
-                difficulty: self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
-                past_median_time: session.async_get_virtual_past_median_time().await,
-                virtual_parent_hashes_count: session.async_get_virtual_parents_len().await as u64,
-                virtual_daa_score: session.async_get_virtual_daa_score().await,
+                node_database_blocks_count: block_count.block_count,
+                node_database_headers_count: block_count.header_count,
+                network_tip_hashes_count: session.async_get_tips_len().await as u64,
+                network_difficulty: self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
+                network_past_median_time: session.async_get_virtual_past_median_time().await,
+                network_virtual_parent_hashes_count: session.async_get_virtual_parents_len().await as u64,
+                network_virtual_daa_score: session.async_get_virtual_daa_score().await,
             })
         } else {
             None

@@ -6,7 +6,7 @@ pub use data::{Metric, MetricGroup, MetricsData, MetricsSnapshot};
 
 use crate::result::Result;
 use futures::{pin_mut, select, FutureExt, StreamExt};
-use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse, RpcPeerInfo};
+use kaspa_rpc_core::{api::rpc::RpcApi, GetMetricsResponse};
 use std::{
     future::Future,
     pin::Pin,
@@ -17,6 +17,7 @@ use workflow_core::channel::DuplexChannel;
 use workflow_core::task::interval;
 use workflow_core::task::spawn;
 use workflow_core::time::unixtime_as_millis_f64;
+use workflow_log::*;
 
 pub type MetricsSinkFn =
     Arc<Box<dyn Send + Sync + Fn(MetricsSnapshot) -> Option<Pin<Box<(dyn Send + 'static + Future<Output = Result<()>>)>>> + 'static>>;
@@ -26,7 +27,6 @@ pub struct Metrics {
     rpc: Arc<Mutex<Option<Arc<dyn RpcApi>>>>,
     sink: Arc<Mutex<Option<MetricsSinkFn>>>,
     data: Arc<Mutex<Option<MetricsData>>>,
-    connected_peer_info: Arc<Mutex<Option<Arc<Vec<RpcPeerInfo>>>>>,
 }
 
 impl Default for Metrics {
@@ -36,7 +36,6 @@ impl Default for Metrics {
             rpc: Arc::new(Mutex::new(None)),
             sink: Arc::new(Mutex::new(None)),
             data: Arc::new(Mutex::new(None)),
-            connected_peer_info: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -62,17 +61,14 @@ impl Metrics {
         self.sink.lock().unwrap().clone()
     }
 
-    pub fn connected_peer_info(&self) -> Option<Arc<Vec<RpcPeerInfo>>> {
-        self.connected_peer_info.lock().unwrap().clone()
-    }
-
     pub async fn start_task(self: &Arc<Self>) -> Result<()> {
         let this = self.clone();
 
         let task_ctl_receiver = self.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.task_ctl.response.sender.clone();
 
-        *this.data.lock().unwrap() = Some(MetricsData::new(unixtime_as_millis_f64()));
+        let mut current_metrics_data = MetricsData::new(unixtime_as_millis_f64());
+        *this.data.lock().unwrap() = Some(current_metrics_data.clone());
 
         spawn(async move {
             let interval = interval(Duration::from_secs(1));
@@ -85,16 +81,19 @@ impl Metrics {
                     },
                     _ = interval.next().fuse() => {
 
-                            let last_data = this.data.lock().unwrap().take().unwrap();
-                            this.data.lock().unwrap().replace(MetricsData::new(unixtime_as_millis_f64()));
+                            let last_metrics_data = current_metrics_data;
+                            current_metrics_data = MetricsData::new(unixtime_as_millis_f64());
+
                             if let Some(rpc) = this.rpc() {
-                                    this.sample_metrics(rpc.clone()).await.ok();
-                            } else {
-                                this.connected_peer_info.lock().unwrap().take();
+                                if let Err(err) = this.sample_metrics(rpc.clone(), &mut current_metrics_data).await {
+                                    log_trace!("Metrics::sample_metrics() error: {}", err);
+                                }
                             }
 
+                            this.data.lock().unwrap().replace(current_metrics_data.clone());
+
                             if let Some(sink) = this.sink() {
-                                let snapshot = MetricsSnapshot::from((&last_data, this.data.lock().unwrap().as_ref().unwrap()));
+                                let snapshot = MetricsSnapshot::from((&last_metrics_data, &current_metrics_data));
                                 if let Some(future) = sink(snapshot) {
                                     future.await.ok();
                                 }
@@ -115,51 +114,48 @@ impl Metrics {
 
     // --- samplers
 
-    async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<()> {
-        if let Ok(metrics) = rpc.get_metrics(true, true, true).await {
-            let GetMetricsResponse { server_time: _, consensus_metrics, connection_metrics, process_metrics } = metrics;
+    async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>, data: &mut MetricsData) -> Result<()> {
+        let metrics = rpc.get_metrics(true, true, true).await?;
+        let GetMetricsResponse { server_time: _, consensus_metrics, connection_metrics, process_metrics } = metrics;
 
-            let mut data = self.data.lock().unwrap();
-            let data = data.as_mut().unwrap();
-            if let Some(consensus_metrics) = consensus_metrics {
-                data.blocks_submitted = consensus_metrics.blocks_submitted;
-                data.header_counts = consensus_metrics.header_counts;
-                data.dep_counts = consensus_metrics.dep_counts;
-                data.body_counts = consensus_metrics.body_counts;
-                data.txs_counts = consensus_metrics.txs_counts;
-                data.chain_block_counts = consensus_metrics.chain_block_counts;
-                data.mass_counts = consensus_metrics.mass_counts;
-                // --
-                data.block_count = consensus_metrics.block_count;
-                data.header_count = consensus_metrics.header_count;
-                data.tip_hashes_count = consensus_metrics.tip_hashes_count;
-                data.difficulty = consensus_metrics.difficulty;
-                data.past_median_time = consensus_metrics.past_median_time;
-                data.virtual_parent_hashes_count = consensus_metrics.virtual_parent_hashes_count;
-                data.virtual_daa_score = consensus_metrics.virtual_daa_score;
-            }
+        if let Some(consensus_metrics) = consensus_metrics {
+            data.node_blocks_submitted_count = consensus_metrics.node_blocks_submitted_count;
+            data.node_headers_processed_count = consensus_metrics.node_headers_processed_count;
+            data.node_dependencies_processed_count = consensus_metrics.node_dependencies_processed_count;
+            data.node_bodies_processed_count = consensus_metrics.node_bodies_processed_count;
+            data.node_transactions_processed_count = consensus_metrics.node_transactions_processed_count;
+            data.node_chain_blocks_processed_count = consensus_metrics.node_chain_blocks_processed_count;
+            data.node_mass_processed_count = consensus_metrics.node_mass_processed_count;
+            // --
+            data.node_database_blocks_count = consensus_metrics.node_database_blocks_count;
+            data.node_database_headers_count = consensus_metrics.node_database_headers_count;
+            data.network_tip_hashes_count = consensus_metrics.network_tip_hashes_count;
+            data.network_difficulty = consensus_metrics.network_difficulty;
+            data.network_past_median_time = consensus_metrics.network_past_median_time;
+            data.network_virtual_parent_hashes_count = consensus_metrics.network_virtual_parent_hashes_count;
+            data.network_virtual_daa_score = consensus_metrics.network_virtual_daa_score;
+        }
 
-            if let Some(connection_metrics) = connection_metrics {
-                data.borsh_live_connections = connection_metrics.borsh_live_connections;
-                data.borsh_connection_attempts = connection_metrics.borsh_connection_attempts;
-                data.borsh_handshake_failures = connection_metrics.borsh_handshake_failures;
-                data.json_live_connections = connection_metrics.json_live_connections;
-                data.json_connection_attempts = connection_metrics.json_connection_attempts;
-                data.json_handshake_failures = connection_metrics.json_handshake_failures;
-                data.active_peers = connection_metrics.active_peers;
-            }
+        if let Some(connection_metrics) = connection_metrics {
+            data.node_borsh_live_connections = connection_metrics.borsh_live_connections;
+            data.node_borsh_connection_attempts = connection_metrics.borsh_connection_attempts;
+            data.node_borsh_handshake_failures = connection_metrics.borsh_handshake_failures;
+            data.node_json_live_connections = connection_metrics.json_live_connections;
+            data.node_json_connection_attempts = connection_metrics.json_connection_attempts;
+            data.node_json_handshake_failures = connection_metrics.json_handshake_failures;
+            data.node_active_peers = connection_metrics.active_peers;
+        }
 
-            if let Some(process_metrics) = process_metrics {
-                data.resident_set_size_bytes = process_metrics.resident_set_size;
-                data.virtual_memory_size_bytes = process_metrics.virtual_memory_size;
-                data.cpu_cores = process_metrics.core_num;
-                data.cpu_usage = process_metrics.cpu_usage;
-                data.fd_num = process_metrics.fd_num;
-                data.disk_io_read_bytes = process_metrics.disk_io_read_bytes;
-                data.disk_io_write_bytes = process_metrics.disk_io_write_bytes;
-                data.disk_io_read_per_sec = process_metrics.disk_io_read_per_sec;
-                data.disk_io_write_per_sec = process_metrics.disk_io_write_per_sec;
-            }
+        if let Some(process_metrics) = process_metrics {
+            data.node_resident_set_size_bytes = process_metrics.resident_set_size;
+            data.node_virtual_memory_size_bytes = process_metrics.virtual_memory_size;
+            data.node_cpu_cores = process_metrics.core_num;
+            data.node_cpu_usage = process_metrics.cpu_usage;
+            data.node_file_handles = process_metrics.fd_num;
+            data.node_disk_io_read_bytes = process_metrics.disk_io_read_bytes;
+            data.node_disk_io_write_bytes = process_metrics.disk_io_write_bytes;
+            data.node_disk_io_read_per_sec = process_metrics.disk_io_read_per_sec;
+            data.node_disk_io_write_per_sec = process_metrics.disk_io_write_per_sec;
         }
 
         Ok(())

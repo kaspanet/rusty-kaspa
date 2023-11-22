@@ -7,11 +7,13 @@ edition.workspace = true
 include.workspace = true
 
 [dependencies]
-workflow-core.workspace = true
-thiserror.workspace = true
-kaspa-rpc-core.workspace = true
 async-trait.workspace = true
-futures.workspace = true
-serde.workspace = true
 borsh.workspace = true
+futures.workspace = true
+kaspa-core.workspace = true
+kaspa-rpc-core.workspace = true
 separator.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+workflow-core.workspace = true
+workflow-log.workspace = true

@@ -717,21 +717,22 @@ pub struct ConnectionMetrics {
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConsensusMetrics {
-    pub blocks_submitted: u64,
-    pub header_counts: u64,
-    pub dep_counts: u64,
-    pub body_counts: u64,
-    pub txs_counts: u64,
-    pub chain_block_counts: u64,
-    pub mass_counts: u64,
+    pub node_blocks_submitted_count: u64,
+    pub node_headers_processed_count: u64,
+    pub node_dependencies_processed_count: u64,
+    pub node_bodies_processed_count: u64,
+    pub node_transactions_processed_count: u64,
+    pub node_chain_blocks_processed_count: u64,
+    pub node_mass_processed_count: u64,
 
-    pub block_count: u64,
-    pub header_count: u64,
-    pub tip_hashes_count: u64,
-    pub difficulty: f64,
-    pub past_median_time: u64,
-    pub virtual_parent_hashes_count: u64,
-    pub virtual_daa_score: u64,
+    pub node_database_blocks_count: u64,
+    pub node_database_headers_count: u64,
+
+    pub network_tip_hashes_count: u64,
+    pub network_difficulty: f64,
+    pub network_past_median_time: u64,
+    pub network_virtual_parent_hashes_count: u64,
+    pub network_virtual_daa_score: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]

@@ -1,9 +1,13 @@
+use kaspa_rpc_core::RpcError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("{0}")]
     Custom(String),
+
+    #[error(transparent)]
+    RpcError(#[from] RpcError),
 }
 
 impl Error {
