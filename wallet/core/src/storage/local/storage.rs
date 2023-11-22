@@ -21,18 +21,18 @@ impl Storage {
 
 impl Storage {
     pub fn default_wallet_store() -> Self {
-        Self::try_new(&format!("{}.wallet", super::DEFAULT_WALLET_FILE)).unwrap()
+        Self::try_new(&format!("{}.wallet", super::default_wallet_file())).unwrap()
     }
 
     pub fn default_settings_store() -> Self {
-        Self::try_new(&format!("{}.settings", super::DEFAULT_SETTINGS_FILE)).unwrap()
+        Self::try_new(&format!("{}.settings", super::default_wallet_file())).unwrap()
     }
 
     pub fn try_new(name: &str) -> Result<Storage> {
         let filename = if runtime::is_web() {
             PathBuf::from(name)
         } else {
-            let filename = Path::new(super::DEFAULT_STORAGE_FOLDER).join(name);
+            let filename = Path::new(super::default_storage_folder()).join(name);
             fs::resolve_path(filename.to_str().unwrap())?
         };
 

@@ -24,7 +24,7 @@ pub fn make_filename(title: &Option<String>, filename: &Option<String>) -> Strin
     } else if let Some(title) = title {
         slugify!(title)
     } else {
-        super::DEFAULT_WALLET_FILE.to_string()
+        super::default_wallet_file().to_string()
     }
 }
 
@@ -170,7 +170,7 @@ impl Location {
 
 impl Default for Location {
     fn default() -> Self {
-        Self { folder: super::DEFAULT_STORAGE_FOLDER.to_string() }
+        Self { folder: super::default_storage_folder().to_string() }
     }
 }
 
@@ -221,7 +221,8 @@ impl Interface for LocalStore {
 
     async fn exists(&self, name: Option<&str>) -> Result<bool> {
         let location = self.location.lock().unwrap().clone().unwrap();
-        let store = Storage::try_new_with_folder(&location.folder, &format!("{}.wallet", name.unwrap_or(super::DEFAULT_WALLET_FILE)))?;
+        let store =
+            Storage::try_new_with_folder(&location.folder, &format!("{}.wallet", name.unwrap_or(super::default_wallet_file())))?;
         store.exists().await
     }
 

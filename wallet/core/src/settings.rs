@@ -167,7 +167,7 @@ where
 }
 
 pub fn application_folder() -> Result<PathBuf> {
-    Ok(fs::resolve_path(storage::local::DEFAULT_STORAGE_FOLDER)?)
+    Ok(fs::resolve_path(storage::local::default_storage_folder())?)
 }
 
 pub async fn ensure_application_folder() -> Result<()> {
