@@ -8,6 +8,7 @@ use kaspa_consensus_core::{
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
 use kaspa_core::{core::Core, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
+use kaspa_database::{prelude::DbKey, registry::DatabaseStorePrefixes};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
@@ -242,6 +243,54 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         .with_files_limit(META_DB_FILE_LIMIT)
         .build()
         .unwrap();
+
+    if args.testnet && args.testnet_suffix == 11 {
+        // Testnet 11 can be restarted, and when it does we need to reset the DB.
+        // This will check if the current Genesis can be found the active consensus
+        // DB (if one exists), and if not then ask to reset the DB.
+        let active_consensus_dir_name = MultiConsensusManagementStore::new(meta_db.clone()).active_consensus_dir_name().unwrap();
+
+        match active_consensus_dir_name {
+            Some(dir_name) => {
+                let consensus_db = kaspa_database::prelude::ConnBuilder::default()
+                    .with_db_path(consensus_db_dir.clone().join(dir_name))
+                    .with_files_limit(1)
+                    .build()
+                    .unwrap();
+
+                if consensus_db
+                    .get_pinned(DbKey::new(DatabaseStorePrefixes::Headers.as_ref(), config.genesis.hash))
+                    .is_ok_and(|r| r.is_some())
+                {
+                    trace!("Genesis is found in active consensus DB. No action needed.");
+                } else {
+                    let msg = "Genesis not found in active consensus DB. This happens when Testnet 11 is restarted and your database needs to be fully deleted. Do you confirm the delete? (y/n)";
+                    get_user_approval_or_exit(msg, args.yes);
+
+                    // Drop so that deletion works
+                    drop(meta_db);
+
+                    // Delete
+                    fs::remove_dir_all(db_dir.clone()).unwrap();
+
+                    // Recreate the empty folders
+                    fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
+                    fs::create_dir_all(meta_db_dir.as_path()).unwrap();
+                    fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+
+                    // Reopen the DB
+                    meta_db = kaspa_database::prelude::ConnBuilder::default()
+                        .with_db_path(meta_db_dir.clone())
+                        .with_files_limit(META_DB_FILE_LIMIT)
+                        .build()
+                        .unwrap();
+                }
+            }
+            None => {
+                trace!("Consensus not initialized yet. Skipping genesis check.");
+            }
+        }
+    }
 
     // TEMP: upgrade from Alpha version or any version before this one
     if meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
