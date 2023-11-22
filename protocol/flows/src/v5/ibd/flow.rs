@@ -22,16 +22,16 @@ use kaspa_p2p_lib::{
     convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message,
     pb::{
-        kaspad_message::Payload, RequestAnticoneMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
+        kaspad_message::Payload, RequestAntipastMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
         RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
     },
     IncomingRoute, Router,
 };
+use kaspa_utils::channel::JobReceiver;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::sync::mpsc::Receiver;
 
 use super::{progress::ProgressReporter, HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
 
@@ -42,7 +42,7 @@ pub struct IbdFlow {
     pub(super) incoming_route: IncomingRoute,
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
-    relay_receiver: Receiver<Block>,
+    relay_receiver: JobReceiver<Block>,
 }
 
 #[async_trait::async_trait]
@@ -65,12 +65,12 @@ pub enum IbdType {
 // TODO: define a peer banning strategy
 
 impl IbdFlow {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: Receiver<Block>) -> Self {
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: JobReceiver<Block>) -> Self {
         Self { ctx, router, incoming_route, relay_receiver }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        while let Some(relay_block) = self.relay_receiver.recv().await {
+        while let Ok(relay_block) = self.relay_receiver.recv().await {
             if let Some(_guard) = self.ctx.try_set_ibd_running(self.router.key()) {
                 info!("IBD started with peer {}", self.router);
 
@@ -127,7 +127,7 @@ impl IbdFlow {
         // Sync missing bodies in the past of syncer sink (virtual selected parent)
         self.sync_missing_block_bodies(&session, negotiation_output.syncer_virtual_selected_parent).await?;
 
-        // Relay block might be in the anticone of syncer selected tip, thus
+        // Relay block might be in the antipast of syncer sink, thus
         // check its past for missing bodies as well.
         self.sync_missing_block_bodies(&session, relay_block.hash()).await
     }
@@ -267,7 +267,7 @@ impl IbdFlow {
                 .clone()
                 .spawn_blocking(move |c| {
                     let ref_proof = proof.clone();
-                    c.apply_pruning_proof(proof, &trusted_set);
+                    c.apply_pruning_proof(proof, &trusted_set)?;
                     c.import_pruning_points(pruning_points);
 
                     info!("Building the proof which was just applied (sanity test)");
@@ -290,19 +290,21 @@ impl IbdFlow {
                     } else {
                         info!("Proof was locally built successfully");
                     }
-                    trusted_set
+                    Result::<_, ProtocolError>::Ok(trusted_set)
                 })
-                .await;
+                .await?;
         } else {
             trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
-                    c.apply_pruning_proof(proof, &trusted_set);
+                    c.apply_pruning_proof(proof, &trusted_set)?;
                     c.import_pruning_points(pruning_points);
-                    trusted_set
+                    Result::<_, ProtocolError>::Ok(trusted_set)
                 })
-                .await;
+                .await?;
         }
+
+        // TODO: add logs to staging commit process
 
         info!("Starting to process {} trusted blocks", trusted_set.len());
         let mut last_time = Instant::now();
@@ -385,12 +387,13 @@ impl IbdFlow {
             return Ok(());
         }
 
-        // Send a special header request for the selected tip anticone. This is expected to
-        // be a small set, as it is bounded to the size of virtual's mergeset.
+        // Send a special header request for the sink antipast. This is expected to
+        // be a relatively small set since virtual and relay blocks should be close topologically.
+        // See server-side handling of `RequestAnticone` for further details.
         self.router
             .enqueue(make_message!(
-                Payload::RequestAnticone,
-                RequestAnticoneMessage {
+                Payload::RequestAntipast,
+                RequestAntipastMessage {
                     block_hash: Some(syncer_virtual_selected_parent.into()),
                     context_hash: Some(relay_block_hash.into())
                 }

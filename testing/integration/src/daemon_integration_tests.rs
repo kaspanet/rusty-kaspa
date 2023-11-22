@@ -1,5 +1,6 @@
 use crate::common::{
     client::ListeningClient,
+    client_notify::ChannelNotify,
     daemon::Daemon,
     utils::{fetch_spendable_utxos, generate_tx, mine_block, wait_for},
 };
@@ -60,15 +61,35 @@ async fn daemon_mining_test() {
     tokio::time::sleep(Duration::from_secs(1)).await; // Let it connect
     assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
 
+    let (sender, event_receiver) = async_channel::unbounded();
+    rpc_client1.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
+    rpc_client1.start_notify(Default::default(), VirtualDaaScoreChangedScope {}.into()).await.unwrap();
+
     // Mine 10 blocks to daemon #1
     let mut last_block_hash = None;
-    for _ in 0..10 {
+    for i in 0..10 {
         let template = rpc_client1
             .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
             .await
             .unwrap();
         last_block_hash = Some(template.block.header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
+
+        while let Ok(notification) = match tokio::time::timeout(Duration::from_secs(1), event_receiver.recv()).await {
+            Ok(res) => res,
+            Err(elapsed) => panic!("expected virtual event before {}", elapsed),
+        } {
+            match notification {
+                Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score == i + 1 => {
+                    break;
+                }
+                Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score > i + 1 => {
+                    panic!("DAA score too high for number of submitted blocks")
+                }
+                Notification::VirtualDaaScoreChanged(_) => {}
+                _ => panic!("expected only DAA score notifications"),
+            }
+        }
     }
 
     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -87,6 +108,7 @@ async fn daemon_mining_test() {
     }
 }
 
+/// `cargo test --release --package kaspa-testing-integration --lib -- daemon_integration_tests::daemon_utxos_propagation_test`
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_utxos_propagation_test() {
     #[cfg(feature = "heap")]
@@ -112,8 +134,13 @@ async fn daemon_utxos_propagation_test() {
     let rpc_client1 = kaspad1.start().await;
     let rpc_client2 = kaspad2.start().await;
 
-    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    // Let rpc_client1 receive virtual DAA score changed notifications
+    let (sender1, event_receiver1) = async_channel::unbounded();
+    rpc_client1.start(Some(Arc::new(ChannelNotify::new(sender1)))).await;
+    rpc_client1.start_notify(Default::default(), VirtualDaaScoreChangedScope {}.into()).await.unwrap();
 
+    // Connect kaspad2 to kaspad1
+    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
     let check_client = rpc_client2.clone();
     wait_for(
         50,
@@ -144,12 +171,28 @@ async fn daemon_utxos_propagation_test() {
     let blank_address = Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]);
 
     // Mine 1000 blocks to daemon #1
-    let initial_blocks: usize = coinbase_maturity as usize;
+    let initial_blocks = coinbase_maturity;
     let mut last_block_hash = None;
-    for _ in 0..initial_blocks {
+    for i in 0..initial_blocks {
         let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
         last_block_hash = Some(template.block.header.hash);
         rpc_client1.submit_block(template.block, false).await.unwrap();
+
+        while let Ok(notification) = match tokio::time::timeout(Duration::from_secs(1), event_receiver1.recv()).await {
+            Ok(res) => res,
+            Err(elapsed) => panic!("expected virtual event before {}", elapsed),
+        } {
+            match notification {
+                Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score == i + 1 => {
+                    break;
+                }
+                Notification::VirtualDaaScoreChanged(msg) if msg.virtual_daa_score > i + 1 => {
+                    panic!("DAA score too high for number of submitted blocks")
+                }
+                Notification::VirtualDaaScoreChanged(_) => {}
+                _ => panic!("expected only DAA score notifications"),
+            }
+        }
     }
 
     let check_client = rpc_client2.clone();
@@ -170,14 +213,14 @@ async fn daemon_utxos_propagation_test() {
 
     // Expect the blocks to be relayed to daemon #2
     let dag_info = rpc_client2.get_block_dag_info().await.unwrap();
-    assert_eq!(dag_info.block_count, initial_blocks as u64);
+    assert_eq!(dag_info.block_count, initial_blocks);
     assert_eq!(dag_info.sink, last_block_hash.unwrap());
 
     // Check that acceptance data contains the expected coinbase tx ids
     let vc = rpc_client2.get_virtual_chain_from_block(kaspa_consensus::params::SIMNET_GENESIS.hash, true).await.unwrap();
     assert_eq!(vc.removed_chain_block_hashes.len(), 0);
-    assert_eq!(vc.added_chain_block_hashes.len(), initial_blocks);
-    assert_eq!(vc.accepted_transaction_ids.len(), initial_blocks);
+    assert_eq!(vc.added_chain_block_hashes.len() as u64, initial_blocks);
+    assert_eq!(vc.accepted_transaction_ids.len() as u64, initial_blocks);
     for accepted_txs_pair in vc.accepted_transaction_ids {
         assert_eq!(accepted_txs_pair.accepted_transaction_ids.len(), 1);
     }
@@ -200,9 +243,9 @@ async fn daemon_utxos_propagation_test() {
 
     // Check the balance of the miner address
     let miner_balance = rpc_client2.get_balance_by_address(miner_address.clone()).await.unwrap();
-    assert_eq!(miner_balance, initial_blocks as u64 * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
+    assert_eq!(miner_balance, initial_blocks * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
     let miner_balance = rpc_client1.get_balance_by_address(miner_address.clone()).await.unwrap();
-    assert_eq!(miner_balance, initial_blocks as u64 * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
+    assert_eq!(miner_balance, initial_blocks * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
 
     // Get the miner UTXOs
     let utxos = fetch_spendable_utxos(&rpc_client1, miner_address.clone(), coinbase_maturity).await;
@@ -218,10 +261,10 @@ async fn daemon_utxos_propagation_test() {
     clients.iter().for_each(|x| x.virtual_daa_score_changed_listener().unwrap().drain());
 
     // Spend some coins
-    const NUMBER_INPUTS: usize = 2;
-    const NUMBER_OUTPUTS: usize = 2;
-    const TX_AMOUNT: u64 = SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * (NUMBER_INPUTS as u64 * 5 - 1) / 5;
-    let transaction = generate_tx(miner_schnorr_key, &utxos[0..NUMBER_INPUTS], TX_AMOUNT, NUMBER_OUTPUTS as u64, &user_address);
+    const NUMBER_INPUTS: u64 = 2;
+    const NUMBER_OUTPUTS: u64 = 2;
+    const TX_AMOUNT: u64 = SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * (NUMBER_INPUTS * 5 - 1) / 5;
+    let transaction = generate_tx(miner_schnorr_key, &utxos[0..NUMBER_INPUTS as usize], TX_AMOUNT, NUMBER_OUTPUTS, &user_address);
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
 
     let check_client = rpc_client1.clone();
@@ -249,11 +292,11 @@ async fn daemon_utxos_propagation_test() {
         };
         assert!(uc.removed.iter().any(|x| x.address.is_some() && *x.address.as_ref().unwrap() == miner_address));
         assert!(uc.added.iter().any(|x| x.address.is_some() && *x.address.as_ref().unwrap() == user_address));
-        assert_eq!(uc.removed.len(), NUMBER_INPUTS);
-        assert_eq!(uc.added.len(), NUMBER_OUTPUTS);
+        assert_eq!(uc.removed.len() as u64, NUMBER_INPUTS);
+        assert_eq!(uc.added.len() as u64, NUMBER_OUTPUTS);
         assert_eq!(
             uc.removed.iter().map(|x| x.utxo_entry.amount).sum::<u64>(),
-            SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * NUMBER_INPUTS as u64
+            SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * NUMBER_INPUTS
         );
         assert_eq!(uc.added.iter().map(|x| x.utxo_entry.amount).sum::<u64>(), TX_AMOUNT);
     }
@@ -261,7 +304,7 @@ async fn daemon_utxos_propagation_test() {
     // Check the balance of both miner and user addresses
     for x in clients.iter() {
         let miner_balance = x.get_balance_by_address(miner_address.clone()).await.unwrap();
-        assert_eq!(miner_balance, (initial_blocks - NUMBER_INPUTS) as u64 * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
+        assert_eq!(miner_balance, (initial_blocks - NUMBER_INPUTS) * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
 
         let user_balance = x.get_balance_by_address(user_address.clone()).await.unwrap();
         assert_eq!(user_balance, TX_AMOUNT);
