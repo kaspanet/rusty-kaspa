@@ -15,8 +15,13 @@ use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::networking::ContextualNetAddress;
 
 use kaspa_addressmanager::AddressManager;
-use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
-use kaspa_consensus::{consensus::factory::MultiConsensusManagementStore, pipeline::monitor::ConsensusMonitor};
+use kaspa_consensus::{
+    consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
+};
+use kaspa_consensus::{
+    consensus::{factory::Factory as ConsensusFactory, storage::ConsensusStorage},
+    pipeline::ProcessingCounters,
+};
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
@@ -258,10 +263,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                     .build()
                     .unwrap();
 
-                if consensus_db
-                    .get_pinned(DbKey::new(DatabaseStorePrefixes::Headers.as_ref(), config.genesis.hash))
-                    .is_ok_and(|r| r.is_some())
-                {
+                let headers_store = DbHeadersStore::new(consensus_db, 0);
+
+                if headers_store.has(config.genesis.hash).unwrap() {
                     trace!("Genesis is found in active consensus DB. No action needed.");
                 } else {
                     let msg = "Genesis not found in active consensus DB. This happens when Testnet 11 is restarted and your database needs to be fully deleted. Do you confirm the delete? (y/n)";
