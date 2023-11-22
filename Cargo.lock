@@ -2485,11 +2485,13 @@ dependencies = [
  "async-trait",
  "borsh",
  "futures",
+ "kaspa-core",
  "kaspa-rpc-core",
  "separator",
  "serde",
  "thiserror",
  "workflow-core",
+ "workflow-log",
 ]
 
 [[package]]
