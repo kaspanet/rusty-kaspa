@@ -266,7 +266,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                 let headers_store = DbHeadersStore::new(consensus_db, 0);
 
                 if headers_store.has(config.genesis.hash).unwrap() {
-                    trace!("Genesis is found in active consensus DB. No action needed.");
+                    info!("Genesis is found in active consensus DB. No action needed.");
                 } else {
                     let msg = "Genesis not found in active consensus DB. This happens when Testnet 11 is restarted and your database needs to be fully deleted. Do you confirm the delete? (y/n)";
                     get_user_approval_or_exit(msg, args.yes);
