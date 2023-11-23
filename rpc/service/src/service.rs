@@ -543,6 +543,7 @@ impl RpcApi for RpcCoreService {
         request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
         let session = self.consensus_manager.consensus().session().await;
+        // TODO: cache samples based on sufficient recency of the data and append sink data
         let mut headers = session.async_get_chain_block_samples().await;
         let mut requested_daa_scores = request.daa_scores.clone();
         let mut daa_score_timestamp_map = HashMap::<u64, u64>::new();
@@ -556,6 +557,8 @@ impl RpcApi for RpcCoreService {
         // Loop runs at O(n + m) where n = # pp headers, m = # requested daa_scores
         // Loop will always end because in the worst case the last header with daa_score = 0 (the genesis)
         // will cause every remaining requested daa_score to be "found in range"
+        //
+        // TODO: optimize using binary search over the samples to obtain O(m log n) complexity (which is an improvement assuming m << n)
         while header_idx < headers.len() && req_idx < request.daa_scores.len() {
             let header = headers.get(header_idx).unwrap();
             let curr_daa_score = requested_daa_scores[req_idx];
