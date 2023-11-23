@@ -249,8 +249,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         .build()
         .unwrap();
 
-    if args.testnet && args.testnet_suffix == 11 {
-        // Testnet 11 can be restarted, and when it does we need to reset the DB.
+    if args.testnet || args.devnet || args.simnet {
+        // Non-mainnet can be restarted, and when it does we need to reset the DB.
         // This will check if the current Genesis can be found the active consensus
         // DB (if one exists), and if not then ask to reset the DB.
         let active_consensus_dir_name = MultiConsensusManagementStore::new(meta_db.clone()).active_consensus_dir_name().unwrap();
@@ -291,7 +291,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                 }
             }
             None => {
-                trace!("Consensus not initialized yet. Skipping genesis check.");
+                info!("Consensus not initialized yet. Skipping genesis check.");
             }
         }
     }
