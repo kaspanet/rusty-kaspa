@@ -590,6 +590,7 @@ impl RpcApi for RpcCoreService {
             }
         }
 
+        // Note: it is safe to assume all entries exist in the map since the first sampled header is expected to have daa_score=0
         let timestamps = request.daa_scores.iter().map(|curr_daa_score| daa_score_timestamp_map[curr_daa_score]).collect();
 
         Ok(GetDaaScoreTimestampEstimateResponse::new(timestamps))
