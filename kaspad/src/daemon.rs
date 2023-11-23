@@ -8,19 +8,15 @@ use kaspa_consensus_core::{
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
 use kaspa_core::{core::Core, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
-use kaspa_database::{prelude::DbKey, registry::DatabaseStorePrefixes};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::networking::ContextualNetAddress;
 
 use kaspa_addressmanager::AddressManager;
+use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
 use kaspa_consensus::{
     consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
-};
-use kaspa_consensus::{
-    consensus::{factory::Factory as ConsensusFactory, storage::ConsensusStorage},
-    pipeline::ProcessingCounters,
 };
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::runtime::AsyncRuntime;
