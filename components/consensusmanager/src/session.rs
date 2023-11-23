@@ -8,6 +8,7 @@ use kaspa_consensus_core::{
     block::Block,
     block_count::BlockCount,
     blockstatus::BlockStatus,
+    daa_score_timestamp::DaaScoreTimestamp,
     errors::consensus::ConsensusResult,
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
@@ -248,6 +249,10 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_headers_selected_tip(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.get_headers_selected_tip()).await
+    }
+
+    pub async fn async_get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        self.clone().spawn_blocking(|c| c.get_chain_block_samples()).await
     }
 
     /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.

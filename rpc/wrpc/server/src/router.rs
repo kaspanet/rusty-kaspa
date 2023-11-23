@@ -44,6 +44,7 @@ impl Router {
                 GetBlockTemplate,
                 GetCoinSupply,
                 GetConnectedPeerInfo,
+                GetDaaScoreTimestampEstimate,
                 GetServerInfo,
                 GetCurrentNetwork,
                 GetHeaders,

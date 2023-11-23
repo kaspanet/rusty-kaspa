@@ -406,6 +406,7 @@ impl RpcApi for KaspaRpcClient {
             GetBlockTemplate,
             GetCoinSupply,
             GetConnectedPeerInfo,
+            GetDaaScoreTimestampEstimate,
             GetServerInfo,
             GetCurrentNetwork,
             GetHeaders,

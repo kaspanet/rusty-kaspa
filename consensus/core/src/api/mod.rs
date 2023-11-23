@@ -8,6 +8,7 @@ use crate::{
     block_count::BlockCount,
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    daa_score_timestamp::DaaScoreTimestamp,
     errors::{
         block::{BlockProcessResult, RuleError},
         coinbase::CoinbaseResult,
@@ -133,6 +134,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
+        unimplemented!()
+    }
+
+    fn get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
         unimplemented!()
     }
 

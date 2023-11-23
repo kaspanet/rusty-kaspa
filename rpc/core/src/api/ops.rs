@@ -84,6 +84,8 @@ pub enum RpcApiOps {
     GetMempoolEntriesByAddresses,
     /// Get current issuance supply
     GetCoinSupply,
+    /// Get DAA Score timestamp estimate
+    GetDaaScoreTimestampEstimate,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,
