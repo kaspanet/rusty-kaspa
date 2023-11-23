@@ -511,7 +511,7 @@ impl ConsensusApi for Consensus {
         // Part 1: Add samples from pruning point headers:
         if self.config.net.network_type == NetworkType::Mainnet {
             sample_headers = Vec::<DaaScoreTimestamp>::with_capacity(prealloc_len + 15);
-            // For mainnet, we add extra data (15 pp headers) from before checkpoint genesis.
+            // For mainnet, we add extra data (16 pp headers) from before checkpoint genesis.
             // Source: https://github.com/kaspagang/kaspad-py-explorer/blob/main/src/tx_timestamp_estimation.ipynb
             // For context see also: https://github.com/kaspagang/kaspad-py-explorer/blob/main/src/genesis_proof.ipynb
             sample_headers.push(DaaScoreTimestamp { daa_score: 0, timestamp: 1636298787842 });
@@ -529,6 +529,7 @@ impl ConsensusApi for Consensus {
             sample_headers.push(DaaScoreTimestamp { daa_score: 1068387, timestamp: 1637349078269 });
             sample_headers.push(DaaScoreTimestamp { daa_score: 1139626, timestamp: 1637418723538 });
             sample_headers.push(DaaScoreTimestamp { daa_score: 1218320, timestamp: 1637495941516 });
+            sample_headers.push(DaaScoreTimestamp { daa_score: 1312860, timestamp: 1637609671037 });
         } else {
             sample_headers = Vec::<DaaScoreTimestamp>::with_capacity(prealloc_len);
         }
