@@ -572,13 +572,12 @@ impl RpcApi for RpcCoreService {
                 } else {
                     // "next" header is the one that we processed last iteration
                     let next_header = &headers[header_idx - 1];
-                    let time_between_now_and_next = next_header.timestamp - header.timestamp;
-                    let score_between_now_and_request = curr_daa_score - header.daa_score;
-                    let score_between_now_and_next = next_header.daa_score - header.daa_score;
+                    // Unlike DAA scores which are monotonic (over the selected chain), timestamps are not strictly monotonic, so we avoid assuming so
+                    let time_between_now_and_next = next_header.timestamp.checked_sub(header.timestamp).unwrap_or_default();
+                    let score_between_now_and_request = (curr_daa_score - header.daa_score) as f64;
+                    let score_between_now_and_next = (next_header.daa_score - header.daa_score) as f64;
 
-                    (time_between_now_and_next)
-                        .checked_mul(score_between_now_and_request / score_between_now_and_next)
-                        .unwrap_or(u64::MAX)
+                    ((time_between_now_and_next as f64) * (score_between_now_and_request / score_between_now_and_next)) as u64
                 };
 
                 // Use higher types to catch overflows. Cast to lower type later on when confirmed within u64 range
