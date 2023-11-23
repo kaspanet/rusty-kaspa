@@ -223,7 +223,10 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
     let meta_db_dir = db_dir.join(META_DB);
 
-    if args.reset_db && db_dir.exists() {
+    let mut is_db_reset_needed = args.reset_db;
+
+    // Reset Condition: User explicitly requested a reset
+    if is_db_reset_needed && db_dir.exists() {
         let msg = "Reset DB was requested -- this means the current databases will be fully deleted, 
 do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm all interactive questions)";
         get_user_approval_or_exit(msg, args.yes);
@@ -245,7 +248,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         .build()
         .unwrap();
 
-    if args.testnet || args.devnet || args.simnet {
+    // Reset Condition: Need to reset DB if we can't find genesis is not in current DB
+    if !is_db_reset_needed && (args.testnet || args.devnet || args.simnet) {
         // Non-mainnet can be restarted, and when it does we need to reset the DB.
         // This will check if the current Genesis can be found the active consensus
         // DB (if one exists), and if not then ask to reset the DB.
@@ -267,23 +271,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                     let msg = "Genesis not found in active consensus DB. This happens when Testnet 11 is restarted and your database needs to be fully deleted. Do you confirm the delete? (y/n)";
                     get_user_approval_or_exit(msg, args.yes);
 
-                    // Drop so that deletion works
-                    drop(meta_db);
-
-                    // Delete
-                    fs::remove_dir_all(db_dir.clone()).unwrap();
-
-                    // Recreate the empty folders
-                    fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
-                    fs::create_dir_all(meta_db_dir.as_path()).unwrap();
-                    fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
-
-                    // Reopen the DB
-                    meta_db = kaspa_database::prelude::ConnBuilder::default()
-                        .with_db_path(meta_db_dir.clone())
-                        .with_files_limit(META_DB_FILE_LIMIT)
-                        .build()
-                        .unwrap();
+                    is_db_reset_needed = true;
                 }
             }
             None => {
@@ -292,23 +280,33 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         }
     }
 
+    // Reset Condition: Need to reset if we're upgrading from kaspad DB version
     // TEMP: upgrade from Alpha version or any version before this one
-    if meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
+    if !is_db_reset_needed && meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
         let msg = "Node database is from an older Kaspad version and needs to be fully deleted, do you confirm the delete? (y/n)";
         get_user_approval_or_exit(msg, args.yes);
 
         info!("Deleting databases from previous Kaspad version");
 
+        is_db_reset_needed = true;
+    }
+
+    // Will be true if any of the other condition above except args.reset_db
+    // has set is_db_reset_needed to true
+    if is_db_reset_needed && !args.reset_db {
         // Drop so that deletion works
         drop(meta_db);
 
         // Delete
-        fs::remove_dir_all(db_dir).unwrap();
+        fs::remove_dir_all(db_dir.clone()).unwrap();
 
         // Recreate the empty folders
         fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
         fs::create_dir_all(meta_db_dir.as_path()).unwrap();
-        fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+
+        if args.utxoindex {
+            fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+        }
 
         // Reopen the DB
         meta_db = kaspa_database::prelude::ConnBuilder::default()
