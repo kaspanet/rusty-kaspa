@@ -231,7 +231,11 @@ wasm-bindgen-test = "=0.3.37"
 web-sys = "=0.3.64"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
-
+pin-project-lite = "0.2.13"
+http-body = "0.4.5"
+bytes = "1.5.0"
+tower-http = { version = "0.5.0", features = ["map-response-body", "map-request-body"] }
+hyper = "0.14.27"
 # workflow dependencies that are not a part of core libraries
 
 # workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }

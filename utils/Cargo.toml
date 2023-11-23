@@ -20,7 +20,13 @@ smallvec.workspace = true
 thiserror.workspace = true
 triggered.workspace = true
 uuid.workspace = true
-
+pin-project-lite.workspace = true
+http-body.workspace = true
+bytes.workspace = true
+tower-http.workspace = true
+tokio = { workspace = true, features = ["rt", "time", "macros"] }
+hyper.workspace = true
+log = "0.4.20"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rlimit.workspace = true
 
@@ -29,7 +35,6 @@ bincode.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
 futures-util.workspace = true
-tokio = { workspace = true, features = ["rt", "time", "macros"] }
 criterion.workspace = true
 rand.workspace = true
 
