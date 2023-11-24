@@ -35,7 +35,7 @@ use kaspa_wrpc_server::service::{Options as WrpcServerOptions, ServerCounters as
 pub const DESIRED_DAEMON_SOFT_FD_LIMIT: u64 = 16 * 1024;
 /// Minimum acceptable soft FD limit for the kaspad
 /// process. (Rusty Kaspa will operate with the minimal
-/// acceptable limit of `1024`, but a setting below
+/// acceptable limit of `4096`, but a setting below
 /// this value may impact the database performance).
 pub const MINIMUM_DAEMON_SOFT_FD_LIMIT: u64 = 4096;
 
