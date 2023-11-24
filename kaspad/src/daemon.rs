@@ -37,7 +37,7 @@ pub const DESIRED_DAEMON_SOFT_FD_LIMIT: u64 = 16 * 1024;
 /// process. (Rusty Kaspa will operate with the minimal
 /// acceptable limit of `4096`, but a setting below
 /// this value may impact the database performance).
-pub const MINIMUM_DAEMON_SOFT_FD_LIMIT: u64 = 4096;
+pub const MINIMUM_DAEMON_SOFT_FD_LIMIT: u64 = 4*1024;
 
 use crate::args::Args;
 
