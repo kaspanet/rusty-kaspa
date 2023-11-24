@@ -50,14 +50,14 @@ pub fn acquire_guard(value: i32) -> Result<FDGuard, Error> {
     }
 }
 
-#[cfg(not(any(target_arch = "wasm32", target_os = "windows")))]
-pub fn ensure_os_limits(user_soft_limit: u64, user_hard_limit: u64) -> std::io::Result<(u64, u64)> {
-    let (soft, hard) = rlimit::Resource::NOFILE.get()?;
-    if soft < user_soft_limit || hard < user_hard_limit {
-        rlimit::Resource::NOFILE.set(user_soft_limit, user_hard_limit)?;
-        Ok(rlimit::Resource::NOFILE.get()?)
-    } else {
-        Ok((soft, hard))
+#[cfg(not(target_arch = "wasm32"))]
+pub fn ensure_os_limits(limit: u64) -> std::io::Result<u64> {
+    cfg_if::cfg_if! {
+        if #[cfg(target_os = "windows")] {
+            Ok(rlimit::setmaxstdio(limit as u32)?.map(|v| v as u64))
+        } else if #[cfg(unix)] {
+            rlimit::increase_nofile_limit(limit)
+        }
     }
 }
 
@@ -69,7 +69,7 @@ pub fn limit() -> i32 {
         else if #[cfg(target_os = "windows")] {
             rlimit::getmaxstdio() as i32
         }
-        else if #[cfg(any(target_os = "macos", target_os = "linux"))] {
+        else if #[cfg(unix)] {
             rlimit::getrlimit(rlimit::Resource::NOFILE).unwrap().0 as i32
         }
         else {
