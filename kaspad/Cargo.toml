@@ -43,7 +43,6 @@ log.workspace = true
 num_cpus.workspace = true
 rand.workspace = true
 rayon.workspace = true
-rlimit.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
