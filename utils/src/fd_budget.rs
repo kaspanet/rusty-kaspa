@@ -50,6 +50,17 @@ pub fn acquire_guard(value: i32) -> Result<FDGuard, Error> {
     }
 }
 
+#[cfg(not(any(target_arch = "wasm32", target_os = "windows")))]
+pub fn ensure_os_limits(user_soft_limit: u64, user_hard_limit: u64) -> std::io::Result<(u64, u64)> {
+    let (soft, hard) = rlimit::Resource::NOFILE.get()?;
+    if soft < user_soft_limit || hard < user_hard_limit {
+        rlimit::Resource::NOFILE.set(user_soft_limit, user_hard_limit)?;
+        Ok(rlimit::Resource::NOFILE.get()?)
+    } else {
+        Ok((soft, hard))
+    }
+}
+
 pub fn limit() -> i32 {
     cfg_if::cfg_if! {
         if #[cfg(test)] {
