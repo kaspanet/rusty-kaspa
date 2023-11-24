@@ -21,7 +21,7 @@ pub fn main() {
 
     let args = parse_args();
 
-    match fd_budget::ensure_os_limits(DESIRED_DAEMON_SOFT_FD_LIMIT) {
+    match fd_budget::try_set_fd_limit(DESIRED_DAEMON_SOFT_FD_LIMIT) {
         Ok(limit) => {
             if limit < MINIMUM_DAEMON_SOFT_FD_LIMIT {
                 println!("Current OS file descriptor limit (soft FD limit) is set to {limit}");

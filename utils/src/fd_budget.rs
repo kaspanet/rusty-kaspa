@@ -51,7 +51,7 @@ pub fn acquire_guard(value: i32) -> Result<FDGuard, Error> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn ensure_os_limits(limit: u64) -> std::io::Result<u64> {
+pub fn try_set_fd_limit(limit: u64) -> std::io::Result<u64> {
     cfg_if::cfg_if! {
         if #[cfg(target_os = "windows")] {
             Ok(rlimit::setmaxstdio(limit as u32)?.map(|v| v as u64))
