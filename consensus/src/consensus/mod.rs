@@ -16,7 +16,7 @@ use crate::{
             acceptance_data::AcceptanceDataStoreReader,
             block_transactions::BlockTransactionsStoreReader,
             ghostdag::{GhostdagData, GhostdagStoreReader},
-            headers::HeaderStoreReader,
+            headers::{CompactHeaderData, HeaderStoreReader},
             headers_selected_tip::HeadersSelectedTipStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
@@ -46,6 +46,7 @@ use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    daa_score_timestamp::DaaScoreTimestamp,
     errors::{
         coinbase::CoinbaseResult,
         consensus::{ConsensusError, ConsensusResult},
@@ -54,6 +55,7 @@ use kaspa_consensus_core::{
     errors::{difficulty::DifficultyError, pruning::PruningImportError},
     header::Header,
     muhash::MuHashExtensions,
+    network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
@@ -82,6 +84,10 @@ use std::{
 use tokio::sync::oneshot;
 
 use self::{services::ConsensusServices, storage::ConsensusStorage};
+
+use crate::model::stores::selected_chain::SelectedChainStoreReader;
+
+use std::cmp;
 
 pub struct Consensus {
     // DB
@@ -358,6 +364,16 @@ impl Consensus {
         };
         Ok(self.services.window_manager.estimate_network_hashes_per_second(window)?)
     }
+
+    fn pruning_point_compact_headers(&self) -> Vec<(Hash, CompactHeaderData)> {
+        // PRUNE SAFETY: index is monotonic and past pruning point headers are expected permanently
+        let current_pp_info = self.pruning_point_store.read().get().unwrap();
+        (0..current_pp_info.index)
+            .map(|index| self.past_pruning_points_store.get(index).unwrap())
+            .chain(once(current_pp_info.pruning_point))
+            .map(|hash| (hash, self.headers_store.get_compact_header_data(hash).unwrap()))
+            .collect_vec()
+    }
 }
 
 impl ConsensusApi for Consensus {
@@ -477,6 +493,73 @@ impl ConsensusApi for Consensus {
         let _guard = self.pruning_lock.blocking_read();
         self.validate_block_exists(hash)?;
         Ok(self.services.dag_traversal_manager.calculate_chain_path(hash, self.get_sink()))
+    }
+
+    /// Returns a Vec of header samples since genesis
+    /// ordered by ascending daa_score, first entry is genesis
+    fn get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        // We need consistency between the past pruning points, selected chain and header store reads
+        let _guard = self.pruning_lock.blocking_read();
+
+        // Sorted from genesis to latest pruning_point_headers
+        let pp_headers = self.pruning_point_compact_headers();
+        let step_divisor: usize = 3; // The number of extra samples we'll get from blocks after last pp header
+        let prealloc_len = pp_headers.len() + step_divisor + 1;
+
+        let mut sample_headers;
+
+        // Part 1: Add samples from pruning point headers:
+        if self.config.net.network_type == NetworkType::Mainnet {
+            // For mainnet, we add extra data (16 pp headers) from before checkpoint genesis.
+            // Source: https://github.com/kaspagang/kaspad-py-explorer/blob/main/src/tx_timestamp_estimation.ipynb
+            // For context see also: https://github.com/kaspagang/kaspad-py-explorer/blob/main/src/genesis_proof.ipynb
+            const POINTS: &[DaaScoreTimestamp] = &[
+                DaaScoreTimestamp { daa_score: 0, timestamp: 1636298787842 },
+                DaaScoreTimestamp { daa_score: 87133, timestamp: 1636386662010 },
+                DaaScoreTimestamp { daa_score: 176797, timestamp: 1636473700804 },
+                DaaScoreTimestamp { daa_score: 264837, timestamp: 1636560706885 },
+                DaaScoreTimestamp { daa_score: 355974, timestamp: 1636650005662 },
+                DaaScoreTimestamp { daa_score: 445152, timestamp: 1636737841327 },
+                DaaScoreTimestamp { daa_score: 536709, timestamp: 1636828600930 },
+                DaaScoreTimestamp { daa_score: 624635, timestamp: 1636912614350 },
+                DaaScoreTimestamp { daa_score: 712234, timestamp: 1636999362832 },
+                DaaScoreTimestamp { daa_score: 801831, timestamp: 1637088292662 },
+                DaaScoreTimestamp { daa_score: 890716, timestamp: 1637174890675 },
+                DaaScoreTimestamp { daa_score: 978396, timestamp: 1637260956454 },
+                DaaScoreTimestamp { daa_score: 1068387, timestamp: 1637349078269 },
+                DaaScoreTimestamp { daa_score: 1139626, timestamp: 1637418723538 },
+                DaaScoreTimestamp { daa_score: 1218320, timestamp: 1637495941516 },
+                DaaScoreTimestamp { daa_score: 1312860, timestamp: 1637609671037 },
+            ];
+            sample_headers = Vec::<DaaScoreTimestamp>::with_capacity(prealloc_len + POINTS.len());
+            sample_headers.extend_from_slice(POINTS);
+        } else {
+            sample_headers = Vec::<DaaScoreTimestamp>::with_capacity(prealloc_len);
+        }
+
+        for header in pp_headers.iter() {
+            sample_headers.push(DaaScoreTimestamp { daa_score: header.1.daa_score, timestamp: header.1.timestamp });
+        }
+
+        // Part 2: Add samples from recent chain blocks
+        let sc_read = self.storage.selected_chain_store.read();
+        let high_index = sc_read.get_tip().unwrap().0;
+        // The last pruning point is always expected in the selected chain store. However if due to some reason
+        // this is not the case, we prefer not crashing but rather avoid sampling (hence set low index to high index)
+        let low_index = sc_read.get_by_hash(pp_headers.last().unwrap().0).unwrap_option().unwrap_or(high_index);
+        let step_size = cmp::max((high_index - low_index) / (step_divisor as u64), 1);
+
+        // We chain `high_index` to make sure we sample sink, and dedup to avoid sampling it twice
+        for index in (low_index + step_size..=high_index).step_by(step_size as usize).chain(once(high_index)).dedup() {
+            let compact = self
+                .storage
+                .headers_store
+                .get_compact_header_data(sc_read.get_by_index(index).expect("store lock is acquired"))
+                .unwrap();
+            sample_headers.push(DaaScoreTimestamp { daa_score: compact.daa_score, timestamp: compact.timestamp });
+        }
+
+        sample_headers
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {

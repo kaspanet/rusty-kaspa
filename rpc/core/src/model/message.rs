@@ -780,6 +780,30 @@ pub struct GetSyncStatusResponse {
     pub is_synced: bool,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetDaaScoreTimestampEstimateRequest {
+    pub daa_scores: Vec<u64>,
+}
+
+impl GetDaaScoreTimestampEstimateRequest {
+    pub fn new(daa_scores: Vec<u64>) -> Self {
+        Self { daa_scores }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetDaaScoreTimestampEstimateResponse {
+    pub timestamps: Vec<u64>,
+}
+
+impl GetDaaScoreTimestampEstimateResponse {
+    pub fn new(timestamps: Vec<u64>) -> Self {
+        Self { timestamps }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
 // ----------------------------------------------------------------------------
