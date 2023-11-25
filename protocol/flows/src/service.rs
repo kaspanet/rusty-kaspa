@@ -1,3 +1,4 @@
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use kaspa_addressmanager::NetAddress;
@@ -23,6 +24,8 @@ pub struct P2pService {
     dns_seeders: &'static [&'static str],
     default_port: u16,
     shutdown: SingleTrigger,
+    rx_bytes: Arc<AtomicUsize>,
+    tx_bytes: Arc<AtomicUsize>,
 }
 
 impl P2pService {
@@ -35,17 +38,21 @@ impl P2pService {
         inbound_limit: usize,
         dns_seeders: &'static [&'static str],
         default_port: u16,
+        rx_bytes: Arc<AtomicUsize>,
+        tx_bytes: Arc<AtomicUsize>,
     ) -> Self {
         Self {
             flow_context,
             connect_peers,
             add_peers,
             shutdown: SingleTrigger::default(),
+            rx_bytes,
             listen,
             outbound_target,
             inbound_limit,
             dns_seeders,
             default_port,
+            tx_bytes,
         }
     }
 }
@@ -61,7 +68,14 @@ impl AsyncService for P2pService {
         // Prepare a shutdown signal receiver
         let shutdown_signal = self.shutdown.listener.clone();
 
-        let p2p_adaptor = Adaptor::bidirectional(self.listen, self.flow_context.hub().clone(), self.flow_context.clone()).unwrap();
+        let p2p_adaptor = Adaptor::bidirectional(
+            self.listen,
+            self.flow_context.hub().clone(),
+            self.flow_context.clone(),
+            self.rx_bytes.clone(),
+            self.tx_bytes.clone(),
+        )
+        .unwrap();
         let connection_manager = ConnectionManager::new(
             p2p_adaptor.clone(),
             self.outbound_target,

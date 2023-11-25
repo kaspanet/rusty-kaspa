@@ -9,6 +9,7 @@ use kaspa_core::{debug, info};
 use kaspa_utils::networking::NetAddress;
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
@@ -18,6 +19,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
 use tonic::transport::{Error as TonicError, Server as TonicServer};
 use tonic::{Request, Response, Status as TonicStatus, Streaming};
+use tower_http::map_response_body::MapResponseBodyLayer;
 
 #[derive(Error, Debug)]
 pub enum ConnectionError {
@@ -46,11 +48,18 @@ pub struct ConnectionHandler {
     /// Cloned on each new connection so that routers can communicate with a central hub
     hub_sender: MpscSender<HubEvent>,
     initializer: Arc<dyn ConnectionInitializer>,
+    rx_bytes: Arc<AtomicUsize>,
+    tx_bytes: Arc<AtomicUsize>,
 }
 
 impl ConnectionHandler {
-    pub(crate) fn new(hub_sender: MpscSender<HubEvent>, initializer: Arc<dyn ConnectionInitializer>) -> Self {
-        Self { hub_sender, initializer }
+    pub(crate) fn new(
+        hub_sender: MpscSender<HubEvent>,
+        initializer: Arc<dyn ConnectionInitializer>,
+        rx_bytes: Arc<AtomicUsize>,
+        tx_bytes: Arc<AtomicUsize>,
+    ) -> Self {
+        Self { hub_sender, initializer, rx_bytes, tx_bytes }
     }
 
     /// Launches a P2P server listener loop
@@ -58,6 +67,10 @@ impl ConnectionHandler {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
         info!("P2P Server starting on: {}", serve_address);
+
+        let rx_bytes = self.rx_bytes.clone();
+        let tx_bytes = self.tx_bytes.clone();
+
         tokio::spawn(async move {
             let proto_server = ProtoP2pServer::new(connection_handler)
                 .accept_compressed(tonic::codec::CompressionEncoding::Gzip)
@@ -66,6 +79,10 @@ impl ConnectionHandler {
 
             // TODO: check whether we should set tcp_keepalive
             let serve_result = TonicServer::builder()
+                .layer(kaspa_utils::request_response_size_middlewares::measure_request_body_size_layer(rx_bytes))
+                .layer(MapResponseBodyLayer::new(move |body| {
+                    kaspa_utils::request_response_size_middlewares::CountBytesBody::new(body, tx_bytes.clone())
+                }))
                 .add_service(proto_server)
                 .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
                 .await;

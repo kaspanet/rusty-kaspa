@@ -4,6 +4,7 @@ use crate::ConnectionError;
 use crate::{core::connection_handler::ConnectionHandler, Router};
 use kaspa_utils::networking::NetAddress;
 use std::ops::Deref;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::channel as mpsc_channel;
@@ -45,9 +46,14 @@ impl Adaptor {
     }
 
     /// Creates a P2P adaptor with only client-side support. Typical Kaspa nodes should use `Adaptor::bidirectional`
-    pub fn client_only(hub: Hub, initializer: Arc<dyn ConnectionInitializer>) -> Arc<Self> {
+    pub fn client_only(
+        hub: Hub,
+        initializer: Arc<dyn ConnectionInitializer>,
+        rx_bytes: Arc<AtomicUsize>,
+        tx_bytes: Arc<AtomicUsize>,
+    ) -> Arc<Self> {
         let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
-        let connection_handler = ConnectionHandler::new(hub_sender, initializer.clone());
+        let connection_handler = ConnectionHandler::new(hub_sender, initializer.clone(), rx_bytes, tx_bytes);
         let adaptor = Arc::new(Adaptor::new(None, connection_handler, hub));
         adaptor.hub.clone().start_event_loop(hub_receiver, initializer);
         adaptor
@@ -58,9 +64,11 @@ impl Adaptor {
         serve_address: NetAddress,
         hub: Hub,
         initializer: Arc<dyn ConnectionInitializer>,
+        rx_bytes: Arc<AtomicUsize>,
+        tx_bytes: Arc<AtomicUsize>,
     ) -> Result<Arc<Self>, ConnectionError> {
         let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
-        let connection_handler = ConnectionHandler::new(hub_sender, initializer.clone());
+        let connection_handler = ConnectionHandler::new(hub_sender, initializer.clone(), rx_bytes, tx_bytes);
         let server_termination = connection_handler.serve(serve_address)?;
         let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler, hub));
         adaptor.hub.clone().start_event_loop(hub_receiver, initializer);

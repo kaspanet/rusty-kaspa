@@ -1,3 +1,4 @@
+use std::sync::atomic::AtomicUsize;
 use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
@@ -359,6 +360,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         tick_service.clone(),
         notification_root,
     ));
+    let (tx_bytes, rx_bytes): (Arc<AtomicUsize>, Arc<AtomicUsize>) = (Default::default(), Default::default());
+
     let p2p_service = Arc::new(P2pService::new(
         flow_context.clone(),
         connect_peers,
@@ -368,6 +371,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         args.inbound_limit,
         dns_seeders,
         config.default_p2p_port(),
+        rx_bytes.clone(),
+        tx_bytes.clone(),
     ));
 
     let rpc_core_service = Arc::new(RpcCoreService::new(
@@ -384,9 +389,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         wrpc_json_counters.clone(),
         perf_monitor.clone(),
     ));
-    let (tx_bytes, rx_bytes) = (Default::default(), Default::default());
     let grpc_service =
-        Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients, tx_bytes, rx_bytes));
+        Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients, rx_bytes, tx_bytes));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
