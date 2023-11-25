@@ -13,6 +13,7 @@ pub struct Bip32 {
     pub account_index: u64,
     pub xpub_keys: Arc<Vec<String>>,
     pub ecdsa: bool,
+    pub bip39_passphrase: bool,
     pub receive_address: Option<Address>,
     pub change_address: Option<Address>,
     pub meta: AddressDerivationMeta,
@@ -109,15 +110,17 @@ impl AccountDescriptor {
         }
     }
 
-    // pub fn prv_key_data_id(&self) -> &PrvKeyDataId {
-    //     match self {
-    //         AccountDescriptor::Bip32(bip32) => &bip32.prv_key_data_id,
-    //         AccountDescriptor::Keypair(keypair) => &keypair.prv_key_data_id,
-    //         AccountDescriptor::Legacy(legacy) => &legacy.prv_key_data_id,
-    //         AccountDescriptor::MultiSig(multisig) => &multisig.prv_key_data_id,
-    //         AccountDescriptor::Resident(resident) => &resident.prv_key_data_id,
-    //     }
-    // }
+    pub fn prv_key_data_id(&self) -> Option<&PrvKeyDataId> {
+        match self {
+            AccountDescriptor::Bip32(bip32) => Some(&bip32.prv_key_data_id),
+            AccountDescriptor::Legacy(legacy) => Some(&legacy.prv_key_data_id),
+            AccountDescriptor::Keypair(keypair) => Some(&keypair.prv_key_data_id),
+            // TODO - work out permutations for multisig accounts
+            AccountDescriptor::MultiSig(_multisig) => None,
+            // resident accounts don't carry prv key data
+            AccountDescriptor::Resident(_resident) => None,
+        }
+    }
 
     pub fn account_id(&self) -> &AccountId {
         match self {

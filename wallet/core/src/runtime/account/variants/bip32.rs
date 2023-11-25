@@ -14,6 +14,7 @@ pub struct Bip32 {
     account_index: u64,
     xpub_keys: Arc<Vec<String>>,
     ecdsa: bool,
+    bip39_passphrase: bool,
     derivation: Arc<AddressDerivationManager>,
 }
 
@@ -36,12 +37,20 @@ impl Bip32 {
             AddressDerivationManager::new(wallet, AccountKind::Bip32, &xpub_keys, ecdsa, 0, None, 1, address_derivation_indexes)
                 .await?;
 
+        let prv_key_data_info = wallet
+            .store()
+            .as_prv_key_data_store()?
+            .load_key_info(&prv_key_data_id)
+            .await?
+            .ok_or_else(|| Error::PrivateKeyNotFound(prv_key_data_id))?;
+
         Ok(Self {
             inner,
             prv_key_data_id, //: prv_key_data_id.clone(),
             account_index,   //: account_index,
             xpub_keys,       //: data.xpub_keys.clone(),
             ecdsa,
+            bip39_passphrase: prv_key_data_info.requires_bip39_passphrase(),
             derivation,
         })
     }
@@ -92,6 +101,7 @@ impl Account for Bip32 {
             account_index: self.account_index,
             xpub_keys: self.xpub_keys.clone(),
             ecdsa: self.ecdsa,
+            bip39_passphrase: self.bip39_passphrase,
             receive_address: self.receive_address().ok(),
             change_address: self.change_address().ok(),
             meta: self.derivation.address_derivation_meta(),
