@@ -4,6 +4,7 @@ use crate::result::Result;
 use crate::runtime::{AccountCreateArgs, AccountDescriptor, PrvKeyDataCreateArgs, WalletCreateArgs};
 use crate::secret::Secret;
 use crate::storage::WalletDescriptor;
+use crate::tx::GeneratorSummary;
 use workflow_core::channel::Receiver;
 
 #[async_trait]
@@ -68,6 +69,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
     async fn accounts_activate_call(self: Arc<Self>, request: AccountsActivateRequest) -> Result<AccountsActivateResponse>;
 
+    async fn prv_key_data_enumerate_call(self: Arc<Self>, request: PrvKeyDataEnumerateRequest) -> Result<PrvKeyDataEnumerateResponse>;
     async fn prv_key_data_create_call(self: Arc<Self>, request: PrvKeyDataCreateRequest) -> Result<PrvKeyDataCreateResponse>;
     async fn prv_key_data_remove_call(self: Arc<Self>, request: PrvKeyDataRemoveRequest) -> Result<PrvKeyDataRemoveResponse>;
     async fn prv_key_data_get_call(self: Arc<Self>, request: PrvKeyDataGetRequest) -> Result<PrvKeyDataGetResponse>;
@@ -80,11 +82,24 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse>;
     async fn accounts_import_call(self: Arc<Self>, request: AccountsImportRequest) -> Result<AccountsImportResponse>;
     async fn accounts_get_call(self: Arc<Self>, request: AccountsGetRequest) -> Result<AccountsGetResponse>;
+
+    async fn accounts_create_new_address(
+        self: Arc<Self>,
+        account_id: runtime::AccountId,
+        kind: NewAddressKind,
+    ) -> Result<AccountsCreateNewAddressResponse> {
+        self.accounts_create_new_address_call(AccountsCreateNewAddressRequest { account_id, kind }).await
+    }
     async fn accounts_create_new_address_call(
         self: Arc<Self>,
         request: AccountsCreateNewAddressRequest,
     ) -> Result<AccountsCreateNewAddressResponse>;
+
+    async fn accounts_send(self: Arc<Self>, request: AccountsSendRequest) -> Result<GeneratorSummary> {
+        Ok(self.accounts_send_call(request).await?.generator_summary)
+    }
     async fn accounts_send_call(self: Arc<Self>, request: AccountsSendRequest) -> Result<AccountsSendResponse>;
+    async fn accounts_transfer_call(self: Arc<Self>, request: AccountsTransferRequest) -> Result<AccountsTransferResponse>;
 
     // async fn account_estimate(self: Arc<Self>, request: AccountEstimateRequest) -> Result<AccountEstimateResponse> {
 

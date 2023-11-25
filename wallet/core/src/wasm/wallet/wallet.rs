@@ -3,8 +3,8 @@ use crate::result::Result;
 use crate::runtime;
 use crate::secret::Secret;
 use crate::storage::local::interface::LocalStore;
-use crate::storage::PrvKeyDataId;
 use crate::storage::{self, Hint};
+use crate::storage::{PrvKeyDataId, WalletDescriptor};
 use crate::wasm::wallet::account::Account;
 use crate::wasm::wallet::keydata::PrvKeyDataInfo;
 use kaspa_wrpc_client::wasm::RpcClient;
@@ -103,11 +103,8 @@ impl Wallet {
     }
 
     #[wasm_bindgen(js_name = "descriptor")]
-    pub fn descriptor(&self) -> Result<JsValue> {
-        match self.wallet.descriptor()? {
-            Some(desc) => Ok(JsValue::from(desc)),
-            None => Ok(JsValue::UNDEFINED),
-        }
+    pub fn descriptor(&self) -> Option<WalletDescriptor> {
+        self.wallet.descriptor()
     }
 
     pub async fn exists(&self, name: JsValue) -> Result<bool> {

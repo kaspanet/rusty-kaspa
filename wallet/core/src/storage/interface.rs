@@ -47,8 +47,11 @@ impl Drop for AccessContext {
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[wasm_bindgen(inspectable)]
 pub struct WalletDescriptor {
+    #[wasm_bindgen(getter_with_clone)]
     pub title: Option<String>,
+    #[wasm_bindgen(getter_with_clone)]
     pub filename: String,
 }
 
@@ -157,10 +160,10 @@ pub trait Interface: Send + Sync + AnySync {
     fn is_open(&self) -> bool;
 
     /// return storage information string (file location)
-    fn descriptor(&self) -> Result<Option<String>>;
+    fn location(&self) -> Result<Option<String>>;
 
     /// returns the name of the currently open wallet or none
-    fn name(&self) -> Option<String>;
+    fn descriptor(&self) -> Option<WalletDescriptor>;
 
     /// checks if the wallet storage is present
     async fn exists(&self, name: Option<&str>) -> Result<bool>;

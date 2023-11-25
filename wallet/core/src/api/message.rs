@@ -10,7 +10,7 @@ use workflow_rpc::id::{Generator, Id64 as TaskId};
 use crate::{
     runtime::{account::descriptor::AccountDescriptor, AccountCreateArgs, PrvKeyDataCreateArgs, WalletCreateArgs},
     secret::Secret,
-    storage::{AccountId, PrvKeyData, PrvKeyDataId, TransactionRecord, TransactionType, WalletDescriptor},
+    storage::{AccountId, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord, TransactionType, WalletDescriptor},
     tx::{Fees, GeneratorSummary, PaymentDestination},
 };
 // use std::fmt::{Display, Formatter};
@@ -105,6 +105,16 @@ pub struct WalletCloseResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PrvKeyDataEnumerateRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrvKeyDataEnumerateResponse {
+    pub prv_key_data_list: Vec<Arc<PrvKeyDataInfo>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PrvKeyDataCreateRequest {
     pub prv_key_data_args: PrvKeyDataCreateArgs,
     pub fetch_mnemonic: bool,
@@ -157,7 +167,9 @@ pub struct AccountsCreateRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountsCreateResponse {}
+pub struct AccountsCreateResponse {
+    pub descriptor: AccountDescriptor,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -191,8 +203,17 @@ pub struct AccountsGetResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum NewAddressKind {
+    Receive,
+    Change,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AccountsCreateNewAddressRequest {
     pub account_id: AccountId,
+    #[serde(rename = "type")]
+    pub kind: NewAddressKind,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -204,20 +225,35 @@ pub struct AccountsCreateNewAddressResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsSendRequest {
-    pub task_id: Option<TaskId>,
     pub account_id: AccountId,
     pub wallet_secret: Secret,
     pub payment_secret: Option<Secret>,
     pub destination: PaymentDestination,
     pub priority_fee_sompi: Fees,
     pub payload: Option<Vec<u8>>,
-    // abortable: &Abortable,
-    // notifier: Option<GenerationNotifier>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsSendResponse {
+    pub generator_summary: GeneratorSummary,
+    pub transaction_ids: Vec<TransactionId>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsTransferRequest {
+    pub source_account_id: AccountId,
+    pub destination_account_id: AccountId,
+    pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
+    pub transfer_amount_sompi: u64,
+    pub priority_fee_sompi: Option<Fees>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsTransferResponse {
     pub generator_summary: GeneratorSummary,
     pub transaction_ids: Vec<TransactionId>,
 }
@@ -230,7 +266,6 @@ pub struct AccountsEstimateRequest {
     pub destination: PaymentDestination,
     pub priority_fee_sompi: Fees,
     pub payload: Option<Vec<u8>>,
-    // abortable: &Abortable,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

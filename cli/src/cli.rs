@@ -350,6 +350,8 @@ impl KaspaCli {
                                     this.wallet().autoselect_default_account_if_single().await.ok();
                                     this.term().refresh_prompt();
                                 },
+                                Events::AccountCreation { .. } => { },
+                                Events::AccountUpdate { .. } => { },
                                 Events::WalletClose => {
                                     this.term().refresh_prompt();
                                 },
@@ -763,9 +765,10 @@ impl Cli for KaspaCli {
             }
         }
 
-        if let Some(name) = self.wallet.name() {
-            if name != "kaspa" {
-                prompt.push(name);
+        if let Some(descriptor) = self.wallet.descriptor() {
+            let title = descriptor.title.unwrap_or(descriptor.filename);
+            if title.to_lowercase().as_str() != "kaspa" {
+                prompt.push(title);
             }
 
             if let Ok(account) = self.wallet.account() {

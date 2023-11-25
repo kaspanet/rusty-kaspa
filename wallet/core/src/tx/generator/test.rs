@@ -289,6 +289,7 @@ where
     let final_priority_fee = fees;
     let final_transaction_payload = None;
     let change_address = change_address(network_type);
+    let is_transfer = false;
 
     let settings = GeneratorSettings {
         network_type,
@@ -301,6 +302,7 @@ where
         final_transaction_priority_fee: final_priority_fee,
         final_transaction_destination,
         final_transaction_payload,
+        is_transfer,
     };
 
     Generator::try_new(settings, None, None)

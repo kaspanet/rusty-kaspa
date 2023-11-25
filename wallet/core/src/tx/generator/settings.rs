@@ -29,6 +29,8 @@ pub struct GeneratorSettings {
     pub final_transaction_destination: PaymentDestination,
     // payload
     pub final_transaction_payload: Option<Vec<u8>>,
+    // transaction is a transfer between accounts
+    pub is_transfer: bool,
 }
 
 impl GeneratorSettings {
@@ -58,6 +60,7 @@ impl GeneratorSettings {
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
+            is_transfer: false,
         };
 
         Ok(settings)
@@ -88,6 +91,7 @@ impl GeneratorSettings {
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
+            is_transfer: false,
         };
 
         Ok(settings)
@@ -117,8 +121,14 @@ impl GeneratorSettings {
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
+            is_transfer: false,
         };
 
         Ok(settings)
+    }
+
+    pub fn as_transfer(mut self) -> Self {
+        self.is_transfer = true;
+        self
     }
 }

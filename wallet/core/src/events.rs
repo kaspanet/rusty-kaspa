@@ -3,6 +3,7 @@ use crate::runtime::AccountDescriptor;
 use crate::runtime::Balance;
 use crate::storage::Hint;
 use crate::storage::TransactionRecord;
+use crate::storage::WalletDescriptor;
 use crate::utxo::context::UtxoContextId;
 
 /// Sync state of the kaspad node
@@ -77,9 +78,9 @@ pub enum Events {
     /// contains anti-phishing 'hint' set by the user.
     WalletHint { hint: Option<Hint> },
     /// Wallet has opened
-    WalletOpen { account_descriptors: Option<Vec<AccountDescriptor>> },
+    WalletOpen { wallet_descriptor: Option<WalletDescriptor>, account_descriptors: Option<Vec<AccountDescriptor>> },
     /// Wallet reload initiated (development only)
-    WalletReload { account_descriptors: Option<Vec<AccountDescriptor>> },
+    WalletReload { wallet_descriptor: Option<WalletDescriptor>, account_descriptors: Option<Vec<AccountDescriptor>> },
     /// Wallet open failure
     WalletError { message: String },
     /// Wallet has been closed
@@ -88,6 +89,11 @@ pub enum Events {
     AccountActivation { ids: Vec<runtime::AccountId> },
     /// Account selection change (`None` if no account is selected)
     AccountSelection { id: Option<runtime::AccountId> },
+    /// Account has been created
+    AccountCreation { descriptor: AccountDescriptor },
+    /// Account has been changed
+    /// (emitted on new address generation)
+    AccountUpdate { descriptor: AccountDescriptor },
     /// Emitted after successful RPC connection
     /// after the initial state negotiation.
     ServerStatus {

@@ -22,10 +22,7 @@ pub trait SerdeTransport: Send + Sync {
 pub enum Transport {
     Borsh(Arc<dyn BorshTransport>),
     Serde(Arc<dyn SerdeTransport>),
-    // SerdeWasm(Arc<dyn SerdeWasmTransport>),
 }
-
-// - TODO - WALLET SERVER
 
 pub struct WalletServer {
     pub wallet_api: Arc<dyn WalletApi>,
@@ -112,6 +109,7 @@ impl WalletApi for WalletClient {
         WalletCreate,
         WalletOpen,
         WalletClose,
+        PrvKeyDataEnumerate,
         PrvKeyDataCreate,
         PrvKeyDataRemove,
         PrvKeyDataGet,
@@ -122,6 +120,7 @@ impl WalletApi for WalletClient {
         AccountsGet,
         AccountsCreateNewAddress,
         AccountsSend,
+        AccountsTransfer,
         AccountsEstimate,
         TransactionDataGet,
         AddressBookEnumerate,

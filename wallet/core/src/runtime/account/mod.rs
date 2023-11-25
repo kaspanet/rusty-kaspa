@@ -22,6 +22,7 @@ use crate::secret::Secret;
 use crate::storage::interface::AccessContext;
 use crate::storage::Metadata;
 use crate::storage::{self, AccessContextT, AccountData, PrvKeyData, PrvKeyDataId};
+use crate::tx::PaymentOutput;
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, Signer};
 use crate::utxo::{UtxoContext, UtxoContextBinding};
 use kaspa_bip32::PrivateKey;
@@ -318,6 +319,8 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
     fn as_dyn_arc(self: Arc<Self>) -> Arc<dyn Account>;
 
+    /// Aggregate all account UTXOs into the change address.
+    /// Also known as "compounding".
     async fn sweep(
         self: Arc<Self>,
         wallet_secret: Secret,
@@ -346,6 +349,8 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Ok((generator.summary(), ids))
     }
 
+    /// Send funds to a [`PaymentDestination`] comprised of one or multiple [`PaymentOutputs`]
+    /// or [`PaymentDestination::Change`] variant that will forward funds to the change address.
     async fn send(
         self: Arc<Self>,
         destination: PaymentDestination,
@@ -360,6 +365,56 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
 
         let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
+
+        let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
+
+        let mut stream = generator.stream();
+        let mut ids = vec![];
+        while let Some(transaction) = stream.try_next().await? {
+            transaction.try_sign()?;
+            ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
+
+            if let Some(notifier) = notifier.as_ref() {
+                notifier(&transaction);
+            }
+            yield_executor().await;
+        }
+
+        Ok((generator.summary(), ids))
+    }
+
+    /// Execute a transfer to another wallet account.
+    async fn transfer(
+        self: Arc<Self>,
+        destination_account_id: AccountId,
+        transfer_amount_sompi: u64,
+        priority_fee_sompi: Fees,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        abortable: &Abortable,
+        notifier: Option<GenerationNotifier>,
+    ) -> Result<(GeneratorSummary, Vec<kaspa_hashes::Hash>)> {
+        let keydata = self.prv_key_data(wallet_secret).await?;
+        let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
+
+        let destination_account = self
+            .wallet()
+            .get_account_by_id(&destination_account_id)
+            .await?
+            .ok_or_else(|| Error::AccountNotFound(destination_account_id))?;
+
+        let destination_address = destination_account.receive_address()?;
+        let final_transaction_destination = PaymentDestination::from(PaymentOutput::new(destination_address, transfer_amount_sompi));
+        // let final_priority_fee = Fees::SenderPaysAll(0);
+        let final_transaction_payload = None;
+
+        let settings = GeneratorSettings::try_new_with_account(
+            self.clone().as_dyn_arc(),
+            final_transaction_destination,
+            priority_fee_sompi,
+            final_transaction_payload,
+        )?
+        .as_transfer();
 
         let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
 
@@ -558,6 +613,8 @@ pub trait DerivationCapableAccount: Account {
         let store = self.wallet().store().as_account_store()?;
         store.update_metadata(&[&metadata]).await?;
 
+        self.wallet().notify(Events::AccountUpdate { descriptor: self.descriptor()? }).await?;
+
         Ok(address)
     }
 
@@ -568,6 +625,8 @@ pub trait DerivationCapableAccount: Account {
         let metadata = self.metadata()?.expect("derivation accounts must provide metadata");
         let store = self.wallet().store().as_account_store()?;
         store.update_metadata(&[&metadata]).await?;
+
+        self.wallet().notify(Events::AccountUpdate { descriptor: self.descriptor()? }).await?;
 
         Ok(address)
     }

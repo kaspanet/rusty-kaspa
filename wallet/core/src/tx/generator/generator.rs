@@ -237,6 +237,8 @@ struct Inner {
     final_transaction_payload_mass: u64,
     // execution context
     context: Mutex<Context>,
+    // transfer flag
+    is_transfer: bool,
 }
 
 ///
@@ -260,6 +262,7 @@ impl Generator {
             final_transaction_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
+            is_transfer,
         } = settings;
 
         let mass_calculator = MassCalculator::new(&network_type.into());
@@ -345,6 +348,7 @@ impl Generator {
             final_transaction_outputs_mass,
             final_transaction_payload,
             final_transaction_payload_mass,
+            is_transfer,
         };
         Ok(Self { inner: Arc::new(inner) })
     }
@@ -366,6 +370,11 @@ impl Generator {
     /// Mutable context used by the generator to track state
     fn context(&self) -> MutexGuard<Context> {
         self.inner.context.lock().unwrap()
+    }
+
+    /// Signifies that the transaction is a transfer between accounts
+    pub fn is_transfer(&self) -> bool {
+        self.inner.is_transfer
     }
 
     /// Returns the underlying instance of the [Signer](SignerT)

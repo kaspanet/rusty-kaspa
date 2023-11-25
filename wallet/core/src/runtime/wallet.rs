@@ -8,8 +8,9 @@ use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs, Transaction
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
 use crate::storage::{
-    self, make_filename, AccessContextT, AccountKind, Binding, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo,
+    self, AccessContextT, AccountKind, Binding, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, WalletDescriptor,
 };
+use crate::tx::Fees;
 use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
 use crate::{derivation::gen0, derivation::gen0::import::*, derivation::gen1, derivation::gen1::import::*};
@@ -205,8 +206,8 @@ impl Wallet {
         &self.inner.utxo_processor
     }
 
-    pub fn name(&self) -> Option<String> {
-        self.store().name()
+    pub fn descriptor(&self) -> Option<WalletDescriptor> {
+        self.store().descriptor()
     }
 
     pub fn store(&self) -> &Arc<dyn Interface> {
@@ -240,9 +241,10 @@ impl Wallet {
         self.reset(false).await?;
 
         if self.is_open() {
+            let wallet_descriptor = self.store().descriptor();
             let accounts = self.accounts(None).await?.try_collect::<Vec<_>>().await?;
             let account_descriptors = Some(accounts.iter().map(|account| account.descriptor()).collect::<Result<Vec<_>>>()?);
-            self.notify(Events::WalletReload { account_descriptors }).await?;
+            self.notify(Events::WalletReload { wallet_descriptor, account_descriptors }).await?;
         }
 
         Ok(())
@@ -300,13 +302,15 @@ impl Wallet {
     async fn open_impl(
         self: &Arc<Wallet>,
         secret: Secret,
-        name: Option<String>,
+        filename: Option<String>,
         args: WalletOpenArgs,
     ) -> Result<Option<Vec<AccountDescriptor>>> {
-        let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
-        let name = Some(make_filename(&name, &None));
+        let filename = filename.or_else(|| self.settings().get(WalletSettings::Wallet));
+        // let name = Some(make_filename(&name, &None));
+
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret.clone()));
-        self.store().open(&ctx, OpenArgs::new(name)).await?;
+        self.store().open(&ctx, OpenArgs::new(filename)).await?;
+        let wallet_name = self.store().descriptor();
 
         // reset current state only after we have successfully opened another wallet
         self.reset(true).await?;
@@ -345,7 +349,7 @@ impl Wallet {
             }
         }
 
-        self.notify(Events::WalletOpen { account_descriptors: account_descriptors.clone() }).await?;
+        self.notify(Events::WalletOpen { wallet_descriptor: wallet_name, account_descriptors: account_descriptors.clone() }).await?;
 
         Ok(account_descriptors)
     }
@@ -354,11 +358,11 @@ impl Wallet {
     pub async fn open(
         self: &Arc<Wallet>,
         secret: Secret,
-        name: Option<String>,
+        filename: Option<String>,
         args: WalletOpenArgs,
     ) -> Result<Option<Vec<AccountDescriptor>>> {
         // This is a wrapper of open_impl() that catches errors and notifies the UI
-        match self.open_impl(secret, name, args).await {
+        match self.open_impl(secret, filename, args).await {
             Ok(account_descriptors) => Ok(account_descriptors),
             Err(err) => {
                 self.notify(Events::WalletError { message: err.to_string() }).await?;
@@ -685,6 +689,9 @@ impl Wallet {
 
         account_storage.store_single(&stored_account, None).await?;
         self.inner.store.clone().commit(&ctx).await?;
+
+        self.notify(Events::AccountCreation { descriptor: account.descriptor()? }).await?;
+
         account.clone().start().await?;
 
         Ok(account)
@@ -694,7 +701,7 @@ impl Wallet {
         self.reset(true).await?;
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
         self.inner.store.create(&ctx, args.into()).await?;
-        let descriptor = self.inner.store.descriptor()?;
+        let descriptor = self.inner.store.location()?;
         self.inner.store.commit(&ctx).await?;
         Ok(descriptor)
     }
@@ -725,7 +732,7 @@ impl Wallet {
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(account_args.wallet_secret));
 
         self.inner.store.create(&ctx, wallet_args.into()).await?;
-        let descriptor = self.inner.store.descriptor()?;
+        let descriptor = self.inner.store.location()?;
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
         let mnemonic = Mnemonic::create_random()?;
         let account_index = 0;
@@ -852,8 +859,8 @@ impl Wallet {
         self.inner.store.is_open()
     }
 
-    pub fn descriptor(&self) -> Result<Option<String>> {
-        self.inner.store.descriptor()
+    pub fn location(&self) -> Result<Option<String>> {
+        self.inner.store.location()
     }
 
     pub async fn exists(&self, name: Option<&str>) -> Result<bool> {
@@ -1294,6 +1301,14 @@ impl WalletApi for Wallet {
         Ok(WalletCloseResponse {})
     }
 
+    async fn prv_key_data_enumerate_call(
+        self: Arc<Self>,
+        _request: PrvKeyDataEnumerateRequest,
+    ) -> Result<PrvKeyDataEnumerateResponse> {
+        let prv_key_data_list = self.store().as_prv_key_data_store()?.iter().await?.try_collect::<Vec<_>>().await?;
+        Ok(PrvKeyDataEnumerateResponse { prv_key_data_list })
+    }
+
     async fn prv_key_data_create_call(self: Arc<Self>, request: PrvKeyDataCreateRequest) -> Result<PrvKeyDataCreateResponse> {
         let PrvKeyDataCreateRequest { prv_key_data_args, fetch_mnemonic } = request;
 
@@ -1334,9 +1349,9 @@ impl WalletApi for Wallet {
             return Err(Error::NotImplemented);
         }
 
-        let _account = self.create_bip32_account(prv_key_data_id, account_args).await?;
+        let account = self.create_bip32_account(prv_key_data_id, account_args).await?;
         // - TODO account info serialization
-        Ok(AccountsCreateResponse {})
+        Ok(AccountsCreateResponse { descriptor: account.descriptor()? })
     }
 
     async fn accounts_import_call(self: Arc<Self>, _request: AccountsImportRequest) -> Result<AccountsImportResponse> {
@@ -1355,16 +1370,20 @@ impl WalletApi for Wallet {
         self: Arc<Self>,
         request: AccountsCreateNewAddressRequest,
     ) -> Result<AccountsCreateNewAddressResponse> {
-        let AccountsCreateNewAddressRequest { account_id } = request;
+        let AccountsCreateNewAddressRequest { account_id, kind } = request;
 
         let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
-        let address = account.as_derivation_capable()?.new_receive_address().await?;
+
+        let address = match kind {
+            NewAddressKind::Receive => account.as_derivation_capable()?.new_receive_address().await?,
+            NewAddressKind::Change => account.as_derivation_capable()?.new_change_address().await?,
+        };
+
         Ok(AccountsCreateNewAddressResponse { address })
     }
 
     async fn accounts_send_call(self: Arc<Self>, request: AccountsSendRequest) -> Result<AccountsSendResponse> {
-        let AccountsSendRequest { task_id: _, account_id, wallet_secret, payment_secret, destination, priority_fee_sompi, payload } =
-            request;
+        let AccountsSendRequest { account_id, wallet_secret, payment_secret, destination, priority_fee_sompi, payload } = request;
 
         let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
 
@@ -1373,6 +1392,34 @@ impl WalletApi for Wallet {
             account.send(destination, priority_fee_sompi, payload, wallet_secret, payment_secret, &abortable, None).await?;
 
         Ok(AccountsSendResponse { generator_summary, transaction_ids })
+    }
+
+    async fn accounts_transfer_call(self: Arc<Self>, request: AccountsTransferRequest) -> Result<AccountsTransferResponse> {
+        let AccountsTransferRequest {
+            source_account_id,
+            destination_account_id,
+            wallet_secret,
+            payment_secret,
+            priority_fee_sompi,
+            transfer_amount_sompi,
+        } = request;
+
+        let source_account = self.get_account_by_id(&source_account_id).await?.ok_or(Error::AccountNotFound(source_account_id))?;
+
+        let abortable = Abortable::new();
+        let (generator_summary, transaction_ids) = source_account
+            .transfer(
+                destination_account_id,
+                transfer_amount_sompi,
+                priority_fee_sompi.unwrap_or(Fees::SenderPaysAll(0)),
+                wallet_secret,
+                payment_secret,
+                &abortable,
+                None,
+            )
+            .await?;
+
+        Ok(AccountsTransferResponse { generator_summary, transaction_ids })
     }
 
     async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse> {

@@ -51,12 +51,8 @@ impl Wallet {
             };
 
             match version {
-                [0,0,0] => {
-                    Err(Error::Custom("wallet version 0.0.0 used during the development is no longer supported, please recreate the wallet using your saved mnemonic".to_string()))
-                },
-                _ => {
-                    Ok(from_value::<Wallet>(root)?)
-                }
+                [0, 0, 0] => Err(Error::Custom("wallet version 0.0.0 used during the development is no longer supported".to_string())),
+                _ => Ok(from_value::<Wallet>(root)?),
             }
         } else {
             let name = store.filename().file_name().unwrap().to_str().unwrap();

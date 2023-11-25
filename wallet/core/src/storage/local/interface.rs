@@ -215,8 +215,12 @@ impl Interface for LocalStore {
         Ok(self.inner()?.transactions.clone())
     }
 
-    fn name(&self) -> Option<String> {
-        self.inner.lock().unwrap().as_ref().map(|inner| inner.filename.clone())
+    fn descriptor(&self) -> Option<WalletDescriptor> {
+        self.inner
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|inner| WalletDescriptor { title: inner.cache().wallet_title.clone(), filename: inner.filename.clone() })
     }
 
     async fn exists(&self, name: Option<&str>) -> Result<bool> {
@@ -273,7 +277,7 @@ impl Interface for LocalStore {
         self.inner.lock().unwrap().is_some()
     }
 
-    fn descriptor(&self) -> Result<Option<String>> {
+    fn location(&self) -> Result<Option<String>> {
         let inner = self.inner()?;
         match inner.store {
             Store::Resident => Ok(Some("Memory resident wallet".to_string())),

@@ -109,6 +109,16 @@ impl AccountDescriptor {
         }
     }
 
+    // pub fn prv_key_data_id(&self) -> &PrvKeyDataId {
+    //     match self {
+    //         AccountDescriptor::Bip32(bip32) => &bip32.prv_key_data_id,
+    //         AccountDescriptor::Keypair(keypair) => &keypair.prv_key_data_id,
+    //         AccountDescriptor::Legacy(legacy) => &legacy.prv_key_data_id,
+    //         AccountDescriptor::MultiSig(multisig) => &multisig.prv_key_data_id,
+    //         AccountDescriptor::Resident(resident) => &resident.prv_key_data_id,
+    //     }
+    // }
+
     pub fn account_id(&self) -> &AccountId {
         match self {
             AccountDescriptor::Bip32(bip32) => &bip32.account_id,

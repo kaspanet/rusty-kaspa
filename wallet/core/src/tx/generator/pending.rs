@@ -39,6 +39,8 @@ pub(crate) struct PendingTransactionInner {
     pub(crate) fees: u64,
     /// Indicates the type of the transaction
     pub(crate) kind: DataKind,
+    /// Signifies that the transaction is a part of a transfer
+    pub(crate) is_transfer: bool,
 }
 
 impl std::fmt::Debug for PendingTransaction {
@@ -97,6 +99,7 @@ impl PendingTransaction {
                 mass,
                 fees,
                 kind,
+                is_transfer: generator.is_transfer(),
             }),
         })
     }
@@ -141,6 +144,10 @@ impl PendingTransaction {
 
     pub fn is_batch(&self) -> bool {
         !self.inner.kind.is_final()
+    }
+
+    pub fn is_transfer(&self) -> bool {
+        self.inner.is_transfer
     }
 
     pub fn network_type(&self) -> NetworkType {
