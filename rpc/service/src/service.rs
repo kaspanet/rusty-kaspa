@@ -33,6 +33,7 @@ use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
 };
+use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
 use kaspa_notify::{
     collector::DynCollector,
@@ -59,6 +60,7 @@ use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use std::{
+    collections::HashMap,
     iter::once,
     sync::{atomic::Ordering, Arc},
     vec,
@@ -221,6 +223,17 @@ impl RpcCoreService {
         // Other network types can be used in an isolated environment without peers
         !matches!(self.flow_context.config.net.network_type, Mainnet | Testnet) || self.flow_context.hub().has_peers()
     }
+
+    fn extract_tx_query(&self, filter_transaction_pool: bool, include_orphan_pool: bool) -> RpcResult<TransactionQuery> {
+        match (filter_transaction_pool, include_orphan_pool) {
+            (true, true) => Ok(TransactionQuery::OrphansOnly),
+            // Note that the first `true` indicates *filtering* transactions and the second `false` indicates not including
+            // orphan txs -- hence the query would be empty by definition and is thus useless
+            (true, false) => Err(RpcError::InconsistentMempoolTxQuery),
+            (false, true) => Ok(TransactionQuery::All),
+            (false, false) => Ok(TransactionQuery::TransactionsOnly),
+        }
+    }
 }
 
 #[async_trait]
@@ -366,7 +379,7 @@ impl RpcApi for RpcCoreService {
         let is_nearly_synced = self.consensus_manager.consensus().unguarded_session().async_is_nearly_synced().await;
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
-            mempool_size: self.mining_manager.clone().transaction_count(true, false).await as u64,
+            mempool_size: self.mining_manager.clone().transaction_count(TransactionQuery::TransactionsOnly).await as u64,
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
             is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
@@ -376,12 +389,8 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_mempool_entry_call(&self, request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
-        let Some(transaction) = self
-            .mining_manager
-            .clone()
-            .get_transaction(request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool)
-            .await
-        else {
+        let query = self.extract_tx_query(request.filter_transaction_pool, request.include_orphan_pool)?;
+        let Some(transaction) = self.mining_manager.clone().get_transaction(request.transaction_id, query).await else {
             return Err(RpcError::TransactionNotFound(request.transaction_id));
         };
         let session = self.consensus_manager.consensus().unguarded_session();
@@ -389,9 +398,9 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_mempool_entries_call(&self, request: GetMempoolEntriesRequest) -> RpcResult<GetMempoolEntriesResponse> {
+        let query = self.extract_tx_query(request.filter_transaction_pool, request.include_orphan_pool)?;
         let session = self.consensus_manager.consensus().unguarded_session();
-        let (transactions, orphans) =
-            self.mining_manager.clone().get_all_transactions(!request.filter_transaction_pool, request.include_orphan_pool).await;
+        let (transactions, orphans) = self.mining_manager.clone().get_all_transactions(query).await;
         let mempool_entries = transactions
             .iter()
             .chain(orphans.iter())
@@ -404,13 +413,10 @@ impl RpcApi for RpcCoreService {
         &self,
         request: GetMempoolEntriesByAddressesRequest,
     ) -> RpcResult<GetMempoolEntriesByAddressesResponse> {
+        let query = self.extract_tx_query(request.filter_transaction_pool, request.include_orphan_pool)?;
         let session = self.consensus_manager.consensus().unguarded_session();
         let script_public_keys = request.addresses.iter().map(pay_to_address_script).collect();
-        let grouped_txs = self
-            .mining_manager
-            .clone()
-            .get_transactions_by_addresses(script_public_keys, !request.filter_transaction_pool, request.include_orphan_pool)
-            .await;
+        let grouped_txs = self.mining_manager.clone().get_transactions_by_addresses(script_public_keys, query).await;
         let mempool_entries = grouped_txs
             .owners
             .iter()
@@ -530,6 +536,64 @@ impl RpcApi for RpcCoreService {
         let circulating_sompi =
             self.utxoindex.clone().unwrap().get_circulating_supply().await.map_err(|e| RpcError::General(e.to_string()))?;
         Ok(GetCoinSupplyResponse::new(MAX_SOMPI, circulating_sompi))
+    }
+
+    async fn get_daa_score_timestamp_estimate_call(
+        &self,
+        request: GetDaaScoreTimestampEstimateRequest,
+    ) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
+        let session = self.consensus_manager.consensus().session().await;
+        // TODO: cache samples based on sufficient recency of the data and append sink data
+        let mut headers = session.async_get_chain_block_samples().await;
+        let mut requested_daa_scores = request.daa_scores.clone();
+        let mut daa_score_timestamp_map = HashMap::<u64, u64>::new();
+
+        headers.reverse();
+        requested_daa_scores.sort_by(|a, b| b.cmp(a));
+
+        let mut header_idx = 0;
+        let mut req_idx = 0;
+
+        // Loop runs at O(n + m) where n = # pp headers, m = # requested daa_scores
+        // Loop will always end because in the worst case the last header with daa_score = 0 (the genesis)
+        // will cause every remaining requested daa_score to be "found in range"
+        //
+        // TODO: optimize using binary search over the samples to obtain O(m log n) complexity (which is an improvement assuming m << n)
+        while header_idx < headers.len() && req_idx < request.daa_scores.len() {
+            let header = headers.get(header_idx).unwrap();
+            let curr_daa_score = requested_daa_scores[req_idx];
+
+            // Found daa_score in range
+            if header.daa_score <= curr_daa_score {
+                // For daa_score later than the last header, we estimate in milliseconds based on the difference
+                let time_adjustment = if header_idx == 0 {
+                    // estimate milliseconds = (daa_score * target_time_per_block)
+                    (curr_daa_score - header.daa_score).checked_mul(self.config.target_time_per_block).unwrap_or(u64::MAX)
+                } else {
+                    // "next" header is the one that we processed last iteration
+                    let next_header = &headers[header_idx - 1];
+                    // Unlike DAA scores which are monotonic (over the selected chain), timestamps are not strictly monotonic, so we avoid assuming so
+                    let time_between_headers = next_header.timestamp.checked_sub(header.timestamp).unwrap_or_default();
+                    let score_between_query_and_header = (curr_daa_score - header.daa_score) as f64;
+                    let score_between_headers = (next_header.daa_score - header.daa_score) as f64;
+                    // Interpolate the timestamp delta using the estimated fraction based on DAA scores
+                    ((time_between_headers as f64) * (score_between_query_and_header / score_between_headers)) as u64
+                };
+
+                let daa_score_timestamp = header.timestamp.checked_add(time_adjustment).unwrap_or(u64::MAX);
+                daa_score_timestamp_map.insert(curr_daa_score, daa_score_timestamp);
+
+                // Process the next daa score that's <= than current one (at earlier idx)
+                req_idx += 1;
+            } else {
+                header_idx += 1;
+            }
+        }
+
+        // Note: it is safe to assume all entries exist in the map since the first sampled header is expected to have daa_score=0
+        let timestamps = request.daa_scores.iter().map(|curr_daa_score| daa_score_timestamp_map[curr_daa_score]).collect();
+
+        Ok(GetDaaScoreTimestampEstimateResponse::new(timestamps))
     }
 
     async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {

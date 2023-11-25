@@ -336,8 +336,9 @@ impl KaspaRpcClient {
             WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
             WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
         });
+        let path_str = parse_output.path;
 
-        Ok(Some(format!("{}://{}:{}", scheme, parse_output.host.to_string(), port)))
+        Ok(Some(format!("{}://{}:{}{}", scheme, parse_output.host.to_string(), port, path_str)))
     }
 
     async fn start_rpc_ctl_service(&self) -> Result<()> {
@@ -405,6 +406,7 @@ impl RpcApi for KaspaRpcClient {
             GetBlockTemplate,
             GetCoinSupply,
             GetConnectedPeerInfo,
+            GetDaaScoreTimestampEstimate,
             GetServerInfo,
             GetCurrentNetwork,
             GetHeaders,
