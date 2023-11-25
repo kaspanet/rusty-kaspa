@@ -218,7 +218,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
             .as_prv_key_data_store()?
             .load_key_data(&access_ctx, prv_key_data_id)
             .await?
-            .ok_or(Error::PrivateKeyNotFound(prv_key_data_id.to_hex()))?;
+            .ok_or(Error::PrivateKeyNotFound(*prv_key_data_id))?;
         Ok(keydata)
     }
 

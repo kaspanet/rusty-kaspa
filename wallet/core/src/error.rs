@@ -15,6 +15,7 @@ use workflow_wasm::printable::*;
 use thiserror::Error;
 
 use crate::storage::AccountId;
+use crate::storage::PrvKeyDataId;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -145,7 +146,7 @@ pub enum Error {
     VarError(#[from] std::env::VarError),
 
     #[error("private key {0} not found")]
-    PrivateKeyNotFound(String),
+    PrivateKeyNotFound(PrvKeyDataId),
 
     #[error("private key {0} already exists")]
     PrivateKeyAlreadyExists(String),

@@ -613,7 +613,7 @@ impl Wallet {
                     .as_prv_key_data_store()?
                     .load_key_data(&ctx, &prv_key_data_id)
                     .await?
-                    .ok_or(Error::PrivateKeyNotFound(prv_key_data_id.to_hex()))?;
+                    .ok_or_else(|| Error::PrivateKeyNotFound(prv_key_data_id))?;
                 let xpub_key = prv_key_data.create_xpub(None, AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
                 let xpub_prefix = kaspa_bip32::Prefix::XPUB;
                 generated_xpubs.push(xpub_key.to_string(Some(xpub_prefix)));
@@ -676,7 +676,7 @@ impl Wallet {
             .as_prv_key_data_store()?
             .load_key_data(&ctx, &prv_key_data_id)
             .await?
-            .ok_or(Error::PrivateKeyNotFound(prv_key_data_id.to_hex()))?;
+            .ok_or_else(|| Error::PrivateKeyNotFound(prv_key_data_id))?;
         let xpub_key = prv_key_data.create_xpub(args.payment_secret.as_ref(), args.account_kind, account_index).await?;
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
         let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(xpub_prefix))]);
