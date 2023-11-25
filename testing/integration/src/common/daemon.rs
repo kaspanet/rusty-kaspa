@@ -5,6 +5,7 @@ use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
+use std::sync::atomic::AtomicUsize;
 use std::{sync::Arc, time::Duration};
 use tempfile::TempDir;
 
@@ -22,6 +23,9 @@ pub struct Daemon {
     workers: Option<Vec<std::thread::JoinHandle<()>>>,
 
     _appdir_tempdir: TempDir,
+
+    rx_bytes: Arc<AtomicUsize>,
+    tx_bytes: Arc<AtomicUsize>,
 }
 
 impl Daemon {
@@ -59,7 +63,16 @@ impl Daemon {
 
         let network = args.network();
         let (core, _) = create_core_with_runtime(&Default::default(), &args, fd_total_budget);
-        Daemon { network, rpc_port, p2p_port, core, workers: None, _appdir_tempdir: appdir_tempdir }
+        Daemon {
+            network,
+            rpc_port,
+            p2p_port,
+            core,
+            workers: None,
+            _appdir_tempdir: appdir_tempdir,
+            rx_bytes: Default::default(),
+            tx_bytes: Default::default(),
+        }
     }
 
     pub async fn start(&mut self) -> GrpcClient {
@@ -77,9 +90,18 @@ impl Daemon {
     }
 
     pub async fn new_client(&self) -> GrpcClient {
-        GrpcClient::connect(NotificationMode::Direct, format!("grpc://localhost:{}", self.rpc_port), true, None, false, Some(500_000))
-            .await
-            .unwrap()
+        GrpcClient::connect(
+            NotificationMode::Direct,
+            format!("grpc://localhost:{}", self.rpc_port),
+            true,
+            None,
+            false,
+            Some(500_000),
+            self.rx_bytes.clone(),
+            self.tx_bytes.clone(),
+        )
+        .await
+        .unwrap()
     }
 
     pub async fn new_client_pool<T: Send + 'static, F, R>(

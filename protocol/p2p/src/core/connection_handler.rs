@@ -79,7 +79,7 @@ impl ConnectionHandler {
 
             // TODO: check whether we should set tcp_keepalive
             let serve_result = TonicServer::builder()
-                .layer(kaspa_utils::request_response_size_middlewares::measure_request_body_size_layer(rx_bytes))
+                .layer(kaspa_utils::request_response_size_middlewares::measure_request_body_size_layer(rx_bytes, |b| b))
                 .layer(MapResponseBodyLayer::new(move |body| {
                     kaspa_utils::request_response_size_middlewares::CountBytesBody::new(body, tx_bytes.clone())
                 }))

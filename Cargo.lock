@@ -2307,6 +2307,8 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tonic",
+ "tower",
+ "tower-http",
  "triggered",
 ]
 

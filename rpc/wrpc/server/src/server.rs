@@ -12,6 +12,7 @@ use kaspa_rpc_core::{
     Notification, RpcResult,
 };
 use kaspa_rpc_service::service::RpcCoreService;
+use std::sync::atomic::AtomicUsize;
 use std::{
     collections::HashMap,
     sync::{
@@ -35,6 +36,8 @@ struct ServerInner {
     pub sockets: Mutex<HashMap<u64, Connection>>,
     pub rpc_core: Option<RpcCore>,
     pub options: Arc<Options>,
+    rx_bytes: Arc<AtomicUsize>,
+    tx_bytes: Arc<AtomicUsize>,
 }
 
 #[derive(Clone)]
@@ -45,7 +48,14 @@ pub struct Server {
 const WRPC_SERVER: &str = "wrpc-server";
 
 impl Server {
-    pub fn new(tasks: usize, encoding: Encoding, core_service: Option<Arc<RpcCoreService>>, options: Arc<Options>) -> Self {
+    pub fn new(
+        tasks: usize,
+        encoding: Encoding,
+        core_service: Option<Arc<RpcCoreService>>,
+        options: Arc<Options>,
+        rx_bytes: Arc<AtomicUsize>,
+        tx_bytes: Arc<AtomicUsize>,
+    ) -> Self {
         // Either get a core service or be called from the proxy and rely each connection having its own gRPC client
         assert_eq!(
             core_service.is_none(),
@@ -77,6 +87,8 @@ impl Server {
                 sockets: Mutex::new(HashMap::new()),
                 rpc_core,
                 options,
+                rx_bytes,
+                tx_bytes,
             }),
         }
     }
@@ -96,9 +108,18 @@ impl Server {
             // Provider::GrpcClient
 
             log_info!("Routing wrpc://{peer} -> {grpc_proxy_address}");
-            let grpc_client = GrpcClient::connect(NotificationMode::Direct, grpc_proxy_address.to_owned(), false, None, true, None)
-                .await
-                .map_err(|e| WebSocketError::Other(e.to_string()))?;
+            let grpc_client = GrpcClient::connect(
+                NotificationMode::Direct,
+                grpc_proxy_address.to_owned(),
+                false,
+                None,
+                true,
+                None,
+                self.inner.rx_bytes.clone(),
+                self.inner.tx_bytes.clone(),
+            )
+            .await
+            .map_err(|e| WebSocketError::Other(e.to_string()))?;
             // log_trace!("Creating proxy relay...");
             Some(Arc::new(grpc_client))
         } else {

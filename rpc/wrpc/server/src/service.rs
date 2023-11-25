@@ -9,7 +9,7 @@ use kaspa_rpc_core::api::ops::RpcApiOps;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::triggers::SingleTrigger;
 pub use kaspa_wrpc_core::ServerCounters;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use workflow_rpc::server::prelude::*;
@@ -58,8 +58,10 @@ impl KaspaRpcHandler {
         core_service: Option<Arc<RpcCoreService>>,
         options: Arc<Options>,
         counters: Arc<ServerCounters>,
+        rx_bytes: Arc<AtomicUsize>,
+        tx_bytes: Arc<AtomicUsize>,
     ) -> KaspaRpcHandler {
-        KaspaRpcHandler { server: Server::new(tasks, encoding, core_service, options.clone()), options, counters }
+        KaspaRpcHandler { server: Server::new(tasks, encoding, core_service, options.clone(), rx_bytes, tx_bytes), options, counters }
     }
 }
 
@@ -122,10 +124,13 @@ impl WrpcService {
         encoding: &Encoding,
         counters: Arc<ServerCounters>,
         options: Options,
+        rx_bytes: Arc<AtomicUsize>,
+        tx_bytes: Arc<AtomicUsize>,
     ) -> Self {
         let options = Arc::new(options);
         // Create handle to manage connections
-        let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, *encoding, core_service, options.clone(), counters));
+        let rpc_handler =
+            Arc::new(KaspaRpcHandler::new(tasks, *encoding, core_service, options.clone(), counters, rx_bytes, tx_bytes));
 
         // Create router (initializes Interface registering RPC method and notification handlers)
         let router = Arc::new(Router::new(rpc_handler.server.clone()));

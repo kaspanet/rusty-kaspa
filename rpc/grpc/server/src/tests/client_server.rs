@@ -201,7 +201,9 @@ fn create_server(core_service: Arc<RpcCoreMock>) -> Arc<Adaptor> {
 
 async fn create_client(server_address: NetAddress) -> GrpcClient {
     let server_url = format!("grpc://localhost:{}", server_address.port);
-    GrpcClient::connect(NotificationMode::Direct, server_url, false, None, false, None).await.unwrap()
+    GrpcClient::connect(NotificationMode::Direct, server_url, false, None, false, None, Default::default(), Default::default())
+        .await
+        .unwrap()
 }
 
 fn get_free_net_address() -> NetAddress {

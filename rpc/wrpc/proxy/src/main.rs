@@ -82,7 +82,8 @@ async fn main() -> Result<()> {
 
     let counters = Arc::new(WrpcServerCounters::default());
     let tasks = threads.unwrap_or_else(num_cpus::get);
-    let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, None, options.clone(), counters));
+    let rpc_handler =
+        Arc::new(KaspaRpcHandler::new(tasks, encoding, None, options.clone(), counters, Default::default(), Default::default()));
 
     let router = Arc::new(Router::new(rpc_handler.server.clone()));
     let server =
