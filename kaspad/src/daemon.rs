@@ -388,6 +388,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         wrpc_borsh_counters.clone(),
         wrpc_json_counters.clone(),
         perf_monitor.clone(),
+        rx_bytes.clone(),
+        tx_bytes.clone(),
     ));
     let grpc_service =
         Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients, rx_bytes, tx_bytes));

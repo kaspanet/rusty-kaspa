@@ -761,6 +761,8 @@ message ProcessMetrics{
   uint64 diskIoWriteBytes = 7;
   double diskIoReadPerSec = 8;
   double diskIoWritePerSec = 9;
+  uint64 rx_bytes = 10;
+  uint64 tx_bytes = 11;
 
   uint64 borshLiveConnections = 31;
   uint64 borshConnectionAttempts = 32;

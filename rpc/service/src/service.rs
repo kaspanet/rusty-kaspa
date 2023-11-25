@@ -62,7 +62,10 @@ use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use std::{
     collections::HashMap,
     iter::once,
-    sync::{atomic::Ordering, Arc},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     vec,
 };
 
@@ -99,6 +102,8 @@ pub struct RpcCoreService {
     wrpc_json_counters: Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
+    rx_bytes: Arc<AtomicUsize>,
+    tx_bytes: Arc<AtomicUsize>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -118,6 +123,8 @@ impl RpcCoreService {
         wrpc_borsh_counters: Arc<WrpcServerCounters>,
         wrpc_json_counters: Arc<WrpcServerCounters>,
         perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
+        rx_bytes: Arc<AtomicUsize>,
+        tx_bytes: Arc<AtomicUsize>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -180,6 +187,8 @@ impl RpcCoreService {
             wrpc_json_counters,
             shutdown: SingleTrigger::default(),
             perf_monitor,
+            rx_bytes,
+            tx_bytes,
         }
     }
 
@@ -759,6 +768,8 @@ impl RpcApi for RpcCoreService {
             disk_io_write_bytes,
             disk_io_read_per_sec,
             disk_io_write_per_sec,
+            rx_bytes: self.rx_bytes.load(Ordering::Relaxed) as u64,
+            tx_bytes: self.tx_bytes.load(Ordering::Relaxed) as u64,
             borsh_live_connections: self.wrpc_borsh_counters.live_connections.load(Ordering::Relaxed),
             borsh_connection_attempts: self.wrpc_borsh_counters.connection_attempts.load(Ordering::Relaxed),
             borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed),

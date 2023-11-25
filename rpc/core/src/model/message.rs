@@ -698,6 +698,8 @@ pub struct ProcessMetrics {
     pub disk_io_write_bytes: u64,
     pub disk_io_read_per_sec: f64,
     pub disk_io_write_per_sec: f64,
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
 
     pub borsh_live_connections: u64,
     pub borsh_connection_attempts: u64,
