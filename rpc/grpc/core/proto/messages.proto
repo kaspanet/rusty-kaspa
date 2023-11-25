@@ -58,6 +58,7 @@ message KaspadRequest {
     GetMetricsRequestMessage getMetricsRequest = 1090;
     GetServerInfoRequestMessage getServerInfoRequest = 1092;
     GetSyncStatusRequestMessage getSyncStatusRequest = 1094;
+    GetDaaScoreTimestampEstimateRequestMessage GetDaaScoreTimestampEstimateRequest = 1096;
   }
 }
 
@@ -116,6 +117,7 @@ message KaspadResponse {
     GetMetricsResponseMessage getMetricsResponse= 1091;
     GetServerInfoResponseMessage getServerInfoResponse = 1093;
     GetSyncStatusResponseMessage getSyncStatusResponse = 1095;
+    GetDaaScoreTimestampEstimateResponseMessage GetDaaScoreTimestampEstimateResponse = 1097;
   }
 }
 
