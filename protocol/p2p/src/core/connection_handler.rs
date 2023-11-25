@@ -7,6 +7,7 @@ use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
 use kaspa_core::{debug, info};
 use kaspa_utils::networking::NetAddress;
+use kaspa_utils::request_response_size_middlewares::{measure_request_body_size_layer, CountBytesBody};
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
@@ -17,8 +18,10 @@ use tokio::sync::mpsc::{channel as mpsc_channel, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
+use tonic::codegen::Body;
 use tonic::transport::{Error as TonicError, Server as TonicServer};
 use tonic::{Request, Response, Status as TonicStatus, Streaming};
+use tower::ServiceBuilder;
 use tower_http::map_response_body::MapResponseBodyLayer;
 
 #[derive(Error, Debug)]
@@ -79,10 +82,8 @@ impl ConnectionHandler {
 
             // TODO: check whether we should set tcp_keepalive
             let serve_result = TonicServer::builder()
-                .layer(kaspa_utils::request_response_size_middlewares::measure_request_body_size_layer(rx_bytes, |b| b))
-                .layer(MapResponseBodyLayer::new(move |body| {
-                    kaspa_utils::request_response_size_middlewares::CountBytesBody::new(body, tx_bytes.clone())
-                }))
+                .layer(measure_request_body_size_layer(rx_bytes, |b| b))
+                .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, tx_bytes.clone())))
                 .add_service(proto_server)
                 .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
                 .await;
@@ -108,6 +109,13 @@ impl ConnectionHandler {
             .tcp_keepalive(Some(Duration::from_millis(Self::keep_alive())))
             .connect()
             .await?;
+
+        let channel = ServiceBuilder::new()
+            .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, self.rx_bytes.clone())))
+            .layer(measure_request_body_size_layer(self.tx_bytes.clone(), |body| {
+                body.map_err(|e| tonic::Status::from_error(Box::new(e))).boxed_unsync()
+            }))
+            .service(channel);
 
         let mut client = ProtoP2pClient::new(channel)
             .send_compressed(tonic::codec::CompressionEncoding::Gzip)

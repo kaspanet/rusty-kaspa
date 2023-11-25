@@ -62,17 +62,9 @@ impl Daemon {
         args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
 
         let network = args.network();
-        let (core, _) = create_core_with_runtime(&Default::default(), &args, fd_total_budget);
-        Daemon {
-            network,
-            rpc_port,
-            p2p_port,
-            core,
-            workers: None,
-            _appdir_tempdir: appdir_tempdir,
-            rx_bytes: Default::default(),
-            tx_bytes: Default::default(),
-        }
+        let (rx_bytes, tx_bytes): (Arc<AtomicUsize>, Arc<AtomicUsize>) = (Default::default(), Default::default());
+        let (core, _) = create_core_with_runtime(&Default::default(), &args, fd_total_budget, rx_bytes.clone(), tx_bytes.clone());
+        Daemon { network, rpc_port, p2p_port, core, workers: None, _appdir_tempdir: appdir_tempdir, rx_bytes, tx_bytes }
     }
 
     pub async fn start(&mut self) -> GrpcClient {

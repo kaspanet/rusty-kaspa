@@ -159,9 +159,14 @@ impl Runtime {
 /// The instance of the [`RpcCoreService`] needs to be released
 /// (dropped) before the `Core` is shut down.
 ///
-pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
+pub fn create_core(
+    args: Args,
+    fd_total_budget: i32,
+    rx_bytes: Arc<AtomicUsize>,
+    tx_bytes: Arc<AtomicUsize>,
+) -> (Arc<Core>, Arc<RpcCoreService>) {
     let rt = Runtime::from_args(&args);
-    create_core_with_runtime(&rt, &args, fd_total_budget)
+    create_core_with_runtime(&rt, &args, fd_total_budget, rx_bytes, tx_bytes)
 }
 
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
@@ -175,7 +180,13 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
 /// The instance of the [`RpcCoreService`] needs to be released
 /// (dropped) before the `Core` is shut down.
 ///
-pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
+pub fn create_core_with_runtime(
+    runtime: &Runtime,
+    args: &Args,
+    fd_total_budget: i32,
+    rx_bytes: Arc<AtomicUsize>,
+    tx_bytes: Arc<AtomicUsize>,
+) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
     let utxo_files_limit = if args.utxoindex {
@@ -360,7 +371,6 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         tick_service.clone(),
         notification_root,
     ));
-    let (tx_bytes, rx_bytes): (Arc<AtomicUsize>, Arc<AtomicUsize>) = (Default::default(), Default::default());
 
     let p2p_service = Arc::new(P2pService::new(
         flow_context.clone(),

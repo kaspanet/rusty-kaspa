@@ -3,6 +3,7 @@ use hyper::{
     body::{Bytes, HttpBody, SizeHint},
     HeaderMap,
 };
+use log::{debug, warn};
 use pin_project_lite::pin_project;
 use std::{
     pin::Pin,
@@ -40,8 +41,10 @@ where
         let counter: Arc<AtomicUsize> = this.counter.clone();
         match ready!(this.inner.poll_data(cx)) {
             Some(Ok(chunk)) => {
-                println!("response body chunk size = {}", chunk.len());
-                counter.fetch_add(chunk.len(), Ordering::Release);
+                debug!("[SIZE MW] response body chunk size = {}", chunk.len());
+                let previous = counter.fetch_add(chunk.len(), Ordering::Relaxed);
+                debug!("[SIZE MW] total count: {}", previous);
+
                 Poll::Ready(Some(Ok(chunk)))
             }
             x => Poll::Ready(x),
@@ -61,26 +64,37 @@ where
     }
 }
 
-pub fn measure_request_body_size_layer(
+pub fn measure_request_body_size_layer<B1, B2, F>(
     bytes_sent_counter: Arc<AtomicUsize>,
-) -> MapRequestBodyLayer<impl Fn(hyper::body::Body) -> hyper::body::Body + Clone> {
-    MapRequestBodyLayer::new(move |mut body: hyper::body::Body| {
+    f: F,
+) -> MapRequestBodyLayer<impl Fn(B1) -> B2 + Clone>
+where
+    B1: HttpBody<Data = Bytes> + Unpin + Send + 'static,
+    <B1 as HttpBody>::Error: Send,
+    F: Fn(hyper::body::Body) -> B2 + Clone,
+{
+    MapRequestBodyLayer::new(move |mut body: B1| {
         let (mut tx, new_body) = hyper::Body::channel();
-
         let bytes_sent_counter = bytes_sent_counter.clone();
         tokio::spawn(async move {
             while let Some(chunk) = body.data().await {
-                let chunk = chunk.unwrap();
-                println!("request body chunk size = {}", chunk.len());
-                bytes_sent_counter.fetch_add(chunk.len(), Ordering::Release);
-                tx.send_data(chunk).await.unwrap();
+                let Ok(chunk) = chunk else { continue };
+                debug!("[SIZE MW] request body chunk size = {}", chunk.len());
+                let previous = bytes_sent_counter.fetch_add(chunk.len(), Ordering::Relaxed);
+                debug!("[SIZE MW] total count: {}", previous);
+                if let Err(err) = tx.send_data(chunk).await {
+                    warn!("[SIZE MW] error sending data: {}", err)
+                    // error can occurs if only channel is already closed
+                }
             }
 
-            if let Some(trailers) = body.trailers().await.unwrap() {
-                tx.send_trailers(trailers).await.unwrap();
+            if let Ok(Some(trailers)) = body.trailers().await {
+                if let Err(err) = tx.send_trailers(trailers).await {
+                    warn!("[SIZE MW] error sending trailers: {}", err)
+                    // error can occurs if only channel is already closed
+                }
             }
         });
-
-        new_body
+        f(new_body)
     })
 }

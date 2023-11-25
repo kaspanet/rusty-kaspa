@@ -19,6 +19,7 @@ use kaspa_rpc_core::{
     notify::{channel::NotificationChannel, connection::ChannelConnection},
     Notification, RpcResult,
 };
+use kaspa_utils::request_response_size_middlewares::CountBytesBody;
 use kaspa_utils::{networking::NetAddress, request_response_size_middlewares::measure_request_body_size_layer};
 use std::{
     fmt::Debug,
@@ -123,9 +124,7 @@ impl ConnectionHandler {
                 .http2_keepalive_interval(Some(GRPC_KEEP_ALIVE_PING_INTERVAL))
                 .http2_keepalive_timeout(Some(GRPC_KEEP_ALIVE_PING_TIMEOUT))
                 .layer(measure_request_body_size_layer(rx_bytes, |b| b))
-                .layer(MapResponseBodyLayer::new(move |body| {
-                    kaspa_utils::request_response_size_middlewares::CountBytesBody::new(body, tx_bytes.clone())
-                }))
+                .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, tx_bytes.clone())))
                 .add_service(protowire_server)
                 .serve_with_shutdown(
                     serve_address.into(),

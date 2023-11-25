@@ -2,6 +2,7 @@ extern crate kaspa_consensus;
 extern crate kaspa_core;
 extern crate kaspa_hashes;
 
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use kaspa_core::{info, signals::Signals};
@@ -18,7 +19,9 @@ pub fn main() {
 
     let args = parse_args();
     let fd_total_budget = fd_budget::limit() - args.rpc_max_clients as i32 - args.inbound_limit as i32 - args.outbound_target as i32;
-    let (core, _) = create_core(args, fd_total_budget);
+    let (rx_bytes, tx_bytes): (Arc<AtomicUsize>, Arc<AtomicUsize>) = (Default::default(), Default::default());
+
+    let (core, _) = create_core(args, fd_total_budget, rx_bytes, tx_bytes);
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();

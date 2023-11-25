@@ -42,6 +42,7 @@ tokio-stream = { workspace = true, features = ["net"] }
 tonic = { workspace = true, features = ["tls", "gzip"] }
 uuid.workspace = true
 tower-http.workspace = true
+tower.workspace = true
 
 [build-dependencies]
 tonic-build = { workspace = true, features = ["prost"] }

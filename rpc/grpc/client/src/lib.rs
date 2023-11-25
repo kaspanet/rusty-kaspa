@@ -31,6 +31,7 @@ use kaspa_rpc_core::{
     notify::{collector::RpcCoreConverter, connection::ChannelConnection, mode::NotificationMode},
     Notification,
 };
+use kaspa_utils::request_response_size_middlewares::{measure_request_body_size_layer, CountBytesBody};
 use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
 use regex::Regex;
 use std::{
@@ -43,6 +44,7 @@ use std::{
 use tokio::sync::Mutex;
 use tonic::{codec::CompressionEncoding, codegen::Body, Streaming};
 use tower::ServiceBuilder;
+use tower_http::map_response_body::MapResponseBodyLayer;
 
 mod connection_event;
 pub mod error;
@@ -471,10 +473,8 @@ impl Inner {
                 .connect()
                 .await?;
         let channel = ServiceBuilder::new()
-            .layer(tower_http::map_response_body::MapResponseBodyLayer::new(move |body| {
-                kaspa_utils::request_response_size_middlewares::CountBytesBody::new(body, rx_bytes.clone())
-            }))
-            .layer(kaspa_utils::request_response_size_middlewares::measure_request_body_size_layer(tx_bytes.clone(), |body| {
+            .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, rx_bytes.clone())))
+            .layer(measure_request_body_size_layer(tx_bytes.clone(), |body| {
                 body.map_err(|e| tonic::Status::from_error(Box::new(e))).boxed_unsync()
             }))
             .service(channel);
