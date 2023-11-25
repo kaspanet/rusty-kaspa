@@ -32,6 +32,19 @@ from!(item: &kaspa_rpc_core::ConnectionMetrics, protowire::ConnectionMetrics, {
     }
 });
 
+from!(item: &kaspa_rpc_core::BandwidthMetrics, protowire::BandwidthMetrics, {
+    Self {
+        borsh_bytes_tx: item.borsh_bytes_tx,
+        borsh_bytes_rx: item.borsh_bytes_rx,
+        json_bytes_tx: item.json_bytes_tx,
+        json_bytes_rx: item.json_bytes_rx,
+        grpc_p2p_bytes_tx: item.grpc_p2p_bytes_tx,
+        grpc_p2p_bytes_rx: item.grpc_p2p_bytes_rx,
+        grpc_user_bytes_tx: item.grpc_user_bytes_tx,
+        grpc_user_bytes_rx: item.grpc_user_bytes_rx,
+    }
+});
+
 from!(item: &kaspa_rpc_core::ConsensusMetrics, protowire::ConsensusMetrics, {
     Self {
         blocks_submitted: item.node_blocks_submitted_count,
@@ -79,6 +92,19 @@ try_from!(item: &protowire::ConnectionMetrics, kaspa_rpc_core::ConnectionMetrics
         json_connection_attempts: item.json_connection_attempts,
         json_handshake_failures: item.json_handshake_failures,
         active_peers: item.active_peers,
+    }
+});
+
+try_from!(item: &protowire::BandwidthMetrics, kaspa_rpc_core::BandwidthMetrics, {
+    Self {
+        borsh_bytes_tx: item.borsh_bytes_tx,
+        borsh_bytes_rx: item.borsh_bytes_rx,
+        json_bytes_tx: item.json_bytes_tx,
+        json_bytes_rx: item.json_bytes_rx,
+        grpc_p2p_bytes_tx: item.grpc_p2p_bytes_tx,
+        grpc_p2p_bytes_rx: item.grpc_p2p_bytes_rx,
+        grpc_user_bytes_tx: item.grpc_user_bytes_tx,
+        grpc_user_bytes_rx: item.grpc_user_bytes_rx,
     }
 });
 

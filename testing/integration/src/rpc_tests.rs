@@ -457,6 +457,7 @@ async fn sanity_test() {
                         .get_metrics_call(GetMetricsRequest {
                             consensus_metrics: true,
                             connection_metrics: true,
+                            bandwidth_metrics: true,
                             process_metrics: true,
                         })
                         .await
@@ -468,6 +469,7 @@ async fn sanity_test() {
                         .get_metrics_call(GetMetricsRequest {
                             consensus_metrics: false,
                             connection_metrics: true,
+                            bandwidth_metrics: true,
                             process_metrics: true,
                         })
                         .await
@@ -479,6 +481,7 @@ async fn sanity_test() {
                         .get_metrics_call(GetMetricsRequest {
                             consensus_metrics: true,
                             connection_metrics: true,
+                            bandwidth_metrics: false,
                             process_metrics: false,
                         })
                         .await
@@ -490,6 +493,7 @@ async fn sanity_test() {
                         .get_metrics_call(GetMetricsRequest {
                             consensus_metrics: false,
                             connection_metrics: true,
+                            bandwidth_metrics: false,
                             process_metrics: false,
                         })
                         .await

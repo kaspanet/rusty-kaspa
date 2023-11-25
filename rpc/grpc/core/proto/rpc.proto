@@ -775,6 +775,17 @@ message ConnectionMetrics {
   uint64 activePeers = 51;
 }
 
+message BandwidthMetrics {
+  uint64 borshBytesTx = 61;
+  uint64 borshBytesRx = 62;
+  uint64 jsonBytesTx = 63;
+  uint64 jsonBytesRx = 64;
+  uint64 grpcP2pBytesTx = 65;
+  uint64 grpcP2pBytesRx = 66;
+  uint64 grpcUserBytesTx = 67;
+  uint64 grpcUserBytesRx = 68;
+}
+
 message ConsensusMetrics{
   uint64 blocksSubmitted = 1;
   uint64 headerCounts = 2;
@@ -796,14 +807,16 @@ message ConsensusMetrics{
 message GetMetricsRequestMessage{
   bool processMetrics = 1;
   bool connectionMetrics = 2;
-  bool consensusMetrics = 3;
+  bool bandwidthMetrics = 3;
+  bool consensusMetrics = 4;
 }
 
 message GetMetricsResponseMessage{
   uint64 serverTime = 1;
   ProcessMetrics processMetrics = 11;
   ConnectionMetrics connectionMetrics = 12;
-  ConsensusMetrics consensusMetrics = 13;
+  BandwidthMetrics bandwidthMetrics = 13;
+  ConsensusMetrics consensusMetrics = 14;
   RPCError error = 1000;
 }
 

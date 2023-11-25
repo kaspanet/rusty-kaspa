@@ -149,7 +149,7 @@ impl Metrics {
         let si = true;
         for metric in Metric::list() {
             let value = data.get(&metric);
-            self.graph(&metric).ingest(data.unixtime, value, &data.format(&metric, si, false)).await?;
+            self.graph(&metric).ingest(data.unixtime_millis, value, &data.format(&metric, si, false)).await?;
         }
 
         yield_executor().await;

@@ -115,8 +115,8 @@ impl Metrics {
     // --- samplers
 
     async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>, data: &mut MetricsData) -> Result<()> {
-        let metrics = rpc.get_metrics(true, true, true).await?;
-        let GetMetricsResponse { server_time: _, consensus_metrics, connection_metrics, process_metrics } = metrics;
+        let metrics = rpc.get_metrics(true, true, true, true).await?;
+        let GetMetricsResponse { server_time: _, consensus_metrics, connection_metrics, bandwidth_metrics, process_metrics } = metrics;
 
         if let Some(consensus_metrics) = consensus_metrics {
             data.node_blocks_submitted_count = consensus_metrics.node_blocks_submitted_count;
@@ -144,6 +144,17 @@ impl Metrics {
             data.node_json_connection_attempts = connection_metrics.json_connection_attempts;
             data.node_json_handshake_failures = connection_metrics.json_handshake_failures;
             data.node_active_peers = connection_metrics.active_peers;
+        }
+
+        if let Some(bandwidth_metrics) = bandwidth_metrics {
+            data.node_borsh_bytes_tx = bandwidth_metrics.borsh_bytes_tx;
+            data.node_borsh_bytes_rx = bandwidth_metrics.borsh_bytes_rx;
+            data.node_json_bytes_tx = bandwidth_metrics.json_bytes_tx;
+            data.node_json_bytes_rx = bandwidth_metrics.json_bytes_rx;
+            data.node_grpc_p2p_bytes_tx = bandwidth_metrics.grpc_p2p_bytes_tx;
+            data.node_grpc_p2p_bytes_rx = bandwidth_metrics.grpc_p2p_bytes_rx;
+            data.node_grpc_user_bytes_tx = bandwidth_metrics.grpc_user_bytes_tx;
+            data.node_grpc_user_bytes_rx = bandwidth_metrics.grpc_user_bytes_rx;
         }
 
         if let Some(process_metrics) = process_metrics {

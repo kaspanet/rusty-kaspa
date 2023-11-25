@@ -738,9 +738,11 @@ impl RpcApi for RpcCoreService {
             None
         };
 
+        let bandwidth_metrics = None;
+
         let server_time = unix_now();
 
-        let response = GetMetricsResponse { server_time, process_metrics, connection_metrics, consensus_metrics };
+        let response = GetMetricsResponse { server_time, process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics };
 
         Ok(response)
     }

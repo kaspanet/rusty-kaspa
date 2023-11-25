@@ -684,6 +684,7 @@ pub struct PingResponse {}
 pub struct GetMetricsRequest {
     pub process_metrics: bool,
     pub connection_metrics: bool,
+    pub bandwidth_metrics: bool,
     pub consensus_metrics: bool,
 }
 
@@ -716,6 +717,19 @@ pub struct ConnectionMetrics {
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct BandwidthMetrics {
+    pub borsh_bytes_tx: u64,
+    pub borsh_bytes_rx: u64,
+    pub json_bytes_tx: u64,
+    pub json_bytes_rx: u64,
+    pub grpc_p2p_bytes_tx: u64,
+    pub grpc_p2p_bytes_rx: u64,
+    pub grpc_user_bytes_tx: u64,
+    pub grpc_user_bytes_rx: u64,
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ConsensusMetrics {
     pub node_blocks_submitted_count: u64,
     pub node_headers_processed_count: u64,
@@ -741,6 +755,7 @@ pub struct GetMetricsResponse {
     pub server_time: u64,
     pub process_metrics: Option<ProcessMetrics>,
     pub connection_metrics: Option<ConnectionMetrics>,
+    pub bandwidth_metrics: Option<BandwidthMetrics>,
     pub consensus_metrics: Option<ConsensusMetrics>,
 }
 
@@ -749,9 +764,10 @@ impl GetMetricsResponse {
         server_time: u64,
         process_metrics: Option<ProcessMetrics>,
         connection_metrics: Option<ConnectionMetrics>,
+        bandwidth_metrics: Option<BandwidthMetrics>,
         consensus_metrics: Option<ConsensusMetrics>,
     ) -> Self {
-        Self { process_metrics, connection_metrics, consensus_metrics, server_time }
+        Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, server_time }
     }
 }
 

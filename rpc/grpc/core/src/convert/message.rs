@@ -360,6 +360,7 @@ from!(item: &kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMess
     Self {
         process_metrics: item.process_metrics,
         connection_metrics: item.connection_metrics,
+        bandwidth_metrics: item.bandwidth_metrics,
         consensus_metrics: item.consensus_metrics,
     }
 });
@@ -368,6 +369,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetric
         server_time: item.server_time,
         process_metrics: item.process_metrics.as_ref().map(|x| x.into()),
         connection_metrics: item.connection_metrics.as_ref().map(|x| x.into()),
+        bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.into()),
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
         error: None,
     }
@@ -721,13 +723,14 @@ try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
 try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
 try_from!(item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
-    Self { process_metrics: item.process_metrics, connection_metrics: item.connection_metrics, consensus_metrics: item.consensus_metrics }
+    Self { process_metrics: item.process_metrics, connection_metrics: item.connection_metrics, bandwidth_metrics:item.bandwidth_metrics, consensus_metrics: item.consensus_metrics }
 });
 try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
         server_time: item.server_time,
         process_metrics: item.process_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         connection_metrics: item.connection_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
     }
 });

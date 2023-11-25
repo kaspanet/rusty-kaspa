@@ -7,6 +7,7 @@ use workflow_core::enums::Describe;
 pub enum MetricGroup {
     System,
     Storage,
+    Bandwidth,
     Network,
     BlockDAG,
 }
@@ -16,6 +17,7 @@ impl std::fmt::Display for MetricGroup {
         match self {
             MetricGroup::System => write!(f, "system"),
             MetricGroup::Storage => write!(f, "storage"),
+            MetricGroup::Bandwidth => write!(f, "bandwidth"),
             MetricGroup::Network => write!(f, "network"),
             MetricGroup::BlockDAG => write!(f, "block-dag"),
         }
@@ -27,6 +29,7 @@ impl MetricGroup {
         match self {
             MetricGroup::System => "System",
             MetricGroup::Storage => "Storage",
+            MetricGroup::Bandwidth => "Bandwidth",
             MetricGroup::Network => "Network",
             MetricGroup::BlockDAG => "BlockDAG",
         }
@@ -47,6 +50,28 @@ impl MetricGroup {
                 Metric::NodeDiskIoWriteBytes,
                 Metric::NodeDiskIoReadPerSec,
                 Metric::NodeDiskIoWritePerSec,
+            ],
+            MetricGroup::Bandwidth => vec![
+                Metric::NodeBorshBytesTx,
+                Metric::NodeBorshBytesRx,
+                Metric::NodeJsonBytesTx,
+                Metric::NodeJsonBytesRx,
+                Metric::NodeGrpcP2pBytesTx,
+                Metric::NodeGrpcP2pBytesRx,
+                Metric::NodeGrpcUserBytesTx,
+                Metric::NodeGrpcUserBytesRx,
+                Metric::NodeTotalBytesTx,
+                Metric::NodeTotalBytesRx,
+                Metric::NodeBorshBytesTxPerSecond,
+                Metric::NodeBorshBytesRxPerSecond,
+                Metric::NodeJsonBytesTxPerSecond,
+                Metric::NodeJsonBytesRxPerSecond,
+                Metric::NodeGrpcP2pBytesTxPerSecond,
+                Metric::NodeGrpcP2pBytesRxPerSecond,
+                Metric::NodeGrpcUserBytesTxPerSecond,
+                Metric::NodeGrpcUserBytesRxPerSecond,
+                Metric::NodeTotalBytesTxPerSecond,
+                Metric::NodeTotalBytesRxPerSecond,
             ],
             MetricGroup::Network => vec![Metric::NodeActivePeers],
             MetricGroup::BlockDAG => vec![
@@ -89,6 +114,27 @@ impl From<Metric> for MetricGroup {
             | Metric::NodeJsonConnectionAttempts
             | Metric::NodeJsonHandshakeFailures
             | Metric::NodeActivePeers => MetricGroup::Network,
+            // --
+            Metric::NodeBorshBytesRx
+            | Metric::NodeBorshBytesTx
+            | Metric::NodeJsonBytesTx
+            | Metric::NodeJsonBytesRx
+            | Metric::NodeGrpcP2pBytesTx
+            | Metric::NodeGrpcP2pBytesRx
+            | Metric::NodeGrpcUserBytesTx
+            | Metric::NodeGrpcUserBytesRx
+            | Metric::NodeTotalBytesRx
+            | Metric::NodeTotalBytesTx
+            | Metric::NodeBorshBytesRxPerSecond
+            | Metric::NodeBorshBytesTxPerSecond
+            | Metric::NodeJsonBytesTxPerSecond
+            | Metric::NodeJsonBytesRxPerSecond
+            | Metric::NodeGrpcP2pBytesTxPerSecond
+            | Metric::NodeGrpcP2pBytesRxPerSecond
+            | Metric::NodeGrpcUserBytesTxPerSecond
+            | Metric::NodeGrpcUserBytesRxPerSecond
+            | Metric::NodeTotalBytesRxPerSecond
+            | Metric::NodeTotalBytesTxPerSecond => MetricGroup::Network,
             // --
             Metric::NodeBlocksSubmittedCount
             | Metric::NodeHeadersProcessedCount
@@ -133,6 +179,27 @@ pub enum Metric {
     NodeJsonHandshakeFailures,
     NodeActivePeers,
     // ---
+    NodeBorshBytesTx,
+    NodeBorshBytesRx,
+    NodeJsonBytesTx,
+    NodeJsonBytesRx,
+    NodeGrpcP2pBytesTx,
+    NodeGrpcP2pBytesRx,
+    NodeGrpcUserBytesTx,
+    NodeGrpcUserBytesRx,
+    NodeTotalBytesTx,
+    NodeTotalBytesRx,
+    NodeBorshBytesTxPerSecond,
+    NodeBorshBytesRxPerSecond,
+    NodeJsonBytesTxPerSecond,
+    NodeJsonBytesRxPerSecond,
+    NodeGrpcP2pBytesTxPerSecond,
+    NodeGrpcP2pBytesRxPerSecond,
+    NodeGrpcUserBytesTxPerSecond,
+    NodeGrpcUserBytesRxPerSecond,
+    NodeTotalBytesTxPerSecond,
+    NodeTotalBytesRxPerSecond,
+    // ---
     NodeBlocksSubmittedCount,
     NodeHeadersProcessedCount,
     NodeDependenciesProcessedCount,
@@ -169,6 +236,26 @@ impl Metric {
             | Metric::NodeJsonLiveConnections
             | Metric::NodeJsonConnectionAttempts
             | Metric::NodeJsonHandshakeFailures
+            | Metric::NodeBorshBytesTx
+            | Metric::NodeBorshBytesRx
+            | Metric::NodeJsonBytesTx
+            | Metric::NodeJsonBytesRx
+            | Metric::NodeGrpcP2pBytesTx
+            | Metric::NodeGrpcP2pBytesRx
+            | Metric::NodeGrpcUserBytesTx
+            | Metric::NodeGrpcUserBytesRx
+            | Metric::NodeTotalBytesTx
+            | Metric::NodeTotalBytesRx
+            | Metric::NodeBorshBytesTxPerSecond
+            | Metric::NodeBorshBytesRxPerSecond
+            | Metric::NodeJsonBytesTxPerSecond
+            | Metric::NodeJsonBytesRxPerSecond
+            | Metric::NodeGrpcP2pBytesTxPerSecond
+            | Metric::NodeGrpcP2pBytesRxPerSecond
+            | Metric::NodeGrpcUserBytesTxPerSecond
+            | Metric::NodeGrpcUserBytesRxPerSecond
+            | Metric::NodeTotalBytesTxPerSecond
+            | Metric::NodeTotalBytesRxPerSecond
             | Metric::NodeActivePeers => "system",
             // --
             Metric::NodeBlocksSubmittedCount
@@ -208,6 +295,28 @@ impl Metric {
             Metric::NodeJsonConnectionAttempts => f.separated_string(),
             Metric::NodeJsonHandshakeFailures => f.separated_string(),
             Metric::NodeActivePeers => f.separated_string(),
+            // --
+            Metric::NodeBorshBytesTx => as_data_size(f, si),
+            Metric::NodeBorshBytesRx => as_data_size(f, si),
+            Metric::NodeJsonBytesTx => as_data_size(f, si),
+            Metric::NodeJsonBytesRx => as_data_size(f, si),
+            Metric::NodeGrpcP2pBytesTx => as_data_size(f, si),
+            Metric::NodeGrpcP2pBytesRx => as_data_size(f, si),
+            Metric::NodeGrpcUserBytesTx => as_data_size(f, si),
+            Metric::NodeGrpcUserBytesRx => as_data_size(f, si),
+            Metric::NodeTotalBytesTx => as_data_size(f, si),
+            Metric::NodeTotalBytesRx => as_data_size(f, si),
+            // --
+            Metric::NodeBorshBytesTxPerSecond => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeBorshBytesRxPerSecond => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeJsonBytesTxPerSecond => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeJsonBytesRxPerSecond => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeGrpcP2pBytesTxPerSecond => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeGrpcP2pBytesRxPerSecond => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeGrpcUserBytesTxPerSecond => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeGrpcUserBytesRxPerSecond => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeTotalBytesTxPerSecond => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeTotalBytesRxPerSecond => format!("{}/s", as_kb(f, si, short)),
             // --
             Metric::NodeBlocksSubmittedCount => format_as_float(f, short),
             Metric::NodeHeadersProcessedCount => format_as_float(f, short),
@@ -249,6 +358,28 @@ impl Metric {
             Metric::NodeJsonConnectionAttempts => ("Json Connection Attempts", "Json Conn Att"),
             Metric::NodeJsonHandshakeFailures => ("Json Handshake Failures", "Json Failures"),
             // --
+            Metric::NodeBorshBytesTx => ("Borsh Tx", "Borsh Tx"),
+            Metric::NodeBorshBytesRx => ("Borsh Rx", "Borsh Rx"),
+            Metric::NodeJsonBytesTx => ("Json Tx", "Json Tx"),
+            Metric::NodeJsonBytesRx => ("Json Rx", "Json Rx"),
+            Metric::NodeGrpcP2pBytesTx => ("p2p Tx", "p2p Tx"),
+            Metric::NodeGrpcP2pBytesRx => ("p2p Rx", "p2p Rx"),
+            Metric::NodeGrpcUserBytesTx => ("Grpc User Tx", "Grpc User Tx"),
+            Metric::NodeGrpcUserBytesRx => ("Grpc User Rx", "Grpc User Rx"),
+            Metric::NodeTotalBytesTx => ("Total Tx", "Total Tx"),
+            Metric::NodeTotalBytesRx => ("Total Rx", "Total Rx"),
+            // --
+            Metric::NodeBorshBytesTxPerSecond => ("Borsh Tx/s", "Borsh Tx/s"),
+            Metric::NodeBorshBytesRxPerSecond => ("Borsh Rx/s", "Borsh Rx/s"),
+            Metric::NodeJsonBytesTxPerSecond => ("Json Tx/s", "Json Tx/s"),
+            Metric::NodeJsonBytesRxPerSecond => ("Json Rx/s", "Json Rx/s"),
+            Metric::NodeGrpcP2pBytesTxPerSecond => ("p2p Tx/s", "p2p Tx/s"),
+            Metric::NodeGrpcP2pBytesRxPerSecond => ("p2p Rx/s", "p2p Rx/s"),
+            Metric::NodeGrpcUserBytesTxPerSecond => ("Grpc User Tx/s", "Grpc User Tx/s"),
+            Metric::NodeGrpcUserBytesRxPerSecond => ("Grpc User Rx/s", "Grpc User Rx/s"),
+            Metric::NodeTotalBytesTxPerSecond => ("Total Tx/s", "Total Tx/s"),
+            Metric::NodeTotalBytesRxPerSecond => ("Total Rx/s", "Total Rx/s"),
+            // --
             Metric::NodeBlocksSubmittedCount => ("Submitted Blocks", "Blocks"),
             Metric::NodeHeadersProcessedCount => ("Processed Headers", "Headers"),
             Metric::NodeDependenciesProcessedCount => ("Processed Dependencies", "Dependencies"),
@@ -272,7 +403,7 @@ impl Metric {
 
 #[derive(Default, Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub struct MetricsData {
-    pub unixtime: f64,
+    pub unixtime_millis: f64,
 
     // ---
     pub node_resident_set_size_bytes: u64,
@@ -294,6 +425,28 @@ pub struct MetricsData {
     pub node_json_handshake_failures: u64,
     pub node_active_peers: u64,
     // ---
+    pub node_borsh_bytes_tx: u64,
+    pub node_borsh_bytes_rx: u64,
+    pub node_json_bytes_tx: u64,
+    pub node_json_bytes_rx: u64,
+    pub node_grpc_p2p_bytes_tx: u64,
+    pub node_grpc_p2p_bytes_rx: u64,
+    pub node_grpc_user_bytes_tx: u64,
+    pub node_grpc_user_bytes_rx: u64,
+    pub node_total_bytes_tx: u64,
+    pub node_total_bytes_rx: u64,
+
+    pub node_borsh_bytes_tx_per_second: u64,
+    pub node_borsh_bytes_rx_per_second: u64,
+    pub node_json_bytes_tx_per_second: u64,
+    pub node_json_bytes_rx_per_second: u64,
+    pub node_grpc_p2p_bytes_tx_per_second: u64,
+    pub node_grpc_p2p_bytes_rx_per_second: u64,
+    pub node_grpc_user_bytes_tx_per_second: u64,
+    pub node_grpc_user_bytes_rx_per_second: u64,
+    pub node_total_bytes_tx_per_second: u64,
+    pub node_total_bytes_rx_per_second: u64,
+    // ---
     pub node_blocks_submitted_count: u64,
     pub node_headers_processed_count: u64,
     pub node_dependencies_processed_count: u64,
@@ -314,7 +467,7 @@ pub struct MetricsData {
 
 impl MetricsData {
     pub fn new(unixtime: f64) -> Self {
-        Self { unixtime, ..Default::default() }
+        Self { unixtime_millis: unixtime, ..Default::default() }
     }
 }
 
@@ -322,8 +475,8 @@ impl MetricsData {
 pub struct MetricsSnapshot {
     pub data: MetricsData,
 
-    pub unixtime: f64,
-    pub duration: f64,
+    pub unixtime_millis: f64,
+    pub duration_millis: f64,
     // ---
     pub node_resident_set_size_bytes: f64,
     pub node_virtual_memory_size_bytes: f64,
@@ -343,6 +496,29 @@ pub struct MetricsSnapshot {
     pub node_json_connection_attempts: f64,
     pub node_json_handshake_failures: f64,
     pub node_active_peers: f64,
+    // ---
+    pub node_borsh_bytes_tx: f64,
+    pub node_borsh_bytes_rx: f64,
+    pub node_json_bytes_tx: f64,
+    pub node_json_bytes_rx: f64,
+    pub node_grpc_p2p_bytes_tx: f64,
+    pub node_grpc_p2p_bytes_rx: f64,
+    pub node_grpc_user_bytes_tx: f64,
+    pub node_grpc_user_bytes_rx: f64,
+    pub node_total_bytes_tx: f64,
+    pub node_total_bytes_rx: f64,
+
+    pub node_borsh_bytes_tx_per_second: f64,
+    pub node_borsh_bytes_rx_per_second: f64,
+    pub node_json_bytes_tx_per_second: f64,
+    pub node_json_bytes_rx_per_second: f64,
+    pub node_grpc_p2p_bytes_tx_per_second: f64,
+    pub node_grpc_p2p_bytes_rx_per_second: f64,
+    pub node_grpc_user_bytes_tx_per_second: f64,
+    pub node_grpc_user_bytes_rx_per_second: f64,
+    pub node_total_bytes_tx_per_second: f64,
+    pub node_total_bytes_rx_per_second: f64,
+
     // ---
     pub node_blocks_submitted_count: f64,
     pub node_headers_processed_count: f64,
@@ -383,6 +559,28 @@ impl MetricsSnapshot {
             Metric::NodeJsonConnectionAttempts => self.node_json_connection_attempts,
             Metric::NodeJsonHandshakeFailures => self.node_json_handshake_failures,
             // ---
+            Metric::NodeBorshBytesTx => self.node_borsh_bytes_tx,
+            Metric::NodeBorshBytesRx => self.node_borsh_bytes_rx,
+            Metric::NodeJsonBytesTx => self.node_json_bytes_tx,
+            Metric::NodeJsonBytesRx => self.node_json_bytes_rx,
+            Metric::NodeGrpcP2pBytesTx => self.node_grpc_p2p_bytes_tx,
+            Metric::NodeGrpcP2pBytesRx => self.node_grpc_p2p_bytes_rx,
+            Metric::NodeGrpcUserBytesTx => self.node_grpc_user_bytes_tx,
+            Metric::NodeGrpcUserBytesRx => self.node_grpc_user_bytes_rx,
+            Metric::NodeTotalBytesTx => self.node_total_bytes_tx,
+            Metric::NodeTotalBytesRx => self.node_total_bytes_rx,
+
+            Metric::NodeBorshBytesTxPerSecond => self.node_borsh_bytes_tx_per_second,
+            Metric::NodeBorshBytesRxPerSecond => self.node_borsh_bytes_rx_per_second,
+            Metric::NodeJsonBytesTxPerSecond => self.node_json_bytes_tx_per_second,
+            Metric::NodeJsonBytesRxPerSecond => self.node_json_bytes_rx_per_second,
+            Metric::NodeGrpcP2pBytesTxPerSecond => self.node_grpc_p2p_bytes_tx_per_second,
+            Metric::NodeGrpcP2pBytesRxPerSecond => self.node_grpc_p2p_bytes_rx_per_second,
+            Metric::NodeGrpcUserBytesTxPerSecond => self.node_grpc_user_bytes_tx_per_second,
+            Metric::NodeGrpcUserBytesRxPerSecond => self.node_grpc_user_bytes_rx_per_second,
+            Metric::NodeTotalBytesTxPerSecond => self.node_total_bytes_tx_per_second,
+            Metric::NodeTotalBytesRxPerSecond => self.node_total_bytes_rx_per_second,
+            // ---
             Metric::NodeBlocksSubmittedCount => self.node_blocks_submitted_count,
             Metric::NodeHeadersProcessedCount => self.node_headers_processed_count,
             Metric::NodeDependenciesProcessedCount => self.node_dependencies_processed_count,
@@ -410,15 +608,31 @@ impl MetricsSnapshot {
     }
 }
 
+#[inline(always)]
+fn per_sec(a: u64, b: u64, duration_millis: f64) -> f64 {
+    b.checked_sub(a).unwrap_or_default() as f64 * 1000. / duration_millis
+}
+
 impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
     fn from((a, b): (&MetricsData, &MetricsData)) -> Self {
-        let duration = b.unixtime - a.unixtime;
-        let tps = b.node_transactions_processed_count.checked_sub(a.node_transactions_processed_count).unwrap_or_default() as f64
-            * 1000.
-            / duration;
+        let duration_millis = b.unixtime_millis - a.unixtime_millis;
+
+        let network_transactions_per_second =
+            per_sec(a.node_transactions_processed_count, b.node_transactions_processed_count, duration_millis);
+        let node_borsh_bytes_tx_per_second = per_sec(a.node_borsh_bytes_tx, b.node_borsh_bytes_tx, duration_millis);
+        let node_borsh_bytes_rx_per_second = per_sec(a.node_borsh_bytes_rx, b.node_borsh_bytes_rx, duration_millis);
+        let node_json_bytes_tx_per_second = per_sec(a.node_json_bytes_tx, b.node_json_bytes_tx, duration_millis);
+        let node_json_bytes_rx_per_second = per_sec(a.node_json_bytes_rx, b.node_json_bytes_rx, duration_millis);
+        let node_grpc_p2p_bytes_tx_per_second = per_sec(a.node_grpc_p2p_bytes_tx, b.node_grpc_p2p_bytes_tx, duration_millis);
+        let node_grpc_p2p_bytes_rx_per_second = per_sec(a.node_grpc_p2p_bytes_rx, b.node_grpc_p2p_bytes_rx, duration_millis);
+        let node_grpc_user_bytes_tx_per_second = per_sec(a.node_grpc_user_bytes_tx, b.node_grpc_user_bytes_tx, duration_millis);
+        let node_grpc_user_bytes_rx_per_second = per_sec(a.node_grpc_user_bytes_rx, b.node_grpc_user_bytes_rx, duration_millis);
+        let node_total_bytes_tx_per_second = per_sec(a.node_total_bytes_tx, b.node_total_bytes_tx, duration_millis);
+        let node_total_bytes_rx_per_second = per_sec(a.node_total_bytes_rx, b.node_total_bytes_rx, duration_millis);
+
         Self {
-            unixtime: b.unixtime,
-            duration,
+            unixtime_millis: b.unixtime_millis,
+            duration_millis,
             // ---
             node_cpu_usage: b.node_cpu_usage / b.node_cpu_cores as f64 * 100.0,
             node_cpu_cores: b.node_cpu_cores as f64,
@@ -438,6 +652,28 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             node_json_handshake_failures: b.node_json_handshake_failures as f64,
             node_active_peers: b.node_active_peers as f64,
             // ---
+            node_borsh_bytes_tx: b.node_borsh_bytes_tx as f64,
+            node_borsh_bytes_rx: b.node_borsh_bytes_rx as f64,
+            node_json_bytes_tx: b.node_json_bytes_tx as f64,
+            node_json_bytes_rx: b.node_json_bytes_rx as f64,
+            node_grpc_p2p_bytes_tx: b.node_grpc_p2p_bytes_tx as f64,
+            node_grpc_p2p_bytes_rx: b.node_grpc_p2p_bytes_rx as f64,
+            node_grpc_user_bytes_tx: b.node_grpc_user_bytes_tx as f64,
+            node_grpc_user_bytes_rx: b.node_grpc_user_bytes_rx as f64,
+            node_total_bytes_tx: b.node_total_bytes_tx as f64,
+            node_total_bytes_rx: b.node_total_bytes_rx as f64,
+
+            node_borsh_bytes_tx_per_second,
+            node_borsh_bytes_rx_per_second,
+            node_json_bytes_tx_per_second,
+            node_json_bytes_rx_per_second,
+            node_grpc_p2p_bytes_tx_per_second,
+            node_grpc_p2p_bytes_rx_per_second,
+            node_grpc_user_bytes_tx_per_second,
+            node_grpc_user_bytes_rx_per_second,
+            node_total_bytes_tx_per_second,
+            node_total_bytes_rx_per_second,
+            // ---
             node_blocks_submitted_count: b.node_blocks_submitted_count as f64,
             node_headers_processed_count: b.node_headers_processed_count as f64,
             node_dependencies_processed_count: b.node_dependencies_processed_count as f64,
@@ -449,7 +685,7 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             node_database_blocks_count: b.node_database_blocks_count as f64,
             node_database_headers_count: b.node_database_headers_count as f64,
             // --
-            network_transactions_per_second: tps,
+            network_transactions_per_second,
             network_tip_hashes_count: b.network_tip_hashes_count as f64,
             network_difficulty: b.network_difficulty,
             network_past_median_time: b.network_past_median_time as f64,
