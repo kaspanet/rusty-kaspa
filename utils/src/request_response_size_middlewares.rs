@@ -77,8 +77,7 @@ where
         let (mut tx, new_body) = hyper::Body::channel();
         let bytes_sent_counter = bytes_sent_counter.clone();
         tokio::spawn(async move {
-            while let Some(chunk) = body.data().await {
-                let Ok(chunk) = chunk else { continue };
+            while let Some(Ok(chunk)) = body.data().await {
                 debug!("[SIZE MW] request body chunk size = {}", chunk.len());
                 let previous = bytes_sent_counter.fetch_add(chunk.len(), Ordering::Relaxed);
                 debug!("[SIZE MW] total count: {}", previous);
