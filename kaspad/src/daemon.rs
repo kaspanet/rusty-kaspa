@@ -384,7 +384,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         wrpc_json_counters.clone(),
         perf_monitor.clone(),
     ));
-    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients));
+    let (tx_bytes, rx_bytes) = (Default::default(), Default::default());
+    let grpc_service =
+        Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients, tx_bytes, rx_bytes));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));

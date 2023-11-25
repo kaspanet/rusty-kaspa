@@ -19,10 +19,11 @@ use kaspa_rpc_core::{
     notify::{channel::NotificationChannel, connection::ChannelConnection},
     Notification, RpcResult,
 };
-use kaspa_utils::networking::NetAddress;
-use std::fmt::Debug;
+use kaspa_utils::{networking::NetAddress, request_response_size_middlewares::measure_request_body_size_layer};
 use std::{
+    fmt::Debug,
     pin::Pin,
+    sync::atomic::AtomicUsize,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -36,6 +37,7 @@ use tokio::{
 };
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tonic::{codec::CompressionEncoding, transport::Server as TonicServer, Request, Response};
+use tower_http::map_response_body::MapResponseBodyLayer;
 
 #[derive(Clone)]
 pub struct ServerContext {
@@ -64,6 +66,8 @@ pub struct ConnectionHandler {
     server_context: ServerContext,
     interface: Arc<Interface>,
     running: Arc<AtomicBool>,
+    rx_bytes: Arc<AtomicUsize>,
+    tx_bytes: Arc<AtomicUsize>,
 }
 
 const GRPC_SERVER: &str = "grpc-server";
@@ -73,6 +77,8 @@ impl ConnectionHandler {
         manager_sender: MpscSender<ManagerEvent>,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
+        rx_bytes: Arc<AtomicUsize>,
+        tx_bytes: Arc<AtomicUsize>,
     ) -> Self {
         // Prepare core objects
         let core_channel = NotificationChannel::default();
@@ -90,7 +96,7 @@ impl ConnectionHandler {
         let interface = Arc::new(Factory::new_interface(server_context.clone()));
         let running = Default::default();
 
-        Self { manager_sender, server_context, interface, running }
+        Self { manager_sender, server_context, interface, running, rx_bytes, tx_bytes }
     }
 
     /// Launches a gRPC server listener loop
@@ -99,6 +105,9 @@ impl ConnectionHandler {
         let (signal_sender, signal_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
         info!("GRPC Server starting on: {}", serve_address);
+
+        let rx_bytes = self.rx_bytes.clone();
+        let tx_bytes = self.tx_bytes.clone();
 
         // Spawn server task
         let server_handle = tokio::spawn(async move {
@@ -113,6 +122,10 @@ impl ConnectionHandler {
             let serve_result = TonicServer::builder()
                 .http2_keepalive_interval(Some(GRPC_KEEP_ALIVE_PING_INTERVAL))
                 .http2_keepalive_timeout(Some(GRPC_KEEP_ALIVE_PING_TIMEOUT))
+                .layer(measure_request_body_size_layer(rx_bytes))
+                .layer(MapResponseBodyLayer::new(move |body| {
+                    kaspa_utils::request_response_size_middlewares::CountBytesBody::new(body, tx_bytes.clone())
+                }))
                 .add_service(protowire_server)
                 .serve_with_shutdown(
                     serve_address.into(),

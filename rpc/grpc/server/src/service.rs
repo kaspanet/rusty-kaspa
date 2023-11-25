@@ -6,7 +6,7 @@ use kaspa_core::{
 };
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::{networking::NetAddress, triggers::SingleTrigger};
-use std::sync::Arc;
+use std::{sync::atomic::AtomicUsize, sync::Arc};
 
 const GRPC_SERVICE: &str = "grpc-service";
 
@@ -15,11 +15,19 @@ pub struct GrpcService {
     core_service: Arc<RpcCoreService>,
     rpc_max_clients: usize,
     shutdown: SingleTrigger,
+    rx_bytes: Arc<AtomicUsize>,
+    tx_bytes: Arc<AtomicUsize>,
 }
 
 impl GrpcService {
-    pub fn new(address: NetAddress, core_service: Arc<RpcCoreService>, rpc_max_clients: usize) -> Self {
-        Self { net_address: address, core_service, rpc_max_clients, shutdown: Default::default() }
+    pub fn new(
+        address: NetAddress,
+        core_service: Arc<RpcCoreService>,
+        rpc_max_clients: usize,
+        rx_bytes: Arc<AtomicUsize>,
+        tx_bytes: Arc<AtomicUsize>,
+    ) -> Self {
+        Self { net_address: address, core_service, rpc_max_clients, shutdown: Default::default(), rx_bytes, tx_bytes }
     }
 }
 
@@ -35,7 +43,14 @@ impl AsyncService for GrpcService {
         let shutdown_signal = self.shutdown.listener.clone();
 
         let manager = Manager::new(self.rpc_max_clients);
-        let grpc_adaptor = Adaptor::server(self.net_address, manager, self.core_service.clone(), self.core_service.notifier());
+        let grpc_adaptor = Adaptor::server(
+            self.net_address,
+            manager,
+            self.core_service.clone(),
+            self.core_service.notifier(),
+            self.rx_bytes.clone(),
+            self.tx_bytes.clone(),
+        );
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {

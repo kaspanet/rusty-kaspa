@@ -1,15 +1,16 @@
-use bytes::Bytes;
-use http_body::Body;
-use hyper::http;
-use log::debug;
+use futures::ready;
+use hyper::{
+    body::{Bytes, HttpBody, SizeHint},
+    HeaderMap,
+};
 use pin_project_lite::pin_project;
 use std::{
     pin::Pin,
     sync::{
-        atomic::{AtomicUsize, Ordering::SeqCst},
+        atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    task::{ready, Context, Poll},
+    task::{Context, Poll},
 };
 use tower_http::map_request_body::MapRequestBodyLayer;
 
@@ -27,9 +28,9 @@ impl<B> CountBytesBody<B> {
     }
 }
 
-impl<B> Body for CountBytesBody<B>
+impl<B> HttpBody for CountBytesBody<B>
 where
-    B: Body<Data = Bytes>,
+    B: HttpBody<Data = Bytes>,
 {
     type Data = B::Data;
     type Error = B::Error;
@@ -39,15 +40,15 @@ where
         let counter: Arc<AtomicUsize> = this.counter.clone();
         match ready!(this.inner.poll_data(cx)) {
             Some(Ok(chunk)) => {
-                debug!("response body chunk size = {}", chunk.len());
-                counter.fetch_add(chunk.len(), SeqCst);
+                println!("response body chunk size = {}", chunk.len());
+                counter.fetch_add(chunk.len(), Ordering::Release);
                 Poll::Ready(Some(Ok(chunk)))
             }
             x => Poll::Ready(x),
         }
     }
 
-    fn poll_trailers(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
+    fn poll_trailers(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
         self.project().inner.poll_trailers(cx)
     }
 
@@ -55,23 +56,23 @@ where
         self.inner.is_end_stream()
     }
 
-    fn size_hint(&self) -> http_body::SizeHint {
+    fn size_hint(&self) -> SizeHint {
         self.inner.size_hint()
     }
 }
 
 pub fn measure_request_body_size_layer(
     bytes_sent_counter: Arc<AtomicUsize>,
-) -> MapRequestBodyLayer<impl Fn(hyper::Body) -> hyper::Body + Clone> {
-    MapRequestBodyLayer::new(move |mut body: hyper::Body| {
+) -> MapRequestBodyLayer<impl Fn(hyper::body::Body) -> hyper::body::Body + Clone> {
+    MapRequestBodyLayer::new(move |mut body: hyper::body::Body| {
         let (mut tx, new_body) = hyper::Body::channel();
 
         let bytes_sent_counter = bytes_sent_counter.clone();
         tokio::spawn(async move {
             while let Some(chunk) = body.data().await {
                 let chunk = chunk.unwrap();
-                debug!("request body chunk size = {}", chunk.len());
-                bytes_sent_counter.fetch_add(chunk.len(), SeqCst);
+                println!("request body chunk size = {}", chunk.len());
+                bytes_sent_counter.fetch_add(chunk.len(), Ordering::Release);
                 tx.send_data(chunk).await.unwrap();
             }
 
