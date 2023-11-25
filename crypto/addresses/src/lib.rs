@@ -11,25 +11,25 @@ mod bech32;
 
 #[derive(Error, PartialEq, Eq, Debug, Clone)]
 pub enum AddressError {
-    #[error("Invalid prefix {0}")]
+    #[error("The address has an invalid prefix {0}")]
     InvalidPrefix(String),
 
-    #[error("Prefix is missing")]
+    #[error("The address prefix is missing")]
     MissingPrefix,
 
-    #[error("Invalid version {0}")]
+    #[error("The address has an invalid version {0}")]
     InvalidVersion(u8),
 
-    #[error("Invalid version {0}")]
+    #[error("The address has an invalid version {0}")]
     InvalidVersionString(String),
 
-    #[error("Invalid character {0}")]
+    #[error("The address contains an invalid character {0}")]
     DecodingError(char),
 
-    #[error("Checksum is invalid")]
+    #[error("The address checksum is invalid")]
     BadChecksum,
 
-    #[error("Invalid address")]
+    #[error("The address is invalid")]
     InvalidAddress,
 
     #[error("{0}")]
