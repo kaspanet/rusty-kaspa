@@ -4,6 +4,7 @@ use crate::result::Result;
 use crate::secret::Secret;
 use faster_hex::{hex_decode, hex_string};
 use kaspa_bip32::{ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic};
+use kaspa_utils::hex::ToHex;
 use secp256k1::SecretKey;
 use serde::Serializer;
 use std::collections::HashMap;
@@ -45,13 +46,13 @@ impl FromHex for KeyDataId {
 
 impl std::fmt::Debug for KeyDataId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "KeyDataId ( {:?} )", self.0)
+        write!(f, "KeyDataId ({})", self.0.as_slice().to_hex())
     }
 }
 
 impl std::fmt::Display for KeyDataId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "KeyDataId ( {:?} )", self.0)
+        write!(f, "{}", self.0.as_slice().to_hex())
     }
 }
 
@@ -92,8 +93,11 @@ pub type PrvKeyDataMap = HashMap<PrvKeyDataId, PrvKeyData>;
 #[serde(rename_all = "camelCase")]
 pub enum KeyCaps {
     // 24 word mnemonic, bip39 seed accounts
+    KaspaCore,
+    // 12 word mnemonic (legacy), keypair
+    Legacy,
+    // deprecated - to be removed
     MultipleAccounts,
-    // 12 word mnemonic (legacy)
     SingleAccount,
 }
 
@@ -101,9 +105,9 @@ impl KeyCaps {
     pub fn from_mnemonic_phrase(phrase: &str) -> Self {
         let data = phrase.split_whitespace().collect::<Vec<_>>();
         if data.len() == 12 {
-            KeyCaps::SingleAccount
+            KeyCaps::Legacy
         } else {
-            KeyCaps::MultipleAccounts
+            KeyCaps::KaspaCore
         }
     }
 }
@@ -112,7 +116,7 @@ impl KeyCaps {
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "key-variant", content = "key-data")]
 pub enum PrvKeyVariant {
-    // 12 (legacy) or 24 word Bip39 mnemonic
+    // 12 or 24 word Bip39 mnemonic
     Mnemonic(String),
     // Bip39 seed (generated from mnemonic)
     Bip39Seed(String),
@@ -339,7 +343,7 @@ impl PrvKeyData {
     }
 
     pub fn try_new_from_secret_key(secret_key: SecretKey, payment_secret: Option<&Secret>) -> Result<Self> {
-        let key_caps = KeyCaps::SingleAccount;
+        let key_caps = KeyCaps::Legacy;
         let payload = PrvKeyDataPayload::try_new_with_secret_key(secret_key)?;
         let mut prv_key_data = Self { id: payload.id(), payload: Encryptable::Plain(payload), key_caps, name: None };
         if let Some(payment_secret) = payment_secret {
@@ -355,7 +359,8 @@ impl PrvKeyData {
     }
 }
 
-#[derive(Clone, Debug)]
+// TODO: wasm bindgen
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct PrvKeyDataInfo {
     pub id: PrvKeyDataId,
     pub name: Option<String>,
@@ -375,6 +380,14 @@ impl PrvKeyDataInfo {
     }
 
     pub fn is_encrypted(&self) -> bool {
+        self.is_encrypted
+    }
+
+    // pub fn requires_wallet_passphrase(&self) -> bool {
+    //     self.key_caps == KeyCaps::SingleAccount
+    // }
+
+    pub fn requires_bip39_passphrase(&self) -> bool {
         self.is_encrypted
     }
 }
