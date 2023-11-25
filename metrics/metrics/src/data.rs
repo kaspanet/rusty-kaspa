@@ -189,6 +189,7 @@ pub enum Metric {
     NodeGrpcUserBytesRx,
     NodeTotalBytesTx,
     NodeTotalBytesRx,
+    // ---
     NodeBorshBytesTxPerSecond,
     NodeBorshBytesRxPerSecond,
     NodeJsonBytesTxPerSecond,
