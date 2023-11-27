@@ -8,8 +8,8 @@ pub enum MetricGroup {
     System,
     Storage,
     Bandwidth,
+    Connections,
     Network,
-    BlockDAG,
 }
 
 impl std::fmt::Display for MetricGroup {
@@ -18,8 +18,8 @@ impl std::fmt::Display for MetricGroup {
             MetricGroup::System => write!(f, "system"),
             MetricGroup::Storage => write!(f, "storage"),
             MetricGroup::Bandwidth => write!(f, "bandwidth"),
+            MetricGroup::Connections => write!(f, "connections"),
             MetricGroup::Network => write!(f, "network"),
-            MetricGroup::BlockDAG => write!(f, "block-dag"),
         }
     }
 }
@@ -30,15 +30,15 @@ impl MetricGroup {
             MetricGroup::System => "System",
             MetricGroup::Storage => "Storage",
             MetricGroup::Bandwidth => "Bandwidth",
+            MetricGroup::Connections => "Connections",
             MetricGroup::Network => "Network",
-            MetricGroup::BlockDAG => "BlockDAG",
         }
     }
 }
 
 impl MetricGroup {
     pub fn iter() -> impl Iterator<Item = MetricGroup> {
-        [MetricGroup::System, MetricGroup::Storage, MetricGroup::Network, MetricGroup::BlockDAG].into_iter()
+        [MetricGroup::System, MetricGroup::Storage, MetricGroup::Connections, MetricGroup::Network].into_iter()
     }
 
     pub fn metrics(&self) -> impl Iterator<Item = Metric> {
@@ -77,7 +77,7 @@ impl MetricGroup {
                 Metric::NodeJsonBytesTxPerSecond,
                 Metric::NodeJsonBytesRxPerSecond,
             ],
-            MetricGroup::Network => vec![
+            MetricGroup::Connections => vec![
                 Metric::NodeActivePeers,
                 Metric::NodeBorshLiveConnections,
                 Metric::NodeBorshConnectionAttempts,
@@ -86,7 +86,7 @@ impl MetricGroup {
                 Metric::NodeJsonConnectionAttempts,
                 Metric::NodeJsonHandshakeFailures,
             ],
-            MetricGroup::BlockDAG => vec![
+            MetricGroup::Network => vec![
                 Metric::NodeBlocksSubmittedCount,
                 Metric::NodeHeadersProcessedCount,
                 Metric::NodeDependenciesProcessedCount,
@@ -96,6 +96,7 @@ impl MetricGroup {
                 Metric::NodeMassProcessedCount,
                 Metric::NodeDatabaseBlocksCount,
                 Metric::NodeDatabaseHeadersCount,
+                Metric::NetworkMempoolSize,
                 Metric::NetworkTransactionsPerSecond,
                 Metric::NetworkTipHashesCount,
                 Metric::NetworkDifficulty,
@@ -125,7 +126,7 @@ impl From<Metric> for MetricGroup {
             | Metric::NodeJsonLiveConnections
             | Metric::NodeJsonConnectionAttempts
             | Metric::NodeJsonHandshakeFailures
-            | Metric::NodeActivePeers => MetricGroup::Network,
+            | Metric::NodeActivePeers => MetricGroup::Connections,
             // --
             Metric::NodeBorshBytesRx
             | Metric::NodeBorshBytesTx
@@ -159,12 +160,13 @@ impl From<Metric> for MetricGroup {
             | Metric::NodeDatabaseBlocksCount
             | Metric::NodeDatabaseHeadersCount
             // --
+            | Metric::NetworkMempoolSize
             | Metric::NetworkTransactionsPerSecond
             | Metric::NetworkTipHashesCount
             | Metric::NetworkDifficulty
             | Metric::NetworkPastMedianTime
             | Metric::NetworkVirtualParentHashesCount
-            | Metric::NetworkVirtualDaaScore => MetricGroup::BlockDAG,
+            | Metric::NetworkVirtualDaaScore => MetricGroup::Network,
         }
     }
 }
@@ -229,6 +231,7 @@ pub enum Metric {
     NodeDatabaseBlocksCount,
     NodeDatabaseHeadersCount,
     // --
+    NetworkMempoolSize,
     NetworkTransactionsPerSecond,
     NetworkTipHashesCount,
     NetworkDifficulty,
@@ -285,6 +288,7 @@ impl Metric {
             | Metric::NodeMassProcessedCount
             | Metric::NodeDatabaseBlocksCount
             | Metric::NodeDatabaseHeadersCount
+            | Metric::NetworkMempoolSize
             | Metric::NetworkTransactionsPerSecond
             | Metric::NetworkTipHashesCount
             | Metric::NetworkDifficulty
@@ -344,8 +348,8 @@ impl Metric {
             // --
             Metric::NodeDiskIoReadBytes => as_mb(f, si, short),
             Metric::NodeDiskIoWriteBytes => as_mb(f, si, short),
-            Metric::NodeDiskIoReadPerSec => format!("{}/s", as_kb(f, si, short)),
-            Metric::NodeDiskIoWritePerSec => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeDiskIoReadPerSec => format!("{}/s", as_data_size(f, si)),
+            Metric::NodeDiskIoWritePerSec => format!("{}/s", as_data_size(f, si)),
             // --
             Metric::NodeBorshLiveConnections => f.trunc().separated_string(),
             Metric::NodeBorshConnectionAttempts => f.trunc().separated_string(),
@@ -388,6 +392,7 @@ impl Metric {
             Metric::NodeDatabaseHeadersCount => format_as_float(f, short),
             Metric::NodeDatabaseBlocksCount => format_as_float(f, short),
             // --
+            Metric::NetworkMempoolSize => format_as_float(f.trunc(), short),
             Metric::NetworkTransactionsPerSecond => format_as_float(f.trunc(), short),
             Metric::NetworkTipHashesCount => format_as_float(f, short),
             Metric::NetworkDifficulty => format_as_float(f, short),
@@ -450,6 +455,7 @@ impl Metric {
             Metric::NodeDatabaseBlocksCount => ("Database Blocks", "DB Blocks"),
             Metric::NodeDatabaseHeadersCount => ("Database Headers", "DB Headers"),
             // --
+            Metric::NetworkMempoolSize => ("Mempool Size", "Mempool"),
             Metric::NetworkTransactionsPerSecond => ("TPS", "TPS"),
             Metric::NetworkTipHashesCount => ("Tip Hashes", "Tip Hashes"),
             Metric::NetworkDifficulty => ("Network Difficulty", "Difficulty"),
@@ -467,22 +473,22 @@ pub struct MetricsData {
     // ---
     pub node_resident_set_size_bytes: u64,
     pub node_virtual_memory_size_bytes: u64,
-    pub node_cpu_cores: u64,
-    pub node_cpu_usage: f64,
+    pub node_cpu_cores: u32,
+    pub node_cpu_usage: f32,
+    pub node_file_handles: u32,
     // ---
-    pub node_file_handles: u64,
     pub node_disk_io_read_bytes: u64,
     pub node_disk_io_write_bytes: u64,
-    pub node_disk_io_read_per_sec: f64,
-    pub node_disk_io_write_per_sec: f64,
+    pub node_disk_io_read_per_sec: f32,
+    pub node_disk_io_write_per_sec: f32,
     // ---
-    pub node_borsh_live_connections: u64,
+    pub node_borsh_live_connections: u32,
     pub node_borsh_connection_attempts: u64,
     pub node_borsh_handshake_failures: u64,
-    pub node_json_live_connections: u64,
+    pub node_json_live_connections: u32,
     pub node_json_connection_attempts: u64,
     pub node_json_handshake_failures: u64,
-    pub node_active_peers: u64,
+    pub node_active_peers: u32,
     // ---
     pub node_borsh_bytes_tx: u64,
     pub node_borsh_bytes_rx: u64,
@@ -517,10 +523,11 @@ pub struct MetricsData {
     pub node_database_blocks_count: u64,
     pub node_database_headers_count: u64,
     // --
-    pub network_tip_hashes_count: u64,
+    pub network_mempool_size: u64,
+    pub network_tip_hashes_count: u32,
     pub network_difficulty: f64,
     pub network_past_median_time: u64,
-    pub network_virtual_parent_hashes_count: u64,
+    pub network_virtual_parent_hashes_count: u32,
     pub network_virtual_daa_score: u64,
 }
 
@@ -587,6 +594,7 @@ pub struct MetricsSnapshot {
     pub node_chain_blocks_processed_count: f64,
     pub node_mass_processed_count: f64,
     // ---
+    pub network_mempool_size: f64,
     pub network_transactions_per_second: f64,
     pub node_database_blocks_count: f64,
     pub node_database_headers_count: f64,
@@ -645,11 +653,14 @@ impl MetricsSnapshot {
             Metric::NodeDependenciesProcessedCount => self.node_dependencies_processed_count,
             Metric::NodeBodiesProcessedCount => self.node_bodies_processed_count,
             Metric::NodeTransactionsProcessedCount => self.node_transactions_processed_count,
-            Metric::NetworkTransactionsPerSecond => self.network_transactions_per_second,
             Metric::NodeChainBlocksProcessedCount => self.node_chain_blocks_processed_count,
             Metric::NodeMassProcessedCount => self.node_mass_processed_count,
+            // --
             Metric::NodeDatabaseBlocksCount => self.node_database_blocks_count,
             Metric::NodeDatabaseHeadersCount => self.node_database_headers_count,
+            // --
+            Metric::NetworkMempoolSize => self.network_mempool_size,
+            Metric::NetworkTransactionsPerSecond => self.network_transactions_per_second,
             Metric::NetworkTipHashesCount => self.network_tip_hashes_count,
             Metric::NetworkDifficulty => self.network_difficulty,
             Metric::NetworkPastMedianTime => self.network_past_median_time,
@@ -693,15 +704,15 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             unixtime_millis: b.unixtime_millis,
             duration_millis,
             // ---
-            node_cpu_usage: b.node_cpu_usage / b.node_cpu_cores as f64 * 100.0,
+            node_cpu_usage: b.node_cpu_usage as f64 / b.node_cpu_cores as f64 * 100.0,
             node_cpu_cores: b.node_cpu_cores as f64,
             node_resident_set_size_bytes: b.node_resident_set_size_bytes as f64,
             node_virtual_memory_size_bytes: b.node_virtual_memory_size_bytes as f64,
             node_file_handles: b.node_file_handles as f64,
             node_disk_io_read_bytes: b.node_disk_io_read_bytes as f64,
             node_disk_io_write_bytes: b.node_disk_io_write_bytes as f64,
-            node_disk_io_read_per_sec: b.node_disk_io_read_per_sec,
-            node_disk_io_write_per_sec: b.node_disk_io_write_per_sec,
+            node_disk_io_read_per_sec: b.node_disk_io_read_per_sec as f64,
+            node_disk_io_write_per_sec: b.node_disk_io_write_per_sec as f64,
             // ---
             node_borsh_active_connections: b.node_borsh_live_connections as f64,
             node_borsh_connection_attempts: b.node_borsh_connection_attempts as f64,
@@ -744,6 +755,7 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             node_database_blocks_count: b.node_database_blocks_count as f64,
             node_database_headers_count: b.node_database_headers_count as f64,
             // --
+            network_mempool_size: b.network_mempool_size as f64,
             network_transactions_per_second,
             network_tip_hashes_count: b.network_tip_hashes_count as f64,
             network_difficulty: b.network_difficulty,

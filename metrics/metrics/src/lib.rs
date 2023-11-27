@@ -129,6 +129,7 @@ impl Metrics {
             // --
             data.node_database_blocks_count = consensus_metrics.node_database_blocks_count;
             data.node_database_headers_count = consensus_metrics.node_database_headers_count;
+            data.network_mempool_size = consensus_metrics.network_mempool_size;
             data.network_tip_hashes_count = consensus_metrics.network_tip_hashes_count;
             data.network_difficulty = consensus_metrics.network_difficulty;
             data.network_past_median_time = consensus_metrics.network_past_median_time;

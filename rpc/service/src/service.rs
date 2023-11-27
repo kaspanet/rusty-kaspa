@@ -747,29 +747,29 @@ impl RpcApi for RpcCoreService {
             disk_io_write_bytes,
             disk_io_read_per_sec,
             disk_io_write_per_sec,
-            ..
         } = self.perf_monitor.snapshot();
+
         let process_metrics = req.process_metrics.then_some(ProcessMetrics {
             resident_set_size,
             virtual_memory_size,
-            core_num: core_num as u64,
-            cpu_usage,
-            fd_num: fd_num as u64,
+            core_num: core_num as u32,
+            cpu_usage: cpu_usage as f32,
+            fd_num: fd_num as u32,
             disk_io_read_bytes,
             disk_io_write_bytes,
-            disk_io_read_per_sec,
-            disk_io_write_per_sec,
+            disk_io_read_per_sec: disk_io_read_per_sec as f32,
+            disk_io_write_per_sec: disk_io_write_per_sec as f32,
         });
 
         let connection_metrics = req.connection_metrics.then_some(ConnectionMetrics {
-            borsh_live_connections: self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed) as u64,
+            borsh_live_connections: self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed) as u32,
             borsh_connection_attempts: self.wrpc_borsh_counters.total_connections.load(Ordering::Relaxed) as u64,
             borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed) as u64,
-            json_live_connections: self.wrpc_json_counters.active_connections.load(Ordering::Relaxed) as u64,
+            json_live_connections: self.wrpc_json_counters.active_connections.load(Ordering::Relaxed) as u32,
             json_connection_attempts: self.wrpc_json_counters.total_connections.load(Ordering::Relaxed) as u64,
             json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed) as u64,
 
-            active_peers: self.flow_context.hub().active_peers_len() as u64,
+            active_peers: self.flow_context.hub().active_peers_len() as u32,
         });
 
         let bandwidth_metrics = req.bandwidth_metrics.then_some(BandwidthMetrics {
@@ -777,7 +777,7 @@ impl RpcApi for RpcCoreService {
             borsh_bytes_rx: self.wrpc_borsh_counters.rx_bytes.load(Ordering::Relaxed) as u64,
             json_bytes_tx: self.wrpc_json_counters.tx_bytes.load(Ordering::Relaxed) as u64,
             json_bytes_rx: self.wrpc_json_counters.rx_bytes.load(Ordering::Relaxed) as u64,
-            // TODO - pending merge with another branch
+            // TODO - pending merge with gRPC metrics
             grpc_p2p_bytes_tx: 0,
             grpc_p2p_bytes_rx: 0,
             grpc_user_bytes_tx: 0,
@@ -799,10 +799,12 @@ impl RpcApi for RpcCoreService {
                 // ---
                 node_database_blocks_count: block_count.block_count,
                 node_database_headers_count: block_count.header_count,
-                network_tip_hashes_count: session.async_get_tips_len().await as u64,
+                // ---
+                network_mempool_size: self.mining_manager.clone().transaction_count(TransactionQuery::TransactionsOnly).await as u64,
+                network_tip_hashes_count: session.async_get_tips_len().await as u32,
                 network_difficulty: self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
                 network_past_median_time: session.async_get_virtual_past_median_time().await,
-                network_virtual_parent_hashes_count: session.async_get_virtual_parents_len().await as u64,
+                network_virtual_parent_hashes_count: session.async_get_virtual_parents_len().await as u32,
                 network_virtual_daa_score: session.async_get_virtual_daa_score().await,
             })
         } else {

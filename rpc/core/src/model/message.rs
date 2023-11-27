@@ -693,26 +693,26 @@ pub struct GetMetricsRequest {
 pub struct ProcessMetrics {
     pub resident_set_size: u64,
     pub virtual_memory_size: u64,
-    pub core_num: u64,
-    pub cpu_usage: f64,
-    pub fd_num: u64,
+    pub core_num: u32,
+    pub cpu_usage: f32,
+    pub fd_num: u32,
     pub disk_io_read_bytes: u64,
     pub disk_io_write_bytes: u64,
-    pub disk_io_read_per_sec: f64,
-    pub disk_io_write_per_sec: f64,
+    pub disk_io_read_per_sec: f32,
+    pub disk_io_write_per_sec: f32,
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionMetrics {
-    pub borsh_live_connections: u64,
+    pub borsh_live_connections: u32,
     pub borsh_connection_attempts: u64,
     pub borsh_handshake_failures: u64,
-    pub json_live_connections: u64,
+    pub json_live_connections: u32,
     pub json_connection_attempts: u64,
     pub json_handshake_failures: u64,
 
-    pub active_peers: u64,
+    pub active_peers: u32,
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -742,10 +742,11 @@ pub struct ConsensusMetrics {
     pub node_database_blocks_count: u64,
     pub node_database_headers_count: u64,
 
-    pub network_tip_hashes_count: u64,
+    pub network_mempool_size: u64,
+    pub network_tip_hashes_count: u32,
     pub network_difficulty: f64,
     pub network_past_median_time: u64,
-    pub network_virtual_parent_hashes_count: u64,
+    pub network_virtual_parent_hashes_count: u32,
     pub network_virtual_daa_score: u64,
 }
 

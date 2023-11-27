@@ -57,6 +57,7 @@ from!(item: &kaspa_rpc_core::ConsensusMetrics, protowire::ConsensusMetrics, {
 
         block_count: item.node_database_blocks_count,
         header_count: item.node_database_headers_count,
+        mempool_size: item.network_mempool_size,
         tip_hashes_count: item.network_tip_hashes_count,
         difficulty: item.network_difficulty,
         past_median_time: item.network_past_median_time,
@@ -120,6 +121,7 @@ try_from!(item: &protowire::ConsensusMetrics, kaspa_rpc_core::ConsensusMetrics, 
 
         node_database_blocks_count: item.block_count,
         node_database_headers_count: item.header_count,
+        network_mempool_size: item.mempool_size,
         network_tip_hashes_count: item.tip_hashes_count,
         network_difficulty: item.difficulty,
         network_past_median_time: item.past_median_time,
