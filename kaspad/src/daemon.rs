@@ -28,7 +28,7 @@ use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
 use kaspa_perf_monitor::builder::Builder as PerfMonitorBuilder;
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
-use kaspa_wrpc_server::service::{Options as WrpcServerOptions, ServerCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
+use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
 use crate::args::Args;
 

@@ -58,13 +58,13 @@ use kaspa_rpc_core::{
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
-use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use std::{
     collections::HashMap,
     iter::once,
     sync::{atomic::Ordering, Arc},
     vec,
 };
+use workflow_rpc::server::WebSocketCounters as WrpcServerCounters;
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
@@ -762,14 +762,26 @@ impl RpcApi for RpcCoreService {
         });
 
         let connection_metrics = req.connection_metrics.then_some(ConnectionMetrics {
-            borsh_live_connections: self.wrpc_borsh_counters.live_connections.load(Ordering::Relaxed),
-            borsh_connection_attempts: self.wrpc_borsh_counters.connection_attempts.load(Ordering::Relaxed),
-            borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed),
-            json_live_connections: self.wrpc_json_counters.live_connections.load(Ordering::Relaxed),
-            json_connection_attempts: self.wrpc_json_counters.connection_attempts.load(Ordering::Relaxed),
-            json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed),
+            borsh_live_connections: self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed) as u64,
+            borsh_connection_attempts: self.wrpc_borsh_counters.total_connections.load(Ordering::Relaxed) as u64,
+            borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed) as u64,
+            json_live_connections: self.wrpc_json_counters.active_connections.load(Ordering::Relaxed) as u64,
+            json_connection_attempts: self.wrpc_json_counters.total_connections.load(Ordering::Relaxed) as u64,
+            json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed) as u64,
 
             active_peers: self.flow_context.hub().active_peers_len() as u64,
+        });
+
+        let bandwidth_metrics = req.bandwidth_metrics.then_some(BandwidthMetrics {
+            borsh_bytes_tx: self.wrpc_borsh_counters.tx_bytes.load(Ordering::Relaxed) as u64,
+            borsh_bytes_rx: self.wrpc_borsh_counters.rx_bytes.load(Ordering::Relaxed) as u64,
+            json_bytes_tx: self.wrpc_json_counters.tx_bytes.load(Ordering::Relaxed) as u64,
+            json_bytes_rx: self.wrpc_json_counters.rx_bytes.load(Ordering::Relaxed) as u64,
+            // TODO - pending merge with another branch
+            grpc_p2p_bytes_tx: 0,
+            grpc_p2p_bytes_rx: 0,
+            grpc_user_bytes_tx: 0,
+            grpc_user_bytes_rx: 0,
         });
 
         let consensus_metrics = if req.consensus_metrics {
@@ -796,8 +808,6 @@ impl RpcApi for RpcCoreService {
         } else {
             None
         };
-
-        let bandwidth_metrics = None;
 
         let server_time = unix_now();
 

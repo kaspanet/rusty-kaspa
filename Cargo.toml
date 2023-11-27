@@ -33,7 +33,6 @@ members = [
     "rpc/grpc/core",
     "rpc/grpc/client",
     "rpc/grpc/server",
-    "rpc/wrpc/core",
     "rpc/wrpc/server",
     "rpc/wrpc/client",
     "rpc/wrpc/proxy",
@@ -114,7 +113,6 @@ kaspa-cli = { version = "0.13.0", path = "cli" }
 kaspa-wallet-cli-wasm = { version = "0.13.0", path = "wallet/wasm" }
 kaspa-wallet-core = { version = "0.13.0", path = "wallet/core" }
 kaspa-wasm = { version = "0.13.0", path = "wasm" }
-kaspa-wrpc-core = { version = "0.13.0", path = "rpc/wrpc/core" }
 kaspa-wrpc-client = { version = "0.13.0", path = "rpc/wrpc/client" }
 kaspa-wrpc-proxy = { version = "0.13.0", path = "rpc/wrpc/proxy" }
 kaspa-wrpc-server = { version = "0.13.0", path = "rpc/wrpc/server" }
