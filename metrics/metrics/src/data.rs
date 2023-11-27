@@ -48,7 +48,7 @@ impl MetricGroup {
                 Metric::NodeResidentSetSizeBytes,
                 Metric::NodeVirtualMemorySizeBytes,
                 Metric::NodeFileHandlesCount,
-                ],
+            ],
             MetricGroup::Storage => vec![
                 Metric::NodeDiskIoReadBytes,
                 Metric::NodeDiskIoWriteBytes,
@@ -60,22 +60,18 @@ impl MetricGroup {
                 Metric::NodeTotalBytesRx,
                 Metric::NodeTotalBytesTxPerSecond,
                 Metric::NodeTotalBytesRxPerSecond,
-
                 Metric::NodeBorshBytesTx,
                 Metric::NodeBorshBytesRx,
                 Metric::NodeBorshBytesTxPerSecond,
                 Metric::NodeBorshBytesRxPerSecond,
-                
                 Metric::NodeGrpcP2pBytesTx,
                 Metric::NodeGrpcP2pBytesRx,
                 Metric::NodeGrpcP2pBytesTxPerSecond,
                 Metric::NodeGrpcP2pBytesRxPerSecond,
-                
                 Metric::NodeGrpcUserBytesTx,
                 Metric::NodeGrpcUserBytesRx,
                 Metric::NodeGrpcUserBytesTxPerSecond,
                 Metric::NodeGrpcUserBytesRxPerSecond,
-                
                 Metric::NodeJsonBytesTx,
                 Metric::NodeJsonBytesRx,
                 Metric::NodeJsonBytesTxPerSecond,
@@ -210,7 +206,7 @@ pub enum Metric {
     NodeBorshBytesRx,
     NodeBorshBytesTxPerSecond,
     NodeBorshBytesRxPerSecond,
-    
+
     NodeGrpcUserBytesTx,
     NodeGrpcUserBytesRx,
     NodeGrpcUserBytesTxPerSecond,
@@ -299,42 +295,49 @@ impl Metric {
     }
 
     pub fn is_key_performance_metric(&self) -> bool {
-        matches!(self,
+        matches!(
+            self,
             Metric::NodeCpuUsage
-            | Metric::NodeResidentSetSizeBytes
-            | Metric::NodeFileHandlesCount
-            | Metric::NodeDiskIoReadBytes
-            | Metric::NodeDiskIoWriteBytes
-            | Metric::NodeDiskIoReadPerSec
-            | Metric::NodeDiskIoWritePerSec
-            | Metric::NodeBorshBytesTx
-            | Metric::NodeBorshBytesRx
-            | Metric::NodeGrpcP2pBytesTx
-            | Metric::NodeGrpcP2pBytesRx
-            | Metric::NodeGrpcUserBytesTx
-            | Metric::NodeGrpcUserBytesRx
-            | Metric::NodeTotalBytesTx
-            | Metric::NodeTotalBytesRx
-            | Metric::NodeBorshBytesTxPerSecond
-            | Metric::NodeBorshBytesRxPerSecond
-            | Metric::NodeGrpcP2pBytesTxPerSecond
-            | Metric::NodeGrpcP2pBytesRxPerSecond
-            | Metric::NodeGrpcUserBytesTxPerSecond
-            | Metric::NodeGrpcUserBytesRxPerSecond
-            | Metric::NodeTotalBytesTxPerSecond
-            | Metric::NodeTotalBytesRxPerSecond
-            | Metric::NodeActivePeers
-            | Metric::NetworkTipHashesCount
-            | Metric::NetworkTransactionsPerSecond
-            | Metric::NodeTransactionsProcessedCount
-            | Metric::NodeDatabaseBlocksCount
-            | Metric::NodeDatabaseHeadersCount
+                | Metric::NodeResidentSetSizeBytes
+                | Metric::NodeFileHandlesCount
+                | Metric::NodeDiskIoReadBytes
+                | Metric::NodeDiskIoWriteBytes
+                | Metric::NodeDiskIoReadPerSec
+                | Metric::NodeDiskIoWritePerSec
+                | Metric::NodeBorshBytesTx
+                | Metric::NodeBorshBytesRx
+                | Metric::NodeGrpcP2pBytesTx
+                | Metric::NodeGrpcP2pBytesRx
+                | Metric::NodeGrpcUserBytesTx
+                | Metric::NodeGrpcUserBytesRx
+                | Metric::NodeTotalBytesTx
+                | Metric::NodeTotalBytesRx
+                | Metric::NodeBorshBytesTxPerSecond
+                | Metric::NodeBorshBytesRxPerSecond
+                | Metric::NodeGrpcP2pBytesTxPerSecond
+                | Metric::NodeGrpcP2pBytesRxPerSecond
+                | Metric::NodeGrpcUserBytesTxPerSecond
+                | Metric::NodeGrpcUserBytesRxPerSecond
+                | Metric::NodeTotalBytesTxPerSecond
+                | Metric::NodeTotalBytesRxPerSecond
+                | Metric::NodeActivePeers
+                | Metric::NetworkTipHashesCount
+                | Metric::NetworkTransactionsPerSecond
+                | Metric::NodeTransactionsProcessedCount
+                | Metric::NodeDatabaseBlocksCount
+                | Metric::NodeDatabaseHeadersCount
         )
     }
 
     pub fn format(&self, f: f64, si: bool, short: bool) -> String {
         match self {
-            Metric::NodeCpuUsage => if f.is_nan() { "---".to_string() } else { format!("{:1.2}%", f) },
+            Metric::NodeCpuUsage => {
+                if f.is_nan() {
+                    "---".to_string()
+                } else {
+                    format!("{:1.2}%", f)
+                }
+            }
             Metric::NodeResidentSetSizeBytes => as_mb(f, si, short),
             Metric::NodeVirtualMemorySizeBytes => as_mb(f, si, short),
             Metric::NodeFileHandlesCount => f.separated_string(),
