@@ -51,30 +51,30 @@ impl MetricGroup {
             ],
             MetricGroup::Storage => vec![
                 Metric::NodeDiskIoReadBytes,
+                Metric::NodeDiskIoReadPerSec,   
                 Metric::NodeDiskIoWriteBytes,
-                Metric::NodeDiskIoReadPerSec,
                 Metric::NodeDiskIoWritePerSec,
             ],
             MetricGroup::Bandwidth => vec![
                 Metric::NodeTotalBytesTx,
-                Metric::NodeTotalBytesRx,
                 Metric::NodeTotalBytesTxPerSecond,
+                Metric::NodeTotalBytesRx,
                 Metric::NodeTotalBytesRxPerSecond,
                 Metric::NodeBorshBytesTx,
-                Metric::NodeBorshBytesRx,
                 Metric::NodeBorshBytesTxPerSecond,
+                Metric::NodeBorshBytesRx,
                 Metric::NodeBorshBytesRxPerSecond,
                 Metric::NodeGrpcP2pBytesTx,
-                Metric::NodeGrpcP2pBytesRx,
                 Metric::NodeGrpcP2pBytesTxPerSecond,
+                Metric::NodeGrpcP2pBytesRx,
                 Metric::NodeGrpcP2pBytesRxPerSecond,
                 Metric::NodeGrpcUserBytesTx,
-                Metric::NodeGrpcUserBytesRx,
                 Metric::NodeGrpcUserBytesTxPerSecond,
+                Metric::NodeGrpcUserBytesRx,
                 Metric::NodeGrpcUserBytesRxPerSecond,
                 Metric::NodeJsonBytesTx,
-                Metric::NodeJsonBytesRx,
                 Metric::NodeJsonBytesTxPerSecond,
+                Metric::NodeJsonBytesRx,
                 Metric::NodeJsonBytesRxPerSecond,
             ],
             MetricGroup::Connections => vec![
@@ -398,7 +398,7 @@ impl Metric {
             Metric::NetworkDifficulty => format_as_float(f, short),
             Metric::NetworkPastMedianTime => format_as_float(f, short),
             Metric::NetworkVirtualParentHashesCount => format_as_float(f, short),
-            Metric::NetworkVirtualDaaScore => format_as_float(f, short),
+            Metric::NetworkVirtualDaaScore => format_as_float(f, false),
         }
     }
 
@@ -411,7 +411,7 @@ impl Metric {
             Metric::NodeFileHandlesCount => ("File Handles", "Handles"),
             Metric::NodeDiskIoReadBytes => ("Storage Read", "Stor Read"),
             Metric::NodeDiskIoWriteBytes => ("Storage Write", "Stor Write"),
-            Metric::NodeDiskIoReadPerSec => ("Storage Read/s", "Store Read"),
+            Metric::NodeDiskIoReadPerSec => ("Storage Read/s", "Stor Read"),
             Metric::NodeDiskIoWritePerSec => ("Storage Write/s", "Stor Write"),
             // --
             Metric::NodeActivePeers => ("Active p2p Peers", "Peers"),
@@ -441,8 +441,8 @@ impl Metric {
             Metric::NodeGrpcP2pBytesRxPerSecond => ("gRPC p2p Rx/s", "p2p Rx/s"),
             Metric::NodeGrpcUserBytesTxPerSecond => ("gRPC User Tx/s", "gRPC Tx/s"),
             Metric::NodeGrpcUserBytesRxPerSecond => ("gRPC User Rx/s", "gRPC Rx/s"),
-            Metric::NodeTotalBytesTxPerSecond => ("Total Tx/s", "Total Tx/s"),
-            Metric::NodeTotalBytesRxPerSecond => ("Total Rx/s", "Total Rx/s"),
+            Metric::NodeTotalBytesTxPerSecond => ("Network Tx/s", "Net Tx/s"),
+            Metric::NodeTotalBytesRxPerSecond => ("Network Rx/s", "Net Rx/s"),
             // --
             Metric::NodeBlocksSubmittedCount => ("Submitted Blocks", "Blocks"),
             Metric::NodeHeadersProcessedCount => ("Processed Headers", "Headers"),
@@ -460,7 +460,7 @@ impl Metric {
             Metric::NetworkTipHashesCount => ("Tip Hashes", "Tip Hashes"),
             Metric::NetworkDifficulty => ("Network Difficulty", "Difficulty"),
             Metric::NetworkPastMedianTime => ("Past Median Time", "Median T"),
-            Metric::NetworkVirtualParentHashesCount => ("Virtual Parent Hashes", "Virt. Parents"),
+            Metric::NetworkVirtualParentHashesCount => ("Virtual Parent Hashes", "Virt Parents"),
             Metric::NetworkVirtualDaaScore => ("Virtual DAA Score", "DAA"),
         }
     }
@@ -811,7 +811,7 @@ pub fn as_gb(bytes: f64, si: bool, short: bool) -> String {
 pub fn as_data_size(bytes: f64, si: bool) -> String {
     let unit = if si { 1000_f64 } else { 1024_f64 };
     let mut size = bytes;
-    let mut unit_str = "B";
+    let mut unit_str = " B";
 
     if size >= unit.powi(4) {
         size /= unit.powi(4);

@@ -163,7 +163,7 @@ impl SyncMonitor {
                 }
             }
 
-            log_info!("sync monitor task is shutting down...");
+            log_trace!("sync monitor task is shutting down...");
             this.inner.running.store(false, Ordering::SeqCst);
             task_ctl_sender.send(()).await.unwrap();
         });
