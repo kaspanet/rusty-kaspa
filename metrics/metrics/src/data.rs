@@ -43,37 +43,53 @@ impl MetricGroup {
 
     pub fn metrics(&self) -> impl Iterator<Item = Metric> {
         match self {
-            MetricGroup::System => vec![Metric::NodeCpuUsage, Metric::NodeResidentSetSizeBytes, Metric::NodeVirtualMemorySizeBytes],
-            MetricGroup::Storage => vec![
+            MetricGroup::System => vec![
+                Metric::NodeCpuUsage,
+                Metric::NodeResidentSetSizeBytes,
+                Metric::NodeVirtualMemorySizeBytes,
                 Metric::NodeFileHandlesCount,
+                ],
+            MetricGroup::Storage => vec![
                 Metric::NodeDiskIoReadBytes,
                 Metric::NodeDiskIoWriteBytes,
                 Metric::NodeDiskIoReadPerSec,
                 Metric::NodeDiskIoWritePerSec,
             ],
             MetricGroup::Bandwidth => vec![
-                Metric::NodeBorshBytesTx,
-                Metric::NodeBorshBytesRx,
-                Metric::NodeJsonBytesTx,
-                Metric::NodeJsonBytesRx,
-                Metric::NodeGrpcP2pBytesTx,
-                Metric::NodeGrpcP2pBytesRx,
-                Metric::NodeGrpcUserBytesTx,
-                Metric::NodeGrpcUserBytesRx,
                 Metric::NodeTotalBytesTx,
                 Metric::NodeTotalBytesRx,
-                Metric::NodeBorshBytesTxPerSecond,
-                Metric::NodeBorshBytesRxPerSecond,
-                Metric::NodeJsonBytesTxPerSecond,
-                Metric::NodeJsonBytesRxPerSecond,
-                Metric::NodeGrpcP2pBytesTxPerSecond,
-                Metric::NodeGrpcP2pBytesRxPerSecond,
-                Metric::NodeGrpcUserBytesTxPerSecond,
-                Metric::NodeGrpcUserBytesRxPerSecond,
                 Metric::NodeTotalBytesTxPerSecond,
                 Metric::NodeTotalBytesRxPerSecond,
+
+                Metric::NodeBorshBytesTx,
+                Metric::NodeBorshBytesRx,
+                Metric::NodeBorshBytesTxPerSecond,
+                Metric::NodeBorshBytesRxPerSecond,
+                
+                Metric::NodeGrpcP2pBytesTx,
+                Metric::NodeGrpcP2pBytesRx,
+                Metric::NodeGrpcP2pBytesTxPerSecond,
+                Metric::NodeGrpcP2pBytesRxPerSecond,
+                
+                Metric::NodeGrpcUserBytesTx,
+                Metric::NodeGrpcUserBytesRx,
+                Metric::NodeGrpcUserBytesTxPerSecond,
+                Metric::NodeGrpcUserBytesRxPerSecond,
+                
+                Metric::NodeJsonBytesTx,
+                Metric::NodeJsonBytesRx,
+                Metric::NodeJsonBytesTxPerSecond,
+                Metric::NodeJsonBytesRxPerSecond,
             ],
-            MetricGroup::Network => vec![Metric::NodeActivePeers],
+            MetricGroup::Network => vec![
+                Metric::NodeActivePeers,
+                Metric::NodeBorshLiveConnections,
+                Metric::NodeBorshConnectionAttempts,
+                Metric::NodeBorshHandshakeFailures,
+                Metric::NodeJsonLiveConnections,
+                Metric::NodeJsonConnectionAttempts,
+                Metric::NodeJsonHandshakeFailures,
+            ],
             MetricGroup::BlockDAG => vec![
                 Metric::NodeBlocksSubmittedCount,
                 Metric::NodeHeadersProcessedCount,
@@ -134,7 +150,7 @@ impl From<Metric> for MetricGroup {
             | Metric::NodeGrpcUserBytesTxPerSecond
             | Metric::NodeGrpcUserBytesRxPerSecond
             | Metric::NodeTotalBytesRxPerSecond
-            | Metric::NodeTotalBytesTxPerSecond => MetricGroup::Network,
+            | Metric::NodeTotalBytesTxPerSecond => MetricGroup::Bandwidth,
             // --
             Metric::NodeBlocksSubmittedCount
             | Metric::NodeHeadersProcessedCount
@@ -158,6 +174,7 @@ impl From<Metric> for MetricGroup {
 }
 
 #[derive(Describe, Debug, Clone, Copy, Eq, PartialEq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Metric {
     // NodeCpuCores is used to normalize NodeCpuUsage metric
     // NodeCpuCores
@@ -171,35 +188,39 @@ pub enum Metric {
     NodeDiskIoReadPerSec,
     NodeDiskIoWritePerSec,
     // ---
+    NodeActivePeers,
     NodeBorshLiveConnections,
     NodeBorshConnectionAttempts,
     NodeBorshHandshakeFailures,
     NodeJsonLiveConnections,
     NodeJsonConnectionAttempts,
     NodeJsonHandshakeFailures,
-    NodeActivePeers,
     // ---
-    NodeBorshBytesTx,
-    NodeBorshBytesRx,
-    NodeJsonBytesTx,
-    NodeJsonBytesRx,
-    NodeGrpcP2pBytesTx,
-    NodeGrpcP2pBytesRx,
-    NodeGrpcUserBytesTx,
-    NodeGrpcUserBytesRx,
     NodeTotalBytesTx,
     NodeTotalBytesRx,
-    // ---
-    NodeBorshBytesTxPerSecond,
-    NodeBorshBytesRxPerSecond,
-    NodeJsonBytesTxPerSecond,
-    NodeJsonBytesRxPerSecond,
-    NodeGrpcP2pBytesTxPerSecond,
-    NodeGrpcP2pBytesRxPerSecond,
-    NodeGrpcUserBytesTxPerSecond,
-    NodeGrpcUserBytesRxPerSecond,
     NodeTotalBytesTxPerSecond,
     NodeTotalBytesRxPerSecond,
+
+    NodeGrpcP2pBytesTx,
+    NodeGrpcP2pBytesRx,
+    NodeGrpcP2pBytesTxPerSecond,
+    NodeGrpcP2pBytesRxPerSecond,
+
+    NodeBorshBytesTx,
+    NodeBorshBytesRx,
+    NodeBorshBytesTxPerSecond,
+    NodeBorshBytesRxPerSecond,
+    
+    NodeGrpcUserBytesTx,
+    NodeGrpcUserBytesRx,
+    NodeGrpcUserBytesTxPerSecond,
+    NodeGrpcUserBytesRxPerSecond,
+
+    NodeJsonBytesTx,
+    NodeJsonBytesRx,
+    NodeJsonBytesTxPerSecond,
+    NodeJsonBytesRxPerSecond,
+
     // ---
     NodeBlocksSubmittedCount,
     NodeHeadersProcessedCount,
@@ -277,9 +298,43 @@ impl Metric {
         }
     }
 
+    pub fn is_key_performance_metric(&self) -> bool {
+        matches!(self,
+            Metric::NodeCpuUsage
+            | Metric::NodeResidentSetSizeBytes
+            | Metric::NodeFileHandlesCount
+            | Metric::NodeDiskIoReadBytes
+            | Metric::NodeDiskIoWriteBytes
+            | Metric::NodeDiskIoReadPerSec
+            | Metric::NodeDiskIoWritePerSec
+            | Metric::NodeBorshBytesTx
+            | Metric::NodeBorshBytesRx
+            | Metric::NodeGrpcP2pBytesTx
+            | Metric::NodeGrpcP2pBytesRx
+            | Metric::NodeGrpcUserBytesTx
+            | Metric::NodeGrpcUserBytesRx
+            | Metric::NodeTotalBytesTx
+            | Metric::NodeTotalBytesRx
+            | Metric::NodeBorshBytesTxPerSecond
+            | Metric::NodeBorshBytesRxPerSecond
+            | Metric::NodeGrpcP2pBytesTxPerSecond
+            | Metric::NodeGrpcP2pBytesRxPerSecond
+            | Metric::NodeGrpcUserBytesTxPerSecond
+            | Metric::NodeGrpcUserBytesRxPerSecond
+            | Metric::NodeTotalBytesTxPerSecond
+            | Metric::NodeTotalBytesRxPerSecond
+            | Metric::NodeActivePeers
+            | Metric::NetworkTipHashesCount
+            | Metric::NetworkTransactionsPerSecond
+            | Metric::NodeTransactionsProcessedCount
+            | Metric::NodeDatabaseBlocksCount
+            | Metric::NodeDatabaseHeadersCount
+        )
+    }
+
     pub fn format(&self, f: f64, si: bool, short: bool) -> String {
         match self {
-            Metric::NodeCpuUsage => format!("{:1.2}%", f),
+            Metric::NodeCpuUsage => if f.is_nan() { "---".to_string() } else { format!("{:1.2}%", f) },
             Metric::NodeResidentSetSizeBytes => as_mb(f, si, short),
             Metric::NodeVirtualMemorySizeBytes => as_mb(f, si, short),
             Metric::NodeFileHandlesCount => f.separated_string(),
@@ -289,13 +344,13 @@ impl Metric {
             Metric::NodeDiskIoReadPerSec => format!("{}/s", as_kb(f, si, short)),
             Metric::NodeDiskIoWritePerSec => format!("{}/s", as_kb(f, si, short)),
             // --
-            Metric::NodeBorshLiveConnections => f.separated_string(),
-            Metric::NodeBorshConnectionAttempts => f.separated_string(),
-            Metric::NodeBorshHandshakeFailures => f.separated_string(),
-            Metric::NodeJsonLiveConnections => f.separated_string(),
-            Metric::NodeJsonConnectionAttempts => f.separated_string(),
-            Metric::NodeJsonHandshakeFailures => f.separated_string(),
-            Metric::NodeActivePeers => f.separated_string(),
+            Metric::NodeBorshLiveConnections => f.trunc().separated_string(),
+            Metric::NodeBorshConnectionAttempts => f.trunc().separated_string(),
+            Metric::NodeBorshHandshakeFailures => f.trunc().separated_string(),
+            Metric::NodeJsonLiveConnections => f.trunc().separated_string(),
+            Metric::NodeJsonConnectionAttempts => f.trunc().separated_string(),
+            Metric::NodeJsonHandshakeFailures => f.trunc().separated_string(),
+            Metric::NodeActivePeers => f.trunc().separated_string(),
             // --
             Metric::NodeBorshBytesTx => as_data_size(f, si),
             Metric::NodeBorshBytesRx => as_data_size(f, si),
@@ -348,10 +403,10 @@ impl Metric {
             Metric::NodeFileHandlesCount => ("File Handles", "Handles"),
             Metric::NodeDiskIoReadBytes => ("Storage Read", "Stor Read"),
             Metric::NodeDiskIoWriteBytes => ("Storage Write", "Stor Write"),
-            Metric::NodeDiskIoReadPerSec => ("Storage Read", "Store Read"),
-            Metric::NodeDiskIoWritePerSec => ("Storage Write", "Stor Write"),
+            Metric::NodeDiskIoReadPerSec => ("Storage Read/s", "Store Read"),
+            Metric::NodeDiskIoWritePerSec => ("Storage Write/s", "Stor Write"),
             // --
-            Metric::NodeActivePeers => ("Active Peers", "Peers"),
+            Metric::NodeActivePeers => ("Active p2p Peers", "Peers"),
             Metric::NodeBorshLiveConnections => ("Borsh Active Connections", "Borsh Conn"),
             Metric::NodeBorshConnectionAttempts => ("Borsh Connection Attempts", "Borsh Conn Att"),
             Metric::NodeBorshHandshakeFailures => ("Borsh Handshake Failures", "Borsh Failures"),
@@ -359,25 +414,25 @@ impl Metric {
             Metric::NodeJsonConnectionAttempts => ("Json Connection Attempts", "Json Conn Att"),
             Metric::NodeJsonHandshakeFailures => ("Json Handshake Failures", "Json Failures"),
             // --
-            Metric::NodeBorshBytesTx => ("Borsh Tx", "Borsh Tx"),
-            Metric::NodeBorshBytesRx => ("Borsh Rx", "Borsh Rx"),
-            Metric::NodeJsonBytesTx => ("Json Tx", "Json Tx"),
-            Metric::NodeJsonBytesRx => ("Json Rx", "Json Rx"),
-            Metric::NodeGrpcP2pBytesTx => ("p2p Tx", "p2p Tx"),
-            Metric::NodeGrpcP2pBytesRx => ("p2p Rx", "p2p Rx"),
-            Metric::NodeGrpcUserBytesTx => ("Grpc User Tx", "Grpc User Tx"),
-            Metric::NodeGrpcUserBytesRx => ("Grpc User Rx", "Grpc User Rx"),
+            Metric::NodeBorshBytesTx => ("wRPC Borsh Tx", "Borsh Tx"),
+            Metric::NodeBorshBytesRx => ("wRPC Borsh Rx", "Borsh Rx"),
+            Metric::NodeJsonBytesTx => ("wRPC JSON Tx", "Json Tx"),
+            Metric::NodeJsonBytesRx => ("wRPC JSON Rx", "Json Rx"),
+            Metric::NodeGrpcP2pBytesTx => ("gRPC p2p Tx", "p2p Tx"),
+            Metric::NodeGrpcP2pBytesRx => ("gRPC p2p Rx", "p2p Rx"),
+            Metric::NodeGrpcUserBytesTx => ("gRPC User Tx", "Grpc User Tx"),
+            Metric::NodeGrpcUserBytesRx => ("gRPC User Rx", "Grpc User Rx"),
             Metric::NodeTotalBytesTx => ("Total Tx", "Total Tx"),
             Metric::NodeTotalBytesRx => ("Total Rx", "Total Rx"),
             // --
-            Metric::NodeBorshBytesTxPerSecond => ("Borsh Tx/s", "Borsh Tx/s"),
-            Metric::NodeBorshBytesRxPerSecond => ("Borsh Rx/s", "Borsh Rx/s"),
-            Metric::NodeJsonBytesTxPerSecond => ("Json Tx/s", "Json Tx/s"),
-            Metric::NodeJsonBytesRxPerSecond => ("Json Rx/s", "Json Rx/s"),
-            Metric::NodeGrpcP2pBytesTxPerSecond => ("p2p Tx/s", "p2p Tx/s"),
-            Metric::NodeGrpcP2pBytesRxPerSecond => ("p2p Rx/s", "p2p Rx/s"),
-            Metric::NodeGrpcUserBytesTxPerSecond => ("Grpc User Tx/s", "Grpc User Tx/s"),
-            Metric::NodeGrpcUserBytesRxPerSecond => ("Grpc User Rx/s", "Grpc User Rx/s"),
+            Metric::NodeBorshBytesTxPerSecond => ("wRPC Borsh Tx/s", "Borsh Tx/s"),
+            Metric::NodeBorshBytesRxPerSecond => ("wRPC Borsh Rx/s", "Borsh Rx/s"),
+            Metric::NodeJsonBytesTxPerSecond => ("wRPC JSON Tx/s", "JSON Tx/s"),
+            Metric::NodeJsonBytesRxPerSecond => ("wRPC JSON Rx/s", "JSON Rx/s"),
+            Metric::NodeGrpcP2pBytesTxPerSecond => ("gRPC p2p Tx/s", "p2p Tx/s"),
+            Metric::NodeGrpcP2pBytesRxPerSecond => ("gRPC p2p Rx/s", "p2p Rx/s"),
+            Metric::NodeGrpcUserBytesTxPerSecond => ("gRPC User Tx/s", "gRPC Tx/s"),
+            Metric::NodeGrpcUserBytesRxPerSecond => ("gRPC User Rx/s", "gRPC Rx/s"),
             Metric::NodeTotalBytesTxPerSecond => ("Total Tx/s", "Total Tx/s"),
             Metric::NodeTotalBytesRxPerSecond => ("Total Rx/s", "Total Rx/s"),
             // --
