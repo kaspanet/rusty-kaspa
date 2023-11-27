@@ -348,7 +348,7 @@ mod tests {
 
         let a = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();
         let m = |command: Command, indexes: &[usize]| -> Mutation {
-            Mutation { command, scope: Scope::UtxosChanged(UtxosChangedScope { addresses: a(indexes) }) }
+            Mutation { command, scope: Scope::UtxosChanged(UtxosChangedScope::new(a(indexes))) }
         };
         let none = Box::<UtxosChangedSubscription>::default;
 

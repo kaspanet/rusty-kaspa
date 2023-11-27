@@ -218,7 +218,7 @@ impl RpcClient {
             .into_iter()
             .map(|jsv| from_value(jsv).map_err(|err| JsError::new(&err.to_string())))
             .collect::<std::result::Result<Vec<Address>, JsError>>()?;
-        self.client.start_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+        self.client.start_notify(ListenerId::default(), UtxosChangedScope::new(addresses).into()).await?;
         Ok(())
     }
 
@@ -230,7 +230,7 @@ impl RpcClient {
             .into_iter()
             .map(|jsv| from_value(jsv).map_err(|err| JsError::new(&err.to_string())))
             .collect::<std::result::Result<Vec<Address>, JsError>>()?;
-        self.client.stop_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+        self.client.stop_notify(ListenerId::default(), UtxosChangedScope::new(addresses).into()).await?;
         Ok(())
     }
 

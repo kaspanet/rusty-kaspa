@@ -149,8 +149,8 @@ impl UtxoProcessor {
         if self.is_connected() {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
-                let utxos_changed_scope = UtxosChangedScope { addresses };
-                self.rpc_api().start_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
+                let utxos_changed_scope = UtxosChangedScope::new(addresses);
+                self.rpc_api().start_notify(self.listener_id(), utxos_changed_scope.into()).await?;
             } else {
                 log_error!("registering empty address list!");
             }
@@ -166,8 +166,8 @@ impl UtxoProcessor {
         if self.is_connected() {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
-                let utxos_changed_scope = UtxosChangedScope { addresses };
-                self.rpc_api().stop_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
+                let utxos_changed_scope = UtxosChangedScope::new(addresses);
+                self.rpc_api().stop_notify(self.listener_id(), utxos_changed_scope.into()).await?;
             } else {
                 log_error!("unregistering empty address list!");
             }

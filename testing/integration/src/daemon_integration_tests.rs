@@ -231,7 +231,7 @@ async fn daemon_utxos_propagation_test() {
     // ...and subscribe each to some notifications
     for x in clients.iter_mut() {
         x.start_notify(BlockAddedScope {}.into()).await.unwrap();
-        x.start_notify(UtxosChangedScope { addresses: vec![miner_address.clone(), user_address.clone()] }.into()).await.unwrap();
+        x.start_notify(UtxosChangedScope::new(vec![miner_address.clone(), user_address.clone()]).into()).await.unwrap();
         x.start_notify(VirtualDaaScoreChangedScope {}.into()).await.unwrap();
     }
 

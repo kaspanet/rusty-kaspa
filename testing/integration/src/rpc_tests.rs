@@ -526,7 +526,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 let id = listener_id;
                 tst!(op, {
-                    rpc_client.start_notify(id, UtxosChangedScope { addresses: vec![] }.into()).await.unwrap();
+                    rpc_client.start_notify(id, UtxosChangedScope::new(vec![]).into()).await.unwrap();
                 })
             }
             KaspadPayloadOps::NotifySinkBlueScoreChanged => {
@@ -564,7 +564,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 let id = listener_id;
                 tst!(op, {
-                    rpc_client.stop_notify(id, UtxosChangedScope { addresses: vec![] }.into()).await.unwrap();
+                    rpc_client.stop_notify(id, UtxosChangedScope::new(vec![]).into()).await.unwrap();
                 })
             }
             KaspadPayloadOps::StopNotifyingPruningPointUtxoSetOverride => {
