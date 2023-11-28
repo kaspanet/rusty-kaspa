@@ -13,6 +13,7 @@ use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
 };
+use uuid::Uuid;
 
 /// Subscription with a all or none scope.
 ///
@@ -152,11 +153,12 @@ impl Subscription for VirtualChainChangedSubscription {
 pub struct UtxosChangedSubscription {
     active: bool,
     addresses: HashMap<ScriptPublicKey, UtxoAddress>,
+    id: Uuid,
 }
 
 impl UtxosChangedSubscription {
     pub fn new(active: bool, addresses: Vec<Address>) -> Self {
-        let mut subscription = Self { active, addresses: HashMap::default() };
+        let mut subscription = Self { active, addresses: HashMap::default(), id: Uuid::new_v4() };
         subscription.set_addresses(addresses);
         subscription
     }
@@ -198,7 +200,8 @@ impl PartialEq for UtxosChangedSubscription {
     fn eq(&self, other: &Self) -> bool {
         if self.active == other.active && self.addresses.len() == other.addresses.len() {
             // HashMaps are considered equal if they contain the same keys
-            return self.addresses.keys().all(|x| other.addresses.contains_key(x));
+            let result = self.addresses.keys().all(|x| other.addresses.contains_key(x));
+            return result;
         }
         false
     }
@@ -209,11 +212,11 @@ impl Hash for UtxosChangedSubscription {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.active.hash(state);
 
-        // Since item order in hash set is undefined, build a sorted vector
-        // so that hashing is determinist.
-        let mut items: Vec<&Address> = self.addresses.values().map(|x| &**x).collect::<Vec<_>>();
-        items.sort();
-        items.hash(state);
+        // For non-blanket active subscriptions, every subscription is considered as unique since
+        // it is extremely unlikely that two subscriptions may share an equal address set.
+        if self.active && !self.addresses.is_empty() {
+            self.id.hash(state);
+        }
     }
 }
 
@@ -329,13 +332,15 @@ mod tests {
             left: usize,
             right: usize,
             should_match: bool,
+            hash_should_match: bool,
         }
         impl Comparison {
-            fn new(left: usize, right: usize, should_match: bool) -> Self {
-                Self { left, right, should_match }
+            fn new(left: usize, right: usize, should_match: bool, hash_should_match: bool) -> Self {
+                Self { left, right, should_match, hash_should_match }
             }
             fn compare(&self, name: &str, subscriptions: &[SingleSubscription]) {
                 let equal = if self.should_match { "be equal" } else { "not be equal" };
+                let equal_hash = if self.hash_should_match { "be equal" } else { "not be equal" };
                 // Compare Box dyn Single
                 #[allow(clippy::op_ref)]
                 let cmp = &subscriptions[self.left] == &subscriptions[self.right];
@@ -347,8 +352,8 @@ mod tests {
                 // Compare Box dyn Single hash
                 assert_eq!(
                     get_hash(&subscriptions[self.left]) == get_hash(&subscriptions[self.right]),
-                    self.should_match,
-                    "{name}: subscription hashes should {equal}, comparing {:?} => {} with {:?} => {}",
+                    self.hash_should_match,
+                    "{name}: subscription hashes should {equal_hash}, comparing {:?} => {} with {:?} => {}",
                     &subscriptions[self.left],
                     get_hash(&subscriptions[self.left]),
                     &subscriptions[self.right],
@@ -365,8 +370,8 @@ mod tests {
                 // Compare Arc dyn Single hash
                 assert_eq!(
                     get_hash(&left_arc) == get_hash(&right_arc),
-                    self.should_match,
-                    "{name}: subscription hashes should {equal}, comparing {:?} => {} with {:?} => {}",
+                    self.hash_should_match,
+                    "{name}: subscription hashes should {equal_hash}, comparing {:?} => {} with {:?} => {}",
                     left_arc,
                     get_hash(&left_arc),
                     right_arc,
@@ -393,7 +398,11 @@ mod tests {
                     Box::new(OverallSubscription::new(EventType::BlockAdded, true)),
                     Box::new(OverallSubscription::new(EventType::BlockAdded, true)),
                 ],
-                comparisons: vec![Comparison::new(0, 1, false), Comparison::new(0, 2, false), Comparison::new(1, 2, true)],
+                comparisons: vec![
+                    Comparison::new(0, 1, false, false),
+                    Comparison::new(0, 2, false, false),
+                    Comparison::new(1, 2, true, true),
+                ],
             },
             Test {
                 name: "test virtual selected parent chain changed subscription",
@@ -404,12 +413,12 @@ mod tests {
                     Box::new(VirtualChainChangedSubscription::new(true, true)),
                 ],
                 comparisons: vec![
-                    Comparison::new(0, 1, false),
-                    Comparison::new(0, 2, false),
-                    Comparison::new(0, 3, false),
-                    Comparison::new(1, 2, false),
-                    Comparison::new(1, 3, false),
-                    Comparison::new(2, 3, true),
+                    Comparison::new(0, 1, false, false),
+                    Comparison::new(0, 2, false, false),
+                    Comparison::new(0, 3, false, false),
+                    Comparison::new(1, 2, false, false),
+                    Comparison::new(1, 3, false, false),
+                    Comparison::new(2, 3, true, true),
                 ],
             },
             Test {
@@ -419,14 +428,19 @@ mod tests {
                     Box::new(UtxosChangedSubscription::new(true, addresses[0..2].to_vec())),
                     Box::new(UtxosChangedSubscription::new(true, addresses[0..3].to_vec())),
                     Box::new(UtxosChangedSubscription::new(true, sorted_addresses[0..3].to_vec())),
+                    Box::new(UtxosChangedSubscription::new(true, vec![])),
+                    Box::new(UtxosChangedSubscription::new(true, vec![])),
                 ],
                 comparisons: vec![
-                    Comparison::new(0, 1, false),
-                    Comparison::new(0, 2, false),
-                    Comparison::new(0, 3, false),
-                    Comparison::new(1, 2, false),
-                    Comparison::new(1, 3, false),
-                    Comparison::new(3, 3, true),
+                    Comparison::new(0, 1, false, false),
+                    Comparison::new(0, 2, false, false),
+                    Comparison::new(0, 3, false, false),
+                    Comparison::new(1, 2, false, false),
+                    Comparison::new(1, 3, false, false),
+                    Comparison::new(3, 3, true, true),
+                    Comparison::new(0, 4, false, false),
+                    Comparison::new(4, 5, true, true),
+                    Comparison::new(2, 3, true, false), // same address sets but diverging ids
                 ],
             },
         ];

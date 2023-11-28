@@ -2534,6 +2534,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "triggered",
+ "uuid 1.5.0",
  "workflow-core",
  "workflow-log",
 ]
@@ -2781,6 +2782,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "workflow-perf-monitor",
 ]
 
 [[package]]
