@@ -50,6 +50,13 @@ impl Storage {
         Ok(Storage { filename })
     }
 
+    pub fn rename_sync(&mut self, filename: &str) -> Result<()> {
+        let target_filename = Path::new(filename).to_path_buf();
+        workflow_store::fs::rename_sync(self.filename(), &target_filename)?;
+        self.filename = target_filename;
+        Ok(())
+    }
+
     pub fn filename(&self) -> &PathBuf {
         &self.filename
     }

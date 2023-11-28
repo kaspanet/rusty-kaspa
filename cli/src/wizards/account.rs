@@ -14,16 +14,14 @@ pub(crate) async fn create(
     let term = ctx.term();
     let wallet = ctx.wallet();
 
-    let (title, name) = if let Some(name) = name {
-        (Some(name.to_string()), Some(name.to_string()))
+    let name = if let Some(name) = name {
+        Some(name.to_string())
     } else {
-        let title = term.ask(false, "Please enter account title (optional, press <enter> to skip): ").await?.trim().to_string();
-        let name = title.replace(' ', "-").to_lowercase();
-        (Some(title), Some(name))
+        Some(term.ask(false, "Please enter account name (optional, press <enter> to skip): ").await?.trim().to_string())
     };
 
     if matches!(account_kind, AccountKind::MultiSig) {
-        return create_multisig(ctx, title, name).await;
+        return create_multisig(ctx, name).await;
     }
 
     let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
@@ -42,7 +40,7 @@ pub(crate) async fn create(
         None
     };
 
-    let account_args = AccountCreateArgs::new(name, title, account_kind, wallet_secret, payment_secret);
+    let account_args = AccountCreateArgs::new(name, account_kind, wallet_secret, payment_secret);
     let account = wallet.create_bip32_account(prv_key_data_info.id, account_args).await?;
 
     tprintln!(ctx, "\naccount created: {}\n", account.get_list_string()?);
@@ -50,7 +48,7 @@ pub(crate) async fn create(
     Ok(())
 }
 
-async fn create_multisig(ctx: &Arc<KaspaCli>, title: Option<String>, name: Option<String>) -> Result<()> {
+async fn create_multisig(ctx: &Arc<KaspaCli>, name: Option<String>) -> Result<()> {
     let term = ctx.term();
     let wallet = ctx.wallet();
     let (wallet_secret, _) = ctx.ask_wallet_secret(None).await?;
@@ -78,7 +76,6 @@ async fn create_multisig(ctx: &Arc<KaspaCli>, title: Option<String>, name: Optio
         .create_multisig_account(MultisigCreateArgs {
             prv_key_data_ids,
             name,
-            title,
             wallet_secret,
             additional_xpub_keys: xpub_keys,
             minimum_signatures: n_required,

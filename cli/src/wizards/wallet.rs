@@ -29,9 +29,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
         }
     }
 
-    let account_title = term.ask(false, "Default account title: ").await?.trim().to_string();
-    let account_name = account_title.replace(' ', "-").to_lowercase();
-    let account_title = account_title.is_not_empty().then_some(account_title);
+    let account_name = term.ask(false, "Default account title: ").await?.trim().to_string();
     let account_name = account_name.is_not_empty().then_some(account_name);
 
     tpara!(
@@ -121,7 +119,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
 
     let account_kind = AccountKind::Bip32;
     let wallet_args = WalletCreateArgs::new(name.map(String::from), None, hint, wallet_secret.clone(), true);
-    let account_args = AccountCreateArgs::new(account_name, account_title, account_kind, wallet_secret.clone(), payment_secret);
+    let account_args = AccountCreateArgs::new(account_name, account_kind, wallet_secret.clone(), payment_secret);
     let descriptor = ctx.wallet().create_wallet(wallet_args).await?;
     let (prv_key_data_id, mnemonic) = wallet.create_prv_key_data(prv_key_data_args).await?;
     let account = wallet.create_bip32_account(prv_key_data_id, account_args).await?;

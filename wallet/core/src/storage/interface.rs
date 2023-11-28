@@ -165,6 +165,9 @@ pub trait Interface: Send + Sync + AnySync {
     /// returns the name of the currently open wallet or none
     fn descriptor(&self) -> Option<WalletDescriptor>;
 
+    /// rename the currently open wallet (title or the filename)
+    async fn rename(&self, ctx: &Arc<dyn AccessContextT>, title: Option<&str>, filename: Option<&str>) -> Result<()>;
+
     /// checks if the wallet storage is present
     async fn exists(&self, name: Option<&str>) -> Result<bool>;
 

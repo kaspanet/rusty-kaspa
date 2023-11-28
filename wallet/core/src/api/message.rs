@@ -105,6 +105,22 @@ pub struct WalletCloseResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WalletRenameRequest {
+    pub title: Option<String>,
+    pub filename: Option<String>,
+    pub wallet_secret: Secret,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletRenameResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletRenameFileResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PrvKeyDataEnumerateRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -157,6 +173,18 @@ pub struct AccountsEnumerateRequest {}
 pub struct AccountsEnumerateResponse {
     pub descriptor_list: Vec<AccountDescriptor>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsRenameRequest {
+    pub account_id: AccountId,
+    pub name: Option<String>,
+    pub wallet_secret: Secret,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsRenameResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]

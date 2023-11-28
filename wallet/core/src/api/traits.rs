@@ -5,6 +5,7 @@ use crate::runtime::{AccountCreateArgs, AccountDescriptor, PrvKeyDataCreateArgs,
 use crate::secret::Secret;
 use crate::storage::{PrvKeyDataInfo, WalletDescriptor};
 use crate::tx::GeneratorSummary;
+use runtime::AccountId;
 use workflow_core::channel::Receiver;
 
 #[async_trait]
@@ -63,6 +64,23 @@ pub trait WalletApi: Send + Sync + AnySync {
 
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse>;
     async fn wallet_close_call(self: Arc<Self>, request: WalletCloseRequest) -> Result<WalletCloseResponse>;
+
+    async fn wallet_rename(self: Arc<Self>, title: Option<&str>, filename: Option<&str>, wallet_secret: Secret) -> Result<()> {
+        self.wallet_rename_call(WalletRenameRequest {
+            title: title.map(String::from),
+            filename: filename.map(String::from),
+            wallet_secret,
+        })
+        .await?;
+        Ok(())
+    }
+    async fn wallet_rename_call(self: Arc<Self>, request: WalletRenameRequest) -> Result<WalletRenameResponse>;
+
+    async fn accounts_rename(self: Arc<Self>, account_id: AccountId, name: Option<String>, wallet_secret: Secret) -> Result<()> {
+        self.accounts_rename_call(AccountsRenameRequest { account_id, name, wallet_secret }).await?;
+        Ok(())
+    }
+    async fn accounts_rename_call(self: Arc<Self>, request: AccountsRenameRequest) -> Result<AccountsRenameResponse>;
 
     async fn accounts_activate(self: Arc<Self>, account_ids: Option<Vec<runtime::AccountId>>) -> Result<AccountsActivateResponse> {
         self.accounts_activate_call(AccountsActivateRequest { account_ids }).await

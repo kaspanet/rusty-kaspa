@@ -13,6 +13,7 @@ use crate::storage::local::Payload;
 use crate::storage::local::Storage;
 use crate::storage::*;
 use slugify_rs::slugify;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use workflow_core::runtime::is_web;
@@ -28,17 +29,27 @@ pub fn make_filename(title: &Option<String>, filename: &Option<String>) -> Strin
     }
 }
 
+#[derive(Clone)]
 pub enum Store {
     Resident,
     Storage(Storage),
 }
 
+impl Store {
+    fn filename(&self) -> Option<String> {
+        match self {
+            Store::Resident => None,
+            Store::Storage(storage) => Some(storage.filename_as_string()),
+        }
+    }
+}
+
 pub(crate) struct LocalStoreInner {
     pub cache: Arc<Mutex<Cache>>,
-    pub store: Store,
+    pub store: Mutex<Arc<Store>>,
     pub transactions: Arc<dyn TransactionRecordStore>,
     pub is_modified: AtomicBool,
-    pub filename: String,
+    // pub filename: Mutex<String>,
 }
 
 impl LocalStoreInner {
@@ -68,7 +79,8 @@ impl LocalStoreInner {
             Arc::new(indexdb::TransactionStore::new(&filename))
         };
 
-        Ok(Self { cache, store, is_modified, filename, transactions })
+        // Ok(Self { cache, store, is_modified, filename, transactions })
+        Ok(Self { cache, store: Mutex::new(Arc::new(store)), is_modified, transactions })
     }
 
     pub async fn try_load(ctx: &Arc<dyn AccessContextT>, folder: &str, args: OpenArgs) -> Result<Self> {
@@ -86,11 +98,28 @@ impl LocalStoreInner {
             Arc::new(indexdb::TransactionStore::new(&filename))
         };
 
-        Ok(Self { cache, store: Store::Storage(storage), is_modified, filename, transactions })
+        Ok(Self { cache, store: Mutex::new(Arc::new(Store::Storage(storage))), is_modified, transactions })
+    }
+
+    fn storage(&self) -> Arc<Store> {
+        self.store.lock().unwrap().clone()
+    }
+
+    fn rename(&self, filename: &str) -> Result<()> {
+        let store = (**self.store.lock().unwrap()).clone();
+        let filename = make_filename(&None, &Some(filename.to_string()));
+        match store {
+            Store::Resident => Err(Error::ResidentWallet),
+            Store::Storage(mut storage) => {
+                storage.rename_sync(filename.as_str())?;
+                *self.store.lock().unwrap() = Arc::new(Store::Storage(storage));
+                Ok(())
+            }
+        }
     }
 
     pub async fn update_stored_metadata(&self) -> Result<()> {
-        match self.store {
+        match &*self.storage() {
             Store::Resident => Ok(()),
             Store::Storage(ref storage) => {
                 let metadata: Vec<Metadata> = (&self.cache().metadata).try_into()?;
@@ -115,7 +144,7 @@ impl LocalStoreInner {
     // }
 
     pub async fn store(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
-        match self.store {
+        match &*self.storage() {
             Store::Resident => Ok(()),
             Store::Storage(ref storage) => {
                 let secret = ctx.wallet_secret().await; //.ok_or(Error::WalletSecretRequired)?;
@@ -129,7 +158,7 @@ impl LocalStoreInner {
 
     #[inline]
     pub fn set_modified(&self, modified: bool) {
-        match self.store {
+        match &*self.storage() {
             Store::Resident => (),
             Store::Storage(_) => {
                 self.is_modified.store(modified, Ordering::SeqCst);
@@ -139,7 +168,7 @@ impl LocalStoreInner {
 
     #[inline]
     pub fn is_modified(&self) -> bool {
-        match self.store {
+        match &*self.storage() {
             Store::Resident => false,
             Store::Storage(_) => self.is_modified.load(Ordering::SeqCst),
         }
@@ -216,11 +245,27 @@ impl Interface for LocalStore {
     }
 
     fn descriptor(&self) -> Option<WalletDescriptor> {
-        self.inner
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(|inner| WalletDescriptor { title: inner.cache().wallet_title.clone(), filename: inner.filename.clone() })
+        self.inner.lock().unwrap().as_ref().map(|inner| {
+            let filename = inner
+                .storage()
+                .filename()
+                .and_then(|f| PathBuf::from(f).file_stem().and_then(|f| f.to_str().map(String::from)))
+                .unwrap_or_else(|| "--resident--".to_string());
+            WalletDescriptor { title: inner.cache().wallet_title.clone(), filename }
+        })
+    }
+
+    async fn rename(&self, ctx: &Arc<dyn AccessContextT>, title: Option<&str>, filename: Option<&str>) -> Result<()> {
+        let inner = self.inner.lock().unwrap().clone().ok_or(Error::WalletNotOpen)?;
+        if let Some(title) = title {
+            inner.cache().wallet_title = Some(title.to_string());
+            self.commit(ctx).await?;
+        }
+
+        if let Some(filename) = filename {
+            inner.rename(filename)?;
+        }
+        Ok(())
     }
 
     async fn exists(&self, name: Option<&str>) -> Result<bool> {
@@ -278,8 +323,8 @@ impl Interface for LocalStore {
     }
 
     fn location(&self) -> Result<Option<String>> {
-        let inner = self.inner()?;
-        match inner.store {
+        let store = self.inner()?.storage();
+        match &*store {
             Store::Resident => Ok(Some("Memory resident wallet".to_string())),
             Store::Storage(ref storage) => Ok(Some(storage.filename_as_string())),
         }

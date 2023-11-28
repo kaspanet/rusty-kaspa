@@ -110,7 +110,6 @@ impl Zeroize for PrvKeyDataCreateArgs {
 pub struct MultisigCreateArgs {
     pub prv_key_data_ids: Vec<PrvKeyDataId>,
     pub name: Option<String>,
-    pub title: Option<String>,
     pub wallet_secret: Secret,
     pub additional_xpub_keys: Vec<String>,
     pub minimum_signatures: u16,
@@ -119,7 +118,6 @@ pub struct MultisigCreateArgs {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountCreateArgs {
     pub name: Option<String>,
-    pub title: Option<String>,
     pub account_kind: storage::AccountKind,
     pub payment_secret: Option<Secret>,
     pub wallet_secret: Secret,
@@ -128,12 +126,11 @@ pub struct AccountCreateArgs {
 impl AccountCreateArgs {
     pub fn new(
         name: Option<String>,
-        title: Option<String>,
         account_kind: storage::AccountKind,
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
     ) -> Self {
-        Self { name, title, account_kind, wallet_secret, payment_secret }
+        Self { name, account_kind, wallet_secret, payment_secret }
     }
 }
 
@@ -600,7 +597,7 @@ impl Wallet {
         let account_storage = self.inner.store.clone().as_account_store()?;
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret));
 
-        let settings = storage::Settings { is_visible: false, name: args.name, title: args.title };
+        let settings = storage::Settings { is_visible: false, name: args.name };
         let mut xpub_keys = args.additional_xpub_keys;
 
         let account: Arc<dyn Account> = if args.prv_key_data_ids.is_not_empty() {
@@ -683,7 +680,7 @@ impl Wallet {
 
         let bip32 = storage::Bip32::new(account_index, xpub_keys, false);
 
-        let settings = storage::Settings { is_visible: false, name: None, title: None };
+        let settings = storage::Settings { is_visible: false, name: None };
         let account: Arc<dyn Account> = Arc::new(runtime::Bip32::try_new(self, prv_key_data.id, settings, bip32, None).await?);
         let stored_account = account.as_storable()?;
 
@@ -743,7 +740,7 @@ impl Wallet {
 
         let bip32 = storage::Bip32::new(account_index, xpub_keys, false);
 
-        let settings = storage::Settings { is_visible: false, name: None, title: None };
+        let settings = storage::Settings { is_visible: false, name: None };
         let account: Arc<dyn Account> = Arc::new(runtime::Bip32::try_new(self, prv_key_data.id, settings, bip32, None).await?);
         let stored_account = account.as_storable()?;
 
@@ -1211,6 +1208,13 @@ impl Wallet {
 
         Ok(account)
     }
+
+    async fn rename(&self, title: Option<String>, filename: Option<String>, wallet_secret: Secret) -> Result<()> {
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+        let store = self.store();
+        store.rename(&ctx, title.as_deref(), filename.as_deref()).await?;
+        Ok(())
+    }
 }
 
 use workflow_core::channel::Receiver;
@@ -1273,21 +1277,8 @@ impl WalletApi for Wallet {
         let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         self.store().flush(&access_ctx).await?;
 
-        Ok(WalletCreateResponse {
-            mnemonic: mnemonic.phrase_string(),
-            wallet_descriptor,
-            account_descriptor: account.descriptor()?,
-            // - TODO account info serialization
-            // account: Some(account.as_storable()?),
-        })
+        Ok(WalletCreateResponse { mnemonic: mnemonic.phrase_string(), wallet_descriptor, account_descriptor: account.descriptor()? })
     }
-
-    // async fn wallet_open(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
-    //     let WalletOpenRequest { wallet_secret, wallet_name } = request;
-
-    //     self.load(wallet_secret, wallet_name).await?;
-    //     Ok(WalletOpenResponse {})
-    // }
 
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
         let WalletOpenRequest { wallet_secret, wallet_name, account_descriptors, legacy_accounts } = request;
@@ -1301,6 +1292,12 @@ impl WalletApi for Wallet {
         Ok(WalletCloseResponse {})
     }
 
+    async fn wallet_rename_call(self: Arc<Self>, request: WalletRenameRequest) -> Result<WalletRenameResponse> {
+        let WalletRenameRequest { wallet_secret, title, filename } = request;
+        self.rename(title, filename, wallet_secret).await?;
+        Ok(WalletRenameResponse {})
+    }
+
     async fn prv_key_data_enumerate_call(
         self: Arc<Self>,
         _request: PrvKeyDataEnumerateRequest,
@@ -1311,13 +1308,12 @@ impl WalletApi for Wallet {
 
     async fn prv_key_data_create_call(self: Arc<Self>, request: PrvKeyDataCreateRequest) -> Result<PrvKeyDataCreateResponse> {
         let PrvKeyDataCreateRequest { prv_key_data_args, fetch_mnemonic } = request;
-
         let (prv_key_data_id, mnemonic) = self.create_prv_key_data(prv_key_data_args).await?;
-
         Ok(PrvKeyDataCreateResponse { mnemonic: fetch_mnemonic.then_some(mnemonic.phrase_string()), prv_key_data_id })
     }
 
     async fn prv_key_data_remove_call(self: Arc<Self>, _request: PrvKeyDataRemoveRequest) -> Result<PrvKeyDataRemoveResponse> {
+        // TODO handle key removal
         return Err(Error::NotImplemented);
     }
 
@@ -1330,15 +1326,27 @@ impl WalletApi for Wallet {
         Ok(PrvKeyDataGetResponse { prv_key_data })
     }
 
+    async fn accounts_rename_call(self: Arc<Self>, request: AccountsRenameRequest) -> Result<AccountsRenameResponse> {
+        let AccountsRenameRequest { account_id, name, wallet_secret } = request;
+
+        let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
+        account.rename(wallet_secret, name.as_deref()).await?;
+
+        Ok(AccountsRenameResponse {})
+    }
+
     async fn accounts_enumerate_call(self: Arc<Self>, _request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse> {
         let account_list = self.accounts(None).await?.try_collect::<Vec<_>>().await?;
         let descriptor_list = account_list.iter().map(|account| account.descriptor().unwrap()).collect::<Vec<_>>();
+
         Ok(AccountsEnumerateResponse { descriptor_list })
     }
 
     async fn accounts_activate_call(self: Arc<Self>, request: AccountsActivateRequest) -> Result<AccountsActivateResponse> {
         let AccountsActivateRequest { account_ids } = request;
+
         self.activate_accounts(account_ids.as_deref()).await?;
+
         Ok(AccountsActivateResponse {})
     }
 
