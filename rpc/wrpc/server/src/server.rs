@@ -56,8 +56,11 @@ impl Server {
         let rpc_core = if let Some(service) = core_service {
             // Prepare rpc service objects
             let notification_channel = NotificationChannel::default();
-            let listener_id =
-                service.notifier().register_new_listener(ChannelConnection::new(notification_channel.sender(), ChannelType::Closable));
+            let listener_id = service.notifier().register_new_listener(ChannelConnection::new(
+                WRPC_SERVER,
+                notification_channel.sender(),
+                ChannelType::Closable,
+            ));
 
             // Prepare notification internals
             let enabled_events = EVENT_TYPE_ARRAY[..].into();

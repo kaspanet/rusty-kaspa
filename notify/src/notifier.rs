@@ -310,7 +310,7 @@ where
     ) -> Result<()> {
         let event: EventType = (&scope).into();
         let mut subscriptions = self.subscriptions.lock();
-        debug!("[Notifier {}] {command} notifying about {scope} to listener {id}", self.name);
+        debug!("[Notifier {}] {command} notifying about {scope} to listener {id} - {}", self.name, listener.connection());
         if let Some(mutations) = listener.mutate(Mutation::new(command, scope.clone())) {
             trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} involves mutations {mutations:?}", self.name);
             // Update broadcasters
@@ -725,13 +725,14 @@ mod tests {
 
     impl Test {
         fn new(name: &'static str, listener_count: usize, steps: Vec<Step>) -> Self {
+            const IDENT: &str = "test";
             type TestConverter = ConverterFrom<TestNotification, TestNotification>;
             type TestCollector = CollectorFrom<TestConverter>;
             // Build the full-featured notifier
             let (sync_sender, sync_receiver) = unbounded();
             let (notification_sender, notification_receiver) = unbounded();
             let (subscription_sender, subscription_receiver) = unbounded();
-            let collector = Arc::new(TestCollector::new("test", notification_receiver, Arc::new(TestConverter::new())));
+            let collector = Arc::new(TestCollector::new(IDENT, notification_receiver, Arc::new(TestConverter::new())));
             let subscription_manager = Arc::new(SubscriptionManagerMock::new(subscription_sender));
             let subscriber =
                 Arc::new(Subscriber::new("test", EVENT_TYPE_ARRAY[..].into(), subscription_manager, SUBSCRIPTION_MANAGER_ID));
@@ -748,7 +749,7 @@ mod tests {
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for _ in 0..listener_count {
                 let (sender, receiver) = unbounded();
-                let connection = TestConnection::new(sender, ChannelType::Closable);
+                let connection = TestConnection::new(IDENT, sender, ChannelType::Closable);
                 listeners.push(notifier.register_new_listener(connection));
                 notification_receivers.push(receiver);
             }

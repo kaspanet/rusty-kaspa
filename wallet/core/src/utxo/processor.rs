@@ -360,9 +360,11 @@ impl UtxoProcessor {
     }
 
     async fn register_notification_listener(&self) -> Result<()> {
-        let listener_id = self
-            .rpc_api()
-            .register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone(), ChannelType::Persistent));
+        let listener_id = self.rpc_api().register_new_listener(ChannelConnection::new(
+            "utxo processor",
+            self.inner.notification_channel.sender.clone(),
+            ChannelType::Persistent,
+        ));
         *self.inner.listener_id.lock().unwrap() = Some(listener_id);
 
         self.rpc_api().start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;

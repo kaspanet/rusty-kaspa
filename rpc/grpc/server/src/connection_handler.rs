@@ -77,7 +77,7 @@ impl ConnectionHandler {
         // Prepare core objects
         let core_channel = NotificationChannel::default();
         let core_listener_id =
-            core_notifier.register_new_listener(ChannelConnection::new(core_channel.sender(), ChannelType::Closable));
+            core_notifier.register_new_listener(ChannelConnection::new(GRPC_SERVER, core_channel.sender(), ChannelType::Closable));
 
         // Prepare internals
         let core_events = EVENT_TYPE_ARRAY[..].into();

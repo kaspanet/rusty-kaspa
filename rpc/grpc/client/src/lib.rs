@@ -6,7 +6,7 @@ use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use connection_event::ConnectionEvent;
 use futures::{future::FutureExt, pin_mut, select};
-use kaspa_core::{debug, trace};
+use kaspa_core::{debug, error, trace};
 use kaspa_grpc_core::{
     channel::NotificationChannel,
     ops::KaspadPayloadOps,
@@ -741,12 +741,12 @@ impl Inner {
                     match self.notification_channel.try_send(notification) {
                         Ok(_) => {}
                         Err(err) => {
-                            trace!("GRPC client: error while trying to send a notification to the notifier: {:?}", err);
+                            error!("GRPC client: error while trying to send a notification to the notifier: {:?}", err);
                         }
                     }
                 }
                 Err(err) => {
-                    trace!("GRPC client: handle_response error converting response into notification: {:?}", err);
+                    error!("GRPC client: handle_response error converting response into notification: {:?}", err);
                 }
             }
         } else if response.payload.is_some() {

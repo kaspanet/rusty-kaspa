@@ -248,14 +248,15 @@ mod tests {
 
     impl Test {
         fn new(name: &'static str, listener_count: usize, steps: Vec<Step>) -> Self {
+            const IDENT: &str = "test";
             let (sync_sender, sync_receiver) = unbounded();
             let (notification_sender, notification_receiver) = unbounded();
-            let broadcaster = Arc::new(TestBroadcaster::new("test", notification_receiver, Some(sync_sender)));
+            let broadcaster = Arc::new(TestBroadcaster::new(IDENT, notification_receiver, Some(sync_sender)));
             let mut listeners = Vec::with_capacity(listener_count);
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for _ in 0..listener_count {
                 let (sender, receiver) = unbounded();
-                let connection = TestConnection::new(sender, ChannelType::Closable);
+                let connection = TestConnection::new(IDENT, sender, ChannelType::Closable);
                 let listener = Listener::new(connection);
                 listeners.push(listener);
                 notification_receivers.push(receiver);

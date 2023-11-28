@@ -15,7 +15,7 @@ pub struct Listener {
 impl Listener {
     pub async fn subscribe(client: GrpcClient, scope: Scope) -> RpcResult<Listener> {
         let (sender, receiver) = async_channel::unbounded();
-        let connection = ChannelConnection::new(sender, ChannelType::Closable);
+        let connection = ChannelConnection::new("client listener", sender, ChannelType::Closable);
         let id = client.register_new_listener(connection);
         let event: EventType = (&scope).into();
         client.start_notify(id, scope).await?;
