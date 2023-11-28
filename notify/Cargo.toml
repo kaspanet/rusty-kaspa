@@ -27,6 +27,7 @@ paste.workspace = true
 rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 triggered.workspace = true
 uuid.workspace = true
 workflow-core.workspace = true

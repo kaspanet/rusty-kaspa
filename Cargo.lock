@@ -2782,7 +2782,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
- "workflow-perf-monitor",
 ]
 
 [[package]]

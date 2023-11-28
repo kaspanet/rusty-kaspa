@@ -314,10 +314,17 @@ where
         if let Some(mutations) = listener.mutate(Mutation::new(command, scope.clone())) {
             trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} involves mutations {mutations:?}", self.name);
             // Update broadcasters
-            let subscription = listener.subscriptions[event].clone_arc();
-            self.broadcasters
-                .iter()
-                .try_for_each(|broadcaster| broadcaster.register(subscription.clone(), id, listener.connection()))?;
+            match listener.subscriptions[event].active() {
+                true => {
+                    let subscription = listener.subscriptions[event].clone_arc();
+                    self.broadcasters
+                        .iter()
+                        .try_for_each(|broadcaster| broadcaster.register(subscription.clone(), id, listener.connection()))?;
+                }
+                false => {
+                    self.broadcasters.iter().try_for_each(|broadcaster| broadcaster.unregister(event, id))?;
+                }
+            }
             // Compound mutations
             let mut compound_result = None;
             for mutation in mutations {

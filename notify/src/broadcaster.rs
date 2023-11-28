@@ -3,10 +3,10 @@ use super::{
     connection::Connection, error::Result, events::EventArray, listener::ListenerId, notification::Notification,
     subscription::DynSubscription,
 };
+use crate::events::EventType;
 use async_channel::{Receiver, Sender};
 use core::fmt::Debug;
 use derive_more::Deref;
-use futures::{future::FutureExt, select};
 use kaspa_core::{debug, trace};
 use std::{
     collections::HashMap,
@@ -15,6 +15,7 @@ use std::{
         Arc,
     },
 };
+use tokio::select;
 use workflow_core::channel::Channel;
 
 type ConnectionSet<T> = HashMap<ListenerId, T>;
@@ -81,7 +82,7 @@ where
     C: Connection,
 {
     Register(DynSubscription, ListenerId, C),
-    Unregister(DynSubscription, ListenerId),
+    Unregister(EventType, ListenerId),
 }
 
 #[derive(Debug)]
@@ -132,20 +133,22 @@ where
             let mut purge: Vec<ListenerId> = Vec::new();
             loop {
                 select! {
-                    ctl = self.ctl.recv().fuse() => {
+                    biased; // always handle control messages first
+
+                    ctl = self.ctl.recv() => {
                         if let Ok(ctl) = ctl {
                             match ctl {
                                 Ctl::Register(subscription, id, connection) => {
                                     plan[subscription.event_type()].insert(subscription, id, connection);
                                 },
-                                Ctl::Unregister(subscription, id) => {
-                                    plan[subscription.event_type()].remove(&id);
+                                Ctl::Unregister(event_type, id) => {
+                                    plan[event_type].remove(&id);
                                 },
                             }
                         }
                     },
 
-                    notification = self.incoming.recv().fuse() => {
+                    notification = self.incoming.recv() => {
                         if let Ok(notification) = notification {
                             // Broadcast the notification...
                             let event = notification.event_type();
@@ -194,11 +197,13 @@ where
     }
 
     pub fn register(&self, subscription: DynSubscription, id: ListenerId, connection: C) -> Result<()> {
-        if subscription.active() {
-            self.ctl.try_send(Ctl::Register(subscription, id, connection))?;
-        } else {
-            self.ctl.try_send(Ctl::Unregister(subscription, id))?;
-        }
+        assert!(subscription.active());
+        self.ctl.try_send(Ctl::Register(subscription, id, connection))?;
+        Ok(())
+    }
+
+    pub fn unregister(&self, event_type: EventType, id: ListenerId) -> Result<()> {
+        self.ctl.try_send(Ctl::Unregister(event_type, id))?;
         Ok(())
     }
 
@@ -283,7 +288,7 @@ mod tests {
                                     idx as u64,
                                     self.listeners[idx].connection(),
                                 ),
-                                false => Ctl::Unregister(self.listeners[idx].subscriptions[event].clone_arc(), idx as u64),
+                                false => Ctl::Unregister(event, idx as u64),
                             };
                             assert!(
                                 self.ctl_sender.send(ctl).await.is_ok(),
