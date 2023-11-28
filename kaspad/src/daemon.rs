@@ -32,6 +32,15 @@ use kaspa_perf_monitor::builder::Builder as PerfMonitorBuilder;
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, ServerCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
+/// Desired soft FD limit that needs to be configured
+/// for the kaspad process.
+pub const DESIRED_DAEMON_SOFT_FD_LIMIT: u64 = 16 * 1024;
+/// Minimum acceptable soft FD limit for the kaspad
+/// process. (Rusty Kaspa will operate with the minimal
+/// acceptable limit of `4096`, but a setting below
+/// this value may impact the database performance).
+pub const MINIMUM_DAEMON_SOFT_FD_LIMIT: u64 = 4 * 1024;
+
 use crate::args::Args;
 
 const DEFAULT_DATA_DIR: &str = "datadir";
