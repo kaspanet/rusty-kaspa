@@ -137,9 +137,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
         self.context().settings.as_ref().and_then(|settings| settings.name.clone())
     }
 
-    fn title(&self) -> Option<String> {
-        self.context().settings.as_ref().and_then(|settings| settings.title.clone())
-    }
 
     fn name_or_id(&self) -> String {
         if let Some(name) = self.name() {
@@ -165,20 +162,20 @@ pub trait Account: AnySync + Send + Sync + 'static {
         }
     }
 
-    async fn rename(&self, secret: Secret, name: Option<&str>) -> Result<()> {
+    async fn rename(&self, wallet_secret: Secret, name: Option<&str>) -> Result<()> {
         {
             let mut context = self.context();
             if let Some(settings) = &mut context.settings {
                 settings.name = name.map(String::from);
             } else {
-                context.settings = Some(storage::Settings { name: name.map(String::from), title: None, ..Default::default() });
+                context.settings = Some(storage::Settings { name: name.map(String::from), ..Default::default() });
             }
         }
 
         let account = self.as_storable()?;
         self.wallet().store().as_account_store()?.store_single(&account, None).await?;
 
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret));
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         self.wallet().store().commit(&ctx).await?;
         Ok(())
     }

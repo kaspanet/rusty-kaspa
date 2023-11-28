@@ -369,6 +369,16 @@ impl KaspaCli {
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
+                                Events::Stasis {
+                                    record
+                                } => {
+                                    // Pending and coinbase stasis fall under the same `Track` category
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
+                                        let include_utxos = this.flags.get(Track::Utxo);
+                                        let tx = record.format_with_state(&this.wallet,Some("stasis"),include_utxos).await;
+                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
+                                    }
+                                },
                                 Events::External {
                                     record
                                 } => {

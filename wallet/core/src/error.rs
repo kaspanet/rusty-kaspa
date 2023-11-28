@@ -193,6 +193,9 @@ pub enum Error {
     #[error("The feature is not supported")]
     NotImplemented,
 
+    #[error("Not allowed on a resident wallet")]
+    ResidentWallet,
+
     #[error("Not allowed on a resident account")]
     ResidentAccount,
 

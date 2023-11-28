@@ -8,8 +8,6 @@ pub struct Settings {
     pub is_visible: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
 }
 
 const LEGACY_ACCOUNT_VERSION: u16 = 0;

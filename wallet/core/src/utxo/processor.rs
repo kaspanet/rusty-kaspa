@@ -13,7 +13,7 @@ use workflow_core::task::spawn;
 
 use crate::imports::*;
 use crate::result::Result;
-use crate::utxo::{PendingUtxoEntryReference, UtxoContext, UtxoEntryId, UtxoEntryReference};
+use crate::utxo::{Maturity, PendingUtxoEntryReference, UtxoContext, UtxoEntryId, UtxoEntryReference};
 use crate::{events::Events, runtime::SyncMonitor};
 use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use kaspa_rpc_core::{
@@ -23,7 +23,9 @@ use kaspa_rpc_core::{
 use std::collections::HashMap;
 
 pub struct Inner {
-    /// UTXOs pending maturity (confirmation)
+    /// Coinbase UTXOs in stasis
+    stasis: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
+    /// UTXOs pending maturity
     pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
     /// Address to UtxoContext map (maps all addresses used by
     /// all UtxoContexts to their respective UtxoContexts)
@@ -48,6 +50,7 @@ pub struct Inner {
 impl Inner {
     pub fn new(rpc: Option<Rpc>, network_id: Option<NetworkId>, multiplexer: Multiplexer<Box<Events>>) -> Self {
         Self {
+            stasis: DashMap::new(),
             pending: DashMap::new(),
             address_to_utxo_context_map: DashMap::new(),
             recoverable_contexts: DashSet::new(),
@@ -131,6 +134,10 @@ impl UtxoProcessor {
         &self.inner.pending
     }
 
+    pub fn stasis(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
+        &self.inner.stasis
+    }
+
     pub fn current_daa_score(&self) -> Option<u64> {
         self.is_connected().then_some(self.inner.current_daa_score.load(Ordering::SeqCst))
     }
@@ -205,31 +212,61 @@ impl UtxoProcessor {
     }
 
     pub async fn handle_pending(&self, current_daa_score: u64) -> Result<()> {
-        let mature_entries = {
+        let (mature_entries, revived_entries) = {
+            // scan and remove any pending entries that gained maturity
             let mut mature_entries = vec![];
             let pending_entries = &self.inner.pending;
-            pending_entries.retain(|_, pending| {
-                if pending.is_mature(current_daa_score) {
-                    mature_entries.push(pending.clone());
+            pending_entries.retain(|_, pending_entry| match pending_entry.maturity(current_daa_score) {
+                Maturity::Mature => {
+                    mature_entries.push(pending_entry.clone());
                     false
-                } else {
-                    true
+                }
+                _ => true,
+            });
+
+            // scan and remove any stasis entries that can now become pending
+            // or gained maturity
+            let mut revived_entries = vec![];
+            let stasis_entries = &self.inner.stasis;
+            stasis_entries.retain(|_, stasis_entry| {
+                match stasis_entry.maturity(current_daa_score) {
+                    Maturity::Mature => {
+                        mature_entries.push(stasis_entry.clone());
+                        false
+                    }
+                    Maturity::Pending => {
+                        revived_entries.push(stasis_entry.clone());
+                        // relocate from stasis to pending ...
+                        pending_entries.insert(stasis_entry.id(), stasis_entry.clone());
+                        false
+                    }
+                    Maturity::Stasis => true,
                 }
             });
-            mature_entries
+            (mature_entries, revived_entries)
         };
 
         // ------
 
         let promotions =
             HashMap::group_from(mature_entries.into_iter().map(|utxo| (utxo.inner.utxo_context.clone(), utxo.inner.entry.clone())));
-        let contexts = promotions.keys().cloned().collect::<Vec<_>>();
+        let mut updated_contexts: HashSet<UtxoContext> = HashSet::from_iter(promotions.keys().cloned());
 
         for (context, utxos) in promotions.into_iter() {
             context.promote(utxos).await?;
         }
 
-        for context in contexts.into_iter() {
+        // ------
+
+        let revivals =
+            HashMap::group_from(revived_entries.into_iter().map(|utxo| (utxo.inner.utxo_context.clone(), utxo.inner.entry.clone())));
+        updated_contexts.extend(revivals.keys().cloned());
+
+        for (context, utxos) in revivals.into_iter() {
+            context.revive(utxos).await?;
+        }
+
+        for context in updated_contexts.into_iter() {
             context.update_balance().await?;
         }
 

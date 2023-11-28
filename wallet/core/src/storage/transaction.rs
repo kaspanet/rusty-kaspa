@@ -24,8 +24,11 @@ pub enum TransactionType {
     External,
     /// Internal batch (sweep) transaction
     Batch,
-    /// Reorg transaction (caused by UTXO reorg during mining)
+    /// Reorg transaction (caused by UTXO reorg)
     Reorg,
+    /// Stasis transaction (caused by reorg during coinbase UTXO stasis)
+    /// NOTE: These types of transactions should be ignored by clients.
+    Stasis,
 }
 
 impl TransactionType {
@@ -36,6 +39,7 @@ impl TransactionType {
             TransactionType::External => style(s).red().to_string(),
             TransactionType::Batch => style(s).blue().to_string(),
             TransactionType::Reorg => style(s).blue().to_string(),
+            TransactionType::Stasis => style(s).blue().to_string(),
         }
     }
     pub fn style_with_sign(&self, s: &str, history: bool) -> String {
@@ -52,6 +56,7 @@ impl TransactionType {
                 }
             }
             .to_string(),
+            TransactionType::Stasis => style("".to_string() + s).dim().to_string(),
         }
     }
 }
@@ -64,6 +69,7 @@ impl TransactionType {
             TransactionType::External => "-",
             TransactionType::Batch => "",
             TransactionType::Reorg => "-",
+            TransactionType::Stasis => "-",
         }
         .to_string()
     }
@@ -77,6 +83,7 @@ impl std::fmt::Display for TransactionType {
             TransactionType::External => "external",
             TransactionType::Batch => "batch",
             TransactionType::Reorg => "reorg",
+            TransactionType::Stasis => "stasis",
         };
         write!(f, "{s}")
     }

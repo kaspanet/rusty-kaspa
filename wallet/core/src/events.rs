@@ -126,6 +126,9 @@ pub enum Events {
     Change { record: TransactionRecord },
     /// Pending UTXO has been removed (reorg)
     Reorg { record: TransactionRecord },
+    /// Coinbase statis UTXO has been removed (reorg)
+    /// NOTE: These transactions should be ignored by clients.
+    Stasis { record: TransactionRecord },
     /// UtxoProcessor has received a foreign unknown transaction
     /// withdrawing funds from the wallet. This occurs when another
     /// instance of the wallet creates an outgoing transaction.

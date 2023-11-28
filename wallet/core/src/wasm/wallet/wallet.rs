@@ -295,7 +295,6 @@ impl From<PrvKeyDataCreateArgs> for runtime::PrvKeyDataCreateArgs {
 
 struct AccountCreateArgs {
     pub name: Option<String>,
-    pub title: Option<String>,
     pub account_kind: storage::AccountKind,
     pub wallet_secret: Secret,
     pub payment_secret: Option<String>,
@@ -318,7 +317,6 @@ impl TryFrom<&JsValue> for AccountCreateArgs {
 
             Ok(AccountCreateArgs {
                 name: object.try_get_string("name")?,
-                title: object.try_get_string("title")?,
                 account_kind,
                 wallet_secret: object.get_string("walletSecret")?.into(),
                 payment_secret: object.try_get_string("paymentSecret")?,
@@ -333,7 +331,6 @@ impl From<AccountCreateArgs> for runtime::AccountCreateArgs {
     fn from(args: AccountCreateArgs) -> Self {
         runtime::AccountCreateArgs {
             name: args.name,
-            title: args.title,
             account_kind: args.account_kind,
             wallet_secret: args.wallet_secret,
             payment_secret: args.payment_secret.map(|s| s.into()),

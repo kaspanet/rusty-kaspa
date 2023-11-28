@@ -13,7 +13,7 @@ pub use context::{UtxoContext, UtxoContextId};
 pub use iterator::UtxoIterator;
 pub use pending::PendingUtxoEntryReference;
 pub use processor::UtxoProcessor;
-pub use reference::{TryIntoUtxoEntryReferences, UtxoEntryReference, UtxoEntryReferenceExtension};
+pub use reference::{Maturity, TryIntoUtxoEntryReferences, UtxoEntryReference, UtxoEntryReferenceExtension};
 pub use scan::{Scan, ScanExtent};
 pub use settings::*;
 pub use stream::UtxoStream;

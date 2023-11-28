@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::runtime::Account;
-use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference, UtxoEntryReferenceExtension};
+use crate::utxo::{Maturity, UtxoContext, UtxoEntryId, UtxoEntryReference, UtxoEntryReferenceExtension};
 
 pub struct PendingUtxoEntryReferenceInner {
     pub entry: UtxoEntryReference,
@@ -43,8 +43,8 @@ impl PendingUtxoEntryReference {
     }
 
     #[inline(always)]
-    pub fn is_mature(&self, current_daa_score: u64) -> bool {
-        self.inner().entry.is_mature(current_daa_score)
+    pub fn maturity(&self, current_daa_score: u64) -> Maturity {
+        self.inner().entry.maturity(current_daa_score)
     }
 }
 
