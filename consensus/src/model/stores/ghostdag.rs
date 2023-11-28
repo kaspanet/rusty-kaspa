@@ -239,39 +239,27 @@ pub trait GhostdagStore: GhostdagStoreReader {
 #[derive(Clone)]
 pub struct DbGhostdagStore {
     db: Arc<DB>,
-    level: Option<BlockLevel>,
+    level: BlockLevel,
     access: CachedDbAccess<Hash, Arc<GhostdagData>, BlockHasher>,
     compact_access: CachedDbAccess<Hash, CompactGhostdagData, BlockHasher>,
 }
 
 impl DbGhostdagStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self {
-            db: Arc::clone(&db),
-            level: None,
-            access: CachedDbAccess::new(db.clone(), cache_size, DatabaseStorePrefixes::Ghostdag.into()),
-            compact_access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::GhostdagCompact.into()),
-        }
-    }
-
-    pub fn new_with_level(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+    pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
         assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
-        let prefix = DatabaseStorePrefixes::GhostdagProof.into_iter().chain(lvl_bytes).collect_vec();
-        let compact_prefix = DatabaseStorePrefixes::GhostdagCompactProof.into_iter().chain(lvl_bytes).collect_vec();
+        let prefix = DatabaseStorePrefixes::Ghostdag.into_iter().chain(lvl_bytes).collect_vec();
+        let compact_prefix = DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(lvl_bytes).collect_vec();
         Self {
             db: Arc::clone(&db),
-            level: Some(level),
+            level,
             access: CachedDbAccess::new(db.clone(), cache_size, prefix),
             compact_access: CachedDbAccess::new(db, cache_size, compact_prefix),
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        match self.level {
-            Some(level) => Self::new_with_level(Arc::clone(&self.db), level, cache_size),
-            None => Self::new(Arc::clone(&self.db), cache_size),
-        }
+        Self::new(Arc::clone(&self.db), self.level, cache_size)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {

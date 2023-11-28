@@ -5,6 +5,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlueWorkType, HashMapCustomHasher,
 };
 use kaspa_hashes::Hash;
+use kaspa_math::Uint192;
 use kaspa_utils::refs::Refs;
 
 use crate::{
@@ -22,24 +23,17 @@ use crate::{
 use super::ordering::*;
 
 #[derive(Clone)]
-pub struct GhostdagManager<
-    T: GhostdagStoreReader,
-    S: RelationsStoreReader,
-    U: ReachabilityService,
-    V: HeaderStoreReader,
-    const USE_BLUE_WORK: bool = true,
-> {
+pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> {
     genesis_hash: Hash,
     pub(super) k: KType,
     pub(super) ghostdag_store: Arc<T>,
     pub(super) relations_store: S,
     pub(super) headers_store: Arc<V>,
     pub(super) reachability_service: U,
+    use_score_as_work: bool,
 }
 
-impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader, const USE_BLUE_WORK: bool>
-    GhostdagManager<T, S, U, V, USE_BLUE_WORK>
-{
+impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
     pub fn new(
         genesis_hash: Hash,
         k: KType,
@@ -47,8 +41,9 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         relations_store: S,
         headers_store: Arc<V>,
         reachability_service: U,
+        use_score_as_work: bool,
     ) -> Self {
-        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store }
+        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store, use_score_as_work }
     }
 
     pub fn genesis_ghostdag_data(&self) -> GhostdagData {
@@ -74,21 +69,12 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     }
 
     pub fn find_selected_parent(&self, parents: impl IntoIterator<Item = Hash>) -> Hash {
-        if USE_BLUE_WORK {
-            parents
-                .into_iter()
-                .map(|parent| SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() })
-                .max()
-                .unwrap()
-                .hash
-        } else {
-            parents
-                .into_iter()
-                .map(|parent| SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_score(parent).unwrap() })
-                .max()
-                .unwrap()
-                .hash
-        }
+        parents
+            .into_iter()
+            .map(|parent| SortableBlock { hash: parent, blue_work: self.ghostdag_store.get_blue_work(parent).unwrap() })
+            .max()
+            .unwrap()
+            .hash
     }
 
     /// Runs the GHOSTDAG protocol and calculates the block GhostdagData by the given parents.
@@ -132,14 +118,19 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
         let blue_score = self.ghostdag_store.get_blue_score(selected_parent).unwrap() + new_block_data.mergeset_blues.len() as u64;
 
-        let added_blue_work: BlueWorkType = new_block_data
-            .mergeset_blues
-            .iter()
-            .cloned()
-            .map(|hash| if hash.is_origin() { 0.into() } else { calc_work(self.headers_store.get_bits(hash).unwrap()) })
-            .sum();
+        let blue_work: Uint192 = if self.use_score_as_work {
+            blue_score.into()
+        } else {
+            let added_blue_work: BlueWorkType = new_block_data
+                .mergeset_blues
+                .iter()
+                .cloned()
+                .map(|hash| if hash.is_origin() { 0.into() } else { calc_work(self.headers_store.get_bits(hash).unwrap()) })
+                .sum();
 
-        let blue_work = self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work;
+            self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work
+        };
+
         new_block_data.finalize_score_and_work(blue_score, blue_work);
 
         new_block_data

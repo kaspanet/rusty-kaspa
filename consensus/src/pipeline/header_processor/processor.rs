@@ -1,8 +1,8 @@
 use crate::{
     consensus::{
         services::{
-            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbGhostdagManagerBlueScore,
-            DbParentsManager, DbPruningPointManager, DbWindowManager,
+            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbPruningPointManager,
+            DbWindowManager,
         },
         storage::ConsensusStorage,
     },
@@ -141,7 +141,7 @@ pub struct HeaderProcessor {
     pub(super) depth_store: Arc<DbDepthStore>,
 
     // Managers and services
-    pub(super) proof_levels_ghostdag_managers: Arc<Vec<DbGhostdagManagerBlueScore>>,
+    pub(super) proof_levels_ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     pub ghostdag_manager: DbGhostdagManager,
     pub(super) dag_traversal_manager: DbDagTraversalManager,
     pub(super) window_manager: DbWindowManager,

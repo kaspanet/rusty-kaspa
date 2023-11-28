@@ -24,14 +24,6 @@ use std::sync::Arc;
 pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
 
-pub type DbGhostdagManagerBlueScore = GhostdagManager<
-    DbGhostdagStore,
-    MTRelationsService<DbRelationsStore>,
-    MTReachabilityService<DbReachabilityStore>,
-    DbHeadersStore,
-    false,
->;
-
 pub type DbDagTraversalManager = DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 
 pub type DbWindowManager = DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>;
@@ -61,7 +53,7 @@ pub struct ConsensusServices {
     pub reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub window_manager: DbWindowManager,
     pub dag_traversal_manager: DbDagTraversalManager,
-    pub proof_levels_ghostdag_managers: Arc<Vec<DbGhostdagManagerBlueScore>>,
+    pub proof_levels_ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     pub ghostdag_manager: DbGhostdagManager,
     pub coinbase_manager: CoinbaseManager,
     pub pruning_point_manager: DbPruningPointManager,
@@ -133,6 +125,7 @@ impl ConsensusServices {
                         relations_services[level].clone(),
                         storage.headers_store.clone(),
                         reachability_service.clone(),
+                        level != 0,
                     )
                 })
                 .collect_vec(),
@@ -144,6 +137,7 @@ impl ConsensusServices {
             relations_services[0].clone(),
             storage.headers_store.clone(),
             reachability_service.clone(),
+            false,
         );
 
         let coinbase_manager = CoinbaseManager::new(
