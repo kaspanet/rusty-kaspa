@@ -51,7 +51,7 @@ impl MetricGroup {
             ],
             MetricGroup::Storage => vec![
                 Metric::NodeDiskIoReadBytes,
-                Metric::NodeDiskIoReadPerSec,   
+                Metric::NodeDiskIoReadPerSec,
                 Metric::NodeDiskIoWriteBytes,
                 Metric::NodeDiskIoWritePerSec,
             ],
@@ -325,6 +325,7 @@ impl Metric {
                 | Metric::NodeTotalBytesTxPerSecond
                 | Metric::NodeTotalBytesRxPerSecond
                 | Metric::NodeActivePeers
+                | Metric::NetworkMempoolSize
                 | Metric::NetworkTipHashesCount
                 | Metric::NetworkTransactionsPerSecond
                 | Metric::NodeTransactionsProcessedCount
