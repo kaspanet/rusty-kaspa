@@ -11,6 +11,7 @@ use kaspa_mining::{
         errors::RuleError,
         tx::{Orphan, Priority},
     },
+    model::tx_query::TransactionQuery,
 };
 use kaspa_p2p_lib::{
     common::{ProtocolError, DEFAULT_TIMEOUT},
@@ -239,7 +240,9 @@ impl RequestTransactionsFlow {
             let msg = dequeue!(self.incoming_route, Payload::RequestTransactions)?;
             let tx_ids: Vec<_> = msg.try_into()?;
             for transaction_id in tx_ids {
-                if let Some(mutable_tx) = self.ctx.mining_manager().clone().get_transaction(transaction_id, true, false).await {
+                if let Some(mutable_tx) =
+                    self.ctx.mining_manager().clone().get_transaction(transaction_id, TransactionQuery::TransactionsOnly).await
+                {
                     // trace!("Send transaction {} to {}", mutable_tx.id(), self.router.identity());
                     self.router.enqueue(make_message!(Payload::Transaction, (&*mutable_tx.tx).into())).await?;
                 } else {

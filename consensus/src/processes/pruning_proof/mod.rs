@@ -1,7 +1,7 @@
 use std::{
     cmp::{max, Reverse},
-    collections::hash_map::Entry::Vacant,
-    collections::BinaryHeap,
+    collections::{hash_map::Entry, BinaryHeap},
+    collections::{hash_map::Entry::Vacant, VecDeque},
     ops::{Deref, DerefMut},
     sync::Arc,
 };
@@ -12,7 +12,7 @@ use parking_lot::{Mutex, RwLock};
 use rocksdb::WriteBatch;
 
 use kaspa_consensus_core::{
-    blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
+    blockhash::{self, BlockHashExtensions, BlockHashes, ORIGIN},
     errors::{
         consensus::{ConsensusError, ConsensusResult},
         pruning::{PruningImportError, PruningImportResult},
@@ -27,6 +27,7 @@ use kaspa_database::prelude::{ConnBuilder, StoreResultEmptyTuple, StoreResultExt
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
+use thiserror::Error;
 
 use crate::{
     consensus::{
@@ -60,6 +61,18 @@ use super::{
     ghostdag::{mergeset::unordered_mergeset_without_selected_parent, protocol::GhostdagManager},
     window::WindowManager,
 };
+
+#[derive(Error, Debug)]
+enum PruningProofManagerInternalError {
+    #[error("block at depth error: {0}")]
+    BlockAtDepth(String),
+
+    #[error("find common ancestor error: {0}")]
+    FindCommonAncestor(String),
+
+    #[error("cannot find a common ancestor: {0}")]
+    NoCommonAncestor(String),
+}
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -179,7 +192,7 @@ impl PruningProofManager {
         drop(pruning_point_write);
     }
 
-    pub fn apply_proof(&self, mut proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
+    pub fn apply_proof(&self, mut proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
         let pruning_point_header = proof[0].last().unwrap().clone();
         let pruning_point = pruning_point_header.hash;
 
@@ -196,6 +209,17 @@ impl PruningProofManager {
 
         proof[0].sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
         self.populate_reachability_and_headers(&proof);
+
+        {
+            let reachability_read = self.reachability_store.read();
+            for tb in trusted_set.iter() {
+                // Header-only trusted blocks are expected to be in pruning point past
+                if tb.block.is_header_only() && !reachability_read.is_dag_ancestor_of(tb.block.hash(), pruning_point) {
+                    return Err(PruningImportError::PruningPointPastMissingReachability(tb.block.hash()));
+                }
+            }
+        }
+
         for (level, headers) in proof.iter().enumerate() {
             trace!("Applying level {} from the pruning point proof", level);
             self.ghostdag_stores[level].insert(ORIGIN, self.ghostdag_managers[level].origin_ghostdag_data()).unwrap();
@@ -251,6 +275,8 @@ impl PruningProofManager {
             .unwrap();
         self.selected_chain_store.write().init_with_pruning_point(&mut batch, pruning_point).unwrap();
         self.db.write(batch).unwrap();
+
+        Ok(())
     }
 
     fn estimate_proof_unique_size(&self, proof: &PruningPointProof) -> usize {
@@ -406,7 +432,7 @@ impl PruningProofManager {
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
-            info!("Validating level {level} from the pruning point proof");
+            info!("Validating level {level} from the pruning point proof ({} headers)", proof[level as usize].len());
             let level_idx = level as usize;
             let mut selected_tip = None;
             for (i, header) in proof[level as usize].iter().enumerate() {
@@ -467,11 +493,13 @@ impl PruningProofManager {
             }
 
             if level < self.max_block_level {
-                let block_at_depth_m_at_next_level = self.block_at_depth(
-                    &*ghostdag_stores[level_idx + 1],
-                    selected_tip_by_level[level_idx + 1].unwrap(),
-                    self.pruning_proof_m,
-                );
+                let block_at_depth_m_at_next_level = self
+                    .block_at_depth(
+                        &*ghostdag_stores[level_idx + 1],
+                        selected_tip_by_level[level_idx + 1].unwrap(),
+                        self.pruning_proof_m,
+                    )
+                    .unwrap();
                 if !relations_stores[level_idx].has(block_at_depth_m_at_next_level).unwrap() {
                     return Err(PruningImportError::PruningProofMissingBlockAtDepthMFromNextLevel(level, level + 1));
                 }
@@ -598,19 +626,28 @@ impl PruningProofManager {
             .map(|level| {
                 let level = level as usize;
                 let selected_tip = selected_tip_by_level[level];
-                let block_at_depth_2m = self.block_at_depth(&*self.ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m);
+                let block_at_depth_2m = self
+                    .block_at_depth(&*self.ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m)
+                    .map_err(|err| format!("level: {}, err: {}", level, err))
+                    .unwrap();
 
                 let root = if level != self.max_block_level as usize {
-                    let block_at_depth_m_at_next_level =
-                        self.block_at_depth(&*self.ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m);
+                    let block_at_depth_m_at_next_level = self
+                        .block_at_depth(&*self.ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m)
+                        .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
+                        .unwrap();
                     if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
                         block_at_depth_m_at_next_level
+                    } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
+                        block_at_depth_2m
                     } else {
                         self.find_common_ancestor_in_chain_of_a(
                             &*self.ghostdag_stores[level],
                             block_at_depth_m_at_next_level,
                             block_at_depth_2m,
                         )
+                        .map_err(|err| format!("level: {}, err: {}", level, err))
+                        .unwrap()
                     }
                 } else {
                     block_at_depth_2m
@@ -641,33 +678,78 @@ impl PruningProofManager {
             .collect_vec()
     }
 
-    fn block_at_depth(&self, ghostdag_store: &impl GhostdagStoreReader, high: Hash, depth: u64) -> Hash {
-        let high_gd = ghostdag_store.get_compact_data(high).unwrap();
+    fn block_at_depth(
+        &self,
+        ghostdag_store: &impl GhostdagStoreReader,
+        high: Hash,
+        depth: u64,
+    ) -> Result<Hash, PruningProofManagerInternalError> {
+        let high_gd = ghostdag_store
+            .get_compact_data(high)
+            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
         let mut current_gd = high_gd;
         let mut current = high;
         while current_gd.blue_score + depth >= high_gd.blue_score {
             if current_gd.selected_parent.is_origin() {
                 break;
             }
-
+            let prev = current;
             current = current_gd.selected_parent;
-            current_gd = ghostdag_store.get_compact_data(current).unwrap();
+            current_gd = ghostdag_store.get_compact_data(current).map_err(|err| {
+                PruningProofManagerInternalError::BlockAtDepth(format!(
+                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
+                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
+                ))
+            })?;
         }
-        current
+        Ok(current)
     }
 
-    fn find_common_ancestor_in_chain_of_a(&self, ghostdag_store: &impl GhostdagStoreReader, a: Hash, b: Hash) -> Hash {
-        let a_gd = ghostdag_store.get_compact_data(a).unwrap();
+    fn find_common_ancestor_in_chain_of_a(
+        &self,
+        ghostdag_store: &impl GhostdagStoreReader,
+        a: Hash,
+        b: Hash,
+    ) -> Result<Hash, PruningProofManagerInternalError> {
+        let a_gd = ghostdag_store
+            .get_compact_data(a)
+            .map_err(|err| PruningProofManagerInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
         let mut current_gd = a_gd;
         let mut current;
+        let mut loop_counter = 0;
         loop {
             current = current_gd.selected_parent;
-            assert!(!current.is_origin());
-            if self.reachability_service.is_dag_ancestor_of(current, b) {
-                break current;
+            loop_counter += 1;
+            if current.is_origin() {
+                break Err(PruningProofManagerInternalError::NoCommonAncestor(format!("a: {a}, b: {b} ({loop_counter} loop steps)")));
             }
-            current_gd = ghostdag_store.get_compact_data(current).unwrap();
+            if self.reachability_service.is_dag_ancestor_of(current, b) {
+                break Ok(current);
+            }
+            current_gd = ghostdag_store
+                .get_compact_data(current)
+                .map_err(|err| PruningProofManagerInternalError::FindCommonAncestor(format!("a: {a}, b: {b}, {err}")))?;
         }
+    }
+
+    /// Returns the k + 1 chain blocks below this hash (inclusive). If data is missing
+    /// the search is halted and a partial chain is returned.
+    ///
+    /// The returned hashes are guaranteed to have GHOSTDAG data
+    pub(crate) fn get_ghostdag_chain_k_depth(&self, hash: Hash) -> Vec<Hash> {
+        let mut hashes = Vec::with_capacity(self.ghostdag_k as usize + 1);
+        let mut current = hash;
+        for _ in 0..=self.ghostdag_k {
+            hashes.push(current);
+            let Some(parent) = self.ghostdag_stores[0].get_selected_parent(current).unwrap_option() else {
+                break;
+            };
+            if parent == self.genesis_hash || parent == blockhash::ORIGIN {
+                break;
+            }
+            current = parent;
+        }
+        hashes
     }
 
     pub(crate) fn calculate_pruning_point_anticone_and_trusted_data(
@@ -685,6 +767,8 @@ impl PruningProofManager {
         let mut daa_window_blocks = BlockHashMap::new();
         let mut ghostdag_blocks = BlockHashMap::new();
 
+        // PRUNE SAFETY: called either via consensus under the prune guard or by the pruning processor (hence no pruning in parallel)
+
         for anticone_block in anticone.iter().copied() {
             let window = self
                 .window_manager
@@ -692,26 +776,56 @@ impl PruningProofManager {
                 .unwrap();
 
             for hash in window.deref().iter().map(|block| block.0.hash) {
-                if daa_window_blocks.contains_key(&hash) {
-                    continue;
-                }
-
-                daa_window_blocks.insert(
-                    hash,
-                    TrustedHeader {
+                if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
+                    e.insert(TrustedHeader {
                         header: self.headers_store.get_header(hash).unwrap(),
                         ghostdag: (&*self.ghostdag_stores[0].get_data(hash).unwrap()).into(),
-                    },
-                );
+                    });
+                }
             }
 
-            let mut current = anticone_block;
-            for _ in 0..=self.ghostdag_k {
-                let current_gd = self.ghostdag_stores[0].get_data(current).unwrap();
-                ghostdag_blocks.insert(current, (&*current_gd).into());
-                current = current_gd.selected_parent;
-                if current == self.genesis_hash {
-                    break;
+            let ghostdag_chain = self.get_ghostdag_chain_k_depth(anticone_block);
+            for hash in ghostdag_chain {
+                if let Entry::Vacant(e) = ghostdag_blocks.entry(hash) {
+                    let ghostdag = self.ghostdag_stores[0].get_data(hash).unwrap();
+                    e.insert((&*ghostdag).into());
+
+                    // We fill `ghostdag_blocks` only for kaspad-go legacy reasons, but the real set we
+                    // send is `daa_window_blocks` which represents the full trusted sub-DAG in the antifuture
+                    // of the pruning point which kaspad-rust nodes expect to get when synced with headers proof
+                    if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
+                        e.insert(TrustedHeader {
+                            header: self.headers_store.get_header(hash).unwrap(),
+                            ghostdag: (&*ghostdag).into(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // We traverse the DAG in the past of the pruning point and its anticone in order to make sure
+        // that the sub-DAG we share (which contains the union of DAA windows), is contiguous and includes
+        // all blocks between the pruning point and the DAA window blocks. This is crucial for the syncee
+        // to be able to build full reachability data of the sub-DAG and to actually validate that only the
+        // claimed anticone is indeed the pp anticone and all the rest of the blocks are in the pp past.
+
+        // We use the min blue-work in order to identify where the traversal can halt
+        let min_blue_work = daa_window_blocks.values().map(|th| th.header.blue_work).min().expect("non empty");
+        let mut queue = VecDeque::from_iter(anticone.iter().copied());
+        let mut visited = BlockHashSet::from_iter(queue.iter().copied().chain(std::iter::once(blockhash::ORIGIN))); // Mark origin as visited to avoid processing it
+        while let Some(current) = queue.pop_front() {
+            if let Entry::Vacant(e) = daa_window_blocks.entry(current) {
+                let header = self.headers_store.get_header(current).unwrap();
+                if header.blue_work < min_blue_work {
+                    continue;
+                }
+                let ghostdag = (&*self.ghostdag_stores[0].get_data(current).unwrap()).into();
+                e.insert(TrustedHeader { header, ghostdag });
+            }
+            let parents = self.relations_stores.read()[0].get_parents(current).unwrap();
+            for parent in parents.iter().copied() {
+                if visited.insert(parent) {
+                    queue.push_back(parent);
                 }
             }
         }

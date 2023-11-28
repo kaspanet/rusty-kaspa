@@ -8,6 +8,7 @@ use kaspa_consensus_core::{
     block::Block,
     block_count::BlockCount,
     blockstatus::BlockStatus,
+    daa_score_timestamp::DaaScoreTimestamp,
     errors::consensus::ConsensusResult,
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
@@ -250,18 +251,23 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_headers_selected_tip()).await
     }
 
-    /// Returns the anticone of block `hash` from the POV of `context`, i.e. `anticone(hash) ∩ past(context)`.
+    pub async fn async_get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        self.clone().spawn_blocking(|c| c.get_chain_block_samples()).await
+    }
+
+    /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.
     /// Since this might be an expensive operation for deep blocks, we allow the caller to specify a limit
     /// `max_traversal_allowed` on the maximum amount of blocks to traverse for obtaining the answer
-    pub async fn async_get_anticone_from_pov(
+    pub async fn async_get_antipast_from_pov(
         &self,
         hash: Hash,
         context: Hash,
         max_traversal_allowed: Option<u64>,
     ) -> ConsensusResult<Vec<Hash>> {
-        self.clone().spawn_blocking(move |c| c.get_anticone_from_pov(hash, context, max_traversal_allowed)).await
+        self.clone().spawn_blocking(move |c| c.get_antipast_from_pov(hash, context, max_traversal_allowed)).await
     }
 
+    /// Returns the anticone of block `hash` from the POV of `virtual`
     pub async fn async_get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         self.clone().spawn_blocking(move |c| c.get_anticone(hash)).await
     }

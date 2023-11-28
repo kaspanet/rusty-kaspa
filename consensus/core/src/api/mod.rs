@@ -8,6 +8,7 @@ use crate::{
     block_count::BlockCount,
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    daa_score_timestamp::DaaScoreTimestamp,
     errors::{
         block::{BlockProcessResult, RuleError},
         coinbase::CoinbaseResult,
@@ -136,6 +137,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        unimplemented!()
+    }
+
     fn get_virtual_parents(&self) -> BlockHashSet {
         unimplemented!()
     }
@@ -161,7 +166,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) {
+    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
         unimplemented!()
     }
 
@@ -193,13 +198,14 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    /// Returns the anticone of block `hash` from the POV of `context`, i.e. `anticone(hash) ∩ past(context)`.
+    /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.
     /// Since this might be an expensive operation for deep blocks, we allow the caller to specify a limit
     /// `max_traversal_allowed` on the maximum amount of blocks to traverse for obtaining the answer
-    fn get_anticone_from_pov(&self, hash: Hash, context: Hash, max_traversal_allowed: Option<u64>) -> ConsensusResult<Vec<Hash>> {
+    fn get_antipast_from_pov(&self, hash: Hash, context: Hash, max_traversal_allowed: Option<u64>) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
 
+    /// Returns the anticone of block `hash` from the POV of `virtual`
     fn get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }

@@ -9,7 +9,7 @@ mod tests {
             errors::RuleError,
             tx::{Orphan, Priority},
         },
-        model::candidate_tx::CandidateTransaction,
+        model::{candidate_tx::CandidateTransaction, tx_query::TransactionQuery},
         testutils::consensus_mock::ConsensusMock,
         MiningCounters,
     };
@@ -58,7 +58,7 @@ mod tests {
 
         // The UtxoEntry was filled manually for those transactions, so the transactions won't be considered orphans.
         // Therefore, all the transactions expected to be contained in the mempool.
-        let (transactions_from_pool, _) = mining_manager.get_all_transactions(true, false);
+        let (transactions_from_pool, _) = mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly);
         assert_eq!(
             transactions_to_insert.len(),
             transactions_from_pool.len(),
@@ -102,7 +102,7 @@ mod tests {
             Orphan::Allowed,
         );
         assert!(result.is_ok(), "inserting the child transaction {} into the mempool failed", transaction_not_an_orphan.id());
-        let (transactions_from_pool, _) = mining_manager.get_all_transactions(true, false);
+        let (transactions_from_pool, _) = mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly);
         assert!(
             contained_by(transaction_not_an_orphan.id(), &transactions_from_pool),
             "missing transaction {} in the mempool",
@@ -138,7 +138,7 @@ mod tests {
             status, result,
             "Unexpected result when trying to insert an invalid transaction: expected: {status:?}, got: {result:?}",
         );
-        let pool_tx = mining_manager.get_transaction(&transaction.id(), true, true);
+        let pool_tx = mining_manager.get_transaction(&transaction.id(), TransactionQuery::All);
         assert!(pool_tx.is_none(), "Mempool contains a transaction that should have been rejected");
     }
 
@@ -267,7 +267,7 @@ mod tests {
         );
         for handled_tx_id in first_part.iter().map(|x| x.id()) {
             assert!(
-                mining_manager.get_transaction(&handled_tx_id, true, true).is_none(),
+                mining_manager.get_transaction(&handled_tx_id, TransactionQuery::All).is_none(),
                 "the transaction {handled_tx_id} should not be in the mempool"
             );
         }
@@ -275,7 +275,7 @@ mod tests {
         // transactions, will still be included in the mempool.
         for handled_tx_id in rest.iter().map(|x| x.id()) {
             assert!(
-                mining_manager.get_transaction(&handled_tx_id, true, true).is_some(),
+                mining_manager.get_transaction(&handled_tx_id, TransactionQuery::All).is_some(),
                 "the transaction {handled_tx_id} is lacking from the mempool"
             );
         }
@@ -288,7 +288,7 @@ mod tests {
         );
         for handled_tx_id in rest.iter().map(|x| x.id()) {
             assert!(
-                mining_manager.get_transaction(&handled_tx_id, true, true).is_none(),
+                mining_manager.get_transaction(&handled_tx_id, TransactionQuery::All).is_none(),
                 "the transaction {handled_tx_id} should no longer be in the mempool"
             );
         }
@@ -320,7 +320,7 @@ mod tests {
         assert!(result.is_ok());
 
         assert!(
-            mining_manager.get_transaction(&transaction_in_the_mempool.id(), true, true).is_none(),
+            mining_manager.get_transaction(&transaction_in_the_mempool.id(), TransactionQuery::All).is_none(),
             "the transaction {} shouldn't be in the mempool since at least one output was already spent",
             transaction_in_the_mempool.id()
         );
@@ -344,7 +344,7 @@ mod tests {
                 mining_manager.validate_and_insert_transaction(consensus.as_ref(), orphan.clone(), Priority::Low, Orphan::Allowed);
             assert!(result.is_ok(), "the mempool should accept the valid orphan transaction {}", orphan.id());
         }
-        let (populated_txs, orphans) = mining_manager.get_all_transactions(true, true);
+        let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
         assert!(populated_txs.is_empty(), "the mempool should have no populated transaction since only orphans were submitted");
         for orphan in orphans.iter() {
             assert!(
@@ -381,7 +381,7 @@ mod tests {
             mining_manager.handle_new_block_transactions(consensus.as_ref(), 2, &build_block_transactions(added_parent_txs.iter()));
         assert!(result.is_ok(), "mining manager should handle new block transactions successfully but returns {result:?}");
         let unorphaned_txs = result.unwrap();
-        let (populated_txs, orphans) = mining_manager.get_all_transactions(true, true);
+        let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
         assert_eq!(
             unorphaned_txs.len(), child_txs.len() - SKIPPED_TXS,
             "the mempool is expected to have unorphaned all but one child transactions after all but one parent transactions were accepted by the consensus: expected: {}, got: {}",
@@ -467,7 +467,7 @@ mod tests {
         assert!(result.is_ok(), "mining manager should handle new block transactions successfully but returns {result:?}");
 
         let unorphaned_txs = result.unwrap();
-        let (populated_txs, orphans) = mining_manager.get_all_transactions(true, true);
+        let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
         assert_eq!(
             0,
             unorphaned_txs.len(),
@@ -489,7 +489,7 @@ mod tests {
             mining_manager.validate_and_insert_transaction(consensus.as_ref(), parent_txs[0].clone(), Priority::Low, Orphan::Allowed);
         assert!(result.is_ok(), "the insertion of the remaining parent transaction in the mempool failed");
         let unorphaned_txs = result.unwrap();
-        let (populated_txs, orphans) = mining_manager.get_all_transactions(true, true);
+        let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
         assert_eq!(
             unorphaned_txs.len(), SKIPPED_TXS + 1,
             "the mempool is expected to have unorphaned the remaining child transaction after the matching parent transaction was inserted into the mempool: expected: {}, got: {}",
@@ -706,7 +706,7 @@ mod tests {
 
         // Make sure spending_tx is still in mempool
         assert!(
-            mining_manager.get_transaction(&spending_tx.id(), true, false).is_some(),
+            mining_manager.get_transaction(&spending_tx.id(), TransactionQuery::TransactionsOnly).is_some(),
             "the spending transaction is no longer in the mempool"
         );
 
@@ -720,7 +720,7 @@ mod tests {
         );
 
         // And the mempool should be empty too
-        let (populated_txs, orphan_txs) = mining_manager.get_all_transactions(true, true);
+        let (populated_txs, orphan_txs) = mining_manager.get_all_transactions(TransactionQuery::All);
         assert!(populated_txs.is_empty(), "mempool should be empty");
         assert!(orphan_txs.is_empty(), "orphan pool should be empty");
     }

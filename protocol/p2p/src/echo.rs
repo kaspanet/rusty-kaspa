@@ -62,7 +62,7 @@ impl EchoFlow {
             KaspadMessagePayloadType::TrustedData,
             KaspadMessagePayloadType::RequestIbdChainBlockLocator,
             KaspadMessagePayloadType::IbdChainBlockLocator,
-            KaspadMessagePayloadType::RequestAnticone,
+            KaspadMessagePayloadType::RequestAntipast,
             KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks,
         ]);
         let mut echo_flow = EchoFlow { router, receiver };
