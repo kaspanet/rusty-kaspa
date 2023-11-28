@@ -81,6 +81,15 @@ impl MultiConsensusManagementStore {
         }
     }
 
+    /// The directory name of the active consensus, if one exists. None otherwise
+    pub fn active_consensus_dir_name(&self) -> StoreResult<Option<String>> {
+        let metadata = self.metadata.read()?;
+        match metadata.current_consensus_key {
+            Some(key) => Ok(Some(self.entries.read(key.into()).unwrap().directory_name)),
+            None => Ok(None),
+        }
+    }
+
     /// The entry type signifies whether the returned entry is an existing/new consensus
     pub fn active_consensus_entry(&mut self) -> StoreResult<ConsensusEntryType> {
         let mut metadata = self.metadata.read()?;
