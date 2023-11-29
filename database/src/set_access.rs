@@ -13,15 +13,16 @@ use std::{
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
-pub struct CachedDbSetAccess<TKey, TData, S = RandomState>
+pub struct CachedDbSetAccess<TKey, TData, S = RandomState, W = RandomState>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync,
     TData: Clone + Send + Sync,
+    W: Send + Sync,
 {
     db: Arc<DB>,
 
     // Cache
-    cache: Cache<TKey, Arc<RwLock<HashSet<TData>>>, S>,
+    cache: Cache<TKey, Arc<RwLock<HashSet<TData, W>>>, S>,
 
     // DB bucket/path
     prefix: Vec<u8>,
@@ -39,33 +40,34 @@ impl<T> ReadLock<T> {
     }
 }
 
-impl<TKey, TData, S> CachedDbSetAccess<TKey, TData, S>
+impl<TKey, TData, S, W> CachedDbSetAccess<TKey, TData, S, W>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync + AsRef<[u8]>,
     TData: Clone + std::hash::Hash + Eq + Send + Sync + DeserializeOwned + Serialize,
     S: BuildHasher + Default,
+    W: BuildHasher + Default + Send + Sync,
 {
     pub fn new(db: Arc<DB>, cache_size: u64, prefix: Vec<u8>) -> Self {
         Self { db, cache: Cache::new(cache_size), prefix }
     }
 
-    pub fn read_from_cache(&self, key: TKey) -> Option<ReadLock<HashSet<TData>>> {
+    pub fn read_from_cache(&self, key: TKey) -> Option<ReadLock<HashSet<TData, W>>> {
         let set = self.cache.get(&key)?.clone();
         Some(ReadLock::new(set))
     }
 
-    fn get_locked_data(&self, key: TKey) -> Result<Arc<RwLock<HashSet<TData>>>, StoreError> {
+    fn get_locked_data(&self, key: TKey) -> Result<Arc<RwLock<HashSet<TData, W>>>, StoreError> {
         if let Some(data) = self.cache.get(&key) {
             Ok(data)
         } else {
-            let data: HashSet<TData> = self.bucket_iterator(key.clone()).map(|x| x.unwrap()).collect();
+            let data: HashSet<TData, _> = self.bucket_iterator(key.clone()).map(|x| x.unwrap()).collect();
             let data = Arc::new(RwLock::new(data));
             self.cache.insert(key, data.clone());
             Ok(data)
         }
     }
 
-    pub fn read(&self, key: TKey) -> Result<ReadLock<HashSet<TData>>, StoreError> {
+    pub fn read(&self, key: TKey) -> Result<ReadLock<HashSet<TData, W>>, StoreError> {
         Ok(ReadLock::new(self.get_locked_data(key)?))
     }
 

@@ -71,7 +71,7 @@ impl From<DbChildKey> for ChildKey {
 #[derive(Clone)]
 pub struct DbChildrenStore {
     db: Arc<DB>,
-    access: CachedDbSetAccess<Hash, Hash, BlockHasher>,
+    access: CachedDbSetAccess<Hash, Hash, BlockHasher, BlockHasher>,
 }
 
 impl DbChildrenStore {
