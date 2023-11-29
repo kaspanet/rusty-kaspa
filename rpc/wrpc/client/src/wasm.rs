@@ -188,8 +188,7 @@ impl RpcClient {
     ///
     #[wasm_bindgen(js_name = parseUrl)]
     pub fn parse_url(url: &str, encoding: Encoding, network: Network) -> Result<String> {
-        let url_ = KaspaRpcClient::parse_url(Some(url.to_string()), encoding, network.try_into()?)?;
-        let url_ = url_.ok_or(Error::custom(format!("received a malformed URL: {url}")))?;
+        let url_ = KaspaRpcClient::parse_url(url.to_string(), encoding, network.try_into()?)?;
         Ok(url_)
     }
 }
