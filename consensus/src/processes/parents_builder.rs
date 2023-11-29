@@ -52,7 +52,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             .expect("at least one of the parents is expected to be in the future of the pruning point");
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point);
 
-        let origin_children = self.relations_service.get_children(ORIGIN).unwrap();
+        let origin_children = self.relations_service.get_children(ORIGIN).unwrap().read().iter().copied().collect_vec();
         let origin_children_headers =
             origin_children.iter().copied().map(|parent| self.headers_store.get_header(parent).unwrap()).collect_vec();
 
@@ -204,7 +204,7 @@ mod tests {
         header::Header,
         BlockHashSet, HashMapCustomHasher,
     };
-    use kaspa_database::prelude::StoreError;
+    use kaspa_database::prelude::{ReadLock, StoreError, StoreResult};
     use kaspa_hashes::Hash;
     use parking_lot::RwLock;
 
@@ -262,8 +262,8 @@ mod tests {
             unimplemented!()
         }
 
-        fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-            Ok(self.children.clone())
+        fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
+            Ok(BlockHashSet::from_iter(self.children.iter().copied()).into())
         }
 
         fn has(&self, hash: Hash) -> Result<bool, StoreError> {

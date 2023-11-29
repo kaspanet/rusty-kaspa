@@ -365,7 +365,7 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -
     let mut vec = Vec::new();
     let relations = src_consensus.relations_stores.read();
     while let Some(current) = queue.pop_front() {
-        for child in relations[0].get_children(current).unwrap().iter() {
+        for child in relations[0].get_children(current).unwrap().read().iter() {
             if visited.insert(*child) {
                 queue.push_back(*child);
                 vec.push(*child);

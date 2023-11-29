@@ -760,7 +760,12 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
-        self.services.relations_service.get_children(hash).unwrap_option()
+        self.services
+            .relations_service
+            .get_children(hash)
+            .unwrap_option()
+            .map(|children| Arc::new(children.read().iter().copied().collect_vec()))
+        // TODO: No need for Arc
     }
 
     fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {

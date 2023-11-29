@@ -7,6 +7,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{hash_map::RandomState, HashSet},
     error::Error,
+    fmt::Debug,
     hash::BuildHasher,
     sync::Arc,
 };
@@ -28,6 +29,7 @@ where
     prefix: Vec<u8>,
 }
 
+#[derive(Default)]
 pub struct ReadLock<T>(Arc<RwLock<T>>);
 
 impl<T> ReadLock<T> {
@@ -39,6 +41,24 @@ impl<T> ReadLock<T> {
         self.0.read()
     }
 }
+
+impl<T> From<T> for ReadLock<T> {
+    fn from(value: T) -> Self {
+        Self::new(Arc::new(RwLock::new(value)))
+    }
+}
+
+impl<T: Debug> Debug for ReadLock<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ReadLock").field(&self.0).finish()
+    }
+}
+
+// impl<T: Default> Default for ReadLock<T> {
+//     fn default() -> Self {
+//         Self(Default::default())
+//     }
+// }
 
 impl<TKey, TData, S, W> CachedDbSetAccess<TKey, TData, S, W>
 where

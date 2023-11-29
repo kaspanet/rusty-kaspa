@@ -150,10 +150,10 @@ pub fn validate_relations<S: RelationsStoreReader + ?Sized>(relations: &S) -> st
         let parents = relations.get_parents(current)?;
         assert_eq!(parents.len(), parents.iter().copied().unique_by(|&h| h).count(), "duplicate hashes in parents array");
         for parent in parents.iter().copied() {
-            let parent_children = relations.get_children(parent)?;
+            let parent_children = relations.get_children(parent)?.read().iter().copied().collect_vec();
             assert!(parent_children.contains(&current), "missing child entry");
         }
-        let children = relations.get_children(current)?;
+        let children = relations.get_children(current)?.read().iter().copied().collect_vec();
         assert_eq!(children.len(), children.iter().copied().unique_by(|&h| h).count(), "duplicate hashes in children array");
         for child in children.iter().copied() {
             if visited.insert(child) {

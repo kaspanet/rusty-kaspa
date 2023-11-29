@@ -1,9 +1,10 @@
-use itertools::Itertools;
+use kaspa_consensus_core::BlockHashSet;
 use kaspa_consensus_core::BlockHasher;
 use kaspa_consensus_core::BlockLevel;
 use kaspa_database::prelude::BatchDbWriter;
 use kaspa_database::prelude::CachedDbSetAccess;
 use kaspa_database::prelude::DbWriter;
+use kaspa_database::prelude::ReadLock;
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::DB;
@@ -15,7 +16,7 @@ use std::fmt::Display;
 use std::sync::Arc;
 
 pub trait ChildrenStoreReader {
-    fn get(&self, hash: Hash) -> StoreResult<Vec<Hash>>;
+    fn get(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>>;
 }
 
 pub trait ChildrenStore {
@@ -99,8 +100,8 @@ impl DbChildrenStore {
 }
 
 impl ChildrenStoreReader for DbChildrenStore {
-    fn get(&self, parent: Hash) -> StoreResult<Vec<Hash>> {
-        Ok(self.access.read(parent)?.read().iter().copied().collect_vec()) // TODO: Pass read lock
+    fn get(&self, parent: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
+        self.access.read(parent) // TODO: Pass read lock
     }
 }
 
@@ -111,11 +112,7 @@ impl ChildrenStore for DbChildrenStore {
     }
 
     fn delete_children(&self, mut writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
-        for child in self.get(parent).unwrap() {
-            self.access.delete(&mut writer, parent, child)?;
-        }
-
-        Ok(())
+        self.access.delete_bucket(&mut writer, parent)
     }
 
     fn delete_child(&self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {

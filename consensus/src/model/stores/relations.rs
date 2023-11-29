@@ -1,11 +1,11 @@
 use itertools::Itertools;
 use kaspa_consensus_core::BlockHashSet;
 use kaspa_consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
-use kaspa_database::prelude::StoreError;
-use kaspa_database::prelude::DB;
-use kaspa_database::prelude::{BatchDbWriter, DbWriter};
+use kaspa_database::prelude::{BatchDbWriter, DbWriter, StoreResultExtensions};
 use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
 use kaspa_database::prelude::{DirectWriter, MemoryWriter};
+use kaspa_database::prelude::{ReadLock, StoreError};
+use kaspa_database::prelude::{StoreResult, DB};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -20,7 +20,7 @@ use super::children::{ChildrenStore, ChildrenStoreReader, DbChildrenStore};
 /// Reader API for `RelationsStore`.
 pub trait RelationsStoreReader {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
-    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError>;
+    fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>>;
     fn has(&self, hash: Hash) -> Result<bool, StoreError>;
 
     /// Returns the counts of entries in parents/children stores. To be used for tests only
@@ -72,11 +72,11 @@ impl RelationsStoreReader for DbRelationsStore {
         self.parents_access.read(hash)
     }
 
-    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+    fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
         if !self.parents_access.has(hash)? {
             Err(StoreError::KeyNotFound(DbKey::new(self.parents_access.prefix(), hash)))
         } else {
-            Ok(self.children_store.get(hash).unwrap().into())
+            self.children_store.get(hash)
         }
     }
 
@@ -155,7 +155,9 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     fn delete_children(&self, _writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
         let mut staging_children_write = self.staging_children.write();
         staging_children_write.insertions.remove(&parent);
-        let store_children = self.store.children_store.get(parent).unwrap_or_default();
+        let store_children =
+            self.store.children_store.get(parent).unwrap_option().unwrap_or_default().read().iter().copied().collect_vec();
+
         for child in store_children {
             match staging_children_write.deletions.entry(parent) {
                 Entry::Occupied(mut e) => {
@@ -272,15 +274,15 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
         }
     }
 
-    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+    fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
         self.check_not_in_deletions(hash)?;
-        let store_children = self.store.get_children(hash).unwrap_or_default();
+        let store_children = self.store.get_children(hash).unwrap_option().unwrap_or_default().read().iter().copied().collect_vec();
         let staging_children_read = self.staging_children.read();
         let insertions = staging_children_read.insertions.get(&hash).cloned().unwrap_or_default();
         let deletions = staging_children_read.deletions.get(&hash).cloned().unwrap_or_default();
-        let children: Vec<_> =
+        let children: BlockHashSet =
             BlockHashSet::from_iter(store_children.iter().copied().chain(insertions)).difference(&deletions).copied().collect();
-        Ok(BlockHashes::from(children))
+        Ok(children.into())
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
@@ -366,12 +368,12 @@ impl RelationsStoreReader for MemoryRelationsStore {
         }
     }
 
-    fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+    fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
         if !self.has(hash)? {
             Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::RelationsChildren.as_ref(), hash)))
         } else {
             match self.children_map.read().get(&hash) {
-                Some(children) => Ok(BlockHashes::clone(children)),
+                Some(children) => Ok(BlockHashSet::from_iter(children.iter().copied()).into()),
                 None => Ok(Default::default()),
             }
         }
@@ -431,7 +433,7 @@ mod tests {
 
         let expected_children = [(1, vec![2, 3, 5]), (2, vec![4]), (3, vec![4]), (4, vec![5]), (5, vec![])];
         for (i, vec) in expected_children {
-            let store_children: BlockHashSet = store.get_children(i.into()).unwrap().iter().copied().collect();
+            let store_children: BlockHashSet = store.get_children(i.into()).unwrap().read().iter().copied().collect();
             let expected: BlockHashSet = vec.iter().copied().map(Hash::from).collect();
             assert_eq!(store_children, expected);
         }

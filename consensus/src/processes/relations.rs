@@ -33,7 +33,7 @@ where
     S: RelationsStore + ChildrenStore + ?Sized,
 {
     let children = relations.get_children(hash)?; // if the first entry was found, we expect all others as well, hence we unwrap below
-    for child in children.iter().copied() {
+    for child in children.read().iter().copied() {
         let child_parents = relations.get_parents(child).unwrap();
         // If the removed hash is the only parent of child, then replace it with `origin`
         let replace_with: &[Hash] = if child_parents.as_slice() == [hash] { &[ORIGIN] } else { &[] };
@@ -60,7 +60,7 @@ where
     let parents = relations.get_parents(hash).unwrap();
     let children = relations.get_children(hash).unwrap();
     let mergeset = unordered_mergeset_without_selected_parent(relations, reachability, selected_parent, &parents);
-    for child in children.iter().copied() {
+    for child in children.read().iter().copied() {
         let other_parents = relations.get_parents(child).unwrap().iter().copied().filter(|&p| p != hash).collect_vec();
         let needed_grandparents = parents
             .iter()
@@ -167,11 +167,20 @@ mod tests {
         relations.insert(2.into(), Arc::new(vec![1.into()])).unwrap();
 
         assert_eq!(relations.get_parents(ORIGIN).unwrap().as_slice(), []);
-        assert_eq!(relations.get_children(ORIGIN).unwrap().as_slice(), [1.into()]);
+        assert_eq!(
+            relations.get_children(ORIGIN).unwrap().read().iter().copied().collect::<BlockHashSet>(),
+            BlockHashSet::from_iter([1.into()])
+        );
         assert_eq!(relations.get_parents(1.into()).unwrap().as_slice(), [ORIGIN]);
-        assert_eq!(relations.get_children(1.into()).unwrap().as_slice(), [2.into()]);
+        assert_eq!(
+            relations.get_children(1.into()).unwrap().read().iter().copied().collect::<BlockHashSet>(),
+            BlockHashSet::from_iter([2.into()])
+        );
         assert_eq!(relations.get_parents(2.into()).unwrap().as_slice(), [1.into()]);
-        assert_eq!(relations.get_children(2.into()).unwrap().as_slice(), []);
+        assert_eq!(
+            relations.get_children(2.into()).unwrap().read().iter().copied().collect::<BlockHashSet>(),
+            BlockHashSet::from_iter([])
+        );
 
         let mut batch = WriteBatch::default();
         let mut staging_relations = StagingRelationsStore::new(&mut relations);
@@ -180,12 +189,18 @@ mod tests {
         db.write(batch).unwrap();
 
         assert_match!(relations.get_parents(1.into()), Err(StoreError::KeyNotFound(_)));
-        assert_match!(relations.get_children(1.into()), Err(StoreError::KeyNotFound(_)));
+        assert_match!(relations.get_children(1.into()).unwrap_err(), StoreError::KeyNotFound(_));
 
         assert_eq!(relations.get_parents(ORIGIN).unwrap().as_slice(), []);
-        assert_eq!(relations.get_children(ORIGIN).unwrap().as_slice(), [2.into()]);
+        assert_eq!(
+            relations.get_children(ORIGIN).unwrap().read().iter().copied().collect::<BlockHashSet>(),
+            BlockHashSet::from_iter([2.into()])
+        );
         assert_eq!(relations.get_parents(2.into()).unwrap().as_slice(), [ORIGIN]);
-        assert_eq!(relations.get_children(2.into()).unwrap().as_slice(), []);
+        assert_eq!(
+            relations.get_children(2.into()).unwrap().read().iter().copied().collect::<BlockHashSet>(),
+            BlockHashSet::from_iter([])
+        );
 
         let mut batch = WriteBatch::default();
         let mut staging_relations = StagingRelationsStore::new(&mut relations);
@@ -197,6 +212,9 @@ mod tests {
         assert_match!(relations.get_children(2.into()), Err(StoreError::KeyNotFound(_)));
 
         assert_eq!(relations.get_parents(ORIGIN).unwrap().as_slice(), []);
-        assert_eq!(relations.get_children(ORIGIN).unwrap().as_slice(), []);
+        assert_eq!(
+            relations.get_children(ORIGIN).unwrap().read().iter().copied().collect::<BlockHashSet>(),
+            BlockHashSet::from_iter([])
+        );
     }
 }

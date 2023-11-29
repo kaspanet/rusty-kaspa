@@ -426,7 +426,7 @@ impl PruningProofManager {
                 relations_stores[level].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
                 ghostdag_stores[level].insert(ORIGIN, self.ghostdag_managers[level].origin_ghostdag_data()).unwrap();
             }
-            
+
             db.write(batch).unwrap();
         }
 
@@ -668,7 +668,7 @@ impl PruningProofManager {
                     }
 
                     headers.push(self.headers_store.get_header(current).unwrap());
-                    for child in self.relations_stores.read()[level].get_children(current).unwrap().iter().copied() {
+                    for child in self.relations_stores.read()[level].get_children(current).unwrap().read().iter().copied() {
                         queue.push(Reverse(SortableBlock::new(child, self.ghostdag_stores[level].get_blue_work(child).unwrap())));
                     }
                 }
