@@ -1,19 +1,21 @@
+use itertools::Itertools;
 use kaspa_consensus_core::BlockHasher;
 use kaspa_consensus_core::BlockLevel;
+use kaspa_database::prelude::BatchDbWriter;
+use kaspa_database::prelude::CachedDbSetAccess;
 use kaspa_database::prelude::DbWriter;
 use kaspa_database::prelude::StoreError;
+use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::DB;
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use kaspa_hashes::HASH_SIZE;
 use rocksdb::WriteBatch;
-use std::error::Error;
 use std::fmt::Display;
 use std::sync::Arc;
 
 pub trait ChildrenStoreReader {
-    fn get(&self, hash: Hash) -> Result<Vec<Hash>, Box<dyn Error>>;
+    fn get(&self, hash: Hash) -> StoreResult<Vec<Hash>>;
 }
 
 pub trait ChildrenStore {
@@ -69,77 +71,54 @@ impl From<DbChildKey> for ChildKey {
 #[derive(Clone)]
 pub struct DbChildrenStore {
     db: Arc<DB>,
-    access: CachedDbAccess<DbChildKey, (), BlockHasher>,
+    access: CachedDbSetAccess<Hash, Hash, BlockHasher>,
 }
 
 impl DbChildrenStore {
-    pub fn new(db: Arc<DB>, level: BlockLevel) -> Self {
+    pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
         let lvl_bytes = level.to_le_bytes();
         Self {
             db: Arc::clone(&db),
-            access: CachedDbAccess::new(db, 0, DatabaseStorePrefixes::RelationsChildren.into_iter().chain(lvl_bytes).collect()),
+            access: CachedDbSetAccess::new(
+                db,
+                cache_size,
+                DatabaseStorePrefixes::RelationsChildren.into_iter().chain(lvl_bytes).collect(),
+            ),
         }
     }
 
-    pub fn with_prefix(db: Arc<DB>, prefix: &[u8]) -> Self {
+    pub fn with_prefix(db: Arc<DB>, prefix: &[u8], cache_size: u64) -> Self {
         let db_prefix = prefix.iter().copied().chain(DatabaseStorePrefixes::RelationsChildren).collect();
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, 0, db_prefix) }
+        Self { db: Arc::clone(&db), access: CachedDbSetAccess::new(db, cache_size, db_prefix) }
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        let key = ChildKey { parent, child }.into();
-        if self.access.has(key)? {
-            return Err(StoreError::HashAlreadyExists(parent));
-        }
-        self.access.write(BatchDbWriter::new(batch), key, ())?;
+        self.access.write(BatchDbWriter::new(batch), parent, child)?;
         Ok(())
     }
-
-    fn iterator(&self, parent: Hash) -> impl Iterator<Item = Result<Hash, Box<dyn Error>>> + '_ {
-        self.access.seek_iterator(Some(parent.as_bytes().as_ref()), None, usize::MAX, false).map(|res| {
-            let (key, _) = res.unwrap();
-            match Hash::try_from(&key[..]) {
-                Ok(hash) => Ok(hash),
-                Err(e) => Err(e.into()),
-            }
-        })
-    }
-
-    pub fn count(&self) -> Result<usize, StoreError> {
-        Ok(self.access.iterator().count())
-    }
-
-    // pub fn delete_batch(&self, batch: &mut WriteBatch, parent: Hash) -> Result<(), StoreError> {
-    //     self.access.delete(BatchDbWriter::new(batch), parent)
-    // }
 }
 
 impl ChildrenStoreReader for DbChildrenStore {
-    fn get(&self, parent: Hash) -> Result<Vec<Hash>, Box<dyn Error>> {
-        // TODO: Cache the whole result
-        self.iterator(parent).collect()
+    fn get(&self, parent: Hash) -> StoreResult<Vec<Hash>> {
+        Ok(self.access.read(parent)?.read().iter().copied().collect_vec()) // TODO: Pass read lock
     }
 }
 
 impl ChildrenStore for DbChildrenStore {
     fn insert_child(&self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        let key = ChildKey { parent, child }.into();
-        if self.access.has(key)? {
-            return Err(StoreError::KeyAlreadyExists(key.to_string()));
-        }
-        self.access.write(writer, key, ())?;
+        self.access.write(writer, parent, child)?;
         Ok(())
     }
 
     fn delete_children(&self, mut writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
         for child in self.get(parent).unwrap() {
-            self.access.delete(&mut writer, ChildKey { parent, child }.into())?;
+            self.access.delete(&mut writer, parent, child)?;
         }
 
         Ok(())
     }
 
     fn delete_child(&self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        self.access.delete(writer, ChildKey { parent, child }.into())
+        self.access.delete(writer, parent, child)
     }
 }

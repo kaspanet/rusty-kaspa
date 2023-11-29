@@ -52,7 +52,7 @@ impl DbRelationsStore {
 
         Self {
             db: Arc::clone(&db),
-            children_store: DbChildrenStore::new(db.clone(), level),
+            children_store: DbChildrenStore::new(db.clone(), level, cache_size),
             parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, parents_prefix),
         }
     }
@@ -62,7 +62,7 @@ impl DbRelationsStore {
         Self {
             db: Arc::clone(&db),
             parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, parents_prefix),
-            children_store: DbChildrenStore::with_prefix(db, prefix),
+            children_store: DbChildrenStore::with_prefix(db, prefix, cache_size),
         }
     }
 }
@@ -431,7 +431,9 @@ mod tests {
 
         let expected_children = [(1, vec![2, 3, 5]), (2, vec![4]), (3, vec![4]), (4, vec![5]), (5, vec![])];
         for (i, vec) in expected_children {
-            assert!(store.get_children(i.into()).unwrap().iter().copied().eq(vec.iter().copied().map(Hash::from)));
+            let store_children: BlockHashSet = store.get_children(i.into()).unwrap().iter().copied().collect();
+            let expected: BlockHashSet = vec.iter().copied().map(Hash::from).collect();
+            assert_eq!(store_children, expected);
         }
 
         for (i, vec) in parents {

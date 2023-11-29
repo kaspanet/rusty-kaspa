@@ -426,7 +426,7 @@ impl PruningProofManager {
                 relations_stores[level].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
                 ghostdag_stores[level].insert(ORIGIN, self.ghostdag_managers[level].origin_ghostdag_data()).unwrap();
             }
-
+            
             db.write(batch).unwrap();
         }
 
