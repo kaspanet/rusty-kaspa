@@ -383,6 +383,14 @@ impl PrvKeyDataInfo {
         self.is_encrypted
     }
 
+    pub fn name_or_id(&self) -> String {
+        if let Some(name) = &self.name {
+            name.to_owned()
+        } else {
+            self.id.to_hex()[0..16].to_string()
+        }
+    }
+
     // pub fn requires_wallet_passphrase(&self) -> bool {
     //     self.key_caps == KeyCaps::SingleAccount
     // }
