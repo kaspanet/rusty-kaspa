@@ -26,15 +26,14 @@ pub trait UtxoEntryReferenceExtension {
 impl UtxoEntryReferenceExtension for UtxoEntryReference {
     fn maturity(&self, current_daa_score: u64) -> Maturity {
         if self.is_coinbase() {
-            if self.block_daa_score() + UTXO_STASIS_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score {
+            if current_daa_score + UTXO_STASIS_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score {
                 Maturity::Stasis
-            } else if self.block_daa_score() + UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score
-            {
+            } else if current_daa_score + UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score {
                 Maturity::Pending
             } else {
                 Maturity::Mature
             }
-        } else if self.block_daa_score() + UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score {
+        } else if current_daa_score + UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score {
             Maturity::Pending
         } else {
             Maturity::Mature
