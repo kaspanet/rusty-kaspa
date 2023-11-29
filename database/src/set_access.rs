@@ -54,12 +54,6 @@ impl<T: Debug> Debug for ReadLock<T> {
     }
 }
 
-// impl<T: Default> Default for ReadLock<T> {
-//     fn default() -> Self {
-//         Self(Default::default())
-//     }
-// }
-
 impl<TKey, TData, S, W> CachedDbSetAccess<TKey, TData, S, W>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync + AsRef<[u8]>,
@@ -151,7 +145,7 @@ where
             db_iterator.next();
         }
 
-        db_iterator.take(limit).map(move |item: Result<(Box<[u8]>, Box<[u8]>), rocksdb::Error>| match item {
+        db_iterator.take(limit).map(move |item| match item {
             Ok((key_bytes, _)) => Ok(key_bytes[db_key.prefix_len()..].into()),
             Err(err) => Err(err.into()),
         })
