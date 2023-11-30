@@ -16,6 +16,7 @@ pub mod storage;
 pub mod tx;
 pub mod utils;
 pub mod utxo;
+pub mod version;
 pub mod wasm;
 
 pub use derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
@@ -24,8 +25,4 @@ pub use kaspa_addresses::{Address, Prefix as AddressPrefix};
 pub use kaspa_wrpc_client::client::{ConnectOptions, ConnectStrategy};
 pub use result::Result;
 pub use settings::{DefaultSettings, SettingsStore, SettingsStoreT, WalletSettings};
-
-/// Returns the version of the Wallet framework.
-pub fn version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
-}
+pub use version::*;

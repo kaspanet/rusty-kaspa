@@ -8,6 +8,10 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+heap = ["dhat"]
+devnet-prealloc = ["kaspa-consensus/devnet-prealloc"]
+
 [lib]
 name = "kaspad_lib"
 crate-type = ["cdylib", "lib"]
@@ -48,6 +52,5 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 workflow-log.workspace = true
 
-[features]
-heap = ["dhat"]
-devnet-prealloc = ["kaspa-consensus/devnet-prealloc"]
+[build-dependencies]
+vergen = { version = "8.2.6", features = ["build", "git", "gitcl", "rustc", "cargo"] }
