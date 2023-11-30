@@ -29,7 +29,7 @@ where
     prefix: Vec<u8>,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ReadLock<T>(Arc<RwLock<T>>);
 
 impl<T> ReadLock<T> {
@@ -45,12 +45,6 @@ impl<T> ReadLock<T> {
 impl<T> From<T> for ReadLock<T> {
     fn from(value: T) -> Self {
         Self::new(Arc::new(RwLock::new(value)))
-    }
-}
-
-impl<T: Debug> Debug for ReadLock<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("ReadLock").field(&self.0).finish()
     }
 }
 
