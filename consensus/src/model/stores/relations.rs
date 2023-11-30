@@ -8,8 +8,8 @@ use kaspa_database::prelude::{ReadLock, StoreError};
 use kaspa_database::prelude::{StoreResult, DB};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
-use parking_lot::Mutex;
 use rocksdb::WriteBatch;
+use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::HashSet;
 use std::iter::once;
@@ -139,12 +139,15 @@ struct Staging {
 
 pub struct StagingRelationsStore<'a> {
     store: &'a DbRelationsStore,
-    staging: Mutex<Staging>,
+    staging: RefCell<Staging>, // Because ChildrenStore and RelationsStore doesn't use `&mut self` in its methods,
+                               // StagingRelationsStore cannot implement it while using `&mut self`, so we need
+                               // to wrap `Staging` with RefCell. This is safe because  `StagingRelationsStore`
+                               // doesn't have multiple mutable references anywhere it's used.
 }
 
 impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     fn insert_child(&self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        let mut write_guard = self.staging.lock();
+        let mut write_guard = self.staging.borrow_mut();
         match write_guard.children.insertions.entry(parent) {
             Entry::Occupied(mut e) => {
                 e.get_mut().insert(child);
@@ -157,7 +160,7 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     }
 
     fn delete_children(&self, _writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
-        let mut write_guard = self.staging.lock();
+        let mut write_guard = self.staging.borrow_mut();
         write_guard.children.insertions.remove(&parent);
         let store_children =
             self.store.children_store.get(parent).unwrap_option().unwrap_or_default().read().iter().copied().collect_vec();
@@ -176,7 +179,7 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     }
 
     fn delete_child(&self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        let mut write_guard = self.staging.lock();
+        let mut write_guard = self.staging.borrow_mut();
         match write_guard.children.insertions.entry(parent) {
             Entry::Occupied(mut e) => {
                 let removed = e.get_mut().remove(&child);
@@ -213,7 +216,7 @@ impl<'a> StagingRelationsStore<'a> {
     }
 
     pub fn commit(self, batch: &mut WriteBatch) -> Result<(), StoreError> {
-        let read_guard = self.staging.lock();
+        let read_guard = self.staging.borrow();
         for (k, v) in read_guard.parents_insertions.iter() {
             self.store.parents_access.write(BatchDbWriter::new(batch), *k, (*v).clone())?
         }
@@ -235,7 +238,7 @@ impl<'a> StagingRelationsStore<'a> {
     }
 
     fn check_not_in_deletions(&self, hash: Hash) -> Result<(), StoreError> {
-        if self.staging.lock().parent_deletions.contains(&hash) {
+        if self.staging.borrow().parent_deletions.contains(&hash) {
             Err(StoreError::KeyNotFound(DbKey::new(b"staging-relations", hash)))
         } else {
             Ok(())
@@ -251,12 +254,12 @@ impl RelationsStore for StagingRelationsStore<'_> {
     }
 
     fn set_parents(&self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
-        self.staging.lock().parents_insertions.insert(hash, parents);
+        self.staging.borrow_mut().parents_insertions.insert(hash, parents);
         Ok(())
     }
 
     fn delete_entries(&mut self, writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
-        let mut write_guard = self.staging.lock();
+        let mut write_guard = self.staging.borrow_mut();
         write_guard.parents_insertions.remove(&hash);
         write_guard.parent_deletions.insert(hash);
         drop(write_guard);
@@ -268,7 +271,7 @@ impl RelationsStore for StagingRelationsStore<'_> {
 impl RelationsStoreReader for StagingRelationsStore<'_> {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         self.check_not_in_deletions(hash)?;
-        if let Some(data) = self.staging.lock().parents_insertions.get(&hash) {
+        if let Some(data) = self.staging.borrow().parents_insertions.get(&hash) {
             Ok(BlockHashes::clone(data))
         } else {
             self.store.get_parents(hash)
@@ -278,7 +281,7 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
     fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
         self.check_not_in_deletions(hash)?;
         let store_children = self.store.get_children(hash).unwrap_option().unwrap_or_default().read().iter().copied().collect_vec();
-        let read_guard = self.staging.lock();
+        let read_guard = self.staging.borrow();
         let insertions = read_guard.children.insertions.get(&hash).cloned().unwrap_or_default();
         let deletions = read_guard.children.deletions.get(&hash).cloned().unwrap_or_default();
         let children: BlockHashSet =
@@ -287,7 +290,7 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        let read_guard = self.staging.lock();
+        let read_guard = self.staging.borrow();
         if read_guard.parent_deletions.contains(&hash) {
             return Ok(false);
         }
@@ -295,7 +298,7 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
     }
 
     fn counts(&self) -> Result<(usize, usize), StoreError> {
-        let read_guard = self.staging.lock();
+        let read_guard = self.staging.borrow();
         let count = self
             .store
             .parents_access
@@ -311,7 +314,10 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
     }
 }
 
-pub struct MemoryRelationsStore(Mutex<MemoryRelationsStoreInner>);
+pub struct MemoryRelationsStore(RefCell<MemoryRelationsStoreInner>); // Because ChildrenStore and RelationsStore doesn't use `&mut self` in its methods,
+                                                                     // MemoryRelationsStore cannot implement it while using `&mut self`, so we need
+                                                                     // to wrap `MemoryRelationsStoreInner` with RefCell. This is safe because  `MemoryRelationsStore`
+                                                                     // doesn't have multiple mutable references anywhere it's used.
 
 #[derive(Default)]
 struct MemoryRelationsStoreInner {
@@ -321,7 +327,7 @@ struct MemoryRelationsStoreInner {
 
 impl ChildrenStore for MemoryRelationsStore {
     fn insert_child(&self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        let mut write_guard = self.0.lock();
+        let mut write_guard = self.0.borrow_mut();
         let mut children = match write_guard.children_map.get(&parent) {
             Some(children) => children.iter().copied().collect_vec(),
             None => vec![],
@@ -333,12 +339,12 @@ impl ChildrenStore for MemoryRelationsStore {
     }
 
     fn delete_children(&self, _writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
-        self.0.lock().children_map.remove(&parent);
+        self.0.borrow_mut().children_map.remove(&parent);
         Ok(())
     }
 
     fn delete_child(&self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        let mut write_guard = self.0.lock();
+        let mut write_guard = self.0.borrow_mut();
         let mut children = match write_guard.children_map.get(&parent) {
             Some(children) => children.iter().copied().collect_vec(),
             None => vec![],
@@ -368,7 +374,7 @@ impl Default for MemoryRelationsStore {
 
 impl RelationsStoreReader for MemoryRelationsStore {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        match self.0.lock().parents_map.get(&hash) {
+        match self.0.borrow().parents_map.get(&hash) {
             Some(parents) => Ok(BlockHashes::clone(parents)),
             None => Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::RelationsParents.as_ref(), hash))),
         }
@@ -378,7 +384,7 @@ impl RelationsStoreReader for MemoryRelationsStore {
         if !self.has(hash)? {
             Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::RelationsChildren.as_ref(), hash)))
         } else {
-            match self.0.lock().children_map.get(&hash) {
+            match self.0.borrow().children_map.get(&hash) {
                 Some(children) => Ok(BlockHashSet::from_iter(children.iter().copied()).into()),
                 None => Ok(Default::default()),
             }
@@ -386,11 +392,11 @@ impl RelationsStoreReader for MemoryRelationsStore {
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        Ok(self.0.lock().parents_map.contains_key(&hash))
+        Ok(self.0.borrow().parents_map.contains_key(&hash))
     }
 
     fn counts(&self) -> Result<(usize, usize), StoreError> {
-        let count = self.0.lock().parents_map.len();
+        let count = self.0.borrow().parents_map.len();
         Ok((count, count))
     }
 }
@@ -403,12 +409,12 @@ impl RelationsStore for MemoryRelationsStore {
     }
 
     fn set_parents(&self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
-        self.0.lock().parents_map.insert(hash, parents);
+        self.0.borrow_mut().parents_map.insert(hash, parents);
         Ok(())
     }
 
     fn delete_entries(&mut self, _writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
-        let mut write_guard = self.0.lock();
+        let mut write_guard = self.0.borrow_mut();
         write_guard.parents_map.remove(&hash);
         write_guard.children_map.remove(&hash);
         Ok(())
