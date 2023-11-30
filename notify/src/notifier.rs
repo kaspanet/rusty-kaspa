@@ -264,13 +264,13 @@ where
             trace!("[Notifier {}] unregistering listener {id}", self.name);
 
             // Cancel all remaining active subscriptions
-            let mut subscriptions = listener
+            let mut events = listener
                 .subscriptions
                 .iter()
-                .filter_map(|subscription| if subscription.active() { Some(subscription.scope()) } else { None })
+                .filter_map(|subscription| if subscription.active() { Some(subscription.event_type()) } else { None })
                 .collect_vec();
-            subscriptions.drain(..).for_each(|scope| {
-                let _ = self.execute_subscribe_command_impl(id, &mut listener, scope, Command::Stop);
+            events.drain(..).for_each(|event| {
+                let _ = self.execute_subscribe_command_impl(id, &mut listener, event.into(), Command::Stop);
             });
 
             // Close the listener
