@@ -348,8 +348,8 @@ impl PruningProcessor {
 
             if !keep_blocks.contains(&current) {
                 let mut batch = WriteBatch::default();
-                let mut reachability_relations_write = self.reachability_relations_store.write();
-                let mut staging_relations = StagingRelationsStore::new(&mut reachability_relations_write);
+                let reachability_relations_write = self.reachability_relations_store.write();
+                let mut staging_relations = StagingRelationsStore::new(&reachability_relations_write);
                 let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
 
