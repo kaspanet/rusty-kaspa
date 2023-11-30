@@ -15,7 +15,9 @@ use kaspa_utils::networking::ContextualNetAddress;
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
-use kaspa_consensus::{consensus::factory::MultiConsensusManagementStore, pipeline::monitor::ConsensusMonitor};
+use kaspa_consensus::{
+    consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
+};
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
@@ -29,6 +31,15 @@ use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 use kaspa_perf_monitor::builder::Builder as PerfMonitorBuilder;
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
+
+/// Desired soft FD limit that needs to be configured
+/// for the kaspad process.
+pub const DESIRED_DAEMON_SOFT_FD_LIMIT: u64 = 16 * 1024;
+/// Minimum acceptable soft FD limit for the kaspad
+/// process. (Rusty Kaspa will operate with the minimal
+/// acceptable limit of `4096`, but a setting below
+/// this value may impact the database performance).
+pub const MINIMUM_DAEMON_SOFT_FD_LIMIT: u64 = 4 * 1024;
 
 use crate::args::Args;
 
@@ -221,7 +232,10 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
     let meta_db_dir = db_dir.join(META_DB);
 
-    if args.reset_db && db_dir.exists() {
+    let mut is_db_reset_needed = args.reset_db;
+
+    // Reset Condition: User explicitly requested a reset
+    if is_db_reset_needed && db_dir.exists() {
         let msg = "Reset DB was requested -- this means the current databases will be fully deleted, 
 do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm all interactive questions)";
         get_user_approval_or_exit(msg, args.yes);
@@ -243,23 +257,65 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         .build()
         .unwrap();
 
+    // Reset Condition: Need to reset DB if we can't find genesis is not in current DB
+    if !is_db_reset_needed && (args.testnet || args.devnet || args.simnet) {
+        // Non-mainnet can be restarted, and when it does we need to reset the DB.
+        // This will check if the current Genesis can be found the active consensus
+        // DB (if one exists), and if not then ask to reset the DB.
+        let active_consensus_dir_name = MultiConsensusManagementStore::new(meta_db.clone()).active_consensus_dir_name().unwrap();
+
+        match active_consensus_dir_name {
+            Some(dir_name) => {
+                let consensus_db = kaspa_database::prelude::ConnBuilder::default()
+                    .with_db_path(consensus_db_dir.clone().join(dir_name))
+                    .with_files_limit(1)
+                    .build()
+                    .unwrap();
+
+                let headers_store = DbHeadersStore::new(consensus_db, 0);
+
+                if headers_store.has(config.genesis.hash).unwrap() {
+                    info!("Genesis is found in active consensus DB. No action needed.");
+                } else {
+                    let msg = "Genesis not found in active consensus DB. This happens when Testnet 11 is restarted and your database needs to be fully deleted. Do you confirm the delete? (y/n)";
+                    get_user_approval_or_exit(msg, args.yes);
+
+                    is_db_reset_needed = true;
+                }
+            }
+            None => {
+                info!("Consensus not initialized yet. Skipping genesis check.");
+            }
+        }
+    }
+
+    // Reset Condition: Need to reset if we're upgrading from kaspad DB version
     // TEMP: upgrade from Alpha version or any version before this one
-    if meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
+    if !is_db_reset_needed && meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
         let msg = "Node database is from an older Kaspad version and needs to be fully deleted, do you confirm the delete? (y/n)";
         get_user_approval_or_exit(msg, args.yes);
 
         info!("Deleting databases from previous Kaspad version");
 
+        is_db_reset_needed = true;
+    }
+
+    // Will be true if any of the other condition above except args.reset_db
+    // has set is_db_reset_needed to true
+    if is_db_reset_needed && !args.reset_db {
         // Drop so that deletion works
         drop(meta_db);
 
         // Delete
-        fs::remove_dir_all(db_dir).unwrap();
+        fs::remove_dir_all(db_dir.clone()).unwrap();
 
         // Recreate the empty folders
         fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
         fs::create_dir_all(meta_db_dir.as_path()).unwrap();
-        fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+
+        if args.utxoindex {
+            fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+        }
 
         // Reopen the DB
         meta_db = kaspa_database::prelude::ConnBuilder::default()
