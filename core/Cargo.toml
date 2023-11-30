@@ -22,3 +22,6 @@ intertrait.workspace = true
 log4rs = { workspace = true, features = ["all_components", "gzip", "background_rotation"] }
 num_cpus.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread", "time"] }
+
+[build-dependencies]
+vergen = { version = "8.2.6", features = ["build", "git", "gitcl", "rustc", "cargo"] }
