@@ -257,7 +257,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
             params.difficulty_window_size(0),
             params.past_median_time_window_size(0),
         );
-    } else if args.bps * args.delay > 2.0 {
+    } else {
         let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
         params.ghostdag_k = k;
@@ -291,6 +291,8 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.pruning_proof_m = 16;
         params.legacy_difficulty_window_size = 64;
         params.legacy_timestamp_deviation_tolerance = 16;
+        params.new_timestamp_deviation_tolerance = 16;
+        params.sampled_difficulty_window_size = params.sampled_difficulty_window_size.min(32);
         params.finality_depth = 128;
         params.merge_depth = 128;
         params.mergeset_size_limit = 32;
