@@ -1,6 +1,7 @@
 use crate::cli::KaspaCli;
 use crate::imports::*;
 use crate::result::Result;
+use kaspa_bip32::{MnemonicVariant, WordCount};
 use kaspa_wallet_core::runtime::wallet::MultisigCreateArgs;
 use kaspa_wallet_core::runtime::PrvKeyDataCreateArgs;
 use kaspa_wallet_core::storage::AccountKind;
@@ -14,6 +15,9 @@ pub(crate) async fn create(
     let term = ctx.term();
     let wallet = ctx.wallet();
 
+    // TODO @aspect
+    let word_count = WordCount::Words12;
+
     let name = if let Some(name) = name {
         Some(name.to_string())
     } else {
@@ -21,7 +25,7 @@ pub(crate) async fn create(
     };
 
     if matches!(account_kind, AccountKind::MultiSig) {
-        return create_multisig(ctx, name).await;
+        return create_multisig(ctx, name, word_count).await;
     }
 
     let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
@@ -48,7 +52,7 @@ pub(crate) async fn create(
     Ok(())
 }
 
-async fn create_multisig(ctx: &Arc<KaspaCli>, name: Option<String>) -> Result<()> {
+async fn create_multisig(ctx: &Arc<KaspaCli>, name: Option<String>, mnemonic_phrase_word_count: WordCount) -> Result<()> {
     let term = ctx.term();
     let wallet = ctx.wallet();
     let (wallet_secret, _) = ctx.ask_wallet_secret(None).await?;
@@ -59,7 +63,8 @@ async fn create_multisig(ctx: &Arc<KaspaCli>, name: Option<String>) -> Result<()
     let mut prv_key_data_ids = Vec::with_capacity(prv_keys_len);
     let mut mnemonics = Vec::with_capacity(prv_keys_len);
     for _ in 0..prv_keys_len {
-        let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), None); // can be optimized with Rc<WalletSecret>
+        let prv_key_data_args =
+            PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), None, MnemonicVariant::Random(mnemonic_phrase_word_count)); // can be optimized with Rc<WalletSecret>
         let (prv_key_data_id, mnemonic) = wallet.create_prv_key_data(prv_key_data_args).await?;
 
         prv_key_data_ids.push(prv_key_data_id);

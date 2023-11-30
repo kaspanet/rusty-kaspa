@@ -1,12 +1,16 @@
 use crate::cli::KaspaCli;
 use crate::imports::*;
 use crate::result::Result;
+use kaspa_bip32::WordCount;
 use kaspa_wallet_core::runtime::{PrvKeyDataCreateArgs, WalletCreateArgs};
 use kaspa_wallet_core::storage::{make_filename, AccessContextT, AccountKind, Hint};
 
 pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_mnemonic: bool) -> Result<()> {
     let term = ctx.term();
     let wallet = ctx.wallet();
+
+    // TODO @aspect
+    let word_count = WordCount::Words12;
 
     if let Err(err) = wallet.network_id() {
         tprintln!(ctx);
@@ -107,9 +111,9 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
 
     let prv_key_data_args = if import_with_mnemonic {
         let words = crate::wizards::import::prompt_for_mnemonic(&term).await?;
-        PrvKeyDataCreateArgs::new_with_mnemonic(None, wallet_secret.clone(), payment_secret.clone(), words.join(" "))
+        PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone(), words.join(" ").try_into()?)
     } else {
-        PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone())
+        PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone(), word_count.into())
     };
 
     let notifier = ctx.notifier().show(Notification::Processing).await;

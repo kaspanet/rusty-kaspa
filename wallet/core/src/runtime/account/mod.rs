@@ -137,7 +137,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
         self.context().settings.as_ref().and_then(|settings| settings.name.clone())
     }
 
-
     fn name_or_id(&self) -> String {
         if let Some(name) = self.name() {
             if name.is_empty() {

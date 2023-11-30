@@ -2012,6 +2012,7 @@ dependencies = [
 name = "kaspa-bip32"
 version = "0.13.0"
 dependencies = [
+ "borsh",
  "bs58",
  "faster-hex 0.6.1",
  "getrandom 0.2.10",
@@ -2024,6 +2025,7 @@ dependencies = [
  "rand_core 0.6.4",
  "ripemd",
  "secp256k1",
+ "serde",
  "sha2",
  "subtle",
  "thiserror",

@@ -7,6 +7,7 @@ use crate::storage::{self, Hint};
 use crate::storage::{PrvKeyDataId, WalletDescriptor};
 use crate::wasm::wallet::account::Account;
 use crate::wasm::wallet::keydata::PrvKeyDataInfo;
+use kaspa_bip32::{MnemonicVariant, WordCount};
 use kaspa_wrpc_client::wasm::RpcClient;
 use kaspa_wrpc_client::WrpcEncoding;
 use runtime::AccountKind;
@@ -258,21 +259,39 @@ struct PrvKeyDataCreateArgs {
     pub name: Option<String>,
     pub wallet_secret: Secret,
     pub payment_secret: Option<Secret>,
-    pub mnemonic: Option<String>,
+    pub mnemonic: MnemonicVariant,
 }
 
 impl TryFrom<&JsValue> for PrvKeyDataCreateArgs {
     type Error = Error;
     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(js_value) {
+            let mnemonic = object.get_value("mnemonic")?;
+            let mnemonic = if let Some(mnemonic) = mnemonic.as_string() {
+                MnemonicVariant::Phrase(mnemonic)
+            } else if let Some(words) = mnemonic.as_f64().map(|n| n as usize) {
+                let word_count = WordCount::try_from(words)?;
+                MnemonicVariant::Random(word_count)
+            } else {
+                return Err(
+                    "PrvKeyDataCreateArgs argument must be a phrase or a number of words for random mnemonic generation (12 or 24)"
+                        .into(),
+                );
+            };
+
             Ok(PrvKeyDataCreateArgs {
                 name: object.try_get_string("name")?,
                 wallet_secret: object.get_string("walletSecret")?.into(),
                 payment_secret: object.try_get_string("paymentSecret")?.map(|s| s.into()),
-                mnemonic: object.try_get_string("mnemonic")?,
+                mnemonic,
             })
         } else if let Some(secret) = js_value.as_string() {
-            Ok(PrvKeyDataCreateArgs { name: None, wallet_secret: secret.into(), payment_secret: None, mnemonic: None })
+            Ok(PrvKeyDataCreateArgs {
+                name: None,
+                wallet_secret: secret.into(),
+                payment_secret: None,
+                mnemonic: MnemonicVariant::Random(WordCount::Words12),
+            })
         } else {
             Err("PrvKeyDataCreateArgs argument must be an object or a secret".into())
         }
@@ -330,7 +349,7 @@ impl TryFrom<&JsValue> for AccountCreateArgs {
 impl From<AccountCreateArgs> for runtime::AccountCreateArgs {
     fn from(args: AccountCreateArgs) -> Self {
         runtime::AccountCreateArgs {
-            name: args.name,
+            account_name: args.name,
             account_kind: args.account_kind,
             wallet_secret: args.wallet_secret,
             payment_secret: args.payment_secret.map(|s| s.into()),
