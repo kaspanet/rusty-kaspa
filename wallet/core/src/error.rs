@@ -34,6 +34,9 @@ pub enum Error {
     #[error("Wallet wRPC -> {0}")]
     KaspaWorkflowRpcError(#[from] KaspaWorkflowRpcError),
 
+    #[error("The wallet RPC client is not wRPC")]
+    NotWrpcClient,
+
     #[error("Bip32 -> {0}")]
     BIP32Error(#[from] BIP32Error),
 

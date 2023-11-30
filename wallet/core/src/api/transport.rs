@@ -41,13 +41,19 @@ impl WalletServer {
 impl WalletServer {
     build_wallet_server_transport_interface! {[
         Ping,
+        GetStatus,
+        Connect,
+        Disconnect,
         WalletEnumerate,
         WalletCreate,
         WalletOpen,
         WalletClose,
+        WalletRename,
+        PrvKeyDataEnumerate,
         PrvKeyDataCreate,
         PrvKeyDataRemove,
         PrvKeyDataGet,
+        AccountsRename,
         AccountsEnumerate,
         AccountsCreate,
         AccountsImport,
@@ -55,6 +61,7 @@ impl WalletServer {
         AccountsGet,
         AccountsCreateNewAddress,
         AccountsSend,
+        AccountsTransfer,
         AccountsEstimate,
         TransactionDataGet,
         AddressBookEnumerate,
@@ -81,30 +88,11 @@ impl WalletApi for WalletClient {
         todo!()
     }
 
-    async fn connection_status_call(self: Arc<Self>, _request: ConnectionStatusRequest) -> Result<ConnectionStatusResponse> {
-        todo!()
-    }
-
-    // -------------------------------------------------------------------------------------
-
-    async fn connection_settings_get_call(
-        self: Arc<Self>,
-        _request: ConnectionSettingsGetRequest,
-    ) -> Result<ConnectionSettingsGetResponse> {
-        todo!()
-    }
-
-    async fn connection_settings_set_call(
-        self: Arc<Self>,
-        _request: ConnectionSettingsSetRequest,
-    ) -> Result<ConnectionSettingsSetResponse> {
-        todo!()
-    }
-
-    // -------------------------------------------------------------------------------------
-
     build_wallet_client_transport_interface! {[
         Ping,
+        GetStatus,
+        Connect,
+        Disconnect,
         WalletEnumerate,
         WalletCreate,
         WalletOpen,

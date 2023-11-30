@@ -29,27 +29,37 @@ pub struct PingResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectionSettingsGetRequest {}
+pub struct ConnectRequest {
+    pub url: String,
+    pub network_id: NetworkId,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectionSettingsGetResponse {}
+pub struct ConnectResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectionSettingsSetRequest {}
+pub struct DisconnectRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectionSettingsSetResponse {}
+pub struct DisconnectResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectionStatusRequest {}
+pub struct GetStatusRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConnectionStatusResponse {}
+pub struct GetStatusResponse {
+    pub is_connected: bool,
+    pub is_synced: bool,
+    pub is_open: bool,
+    pub url: Option<String>,
+    pub is_wrpc_client: bool,
+    pub network_id: Option<NetworkId>,
+}
 
 // ---
 

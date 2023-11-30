@@ -18,7 +18,7 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use futures::future::join_all;
 use futures::stream::StreamExt;
 use futures::{select, FutureExt, Stream};
-use kaspa_bip32::{Language, Mnemonic};
+use kaspa_bip32::{Language, Mnemonic, MnemonicVariant, WordCount};
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
@@ -87,16 +87,12 @@ pub struct PrvKeyDataCreateArgs {
     pub name: Option<String>,
     pub wallet_secret: Secret,
     pub payment_secret: Option<Secret>,
-    pub mnemonic: Option<String>,
+    pub mnemonic: MnemonicVariant, //Option<String>,
 }
 
 impl PrvKeyDataCreateArgs {
-    pub fn new(name: Option<String>, wallet_secret: Secret, payment_secret: Option<Secret>) -> Self {
-        Self { name, wallet_secret, payment_secret, mnemonic: None }
-    }
-
-    pub fn new_with_mnemonic(name: Option<String>, wallet_secret: Secret, payment_secret: Option<Secret>, mnemonic: String) -> Self {
-        Self { name, wallet_secret, payment_secret, mnemonic: Some(mnemonic) }
+    pub fn new(name: Option<String>, wallet_secret: Secret, payment_secret: Option<Secret>, mnemonic: MnemonicVariant) -> Self {
+        Self { name, wallet_secret, payment_secret, mnemonic }
     }
 }
 
@@ -117,20 +113,20 @@ pub struct MultisigCreateArgs {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountCreateArgs {
-    pub name: Option<String>,
+    pub account_name: Option<String>,
     pub account_kind: storage::AccountKind,
-    pub payment_secret: Option<Secret>,
     pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
 }
 
 impl AccountCreateArgs {
     pub fn new(
-        name: Option<String>,
+        account_name: Option<String>,
         account_kind: storage::AccountKind,
         wallet_secret: Secret,
         payment_secret: Option<Secret>,
     ) -> Self {
-        Self { name, account_kind, wallet_secret, payment_secret }
+        Self { account_name, account_kind, wallet_secret, payment_secret }
     }
 }
 
@@ -705,12 +701,7 @@ impl Wallet {
 
     pub async fn create_prv_key_data(self: &Arc<Wallet>, args: PrvKeyDataCreateArgs) -> Result<(PrvKeyDataId, Mnemonic)> {
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
-        let mnemonic = if let Some(mnemonic) = args.mnemonic.as_ref() {
-            let mnemonic = mnemonic.to_string();
-            Mnemonic::new(mnemonic, Language::English)?
-        } else {
-            Mnemonic::create_random()?
-        };
+        let mnemonic = Mnemonic::try_from(args.mnemonic)?;
         let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), args.payment_secret.as_ref()))?;
         let prv_key_data_id = prv_key_data.id;
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
@@ -723,6 +714,7 @@ impl Wallet {
         self: &Arc<Wallet>,
         wallet_args: WalletCreateArgs,
         account_args: AccountCreateArgs,
+        mnemonic_phrase_word_count: WordCount,
     ) -> Result<(Mnemonic, Option<String>, Arc<dyn Account>)> {
         self.reset(true).await?;
 
@@ -731,7 +723,7 @@ impl Wallet {
         self.inner.store.create(&ctx, wallet_args.into()).await?;
         let descriptor = self.inner.store.location()?;
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
-        let mnemonic = Mnemonic::create_random()?;
+        let mnemonic = Mnemonic::random(mnemonic_phrase_word_count, Default::default())?;
         let account_index = 0;
         let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), account_args.payment_secret.as_ref()))?;
         let xpub_key =
@@ -1229,24 +1221,47 @@ impl WalletApi for Wallet {
         todo!()
     }
 
-    async fn connection_status_call(self: Arc<Self>, _request: ConnectionStatusRequest) -> Result<ConnectionStatusResponse> {
-        todo!()
+    async fn get_status_call(self: Arc<Self>, _request: GetStatusRequest) -> Result<GetStatusResponse> {
+        let is_connected = self.is_connected();
+        let is_synced = self.is_synced();
+        let is_open = self.is_open();
+        let network_id = self.network_id().ok();
+        let (url, is_wrpc_client) =
+            if let Some(wrpc_client) = self.wrpc_client() { (Some(wrpc_client.url()), true) } else { (None, false) };
+
+        Ok(GetStatusResponse { is_connected, is_synced, is_open, network_id, url, is_wrpc_client })
     }
 
     // -------------------------------------------------------------------------------------
 
-    async fn connection_settings_get_call(
-        self: Arc<Self>,
-        _request: ConnectionSettingsGetRequest,
-    ) -> Result<ConnectionSettingsGetResponse> {
-        todo!()
+    async fn connect_call(self: Arc<Self>, request: ConnectRequest) -> Result<ConnectResponse> {
+        use workflow_rpc::client::{ConnectOptions, ConnectStrategy};
+
+        let ConnectRequest { url, network_id } = request;
+
+        if let Some(wrpc_client) = self.wrpc_client().as_ref() {
+            // let network_type = NetworkType::from(network_id);
+            let url = wrpc_client.parse_url_with_network_type(url, network_id.into()).map_err(|e| e.to_string())?;
+            let options = ConnectOptions {
+                block_async_connect: true,
+                strategy: ConnectStrategy::Fallback,
+                url: Some(url),
+                ..Default::default()
+            };
+            wrpc_client.connect(options).await.map_err(|e| e.to_string())?;
+            Ok(ConnectResponse {})
+        } else {
+            Err(Error::NotWrpcClient)
+        }
     }
 
-    async fn connection_settings_set_call(
-        self: Arc<Self>,
-        _request: ConnectionSettingsSetRequest,
-    ) -> Result<ConnectionSettingsSetResponse> {
-        todo!()
+    async fn disconnect_call(self: Arc<Self>, _request: DisconnectRequest) -> Result<DisconnectResponse> {
+        if let Some(wrpc_client) = self.wrpc_client().as_ref() {
+            wrpc_client.shutdown().await?;
+            Ok(DisconnectResponse {})
+        } else {
+            Err(Error::NotWrpcClient)
+        }
     }
 
     // -------------------------------------------------------------------------------------

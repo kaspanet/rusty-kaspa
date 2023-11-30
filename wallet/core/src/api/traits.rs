@@ -3,7 +3,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{AccountCreateArgs, AccountDescriptor, PrvKeyDataCreateArgs, WalletCreateArgs};
 use crate::secret::Secret;
-use crate::storage::{PrvKeyDataInfo, WalletDescriptor};
+use crate::storage::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, WalletDescriptor};
 use crate::tx::GeneratorSummary;
 use runtime::AccountId;
 use workflow_core::channel::Receiver;
@@ -13,15 +13,12 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn register_notifications(self: Arc<Self>, channel: Receiver<WalletNotification>) -> Result<u64>;
     async fn unregister_notifications(self: Arc<Self>, channel_id: u64) -> Result<()>;
 
-    async fn connection_status_call(self: Arc<Self>, request: ConnectionStatusRequest) -> Result<ConnectionStatusResponse>;
-    async fn connection_settings_get_call(
-        self: Arc<Self>,
-        request: ConnectionSettingsGetRequest,
-    ) -> Result<ConnectionSettingsGetResponse>;
-    async fn connection_settings_set_call(
-        self: Arc<Self>,
-        request: ConnectionSettingsSetRequest,
-    ) -> Result<ConnectionSettingsSetResponse>;
+    async fn get_status(self: Arc<Self>) -> Result<GetStatusResponse> {
+        Ok(self.get_status_call(GetStatusRequest {}).await?)
+    }
+    async fn get_status_call(self: Arc<Self>, request: GetStatusRequest) -> Result<GetStatusResponse>;
+    async fn connect_call(self: Arc<Self>, request: ConnectRequest) -> Result<ConnectResponse>;
+    async fn disconnect_call(self: Arc<Self>, request: DisconnectRequest) -> Result<DisconnectResponse>;
 
     async fn wallet_enumerate(self: Arc<Self>) -> Result<Vec<WalletDescriptor>> {
         Ok(self.wallet_enumerate_call(WalletEnumerateRequest {}).await?.wallet_list)
@@ -76,6 +73,23 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
     async fn wallet_rename_call(self: Arc<Self>, request: WalletRenameRequest) -> Result<WalletRenameResponse>;
 
+    async fn prv_key_data_enumerate(self: Arc<Self>) -> Result<Vec<Arc<PrvKeyDataInfo>>> {
+        Ok(self.prv_key_data_enumerate_call(PrvKeyDataEnumerateRequest {}).await?.prv_key_data_list)
+    }
+
+    async fn prv_key_data_enumerate_call(self: Arc<Self>, request: PrvKeyDataEnumerateRequest) -> Result<PrvKeyDataEnumerateResponse>;
+    async fn prv_key_data_create_call(self: Arc<Self>, request: PrvKeyDataCreateRequest) -> Result<PrvKeyDataCreateResponse>;
+    async fn prv_key_data_remove_call(self: Arc<Self>, request: PrvKeyDataRemoveRequest) -> Result<PrvKeyDataRemoveResponse>;
+
+    async fn prv_key_data_get(self: Arc<Self>, prv_key_data_id: PrvKeyDataId, wallet_secret: Secret) -> Result<PrvKeyData> {
+        Ok(self
+            .prv_key_data_get_call(PrvKeyDataGetRequest { prv_key_data_id, wallet_secret })
+            .await?
+            .prv_key_data
+            .ok_or(Error::PrivateKeyNotFound(prv_key_data_id))?)
+    }
+    async fn prv_key_data_get_call(self: Arc<Self>, request: PrvKeyDataGetRequest) -> Result<PrvKeyDataGetResponse>;
+
     async fn accounts_rename(self: Arc<Self>, account_id: AccountId, name: Option<String>, wallet_secret: Secret) -> Result<()> {
         self.accounts_rename_call(AccountsRenameRequest { account_id, name, wallet_secret }).await?;
         Ok(())
@@ -87,20 +101,18 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
     async fn accounts_activate_call(self: Arc<Self>, request: AccountsActivateRequest) -> Result<AccountsActivateResponse>;
 
-    async fn prv_key_data_enumerate(self: Arc<Self>) -> Result<Vec<Arc<PrvKeyDataInfo>>> {
-        Ok(self.prv_key_data_enumerate_call(PrvKeyDataEnumerateRequest {}).await?.prv_key_data_list)
-    }
-
-    async fn prv_key_data_enumerate_call(self: Arc<Self>, request: PrvKeyDataEnumerateRequest) -> Result<PrvKeyDataEnumerateResponse>;
-    async fn prv_key_data_create_call(self: Arc<Self>, request: PrvKeyDataCreateRequest) -> Result<PrvKeyDataCreateResponse>;
-    async fn prv_key_data_remove_call(self: Arc<Self>, request: PrvKeyDataRemoveRequest) -> Result<PrvKeyDataRemoveResponse>;
-    async fn prv_key_data_get_call(self: Arc<Self>, request: PrvKeyDataGetRequest) -> Result<PrvKeyDataGetResponse>;
-
     async fn accounts_enumerate(self: Arc<Self>) -> Result<Vec<AccountDescriptor>> {
         Ok(self.accounts_enumerate_call(AccountsEnumerateRequest {}).await?.descriptor_list)
     }
     async fn accounts_enumerate_call(self: Arc<Self>, request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse>;
 
+    async fn accounts_create(
+        self: Arc<Self>,
+        prv_key_data_id: PrvKeyDataId,
+        account_args: AccountCreateArgs,
+    ) -> Result<AccountDescriptor> {
+        Ok(self.accounts_create_call(AccountsCreateRequest { prv_key_data_id, account_args }).await?.descriptor)
+    }
     async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse>;
     async fn accounts_import_call(self: Arc<Self>, request: AccountsImportRequest) -> Result<AccountsImportResponse>;
     async fn accounts_get_call(self: Arc<Self>, request: AccountsGetRequest) -> Result<AccountsGetResponse>;
