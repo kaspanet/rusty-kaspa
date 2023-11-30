@@ -34,12 +34,11 @@ jobs:
 
   test:
     name: Test Suite
-    # runs-on: ${{ matrix.os }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      # matrix:
-      #   os: [ ubuntu-latest, macos-latest, windows-latest ]
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
     steps:
       # Clean unnecessary files to save disk space
       - name: clean unnecessary files to save space
