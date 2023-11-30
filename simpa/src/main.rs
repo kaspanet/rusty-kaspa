@@ -150,7 +150,6 @@ fn main() {
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
 
-    // assert!(args.bps * args.delay < 250.0, "The delay times bps product is larger than 250");
     if args.miners > 1 {
         warn!(
             "Warning: number of miners was configured to {}. Currently each miner added doubles the simulation 
@@ -320,7 +319,7 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
     let mut chunk = iter.next().unwrap();
     let mut prev_joins = submit_chunk(src_consensus, dst_consensus, &mut chunk);
 
-    for (i, mut chunk) in (0..usize::MAX).zip(iter) {
+    for (i, mut chunk) in iter.enumerate() {
         let current_joins = submit_chunk(src_consensus, dst_consensus, &mut chunk);
         let statuses = try_join_all(prev_joins).await.unwrap();
         info!("Validated chunk {}", i);

@@ -417,7 +417,7 @@ impl HeaderProcessor {
 
         let mut relations_write = self.relations_stores.write();
         ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
-            relations_write[level].insert_batch(&mut batch, header.hash, parents_by_level.clone()).unwrap();
+            relations_write[level].insert_batch(&mut batch, header.hash, parents_by_level).unwrap();
         });
 
         // Write reachability relations. These relations are only needed during header pruning

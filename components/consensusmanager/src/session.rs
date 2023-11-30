@@ -308,7 +308,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_ghostdag_data(hash)).await
     }
 
-    pub async fn async_get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+    pub async fn async_get_block_children(&self, hash: Hash) -> Option<Vec<Hash>> {
         self.clone().spawn_blocking(move |c| c.get_block_children(hash)).await
     }
 

@@ -101,7 +101,7 @@ impl DbChildrenStore {
 
 impl ChildrenStoreReader for DbChildrenStore {
     fn get(&self, parent: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
-        self.access.read(parent) // TODO: Pass read lock
+        self.access.read(parent)
     }
 }
 
