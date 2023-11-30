@@ -12,7 +12,7 @@ This repository contains the implementation of the Kaspa full-node and related l
   - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` directory to `Path`
   - MacOS: `brew install protobuf`
 - Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB and WASM `secp256k1` builds)
-  - Linux: `apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang`
+  - Linux: `sudo apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang`
   - Windows: Please see [Installing clang toolchain on Windows](#installing-clang-toolchain-on-windows)
   - MacOS: Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
 - Install the [rust toolchain](https://rustup.rs/)
