@@ -93,7 +93,7 @@ pub struct PruningProofManager {
     reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
-    relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
+    relations_stores: Arc<[DbRelationsStore]>,
     pruning_point_store: Arc<RwLock<DbPruningStore>>,
     past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     virtual_stores: Arc<RwLock<VirtualStores>>,
@@ -234,7 +234,7 @@ impl PruningProofManager {
                         .push_if_empty(ORIGIN),
                 );
 
-                self.relations_stores.write()[level].insert(header.hash, parents.clone()).unwrap();
+                self.relations_stores[level].insert(header.hash, parents.clone()).unwrap();
                 let gd = if header.hash == self.genesis_hash {
                     self.ghostdag_managers[level].genesis_ghostdag_data()
                 } else if level == 0 {
@@ -354,7 +354,7 @@ impl PruningProofManager {
             let mut batch = WriteBatch::default();
             let mut reachability_relations_write = self.reachability_relations_store.write();
             let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
-            let mut staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
+            let staging_reachability_relations = StagingRelationsStore::new(&mut reachability_relations_write);
 
             // Stage
             staging_reachability_relations.insert(hash, reachability_parents_hashes.clone()).unwrap();
@@ -392,7 +392,7 @@ impl PruningProofManager {
         let ghostdag_stores = (0..=self.max_block_level)
             .map(|level| Arc::new(DbGhostdagStore::new(db.clone(), level, 2 * self.pruning_proof_m)))
             .collect_vec();
-        let mut relations_stores =
+        let relations_stores =
             (0..=self.max_block_level).map(|level| DbRelationsStore::new(db.clone(), level, 2 * self.pruning_proof_m)).collect_vec();
         let reachability_stores = (0..=self.max_block_level)
             .map(|level| Arc::new(RwLock::new(DbReachabilityStore::with_block_level(db.clone(), 2 * self.pruning_proof_m, level))))
@@ -515,7 +515,6 @@ impl PruningProofManager {
         }
 
         let pruning_read = self.pruning_point_store.read();
-        let relations_read = self.relations_stores.read();
         let current_pp = pruning_read.get().unwrap().pruning_point;
         let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
@@ -576,7 +575,7 @@ impl PruningProofManager {
 
         for level in (0..=self.max_block_level).rev() {
             let level_idx = level as usize;
-            match relations_read[level_idx].get_parents(current_pp).unwrap_option() {
+            match self.relations_stores[level_idx].get_parents(current_pp).unwrap_option() {
                 Some(parents) => {
                     if parents
                         .iter()
@@ -594,7 +593,6 @@ impl PruningProofManager {
         }
 
         drop(pruning_read);
-        drop(relations_read);
         drop(db_lifetime);
 
         Err(PruningImportError::PruningProofNotEnoughHeaders)
@@ -668,7 +666,7 @@ impl PruningProofManager {
                     }
 
                     headers.push(self.headers_store.get_header(current).unwrap());
-                    for child in self.relations_stores.read()[level].get_children(current).unwrap().read().iter().copied() {
+                    for child in self.relations_stores[level].get_children(current).unwrap().read().iter().copied() {
                         queue.push(Reverse(SortableBlock::new(child, self.ghostdag_stores[level].get_blue_work(child).unwrap())));
                     }
                 }
@@ -822,7 +820,7 @@ impl PruningProofManager {
                 let ghostdag = (&*self.ghostdag_stores[0].get_data(current).unwrap()).into();
                 e.insert(TrustedHeader { header, ghostdag });
             }
-            let parents = self.relations_stores.read()[0].get_parents(current).unwrap();
+            let parents = self.relations_stores[0].get_parents(current).unwrap();
             for parent in parents.iter().copied() {
                 if visited.insert(parent) {
                     queue.push_back(parent);

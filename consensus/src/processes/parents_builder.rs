@@ -480,8 +480,8 @@ mod tests {
         }
 
         let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability_store)));
-        let relations_store =
-            Arc::new(RwLock::new(vec![RelationsStoreMock { children: BlockHashes::new(vec![pruning_point, pp_anticone_block]) }]));
+        let relations_store: Arc<[_]> =
+            vec![RelationsStoreMock { children: BlockHashes::new(vec![pruning_point, pp_anticone_block]) }].into();
         let relations_service = MTRelationsService::new(relations_store, 0);
         let parents_manager = ParentsManager::new(250, genesis_hash, headers_store, reachability_service, relations_service);
 
@@ -583,7 +583,7 @@ mod tests {
         }
 
         let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability_store)));
-        let relations_store = Arc::new(RwLock::new(vec![RelationsStoreMock { children: BlockHashes::new(vec![pruning_point]) }]));
+        let relations_store: Arc<[_]> = vec![RelationsStoreMock { children: BlockHashes::new(vec![pruning_point]) }].into();
         let relations_service = MTRelationsService::new(relations_store, 0);
         let parents_manager = ParentsManager::new(250, genesis_hash, headers_store, reachability_service, relations_service);
 

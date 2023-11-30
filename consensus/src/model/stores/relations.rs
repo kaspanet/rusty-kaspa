@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use kaspa_consensus_core::BlockHashSet;
-use kaspa_consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
+use kaspa_consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel};
 use kaspa_database::prelude::{BatchDbWriter, DbWriter, StoreResultExtensions};
 use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
 use kaspa_database::prelude::{DirectWriter, MemoryWriter};
@@ -8,7 +8,7 @@ use kaspa_database::prelude::{ReadLock, StoreError};
 use kaspa_database::prelude::{StoreResult, DB};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use rocksdb::WriteBatch;
 use std::collections::hash_map::Entry;
 use std::collections::HashSet;
@@ -32,7 +32,7 @@ pub trait RelationsStore: RelationsStoreReader {
     type DefaultWriter: DirectWriter;
     fn default_writer(&self) -> Self::DefaultWriter;
 
-    fn set_parents(&mut self, writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
+    fn set_parents(&self, writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError>;
     fn delete_entries(&mut self, writer: impl DbWriter, hash: Hash) -> Result<(), StoreError>;
 }
 
@@ -115,7 +115,7 @@ impl RelationsStore for DbRelationsStore {
         DirectDbWriter::from_arc(self.db.clone())
     }
 
-    fn set_parents(&mut self, writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+    fn set_parents(&self, writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         self.parents_access.write(writer, hash, parents)
     }
 
@@ -130,18 +130,22 @@ struct StagingChildren {
     insertions: BlockHashMap<BlockHashSet>,
     deletions: BlockHashMap<BlockHashSet>,
 }
+#[derive(Default)]
+struct Staging {
+    parents_insertions: BlockHashMap<BlockHashes>,
+    parent_deletions: BlockHashSet,
+    children: StagingChildren,
+}
 
 pub struct StagingRelationsStore<'a> {
-    store: &'a mut DbRelationsStore,
-    staging_parents_writes: BlockHashMap<BlockHashes>,
-    staging_parent_deletions: BlockHashSet,
-    staging_children: RwLock<StagingChildren>,
+    store: &'a DbRelationsStore,
+    staging: Mutex<Staging>,
 }
 
 impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     fn insert_child(&self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        let mut staging_children_write = self.staging_children.write();
-        match staging_children_write.insertions.entry(parent) {
+        let mut write_guard = self.staging.lock();
+        match write_guard.children.insertions.entry(parent) {
             Entry::Occupied(mut e) => {
                 e.get_mut().insert(child);
             }
@@ -153,13 +157,13 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     }
 
     fn delete_children(&self, _writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
-        let mut staging_children_write = self.staging_children.write();
-        staging_children_write.insertions.remove(&parent);
+        let mut write_guard = self.staging.lock();
+        write_guard.children.insertions.remove(&parent);
         let store_children =
             self.store.children_store.get(parent).unwrap_option().unwrap_or_default().read().iter().copied().collect_vec();
 
         for child in store_children {
-            match staging_children_write.deletions.entry(parent) {
+            match write_guard.children.deletions.entry(parent) {
                 Entry::Occupied(mut e) => {
                     e.get_mut().insert(child);
                 }
@@ -172,12 +176,12 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     }
 
     fn delete_child(&self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        let mut staging_children_write = self.staging_children.write();
-        match staging_children_write.insertions.entry(parent) {
+        let mut write_guard = self.staging.lock();
+        match write_guard.children.insertions.entry(parent) {
             Entry::Occupied(mut e) => {
                 let removed = e.get_mut().remove(&child);
                 if !removed {
-                    match staging_children_write.deletions.entry(parent) {
+                    match write_guard.children.deletions.entry(parent) {
                         Entry::Occupied(mut e) => {
                             e.get_mut().insert(child);
                         }
@@ -188,7 +192,7 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
                 }
             }
             Entry::Vacant(_) => {
-                match staging_children_write.deletions.entry(parent) {
+                match write_guard.children.deletions.entry(parent) {
                     Entry::Occupied(mut e) => {
                         e.get_mut().insert(child);
                     }
@@ -204,29 +208,24 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
 }
 
 impl<'a> StagingRelationsStore<'a> {
-    pub fn new(store: &'a mut DbRelationsStore) -> Self {
-        Self {
-            store,
-            staging_parents_writes: Default::default(),
-            staging_parent_deletions: Default::default(),
-            staging_children: Default::default(),
-        }
+    pub fn new(store: &'a DbRelationsStore) -> Self {
+        Self { store, staging: Default::default() }
     }
 
     pub fn commit(self, batch: &mut WriteBatch) -> Result<(), StoreError> {
-        for (k, v) in self.staging_parents_writes {
-            self.store.parents_access.write(BatchDbWriter::new(batch), k, v)?
+        let read_guard = self.staging.lock();
+        for (k, v) in read_guard.parents_insertions.iter() {
+            self.store.parents_access.write(BatchDbWriter::new(batch), *k, (*v).clone())?
         }
 
-        let staging_children_read = self.staging_children.read();
-        for (parent, children) in staging_children_read.insertions.iter() {
+        for (parent, children) in read_guard.children.insertions.iter() {
             for child in children.iter().copied() {
                 self.store.children_store.insert_child(BatchDbWriter::new(batch), *parent, child)?;
             }
         }
         // Deletions always come after mutations
-        self.store.parents_access.delete_many(BatchDbWriter::new(batch), &mut self.staging_parent_deletions.iter().copied())?;
-        for (parent, children_to_delete) in staging_children_read.deletions.iter() {
+        self.store.parents_access.delete_many(BatchDbWriter::new(batch), &mut read_guard.parent_deletions.iter().copied())?;
+        for (parent, children_to_delete) in read_guard.children.deletions.iter() {
             for child in children_to_delete {
                 self.store.delete_child(BatchDbWriter::new(batch), *parent, *child)?;
             }
@@ -236,7 +235,7 @@ impl<'a> StagingRelationsStore<'a> {
     }
 
     fn check_not_in_deletions(&self, hash: Hash) -> Result<(), StoreError> {
-        if self.staging_parent_deletions.contains(&hash) {
+        if self.staging.lock().parent_deletions.contains(&hash) {
             Err(StoreError::KeyNotFound(DbKey::new(b"staging-relations", hash)))
         } else {
             Ok(())
@@ -251,14 +250,16 @@ impl RelationsStore for StagingRelationsStore<'_> {
         MemoryWriter
     }
 
-    fn set_parents(&mut self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
-        self.staging_parents_writes.insert(hash, parents);
+    fn set_parents(&self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+        self.staging.lock().parents_insertions.insert(hash, parents);
         Ok(())
     }
 
     fn delete_entries(&mut self, writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
-        self.staging_parents_writes.remove(&hash);
-        self.staging_parent_deletions.insert(hash);
+        let mut write_guard = self.staging.lock();
+        write_guard.parents_insertions.remove(&hash);
+        write_guard.parent_deletions.insert(hash);
+        drop(write_guard);
         self.delete_children(writer, hash)?;
         Ok(())
     }
@@ -267,7 +268,7 @@ impl RelationsStore for StagingRelationsStore<'_> {
 impl RelationsStoreReader for StagingRelationsStore<'_> {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         self.check_not_in_deletions(hash)?;
-        if let Some(data) = self.staging_parents_writes.get(&hash) {
+        if let Some(data) = self.staging.lock().parents_insertions.get(&hash) {
             Ok(BlockHashes::clone(data))
         } else {
             self.store.get_parents(hash)
@@ -277,22 +278,24 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
     fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
         self.check_not_in_deletions(hash)?;
         let store_children = self.store.get_children(hash).unwrap_option().unwrap_or_default().read().iter().copied().collect_vec();
-        let staging_children_read = self.staging_children.read();
-        let insertions = staging_children_read.insertions.get(&hash).cloned().unwrap_or_default();
-        let deletions = staging_children_read.deletions.get(&hash).cloned().unwrap_or_default();
+        let read_guard = self.staging.lock();
+        let insertions = read_guard.children.insertions.get(&hash).cloned().unwrap_or_default();
+        let deletions = read_guard.children.deletions.get(&hash).cloned().unwrap_or_default();
         let children: BlockHashSet =
             BlockHashSet::from_iter(store_children.iter().copied().chain(insertions)).difference(&deletions).copied().collect();
         Ok(children.into())
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        if self.staging_parent_deletions.contains(&hash) {
+        let read_guard = self.staging.lock();
+        if read_guard.parent_deletions.contains(&hash) {
             return Ok(false);
         }
-        Ok(self.staging_parents_writes.contains_key(&hash) || self.store.has(hash)?)
+        Ok(read_guard.parents_insertions.contains_key(&hash) || self.store.has(hash)?)
     }
 
     fn counts(&self) -> Result<(usize, usize), StoreError> {
+        let read_guard = self.staging.lock();
         let count = self
             .store
             .parents_access
@@ -300,40 +303,43 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
             .map(|r| r.unwrap().0)
             .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
             .map(Hash::from_bytes)
-            .chain(self.staging_parents_writes.keys().copied())
+            .chain(read_guard.parents_insertions.keys().copied())
             .collect::<BlockHashSet>()
-            .difference(&self.staging_parent_deletions)
+            .difference(&read_guard.parent_deletions)
             .count();
         Ok((count, count))
     }
 }
 
-pub struct MemoryRelationsStore {
+pub struct MemoryRelationsStore(Mutex<MemoryRelationsStoreInner>);
+
+#[derive(Default)]
+struct MemoryRelationsStoreInner {
     parents_map: BlockHashMap<BlockHashes>,
-    children_map: RwLock<BlockHashMap<BlockHashes>>,
+    children_map: BlockHashMap<BlockHashes>,
 }
 
 impl ChildrenStore for MemoryRelationsStore {
     fn insert_child(&self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        let mut children_map = self.children_map.write();
-        let mut children = match children_map.get(&parent) {
+        let mut write_guard = self.0.lock();
+        let mut children = match write_guard.children_map.get(&parent) {
             Some(children) => children.iter().copied().collect_vec(),
             None => vec![],
         };
 
         children.push(child);
-        children_map.insert(parent, children.into());
+        write_guard.children_map.insert(parent, children.into());
         Ok(())
     }
 
     fn delete_children(&self, _writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
-        self.children_map.write().remove(&parent);
+        self.0.lock().children_map.remove(&parent);
         Ok(())
     }
 
     fn delete_child(&self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        let mut children_map = self.children_map.write();
-        let mut children = match children_map.get(&parent) {
+        let mut write_guard = self.0.lock();
+        let mut children = match write_guard.children_map.get(&parent) {
             Some(children) => children.iter().copied().collect_vec(),
             None => vec![],
         };
@@ -343,14 +349,14 @@ impl ChildrenStore for MemoryRelationsStore {
         };
 
         children.remove(to_remove_idx);
-        children_map.insert(parent, children.into());
+        write_guard.children_map.insert(parent, children.into());
         Ok(())
     }
 }
 
 impl MemoryRelationsStore {
     pub fn new() -> Self {
-        Self { parents_map: BlockHashMap::new(), children_map: RwLock::new(BlockHashMap::new()) }
+        Self(Default::default())
     }
 }
 
@@ -362,7 +368,7 @@ impl Default for MemoryRelationsStore {
 
 impl RelationsStoreReader for MemoryRelationsStore {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        match self.parents_map.get(&hash) {
+        match self.0.lock().parents_map.get(&hash) {
             Some(parents) => Ok(BlockHashes::clone(parents)),
             None => Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::RelationsParents.as_ref(), hash))),
         }
@@ -372,7 +378,7 @@ impl RelationsStoreReader for MemoryRelationsStore {
         if !self.has(hash)? {
             Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::RelationsChildren.as_ref(), hash)))
         } else {
-            match self.children_map.read().get(&hash) {
+            match self.0.lock().children_map.get(&hash) {
                 Some(children) => Ok(BlockHashSet::from_iter(children.iter().copied()).into()),
                 None => Ok(Default::default()),
             }
@@ -380,11 +386,12 @@ impl RelationsStoreReader for MemoryRelationsStore {
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        Ok(self.parents_map.contains_key(&hash))
+        Ok(self.0.lock().parents_map.contains_key(&hash))
     }
 
     fn counts(&self) -> Result<(usize, usize), StoreError> {
-        Ok((self.parents_map.len(), self.parents_map.len()))
+        let count = self.0.lock().parents_map.len();
+        Ok((count, count))
     }
 }
 
@@ -395,14 +402,15 @@ impl RelationsStore for MemoryRelationsStore {
         MemoryWriter
     }
 
-    fn set_parents(&mut self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
-        self.parents_map.insert(hash, parents);
+    fn set_parents(&self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+        self.0.lock().parents_map.insert(hash, parents);
         Ok(())
     }
 
     fn delete_entries(&mut self, _writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
-        self.parents_map.remove(&hash);
-        self.children_map.write().remove(&hash);
+        let mut write_guard = self.0.lock();
+        write_guard.parents_map.remove(&hash);
+        write_guard.children_map.remove(&hash);
         Ok(())
     }
 }
@@ -425,7 +433,7 @@ mod tests {
         drop(lt)
     }
 
-    fn test_relations_store<T: RelationsStore + ChildrenStore>(mut store: T) {
+    fn test_relations_store<T: RelationsStore + ChildrenStore>(store: T) {
         let parents = [(1, vec![]), (2, vec![1]), (3, vec![1]), (4, vec![2, 3]), (5, vec![1, 4])];
         for (i, vec) in parents.iter().cloned() {
             store.insert(i.into(), BlockHashes::new(vec.iter().copied().map(Hash::from).collect())).unwrap();

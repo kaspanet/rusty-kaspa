@@ -79,15 +79,15 @@ where
 
 pub trait RelationsStoreExtensions: RelationsStore + ChildrenStore {
     /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`
-    fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+    fn insert(&self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         self.insert_with_writer(self.default_writer(), hash, parents)
     }
 
-    fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+    fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         self.insert_with_writer(BatchDbWriter::new(batch), hash, parents)
     }
 
-    fn insert_with_writer<W>(&mut self, mut writer: W, hash: Hash, mut parents: BlockHashes) -> Result<(), StoreError>
+    fn insert_with_writer<W>(&self, mut writer: W, hash: Hash, mut parents: BlockHashes) -> Result<(), StoreError>
     where
         W: DbWriter,
     {
