@@ -572,9 +572,9 @@ impl UtxoContext {
             }
 
             if let Some(transaction) = outgoing_transaction {
-                    discarded_outgoing_transactions.insert(txid);
-                    let record = TransactionRecord::new_outgoing(self, &transaction);
-                    self.processor().notify(Events::Change { record }).await?;
+                discarded_outgoing_transactions.insert(txid);
+                let record = TransactionRecord::new_outgoing(self, &transaction);
+                self.processor().notify(Events::Change { record }).await?;
             } else if !is_coinbase_stasis {
                 // do not notify if coinbase transaction is in stasis
                 let record = TransactionRecord::new_incoming(self, TransactionType::Incoming, txid, utxos);
