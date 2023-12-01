@@ -151,17 +151,27 @@ impl RelationsStore for &DbRelationsStore {
 }
 
 pub struct StagingRelationsStore<'a> {
+    // The underlying DB store to commit to
     store: &'a DbRelationsStore,
-    parents_insertions: BlockHashMap<BlockHashes>,
-    parent_deletions: BlockHashSet,
+
+    /// Full entry deletions (including parents and all children)
+    /// Assumed to be final, i.e., no other mutations to this entry
+    /// are expected
+    entry_deletions: BlockHashSet,
+
+    /// Full parents list updates (inner set is not a diff but rather a full replacement)
+    parents_overrides: BlockHashMap<BlockHashes>,
+
+    /// Children insertions (inner set is a diff and reflects the new children to add)
     children_insertions: BlockHashMap<BlockHashSet>,
+
+    /// Children deletions (inner set is a diff and reflects specific children to delete)
     children_deletions: BlockHashMap<BlockHashSet>,
-    delete_all_children: BlockHashSet,
 }
 
 impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     fn insert_child(&mut self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        self.check_not_in_children_delete_all(parent);
+        self.check_not_in_deletions(parent)?;
         match self.children_insertions.entry(parent) {
             Entry::Occupied(mut e) => {
                 e.get_mut().insert(child);
@@ -173,13 +183,12 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
         Ok(())
     }
 
-    fn delete_children(&mut self, _writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
-        self.delete_all_children.insert(parent);
-        Ok(())
+    fn delete_children(&mut self, _writer: impl DbWriter, _parent: Hash) -> Result<(), StoreError> {
+        unimplemented!()
     }
 
     fn delete_child(&mut self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        self.check_not_in_children_delete_all(parent);
+        self.check_not_in_deletions(parent)?;
         match self.children_insertions.entry(parent) {
             Entry::Occupied(mut e) => {
                 let removed = e.get_mut().remove(&child);
@@ -214,52 +223,51 @@ impl<'a> StagingRelationsStore<'a> {
     pub fn new(store: &'a DbRelationsStore) -> Self {
         Self {
             store,
-            parents_insertions: Default::default(),
-            parent_deletions: Default::default(),
+            parents_overrides: Default::default(),
+            entry_deletions: Default::default(),
             children_insertions: Default::default(),
             children_deletions: Default::default(),
-            delete_all_children: Default::default(),
         }
     }
 
     pub fn commit(mut self, batch: &mut WriteBatch) -> Result<(), StoreError> {
-        for (k, v) in self.parents_insertions {
+        for (k, v) in self.parents_overrides {
             self.store.parents_access.write(BatchDbWriter::new(batch), k, v)?
         }
 
-        for (parent, children) in self.children_insertions.iter().filter(|(parent, _)| !self.delete_all_children.contains(parent)) {
-            for child in children.iter().copied() {
-                self.store.insert_child(BatchDbWriter::new(batch), *parent, child)?;
-            }
-        }
-        // Deletions always come after mutations
-        self.store.parents_access.delete_many(BatchDbWriter::new(batch), &mut self.parent_deletions.iter().copied())?;
-        for (parent, children_to_delete) in
-            self.children_deletions.iter().filter(|(parent, _)| !self.delete_all_children.contains(parent))
-        {
-            for child in children_to_delete {
-                self.store.delete_child(BatchDbWriter::new(batch), *parent, *child)?;
+        for (parent, children) in self.children_insertions {
+            for child in children {
+                self.store.insert_child(BatchDbWriter::new(batch), parent, child)?;
             }
         }
 
-        for parent in self.delete_all_children.iter().copied() {
+        //
+        // Deletions always come after mutations
+        //
+
+        // For deleted entries, delete all parents
+        self.store.parents_access.delete_many(BatchDbWriter::new(batch), &mut self.entry_deletions.iter().copied())?;
+
+        // For deleted entries, delete all children
+        for parent in self.entry_deletions {
             self.store.delete_children(BatchDbWriter::new(batch), parent)?;
+        }
+
+        // Delete only the requested children
+        for (parent, children_to_delete) in self.children_deletions {
+            for child in children_to_delete {
+                self.store.delete_child(BatchDbWriter::new(batch), parent, child)?;
+            }
         }
 
         Ok(())
     }
 
-    fn check_not_in_parent_deletions(&self, hash: Hash) -> Result<(), StoreError> {
-        if self.parent_deletions.contains(&hash) {
+    fn check_not_in_deletions(&self, hash: Hash) -> Result<(), StoreError> {
+        if self.entry_deletions.contains(&hash) {
             Err(StoreError::KeyNotFound(DbKey::new(b"staging-relations", hash)))
         } else {
             Ok(())
-        }
-    }
-
-    fn check_not_in_children_delete_all(&self, parent: Hash) {
-        if self.delete_all_children.contains(&parent) {
-            panic!("{parent} children are already deleted")
         }
     }
 }
@@ -272,22 +280,23 @@ impl RelationsStore for StagingRelationsStore<'_> {
     }
 
     fn set_parents(&mut self, _writer: impl DbWriter, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
-        self.parents_insertions.insert(hash, parents);
+        self.parents_overrides.insert(hash, parents);
         Ok(())
     }
 
-    fn delete_entries(&mut self, writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
-        self.parents_insertions.remove(&hash);
-        self.parent_deletions.insert(hash);
-        self.delete_children(writer, hash)?;
+    fn delete_entries(&mut self, _writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
+        self.parents_overrides.remove(&hash);
+        self.children_deletions.remove(&hash);
+        self.children_insertions.remove(&hash);
+        self.entry_deletions.insert(hash);
         Ok(())
     }
 }
 
 impl RelationsStoreReader for StagingRelationsStore<'_> {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        self.check_not_in_parent_deletions(hash)?;
-        if let Some(data) = self.parents_insertions.get(&hash) {
+        self.check_not_in_deletions(hash)?;
+        if let Some(data) = self.parents_overrides.get(&hash) {
             Ok(BlockHashes::clone(data))
         } else {
             self.store.get_parents(hash)
@@ -295,12 +304,8 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
     }
 
     fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
-        self.check_not_in_parent_deletions(hash)?;
+        self.check_not_in_deletions(hash)?;
         let store_children = self.store.get_children(hash).unwrap_option().unwrap_or_default().read().iter().copied().collect_vec();
-        if self.delete_all_children.contains(&hash) {
-            return Ok(Default::default());
-        }
-
         let insertions = self.children_insertions.get(&hash).cloned().unwrap_or_default();
         let deletions = self.children_deletions.get(&hash).cloned().unwrap_or_default();
         let children: BlockHashSet =
@@ -309,10 +314,10 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
     }
 
     fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        if self.parent_deletions.contains(&hash) {
+        if self.entry_deletions.contains(&hash) {
             return Ok(false);
         }
-        Ok(self.parents_insertions.contains_key(&hash) || self.store.has(hash)?)
+        Ok(self.parents_overrides.contains_key(&hash) || self.store.has(hash)?)
     }
 
     fn counts(&self) -> Result<(usize, usize), StoreError> {
@@ -323,9 +328,9 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
             .map(|r| r.unwrap().0)
             .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
             .map(Hash::from_bytes)
-            .chain(self.parents_insertions.keys().copied())
+            .chain(self.parents_overrides.keys().copied())
             .collect::<BlockHashSet>()
-            .difference(&self.parent_deletions)
+            .difference(&self.entry_deletions)
             .count();
         Ok((count, count))
     }
