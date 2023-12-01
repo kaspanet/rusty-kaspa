@@ -82,6 +82,10 @@ impl DbRelationsStore {
             children_store: DbChildrenStore::with_prefix(db, prefix, cache_size),
         }
     }
+
+    pub(crate) fn delete_children(&self, writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
+        self.children_store.delete_children(writer, parent)
+    }
 }
 
 impl RelationsStoreReader for DbRelationsStore {
@@ -125,10 +129,6 @@ impl ChildrenStore for &DbRelationsStore {
         (&self.children_store).insert_child(writer, parent, child)
     }
 
-    fn delete_children(&mut self, writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
-        (&self.children_store).delete_children(writer, parent)
-    }
-
     fn delete_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
         (&self.children_store).delete_child(writer, parent, child)
     }
@@ -148,7 +148,7 @@ impl RelationsStore for &DbRelationsStore {
 
     fn delete_entries(&mut self, mut writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
         self.parents_access.delete(&mut writer, hash)?;
-        (&self.children_store).delete_children(&mut writer, hash)
+        self.children_store.delete_children(&mut writer, hash)
     }
 }
 
@@ -184,10 +184,6 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
             }
         };
         Ok(())
-    }
-
-    fn delete_children(&mut self, _writer: impl DbWriter, _parent: Hash) -> Result<(), StoreError> {
-        unimplemented!()
     }
 
     fn delete_child(&mut self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
@@ -358,11 +354,6 @@ impl ChildrenStore for MemoryRelationsStore {
 
         children.push(child);
         self.children_map.insert(parent, children.into());
-        Ok(())
-    }
-
-    fn delete_children(&mut self, _writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
-        self.children_map.remove(&parent);
         Ok(())
     }
 

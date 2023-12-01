@@ -21,7 +21,6 @@ pub trait ChildrenStoreReader {
 
 pub trait ChildrenStore {
     fn insert_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError>;
-    fn delete_children(&mut self, writer: impl DbWriter, parent: Hash) -> Result<(), StoreError>;
     fn delete_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError>;
 }
 
@@ -98,6 +97,10 @@ impl DbChildrenStore {
         Ok(())
     }
 
+    pub(crate) fn delete_children(&self, mut writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
+        self.access.delete_bucket(&mut writer, parent)
+    }
+
     pub(crate) fn prefix(&self) -> &[u8] {
         self.access.prefix()
     }
@@ -113,10 +116,6 @@ impl ChildrenStore for &DbChildrenStore {
     fn insert_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
         self.access.write(writer, parent, child)?;
         Ok(())
-    }
-
-    fn delete_children(&mut self, mut writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
-        self.access.delete_bucket(&mut writer, parent)
     }
 
     fn delete_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {

@@ -12,7 +12,7 @@ use std::{
     sync::Arc,
 };
 
-/// A concurrent DB store access with typed caching.
+/// A concurrent DB store for **set** access with typed caching.
 #[derive(Clone)]
 pub struct CachedDbSetAccess<TKey, TData, S = RandomState, W = RandomState>
 where
