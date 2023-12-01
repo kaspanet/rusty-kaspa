@@ -97,6 +97,10 @@ impl DbChildrenStore {
         self.access.write(BatchDbWriter::new(batch), parent, child)?;
         Ok(())
     }
+
+    pub(crate) fn prefix(&self) -> &[u8] {
+        self.access.prefix()
+    }
 }
 
 impl ChildrenStoreReader for DbChildrenStore {

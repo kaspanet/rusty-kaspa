@@ -91,7 +91,9 @@ impl RelationsStoreReader for DbRelationsStore {
 
     fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
         if !self.parents_access.has(hash)? {
-            Err(StoreError::KeyNotFound(DbKey::new(self.parents_access.prefix(), hash)))
+            // Children store is iterator based so it might just be empty, hence we check
+            // the parents store
+            Err(StoreError::KeyNotFound(DbKey::new(self.children_store.prefix(), hash)))
         } else {
             self.children_store.get(hash)
         }
