@@ -79,15 +79,15 @@ where
 
 pub trait RelationsStoreExtensions: RelationsStore + ChildrenStore {
     /// Inserts `parents` into a new store entry for `hash`, and for each `parent ∈ parents` adds `hash` to `parent.children`
-    fn insert(&self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+    fn insert(&mut self, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         self.insert_with_writer(self.default_writer(), hash, parents)
     }
 
-    fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
+    fn insert_batch(&mut self, batch: &mut WriteBatch, hash: Hash, parents: BlockHashes) -> Result<(), StoreError> {
         self.insert_with_writer(BatchDbWriter::new(batch), hash, parents)
     }
 
-    fn insert_with_writer<W>(&self, mut writer: W, hash: Hash, mut parents: BlockHashes) -> Result<(), StoreError>
+    fn insert_with_writer<W>(&mut self, mut writer: W, hash: Hash, mut parents: BlockHashes) -> Result<(), StoreError>
     where
         W: DbWriter,
     {
@@ -161,7 +161,8 @@ mod tests {
     fn test_delete_level_relations_zero_cache() {
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_size = 0;
-        let relations = DbRelationsStore::new(db.clone(), 0, cache_size);
+        let relations_store = DbRelationsStore::new(db.clone(), 0, cache_size);
+        let mut relations = &relations_store;
         relations.insert(ORIGIN, Default::default()).unwrap();
         relations.insert(1.into(), Arc::new(vec![ORIGIN])).unwrap();
         relations.insert(2.into(), Arc::new(vec![1.into()])).unwrap();
@@ -183,7 +184,7 @@ mod tests {
         );
 
         let mut batch = WriteBatch::default();
-        let mut staging_relations = StagingRelationsStore::new(&relations);
+        let mut staging_relations = StagingRelationsStore::new(relations);
         delete_level_relations(MemoryWriter, &mut staging_relations, 1.into()).unwrap();
         staging_relations.commit(&mut batch).unwrap();
         db.write(batch).unwrap();
@@ -203,7 +204,7 @@ mod tests {
         );
 
         let mut batch = WriteBatch::default();
-        let mut staging_relations = StagingRelationsStore::new(&relations);
+        let mut staging_relations = StagingRelationsStore::new(relations);
         delete_level_relations(MemoryWriter, &mut staging_relations, 2.into()).unwrap();
         staging_relations.commit(&mut batch).unwrap();
         db.write(batch).unwrap();

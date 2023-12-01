@@ -32,7 +32,12 @@ use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use rand::Rng;
-use std::{cmp::max, mem::size_of, ops::DerefMut, sync::Arc};
+use std::{
+    cmp::max,
+    mem::size_of,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 pub struct ConsensusStorage {
     // DB
@@ -163,7 +168,7 @@ impl ConsensusStorage {
 
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
-        relations::init(reachability_relations_store.write().deref_mut());
+        relations::init(&mut reachability_relations_store.write().deref());
 
         Arc::new(Self {
             db,

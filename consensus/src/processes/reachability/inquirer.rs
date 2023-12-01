@@ -523,8 +523,8 @@ mod tests {
             let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
             let cache_size = test.blocks.len() as u64 / 3;
             let mut reachability = DbReachabilityStore::new(db.clone(), cache_size);
-            let mut relations = DbRelationsStore::new(db, 0, cache_size);
-            run_dag_test_case(&mut relations, &mut reachability, &test);
+            let relations = DbRelationsStore::new(db, 0, cache_size);
+            run_dag_test_case(&mut &relations, &mut reachability, &test);
 
             // Run with a staging process
             run_dag_test_case_with_staging(&test);

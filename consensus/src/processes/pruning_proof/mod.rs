@@ -234,7 +234,7 @@ impl PruningProofManager {
                         .push_if_empty(ORIGIN),
                 );
 
-                self.relations_stores[level].insert(header.hash, parents.clone()).unwrap();
+                (&self.relations_stores[level]).insert(header.hash, parents.clone()).unwrap();
                 let gd = if header.hash == self.genesis_hash {
                     self.ghostdag_managers[level].genesis_ghostdag_data()
                 } else if level == 0 {
@@ -354,7 +354,7 @@ impl PruningProofManager {
             let mut batch = WriteBatch::default();
             let reachability_relations_write = self.reachability_relations_store.write();
             let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
-            let staging_reachability_relations = StagingRelationsStore::new(&reachability_relations_write);
+            let mut staging_reachability_relations = StagingRelationsStore::new(&reachability_relations_write);
 
             // Stage
             staging_reachability_relations.insert(hash, reachability_parents_hashes.clone()).unwrap();
@@ -423,7 +423,7 @@ impl PruningProofManager {
             for level in 0..=self.max_block_level {
                 let level = level as usize;
                 reachability::init(reachability_stores[level].write().deref_mut()).unwrap();
-                relations_stores[level].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
+                (&relations_stores[level]).insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
                 ghostdag_stores[level].insert(ORIGIN, self.ghostdag_managers[level].origin_ghostdag_data()).unwrap();
             }
 
@@ -462,7 +462,7 @@ impl PruningProofManager {
                     return Err(PruningImportError::PruningProofDuplicateHeaderAtLevel(header.hash, level));
                 }
 
-                relations_stores[level_idx].insert(header.hash, parents.clone()).unwrap();
+                (&relations_stores[level_idx]).insert(header.hash, parents.clone()).unwrap();
                 let ghostdag_data = Arc::new(ghostdag_managers[level_idx].ghostdag(&parents));
                 ghostdag_stores[level_idx].insert(header.hash, ghostdag_data.clone()).unwrap();
                 selected_tip = Some(match selected_tip {

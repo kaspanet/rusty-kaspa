@@ -43,7 +43,10 @@ use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::sync::{atomic::Ordering, Arc};
+use std::{
+    ops::Deref,
+    sync::{atomic::Ordering, Arc},
+};
 
 use super::super::ProcessingCounters;
 
@@ -415,12 +418,12 @@ impl HeaderProcessor {
         let reachability_parents = ctx.known_parents[0].clone();
 
         ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
-            self.relations_stores[level].insert_batch(&mut batch, header.hash, parents_by_level).unwrap();
+            (&self.relations_stores[level]).insert_batch(&mut batch, header.hash, parents_by_level).unwrap();
         });
 
         // Write reachability relations. These relations are only needed during header pruning
         let reachability_relations_write = self.reachability_relations_store.write();
-        reachability_relations_write.insert_batch(&mut batch, ctx.hash, reachability_parents).unwrap();
+        reachability_relations_write.deref().insert_batch(&mut batch, ctx.hash, reachability_parents).unwrap();
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
@@ -497,7 +500,7 @@ impl HeaderProcessor {
 
         let mut batch = WriteBatch::default();
         (0..=self.max_block_level).for_each(|level| {
-            self.relations_stores[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap()
+            (&self.relations_stores[level as usize]).insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap()
         });
         let mut hst_write = self.headers_selected_tip_store.write();
         hst_write.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
