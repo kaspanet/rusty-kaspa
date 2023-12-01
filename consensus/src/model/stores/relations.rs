@@ -150,24 +150,19 @@ impl RelationsStore for &DbRelationsStore {
     }
 }
 
-#[derive(Default)]
-struct StagingChildren {
-    insertions: BlockHashMap<BlockHashSet>,
-    deletions: BlockHashMap<BlockHashSet>,
-    delete_all_children: BlockHashSet,
-}
-
 pub struct StagingRelationsStore<'a> {
     store: &'a DbRelationsStore,
     parents_insertions: BlockHashMap<BlockHashes>,
     parent_deletions: BlockHashSet,
-    children: StagingChildren,
+    children_insertions: BlockHashMap<BlockHashSet>,
+    children_deletions: BlockHashMap<BlockHashSet>,
+    delete_all_children: BlockHashSet,
 }
 
 impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     fn insert_child(&mut self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
         self.check_not_in_children_delete_all(parent);
-        match self.children.insertions.entry(parent) {
+        match self.children_insertions.entry(parent) {
             Entry::Occupied(mut e) => {
                 e.get_mut().insert(child);
             }
@@ -179,17 +174,17 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     }
 
     fn delete_children(&mut self, _writer: impl DbWriter, parent: Hash) -> Result<(), StoreError> {
-        self.children.delete_all_children.insert(parent);
+        self.delete_all_children.insert(parent);
         Ok(())
     }
 
     fn delete_child(&mut self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
         self.check_not_in_children_delete_all(parent);
-        match self.children.insertions.entry(parent) {
+        match self.children_insertions.entry(parent) {
             Entry::Occupied(mut e) => {
                 let removed = e.get_mut().remove(&child);
                 if !removed {
-                    match self.children.deletions.entry(parent) {
+                    match self.children_deletions.entry(parent) {
                         Entry::Occupied(mut e) => {
                             e.get_mut().insert(child);
                         }
@@ -200,7 +195,7 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
                 }
             }
             Entry::Vacant(_) => {
-                match self.children.deletions.entry(parent) {
+                match self.children_deletions.entry(parent) {
                     Entry::Occupied(mut e) => {
                         e.get_mut().insert(child);
                     }
@@ -217,17 +212,22 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
 
 impl<'a> StagingRelationsStore<'a> {
     pub fn new(store: &'a DbRelationsStore) -> Self {
-        Self { store, parents_insertions: Default::default(), parent_deletions: Default::default(), children: Default::default() }
+        Self {
+            store,
+            parents_insertions: Default::default(),
+            parent_deletions: Default::default(),
+            children_insertions: Default::default(),
+            children_deletions: Default::default(),
+            delete_all_children: Default::default(),
+        }
     }
 
     pub fn commit(mut self, batch: &mut WriteBatch) -> Result<(), StoreError> {
-        for (k, v) in self.parents_insertions.iter() {
-            self.store.parents_access.write(BatchDbWriter::new(batch), *k, (*v).clone())?
+        for (k, v) in self.parents_insertions {
+            self.store.parents_access.write(BatchDbWriter::new(batch), k, v)?
         }
 
-        for (parent, children) in
-            self.children.insertions.iter().filter(|(parent, _)| !self.children.delete_all_children.contains(parent))
-        {
+        for (parent, children) in self.children_insertions.iter().filter(|(parent, _)| !self.delete_all_children.contains(parent)) {
             for child in children.iter().copied() {
                 self.store.insert_child(BatchDbWriter::new(batch), *parent, child)?;
             }
@@ -235,14 +235,14 @@ impl<'a> StagingRelationsStore<'a> {
         // Deletions always come after mutations
         self.store.parents_access.delete_many(BatchDbWriter::new(batch), &mut self.parent_deletions.iter().copied())?;
         for (parent, children_to_delete) in
-            self.children.deletions.iter().filter(|(parent, _)| !self.children.delete_all_children.contains(parent))
+            self.children_deletions.iter().filter(|(parent, _)| !self.delete_all_children.contains(parent))
         {
             for child in children_to_delete {
                 self.store.delete_child(BatchDbWriter::new(batch), *parent, *child)?;
             }
         }
 
-        for parent in self.children.delete_all_children.iter().copied() {
+        for parent in self.delete_all_children.iter().copied() {
             self.store.delete_children(BatchDbWriter::new(batch), parent)?;
         }
 
@@ -258,7 +258,7 @@ impl<'a> StagingRelationsStore<'a> {
     }
 
     fn check_not_in_children_delete_all(&self, parent: Hash) {
-        if self.children.delete_all_children.contains(&parent) {
+        if self.delete_all_children.contains(&parent) {
             panic!("{parent} children are already deleted")
         }
     }
@@ -297,12 +297,12 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
     fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
         self.check_not_in_parent_deletions(hash)?;
         let store_children = self.store.get_children(hash).unwrap_option().unwrap_or_default().read().iter().copied().collect_vec();
-        if self.children.delete_all_children.contains(&hash) {
+        if self.delete_all_children.contains(&hash) {
             return Ok(Default::default());
         }
 
-        let insertions = self.children.insertions.get(&hash).cloned().unwrap_or_default();
-        let deletions = self.children.deletions.get(&hash).cloned().unwrap_or_default();
+        let insertions = self.children_insertions.get(&hash).cloned().unwrap_or_default();
+        let deletions = self.children_deletions.get(&hash).cloned().unwrap_or_default();
         let children: BlockHashSet =
             BlockHashSet::from_iter(store_children.iter().copied().chain(insertions)).difference(&deletions).copied().collect();
         Ok(children.into())
