@@ -117,15 +117,23 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 fn main() {
     #[cfg(feature = "heap")]
     let _profiler = dhat::Profiler::builder().file_name("simpa-heap.json").build();
+
     // Get CLI arguments
-    let mut args = Args::parse();
+    let args = Args::parse();
 
     // Initialize the logger
     kaspa_core::log::init_logger(None, &args.log_level);
 
+    // Configure the panic behavior
+    kaspa_core::panic::configure_panic();
+
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
 
+    main_impl(args);
+}
+
+fn main_impl(mut args: Args) {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     let stop_perf_monitor = args.perf_metrics.then(|| {
@@ -146,9 +154,6 @@ fn main() {
         rt.spawn(async move { monitor.start().await });
         m.stop()
     });
-
-    // Configure the panic behavior
-    kaspa_core::panic::configure_panic();
 
     if args.miners > 1 {
         warn!(
@@ -391,4 +396,22 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64,
     info!("[DELAY={delay}, BPS={bps}, GHOSTDAG K={k}]");
     info!("[Average stats of generated DAG] blues: {blues_mean}, reds: {reds_mean}, parents: {parents_mean}, txs: {txs_mean}");
     num_txs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pruning_via_simpa() {
+        let mut args = Args::parse_from(std::iter::empty::<&str>());
+        args.bps = 1.0;
+        args.target_blocks = Some(5000);
+        args.tpb = 1;
+        args.test_pruning = true;
+
+        kaspa_core::panic::configure_panic();
+        kaspa_core::log::try_init_logger(&args.log_level);
+        main_impl(args);
+    }
 }
