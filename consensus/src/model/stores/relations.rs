@@ -173,7 +173,8 @@ pub struct StagingRelationsStore<'a> {
 
 impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     fn insert_child(&mut self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        self.check_not_in_deletions(parent)?;
+        self.check_not_in_entry_deletions(parent)?;
+        self.check_not_in_children_deletions(parent, child)?; // We expect deletion to be permanent
         match self.children_insertions.entry(parent) {
             Entry::Occupied(mut e) => {
                 e.get_mut().insert(child);
@@ -190,30 +191,16 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
     }
 
     fn delete_child(&mut self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        self.check_not_in_deletions(parent)?;
-        match self.children_insertions.entry(parent) {
+        self.check_not_in_entry_deletions(parent)?;
+        if let Entry::Occupied(mut e) = self.children_insertions.entry(parent) {
+            e.get_mut().remove(&child);
+        };
+        match self.children_deletions.entry(parent) {
             Entry::Occupied(mut e) => {
-                let removed = e.get_mut().remove(&child);
-                if !removed {
-                    match self.children_deletions.entry(parent) {
-                        Entry::Occupied(mut e) => {
-                            e.get_mut().insert(child);
-                        }
-                        Entry::Vacant(e) => {
-                            e.insert(HashSet::from_iter(once(child)));
-                        }
-                    };
-                }
+                e.get_mut().insert(child);
             }
-            Entry::Vacant(_) => {
-                match self.children_deletions.entry(parent) {
-                    Entry::Occupied(mut e) => {
-                        e.get_mut().insert(child);
-                    }
-                    Entry::Vacant(e) => {
-                        e.insert(HashSet::from_iter(once(child)));
-                    }
-                };
+            Entry::Vacant(e) => {
+                e.insert(HashSet::from_iter(once(child)));
             }
         };
 
@@ -265,9 +252,21 @@ impl<'a> StagingRelationsStore<'a> {
         Ok(())
     }
 
-    fn check_not_in_deletions(&self, hash: Hash) -> Result<(), StoreError> {
+    fn check_not_in_entry_deletions(&self, hash: Hash) -> Result<(), StoreError> {
         if self.entry_deletions.contains(&hash) {
             Err(StoreError::KeyNotFound(DbKey::new(b"staging-relations", hash)))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn check_not_in_children_deletions(&self, parent: Hash, child: Hash) -> Result<(), StoreError> {
+        if let Some(e) = self.children_deletions.get(&parent) {
+            if e.contains(&child) {
+                Err(StoreError::KeyNotFound(DbKey::new_with_bucket(b"staging-relations", parent, child)))
+            } else {
+                Ok(())
+            }
         } else {
             Ok(())
         }
@@ -297,7 +296,7 @@ impl RelationsStore for StagingRelationsStore<'_> {
 
 impl RelationsStoreReader for StagingRelationsStore<'_> {
     fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        self.check_not_in_deletions(hash)?;
+        self.check_not_in_entry_deletions(hash)?;
         if let Some(data) = self.parents_overrides.get(&hash) {
             Ok(BlockHashes::clone(data))
         } else {
@@ -306,7 +305,7 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
     }
 
     fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
-        self.check_not_in_deletions(hash)?;
+        self.check_not_in_entry_deletions(hash)?;
         let store_children = self.store.get_children(hash).unwrap_option().unwrap_or_default().read().iter().copied().collect_vec();
         let insertions = self.children_insertions.get(&hash).cloned().unwrap_or_default();
         let deletions = self.children_deletions.get(&hash).cloned().unwrap_or_default();
