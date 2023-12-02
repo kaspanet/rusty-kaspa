@@ -21,6 +21,7 @@ pub fn main() {
 
     let args = parse_args();
 
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     match fd_budget::try_set_fd_limit(DESIRED_DAEMON_SOFT_FD_LIMIT) {
         Ok(limit) => {
             if limit < MINIMUM_DAEMON_SOFT_FD_LIMIT {
