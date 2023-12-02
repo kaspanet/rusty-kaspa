@@ -485,7 +485,7 @@ impl Inner {
                 }
             }
             None => {
-                trace!("GRPC client: try_connect - stream closed by the server");
+                debug!("GRPC client: try_connect - stream closed by the server");
                 return Err(Error::String("GRPC stream was closed by the server".to_string()));
             }
         }
@@ -528,7 +528,7 @@ impl Inner {
             }
         }
 
-        trace!("GRPC client: reconnected");
+        debug!("GRPC client: reconnected");
         Ok(())
     }
 
@@ -649,9 +649,12 @@ impl Inner {
                 pin_mut!(shutdown);
 
                 tokio::select! {
+                    biased;
+
                     _ = shutdown => {
                         break;
                     }
+
                     message = stream.message() => {
                         match message {
                             Ok(msg) => {
@@ -660,7 +663,7 @@ impl Inner {
                                         self.handle_response(response);
                                     },
                                     None =>{
-                                        trace!("GRPC client: response receiver task - the connection to the server is closed");
+                                        debug!("GRPC client: response receiver task - the connection to the server is closed");
 
                                         // A reconnection is needed
                                         break;
@@ -668,7 +671,12 @@ impl Inner {
                                 }
                             },
                             Err(err) => {
-                                trace!("GRPC client: response receiver task - the response receiver gets an error from the server: {:?}", err);
+                                debug!("GRPC client: response receiver task - the response receiver gets an error from the server: {:?}", err);
+
+                                // TODO: ignore cases not requiring a reconnection
+
+                                // A reconnection is needed
+                                break;
                             }
                         }
                     }
