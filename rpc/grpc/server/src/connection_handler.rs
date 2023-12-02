@@ -108,11 +108,11 @@ impl ConnectionHandler {
                 .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
             // TODO: check whether we should set tcp_keepalive
-            const GRPC_KEEP_ALIVE_PING_INTERVAL: Duration = Duration::from_secs(3);
-            const GRPC_KEEP_ALIVE_PING_TIMEOUT: Duration = Duration::from_secs(10);
+            // const GRPC_KEEP_ALIVE_PING_INTERVAL: Duration = Duration::from_secs(5);
+            // const GRPC_KEEP_ALIVE_PING_TIMEOUT: Duration = Duration::from_secs(120);
             let serve_result = TonicServer::builder()
-                .http2_keepalive_interval(Some(GRPC_KEEP_ALIVE_PING_INTERVAL))
-                .http2_keepalive_timeout(Some(GRPC_KEEP_ALIVE_PING_TIMEOUT))
+                // .http2_keepalive_interval(Some(GRPC_KEEP_ALIVE_PING_INTERVAL))
+                // .http2_keepalive_timeout(Some(GRPC_KEEP_ALIVE_PING_TIMEOUT))
                 .add_service(protowire_server)
                 .serve_with_shutdown(
                     serve_address.into(),
