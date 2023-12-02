@@ -20,7 +20,8 @@ use kaspa_rpc_core::{
     Notification, RpcResult,
 };
 use kaspa_utils::{
-    grpc::{measure_request_body_size_layer, CountBytesBody, GrpcCounters, MapResponseBodyLayer},
+    grpc::GrpcCounters,
+    hyper::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer},
     networking::NetAddress,
 };
 use std::fmt::Debug;

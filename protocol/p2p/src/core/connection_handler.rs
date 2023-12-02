@@ -6,7 +6,8 @@ use crate::pb::{
 use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
 use kaspa_core::{debug, info};
-use kaspa_utils::grpc::{measure_request_body_size_layer, CountBytesBody, GrpcCounters, MapResponseBodyLayer, ServiceBuilder};
+use kaspa_utils::grpc::GrpcCounters;
+use kaspa_utils::hyper::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer, ServiceBuilder};
 use kaspa_utils::networking::NetAddress;
 use std::net::ToSocketAddrs;
 use std::pin::Pin;

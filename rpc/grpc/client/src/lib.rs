@@ -33,7 +33,8 @@ use kaspa_rpc_core::{
 };
 use kaspa_utils::{
     channel::Channel,
-    grpc::{measure_request_body_size_layer, CountBytesBody, GrpcCounters, MapResponseBodyLayer, ServiceBuilder},
+    grpc::GrpcCounters,
+    hyper::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer, ServiceBuilder},
     triggers::DuplexTrigger,
 };
 use regex::Regex;
