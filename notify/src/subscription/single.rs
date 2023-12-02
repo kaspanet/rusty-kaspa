@@ -246,10 +246,12 @@ impl Single for UtxosChangedSubscription {
                         // Mutation None
                         self.active = false;
                         let removed = self.addresses.drain().map(|(_, x)| x.into()).collect();
+                        self.addresses.shrink_to(0);
                         Some(vec![Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed)))])
                     } else {
                         // Mutation Remove(R)
                         let removed: Vec<Address> = scope.addresses.iter().filter(|x| self.remove_address(x)).cloned().collect();
+                        self.addresses.shrink_to(0);
                         if self.addresses.is_empty() {
                             self.active = false;
                         }
@@ -262,6 +264,7 @@ impl Single for UtxosChangedSubscription {
                     if !scope.addresses.is_empty() {
                         // Mutation Add(A)
                         let added = scope.addresses.iter().filter(|x| self.insert_address(x)).cloned().collect::<Vec<_>>();
+                        self.addresses.shrink_to(0);
                         match added.is_empty() {
                             false => Some(vec![Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::new(added)))]),
                             true => None,
@@ -269,6 +272,7 @@ impl Single for UtxosChangedSubscription {
                     } else {
                         // Mutation All
                         let removed: Vec<Address> = self.addresses.drain().map(|(_, x)| x.into()).collect();
+                        self.addresses.shrink_to(0);
                         Some(vec![
                             Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed))),
                             Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::default())),
@@ -281,6 +285,7 @@ impl Single for UtxosChangedSubscription {
                     if scope.addresses.is_empty() {
                         // Mutation None
                         self.active = false;
+                        self.addresses = Default::default();
                         Some(vec![Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::default()))])
                     } else {
                         // Mutation Remove(R)
@@ -292,6 +297,7 @@ impl Single for UtxosChangedSubscription {
                         scope.addresses.iter().for_each(|x| {
                             self.insert_address(x);
                         });
+                        self.addresses.shrink_to(0);
                         Some(vec![mutation, Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::default()))])
                     } else {
                         // Mutation All
