@@ -30,3 +30,6 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "ti
 tokio-stream.workspace = true
 tonic = { workspace = true, features = ["gzip"] }
 triggered.workspace = true
+
+[features]
+heap = []

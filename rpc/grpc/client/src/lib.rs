@@ -275,7 +275,6 @@ impl RpcApi for GrpcClient {
 }
 
 pub const CONNECT_TIMEOUT_DURATION: u64 = 20_000;
-pub const KEEP_ALIVE_DURATION: u64 = 5_000;
 pub const REQUEST_TIMEOUT_DURATION: u64 = 5_000;
 pub const TIMEOUT_MONITORING_INTERVAL: u64 = 10_000;
 pub const RECONNECT_INTERVAL: u64 = 2_000;
@@ -437,18 +436,27 @@ impl Inner {
         request_receiver: KaspadRequestReceiver,
         request_timeout: u64,
     ) -> Result<(Streaming<KaspadResponse>, ServerFeatures)> {
+        let request_timeout = tokio::time::Duration::from_millis(request_timeout);
+
         // gRPC endpoint
+        #[cfg(not(feature = "heap"))]
         let channel = Endpoint::new(url)?
-            .timeout(tokio::time::Duration::from_millis(request_timeout))
+            .timeout(request_timeout)
             .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
-            .tcp_keepalive(Some(tokio::time::Duration::from_millis(KEEP_ALIVE_DURATION)))
             .connect()
             .await?;
 
-        let mut client = RpcClient::new(channel)
-            .send_compressed(CompressionEncoding::Gzip)
-            .accept_compressed(CompressionEncoding::Gzip)
-            .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
+        #[cfg(feature = "heap")]
+        let channel = Endpoint::new(url)?.timeout(request_timeout).connect().await?;
+
+        // Build the gRPC client with an interceptor setting the request timeout
+        let mut client = RpcClient::with_interceptor(channel, move |mut req: tonic::Request<()>| {
+            req.set_timeout(request_timeout);
+            Ok(req)
+        })
+        .send_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Gzip)
+        .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
         // Force the opening of the stream when connected to a go kaspad server.
         // This is also needed for querying server capabilities.
