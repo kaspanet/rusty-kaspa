@@ -73,27 +73,47 @@ pub enum Events {
     },
     /// [`SyncState`] notification posted
     /// when the node sync state changes
-    SyncState { sync_state: SyncState },
+    SyncState {
+        sync_state: SyncState,
+    },
     /// Emitted after the wallet has loaded and
     /// contains anti-phishing 'hint' set by the user.
-    WalletHint { hint: Option<Hint> },
+    WalletHint {
+        hint: Option<Hint>,
+    },
     /// Wallet has opened
-    WalletOpen { wallet_descriptor: Option<WalletDescriptor>, account_descriptors: Option<Vec<AccountDescriptor>> },
+    WalletOpen {
+        wallet_descriptor: Option<WalletDescriptor>,
+        account_descriptors: Option<Vec<AccountDescriptor>>,
+    },
     /// Wallet reload initiated (development only)
-    WalletReload { wallet_descriptor: Option<WalletDescriptor>, account_descriptors: Option<Vec<AccountDescriptor>> },
+    WalletReload {
+        wallet_descriptor: Option<WalletDescriptor>,
+        account_descriptors: Option<Vec<AccountDescriptor>>,
+    },
     /// Wallet open failure
-    WalletError { message: String },
+    WalletError {
+        message: String,
+    },
     /// Wallet has been closed
     WalletClose,
     /// Accounts have been activated
-    AccountActivation { ids: Vec<runtime::AccountId> },
+    AccountActivation {
+        ids: Vec<runtime::AccountId>,
+    },
     /// Account selection change (`None` if no account is selected)
-    AccountSelection { id: Option<runtime::AccountId> },
+    AccountSelection {
+        id: Option<runtime::AccountId>,
+    },
     /// Account has been created
-    AccountCreation { descriptor: AccountDescriptor },
+    AccountCreation {
+        descriptor: AccountDescriptor,
+    },
     /// Account has been changed
     /// (emitted on new address generation)
-    AccountUpdate { descriptor: AccountDescriptor },
+    AccountUpdate {
+        descriptor: AccountDescriptor,
+    },
     /// Emitted after successful RPC connection
     /// after the initial state negotiation.
     ServerStatus {
@@ -116,35 +136,56 @@ pub enum Events {
     UtxoProcStop,
     /// Occurs when UtxoProcessor has failed to connect to the node
     /// for an unknown reason. (general error trap)
-    UtxoProcError { message: String },
+    UtxoProcError {
+        message: String,
+    },
     /// DAA score change
-    DAAScoreChange { current_daa_score: u64 },
+    DAAScoreChange {
+        current_daa_score: u64,
+    },
     /// New incoming pending UTXO/transaction
-    Pending { record: TransactionRecord },
+    Pending {
+        record: TransactionRecord,
+    },
     /// Receiving a UTXO that is a part of the
     /// earlier issued outgoing transaction.
-    Change { record: TransactionRecord },
+    Change {
+        record: TransactionRecord,
+    },
     /// Pending UTXO has been removed (reorg)
-    Reorg { record: TransactionRecord },
+    Reorg {
+        record: TransactionRecord,
+    },
     /// Coinbase statis UTXO has been removed (reorg)
     /// NOTE: These transactions should be ignored by clients.
-    Stasis { record: TransactionRecord },
+    Stasis {
+        record: TransactionRecord,
+    },
     /// UtxoProcessor has received a foreign unknown transaction
     /// withdrawing funds from the wallet. This occurs when another
     /// instance of the wallet creates an outgoing transaction.
-    External { record: TransactionRecord },
+    External {
+        record: TransactionRecord,
+    },
     /// Transaction has been confirmed
-    Maturity { record: TransactionRecord },
+    Maturity {
+        record: TransactionRecord,
+    },
     /// Emitted when a transaction has been created and broadcasted
     /// by the Transaction [`Generator`](crate::tx::generator::Generator)
-    Outgoing { record: TransactionRecord },
+    Outgoing {
+        record: TransactionRecord,
+    },
+    Scan {
+        record: TransactionRecord,
+    },
     /// UtxoContext (Account) balance update. Emitted for each
     /// balance change within the UtxoContext.
     Balance {
-        #[serde(rename = "matureUtxoSize")]
-        mature_utxo_size: usize,
-        #[serde(rename = "pendingUtxoSize")]
-        pending_utxo_size: usize,
+        // #[serde(rename = "matureUtxoSize")]
+        // mature_utxo_size: usize,
+        // #[serde(rename = "pendingUtxoSize")]
+        // pending_utxo_size: usize,
         balance: Option<Balance>,
         /// If UtxoContext is bound to a Runtime Account, this
         /// field will contain the account id. Otherwise, it will
