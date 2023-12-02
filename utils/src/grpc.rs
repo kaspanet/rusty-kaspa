@@ -3,7 +3,7 @@ use hyper::{
     body::{Bytes, HttpBody, SizeHint},
     HeaderMap,
 };
-use log::{debug, warn};
+use log::*;
 use pin_project_lite::pin_project;
 use std::{
     pin::Pin,
@@ -13,7 +13,15 @@ use std::{
     },
     task::{Context, Poll},
 };
-use tower_http::map_request_body::MapRequestBodyLayer;
+pub use tower::ServiceBuilder;
+pub use tower_http::map_request_body::MapRequestBodyLayer;
+pub use tower_http::map_response_body::MapResponseBodyLayer;
+
+#[derive(Default, Clone, Debug)]
+pub struct GrpcCounters {
+    pub bytes_tx: Arc<AtomicUsize>,
+    pub bytes_rx: Arc<AtomicUsize>,
+}
 
 pin_project! {
     pub struct CountBytesBody<B> {
@@ -79,17 +87,17 @@ where
         tokio::spawn(async move {
             while let Some(Ok(chunk)) = body.data().await {
                 debug!("[SIZE MW] request body chunk size = {}", chunk.len());
-                let previous = bytes_sent_counter.fetch_add(chunk.len(), Ordering::Relaxed);
-                debug!("[SIZE MW] total count: {}", previous);
-                if let Err(err) = tx.send_data(chunk).await {
-                    warn!("[SIZE MW] error sending data: {}", err)
+                let _previous = bytes_sent_counter.fetch_add(chunk.len(), Ordering::Relaxed);
+                debug!("[SIZE MW] total count: {}", _previous);
+                if let Err(_err) = tx.send_data(chunk).await {
+                    debug!("[SIZE MW] error sending data: {}", _err)
                     // error can occurs if only channel is already closed
                 }
             }
 
             if let Ok(Some(trailers)) = body.trailers().await {
-                if let Err(err) = tx.send_trailers(trailers).await {
-                    warn!("[SIZE MW] error sending trailers: {}", err)
+                if let Err(_err) = tx.send_trailers(trailers).await {
+                    debug!("[SIZE MW] error sending trailers: {}", _err)
                     // error can occurs if only channel is already closed
                 }
             }

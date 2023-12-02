@@ -7,6 +7,7 @@ use kaspa_core::{
     trace,
 };
 use kaspa_p2p_lib::Adaptor;
+use kaspa_utils::grpc::GrpcCounters;
 use kaspa_utils::triggers::SingleTrigger;
 
 use crate::flow_context::FlowContext;
@@ -23,6 +24,7 @@ pub struct P2pService {
     dns_seeders: &'static [&'static str],
     default_port: u16,
     shutdown: SingleTrigger,
+    counters: Arc<GrpcCounters>,
 }
 
 impl P2pService {
@@ -35,6 +37,7 @@ impl P2pService {
         inbound_limit: usize,
         dns_seeders: &'static [&'static str],
         default_port: u16,
+        counters: Arc<GrpcCounters>,
     ) -> Self {
         Self {
             flow_context,
@@ -46,6 +49,7 @@ impl P2pService {
             inbound_limit,
             dns_seeders,
             default_port,
+            counters,
         }
     }
 }
@@ -61,7 +65,9 @@ impl AsyncService for P2pService {
         // Prepare a shutdown signal receiver
         let shutdown_signal = self.shutdown.listener.clone();
 
-        let p2p_adaptor = Adaptor::bidirectional(self.listen, self.flow_context.hub().clone(), self.flow_context.clone()).unwrap();
+        let p2p_adaptor =
+            Adaptor::bidirectional(self.listen, self.flow_context.hub().clone(), self.flow_context.clone(), self.counters.clone())
+                .unwrap();
         let connection_manager = ConnectionManager::new(
             p2p_adaptor.clone(),
             self.outbound_target,

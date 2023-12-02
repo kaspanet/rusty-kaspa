@@ -31,7 +31,11 @@ use kaspa_rpc_core::{
     notify::{collector::RpcCoreConverter, connection::ChannelConnection, mode::NotificationMode},
     Notification,
 };
-use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
+use kaspa_utils::{
+    channel::Channel,
+    grpc::{measure_request_body_size_layer, CountBytesBody, GrpcCounters, MapResponseBodyLayer, ServiceBuilder},
+    triggers::DuplexTrigger,
+};
 use regex::Regex;
 use std::{
     sync::{
@@ -41,8 +45,9 @@ use std::{
     time::Duration,
 };
 use tokio::sync::Mutex;
+use tonic::codec::CompressionEncoding;
+use tonic::codegen::Body;
 use tonic::Streaming;
-use tonic::{codec::CompressionEncoding, transport::Endpoint};
 
 mod connection_event;
 pub mod error;
@@ -77,6 +82,7 @@ impl GrpcClient {
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
         timeout_duration: Option<u64>,
+        counters: Arc<GrpcCounters>,
     ) -> Result<GrpcClient> {
         let schema = Regex::new(r"^grpc://").unwrap();
         if !schema.is_match(&url) {
@@ -87,6 +93,7 @@ impl GrpcClient {
             connection_event_sender,
             override_handle_stop_notify,
             timeout_duration.unwrap_or(REQUEST_TIMEOUT_DURATION),
+            counters,
         )
         .await?;
         let converter = Arc::new(RpcCoreConverter::new());
@@ -359,6 +366,9 @@ struct Inner {
 
     // temporary hack to override the handle_stop_notify flag
     override_handle_stop_notify: bool,
+
+    // bandwidth counters
+    counters: Arc<GrpcCounters>,
 }
 
 impl Inner {
@@ -370,6 +380,7 @@ impl Inner {
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
         timeout_duration: u64,
+        counters: Arc<GrpcCounters>,
     ) -> Self {
         let resolver: DynResolver = match server_features.handle_message_id {
             true => Arc::new(IdResolver::new()),
@@ -394,6 +405,7 @@ impl Inner {
             connector_timer_interval: RECONNECT_INTERVAL,
             connection_event_sender,
             override_handle_stop_notify,
+            counters,
         }
     }
 
@@ -403,13 +415,15 @@ impl Inner {
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
         timeout_duration: u64,
+        counters: Arc<GrpcCounters>,
     ) -> Result<Arc<Self>> {
         // Request channel
         let (request_sender, request_receiver) = async_channel::unbounded();
 
         // Try to connect to the server
         let (stream, server_features) =
-            Inner::try_connect(url.clone(), request_sender.clone(), request_receiver.clone(), timeout_duration).await?;
+            Inner::try_connect(url.clone(), request_sender.clone(), request_receiver.clone(), timeout_duration, counters.clone())
+                .await?;
 
         // create the inner object
         let inner = Arc::new(Inner::new(
@@ -420,6 +434,7 @@ impl Inner {
             connection_event_sender,
             override_handle_stop_notify,
             timeout_duration,
+            counters,
         ));
 
         // Start the request timeout cleaner
@@ -437,15 +452,25 @@ impl Inner {
         request_sender: KaspadRequestSender,
         request_receiver: KaspadRequestReceiver,
         request_timeout: u64,
+        counters: Arc<GrpcCounters>,
     ) -> Result<(Streaming<KaspadResponse>, ServerFeatures)> {
         // gRPC endpoint
-        let channel = Endpoint::new(url)?
-            .timeout(tokio::time::Duration::from_millis(request_timeout))
-            .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
-            .tcp_keepalive(Some(tokio::time::Duration::from_millis(KEEP_ALIVE_DURATION)))
-            .connect()
-            .await?;
+        let channel =
+            tonic::transport::Channel::builder(url.parse::<tonic::transport::Uri>().map_err(|e| Error::String(e.to_string()))?)
+                .timeout(tokio::time::Duration::from_millis(request_timeout))
+                .connect_timeout(tokio::time::Duration::from_millis(CONNECT_TIMEOUT_DURATION))
+                .tcp_keepalive(Some(tokio::time::Duration::from_millis(KEEP_ALIVE_DURATION)))
+                .connect()
+                .await?;
 
+        let bytes_rx = &counters.bytes_rx;
+        let bytes_tx = &counters.bytes_tx;
+        let channel = ServiceBuilder::new()
+            .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, bytes_rx.clone())))
+            .layer(measure_request_body_size_layer(bytes_tx.clone(), |body| {
+                body.map_err(|e| tonic::Status::from_error(Box::new(e))).boxed_unsync()
+            }))
+            .service(channel);
         let mut client = RpcClient::new(channel)
             .send_compressed(CompressionEncoding::Gzip)
             .accept_compressed(CompressionEncoding::Gzip)
@@ -499,9 +524,14 @@ impl Inner {
         // TODO: verify if server feature have changed since first connection
 
         // Try to connect to the server
-        let (stream, _) =
-            Inner::try_connect(self.url.clone(), self.request_sender.clone(), self.request_receiver.clone(), self.timeout_duration)
-                .await?;
+        let (stream, _) = Inner::try_connect(
+            self.url.clone(),
+            self.request_sender.clone(),
+            self.request_receiver.clone(),
+            self.timeout_duration,
+            self.counters.clone(),
+        )
+        .await?;
 
         // Start the response receiving task
         self.clone().spawn_response_receiver_task(stream);

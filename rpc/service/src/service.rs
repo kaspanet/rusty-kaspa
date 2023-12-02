@@ -56,6 +56,7 @@ use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
+use kaspa_utils::grpc::GrpcCounters;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
@@ -99,6 +100,14 @@ pub struct RpcCoreService {
     wrpc_json_counters: Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
+
+    // parking here for now
+    // will be integrated into
+    // metrics in the upcoming PR
+    #[allow(dead_code)]
+    grpc_p2p_counters: Arc<GrpcCounters>,
+    #[allow(dead_code)]
+    grpc_client_counters: Arc<GrpcCounters>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -118,6 +127,8 @@ impl RpcCoreService {
         wrpc_borsh_counters: Arc<WrpcServerCounters>,
         wrpc_json_counters: Arc<WrpcServerCounters>,
         perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
+        grpc_p2p_counters: Arc<GrpcCounters>,
+        grpc_client_counters: Arc<GrpcCounters>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -180,6 +191,8 @@ impl RpcCoreService {
             wrpc_json_counters,
             shutdown: SingleTrigger::default(),
             perf_monitor,
+            grpc_p2p_counters,
+            grpc_client_counters,
         }
     }
 
