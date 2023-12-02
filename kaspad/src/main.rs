@@ -6,10 +6,7 @@ use std::sync::Arc;
 
 use kaspa_core::{info, signals::Signals};
 use kaspa_utils::fd_budget;
-use kaspad_lib::{
-    args::parse_args,
-    daemon::{create_core, DESIRED_DAEMON_SOFT_FD_LIMIT, MINIMUM_DAEMON_SOFT_FD_LIMIT},
-};
+use kaspad_lib::{args::parse_args, daemon::create_core};
 
 #[cfg(feature = "heap")]
 #[global_allocator]
@@ -21,19 +18,23 @@ pub fn main() {
 
     let args = parse_args();
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    match fd_budget::try_set_fd_limit(DESIRED_DAEMON_SOFT_FD_LIMIT) {
-        Ok(limit) => {
-            if limit < MINIMUM_DAEMON_SOFT_FD_LIMIT {
-                println!("Current OS file descriptor limit (soft FD limit) is set to {limit}");
-                println!("The kaspad node requires a setting of at least {DESIRED_DAEMON_SOFT_FD_LIMIT} to operate properly.");
-                println!("Please increase the limits using the following command:");
-                println!("ulimit -n {DESIRED_DAEMON_SOFT_FD_LIMIT}");
+    cfg_if::cfg_if! {
+        if #[cfg(any(target_os = "macos", target_os = "linux"))] {
+            use kaspad_lib::daemon::{DESIRED_DAEMON_SOFT_FD_LIMIT, MINIMUM_DAEMON_SOFT_FD_LIMIT};
+            match fd_budget::try_set_fd_limit(DESIRED_DAEMON_SOFT_FD_LIMIT) {
+                Ok(limit) => {
+                    if limit < MINIMUM_DAEMON_SOFT_FD_LIMIT {
+                        println!("Current OS file descriptor limit (soft FD limit) is set to {limit}");
+                        println!("The kaspad node requires a setting of at least {DESIRED_DAEMON_SOFT_FD_LIMIT} to operate properly.");
+                        println!("Please increase the limits using the following command:");
+                        println!("ulimit -n {DESIRED_DAEMON_SOFT_FD_LIMIT}");
+                    }
+                }
+                Err(err) => {
+                    println!("Unable to initialize the necessary OS file descriptor limit (soft FD limit) to: {}", err);
+                    println!("The kaspad node requires a setting of at least {DESIRED_DAEMON_SOFT_FD_LIMIT} to operate properly.");
+                }
             }
-        }
-        Err(err) => {
-            println!("Unable to initialize the necessary OS file descriptor limit (soft FD limit) to: {}", err);
-            println!("The kaspad node requires a setting of at least {DESIRED_DAEMON_SOFT_FD_LIMIT} to operate properly.");
         }
     }
 
