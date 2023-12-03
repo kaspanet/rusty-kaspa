@@ -314,6 +314,7 @@ build_wrpc_wasm_bindgen_interface!(
         GetBlock,
         GetBlocks,
         GetBlockTemplate,
+        GetDaaScoreTimestampEstimate,
         GetCurrentNetwork,
         GetHeaders,
         GetMempoolEntries,
