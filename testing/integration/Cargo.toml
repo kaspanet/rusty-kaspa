@@ -54,6 +54,7 @@ smallvec.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+workflow-perf-monitor.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

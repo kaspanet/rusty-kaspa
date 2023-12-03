@@ -82,6 +82,14 @@ impl Daemon {
             .unwrap()
     }
 
+    pub async fn new_clients(&self, count: usize) -> Vec<GrpcClient> {
+        let mut clients = Vec::with_capacity(count);
+        for _ in 0..count {
+            clients.push(self.new_client().await);
+        }
+        clients
+    }
+
     pub async fn new_multi_listener_client(&self) -> GrpcClient {
         GrpcClient::connect(
             NotificationMode::MultiListeners,

@@ -14,6 +14,10 @@ pub mod daemon_integration_tests;
 pub mod mempool_benchmarks;
 
 #[cfg(test)]
+#[cfg(feature = "devnet-prealloc")]
+pub mod notify_benchmarks;
+
+#[cfg(test)]
 pub mod rpc_tests;
 
 #[cfg(feature = "heap")]

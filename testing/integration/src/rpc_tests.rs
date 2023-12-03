@@ -56,7 +56,7 @@ async fn sanity_test() {
     let mut daemon = Daemon::new_random_with_args(args, fd_total_budget);
     let client = daemon.start().await;
     let (sender, _) = async_channel::unbounded();
-    let connection = ChannelConnection::new(sender, ChannelType::Closable);
+    let connection = ChannelConnection::new("test", sender, ChannelType::Closable);
     let listener_id = client.register_new_listener(connection);
     let mut tasks: Vec<JoinHandle<()>> = Vec::new();
 
