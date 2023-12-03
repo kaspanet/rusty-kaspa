@@ -949,10 +949,10 @@ impl UtxosChangedNotification {
         } else {
             let added = Self::filter_utxos(&self.added, subscription);
             let removed = Self::filter_utxos(&self.removed, subscription);
-            debug!("CRPC, Creating UtxosChanged notifications with {} added and {} removed utxos", added.len(), removed.len());
             if added.is_empty() && removed.is_empty() {
                 None
             } else {
+                debug!("CRPC, Creating UtxosChanged notifications with {} added and {} removed utxos", added.len(), removed.len());
                 Some(Self { added: Arc::new(added), removed: Arc::new(removed) })
             }
         }
