@@ -33,7 +33,6 @@ use zeroize::Zeroize;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-
 pub struct WalletCreateArgs {
     pub title: Option<String>,
     pub filename: Option<String>,
@@ -301,15 +300,18 @@ impl Wallet {
         let filename = filename.or_else(|| self.settings().get(WalletSettings::Wallet));
         // let name = Some(make_filename(&name, &None));
 
+        let was_open = self.is_open();
+
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret.clone()));
         self.store().open(&ctx, OpenArgs::new(filename)).await?;
         let wallet_name = self.store().descriptor();
 
+        if was_open {
+            self.notify(Events::WalletClose).await?;
+        }
+
         // reset current state only after we have successfully opened another wallet
         self.reset(true).await?;
-
-        let hint = self.store().get_user_hint().await?;
-        self.notify(Events::WalletHint { hint }).await?;
 
         let accounts = if args.load_account_descriptors() {
             let stored_accounts = self.inner.store.as_account_store().unwrap().iter(None).await?.try_collect::<Vec<_>>().await?;
@@ -343,6 +345,9 @@ impl Wallet {
         }
 
         self.notify(Events::WalletOpen { wallet_descriptor: wallet_name, account_descriptors: account_descriptors.clone() }).await?;
+
+        let hint = self.store().get_user_hint().await?;
+        self.notify(Events::WalletHint { hint }).await?;
 
         Ok(account_descriptors)
     }
@@ -685,13 +690,12 @@ impl Wallet {
 
         self.notify(Events::AccountCreation { descriptor: account.descriptor()? }).await?;
 
-        account.clone().start().await?;
-
         Ok(account)
     }
 
     pub async fn create_wallet(self: &Arc<Wallet>, args: WalletCreateArgs) -> Result<Option<String>> {
-        self.reset(true).await?;
+        self.close().await?;
+
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
         self.inner.store.create(&ctx, args.into()).await?;
         let descriptor = self.inner.store.location()?;
@@ -716,7 +720,7 @@ impl Wallet {
         account_args: AccountCreateArgs,
         mnemonic_phrase_word_count: WordCount,
     ) -> Result<(Mnemonic, Option<String>, Arc<dyn Account>)> {
-        self.reset(true).await?;
+        self.close().await?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(account_args.wallet_secret));
 
@@ -793,6 +797,37 @@ impl Wallet {
 
             Events::Reorg { record } | Events::External { record } | Events::Outgoing { record } => {
                 self.store().as_transaction_record_store()?.store(&[record]).await?;
+            }
+            Events::Scan { record } => {
+                if let Err(err) =
+                    self.store().as_transaction_record_store()?.load_single(record.binding(), &self.network_id()?, record.id()).await
+                {
+                    // println!("Detected unknown transaction {} {err}", record.id());
+
+                    let transaction_daa_score = record.block_daa_score();
+                    match self.rpc_api().get_daa_score_timestamp_estimate(vec![transaction_daa_score]).await {
+                        Ok(timestamps) => {
+                            if let Some(timestamp) = timestamps.first() {
+                                let mut record = record.clone();
+                                record.set_unixtime(*timestamp);
+                                // this will be broadcasted to clients as well as
+                                // received by this function again (above ^^)
+                                // subsequently resulting in the storage of this
+                                // transaction record
+                                self.notify(Events::External { record }).await?;
+                            } else {
+                                log_error!("Wallet::handle_event() unable to obtain DAA to unixtime for DAA {transaction_daa_score}: timestamps is empty");
+                            }
+                            // let mut record = record.clone();
+                            // record.set_timestamp(timestamps[0]);
+                            // self.notify(Events::External { record : record.clone()}).await?;
+                        }
+                        Err(err) => {
+                            log_error!("Wallet::handle_event() unable to resolve DAA to unixtime: {}", err);
+                        }
+                    }
+                    // if transactions is not found in transaction storage, re-publish it as external
+                }
             }
             Events::SyncState { sync_state } => {
                 if sync_state.is_synced() && self.is_open() {
@@ -1373,7 +1408,7 @@ impl WalletApi for Wallet {
         }
 
         let account = self.create_bip32_account(prv_key_data_id, account_args).await?;
-        // - TODO account info serialization
+
         Ok(AccountsCreateResponse { descriptor: account.descriptor()? })
     }
 
