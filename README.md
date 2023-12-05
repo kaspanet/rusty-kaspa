@@ -374,9 +374,8 @@ It will produce `{bin-name}-heap.json` file in the root of the workdir, that can
 
 <summary>Tests</summary>
 
-<details> 
 
-<summary>Run unit and most integration tests</summary>
+**Run unit and most integration tests**
 
 ```bash
 cd rusty-kaspa
@@ -384,18 +383,15 @@ cargo test --release
 // or install nextest and run
 ```
 
-</details>
 
-<details> 
 
-<summary>Using nextest</summary>
+**Using nextest**
 
 ```bash
 cd rusty-kaspa
 cargo nextest run --release
 ```
 
-</details>
 
 
 </details>
