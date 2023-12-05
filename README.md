@@ -1,7 +1,4 @@
 
-<p align="center">
-  <img src="kaspa.png" />
-</p>
 <h1 align="center">Kaspa On Rust</h1>
 
 This repository contains the implementation of the Kaspa full-node and related libraries in the Rust programming language. This is an Alpha version at the initial testing phase, however the node is expected to be fully functional and capable as a drop-in replacement for the Kaspa <a href="https://github.com/kaspanet/kaspad">golang node</a>.
@@ -30,7 +27,9 @@ This repository contains the implementation of the Kaspa full-node and related l
 
 ## Getting started
   ### On Linux
-
+  <details>
+  <summary>Installation on Linux</summary>
+  
   1. Install  general prerequisites
 
       ```bash
@@ -45,7 +44,12 @@ This repository contains the implementation of the Kaspa full-node and related l
   3. Install the clang toolchain (required for RocksDB and WASM secp256k1 builds)
 
       ```bash
-      apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang
+      sudo apt-get install clang-format clang-tidy \
+      clang-tools clang clangd libc++-dev \
+      libc++1 libc++abi-dev libc++abi1 \
+      libclang-dev libclang1 liblldb-dev \
+      libllvm-ocaml-dev libomp-dev libomp5 \ 
+      lld lldb llvm-dev llvm-runtime llvm python3-clang
       ```
   3. Install the [rust toolchain](https://rustup.rs/)
      
@@ -63,7 +67,14 @@ This repository contains the implementation of the Kaspa full-node and related l
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
       ```
+  </details>
+
   ### On Windows
+
+
+  <details>  
+  <summary>Installation on Windows</summary>
+
 
   1. [Install Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
 
@@ -94,7 +105,14 @@ This repository contains the implementation of the Kaspa full-node and related l
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
       ```
+ </details>      
+
   ### On Mac OS
+
+  <details>  
+  <summary>Installation on Mac OS</summary>
+
+
   1. Install Protobuf (required for gRPC)
       ```bash
       brew install protobuf
@@ -149,35 +167,54 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
       cd rusty-kaspa
       ```
 
-
+ </details>   
 
 ## Running the node
 
-  Start a mainnet node
+  <details> 
+  <summary>
+    Start a mainnet node
+  </summary> 
 
   ```bash
   cargo run --release --bin kaspad
   ```
 
-Start a testnet node
+  </details>
 
-```bash
+  <details> 
+  <summary>
+    Start a testnet node
+  </summary> 
+
+  ```bash
 cargo run --release --bin kaspad -- --testnet
-```
+  ```
+
+  </details>
 
 ## Enabling wRPC
 
+<details>
+
+<summary>
 wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
-- `--rpclisten-json = <interface:port>` for JSON protocol
-- `--rpclisten-borsh = <interface:port>` for Borsh protocol
 
-## wRPC to gRPC Proxy
+</summary>
 
-wRPC to gRPC Proxy is deprecated and no longer supported.
+JSON protocol:
+```bash
+--rpclisten-json = <interface:port>
+```
 
-## JSON and [Borsh](https://borsh.io/) RPC protocols
+Borsh protocol:
+```bash
+--rpclisten-borsh = <interface:port>
+```
 
-In addition to gRPC, Rusty Kaspa integrates an optional wRPC
+**Sidenote:**
+
+Rusty Kaspa integrates an optional wRPC
 subsystem. wRPC is a high-performance, platform-neutral, Rust-centric, WebSocket-framed RPC 
 implementation that can use [Borsh](https://borsh.io/) and JSON protocol encoding.
 
@@ -194,8 +231,22 @@ JSON endpoint using any WebSocket library. Built-in RPC clients for JavaScript a
 TypeScript capable of running in web browsers and Node.js are available as a part of
 the Kaspa WASM framework.
 
+</details>
+
+
+
+## wRPC to gRPC Proxy
+
+wRPC to gRPC Proxy is deprecated and no longer supported.
+
+
 ## Mining
-Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions:
+
+<details>
+
+<summary>
+Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions.
+</summary>
 
 1. Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
 
@@ -209,13 +260,28 @@ Mining is currently supported only on testnet, so once you've setup a test node,
 
     You can replace the above mining address with your own address by creating one as described [here](https://github.com/kaspanet/docs/blob/main/Getting%20Started/Full%20Node%20Installation.md#creating-a-wallet-optional). 
 
+</details>
+
+
+
+
+
 ## Building WASM
+
+<details>
+
+<summary>How to build the WASM</summary>
 
 Rust WebAssembly (Wasm) refers to the use of the Rust programming language to write code that can be compiled into WebAssembly, a binary instruction format that runs in web browsers. This allows for easy development using JS/TS while retaining the benefits of Rust.
 
 The library can be build in for `NodeJS`, `React Native` and as an `ES6 Module`
 
+<details>
+
+<summary>
 NodeJS
+</summary>
+
 ```bash
 cd rusty-kaspa
 cd wasm
@@ -224,24 +290,60 @@ cd nodejs
 npm install
 ```
 
+</details>
+
+<details>
+
+<summary>
 React Native
+</summary>
+
 ```bash
 cd rusty-kaspa
 cd wasm
 ./build-react-native
 ```
 
+</details>
+
+<details>
+
+<summary>
 ES6
+</summary>
+
 ```bash
 cd rusty-kaspa
 cd wasm
 ./build-web
 ```
+
+</details>
+
+<br>
 This will produce a folder: "nodejs", "web" or "react-native" library in `/wasm` directory depending on your selection.
+
+
+
+</details>
+
+
+
+
+
+
+
+
+
 
 ## Wallet CLI
 
+<details>
+
+<summary>
 Wallet CLI is now available via the `/cli` or `/kos` projects.
+</summary>
+
 
 ```bash
 cd cli
@@ -250,9 +352,22 @@ cargo run --release
 
 For KOS, please see [`kos/README.md`](kos/README.md)
 
+</details>
+
+
+
+
+
 ## Local Web Wallet (using WASM)
 
-Run an http server inside of `wallet/wasm/web` folder. If you don't have once, you can use `basic-http-server`.
+
+
+<details>
+
+<summary>
+Run an http server inside of `wallet/wasm/web` folder. If you don't have once, you can use the following.
+</summary>
+
 ```bash
 cd wallet/wasm/web
 cargo install basic-http-server
@@ -262,7 +377,18 @@ The *basic-http-server* will serve on port 4000 by default, so open your web bro
 
 The framework is compatible with all major desktop and mobile browsers.
 
+
+</details>
+
+
+
+
 ## Heap-profiling
+
+<details> 
+
+<summary>Heap-profiling in kaspad and simpa</summary>
+
 Heap-profiling in `kaspad` and `simpa` can be done by enabling `heap` feature and profile using the `--features` argument
 
 ```bash
@@ -271,9 +397,15 @@ cargo run --bin kaspad --profile heap --features=heap
 
 It will produce `{bin-name}-heap.json` file in the root of the workdir, that can be inspected by the [dhat-viewer](https://github.com/unofficial-mirror/valgrind/tree/master/dhat)
 
+</details>
+
+
+
 ## Tests & Benchmarks
 
-- To run unit and most integration tests use:
+<details> 
+
+<summary>Run unit and most integration tests</summary>
 
 ```bash
 cd rusty-kaspa
@@ -281,22 +413,35 @@ cargo test --release
 // or install nextest and run
 ```
 
-- Using nextest
+</details>
+
+<details> 
+
+<summary>Using nextest</summary>
+
 ```bash
 cd rusty-kaspa
 cargo nextest run --release
 ```
 
-- To run current benchmarks:
+</details>
+
+<details> 
+
+<summary>Benchmarks</summary>
 
 ```bash
 cd rusty-kaspa
 cargo bench
 ```
 
-
+</details>
 
 ## Logging
+
+<details> 
+
+<summary>Logging in kaspad and simpa</summary>
 
 Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
 
@@ -308,9 +453,17 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
     ```
     In this command we set the `loglevel` to `INFO`.
 
+</details>
+
 
 
 ## Simulation framework (Simpa)
+
+<details> 
+
+<summary>Full in-process network simulation</summary>
+
+Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
 
 The current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation). 
 
@@ -324,6 +477,10 @@ The following command will run a simulation to produce 1000 blocks with communic
 ```bash
 cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
 ```
+
+</details>
+
+
 
 
 
