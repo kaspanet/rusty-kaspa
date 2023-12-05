@@ -1,6 +1,7 @@
 pub mod acceptance_data;
 pub mod block_transactions;
 pub mod block_window_cache;
+pub mod children;
 pub mod daa;
 pub mod selected_chain;
 use std::{fmt::Display, mem::size_of};
