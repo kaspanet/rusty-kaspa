@@ -26,24 +26,6 @@ pub trait RelationsStoreReader {
     fn counts(&self) -> Result<(usize, usize), StoreError>;
 }
 
-impl<T: RelationsStoreReader> RelationsStoreReader for &T {
-    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        (*self).get_parents(hash)
-    }
-
-    fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
-        (*self).get_children(hash)
-    }
-
-    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
-        (*self).has(hash)
-    }
-
-    fn counts(&self) -> Result<(usize, usize), StoreError> {
-        (*self).counts()
-    }
-}
-
 /// Low-level write API for `RelationsStore`
 pub trait RelationsStore: RelationsStoreReader {
     type DefaultWriter: DirectWriter;
@@ -117,13 +99,6 @@ impl RelationsStoreReader for DbRelationsStore {
     }
 }
 
-/// NOTE: we impl the trait on the store *reference* (and not over the store itself)
-/// since its methods are defined as `&mut self` however callers do not need to pass an
-/// actual `&mut store` since the Db store is thread-safe. By implementing on the reference
-/// the caller can now pass `&mut &store` which is always available locally.
-///
-/// The trait methods itself must remain `&mut self` in order to support staging implementations
-/// which are indeed mutated locally
 impl ChildrenStore for DbRelationsStore {
     fn insert_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
         self.children_store.insert_child(writer, parent, child)
@@ -134,7 +109,6 @@ impl ChildrenStore for DbRelationsStore {
     }
 }
 
-/// The comment above over `impl ChildrenStore` applies here as well
 impl RelationsStore for DbRelationsStore {
     type DefaultWriter = DirectDbWriter<'static>;
 
