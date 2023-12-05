@@ -10,9 +10,7 @@ use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::DB;
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
-use kaspa_hashes::HASH_SIZE;
 use rocksdb::WriteBatch;
-use std::fmt::Display;
 use std::sync::Arc;
 
 pub trait ChildrenStoreReader {
@@ -22,49 +20,6 @@ pub trait ChildrenStoreReader {
 pub trait ChildrenStore {
     fn insert_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError>;
     fn delete_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError>;
-}
-
-struct ChildKey {
-    parent: Hash,
-    child: Hash,
-}
-
-const KEY_SIZE: usize = 2 * HASH_SIZE;
-
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
-struct DbChildKey([u8; KEY_SIZE]);
-
-impl AsRef<[u8]> for DbChildKey {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl Display for DbChildKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let key: ChildKey = (*self).into();
-        write!(f, "{}:{}", key.parent, key.child)
-    }
-}
-
-impl From<ChildKey> for DbChildKey {
-    fn from(key: ChildKey) -> Self {
-        let mut bytes = [0; KEY_SIZE];
-        bytes[..HASH_SIZE].copy_from_slice(&key.parent.as_bytes());
-        bytes[HASH_SIZE..].copy_from_slice(&key.child.as_bytes());
-        Self(bytes)
-    }
-}
-
-impl From<DbChildKey> for ChildKey {
-    fn from(k: DbChildKey) -> Self {
-        let parent_bytes: [u8; HASH_SIZE] = k.0[..HASH_SIZE].try_into().unwrap();
-        let parent: Hash = parent_bytes.into();
-
-        let child_bytes: [u8; HASH_SIZE] = k.0[HASH_SIZE..].try_into().unwrap();
-        let child: Hash = child_bytes.into();
-        Self { parent, child }
-    }
 }
 
 /// A DB + cache implementation of `DbChildrenStore` trait, with concurrency support.
