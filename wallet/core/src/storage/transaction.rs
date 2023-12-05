@@ -7,6 +7,7 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint};
 use separator::Separatable;
 use serde::{Deserialize, Serialize};
+use workflow_core::time::{unixtime_as_millis_u64, unixtime_to_locale_string};
 use workflow_log::style;
 
 pub use kaspa_consensus_core::tx::TransactionId;
@@ -136,6 +137,12 @@ pub enum TransactionData {
         #[serde(rename = "value")]
         aggregate_input_value: u64,
     },
+    Stasis {
+        #[serde(rename = "utxoEntries")]
+        utxo_entries: Vec<UtxoRecord>,
+        #[serde(rename = "value")]
+        aggregate_input_value: u64,
+    },
     External {
         #[serde(rename = "utxoEntries")]
         utxo_entries: Vec<UtxoRecord>,
@@ -162,6 +169,7 @@ impl TransactionData {
     pub fn transaction_type(&self) -> TransactionType {
         match self {
             TransactionData::Reorg { .. } => TransactionType::Reorg,
+            TransactionData::Stasis { .. } => TransactionType::Stasis,
             TransactionData::Incoming { .. } => TransactionType::Incoming,
             TransactionData::External { .. } => TransactionType::External,
             TransactionData::Outgoing { is_final, .. } => {
@@ -201,6 +209,22 @@ impl TransactionRecord {
         self.unixtime
     }
 
+    pub fn unixtime_as_locale_string(&self) -> Option<String> {
+        self.unixtime.map(unixtime_to_locale_string)
+    }
+
+    pub fn unixtime_or_daa_as_string(&self) -> String {
+        if let Some(unixtime) = self.unixtime {
+            unixtime_to_locale_string(unixtime)
+        } else {
+            self.block_daa_score.separated_string()
+        }
+    }
+
+    pub fn set_unixtime(&mut self, unixtime: u64) {
+        self.unixtime = Some(unixtime);
+    }
+
     pub fn binding(&self) -> &Binding {
         &self.binding
     }
@@ -232,6 +256,9 @@ impl TransactionRecord {
         &self.transaction_data
     }
 
+    // Transaction maturity ignores the stasis period and provides
+    // a progress value based on the pending period. It is assumed
+    // that transactions in stasis are not visible to the user.
     pub fn maturity_progress(&self, current_daa_score: u64) -> Option<f64> {
         let maturity = if self.is_coinbase() {
             crate::utxo::UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst)
@@ -249,6 +276,7 @@ impl TransactionRecord {
     pub fn aggregate_input_value(&self) -> u64 {
         match &self.transaction_data {
             TransactionData::Reorg { aggregate_input_value, .. }
+            | TransactionData::Stasis { aggregate_input_value, .. }
             | TransactionData::Incoming { aggregate_input_value, .. }
             | TransactionData::External { aggregate_input_value, .. }
             | TransactionData::Outgoing { aggregate_input_value, .. } => *aggregate_input_value,
@@ -268,16 +296,19 @@ impl TransactionRecord {
         let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
         let aggregate_input_value = utxo_entries.iter().map(|utxo| utxo.amount).sum::<u64>();
 
+        let unixtime = unixtime_as_millis_u64();
+
         let transaction_data = match transaction_type {
             TransactionType::Incoming => TransactionData::Incoming { utxo_entries, aggregate_input_value },
             TransactionType::Reorg => TransactionData::Reorg { utxo_entries, aggregate_input_value },
-            _ => panic!("TransactionRecord::new_incoming() - invalid transaction type"),
+            TransactionType::Stasis => TransactionData::Stasis { utxo_entries, aggregate_input_value },
+            kind => panic!("TransactionRecord::new_incoming() - invalid transaction type: {kind:?}"),
         };
 
         TransactionRecord {
             version: TRANSACTION_VERSION,
             id,
-            unixtime: None,
+            unixtime: Some(unixtime),
             binding,
             transaction_data,
             block_daa_score,
@@ -286,7 +317,45 @@ impl TransactionRecord {
         }
     }
 
+    /// Transaction that was not issued by this instance of the wallet
+    /// but belongs to this address set. This is an "external" transaction
+    /// that occurs during the lifetime of this wallet.
     pub fn new_external(utxo_context: &UtxoContext, id: TransactionId, utxos: Vec<UtxoEntryReference>) -> Self {
+        let binding = Binding::from(utxo_context.binding());
+        let block_daa_score = utxos[0].utxo.entry.block_daa_score;
+        let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
+        let aggregate_input_value = utxo_entries.iter().map(|utxo| utxo.amount).sum::<u64>();
+
+        let transaction_data = TransactionData::External { utxo_entries, aggregate_input_value };
+        let unixtime = unixtime_as_millis_u64();
+
+        TransactionRecord {
+            version: TRANSACTION_VERSION,
+            id,
+            unixtime: Some(unixtime),
+            binding,
+            transaction_data,
+            block_daa_score,
+            network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
+            metadata: None,
+        }
+    }
+
+    /// Transaction that was detected during the address scan (wallet bootstrap period).
+    /// This transaction may have been previously observed by the wallet, but since then
+    /// the wallet has been restarted, or it may have occurred while the wallet was offline.
+    /// This transaction is treated as external, however, at the time of its creation
+    /// the wallet does not know the time at which the transaction has been created, as such
+    /// the unix time is set to `None`.  The client of UtxoContext should check the storage
+    /// to see if such transaction exists and if not, query the node RPC API for the transaction
+    /// timestamp based on it's DAA score.
+    ///
+    /// In the case of the UtxoContext producing such a transaction, it will broadcast it
+    /// as `Events::Scan` event, which will be picked up by the Wallet runtime (if present)
+    /// and the wallet will query the node RPC API for the transaction timestamp as well
+    /// as store the transaction in the storage subsystem.  If the wallet is not present
+    /// no action will be taken to obtain the transaction timestamp.
+    pub fn new_scanned(utxo_context: &UtxoContext, id: TransactionId, utxos: Vec<UtxoEntryReference>) -> Self {
         let binding = Binding::from(utxo_context.binding());
         let block_daa_score = utxos[0].utxo.entry.block_daa_score;
         let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
@@ -310,6 +379,8 @@ impl TransactionRecord {
         let binding = Binding::from(utxo_context.binding());
         let block_daa_score =
             utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
+
+        let unixtime = unixtime_as_millis_u64();
 
         let PendingTransactionInner {
             signable_tx,
@@ -338,7 +409,7 @@ impl TransactionRecord {
         TransactionRecord {
             version: TRANSACTION_VERSION,
             id,
-            unixtime: None,
+            unixtime: Some(unixtime),
             binding,
             transaction_data,
             block_daa_score,
@@ -411,6 +482,7 @@ impl TransactionRecord {
 
         match transaction_data {
             TransactionData::Reorg { utxo_entries, aggregate_input_value }
+            | TransactionData::Stasis { utxo_entries, aggregate_input_value }
             | TransactionData::Incoming { utxo_entries, aggregate_input_value }
             | TransactionData::External { utxo_entries, aggregate_input_value } => {
                 let aggregate_input_value =
