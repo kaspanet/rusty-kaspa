@@ -26,7 +26,7 @@ pub use serde::{Deserialize, Deserializer, Serialize};
 pub use std::collections::{HashMap, HashSet};
 pub use std::pin::Pin;
 pub use std::str::FromStr;
-pub use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+pub use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 pub use std::sync::{Arc, Mutex, MutexGuard};
 pub use std::task::{Context, Poll};
 pub use wasm_bindgen::prelude::*;

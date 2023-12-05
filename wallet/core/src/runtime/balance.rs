@@ -41,17 +41,39 @@ impl From<std::cmp::Ordering> for Delta {
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Balance {
     pub mature: u64,
     pub pending: u64,
     pub outgoing: u64,
+    pub mature_utxo_count: usize,
+    pub pending_utxo_count: usize,
+    pub stasis_utxo_count: usize,
+    #[serde(skip)]
     mature_delta: Delta,
+    #[serde(skip)]
     pending_delta: Delta,
 }
 
 impl Balance {
-    pub fn new(mature: u64, pending: u64, outgoing: u64) -> Self {
-        Self { mature, pending, outgoing, mature_delta: Delta::default(), pending_delta: Delta::default() }
+    pub fn new(
+        mature: u64,
+        pending: u64,
+        outgoing: u64,
+        mature_utxo_count: usize,
+        pending_utxo_count: usize,
+        stasis_utxo_count: usize,
+    ) -> Self {
+        Self {
+            mature,
+            pending,
+            outgoing,
+            mature_delta: Delta::default(),
+            pending_delta: Delta::default(),
+            mature_utxo_count,
+            pending_utxo_count,
+            stasis_utxo_count,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -73,12 +95,18 @@ impl Balance {
 pub struct AtomicBalance {
     pub mature: AtomicU64,
     pub pending: AtomicU64,
+    pub mature_utxos: AtomicUsize,
+    pub pending_utxos: AtomicUsize,
+    pub stasis_utxos: AtomicUsize,
 }
 
 impl AtomicBalance {
     pub fn add(&self, balance: Balance) {
         self.mature.fetch_add(balance.mature, Ordering::SeqCst);
         self.pending.fetch_add(balance.pending, Ordering::SeqCst);
+        self.mature_utxos.fetch_add(balance.mature_utxo_count, Ordering::SeqCst);
+        self.pending_utxos.fetch_add(balance.pending_utxo_count, Ordering::SeqCst);
+        self.stasis_utxos.fetch_add(balance.stasis_utxo_count, Ordering::SeqCst);
     }
 }
 
@@ -87,9 +115,12 @@ impl From<AtomicBalance> for Balance {
         Self {
             mature: atomic_balance.mature.load(Ordering::SeqCst),
             pending: atomic_balance.pending.load(Ordering::SeqCst),
+            outgoing: 0,
+            mature_utxo_count: atomic_balance.mature_utxos.load(Ordering::SeqCst),
+            pending_utxo_count: atomic_balance.pending_utxos.load(Ordering::SeqCst),
+            stasis_utxo_count: atomic_balance.stasis_utxos.load(Ordering::SeqCst),
             mature_delta: Delta::default(),
             pending_delta: Delta::default(),
-            outgoing: 0,
         }
     }
 }

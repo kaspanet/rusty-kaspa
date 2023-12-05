@@ -132,6 +132,19 @@ pub struct Context {
     /// Confirmation occurs when the transaction UTXOs are
     /// removed from the context by the UTXO change notification.
     outgoing: HashMap<TransactionId, PendingTransaction>,
+    /// Outgoing transactions that have been confirmed but are
+    /// still kept in the context for a certain period of time
+    /// to allow the UtxoContext to identify transactions
+    /// "to self". Sending transactions between addresses within
+    /// the same account results in `send->remove UTXO->add UTXO`
+    /// pattern. To detect this scenario we need to know about
+    /// the outgoing transaction for at least 1 DAA score
+    /// after the outgoing transaction acceptance. Sending
+    /// transactions between two different accounts results in
+    /// send+receive, however a transaction within the same
+    /// account can be either forbidden by pre-checking the
+    /// account address pool or detected. We choose the latter.
+    lingering: HashMap<TransactionId, PendingTransaction>,
     /// Total balance of all UTXOs in this context (mature, pending)
     balance: Option<Balance>,
     /// Addresses monitored by this UTXO context
@@ -147,6 +160,7 @@ impl Default for Context {
             consumed: HashMap::default(),
             map: HashMap::default(),
             outgoing: HashMap::default(),
+            lingering: HashMap::default(),
             balance: None,
             addresses: Arc::new(DashSet::new()),
             // recovery_period: Duration::from_secs(crate::utxo::UTXO_RECOVERY_PERIOD_SECONDS.load(Ordering::Relaxed)),
@@ -166,6 +180,7 @@ impl Context {
         self.consumed.clear();
         self.pending.clear();
         self.outgoing.clear();
+        self.lingering.clear();
         self.addresses.clear();
         self.balance = None;
     }
@@ -273,21 +288,15 @@ impl UtxoContext {
     }
 
     pub async fn update_balance(&self) -> Result<Balance> {
-        let (balance, mature_utxo_size, pending_utxo_size) = {
+        let balance = {
             let previous_balance = self.balance();
             let mut balance = self.calculate_balance().await;
             balance.delta(&previous_balance);
-
             let mut context = self.context();
             context.balance.replace(balance.clone());
-            let mature_utxo_size = context.mature.len();
-            let pending_utxo_size = context.pending.len();
-
-            (balance, mature_utxo_size, pending_utxo_size)
+            balance
         };
-        self.processor()
-            .notify(Events::Balance { balance: Some(balance.clone()), id: self.id(), mature_utxo_size, pending_utxo_size })
-            .await?;
+        self.processor().notify(Events::Balance { balance: Some(balance.clone()), id: self.id() }).await?;
 
         Ok(balance)
     }
@@ -431,6 +440,7 @@ impl UtxoContext {
                     context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
                 } else {
                     log_error!("Error: non-pending utxo promotion!");
+                    panic!("Error: non-pending utxo promotion!");
                 }
             }
 
@@ -456,11 +466,9 @@ impl UtxoContext {
                 let mut context = self.context();
                 if context.stasis.remove(utxo_entry.id_as_ref()).is_some() {
                     context.pending.insert(utxo_entry.id(), utxo_entry.clone());
-                }
-                if context.pending.remove(utxo_entry.id_as_ref()).is_some() {
-                    context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
                 } else {
-                    log_error!("Error: non-pending utxo promotion!");
+                    log_error!("Error: non-stasis utxo revival!");
+                    panic!("Error: non-stasis utxo revival!");
                 }
             }
 
@@ -484,33 +492,55 @@ impl UtxoContext {
     }
 
     pub async fn extend(&self, utxo_entries: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
-        let mut context = self.context();
-        for utxo_entry in utxo_entries.into_iter() {
-            if let std::collections::hash_map::Entry::Vacant(e) = context.map.entry(utxo_entry.id()) {
-                e.insert(utxo_entry.clone());
-                match utxo_entry.maturity(current_daa_score) {
-                    Maturity::Stasis => {
-                        context.stasis.insert(utxo_entry.id().clone(), utxo_entry.clone());
-                        self.processor()
-                            .stasis()
-                            .insert(utxo_entry.id().clone(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
+        let (pending, mature) = {
+            let mut context = self.context();
+
+            let mut pending = vec![];
+            let mut mature = vec![];
+
+            for utxo_entry in utxo_entries.into_iter() {
+                if let std::collections::hash_map::Entry::Vacant(e) = context.map.entry(utxo_entry.id()) {
+                    e.insert(utxo_entry.clone());
+                    match utxo_entry.maturity(current_daa_score) {
+                        Maturity::Stasis => {
+                            context.stasis.insert(utxo_entry.id().clone(), utxo_entry.clone());
+                            self.processor()
+                                .stasis()
+                                .insert(utxo_entry.id().clone(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
+                        }
+                        Maturity::Pending => {
+                            pending.push(utxo_entry.clone());
+                            context.pending.insert(utxo_entry.id().clone(), utxo_entry.clone());
+                            self.processor()
+                                .pending()
+                                .insert(utxo_entry.id().clone(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
+                        }
+                        Maturity::Mature => {
+                            mature.push(utxo_entry.clone());
+                            context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
+                        }
                     }
-                    Maturity::Pending => {
-                        context.pending.insert(utxo_entry.id().clone(), utxo_entry.clone());
-                        self.processor()
-                            .pending()
-                            .insert(utxo_entry.id().clone(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
-                    }
-                    Maturity::Mature => {
-                        context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
-                    }
+                } else {
+                    log_warning!("ignoring duplicate utxo entry");
                 }
-            } else {
-                log_warning!("ignoring duplicate utxo entry");
             }
+
+            (pending, mature)
+        };
+
+        let pending = HashMap::group_from(pending.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
+        for (id, utxos) in pending.into_iter() {
+            let record = TransactionRecord::new_external(self, id, utxos);
+            self.processor().notify(Events::Scan { record }).await?;
         }
 
-        context.mature.sort();
+        let mature = HashMap::group_from(mature.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
+        for (id, utxos) in mature.into_iter() {
+            let record = TransactionRecord::new_external(self, id, utxos);
+            self.processor().notify(Events::Scan { record }).await?;
+        }
+
+        // context.mature.sort();
 
         Ok(())
     }
@@ -548,7 +578,14 @@ impl UtxoContext {
         let pending: u64 = context.pending.values().map(|e| e.as_ref().entry.amount).sum();
         // this will aggregate only transactions containing final payments (not compound transactions)
         let outgoing = context.outgoing.values().filter_map(|tx| tx.payment_value().map(|value| value + tx.fees())).sum::<u64>(); //.collect::<Vec<_>>();
-        Balance::new((mature + consumed) - outgoing, pending, outgoing)
+        Balance::new(
+            (mature + consumed) - outgoing,
+            pending,
+            outgoing,
+            context.mature.len(),
+            context.pending.len(),
+            context.stasis.len(),
+        )
     }
 
     pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
@@ -576,6 +613,7 @@ impl UtxoContext {
                 let record = TransactionRecord::new_outgoing(self, &transaction);
                 self.processor().notify(Events::Change { record }).await?;
             } else if !is_coinbase_stasis {
+                println!("**** NOT IN STASIS");
                 // do not notify if coinbase transaction is in stasis
                 let record = TransactionRecord::new_incoming(self, TransactionType::Incoming, txid, utxos);
                 self.processor().notify(Events::Pending { record }).await?;

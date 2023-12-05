@@ -26,14 +26,15 @@ pub trait UtxoEntryReferenceExtension {
 impl UtxoEntryReferenceExtension for UtxoEntryReference {
     fn maturity(&self, current_daa_score: u64) -> Maturity {
         if self.is_coinbase() {
-            if current_daa_score + UTXO_STASIS_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score {
+            if self.block_daa_score() + UTXO_STASIS_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) > current_daa_score {
                 Maturity::Stasis
-            } else if current_daa_score + UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score {
+            } else if self.block_daa_score() + UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) > current_daa_score
+            {
                 Maturity::Pending
             } else {
                 Maturity::Mature
             }
-        } else if current_daa_score + UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst) < current_daa_score {
+        } else if self.block_daa_score() + UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst) > current_daa_score {
             Maturity::Pending
         } else {
             Maturity::Mature
@@ -42,9 +43,9 @@ impl UtxoEntryReferenceExtension for UtxoEntryReference {
 
     fn balance(&self, current_daa_score: u64) -> Balance {
         match self.maturity(current_daa_score) {
-            Maturity::Pending => Balance::new(0, self.amount(), self.amount()),
-            Maturity::Stasis => Balance::new(0, 0, 0),
-            Maturity::Mature => Balance::new(self.amount(), 0, 0),
+            Maturity::Pending => Balance::new(0, self.amount(), self.amount(), 0, 1, 0),
+            Maturity::Stasis => Balance::new(0, 0, 0, 0, 0, 1),
+            Maturity::Mature => Balance::new(self.amount(), 0, 0, 1, 0, 0),
         }
     }
 }

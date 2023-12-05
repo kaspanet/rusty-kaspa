@@ -110,6 +110,9 @@ impl Scan {
                 let entry_balance = r.balance(self.current_daa_score);
                 balance.mature += entry_balance.mature;
                 balance.pending += entry_balance.pending;
+                balance.mature_utxo_count += entry_balance.mature_utxo_count;
+                balance.pending_utxo_count += entry_balance.pending_utxo_count;
+                balance.stasis_utxo_count += entry_balance.stasis_utxo_count;
                 balance
             });
             yield_executor().await;
@@ -152,6 +155,9 @@ impl Scan {
             let entry_balance = r.balance(self.current_daa_score);
             balance.mature += entry_balance.mature;
             balance.pending += entry_balance.pending;
+            balance.mature_utxo_count += entry_balance.mature_utxo_count;
+            balance.pending_utxo_count += entry_balance.pending_utxo_count;
+            balance.stasis_utxo_count += entry_balance.stasis_utxo_count;
             balance
         });
         yield_executor().await;
