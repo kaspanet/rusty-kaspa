@@ -1,7 +1,7 @@
 
 <h1 align="center">Kaspa On Rust</h1>
 
-Welcome to the Rust-based implementation of the Kaspa full-node and its ancillary libraries. This Alpha release serves as a replacement to the established <a href="https://github.com/kaspanet/kaspad">Golang node</a>, introducing developers to the possibilities of Rust in the Kaspa network's context.
+Welcome to the Rust-based implementation of the Kaspa full-node and its ancillary libraries. This Alpha release serves as a replacement to the established <a href="https://github.com/kaspanet/kaspad">Golang node</a> (once the rust rewrite is completed), introducing developers to the possibilities of Rust in the Kaspa network's context.
 
 Our codebase is an experimental ground for developers aiming to push the boundaries of blockchain scalability and speed. The Kaspa node aims to validate the feasibility of a high-speed blockchain, boasting block intervals of one second with prospects for significant enhancements.
 
