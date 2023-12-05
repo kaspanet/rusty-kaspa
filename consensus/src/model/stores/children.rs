@@ -112,7 +112,7 @@ impl ChildrenStoreReader for DbChildrenStore {
     }
 }
 
-impl ChildrenStore for &DbChildrenStore {
+impl ChildrenStore for DbChildrenStore {
     fn insert_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
         self.access.write(writer, parent, child)?;
         Ok(())

@@ -161,8 +161,7 @@ mod tests {
     fn test_delete_level_relations_zero_cache() {
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_size = 0;
-        let relations_store = DbRelationsStore::new(db.clone(), 0, cache_size);
-        let mut relations = &relations_store;
+        let mut relations = DbRelationsStore::new(db.clone(), 0, cache_size);
         relations.insert(ORIGIN, Default::default()).unwrap();
         relations.insert(1.into(), Arc::new(vec![ORIGIN])).unwrap();
         relations.insert(2.into(), Arc::new(vec![1.into()])).unwrap();
@@ -184,7 +183,7 @@ mod tests {
         );
 
         let mut batch = WriteBatch::default();
-        let mut staging_relations = StagingRelationsStore::new(relations);
+        let mut staging_relations = StagingRelationsStore::new(&mut relations);
         delete_level_relations(MemoryWriter, &mut staging_relations, 1.into()).unwrap();
         staging_relations.commit(&mut batch).unwrap();
         db.write(batch).unwrap();
@@ -204,7 +203,7 @@ mod tests {
         );
 
         let mut batch = WriteBatch::default();
-        let mut staging_relations = StagingRelationsStore::new(relations);
+        let mut staging_relations = StagingRelationsStore::new(&mut relations);
         delete_level_relations(MemoryWriter, &mut staging_relations, 2.into()).unwrap();
         staging_relations.commit(&mut batch).unwrap();
         db.write(batch).unwrap();

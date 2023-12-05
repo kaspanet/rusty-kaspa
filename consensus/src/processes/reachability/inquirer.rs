@@ -389,12 +389,12 @@ mod tests {
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_size = test.blocks.len() as u64 / 3;
         let reachability = RwLock::new(DbReachabilityStore::new(db.clone(), cache_size));
-        let relations = DbRelationsStore::with_prefix(db.clone(), &[], 0);
+        let mut relations = DbRelationsStore::with_prefix(db.clone(), &[], 0);
 
         // Add blocks via a staging store
         {
             let mut staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
-            let mut staging_relations = StagingRelationsStore::new(&relations);
+            let mut staging_relations = StagingRelationsStore::new(&mut relations);
             let mut builder = DagBuilder::new(&mut staging_reachability, &mut staging_relations);
             builder.init();
             builder.add_block(DagBlock::new(test.genesis.into(), vec![ORIGIN]));
@@ -443,7 +443,7 @@ mod tests {
 
         let mut batch = WriteBatch::default();
         let mut staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
-        let mut staging_relations = StagingRelationsStore::new(&relations);
+        let mut staging_relations = StagingRelationsStore::new(&mut relations);
 
         for (i, block) in
             test.ids().choose_multiple(&mut rand::thread_rng(), test.blocks.len()).into_iter().chain(once(test.genesis)).enumerate()
@@ -475,7 +475,7 @@ mod tests {
                 // Recapture staging stores
                 batch = WriteBatch::default();
                 staging_reachability = StagingReachabilityStore::new(reachability.upgradable_read());
-                staging_relations = StagingRelationsStore::new(&relations);
+                staging_relations = StagingRelationsStore::new(&mut relations);
             }
         }
     }
@@ -523,8 +523,8 @@ mod tests {
             let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
             let cache_size = test.blocks.len() as u64 / 3;
             let mut reachability = DbReachabilityStore::new(db.clone(), cache_size);
-            let relations = DbRelationsStore::new(db, 0, cache_size);
-            run_dag_test_case(&mut &relations, &mut reachability, &test);
+            let mut relations = DbRelationsStore::new(db, 0, cache_size);
+            run_dag_test_case(&mut relations, &mut reachability, &test);
 
             // Run with a staging process
             run_dag_test_case_with_staging(&test);

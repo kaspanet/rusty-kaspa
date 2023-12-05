@@ -43,10 +43,7 @@ use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::{
-    ops::Deref,
-    sync::{atomic::Ordering, Arc},
-};
+use std::sync::{atomic::Ordering, Arc};
 
 use super::super::ProcessingCounters;
 
@@ -127,7 +124,7 @@ pub struct HeaderProcessor {
     db: Arc<DB>,
 
     // Stores
-    pub(super) relations_stores: Arc<[DbRelationsStore]>,
+    pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>, // TODO: Remove RwLock
     pub(super) reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub(super) reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     pub(super) ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
@@ -331,6 +328,7 @@ impl HeaderProcessor {
 
     /// Collects the known parents for all block levels
     fn collect_known_parents(&self, header: &Header, block_level: BlockLevel) -> Vec<Arc<Vec<Hash>>> {
+        let relations_read = self.relations_stores.read();
         (0..=block_level)
             .map(|level| {
                 Arc::new(
@@ -338,7 +336,7 @@ impl HeaderProcessor {
                         .parents_at_level(header, level)
                         .iter()
                         .copied()
-                        .filter(|parent| self.relations_stores[level as usize].has(*parent).unwrap())
+                        .filter(|parent| relations_read[level as usize].has(*parent).unwrap())
                         .collect_vec()
                         // This kicks-in only for trusted blocks or for level > 0. If an ordinary block is 
                         // missing direct parents it will fail validation.
@@ -417,13 +415,14 @@ impl HeaderProcessor {
 
         let reachability_parents = ctx.known_parents[0].clone();
 
+        let mut relations_write = self.relations_stores.write();
         ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
-            (&self.relations_stores[level]).insert_batch(&mut batch, header.hash, parents_by_level).unwrap();
+            relations_write[level].insert_batch(&mut batch, header.hash, parents_by_level).unwrap();
         });
 
         // Write reachability relations. These relations are only needed during header pruning
-        let reachability_relations_write = self.reachability_relations_store.write();
-        reachability_relations_write.deref().insert_batch(&mut batch, ctx.hash, reachability_parents).unwrap();
+        let mut reachability_relations_write = self.reachability_relations_store.write();
+        reachability_relations_write.insert_batch(&mut batch, ctx.hash, reachability_parents).unwrap();
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
@@ -439,6 +438,7 @@ impl HeaderProcessor {
         drop(reachability_write);
         drop(statuses_write);
         drop(reachability_relations_write);
+        drop(relations_write);
         drop(hst_write);
     }
 
@@ -494,17 +494,18 @@ impl HeaderProcessor {
     }
 
     pub fn init(&self) {
-        if self.relations_stores[0].has(ORIGIN).unwrap() {
+        if self.relations_stores.read()[0].has(ORIGIN).unwrap() {
             return;
         }
 
         let mut batch = WriteBatch::default();
-        (0..=self.max_block_level).for_each(|level| {
-            (&self.relations_stores[level as usize]).insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap()
-        });
+        let mut relations_write = self.relations_stores.write();
+        (0..=self.max_block_level)
+            .for_each(|level| relations_write[level as usize].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap());
         let mut hst_write = self.headers_selected_tip_store.write();
         hst_write.set_batch(&mut batch, SortableBlock::new(ORIGIN, 0.into())).unwrap();
         self.db.write(batch).unwrap();
         drop(hst_write);
+        drop(relations_write);
     }
 }

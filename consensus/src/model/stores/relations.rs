@@ -124,18 +124,18 @@ impl RelationsStoreReader for DbRelationsStore {
 ///
 /// The trait methods itself must remain `&mut self` in order to support staging implementations
 /// which are indeed mutated locally
-impl ChildrenStore for &DbRelationsStore {
+impl ChildrenStore for DbRelationsStore {
     fn insert_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        (&self.children_store).insert_child(writer, parent, child)
+        self.children_store.insert_child(writer, parent, child)
     }
 
     fn delete_child(&mut self, writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
-        (&self.children_store).delete_child(writer, parent, child)
+        self.children_store.delete_child(writer, parent, child)
     }
 }
 
 /// The comment above over `impl ChildrenStore` applies here as well
-impl RelationsStore for &DbRelationsStore {
+impl RelationsStore for DbRelationsStore {
     type DefaultWriter = DirectDbWriter<'static>;
 
     fn default_writer(&self) -> Self::DefaultWriter {
@@ -154,7 +154,7 @@ impl RelationsStore for &DbRelationsStore {
 
 pub struct StagingRelationsStore<'a> {
     // The underlying DB store to commit to
-    store: &'a DbRelationsStore,
+    store: &'a mut DbRelationsStore,
 
     /// Full entry deletions (including parents and all children)
     /// Assumed to be final, i.e., no other mutations to this entry
@@ -205,7 +205,7 @@ impl<'a> ChildrenStore for StagingRelationsStore<'a> {
 }
 
 impl<'a> StagingRelationsStore<'a> {
-    pub fn new(store: &'a DbRelationsStore) -> Self {
+    pub fn new(store: &'a mut DbRelationsStore) -> Self {
         Self {
             store,
             parents_overrides: Default::default(),
@@ -215,14 +215,14 @@ impl<'a> StagingRelationsStore<'a> {
         }
     }
 
-    pub fn commit(mut self, batch: &mut WriteBatch) -> Result<(), StoreError> {
-        for (k, v) in self.parents_overrides {
-            self.store.parents_access.write(BatchDbWriter::new(batch), k, v)?
+    pub fn commit(&mut self, batch: &mut WriteBatch) -> Result<(), StoreError> {
+        for (k, v) in self.parents_overrides.iter() {
+            self.store.parents_access.write(BatchDbWriter::new(batch), *k, (*v).clone())?
         }
 
-        for (parent, children) in self.children_insertions {
+        for (parent, children) in self.children_insertions.iter() {
             for child in children {
-                self.store.insert_child(BatchDbWriter::new(batch), parent, child)?;
+                self.store.insert_child(BatchDbWriter::new(batch), *parent, *child)?;
             }
         }
 
@@ -234,14 +234,14 @@ impl<'a> StagingRelationsStore<'a> {
         self.store.parents_access.delete_many(BatchDbWriter::new(batch), &mut self.entry_deletions.iter().copied())?;
 
         // For deleted entries, delete all children
-        for parent in self.entry_deletions {
+        for parent in self.entry_deletions.iter().copied() {
             self.store.delete_children(BatchDbWriter::new(batch), parent)?;
         }
 
         // Delete only the requested children
-        for (parent, children_to_delete) in self.children_deletions {
+        for (parent, children_to_delete) in self.children_deletions.iter() {
             for child in children_to_delete {
-                self.store.delete_child(BatchDbWriter::new(batch), parent, child)?;
+                self.store.delete_child(BatchDbWriter::new(batch), *parent, *child)?;
             }
         }
 
@@ -435,7 +435,7 @@ mod tests {
     #[test]
     fn test_db_relations_store() {
         let (lt, db) = create_temp_db!(kaspa_database::prelude::ConnBuilder::default().with_files_limit(10));
-        test_relations_store(&DbRelationsStore::new(db, 0, 2));
+        test_relations_store(DbRelationsStore::new(db, 0, 2));
         drop(lt)
     }
 

@@ -32,12 +32,7 @@ use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use rand::Rng;
-use std::{
-    cmp::max,
-    mem::size_of,
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::{cmp::max, mem::size_of, ops::DerefMut, sync::Arc};
 
 pub struct ConsensusStorage {
     // DB
@@ -45,7 +40,7 @@ pub struct ConsensusStorage {
 
     // Locked stores
     pub statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub relations_stores: Arc<[DbRelationsStore]>,
+    pub relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     pub reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     pub pruning_point_store: Arc<RwLock<DbPruningStore>>,
@@ -112,13 +107,14 @@ impl ConsensusStorage {
 
         // Headers
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), noise(statuses_cache_size))));
-        let relations_stores: Arc<[_]> = (0..=params.max_block_level)
-            .map(|level| {
-                let cache_size = max(relations_cache_size.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
-                DbRelationsStore::new(db.clone(), level, noise(cache_size))
-            })
-            .collect_vec()
-            .into();
+        let relations_stores = Arc::new(RwLock::new(
+            (0..=params.max_block_level)
+                .map(|level| {
+                    let cache_size = max(relations_cache_size.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
+                    DbRelationsStore::new(db.clone(), level, noise(cache_size))
+                })
+                .collect_vec(),
+        ));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), noise(reachability_cache_size))));
 
         let reachability_relations_store = Arc::new(RwLock::new(DbRelationsStore::with_prefix(
@@ -166,7 +162,7 @@ impl ConsensusStorage {
 
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
-        relations::init(&mut reachability_relations_store.write().deref());
+        relations::init(reachability_relations_store.write().deref_mut());
 
         Arc::new(Self {
             db,

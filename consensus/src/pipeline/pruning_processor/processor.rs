@@ -348,8 +348,9 @@ impl PruningProcessor {
 
             if !keep_blocks.contains(&current) {
                 let mut batch = WriteBatch::default();
-                let reachability_relations_write = self.reachability_relations_store.write();
-                let mut staging_relations = StagingRelationsStore::new(&reachability_relations_write);
+                let mut level_relations_write = self.relations_stores.write();
+                let mut reachability_relations_write = self.reachability_relations_store.write();
+                let mut staging_relations = StagingRelationsStore::new(&mut reachability_relations_write);
                 let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
 
@@ -381,7 +382,7 @@ impl PruningProcessor {
                     // TODO: consider adding block level to compact header data
                     let block_level = self.headers_store.get_header_with_block_level(current).unwrap().block_level;
                     (0..=block_level as usize).for_each(|level| {
-                        let mut staging_level_relations = StagingRelationsStore::new(&self.relations_stores[level]);
+                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
                         relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
                         staging_level_relations.commit(&mut batch).unwrap();
                         self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap_option();
@@ -409,6 +410,7 @@ impl PruningProcessor {
                 drop(reachability_write);
                 drop(statuses_write);
                 drop(reachability_relations_write);
+                drop(level_relations_write);
 
                 reachability_read = self.reachability_store.upgradable_read();
             }
