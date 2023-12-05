@@ -1,7 +1,15 @@
 
 <h1 align="center">Kaspa On Rust</h1>
 
-This repository contains the implementation of the Kaspa full-node and related libraries in the Rust programming language. This is an Alpha version at the initial testing phase, however the node is expected to be fully functional and capable as a drop-in replacement for the Kaspa <a href="https://github.com/kaspanet/kaspad">golang node</a>.
+Welcome to the Rust-based implementation of the Kaspa full-node and its ancillary libraries. This Alpha release serves as an alternative to the established <a href="https://github.com/kaspanet/kaspad">Golang node</a>, introducing developers to the possibilities of Rust in the Kaspa network's context.
+
+Our codebase is an experimental ground for developers aiming to push the boundaries of blockchain scalability and speed. The Kaspa node aims to validate the feasibility of a high-speed blockchain, boasting block intervals of one second with prospects for significant enhancements.
+
+Contributors to this repository will engage with the technical challenges of achieving rapid block times and swift confirmation, moving towards the goal of scaling transaction throughput substantially. While our objectives are ambitious, our focus remains on robust and pragmatic code development.
+
+We invite developers and blockchain enthusiasts to collaborate, test, and optimize our Rust implementation. Each line of code here is an opportunity to contribute to the open-source blockchain movement, shaping a platform designed for scalability and speed without compromising on decentralization.
+
+Your feedback, contributions, and issue reports will be integral to evolving this codebase from its Alpha phase into a mature and reliable node in the Kaspa network.
 
 ## Installation
   <details>
