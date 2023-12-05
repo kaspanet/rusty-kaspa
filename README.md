@@ -33,13 +33,15 @@ This repository contains the implementation of the Kaspa full-node and related l
   1. Install  general prerequisites
 
       ```bash
-      sudo apt install build-essential libssl-dev pkg-config 
+      sudo apt install build-essential \
+      libssl-dev pkg-config 
       ```
 
   2. Install Protobuf (required for gRPC)
   
       ```bash
-      sudo apt install protobuf-compiler libprotobuf-dev #Required for gRPC
+      sudo apt install protobuf-compiler \
+      libprotobuf-dev #Required for gRPC
       ```
   3. Install the clang toolchain (required for RocksDB and WASM secp256k1 builds)
 
@@ -49,7 +51,8 @@ This repository contains the implementation of the Kaspa full-node and related l
       libc++1 libc++abi-dev libc++abi1 \
       libclang-dev libclang1 liblldb-dev \
       libllvm-ocaml-dev libomp-dev libomp5 \ 
-      lld lldb llvm-dev llvm-runtime llvm python3-clang
+      lld lldb llvm-dev llvm-runtime \
+      llvm python3-clang
       ```
   3. Install the [rust toolchain](https://rustup.rs/)
      
