@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use kaspa_consensus_core::BlockHashSet;
 use kaspa_consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel};
-use kaspa_database::prelude::{BatchDbWriter, DbWriter, StoreResultExtensions};
+use kaspa_database::prelude::{BatchDbWriter, DbWriter};
 use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
 use kaspa_database::prelude::{DirectWriter, MemoryWriter};
 use kaspa_database::prelude::{ReadLock, StoreError};
@@ -302,7 +302,17 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
 
     fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
         self.check_not_in_entry_deletions(hash)?;
-        let store_children = self.store.get_children(hash).unwrap_option().unwrap_or_default().read().iter().copied().collect_vec();
+        let store_children = match self.store.get_children(hash) {
+            Ok(c) => c.read().iter().copied().collect_vec(),
+            // If both--store key not found and new insertions contain the key--then don't propagate the err.
+            // We check parents as well since that is how the underlying store verifies children key existence
+            Err(StoreError::KeyNotFound(_))
+                if self.parents_overrides.contains_key(&hash) || self.children_insertions.contains_key(&hash) =>
+            {
+                Vec::new()
+            }
+            Err(err) => return Err(err),
+        };
         let insertions = self.children_insertions.get(&hash).cloned().unwrap_or_default();
         let deletions = self.children_deletions.get(&hash).cloned().unwrap_or_default();
         let children: BlockHashSet =
