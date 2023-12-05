@@ -29,6 +29,7 @@ where
     prefix: Vec<u8>,
 }
 
+/// A read-only lock. Essentially a wrapper to [`parking_lot::RwLock`] which allows only reading.
 #[derive(Default, Debug)]
 pub struct ReadLock<T>(Arc<RwLock<T>>);
 
@@ -60,11 +61,11 @@ where
     }
 
     pub fn read_from_cache(&self, key: TKey) -> Option<ReadLock<HashSet<TData, W>>> {
-        let set = self.cache.get(&key)?.clone();
-        Some(ReadLock::new(set))
+        self.cache.get(&key).map(ReadLock::new)
     }
 
-    fn get_locked_data(&self, key: TKey) -> Result<Arc<RwLock<HashSet<TData, W>>>, StoreError> {
+    /// Returns the set entry wrapped with a read-write lock. If the entry is not cached then it is read from the DB and cached.
+    fn read_locked_entry(&self, key: TKey) -> Result<Arc<RwLock<HashSet<TData, W>>>, StoreError> {
         if let Some(data) = self.cache.get(&key) {
             Ok(data)
         } else {
@@ -76,13 +77,14 @@ where
     }
 
     pub fn read(&self, key: TKey) -> Result<ReadLock<HashSet<TData, W>>, StoreError> {
-        Ok(ReadLock::new(self.get_locked_data(key)?))
+        Ok(ReadLock::new(self.read_locked_entry(key)?))
     }
 
     pub fn write(&self, writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError> {
-        let locked_data = self.get_locked_data(key.clone())?;
-        let mut write_guard = locked_data.write();
-        write_guard.insert(data.clone());
+        // We cache the new item only if the set entry already exists in the cache
+        if let Some(locked_entry) = self.cache.get(&key) {
+            locked_entry.write().insert(data.clone());
+        }
         self.write_to_db(writer, key, &data)
     }
 
@@ -97,19 +99,20 @@ where
     }
 
     pub fn delete_bucket(&self, mut writer: impl DbWriter, key: TKey) -> Result<(), StoreError> {
-        let locked_data = self.get_locked_data(key.clone())?;
-        let mut write_guard = locked_data.write();
-        for data in write_guard.iter() {
+        let locked_entry = self.read_locked_entry(key.clone())?;
+        // TODO: check if DB supports delete by prefix
+        for data in locked_entry.read().iter() {
             writer.delete(self.get_db_key(&key, data)?)?;
         }
-        *write_guard = Default::default();
+        self.cache.remove(&key);
         Ok(())
     }
 
     pub fn delete(&self, mut writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError> {
-        let locked_data = self.get_locked_data(key.clone())?;
-        let mut write_guard = locked_data.write();
-        write_guard.remove(&data);
+        // We remove the item from cache only if the full set entry already exists in the cache
+        if let Some(locked_entry) = self.cache.get(&key) {
+            locked_entry.write().remove(&data);
+        }
         writer.delete(self.get_db_key(&key, &data)?)?;
         Ok(())
     }
