@@ -220,4 +220,8 @@ where
             Err(err) => Err(err.into()),
         })
     }
+
+    pub fn prefix(&self) -> &[u8] {
+        &self.prefix
+    }
 }
