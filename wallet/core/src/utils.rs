@@ -2,7 +2,7 @@ use crate::result::Result;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::constants::*;
 use kaspa_consensus_core::network::NetworkType;
-use separator::Separatable;
+use separator::{separated_float, separated_int, separated_uint_with_output, Separatable};
 use workflow_log::style;
 
 pub fn try_kaspa_str_to_sompi<S: Into<String>>(s: S) -> Result<Option<u64>> {
@@ -41,6 +41,11 @@ pub fn sompi_to_kaspa_string(sompi: u64) -> String {
     sompi_to_kaspa(sompi).separated_string()
 }
 
+#[inline]
+pub fn sompi_to_kaspa_string_with_trailing_zeroes(sompi: u64) -> String {
+    separated_float!(format!("{:.8}", sompi_to_kaspa(sompi)))
+}
+
 pub fn kaspa_suffix(network_type: &NetworkType) -> &'static str {
     match network_type {
         NetworkType::Mainnet => "KAS",
@@ -52,7 +57,14 @@ pub fn kaspa_suffix(network_type: &NetworkType) -> &'static str {
 
 #[inline]
 pub fn sompi_to_kaspa_string_with_suffix(sompi: u64, network_type: &NetworkType) -> String {
-    let kas = sompi_to_kaspa(sompi).separated_string();
+    let kas = sompi_to_kaspa_string(sompi);
+    let suffix = kaspa_suffix(network_type);
+    format!("{kas} {suffix}")
+}
+
+#[inline]
+pub fn sompi_to_kaspa_string_with_trailing_zeroes_and_suffix(sompi: u64, network_type: &NetworkType) -> String {
+    let kas = sompi_to_kaspa_string_with_trailing_zeroes(sompi);
     let suffix = kaspa_suffix(network_type);
     format!("{kas} {suffix}")
 }
