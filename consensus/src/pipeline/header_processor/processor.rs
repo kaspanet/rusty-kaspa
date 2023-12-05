@@ -124,7 +124,7 @@ pub struct HeaderProcessor {
     db: Arc<DB>,
 
     // Stores
-    pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>, // TODO: Remove RwLock
+    pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     pub(super) reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub(super) reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     pub(super) ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
