@@ -3,32 +3,9 @@
 
 This repository contains the implementation of the Kaspa full-node and related libraries in the Rust programming language. This is an Alpha version at the initial testing phase, however the node is expected to be fully functional and capable as a drop-in replacement for the Kaspa <a href="https://github.com/kaspanet/kaspad">golang node</a>.
 
-## Table of contents
-#### 1. Getting Started 
-  - [Linux](#on-linux) 
-  - [Windows](#on-windows) 
-  - [Mac](#on-mac-os) 
-#### 2. Execution
-  - [Running the node](#running-the-node)
-  - [Enabling wRPC](#enabling-wrpc) 
-  - [wRPC to gRPC Proxy](#wrpc-to-grpc-proxy)
-  - [JSON and Borsh](#json-and-borsh-rpc-protocols)
-  - [Mining](#mining) 
-#### 3. JS/TS Library
-  - [Building WASM](#building-wasm)
-#### 4. Wallet
-  - [Wallet CLI](#wallet-cli)
-  - [Local Web Wallet](#local-web-wallet-using-wasm)
-#### 5. Miscellaneous
-  - [Heap-profiling](#heap-profiling)
-  - [Tests and benchmarks](#tests--benchmarks)
-  - [Logging](#logging)
-  - [Simulating blockchain](#simulation-framework-simpa)
-
-## Getting started
-  ### On Linux
+## Installation
   <details>
-  <summary>Installation on Linux</summary>
+  <summary>Building on Linux</summary>
   
   1. Install  general prerequisites
 
@@ -72,11 +49,10 @@ This repository contains the implementation of the Kaspa full-node and related l
       ```
   </details>
 
-  ### On Windows
 
 
   <details>  
-  <summary>Installation on Windows</summary>
+  <summary>Building on Windows</summary>
 
 
   1. [Install Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
@@ -110,10 +86,9 @@ This repository contains the implementation of the Kaspa full-node and related l
       ```
  </details>      
 
-  ### On Mac OS
 
   <details>  
-  <summary>Installation on Mac OS</summary>
+  <summary>Building on Mac OS</summary>
 
 
   1. Install Protobuf (required for gRPC)
@@ -172,108 +147,9 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
 
  </details>   
 
-## Running the node
-
-  <details> 
-  <summary>
-    Start a mainnet node
-  </summary> 
-
-  ```bash
-  cargo run --release --bin kaspad
-  ```
-
-  </details>
-
-  <details> 
-  <summary>
-    Start a testnet node
-  </summary> 
-
-  ```bash
-cargo run --release --bin kaspad -- --testnet
-  ```
-
-  </details>
-
-## Enabling wRPC
-
 <details>
 
-<summary>
-wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
-
-</summary>
-
-JSON protocol:
-```bash
---rpclisten-json = <interface:port>
-```
-
-Borsh protocol:
-```bash
---rpclisten-borsh = <interface:port>
-```
-
-**Sidenote:**
-
-Rusty Kaspa integrates an optional wRPC
-subsystem. wRPC is a high-performance, platform-neutral, Rust-centric, WebSocket-framed RPC 
-implementation that can use [Borsh](https://borsh.io/) and JSON protocol encoding.
-
- JSON protocol messaging 
-is similar to JSON-RPC 1.0, but differs from the specification due to server-side 
-notifications.
-
- [Borsh](https://borsh.io/) encoding is meant for inter-process communication. When using [Borsh](https://borsh.io/)
-both client and server should be built from the same codebase.  
-
-JSON protocol is based on 
-Kaspa data structures and is data-structure-version agnostic. You can connect to the
-JSON endpoint using any WebSocket library. Built-in RPC clients for JavaScript and
-TypeScript capable of running in web browsers and Node.js are available as a part of
-the Kaspa WASM framework.
-
-</details>
-
-
-
-## wRPC to gRPC Proxy
-
-wRPC to gRPC Proxy is deprecated and no longer supported.
-
-
-## Mining
-
-<details>
-
-<summary>
-Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions.
-</summary>
-
-1. Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
-
-2. In a separate terminal run the kaspanet/kaspad miner:
-
-    ```
-    kaspaminer --testnet --miningaddr kaspatest:qrcqat6l9zcjsu7swnaztqzrv0s7hu04skpaezxk43y4etj8ncwfk308jlcew
-    ```
-
-    This will create and feed a DAG with the miner getting block templates from the node and submitting them back when mined. The node processes and stores the blocks while applying all currently implemented logic. Execution can be stopped and resumed, the data is persisted in a database.
-
-    You can replace the above mining address with your own address by creating one as described [here](https://github.com/kaspanet/docs/blob/main/Getting%20Started/Full%20Node%20Installation.md#creating-a-wallet-optional). 
-
-</details>
-
-
-
-
-
-## Building WASM
-
-<details>
-
-<summary>How to build the WASM</summary>
+<summary>Building WASM framework</summary>
 
 Rust WebAssembly (Wasm) refers to the use of the Rust programming language to write code that can be compiled into WebAssembly, a binary instruction format that runs in web browsers. This allows for easy development using JS/TS while retaining the benefits of Rust.
 
@@ -330,22 +206,12 @@ This will produce a folder: "nodejs", "web" or "react-native" library in `/wasm`
 
 </details>
 
-
-
-
-
-
-
-
-
-
-## Wallet CLI
-
 <details>
 
 <summary>
-Wallet CLI is now available via the `/cli` or `/kos` projects.
+Wallet CLI
 </summary>
+
 
 
 ```bash
@@ -353,7 +219,135 @@ cd cli
 cargo run --release
 ```
 
+Wallet CLI is now available via the `/cli` or `/kos` projects.
 For KOS, please see [`kos/README.md`](kos/README.md)
+
+</details>
+
+
+
+## Running the node
+
+  **Start a mainnet node**
+
+  ```bash
+  cargo run --release --bin kaspad
+  ```
+  **Start a testnet node**
+
+  ```bash
+cargo run --release --bin kaspad -- --testnet
+  ```
+
+**wRPC**
+
+<details>
+
+  <summary>
+  wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
+
+  </summary>
+
+  JSON protocol:
+  ```bash
+  --rpclisten-json = <interface:port>
+  ```
+
+  Borsh protocol:
+  ```bash
+  --rpclisten-borsh = <interface:port>
+  ```
+
+  **Sidenote:**
+
+  Rusty Kaspa integrates an optional wRPC
+  subsystem. wRPC is a high-performance, platform-neutral, Rust-centric, WebSocket-framed RPC 
+  implementation that can use [Borsh](https://borsh.io/) and JSON protocol encoding.
+
+  JSON protocol messaging 
+  is similar to JSON-RPC 1.0, but differs from the specification due to server-side 
+  notifications.
+
+  [Borsh](https://borsh.io/) encoding is meant for inter-process communication. When using [Borsh](https://borsh.io/)
+  both client and server should be built from the same codebase.  
+
+  JSON protocol is based on 
+  Kaspa data structures and is data-structure-version agnostic. You can connect to the
+  JSON endpoint using any WebSocket library. Built-in RPC clients for JavaScript and
+  TypeScript capable of running in web browsers and Node.js are available as a part of
+  the Kaspa WASM framework.
+
+  **wRPC to gRPC Proxy is deprecated and no longer supported.**
+
+</details>
+
+
+<br>
+
+**Mining**
+
+<details>
+
+<summary>
+Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions.
+</summary>
+
+1. Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
+
+2. In a separate terminal run the kaspanet/kaspad miner:
+
+    ```
+    kaspaminer --testnet --miningaddr kaspatest:qrcqat6l9zcjsu7swnaztqzrv0s7hu04skpaezxk43y4etj8ncwfk308jlcew
+    ```
+
+    This will create and feed a DAG with the miner getting block templates from the node and submitting them back when mined. The node processes and stores the blocks while applying all currently implemented logic. Execution can be stopped and resumed, the data is persisted in a database.
+
+    You can replace the above mining address with your own address by creating one as described [here](https://github.com/kaspanet/docs/blob/main/Getting%20Started/Full%20Node%20Installation.md#creating-a-wallet-optional). 
+
+</details>
+
+
+## Benchmarking & Testing
+
+**Simulation framework (Simpa)**
+
+<details> 
+
+<summary>Full in-process network simulation</summary>
+
+Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
+
+The current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation). 
+
+To see the available commands
+```bash 
+cargo run --release --bin simpa -- --help
+``` 
+
+The following command will run a simulation to produce 1000 blocks with communication delay of 2 seconds and 8 BPS (blocks per second) while attempting to fill each block with up to 200 transactions.   
+
+```bash
+cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
+```
+
+</details>
+<br>
+
+**Heap Profiling**
+
+
+
+<details> 
+
+<summary>Heap-profiling in kaspad and simpa</summary>
+
+Heap-profiling in `kaspad` and `simpa` can be done by enabling `heap` feature and profile using the `--features` argument
+
+```bash
+cargo run --bin kaspad --profile heap --features=heap
+```
+
+It will produce `{bin-name}-heap.json` file in the root of the workdir, that can be inspected by the [dhat-viewer](https://github.com/unofficial-mirror/valgrind/tree/master/dhat)
 
 </details>
 
@@ -382,29 +376,9 @@ The framework is compatible with all major desktop and mobile browsers.
 
 
 </details>
+<br>
 
-
-
-
-## Heap-profiling
-
-<details> 
-
-<summary>Heap-profiling in kaspad and simpa</summary>
-
-Heap-profiling in `kaspad` and `simpa` can be done by enabling `heap` feature and profile using the `--features` argument
-
-```bash
-cargo run --bin kaspad --profile heap --features=heap
-```
-
-It will produce `{bin-name}-heap.json` file in the root of the workdir, that can be inspected by the [dhat-viewer](https://github.com/unofficial-mirror/valgrind/tree/master/dhat)
-
-</details>
-
-
-
-## Tests & Benchmarks
+**Tests**
 
 <details> 
 
@@ -440,8 +414,6 @@ cargo bench
 
 </details>
 
-## Logging
-
 <details> 
 
 <summary>Logging in kaspad and simpa</summary>
@@ -457,34 +429,6 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
     In this command we set the `loglevel` to `INFO`.
 
 </details>
-
-
-
-## Simulation framework (Simpa)
-
-<details> 
-
-<summary>Full in-process network simulation</summary>
-
-Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
-
-The current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation). 
-
-To see the available commands
-```bash 
-cargo run --release --bin simpa -- --help
-``` 
-
-The following command will run a simulation to produce 1000 blocks with communication delay of 2 seconds and 8 BPS (blocks per second) while attempting to fill each block with up to 200 transactions.   
-
-```bash
-cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
-```
-
-</details>
-
-
-
 
 
 
