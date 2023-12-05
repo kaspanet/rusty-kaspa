@@ -443,7 +443,7 @@ impl AccountStore for LocalStoreInner {
 
     async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<(Arc<Account>, Option<Arc<Metadata>>)>> {
         let cache = self.cache();
-        let accounts = self.cache().accounts.load_multiple(ids)?;
+        let accounts = cache.accounts.load_multiple(ids)?;
         accounts
             .into_iter()
             .map(|account| {
