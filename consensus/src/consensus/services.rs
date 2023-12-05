@@ -2,7 +2,7 @@ use super::storage::ConsensusStorage;
 use crate::{
     config::Config,
     model::{
-        services::{reachability::MTReachabilityService, statuses::MTStatusesService},
+        services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
             block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
             headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
@@ -22,14 +22,14 @@ use kaspa_txscript::caches::TxScriptCacheCounters;
 use std::sync::Arc;
 
 pub type DbGhostdagManager =
-    GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
+    GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
 
-pub type DbDagTraversalManager = DagTraversalManager<DbGhostdagStore, DbReachabilityStore, DbRelationsStore>;
+pub type DbDagTraversalManager = DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 
 pub type DbWindowManager = DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>;
 
 pub type DbSyncManager = SyncManager<
-    DbRelationsStore,
+    MTRelationsService<DbRelationsStore>,
     DbReachabilityStore,
     DbGhostdagStore,
     DbSelectedChainStore,
@@ -41,7 +41,7 @@ pub type DbSyncManager = SyncManager<
 pub type DbPruningPointManager =
     PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore, DbHeadersSelectedTipStore>;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>;
-pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, DbRelationsStore>;
+pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
 
 pub struct ConsensusServices {
     // Underlying storage
@@ -49,6 +49,7 @@ pub struct ConsensusServices {
 
     // Services and managers
     pub statuses_service: MTStatusesService<DbStatusesStore>,
+    pub relations_service: MTRelationsService<DbRelationsStore>,
     pub reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub window_manager: DbWindowManager,
     pub dag_traversal_manager: DbDagTraversalManager,
@@ -74,11 +75,14 @@ impl ConsensusServices {
         let params = &config.params;
 
         let statuses_service = MTStatusesService::new(storage.statuses_store.clone());
+        let relations_services =
+            (0..=params.max_block_level).map(|level| MTRelationsService::new(storage.relations_stores.clone(), level)).collect_vec();
+        let relations_service = relations_services[0].clone();
         let reachability_service = MTReachabilityService::new(storage.reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
             params.genesis.hash,
             storage.ghostdag_primary_store.clone(),
-            storage.relations_primary_store.clone(),
+            relations_service.clone(),
             reachability_service.clone(),
         );
         let window_manager = DualWindowManager::new(
@@ -118,7 +122,7 @@ impl ConsensusServices {
                         params.genesis.hash,
                         params.ghostdag_k,
                         ghostdag_store,
-                        storage.relations_stores[level].clone(),
+                        relations_services[level].clone(),
                         storage.headers_store.clone(),
                         reachability_service.clone(),
                     )
@@ -165,7 +169,7 @@ impl ConsensusServices {
             params.genesis.hash,
             storage.headers_store.clone(),
             reachability_service.clone(),
-            storage.relations_primary_store.clone(),
+            relations_service.clone(),
         );
 
         let pruning_proof_manager = Arc::new(PruningProofManager::new(
@@ -197,6 +201,7 @@ impl ConsensusServices {
         Arc::new(Self {
             storage,
             statuses_service,
+            relations_service,
             reachability_service,
             window_manager,
             dag_traversal_manager,

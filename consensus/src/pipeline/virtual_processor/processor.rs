@@ -9,7 +9,10 @@ use crate::{
     constants::BLOCK_VERSION,
     errors::RuleError,
     model::{
-        services::reachability::{MTReachabilityService, ReachabilityService},
+        services::{
+            reachability::{MTReachabilityService, ReachabilityService},
+            relations::MTRelationsService,
+        },
         stores::{
             acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
@@ -121,7 +124,6 @@ pub struct VirtualStateProcessor {
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
     pub(super) depth_store: Arc<DbDepthStore>,
     pub(super) selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
-    pub(super) relations_primary_store: DbRelationsStore,
 
     // Utxo-related stores
     pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -133,6 +135,7 @@ pub struct VirtualStateProcessor {
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) relations_service: MTRelationsService<DbRelationsStore>,
     pub(super) dag_traversal_manager: DbDagTraversalManager,
     pub(super) window_manager: DbWindowManager,
     pub(super) coinbase_manager: CoinbaseManager,
@@ -196,7 +199,7 @@ impl VirtualStateProcessor {
 
             ghostdag_manager: services.ghostdag_primary_manager.clone(),
             reachability_service: services.reachability_service.clone(),
-            relations_primary_store: storage.relations_primary_store.clone(),
+            relations_service: services.relations_service.clone(),
             dag_traversal_manager: services.dag_traversal_manager.clone(),
             window_manager: services.window_manager.clone(),
             coinbase_manager: services.coinbase_manager.clone(),
@@ -585,7 +588,7 @@ impl VirtualStateProcessor {
             }
             // PRUNE SAFETY: see comment within [`resolve_virtual`]
             let prune_guard = self.pruning_lock.blocking_read();
-            for parent in self.relations_primary_store.get_parents(candidate).unwrap().iter().copied() {
+            for parent in self.relations_service.get_parents(candidate).unwrap().iter().copied() {
                 if self.reachability_service.is_dag_ancestor_of(finality_point, parent)
                     && !self.reachability_service.is_dag_ancestor_of_any(parent, &mut heap.iter().map(|sb| sb.hash))
                 {
@@ -660,7 +663,7 @@ impl VirtualStateProcessor {
             sure the increase in mergeset size is within the available budget
         */
 
-        let candidate_parents = self.relations_primary_store.get_parents(candidate).unwrap();
+        let candidate_parents = self.relations_service.get_parents(candidate).unwrap();
         let mut queue: VecDeque<_> = candidate_parents.iter().copied().collect();
         let mut visited: BlockHashSet = queue.iter().copied().collect();
         let mut mergeset_increase = 1u64; // Starts with 1 to count for the candidate itself
@@ -674,7 +677,7 @@ impl VirtualStateProcessor {
                 return MergesetIncreaseResult::Rejected { new_candidate: current };
             }
 
-            let current_parents = self.relations_primary_store.get_parents(current).unwrap();
+            let current_parents = self.relations_service.get_parents(current).unwrap();
             for &parent in current_parents.iter() {
                 if visited.insert(parent) {
                     queue.push_back(parent);

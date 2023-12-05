@@ -46,7 +46,6 @@ pub struct ConsensusStorage {
     // Locked stores
     pub statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub relations_stores: Arc<[DbRelationsStore]>,
-    pub relations_primary_store: DbRelationsStore,
     pub reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     pub pruning_point_store: Arc<RwLock<DbPruningStore>>,
@@ -120,7 +119,6 @@ impl ConsensusStorage {
             })
             .collect_vec()
             .into();
-        let relations_primary_store = relations_stores[0].clone();
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), noise(reachability_cache_size))));
 
         let reachability_relations_store = Arc::new(RwLock::new(DbRelationsStore::with_prefix(
@@ -194,7 +192,6 @@ impl ConsensusStorage {
             utxo_multisets_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
-            relations_primary_store,
         })
     }
 }

@@ -760,15 +760,15 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_block_children(&self, hash: Hash) -> Option<Vec<Hash>> {
-        self.storage
-            .relations_primary_store
+        self.services
+            .relations_service
             .get_children(hash)
             .unwrap_option()
             .map(|children| children.read().iter().copied().collect_vec())
     }
 
     fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
-        self.storage.relations_primary_store.get_parents(hash).unwrap_option()
+        self.services.relations_service.get_parents(hash).unwrap_option()
     }
 
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {

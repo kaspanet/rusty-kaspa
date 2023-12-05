@@ -18,8 +18,8 @@ pub struct ParentsManager<T: HeaderStoreReader, U: ReachabilityStoreReader, V: R
     genesis_hash: Hash,
 
     headers_store: Arc<T>,
-    relations_storage: V,
     reachability_service: MTReachabilityService<U>,
+    relations_service: V,
 }
 
 impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> ParentsManager<T, U, V> {
@@ -28,9 +28,9 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         genesis_hash: Hash,
         headers_store: Arc<T>,
         reachability_service: MTReachabilityService<U>,
-        relations_store: V,
+        relations_service: V,
     ) -> Self {
-        Self { max_block_level, genesis_hash, headers_store, reachability_service, relations_storage: relations_store }
+        Self { max_block_level, genesis_hash, headers_store, reachability_service, relations_service }
     }
 
     /// Calculates the parents for each level based on the direct parents. Expects the current
@@ -52,7 +52,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             .expect("at least one of the parents is expected to be in the future of the pruning point");
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point);
 
-        let origin_children = self.relations_storage.get_children(ORIGIN).unwrap().read().iter().copied().collect_vec();
+        let origin_children = self.relations_service.get_children(ORIGIN).unwrap().read().iter().copied().collect_vec();
         let origin_children_headers =
             origin_children.iter().copied().map(|parent| self.headers_store.get_header(parent).unwrap()).collect_vec();
 
@@ -187,7 +187,7 @@ mod tests {
     use super::*;
     use crate::{
         model::{
-            services::reachability::MTReachabilityService,
+            services::{reachability::MTReachabilityService, relations::MTRelationsService},
             stores::{
                 headers::{HeaderStoreReader, HeaderWithBlockLevel},
                 reachability::MemoryReachabilityStore,
@@ -480,8 +480,10 @@ mod tests {
         }
 
         let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability_store)));
-        let relations_store = RelationsStoreMock { children: BlockHashes::new(vec![pruning_point, pp_anticone_block]) };
-        let parents_manager = ParentsManager::new(250, genesis_hash, headers_store, reachability_service, relations_store);
+        let relations_store: Arc<[_]> =
+            vec![RelationsStoreMock { children: BlockHashes::new(vec![pruning_point, pp_anticone_block]) }].into();
+        let relations_service = MTRelationsService::new(relations_store, 0);
+        let parents_manager = ParentsManager::new(250, genesis_hash, headers_store, reachability_service, relations_service);
 
         for test_block in test_blocks {
             let direct_parents = test_block.direct_parents.iter().map(|parent| Hash::from_u64_word(*parent)).collect_vec();
@@ -581,8 +583,9 @@ mod tests {
         }
 
         let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability_store)));
-        let relations_store = RelationsStoreMock { children: BlockHashes::new(vec![pruning_point]) };
-        let parents_manager = ParentsManager::new(250, genesis_hash, headers_store, reachability_service, relations_store);
+        let relations_store: Arc<[_]> = vec![RelationsStoreMock { children: BlockHashes::new(vec![pruning_point]) }].into();
+        let relations_service = MTRelationsService::new(relations_store, 0);
+        let parents_manager = ParentsManager::new(250, genesis_hash, headers_store, reachability_service, relations_service);
 
         for test_block in test_blocks {
             let direct_parents = test_block.direct_parents.iter().map(|parent| Hash::from_u64_word(*parent)).collect_vec();
