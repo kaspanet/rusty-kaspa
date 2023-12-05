@@ -65,7 +65,7 @@ impl ConsensusConverter {
             transaction_ids: block.transactions.iter().map(|x| x.id()).collect(),
             is_header_only: block_status.is_header_only(),
             blue_score: ghostdag_data.blue_score,
-            children_hashes: (*children).clone(),
+            children_hashes: children,
             merge_set_blues_hashes: ghostdag_data.mergeset_blues,
             merge_set_reds_hashes: ghostdag_data.mergeset_reds,
             is_chain_block,

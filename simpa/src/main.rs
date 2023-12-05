@@ -117,15 +117,23 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 fn main() {
     #[cfg(feature = "heap")]
     let _profiler = dhat::Profiler::builder().file_name("simpa-heap.json").build();
+
     // Get CLI arguments
-    let mut args = Args::parse();
+    let args = Args::parse();
 
     // Initialize the logger
     kaspa_core::log::init_logger(None, &args.log_level);
 
+    // Configure the panic behavior
+    kaspa_core::panic::configure_panic();
+
     // Print package name and version
     info!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
 
+    main_impl(args);
+}
+
+fn main_impl(mut args: Args) {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     let stop_perf_monitor = args.perf_metrics.then(|| {
@@ -147,10 +155,6 @@ fn main() {
         m.stop()
     });
 
-    // Configure the panic behavior
-    kaspa_core::panic::configure_panic();
-
-    assert!(args.bps * args.delay < 250.0, "The delay times bps product is larger than 250");
     if args.miners > 1 {
         warn!(
             "Warning: number of miners was configured to {}. Currently each miner added doubles the simulation 
@@ -180,6 +184,9 @@ fn main() {
     }
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
+        let mut config = (*config).clone();
+        config.process_genesis = false;
+        let config = Arc::new(config);
         let (lifetime, db) = match (args.rocksdb_stats, args.rocksdb_stats_period_sec) {
             (true, Some(rocksdb_stats_period_sec)) => {
                 load_existing_db!(input_dir, conn_builder.enable_stats().with_stats_period(rocksdb_stats_period_sec))
@@ -255,7 +262,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
             params.difficulty_window_size(0),
             params.past_median_time_window_size(0),
         );
-    } else if args.bps * args.delay > 2.0 {
+    } else {
         let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
         params.ghostdag_k = k;
@@ -289,6 +296,8 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.pruning_proof_m = 16;
         params.legacy_difficulty_window_size = 64;
         params.legacy_timestamp_deviation_tolerance = 16;
+        params.new_timestamp_deviation_tolerance = 16;
+        params.sampled_difficulty_window_size = params.sampled_difficulty_window_size.min(32);
         params.finality_depth = 128;
         params.merge_depth = 128;
         params.mergeset_size_limit = 32;
@@ -317,9 +326,10 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
     let mut chunk = iter.next().unwrap();
     let mut prev_joins = submit_chunk(src_consensus, dst_consensus, &mut chunk);
 
-    for mut chunk in iter {
+    for (i, mut chunk) in iter.enumerate() {
         let current_joins = submit_chunk(src_consensus, dst_consensus, &mut chunk);
         let statuses = try_join_all(prev_joins).await.unwrap();
+        info!("Validated chunk {}", i);
         assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
         prev_joins = current_joins;
     }
@@ -361,7 +371,7 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -
     let mut vec = Vec::new();
     let relations = src_consensus.relations_stores.read();
     while let Some(current) = queue.pop_front() {
-        for child in relations[0].get_children(current).unwrap().iter() {
+        for child in relations[0].get_children(current).unwrap().read().iter() {
             if visited.insert(*child) {
                 queue.push_back(*child);
                 vec.push(*child);
@@ -387,4 +397,22 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64,
     info!("[DELAY={delay}, BPS={bps}, GHOSTDAG K={k}]");
     info!("[Average stats of generated DAG] blues: {blues_mean}, reds: {reds_mean}, parents: {parents_mean}, txs: {txs_mean}");
     num_txs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pruning_via_simpa() {
+        let mut args = Args::parse_from(std::iter::empty::<&str>());
+        args.bps = 1.0;
+        args.target_blocks = Some(5000);
+        args.tpb = 1;
+        args.test_pruning = true;
+
+        kaspa_core::panic::configure_panic();
+        kaspa_core::log::try_init_logger(&args.log_level);
+        main_impl(args);
+    }
 }

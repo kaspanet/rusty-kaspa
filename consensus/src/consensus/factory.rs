@@ -40,7 +40,7 @@ pub enum ConsensusEntryType {
     New(ConsensusEntry),
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct MultiConsensusMetadata {
     current_consensus_key: Option<u64>,
     staging_consensus_key: Option<u64>,
@@ -52,6 +52,20 @@ pub struct MultiConsensusMetadata {
     props: HashMap<Vec<u8>, Vec<u8>>,
     /// The DB scheme version
     version: u32,
+}
+
+const LATEST_DB_VERSION: u32 = 1;
+impl Default for MultiConsensusMetadata {
+    fn default() -> Self {
+        Self {
+            current_consensus_key: Default::default(),
+            staging_consensus_key: Default::default(),
+            max_key_used: Default::default(),
+            is_archival_node: Default::default(),
+            props: Default::default(),
+            version: LATEST_DB_VERSION,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -197,6 +211,14 @@ impl MultiConsensusManagementStore {
             metadata.is_archival_node = is_archival_node;
             let mut batch = WriteBatch::default();
             self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
+        }
+    }
+
+    pub fn should_upgrade(&self) -> StoreResult<bool> {
+        match self.metadata.read() {
+            Ok(data) => Ok(data.version != LATEST_DB_VERSION),
+            Err(StoreError::KeyNotFound(_)) => Ok(false),
+            Err(err) => Err(err),
         }
     }
 }

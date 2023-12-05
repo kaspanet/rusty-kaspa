@@ -257,7 +257,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         .build()
         .unwrap();
 
-    // Reset Condition: Need to reset DB if we can't find genesis is not in current DB
+    // Reset Condition: Need to reset DB if we can't find genesis in current DB
     if !is_db_reset_needed && (args.testnet || args.devnet || args.simnet) {
         // Non-mainnet can be restarted, and when it does we need to reset the DB.
         // This will check if the current Genesis can be found the active consensus
@@ -291,8 +291,12 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     // Reset Condition: Need to reset if we're upgrading from kaspad DB version
     // TEMP: upgrade from Alpha version or any version before this one
-    if !is_db_reset_needed && meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
-        let msg = "Node database is from an older Kaspad version and needs to be fully deleted, do you confirm the delete? (y/n)";
+    if !is_db_reset_needed
+        && (meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some())
+            || MultiConsensusManagementStore::new(meta_db.clone()).should_upgrade().unwrap())
+    {
+        let msg =
+            "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
         get_user_approval_or_exit(msg, args.yes);
 
         info!("Deleting databases from previous Kaspad version");

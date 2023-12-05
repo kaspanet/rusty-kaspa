@@ -242,7 +242,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+    fn get_block_children(&self, hash: Hash) -> Option<Vec<Hash>> {
         unimplemented!()
     }
 

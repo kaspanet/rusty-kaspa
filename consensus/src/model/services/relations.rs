@@ -1,5 +1,6 @@
 use crate::model::stores::relations::RelationsStoreReader;
-use kaspa_database::prelude::StoreError;
+use kaspa_consensus_core::BlockHashSet;
+use kaspa_database::prelude::{ReadLock, StoreError, StoreResult};
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -22,7 +23,7 @@ impl<T: RelationsStoreReader> RelationsStoreReader for MTRelationsService<T> {
         self.store.read()[self.level].get_parents(hash)
     }
 
-    fn get_children(&self, hash: Hash) -> Result<kaspa_consensus_core::blockhash::BlockHashes, StoreError> {
+    fn get_children(&self, hash: Hash) -> StoreResult<ReadLock<BlockHashSet>> {
         self.store.read()[self.level].get_children(hash)
     }
 
