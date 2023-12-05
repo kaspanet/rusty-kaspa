@@ -147,64 +147,64 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
 
  </details>   
 
-<details>
+  <details>
 
-<summary>Building WASM framework</summary>
+  <summary>Building WASM framework</summary>
 
-Rust WebAssembly (Wasm) refers to the use of the Rust programming language to write code that can be compiled into WebAssembly, a binary instruction format that runs in web browsers. This allows for easy development using JS/TS while retaining the benefits of Rust.
+  Rust WebAssembly (Wasm) refers to the use of the Rust programming language to write code that can be compiled into WebAssembly, a binary instruction format that runs in web browsers. This allows for easy development using JS/TS while retaining the benefits of Rust.
 
-The library can be build in for `NodeJS`, `React Native` and as an `ES6 Module`
+  The library can be build in for `NodeJS`, `React Native` and as an `ES6 Module`
 
-<details>
+  <details>
 
-<summary>
-NodeJS
-</summary>
+  <summary>
+  NodeJS
+  </summary>
 
-```bash
-cd rusty-kaspa
-cd wasm
-./build-node
-cd nodejs
-npm install
-```
+  ```bash
+  cd rusty-kaspa
+  cd wasm
+  ./build-node
+  cd nodejs
+  npm install
+  ```
 
-</details>
+  </details>
 
-<details>
+  <details>
 
-<summary>
-React Native
-</summary>
+  <summary>
+  React Native
+  </summary>
 
-```bash
-cd rusty-kaspa
-cd wasm
-./build-react-native
-```
+  ```bash
+  cd rusty-kaspa
+  cd wasm
+  ./build-react-native
+  ```
 
-</details>
+  </details>
 
-<details>
+  <details>
 
-<summary>
-ES6
-</summary>
+  <summary>
+  ES6
+  </summary>
 
-```bash
-cd rusty-kaspa
-cd wasm
-./build-web
-```
+  ```bash
+  cd rusty-kaspa
+  cd wasm
+  ./build-web
+  ```
 
-</details>
+  </details>
 
-<br>
-This will produce a folder: "nodejs", "web" or "react-native" library in `/wasm` directory depending on your selection.
+  <br>
+  This will produce a folder: "nodejs", "web" or "react-native" library in `/wasm` directory depending on your selection.
 
 
 
-</details>
+  </details>
 
 <details>
 
@@ -226,6 +226,27 @@ For KOS, please see [`kos/README.md`](kos/README.md)
 
 
 
+<details>
+
+<summary>
+Local Web Wallet
+</summary>
+
+Run an http server inside of `wallet/wasm/web` folder. If you don't have once, you can use the following:
+
+```bash
+cd wallet/wasm/web
+cargo install basic-http-server
+basic-http-server
+```
+The *basic-http-server* will serve on port 4000 by default, so open your web browser and load http://localhost:4000
+
+The framework is compatible with all major desktop and mobile browsers.
+
+
+</details>
+
+
 ## Running the node
 
   **Start a mainnet node**
@@ -239,14 +260,15 @@ For KOS, please see [`kos/README.md`](kos/README.md)
 cargo run --release --bin kaspad -- --testnet
   ```
 
-**wRPC**
 
 <details>
 
   <summary>
+wRPC
+  </summary>
+
   wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
 
-  </summary>
 
   JSON protocol:
   ```bash
@@ -282,15 +304,14 @@ cargo run --release --bin kaspad -- --testnet
 </details>
 
 
-<br>
-
-**Mining**
 
 <details>
 
 <summary>
-Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions.
+Mining
 </summary>
+
+Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions.
 
 1. Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
 
@@ -309,11 +330,10 @@ Mining is currently supported only on testnet, so once you've setup a test node,
 
 ## Benchmarking & Testing
 
-**Simulation framework (Simpa)**
 
 <details> 
 
-<summary>Full in-process network simulation</summary>
+<summary>Simulation framework (Simpa)</summary>
 
 Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
 
@@ -331,15 +351,13 @@ cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
 ```
 
 </details>
-<br>
 
-**Heap Profiling**
 
 
 
 <details> 
 
-<summary>Heap-profiling in kaspad and simpa</summary>
+<summary>Heap Profiling</summary>
 
 Heap-profiling in `kaspad` and `simpa` can be done by enabling `heap` feature and profile using the `--features` argument
 
@@ -352,33 +370,9 @@ It will produce `{bin-name}-heap.json` file in the root of the workdir, that can
 </details>
 
 
+<details> 
 
-
-
-## Local Web Wallet (using WASM)
-
-
-
-<details>
-
-<summary>
-Run an http server inside of `wallet/wasm/web` folder. If you don't have once, you can use the following.
-</summary>
-
-```bash
-cd wallet/wasm/web
-cargo install basic-http-server
-basic-http-server
-```
-The *basic-http-server* will serve on port 4000 by default, so open your web browser and load http://localhost:4000
-
-The framework is compatible with all major desktop and mobile browsers.
-
-
-</details>
-<br>
-
-**Tests**
+<summary>Tests</summary>
 
 <details> 
 
@@ -403,6 +397,10 @@ cargo nextest run --release
 
 </details>
 
+
+</details>
+
+
 <details> 
 
 <summary>Benchmarks</summary>
@@ -416,7 +414,7 @@ cargo bench
 
 <details> 
 
-<summary>Logging in kaspad and simpa</summary>
+<summary>Logging</summary>
 
 Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
 
