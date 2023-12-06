@@ -180,7 +180,7 @@ pub const PAYLOAD_VECTOR_SIZE: usize = 36;
 pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 
 /// Kaspa `Address` struct that serializes to and from an address format string: `kaspa:qz0s...t8cv`.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 #[wasm_bindgen(inspectable)]
 pub struct Address {
     #[wasm_bindgen(skip)]
@@ -189,6 +189,16 @@ pub struct Address {
     pub version: Version,
     #[wasm_bindgen(skip)]
     pub payload: PayloadVec,
+}
+
+impl std::fmt::Debug for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Address")
+            .field("prefix", &self.prefix)
+            .field("version", &self.version)
+            .field("payload", &self.encode_payload())
+            .finish()
+    }
 }
 
 impl Address {
