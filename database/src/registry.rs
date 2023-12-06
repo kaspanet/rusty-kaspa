@@ -37,6 +37,10 @@ pub enum DatabaseStorePrefixes {
     VirtualUtxoset = 27,
     VirtualState = 28,
 
+    // ---- Decomposed reachability stores ----
+    ReachabilityTreeChildren = 30,
+    ReachabilityFutureCoveringSet = 31,
+
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
     ConsensusEntries = 125,

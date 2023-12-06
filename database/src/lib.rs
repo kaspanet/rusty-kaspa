@@ -17,7 +17,7 @@ pub mod prelude {
     pub use super::cache::Cache;
     pub use super::item::CachedDbItem;
     pub use super::key::DbKey;
-    pub use super::set_access::{CachedDbSetAccess, ReadLock};
+    pub use super::set_access::{CachedDbSetAccess, DbSetAccess, ReadLock};
     pub use super::writer::{BatchDbWriter, DbWriter, DirectDbWriter, DirectWriter, MemoryWriter};
     pub use db::{delete_db, ConnBuilder, DB};
     pub use errors::{StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions};

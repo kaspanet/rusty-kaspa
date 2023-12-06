@@ -9,6 +9,7 @@ use std::{
     error::Error,
     fmt::Debug,
     hash::BuildHasher,
+    marker::PhantomData,
     sync::Arc,
 };
 
@@ -100,7 +101,9 @@ where
 
     pub fn delete_bucket(&self, mut writer: impl DbWriter, key: TKey) -> Result<(), StoreError> {
         let locked_entry = self.read_locked_entry(key.clone())?;
-        // TODO: check if DB supports delete by prefix
+        // Note: rocksdb supports `delete_range` which would fit here, however it does not support
+        // it in batch mode, which is essential for us. Hence we must manually read all data in the
+        // bucket in order to delete it
         for data in locked_entry.read().iter() {
             writer.delete(self.get_db_key(&key, data)?)?;
         }
@@ -117,6 +120,111 @@ where
         Ok(())
     }
 
+    fn seek_iterator(
+        &self,
+        key: TKey,
+        limit: usize,     // amount to take.
+        skip_first: bool, // skips the first value, (useful in conjunction with the seek-key, as to not re-retrieve).
+    ) -> impl Iterator<Item = Result<Box<[u8]>, Box<dyn Error>>> + '_
+    where
+        TKey: Clone + AsRef<[u8]>,
+        TData: DeserializeOwned,
+    {
+        let db_key = {
+            let mut db_key = DbKey::prefix_only(&self.prefix);
+            db_key.add_bucket(&key);
+            db_key
+        };
+
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
+
+        let mut db_iterator = self.db.iterator_opt(IteratorMode::Start, read_opts);
+
+        if skip_first {
+            db_iterator.next();
+        }
+
+        db_iterator.take(limit).map(move |item| match item {
+            Ok((key_bytes, _)) => Ok(key_bytes[db_key.prefix_len()..].into()),
+            Err(err) => Err(err.into()),
+        })
+    }
+
+    pub fn prefix(&self) -> &[u8] {
+        &self.prefix
+    }
+
+    fn bucket_iterator(&self, key: TKey) -> impl Iterator<Item = Result<TData, Box<dyn Error>>> + '_
+    where
+        TKey: Clone + AsRef<[u8]>,
+        TData: DeserializeOwned,
+    {
+        self.seek_iterator(key, usize::MAX, false).map(|res| {
+            let data = res.unwrap();
+            Ok(bincode::deserialize(&data)?)
+        })
+    }
+}
+
+/// A concurrent DB store for typed **set** access *without* caching.
+#[derive(Clone)]
+pub struct DbSetAccess<TKey, TData>
+where
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Send + Sync,
+{
+    db: Arc<DB>,
+
+    // DB bucket/path
+    prefix: Vec<u8>,
+
+    _phantom: PhantomData<(TKey, TData)>,
+}
+
+impl<TKey, TData> DbSetAccess<TKey, TData>
+where
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync + AsRef<[u8]>,
+    TData: Clone + std::hash::Hash + Eq + Send + Sync + DeserializeOwned + Serialize,
+{
+    pub fn new(db: Arc<DB>, prefix: Vec<u8>) -> Self {
+        Self { db, prefix, _phantom: Default::default() }
+    }
+
+    pub fn read(&self, key: TKey) -> Result<Vec<TData>, StoreError> {
+        Ok(self.bucket_iterator(key.clone()).map(|x| x.unwrap()).collect())
+    }
+
+    pub fn write(&self, writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError> {
+        self.write_to_db(writer, key, &data)
+    }
+
+    fn write_to_db(&self, mut writer: impl DbWriter, key: TKey, data: &TData) -> Result<(), StoreError> {
+        writer.put(self.get_db_key(&key, data)?, [])?;
+        Ok(())
+    }
+
+    fn get_db_key(&self, key: &TKey, data: &TData) -> Result<DbKey, StoreError> {
+        let bin_data = bincode::serialize(&data)?;
+        Ok(DbKey::new_with_bucket(&self.prefix, key, bin_data))
+    }
+
+    pub fn delete_bucket(&self, mut writer: impl DbWriter, key: TKey) -> Result<(), StoreError> {
+        // Note: rocksdb supports `delete_range` which would fit here, however it does not support
+        // it in batch mode, which is essential for us. Hence we must manually read all data in the
+        // bucket in order to delete it
+        for data in self.bucket_iterator(key.clone()).map(|x| x.unwrap()) {
+            writer.delete(self.get_db_key(&key, &data)?)?;
+        }
+        Ok(())
+    }
+
+    pub fn delete(&self, mut writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError> {
+        writer.delete(self.get_db_key(&key, &data)?)?;
+        Ok(())
+    }
+
+    // TODO: extract to global fn and reuse?
     fn seek_iterator(
         &self,
         key: TKey,
