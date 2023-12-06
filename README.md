@@ -1,11 +1,7 @@
 
-<h1 align="center">Kaspa On Rust</h1>
+<h1>Kaspa On Rust</h1>
 
-Welcome to the Rust-based implementation of the Kaspa full-node and its ancillary libraries. This Alpha release serves as a replacement to the established <a href="https://github.com/kaspanet/kaspad">Golang node</a> (once the rust rewrite is completed), introducing developers to the possibilities of Rust in the Kaspa network's context.
-
-Our codebase is an experimental ground for developers aiming to push the boundaries of blockchain scalability and speed. The Kaspa node aims to validate the feasibility of a high-speed blockchain, boasting block intervals of one second with prospects for significant enhancements.
-
-Contributors to this repository will engage with the technical challenges of achieving rapid block times and swift confirmation, moving towards the goal of scaling transaction throughput substantially. While our objectives are ambitious, our focus remains on robust and pragmatic code development.
+Welcome to the Rust-based implementation of the Kaspa full-node and its ancillary libraries. This Alpha release serves as a drop-in replacement to the established <a href="https://github.com/kaspanet/kaspad">Golang node</a> (once the rust rewrite is completed), introducing developers to the possibilities of Rust in the Kaspa network's context.
 
 We invite developers and blockchain enthusiasts to collaborate, test, and optimize our Rust implementation. Each line of code here is an opportunity to contribute to the open-source blockchain movement, shaping a platform designed for scalability and speed without compromising on decentralization.
 
@@ -18,15 +14,13 @@ Your feedback, contributions, and issue reports will be integral to evolving thi
   1. Install  general prerequisites
 
       ```bash
-      sudo apt install build-essential \
-      libssl-dev pkg-config 
+      sudo apt install build-essential libssl-dev pkg-config 
       ```
 
   2. Install Protobuf (required for gRPC)
   
       ```bash
-      sudo apt install protobuf-compiler \
-      libprotobuf-dev #Required for gRPC
+      sudo apt install protobuf-compiler libprotobuf-dev #Required for gRPC
       ```
   3. Install the clang toolchain (required for RocksDB and WASM secp256k1 builds)
 
