@@ -767,8 +767,12 @@ impl ConsensusApi for Consensus {
         Ok((&*ghostdag).into())
     }
 
-    fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
-        self.services.relations_service.get_children(hash).unwrap_option()
+    fn get_block_children(&self, hash: Hash) -> Option<Vec<Hash>> {
+        self.services
+            .relations_service
+            .get_children(hash)
+            .unwrap_option()
+            .map(|children| children.read().iter().copied().collect_vec())
     }
 
     fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
