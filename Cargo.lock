@@ -2953,7 +2953,9 @@ name = "kaspa-wallet-core"
 version = "0.13.0"
 dependencies = [
  "aes",
+ "ahash 0.8.6",
  "argon2",
+ "async-channel 2.0.0",
  "async-std",
  "async-trait",
  "base64 0.21.5",
@@ -2974,6 +2976,7 @@ dependencies = [
  "js-sys",
  "kaspa-addresses",
  "kaspa-bip32",
+ "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-wasm",
  "kaspa-core",

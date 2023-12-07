@@ -124,6 +124,7 @@ kaspa-metrics = { version = "0.13.0", path = "metrics/metrics" }
 
 # external
 aes = "0.8.3"
+ahash = "0.8.6"
 argon2 = "0.5.2"
 async-channel = "2.0.0"
 async-std = { version = "1.12.0", features = ['attributes'] }
