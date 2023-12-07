@@ -6,7 +6,6 @@ use rocksdb::{IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{hash_map::RandomState, HashSet},
-    error::Error,
     fmt::Debug,
     hash::BuildHasher,
     marker::PhantomData,
@@ -68,7 +67,7 @@ where
         if let Some(data) = self.cache.get(&key) {
             Ok(data)
         } else {
-            let data: HashSet<TData, _> = self.inner.bucket_iterator(key.clone()).map(|x| x.unwrap()).collect();
+            let data: HashSet<TData, _> = self.inner.bucket_iterator(key.clone()).collect::<Result<_, _>>()?;
             let data = Arc::new(RwLock::new(data));
             self.cache.insert(key, data.clone());
             Ok(data)
@@ -148,7 +147,8 @@ where
         // Note: rocksdb supports `delete_range` which would fit here, however it does not support
         // it in batch mode, which is essential for us. Hence we must manually read all data in the
         // bucket in order to delete it
-        for data in self.bucket_iterator(key.clone()).map(|x| x.unwrap()) {
+        for res in self.bucket_iterator(key.clone()) {
+            let data = res?;
             writer.delete(self.get_db_key(&key, &data)?)?;
         }
         Ok(())
@@ -172,7 +172,7 @@ where
         key: TKey,
         limit: usize,     // amount to take.
         skip_first: bool, // skips the first value, (useful in conjunction with the seek-key, as to not re-retrieve).
-    ) -> impl Iterator<Item = Result<Box<[u8]>, Box<dyn Error>>> + '_
+    ) -> impl Iterator<Item = Result<Box<[u8]>, StoreError>> + '_
     where
         TKey: Clone + AsRef<[u8]>,
         TData: DeserializeOwned,
@@ -202,14 +202,14 @@ where
         &self.prefix
     }
 
-    pub fn bucket_iterator(&self, key: TKey) -> impl Iterator<Item = Result<TData, Box<dyn Error>>> + '_
+    pub fn bucket_iterator(&self, key: TKey) -> impl Iterator<Item = Result<TData, StoreError>> + '_
     where
         TKey: Clone + AsRef<[u8]>,
         TData: DeserializeOwned,
     {
-        self.seek_iterator(key, usize::MAX, false).map(|res| {
-            let data = res.unwrap();
-            Ok(bincode::deserialize(&data)?)
+        self.seek_iterator(key, usize::MAX, false).map(|res| match res {
+            Ok(data) => Ok(bincode::deserialize(&data)?),
+            Err(err) => Err(err),
         })
     }
 }

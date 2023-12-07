@@ -157,7 +157,7 @@ impl DbReachabilitySet {
             return Ok(entry);
         }
 
-        let mut set: Vec<Hash> = self.access.bucket_iterator(hash).map(|h| h.unwrap()).collect();
+        let mut set: Vec<Hash> = self.access.bucket_iterator(hash).collect::<Result<_, _>>()?;
         // Cached reachability sets are assumed to be ordered by interval in order to allow binary search over them
         set.sort_by_cached_key(f);
         let set = BlockHashes::new(set);

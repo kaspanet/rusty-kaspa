@@ -171,7 +171,7 @@ where
             })
             .collect_vec();
         for key in keys {
-            writer.delete(key.unwrap())?;
+            writer.delete(key?)?;
         }
         Ok(())
     }
