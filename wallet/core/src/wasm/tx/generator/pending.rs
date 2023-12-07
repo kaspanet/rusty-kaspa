@@ -37,12 +37,12 @@ impl PendingTransaction {
 
     #[wasm_bindgen(getter, js_name = aggregateInputAmount)]
     pub fn aggregate_input_value(&self) -> BigInt {
-        BigInt::from(self.inner.input_aggregate_value())
+        BigInt::from(self.inner.aggregate_input_value())
     }
 
     #[wasm_bindgen(getter, js_name = aggregateOutputAmount)]
     pub fn aggregate_output_value(&self) -> BigInt {
-        BigInt::from(self.inner.output_aggregate_value())
+        BigInt::from(self.inner.aggregate_output_value())
     }
 
     #[wasm_bindgen(getter, js_name = "type")]
