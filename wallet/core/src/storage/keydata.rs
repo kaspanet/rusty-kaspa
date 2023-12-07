@@ -312,6 +312,12 @@ impl TryFrom<(Mnemonic, Option<&Secret>)> for PrvKeyData {
     }
 }
 
+impl AsRef<PrvKeyData> for PrvKeyData {
+    fn as_ref(&self) -> &PrvKeyData {
+        self
+    }
+}
+
 impl Zeroize for PrvKeyData {
     fn zeroize(&mut self) {
         self.id.zeroize();
