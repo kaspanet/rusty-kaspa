@@ -28,7 +28,7 @@ pub struct AddressDerivationMeta([u32; 2]);
 
 impl Default for AddressDerivationMeta {
     fn default() -> Self {
-        Self([1, 1])
+        Self([0, 0])
     }
 }
 
