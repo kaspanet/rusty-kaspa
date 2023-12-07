@@ -3,6 +3,7 @@ use crate::result::Result;
 use crate::storage::interface::AddressBookStore;
 use crate::storage::interface::CreateArgs;
 use crate::storage::interface::OpenArgs;
+use crate::storage::interface::StorageDescriptor;
 use crate::storage::interface::StorageStream;
 use crate::storage::interface::WalletDescriptor;
 use crate::storage::local::cache::*;
@@ -177,6 +178,23 @@ impl LocalStoreInner {
     async fn close(&self) -> Result<()> {
         Ok(())
     }
+
+    fn descriptor(&self) -> WalletDescriptor {
+        let filename = self
+            .storage()
+            .filename()
+            .and_then(|f| PathBuf::from(f).file_stem().and_then(|f| f.to_str().map(String::from)))
+            .unwrap_or_else(|| "resident".to_string());
+        WalletDescriptor { title: self.cache().wallet_title.clone(), filename }
+    }
+
+    fn location(&self) -> Result<StorageDescriptor> {
+        let store = self.storage();
+        match &*store {
+            Store::Resident => Ok(StorageDescriptor::Resident),
+            Store::Storage(storage) => Ok(StorageDescriptor::Internal(storage.filename_as_string())),
+        }
+    }
 }
 
 impl Drop for LocalStoreInner {
@@ -245,14 +263,7 @@ impl Interface for LocalStore {
     }
 
     fn descriptor(&self) -> Option<WalletDescriptor> {
-        self.inner.lock().unwrap().as_ref().map(|inner| {
-            let filename = inner
-                .storage()
-                .filename()
-                .and_then(|f| PathBuf::from(f).file_stem().and_then(|f| f.to_str().map(String::from)))
-                .unwrap_or_else(|| "--resident--".to_string());
-            WalletDescriptor { title: inner.cache().wallet_title.clone(), filename }
-        })
+        self.inner.lock().unwrap().as_ref().map(|inner| inner.descriptor())
     }
 
     async fn rename(&self, ctx: &Arc<dyn AccessContextT>, title: Option<&str>, filename: Option<&str>) -> Result<()> {
@@ -275,13 +286,14 @@ impl Interface for LocalStore {
         store.exists().await
     }
 
-    async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()> {
+    async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<WalletDescriptor> {
         let location = self.location.lock().unwrap().clone().unwrap();
 
         let inner = Arc::new(LocalStoreInner::try_create(ctx, &location.folder, args, self.is_resident).await?);
+        let descriptor = inner.descriptor();
         self.inner.lock().unwrap().replace(inner);
 
-        Ok(())
+        Ok(descriptor)
     }
 
     async fn open(&self, ctx: &Arc<dyn AccessContextT>, args: OpenArgs) -> Result<()> {
@@ -322,12 +334,8 @@ impl Interface for LocalStore {
         self.inner.lock().unwrap().is_some()
     }
 
-    fn location(&self) -> Result<Option<String>> {
-        let store = self.inner()?.storage();
-        match &*store {
-            Store::Resident => Ok(Some("Memory resident wallet".to_string())),
-            Store::Storage(ref storage) => Ok(Some(storage.filename_as_string())),
-        }
+    fn location(&self) -> Result<StorageDescriptor> {
+        self.inner()?.location()
     }
 
     async fn batch(&self) -> Result<()> {

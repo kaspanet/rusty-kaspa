@@ -61,6 +61,25 @@ impl WalletDescriptor {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+#[serde(tag = "kind", content = "meta")]
+pub enum StorageDescriptor {
+    Resident,
+    Internal(String),
+    Other(String),
+}
+
+impl std::fmt::Display for StorageDescriptor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StorageDescriptor::Resident => write!(f, "memory(resident)"),
+            StorageDescriptor::Internal(path) => write!(f, "{path}"),
+            StorageDescriptor::Other(other) => write!(f, "{other}"),
+        }
+    }
+}
+
 pub type StorageStream<T> = Pin<Box<dyn Stream<Item = Result<T>> + Send>>;
 
 #[async_trait]
@@ -160,7 +179,7 @@ pub trait Interface: Send + Sync + AnySync {
     fn is_open(&self) -> bool;
 
     /// return storage information string (file location)
-    fn location(&self) -> Result<Option<String>>;
+    fn location(&self) -> Result<StorageDescriptor>;
 
     /// returns the name of the currently open wallet or none
     fn descriptor(&self) -> Option<WalletDescriptor>;
@@ -172,7 +191,7 @@ pub trait Interface: Send + Sync + AnySync {
     async fn exists(&self, name: Option<&str>) -> Result<bool>;
 
     /// initialize wallet storage
-    async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()>;
+    async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<WalletDescriptor>;
 
     /// establish an open state (load wallet data cache, connect to the database etc.)
     async fn open(&self, ctx: &Arc<dyn AccessContextT>, args: OpenArgs) -> Result<()>;
