@@ -1,9 +1,6 @@
 use crate::imports::*;
-use crate::runtime::AccountDescriptor;
-use crate::runtime::Balance;
-use crate::storage::Hint;
-use crate::storage::TransactionRecord;
-use crate::storage::WalletDescriptor;
+use crate::runtime::{AccountDescriptor, Balance};
+use crate::storage::{Hint, PrvKeyDataInfo, StorageDescriptor, TransactionRecord, WalletDescriptor};
 use crate::utxo::context::UtxoContextId;
 
 /// Sync state of the kaspad node
@@ -86,6 +83,10 @@ pub enum Events {
         wallet_descriptor: Option<WalletDescriptor>,
         account_descriptors: Option<Vec<AccountDescriptor>>,
     },
+    WalletCreate {
+        wallet_descriptor: WalletDescriptor,
+        storage_descriptor: StorageDescriptor,
+    },
     /// Wallet reload initiated (development only)
     WalletReload {
         wallet_descriptor: Option<WalletDescriptor>,
@@ -97,6 +98,9 @@ pub enum Events {
     },
     /// Wallet has been closed
     WalletClose,
+    PrvKeyDataCreate {
+        prv_key_data_info: PrvKeyDataInfo,
+    },
     /// Accounts have been activated
     AccountActivation {
         ids: Vec<runtime::AccountId>,
@@ -106,13 +110,13 @@ pub enum Events {
         id: Option<runtime::AccountId>,
     },
     /// Account has been created
-    AccountCreation {
-        descriptor: AccountDescriptor,
+    AccountCreate {
+        account_descriptor: AccountDescriptor,
     },
     /// Account has been changed
     /// (emitted on new address generation)
     AccountUpdate {
-        descriptor: AccountDescriptor,
+        account_descriptor: AccountDescriptor,
     },
     /// Emitted after successful RPC connection
     /// after the initial state negotiation.
