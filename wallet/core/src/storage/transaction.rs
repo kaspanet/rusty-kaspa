@@ -123,6 +123,9 @@ pub enum TransactionMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(tag = "type", content = "transaction")]
+// the reason the struct is renamed lowercase and then
+// each field is renamed to camelCase is to force the
+// enum tags to be lower case.
 #[serde(rename_all = "lowercase")]
 pub enum TransactionData {
     Reorg {
@@ -162,6 +165,8 @@ pub enum TransactionData {
         payment_value: Option<u64>,
         #[serde(rename = "changeValue")]
         change_value: u64,
+        #[serde(rename = "acceptedDaaScore")]
+        accepted_daa_score: Option<u64>,
     },
 }
 
@@ -375,7 +380,7 @@ impl TransactionRecord {
         }
     }
 
-    pub fn new_outgoing(utxo_context: &UtxoContext, pending_tx: &PendingTransaction) -> Self {
+    pub fn new_outgoing(utxo_context: &UtxoContext, pending_tx: &PendingTransaction, accepted_daa_score: Option<u64>) -> Self {
         let binding = Binding::from(utxo_context.binding());
         let block_daa_score =
             utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
@@ -404,6 +409,7 @@ impl TransactionRecord {
             transaction,
             payment_value: *payment_value,
             change_value: *change_output_value,
+            accepted_daa_score,
         };
 
         TransactionRecord {
