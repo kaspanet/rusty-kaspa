@@ -101,6 +101,12 @@ impl UtxoEntryReference {
     }
 }
 
+impl std::hash::Hash for UtxoEntryReference {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id().hash(state);
+    }
+}
+
 impl AsRef<UtxoEntry> for UtxoEntryReference {
     fn as_ref(&self) -> &UtxoEntry {
         &self.utxo
@@ -298,13 +304,13 @@ impl TryFrom<&JsValue> for UtxoEntryReference {
 }
 
 impl UtxoEntryReference {
-    pub fn fake(amount: u64) -> Self {
+    pub fn simulated(amount: u64) -> Self {
         use kaspa_addresses::{Prefix, Version};
         let address = Address::new(Prefix::Testnet, Version::PubKey, &[0; 32]);
-        Self::fake_with_address(amount, &address)
+        Self::simulated_with_address(amount, &address)
     }
 
-    pub fn fake_with_address(amount: u64, address: &Address) -> Self {
+    pub fn simulated_with_address(amount: u64, address: &Address) -> Self {
         let outpoint = TransactionOutpoint::fake();
         let script_public_key = kaspa_txscript::pay_to_address_script(address);
         let block_daa_score = 0;
