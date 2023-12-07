@@ -4,7 +4,7 @@ use crate::result::Result;
 use crate::runtime::{account::ScanNotifier, try_from_storage, Account, AccountId, ActiveAccountMap};
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
-use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs, TransactionRangeResult};
+use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs, StorageDescriptor, TransactionRangeResult};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
 use crate::storage::{
@@ -230,12 +230,22 @@ impl Wallet {
     }
 
     pub async fn reload(self: &Arc<Self>) -> Result<()> {
-        self.reset(false).await?;
 
         if self.is_open() {
-            let wallet_descriptor = self.store().descriptor();
-            let accounts = self.accounts(None).await?.try_collect::<Vec<_>>().await?;
+            // similar to reset(), but effectively reboots the wallet
+
+            let accounts = self.active_accounts().collect();
             let account_descriptors = Some(accounts.iter().map(|account| account.descriptor()).collect::<Result<Vec<_>>>()?);
+            let wallet_descriptor = self.store().descriptor();
+            
+            let futures = accounts.iter().map(|account| account.clone().stop());
+            join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
+
+            self.utxo_processor().clear().await?;
+
+            let futures = accounts.into_iter().map(|account| account.start());
+            join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
+
             self.notify(Events::WalletReload { wallet_descriptor, account_descriptors }).await?;
         }
 
@@ -243,9 +253,11 @@ impl Wallet {
     }
 
     pub async fn close(self: &Arc<Wallet>) -> Result<()> {
-        self.reset(true).await?;
-        self.store().close().await?;
-        self.notify(Events::WalletClose).await?;
+        if self.is_open() {
+            self.reset(true).await?;
+            self.store().close().await?;
+            self.notify(Events::WalletClose).await?;
+        }
 
         Ok(())
     }
@@ -681,36 +693,47 @@ impl Wallet {
 
         let bip32 = storage::Bip32::new(account_index, xpub_keys, false);
 
-        let settings = storage::Settings { is_visible: false, name: None };
+        let settings = storage::Settings { is_visible: true, name: args.account_name };
         let account: Arc<dyn Account> = Arc::new(runtime::Bip32::try_new(self, prv_key_data.id, settings, bip32, None).await?);
         let stored_account = account.as_storable()?;
 
         account_storage.store_single(&stored_account, None).await?;
         self.inner.store.clone().commit(&ctx).await?;
 
-        self.notify(Events::AccountCreation { descriptor: account.descriptor()? }).await?;
+        self.notify(Events::AccountCreate { account_descriptor: account.descriptor()? }).await?;
 
         Ok(account)
     }
 
-    pub async fn create_wallet(self: &Arc<Wallet>, args: WalletCreateArgs) -> Result<Option<String>> {
+    pub async fn create_wallet(self: &Arc<Wallet>, args: WalletCreateArgs) -> Result<(WalletDescriptor, StorageDescriptor)> {
         self.close().await?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
-        self.inner.store.create(&ctx, args.into()).await?;
-        let descriptor = self.inner.store.location()?;
+        let wallet_descriptor = self.inner.store.create(&ctx, args.into()).await?;
+        let storage_descriptor = self.inner.store.location()?;
         self.inner.store.commit(&ctx).await?;
-        Ok(descriptor)
+
+        self.notify(Events::WalletCreate {
+            wallet_descriptor: wallet_descriptor.clone(),
+            storage_descriptor: storage_descriptor.clone(),
+        })
+        .await?;
+
+        Ok((wallet_descriptor, storage_descriptor))
     }
 
     pub async fn create_prv_key_data(self: &Arc<Wallet>, args: PrvKeyDataCreateArgs) -> Result<(PrvKeyDataId, Mnemonic)> {
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret.clone()));
         let mnemonic = Mnemonic::try_from(args.mnemonic)?;
         let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), args.payment_secret.as_ref()))?;
+        let prv_key_data_info = PrvKeyDataInfo::from(prv_key_data.as_ref());
         let prv_key_data_id = prv_key_data.id;
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
         prv_key_data_store.store(&ctx, prv_key_data).await?;
         self.inner.store.commit(&ctx).await?;
+
+        self.notify(Events::PrvKeyDataCreate { prv_key_data_info }).await?;
+
         Ok((prv_key_data_id, mnemonic))
     }
 
@@ -719,13 +742,13 @@ impl Wallet {
         wallet_args: WalletCreateArgs,
         account_args: AccountCreateArgs,
         mnemonic_phrase_word_count: WordCount,
-    ) -> Result<(Mnemonic, Option<String>, Arc<dyn Account>)> {
+    ) -> Result<(WalletDescriptor, StorageDescriptor, Mnemonic, Arc<dyn Account>)> {
         self.close().await?;
 
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(account_args.wallet_secret));
 
-        self.inner.store.create(&ctx, wallet_args.into()).await?;
-        let descriptor = self.inner.store.location()?;
+        let wallet_descriptor = self.inner.store.create(&ctx, wallet_args.into()).await?;
+        let storage_descriptor = self.inner.store.location()?;
         let xpub_prefix = kaspa_bip32::Prefix::XPUB;
         let mnemonic = Mnemonic::random(mnemonic_phrase_word_count, Default::default())?;
         let account_index = 0;
@@ -747,7 +770,7 @@ impl Wallet {
         self.inner.store.commit(&ctx).await?;
 
         self.select(Some(&account)).await?;
-        Ok((mnemonic, descriptor, account))
+        Ok((wallet_descriptor, storage_descriptor, mnemonic, account))
     }
 
     pub async fn get_account_by_id(self: &Arc<Self>, account_id: &AccountId) -> Result<Option<Arc<dyn Account>>> {
@@ -790,16 +813,16 @@ impl Wallet {
                 // outgoing transactions (the transaction is the same, but
                 // the Pending event may be issued by the receipt of the
                 // change UTXOs)
-                if !record.is_outgoing() {
-                    self.store().as_transaction_record_store()?.store(&[record]).await?;
-                }
+                // if !record.is_outgoing() {
+                self.store().as_transaction_record_store()?.store(&[record]).await?;
+                // }
             }
 
             Events::Reorg { record } | Events::External { record } | Events::Outgoing { record } => {
                 self.store().as_transaction_record_store()?.store(&[record]).await?;
             }
             Events::Scan { record } => {
-                if let Err(err) =
+                if let Err(_err) =
                     self.store().as_transaction_record_store()?.load_single(record.binding(), &self.network_id()?, record.id()).await
                 {
                     // println!("Detected unknown transaction {} {err}", record.id());
@@ -829,10 +852,10 @@ impl Wallet {
                     // if transactions is not found in transaction storage, re-publish it as external
                 }
             }
-            Events::SyncState { sync_state } => {
-                if sync_state.is_synced() && self.is_open() {
-                    self.reload().await?;
-                }
+            Events::SyncState { sync_state: _ } => {
+                // if sync_state.is_synced() && self.is_open() {
+                //     self.reload().await?;
+                // }
             }
             _ => {}
         }
@@ -883,7 +906,7 @@ impl Wallet {
         self.inner.store.is_open()
     }
 
-    pub fn location(&self) -> Result<Option<String>> {
+    pub fn location(&self) -> Result<StorageDescriptor> {
         self.inner.store.location()
     }
 
@@ -1319,7 +1342,7 @@ impl WalletApi for Wallet {
 
         let wallet_secret = wallet_args.wallet_secret.clone();
 
-        let wallet_descriptor = self.create_wallet(wallet_args).await?;
+        let (wallet_descriptor, storage_descriptor) = self.create_wallet(wallet_args).await?;
         let (prv_key_data_id, mnemonic) = self.create_prv_key_data(prv_key_data_args).await?;
         let account = self.create_bip32_account(prv_key_data_id, account_args).await?;
 
@@ -1327,7 +1350,12 @@ impl WalletApi for Wallet {
         let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         self.store().flush(&access_ctx).await?;
 
-        Ok(WalletCreateResponse { mnemonic: mnemonic.phrase_string(), wallet_descriptor, account_descriptor: account.descriptor()? })
+        Ok(WalletCreateResponse {
+            mnemonic: mnemonic.phrase_string(),
+            wallet_descriptor,
+            storage_descriptor,
+            account_descriptor: account.descriptor()?,
+        })
     }
 
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
