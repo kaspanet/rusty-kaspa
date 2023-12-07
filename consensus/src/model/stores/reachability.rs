@@ -140,8 +140,12 @@ impl DbReachabilitySet {
     }
 
     fn delete(&mut self, writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
-        self.cache.remove(&hash);
-        self.access.delete_bucket(writer, hash)
+        if let Some(removed) = self.cache.remove(&hash) {
+            // If the entry was cached, use it for iterating the bucket
+            self.access.delete_many(writer, hash, removed.iter().copied())
+        } else {
+            self.access.delete_bucket(writer, hash)
+        }
     }
 
     fn read<K, F>(&self, hash: Hash, f: F) -> Result<BlockHashes, StoreError>
@@ -153,9 +157,8 @@ impl DbReachabilitySet {
             return Ok(entry);
         }
 
-        let mut set = self.access.read(hash)?;
-        // TODO: explain importance of sorting
-        // TODO: justify unwrap
+        let mut set: Vec<Hash> = self.access.bucket_iterator(hash).map(|h| h.unwrap()).collect();
+        // Cached reachability sets are assumed to be ordered by interval in order to allow binary search over them
         set.sort_by_cached_key(f);
         let set = BlockHashes::new(set);
         self.cache.insert(hash, set.clone());
