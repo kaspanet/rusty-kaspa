@@ -337,11 +337,16 @@ impl KaspaCli {
 
                                 },
                                 Events::AccountSelection { .. } => { },
+                                Events::WalletCreate { .. } => { },
                                 Events::WalletError { .. } => { },
                                 // Events::WalletReady { .. } => { },
 
                                 Events::WalletOpen { .. } |
                                 Events::WalletReload { .. } => { },
+                                Events::WalletClose => {
+                                    this.term().refresh_prompt();
+                                },
+                                Events::PrvKeyDataCreate { .. } => { },
                                 Events::AccountActivation { .. } => {
                                     // list all accounts
                                     this.list().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
@@ -350,11 +355,8 @@ impl KaspaCli {
                                     this.wallet().autoselect_default_account_if_single().await.ok();
                                     this.term().refresh_prompt();
                                 },
-                                Events::AccountCreation { .. } => { },
+                                Events::AccountCreate { .. } => { },
                                 Events::AccountUpdate { .. } => { },
-                                Events::WalletClose => {
-                                    this.term().refresh_prompt();
-                                },
                                 Events::DAAScoreChange { current_daa_score } => {
                                     if this.is_mutted() && this.flags.get(Track::Daa) {
                                         tprintln!(this, "{NOTIFY} DAA: {current_daa_score}");
