@@ -1,24 +1,20 @@
+use crate::imports::*;
 use crate::result::Result;
+use crate::error::Error;
 use crate::rpc::DynRpcApi;
 use crate::tx::{DataKind, Generator};
 use crate::utxo::UtxoEntryReference;
-use kaspa_addresses::Address;
-use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_core::sign::sign_with_multiple_v2;
 use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionId};
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
-use std::sync::Mutex;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-use workflow_log::log_info;
 
 pub(crate) struct PendingTransactionInner {
     /// Generator that produced the transaction
     pub(crate) generator: Generator,
     /// UtxoEntryReferences of the pending transaction
-    pub(crate) utxo_entries: Vec<UtxoEntryReference>,
+    pub(crate) utxo_entries: AHashSet<UtxoEntryReference>,
+    /// Transaction Id (cached in pending to avoid mutex lock)
+    pub(crate) id: TransactionId,
     /// Signable transaction (actual transaction that will be signed and sent)
     pub(crate) signable_tx: Mutex<SignableTransaction>,
     /// UTXO addresses used by this transaction
@@ -83,11 +79,14 @@ impl PendingTransaction {
         fees: u64,
         kind: DataKind,
     ) -> Result<Self> {
+        let id = transaction.id();
         let entries = utxo_entries.iter().map(|e| e.utxo.entry.clone()).collect::<Vec<_>>();
         let signable_tx = Mutex::new(SignableTransaction::with_entries(transaction, entries));
+        let utxo_entries = utxo_entries.into_iter().collect::<AHashSet<_>>();
         Ok(Self {
             inner: Arc::new(PendingTransactionInner {
                 generator: generator.clone(),
+                id,
                 signable_tx,
                 utxo_entries,
                 addresses,
@@ -105,7 +104,7 @@ impl PendingTransaction {
     }
 
     pub fn id(&self) -> TransactionId {
-        self.inner.signable_tx.lock().unwrap().id()
+        self.inner.id
     }
 
     /// Addresses used by the pending transaction
@@ -114,7 +113,7 @@ impl PendingTransaction {
     }
 
     /// Get UTXO entries [`Vec<UtxoEntryReference>`] of the pending transaction
-    pub fn utxo_entries(&self) -> &Vec<UtxoEntryReference> {
+    pub fn utxo_entries(&self) -> &AHashSet<UtxoEntryReference> {
         &self.inner.utxo_entries
     }
 
@@ -122,11 +121,11 @@ impl PendingTransaction {
         self.inner.fees
     }
 
-    pub fn input_aggregate_value(&self) -> u64 {
+    pub fn aggregate_input_value(&self) -> u64 {
         self.inner.aggregate_input_value
     }
 
-    pub fn output_aggregate_value(&self) -> u64 {
+    pub fn aggregate_output_value(&self) -> u64 {
         self.inner.aggregate_output_value
     }
 
@@ -213,7 +212,7 @@ impl PendingTransaction {
 
     pub fn try_sign_with_keys(&self, privkeys: Vec<[u8; 32]>) -> Result<()> {
         let mutable_tx = self.inner.signable_tx.lock()?.clone();
-        let signed_tx = sign_with_multiple_v2(mutable_tx, privkeys);
+        let signed_tx = sign_with_multiple_v2(mutable_tx, privkeys).map_err(|tx| Error::PartiallySigned(tx))?;
         *self.inner.signable_tx.lock().unwrap() = signed_tx;
         Ok(())
     }
