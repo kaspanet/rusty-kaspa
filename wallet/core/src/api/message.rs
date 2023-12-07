@@ -10,7 +10,9 @@ use workflow_rpc::id::{Generator, Id64 as TaskId};
 use crate::{
     runtime::{account::descriptor::AccountDescriptor, AccountCreateArgs, PrvKeyDataCreateArgs, WalletCreateArgs},
     secret::Secret,
-    storage::{AccountId, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord, TransactionType, WalletDescriptor},
+    storage::{
+        AccountId, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, StorageDescriptor, TransactionRecord, TransactionType, WalletDescriptor,
+    },
     tx::{Fees, GeneratorSummary, PaymentDestination},
 };
 // use std::fmt::{Display, Formatter};
@@ -85,9 +87,9 @@ pub struct WalletCreateRequest {
 #[serde(rename_all = "camelCase")]
 pub struct WalletCreateResponse {
     pub mnemonic: String,
-    pub wallet_descriptor: Option<String>,
+    pub storage_descriptor: StorageDescriptor,
+    pub wallet_descriptor: WalletDescriptor,
     pub account_descriptor: AccountDescriptor,
-    // pub account_id : AccountId,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
