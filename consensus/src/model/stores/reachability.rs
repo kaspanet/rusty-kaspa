@@ -74,8 +74,8 @@ pub trait ReachabilityStore: ReachabilityStoreReader {
     fn get_reindex_root(&self) -> Result<Hash, StoreError>;
 }
 
-/// Wraps the logic of reachability set management (manages a set per entry).
-/// Used both for tree children and for the future covering set.
+/// Ordered DB set (manages a set per entry with cache and ordering).
+/// Used both for the tree children set and for the future covering set (per block)
 #[derive(Clone)]
 struct DbReachabilitySet {
     access: DbSetAccess<Hash, Hash>,
@@ -128,7 +128,7 @@ impl DbReachabilitySet {
         Ok(())
     }
 
-    fn commit_dirty_entry(&mut self, mut writer: impl DbWriter, hash: Hash, entry: DirtySetEntry) -> Result<(), StoreError> {
+    fn commit_staging_entry(&mut self, mut writer: impl DbWriter, hash: Hash, entry: StagingSetEntry) -> Result<(), StoreError> {
         self.cache.insert(hash, entry.set);
         for removed_element in entry.deletions {
             self.access.delete(&mut writer, hash, removed_element)?;
@@ -158,7 +158,7 @@ impl DbReachabilitySet {
         }
 
         let mut set: Vec<Hash> = self.access.bucket_iterator(hash).collect::<Result<_, _>>()?;
-        // Cached reachability sets are assumed to be ordered by interval in order to allow binary search over them
+        // Apply the ordering rule before caching
         set.sort_by_cached_key(f);
         let set = BlockHashes::new(set);
         self.cache.insert(hash, set.clone());
@@ -305,10 +305,12 @@ impl ReachabilityStoreReader for DbReachabilityStore {
     }
 
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+        // Cached reachability sets are assumed to be ordered by interval in order to allow binary search over them
         self.children_access.read(hash, |&h| self.access.read(h).unwrap().interval)
     }
 
     fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
+        // Cached reachability sets are assumed to be ordered by interval in order to allow binary search over them
         self.fcs_access.read(hash, |&h| self.access.read(h).unwrap().interval)
     }
 
@@ -317,13 +319,13 @@ impl ReachabilityStoreReader for DbReachabilityStore {
     }
 }
 
-struct DirtySetEntry {
+struct StagingSetEntry {
     set: BlockHashes,        // The full cached (ordered) set
     additions: BlockHashSet, // additions diff
     deletions: BlockHashSet, // deletions diff
 }
 
-impl DirtySetEntry {
+impl StagingSetEntry {
     fn new(cached_set: BlockHashes) -> Self {
         Self { set: cached_set, additions: Default::default(), deletions: Default::default() }
     }
@@ -362,8 +364,8 @@ impl DirtySetEntry {
 pub struct StagingReachabilityStore<'a> {
     store_read: RwLockUpgradableReadGuard<'a, DbReachabilityStore>,
     staging_writes: BlockHashMap<ReachabilityData>,
-    staging_children: BlockHashMap<DirtySetEntry>,
-    staging_fcs: BlockHashMap<DirtySetEntry>,
+    staging_children: BlockHashMap<StagingSetEntry>,
+    staging_fcs: BlockHashMap<StagingSetEntry>,
     staging_deletions: BlockHashSet,
     staging_reindex_root: Option<Hash>,
 }
@@ -389,11 +391,11 @@ impl<'a> StagingReachabilityStore<'a> {
         }
 
         for (k, v) in self.staging_children {
-            store_write.children_access.commit_dirty_entry(&mut writer, k, v)?;
+            store_write.children_access.commit_staging_entry(&mut writer, k, v)?;
         }
 
         for (k, v) in self.staging_fcs {
-            store_write.fcs_access.commit_dirty_entry(&mut writer, k, v)?;
+            store_write.fcs_access.commit_staging_entry(&mut writer, k, v)?;
         }
 
         // Deletions always come after mutations
@@ -460,7 +462,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
                 e.get_mut().append(child);
             }
             Vacant(e) => {
-                let mut set = DirtySetEntry::new(self.store_read.get_children(hash)?);
+                let mut set = StagingSetEntry::new(self.store_read.get_children(hash)?);
                 set.append(child);
                 e.insert(set);
             }
@@ -479,7 +481,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
                 e.get_mut().insert(fci, insertion_index);
             }
             Vacant(e) => {
-                let mut set = DirtySetEntry::new(self.store_read.get_future_covering_set(hash)?);
+                let mut set = StagingSetEntry::new(self.store_read.get_future_covering_set(hash)?);
                 set.insert(fci, insertion_index);
                 e.insert(set);
             }
@@ -513,7 +515,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
                 e.get_mut().replace(replaced_hash, replaced_index, replace_with);
             }
             Vacant(e) => {
-                let mut set = DirtySetEntry::new(self.store_read.get_children(hash)?);
+                let mut set = StagingSetEntry::new(self.store_read.get_children(hash)?);
                 set.replace(replaced_hash, replaced_index, replace_with);
                 e.insert(set);
             }
@@ -534,7 +536,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
                 e.get_mut().replace(replaced_hash, replaced_index, replace_with);
             }
             Vacant(e) => {
-                let mut set = DirtySetEntry::new(self.store_read.get_future_covering_set(hash)?);
+                let mut set = StagingSetEntry::new(self.store_read.get_future_covering_set(hash)?);
                 set.replace(replaced_hash, replaced_index, replace_with);
                 e.insert(set);
             }
