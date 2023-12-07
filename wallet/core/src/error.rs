@@ -2,6 +2,7 @@ use base64::DecodeError;
 use downcast::DowncastError;
 use kaspa_bip32::Error as BIP32Error;
 use kaspa_consensus_core::sign::Error as CoreSignError;
+use kaspa_consensus_core::tx::SignableTransaction;
 use kaspa_rpc_core::RpcError as KaspaRpcError;
 use kaspa_wrpc_client::error::Error as KaspaWorkflowRpcError;
 use std::sync::PoisonError;
@@ -240,6 +241,9 @@ pub enum Error {
 
     #[error("Legacy account is not initialized")]
     LegacyAccountNotInitialized,
+
+    #[error("The transaction is partially signed")]
+    PartiallySigned(SignableTransaction),
 }
 
 impl From<Aborted> for Error {

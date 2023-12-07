@@ -63,7 +63,8 @@ pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8
 
 /// TODO (aspect) - merge this with `v1` fn above or refactor wallet core to use the script engine.
 /// Sign a transaction using schnorr
-pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8; 32]>) -> SignableTransaction {
+pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8; 32]>) -> std::result::Result<SignableTransaction,SignableTransaction> {
+
     let mut map = BTreeMap::new();
     for privkey in privkeys {
         let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
@@ -73,6 +74,7 @@ pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<
     }
 
     let mut reused_values = SigHashReusedValues::new();
+    let mut additional_signatures_required = false;
     for i in 0..mutable_tx.tx.inputs.len() {
         let script = mutable_tx.entries[i].as_ref().unwrap().script_public_key.script();
         if let Some(schnorr_key) = map.get(&script.to_vec()) {
@@ -81,9 +83,15 @@ pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<
             let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
             // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
             mutable_tx.tx.inputs[i].signature_script = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
+        } else {
+            additional_signatures_required = true;
         }
     }
-    mutable_tx
+    if additional_signatures_required {
+        Err(mutable_tx)
+    } else {
+        Ok(mutable_tx)
+    }
 }
 
 pub fn verify(tx: &impl crate::tx::VerifiableTransaction) -> Result<(), Error> {
