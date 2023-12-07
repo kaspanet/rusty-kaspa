@@ -127,8 +127,7 @@ impl DbUtxoSetStore {
 
     /// Clear the store completely in DB and cache
     pub fn clear(&mut self) -> Result<(), StoreError> {
-        let writer = DirectDbWriter::new(&self.db);
-        self.access.delete_all(writer)
+        self.access.delete_all()
     }
 
     /// Write directly from an iterator and do not cache any data. NOTE: this action also clears the cache

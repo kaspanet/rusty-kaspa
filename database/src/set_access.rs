@@ -213,3 +213,36 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        create_temp_db,
+        prelude::{BatchDbWriter, ConnBuilder, DirectDbWriter},
+    };
+    use kaspa_hashes::Hash;
+    use rocksdb::WriteBatch;
+
+    #[test]
+    fn test_delete_bucket() {
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let access = DbSetAccess::<Hash, u64>::new(db.clone(), vec![1, 2]);
+
+        for i in 0..16 {
+            for j in 0..2 {
+                access.write(DirectDbWriter::new(&db), i.into(), i + j).unwrap();
+            }
+        }
+        for i in 0..16 {
+            assert_eq!(2, access.bucket_iterator(i.into()).count());
+        }
+        access.delete_bucket(DirectDbWriter::new(&db), 3.into()).unwrap();
+        assert_eq!(0, access.bucket_iterator(3.into()).count());
+
+        let mut batch = WriteBatch::default();
+        access.delete_bucket(BatchDbWriter::new(&mut batch), 6.into()).unwrap();
+        db.write(batch).unwrap();
+        assert_eq!(0, access.bucket_iterator(6.into()).count());
+    }
+}
