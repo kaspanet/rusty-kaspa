@@ -122,10 +122,10 @@ impl Wallet {
     }
 
     #[wasm_bindgen(js_name = "createWallet")]
-    pub async fn create_wallet(&self, wallet_args: &JsValue) -> Result<String> {
+    pub async fn create_wallet(&self, wallet_args: &JsValue) -> Result<()> {
         let wallet_args: WalletCreateArgs = wallet_args.try_into()?;
-        let descriptor = self.wallet.create_wallet(wallet_args.into()).await?;
-        Ok(descriptor.unwrap_or_default())
+        let (_wallet_descriptor, _storage_descriptor) = self.wallet.create_wallet(wallet_args.into()).await?;
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "createPrvKeyData")]
