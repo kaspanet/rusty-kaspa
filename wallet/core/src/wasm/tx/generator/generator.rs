@@ -7,6 +7,19 @@ use crate::wasm::tx::generator::*;
 use crate::wasm::wallet::Account;
 use crate::wasm::UtxoContext;
 
+#[wasm_bindgen(typescript_custom_section)]
+const IGeneratorSettingsObject: &'static str = r#"
+interface IGeneratorSettingsObject {
+    outputs: PaymentOutputs | Array<Array<number | string>>;
+    changeAddress: Address | string;
+    priorityFee: bigint;
+    utxoEntries: Array<UtxoEntryReference>;
+    sigOpCount: Uint8Array;
+    minimumSignatures: Uint16Array;
+    payload: Uint8Array | string;
+}
+"#;
+
 #[wasm_bindgen]
 extern "C" {
     /// Supports the following properties (all values must be supplied in SOMPI):
@@ -17,7 +30,7 @@ extern "C" {
     /// - `sigOpCount`: [`u8`]
     /// - `minimumSignatures`: [`u16`]
     /// - `payload`: [`Uint8Array`] or hex String representation of a payload
-    #[wasm_bindgen(extends = Object, is_type_of = Array::is_array, typescript_type = "PrivateKey[]")]
+    #[wasm_bindgen(extends = Object, is_type_of = Array::is_array, typescript_type = "IGeneratorSettingsObject")]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub type GeneratorSettingsObject;
 }
