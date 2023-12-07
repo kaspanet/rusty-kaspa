@@ -152,4 +152,10 @@ impl DerivationCapableAccount for Legacy {
     fn derivation(&self) -> Arc<dyn AddressDerivationManagerTrait> {
         self.derivation.clone()
     }
+
+    // legacy accounts do not support bip44
+    fn account_index(&self) -> u64 {
+        0
+    }
+
 }

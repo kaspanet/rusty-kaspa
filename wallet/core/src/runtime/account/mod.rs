@@ -223,6 +223,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
     fn descriptor(&self) -> Result<descriptor::AccountDescriptor>;
 
     async fn scan(self: Arc<Self>, window_size: Option<usize>, extent: Option<u32>) -> Result<()> {
+
         self.utxo_context().clear().await?;
 
         let current_daa_score = self.wallet().current_daa_score().ok_or(Error::NotConnected)?;
@@ -474,9 +475,7 @@ pub trait AsLegacyAccount: Account {
 pub trait DerivationCapableAccount: Account {
     fn derivation(&self) -> Arc<dyn AddressDerivationManagerTrait>;
 
-    fn account_index(&self) -> u64 {
-        0
-    }
+    fn account_index(&self) -> u64;
 
     async fn derivation_scan(
         self: Arc<Self>,
@@ -609,7 +608,7 @@ pub trait DerivationCapableAccount: Account {
         let store = self.wallet().store().as_account_store()?;
         store.update_metadata(&[&metadata]).await?;
 
-        self.wallet().notify(Events::AccountUpdate { descriptor: self.descriptor()? }).await?;
+        self.wallet().notify(Events::AccountUpdate { account_descriptor: self.descriptor()? }).await?;
 
         Ok(address)
     }
@@ -622,7 +621,7 @@ pub trait DerivationCapableAccount: Account {
         let store = self.wallet().store().as_account_store()?;
         store.update_metadata(&[&metadata]).await?;
 
-        self.wallet().notify(Events::AccountUpdate { descriptor: self.descriptor()? }).await?;
+        self.wallet().notify(Events::AccountUpdate { account_descriptor: self.descriptor()? }).await?;
 
         Ok(address)
     }

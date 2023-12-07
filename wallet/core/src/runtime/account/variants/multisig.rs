@@ -110,4 +110,9 @@ impl DerivationCapableAccount for MultiSig {
     fn derivation(&self) -> Arc<dyn AddressDerivationManagerTrait> {
         self.derivation.clone()
     }
+
+    fn account_index(&self) -> u64 {
+        0
+    }
+
 }
