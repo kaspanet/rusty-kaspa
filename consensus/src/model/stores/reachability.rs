@@ -140,12 +140,8 @@ impl DbReachabilitySet {
     }
 
     fn delete(&mut self, writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
-        if let Some(removed) = self.cache.remove(&hash) {
-            // If the entry was cached, use it for iterating the bucket
-            self.access.delete_many(writer, hash, removed.iter().copied())
-        } else {
-            self.access.delete_bucket(writer, hash)
-        }
+        self.cache.remove(&hash);
+        self.access.delete_bucket(writer, hash)
     }
 
     fn read<K, F>(&self, hash: Hash, f: F) -> Result<BlockHashes, StoreError>

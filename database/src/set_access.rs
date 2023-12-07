@@ -2,7 +2,7 @@ use crate::{db::DB, errors::StoreError};
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use parking_lot::{RwLock, RwLockReadGuard};
-use rocksdb::{IteratorMode, ReadOptions};
+use rocksdb::{IterateBounds, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{hash_map::RandomState, HashSet},
@@ -87,12 +87,8 @@ where
     }
 
     pub fn delete_bucket(&self, writer: impl DbWriter, key: TKey) -> Result<(), StoreError> {
-        if let Some(removed) = self.cache.remove(&key) {
-            // If the entry was cached, use it for iterating the bucket
-            self.inner.delete_many(writer, key, removed.read().iter().cloned())
-        } else {
-            self.inner.delete_bucket(writer, key)
-        }
+        self.cache.remove(&key);
+        self.inner.delete_bucket(writer, key)
     }
 
     pub fn delete(&self, writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError> {
@@ -144,21 +140,9 @@ where
     }
 
     pub fn delete_bucket(&self, mut writer: impl DbWriter, key: TKey) -> Result<(), StoreError> {
-        // Note: rocksdb supports `delete_range` which would fit here, however it does not support
-        // it in batch mode, which is essential for us. Hence we must manually read all data in the
-        // bucket in order to delete it
-        for res in self.bucket_iterator(key.clone()) {
-            let data = res?;
-            writer.delete(self.get_db_key(&key, &data)?)?;
-        }
-        Ok(())
-    }
-
-    /// Delete multiple items within a bucket
-    pub fn delete_many(&self, mut writer: impl DbWriter, key: TKey, iter: impl Iterator<Item = TData>) -> Result<(), StoreError> {
-        for data in iter {
-            writer.delete(self.get_db_key(&key, &data)?)?;
-        }
+        let db_key = DbKey::new_with_bucket(&self.prefix, &key, []);
+        let (from, to) = rocksdb::PrefixRange(db_key.as_ref()).into_bounds();
+        writer.delete_range(from.unwrap(), to.unwrap())?;
         Ok(())
     }
 
@@ -177,12 +161,7 @@ where
         TKey: Clone + AsRef<[u8]>,
         TData: DeserializeOwned,
     {
-        let db_key = {
-            let mut db_key = DbKey::prefix_only(&self.prefix);
-            db_key.add_bucket(&key);
-            db_key
-        };
-
+        let db_key = DbKey::new_with_bucket(&self.prefix, &key, []);
         let mut read_opts = ReadOptions::default();
         read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
 

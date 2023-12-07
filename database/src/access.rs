@@ -1,7 +1,7 @@
-use crate::{db::DB, errors::StoreError, prelude::BatchDbWriter};
+use crate::{db::DB, errors::StoreError};
 
 use super::prelude::{Cache, DbKey, DbWriter};
-use rocksdb::{Direction, IterateBounds, IteratorMode, ReadOptions, WriteBatchWithTransaction};
+use rocksdb::{Direction, IterateBounds, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, sync::Arc};
 
@@ -152,46 +152,15 @@ where
         Ok(())
     }
 
-    /// Delete all store entries using a batch writer. Expected to allocate O(store size) memory
-    /// in order to perform the delete so should be used only for relatively small stores. Otherwise
-    /// it is highly recommended to use direct delete all (see [`delete_all`])
-    pub fn delete_all_with_batch_writer(&self, mut writer: BatchDbWriter) -> Result<(), StoreError>
-    where
-        TKey: Clone + AsRef<[u8]>,
-    {
-        self.cache.remove_all();
-        //TODO: Consider using column families to make it faster
-        let db_key = DbKey::prefix_only(&self.prefix);
-        let mut read_opts = ReadOptions::default();
-        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
-        let keys = self.db.iterator_opt(IteratorMode::From(db_key.as_ref(), Direction::Forward), read_opts).map(|iter_result| {
-            match iter_result {
-                Ok((key, _)) => Ok::<_, rocksdb::Error>(key),
-                Err(e) => Err(e),
-            }
-        });
-
-        for key in keys {
-            writer.delete(key?)?;
-        }
-        Ok(())
-    }
-
     /// Deletes all entries in the store using the underlying rocksdb `delete_range` operation
-    /// which is supported only on a non-transactional batch (batch w/o atomic write guarantees)
-    ///
-    /// Unlike [`delete_all_with_batch_writer`] this method is not expected to allocate O(store size) memory
-    /// in order to perform the delete
-    pub fn delete_all(&self) -> Result<(), StoreError>
+    pub fn delete_all(&self, mut writer: impl DbWriter) -> Result<(), StoreError>
     where
         TKey: Clone + AsRef<[u8]>,
     {
         self.cache.remove_all();
         let db_key = DbKey::prefix_only(&self.prefix);
-        let mut batch = WriteBatchWithTransaction::<false>::default();
         let (from, to) = rocksdb::PrefixRange(db_key.as_ref()).into_bounds();
-        batch.delete_range(from.unwrap(), to.unwrap()); // Note: supported only on a non-transactional batch
-        self.db.write(batch).unwrap();
+        writer.delete_range(from.unwrap(), to.unwrap())?;
         Ok(())
     }
 
@@ -250,7 +219,7 @@ mod tests {
     use super::*;
     use crate::{
         create_temp_db,
-        prelude::{ConnBuilder, DirectDbWriter},
+        prelude::{BatchDbWriter, ConnBuilder, DirectDbWriter},
     };
     use kaspa_hashes::Hash;
     use rocksdb::WriteBatch;
@@ -262,13 +231,13 @@ mod tests {
 
         access.write_many(DirectDbWriter::new(&db), &mut (0..16).map(|i| (i.into(), 2))).unwrap();
         assert_eq!(16, access.iterator().count());
-        access.delete_all().unwrap();
+        access.delete_all(DirectDbWriter::new(&db)).unwrap();
         assert_eq!(0, access.iterator().count());
 
         access.write_many(DirectDbWriter::new(&db), &mut (0..16).map(|i| (i.into(), 2))).unwrap();
         assert_eq!(16, access.iterator().count());
         let mut batch = WriteBatch::default();
-        access.delete_all_with_batch_writer(BatchDbWriter::new(&mut batch)).unwrap();
+        access.delete_all(BatchDbWriter::new(&mut batch)).unwrap();
         db.write(batch).unwrap();
         assert_eq!(0, access.iterator().count());
     }
