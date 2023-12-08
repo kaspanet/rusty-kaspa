@@ -23,6 +23,7 @@ use kaspa_notify::{
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_wallet_core::storage::MultiSig;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
+use std::ops::Not;
 use std::sync::Arc;
 use workflow_core::task::spawn;
 use workflow_log::log_error;
@@ -87,6 +88,31 @@ pub struct MultisigCreateArgs {
     pub wallet_secret: Secret,
     pub additional_xpub_keys: Vec<String>,
     pub minimum_signatures: u16,
+}
+
+pub enum Role {
+    Sender,
+    Receiver,
+}
+
+impl std::ops::Not for Role {
+    type Output = Role;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Role::Sender => Role::Receiver,
+            Role::Receiver => Role::Sender,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HtlcCreateArgs {
+    pub prv_key_data_id: PrvKeyDataId,
+    pub name: Option<String>,
+    pub title: Option<String>,
+    pub wallet_secret: Secret,
+    pub second_party: String,
 }
 
 #[derive(Clone)]
@@ -485,6 +511,51 @@ impl Wallet {
     //     // payload.as_mut().add_prv_key_data(mnemonic.clone(), payment_secret)?;
     //     Ok(mnemonic)
     // }
+
+    pub async fn create_htlc_account(self: &Arc<Wallet>, args: HtlcCreateArgs) -> Result<Arc<dyn Account>> {
+        let account_storage = self.inner.store.clone().as_account_store()?;
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret));
+
+        let settings = storage::Settings { is_visible: false, name: args.name, title: args.title };
+        let second_party = args.second_party;
+
+        let account: Arc<dyn Account> = {
+            let prv_key_data = self
+                .inner
+                .store
+                .as_prv_key_data_store()?
+                .load_key_data(&ctx, &args.prv_key_data_id)
+                .await?
+                .ok_or(Error::PrivateKeyNotFound(args.prv_key_data_id.to_hex()))?;
+            let xpub_key = prv_key_data.create_xpub(None, AccountKind::MultiSig, 0).await?;
+            let xpub_prefix = kaspa_bip32::Prefix::XPUB;
+            let creator_xpub = xpub_key.to_string(Some(xpub_prefix));
+
+            Arc::new(
+                runtime::MultiSig::try_new(
+                    self,
+                    settings,
+                    MultiSig::new(
+                        Arc::new(xpub_keys),
+                        Some(Arc::new(prv_key_data_ids)),
+                        Some(min_cosigner_index),
+                        args.minimum_signatures,
+                        false,
+                    ),
+                    None,
+                )
+                .await?,
+            )
+        };
+
+        let stored_account = account.as_storable()?;
+
+        account_storage.store_single(&stored_account, None).await?;
+        self.inner.store.clone().commit(&ctx).await?;
+        account.clone().start().await?;
+
+        Ok(account)
+    }
 
     pub async fn create_multisig_account(self: &Arc<Wallet>, args: MultisigCreateArgs) -> Result<Arc<dyn Account>> {
         let account_storage = self.inner.store.clone().as_account_store()?;

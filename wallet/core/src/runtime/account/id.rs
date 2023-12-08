@@ -94,6 +94,18 @@ impl AccountId {
         AccountId(Hash::from_slice(sha256_hash(&hashable.try_to_vec().unwrap()).as_ref()))
     }
 
+    pub(crate) fn from_htlc(prv_key_data_id: &PrvKeyDataId, data: &storage::account::HTLC) -> AccountId {
+        let hashable = AccountIdHashData {
+            account_kind: AccountKind::HTLC,
+            prv_key_data_id: Some([*prv_key_data_id]),
+            ecdsa: Some(data.ecdsa),
+            account_index: Some(data.account_index),
+            secp256k1_public_key: None,
+            data: None,
+        };
+        AccountId(Hash::from_slice(sha256_hash(&hashable.try_to_vec().unwrap()).as_ref()))
+    }
+
     pub fn short(&self) -> String {
         let hex = self.to_hex();
         format!("[{}]", &hex[0..4])

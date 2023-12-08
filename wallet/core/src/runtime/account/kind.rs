@@ -18,6 +18,7 @@ u8_try_from! {
         Keypair,
         Hardware,
         Resident,
+        HTLC,
     }
 }
 
@@ -30,6 +31,7 @@ impl std::fmt::Display for AccountKind {
             AccountKind::Keypair => write!(f, "keypair"),
             AccountKind::Hardware => write!(f, "hardware"),
             AccountKind::Resident => write!(f, "resident"),
+            AccountKind::HTLC => write!(f, "htlc"),
         }
     }
 }
@@ -44,6 +46,7 @@ impl FromStr for AccountKind {
             "keypair" => Ok(AccountKind::Keypair),
             "hardware" => Ok(AccountKind::Hardware),
             "resident" => Ok(AccountKind::Resident),
+            "htlc" => Ok(AccountKind::HTLC),
             _ => Err(Error::InvalidAccountKind),
         }
     }

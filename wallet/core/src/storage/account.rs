@@ -74,6 +74,31 @@ impl MultiSig {
     }
 }
 
+const HTLC_ACCOUNT_VERSION: u16 = 0;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HtlcRole {
+    Sender = 0,
+    Receiver = 1,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub struct HTLC {
+    #[serde(default)]
+    pub version: u16,
+    pub xpub_key: Arc<String>,
+    pub second_party_xpub_key: Arc<String>,
+    pub account_index: u64,
+    pub ecdsa: bool,
+    pub role: HtlcRole,
+}
+
+impl HTLC {
+    pub fn new(xpub_key: Arc<String>, second_party_xpub_key: Arc<String>, account_index: u64, ecdsa: bool, role: HtlcRole) -> Self {
+        Self { version: HTLC_ACCOUNT_VERSION, xpub_key, second_party_xpub_key, account_index, ecdsa, role }
+    }
+}
+
 const KEYPAIR_ACCOUNT_VERSION: u16 = 0;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
