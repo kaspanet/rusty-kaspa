@@ -10,8 +10,10 @@ use kaspa_txscript_errors::TxScriptError;
 use smallvec::SmallVec;
 use std::iter::once;
 
+mod htlc;
 mod multisig;
 
+pub use htlc::htlc_redeem_script;
 pub use multisig::{multisig_redeem_script, multisig_redeem_script_ecdsa, Error as MultisigCreateError};
 
 /// Creates a new script to pay a transaction output to a 32-byte pubkey.
