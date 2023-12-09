@@ -632,7 +632,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct MemoryReachabilityData {
+struct MemoryReachabilityData {
     pub children: BlockHashes,
     pub parent: Hash,
     pub interval: Interval,
