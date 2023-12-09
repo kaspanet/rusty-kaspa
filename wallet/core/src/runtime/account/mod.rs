@@ -17,6 +17,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
+use crate::storage::account::HtlcRole;
 use crate::storage::interface::AccessContext;
 use crate::storage::Metadata;
 use crate::storage::{self, AccessContextT, AccountData, PrvKeyData, PrvKeyDataId};
@@ -72,6 +73,12 @@ pub async fn try_from_storage(
         }
         AccountData::Hardware(_hardware) => {
             todo!()
+        }
+        AccountData::Htlc(htlc @ storage::account::HTLC { role: HtlcRole::Sender, .. }) => {
+            Ok(Arc::new(HTLC::<Sender>::try_new(prv_key_data_id.unwrap(), settings, wallet, htlc).await?))
+        }
+        AccountData::Htlc(htlc @ storage::account::HTLC { role: HtlcRole::Receiver, .. }) => {
+            Ok(Arc::new(HTLC::<Receiver>::try_new(prv_key_data_id.unwrap(), settings, wallet, htlc).await?))
         }
     }
 }

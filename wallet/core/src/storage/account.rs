@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::storage::{AccountId, AccountKind, PrvKeyDataId};
+use kaspa_hashes::Hash;
 use secp256k1::PublicKey;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -76,11 +77,12 @@ impl MultiSig {
 
 const HTLC_ACCOUNT_VERSION: u16 = 0;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum HtlcRole {
     Sender = 0,
     Receiver = 1,
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct HTLC {
@@ -91,11 +93,21 @@ pub struct HTLC {
     pub account_index: u64,
     pub ecdsa: bool,
     pub role: HtlcRole,
+    pub locktime: u64,
+    pub secret_hash: Hash,
 }
 
 impl HTLC {
-    pub fn new(xpub_key: Arc<String>, second_party_xpub_key: Arc<String>, account_index: u64, ecdsa: bool, role: HtlcRole) -> Self {
-        Self { version: HTLC_ACCOUNT_VERSION, xpub_key, second_party_xpub_key, account_index, ecdsa, role }
+    pub fn new(
+        xpub_key: Arc<String>,
+        second_party_xpub_key: Arc<String>,
+        account_index: u64,
+        ecdsa: bool,
+        role: HtlcRole,
+        locktime: u64,
+        secret_hash: Hash,
+    ) -> Self {
+        Self { version: HTLC_ACCOUNT_VERSION, xpub_key, second_party_xpub_key, account_index, ecdsa, role, locktime, secret_hash }
     }
 }
 
@@ -141,6 +153,7 @@ pub enum AccountData {
     MultiSig(MultiSig),
     Keypair(Keypair),
     Hardware(Hardware),
+    Htlc(HTLC),
 }
 
 impl AccountData {
@@ -151,6 +164,7 @@ impl AccountData {
             AccountData::MultiSig { .. } => AccountKind::MultiSig,
             AccountData::Hardware { .. } => AccountKind::Hardware,
             AccountData::Keypair { .. } => AccountKind::Keypair,
+            AccountData::Htlc(_) => AccountKind::HTLC,
         }
     }
 }

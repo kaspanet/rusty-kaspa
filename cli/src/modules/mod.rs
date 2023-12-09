@@ -42,6 +42,8 @@ pub mod track;
 pub mod transfer;
 pub mod wallet;
 
+pub mod htlc;
+
 // TODO
 // broadcast
 // create-unsigned-tx
@@ -53,8 +55,8 @@ pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
         cli.handlers(),
         [
             account, address, close, connect, details, disconnect, estimate, exit, export, guide, help, history, rpc, list, miner,
-            message, monitor, mute, network, node, open, ping, reload, select, send, server, settings, sweep, track, transfer,
-            wallet,
+            message, monitor, mute, network, node, open, ping, reload, select, send, server, settings, sweep, track, transfer, wallet,
+            htlc,
             // halt,
             // theme,  start, stop
         ]

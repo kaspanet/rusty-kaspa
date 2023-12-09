@@ -1,18 +1,5 @@
-use crate::caches::Cache;
-use crate::opcodes::codes::{
-    OpCheckLockTimeVerify, OpCheckSig, OpDup, OpElse, OpEndIf, OpEqualVerify, OpFalse, OpIf, OpSHA256, OpTrue,
-};
+use crate::opcodes::codes::{OpCheckLockTimeVerify, OpCheckSig, OpDup, OpElse, OpEndIf, OpEqualVerify, OpIf, OpSHA256};
 use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
-use crate::{pay_to_script_hash_script, TxScriptEngine};
-use kaspa_consensus_core::{
-    hashing::{
-        sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
-        sighash_type::SIG_HASH_ALL,
-    },
-    subnets::SubnetworkId,
-    tx::{MutableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint, UtxoEntry},
-};
-use sha2::Sha256;
 
 pub fn htlc_redeem_script(receiver_pubkey: &[u8], sender_pubkey: &[u8], hash: &[u8], locktime: u64) -> ScriptBuilderResult<Vec<u8>> {
     let mut builder = ScriptBuilder::new();
@@ -40,11 +27,21 @@ pub fn htlc_redeem_script(receiver_pubkey: &[u8], sender_pubkey: &[u8], hash: &[
     Ok(builder.drain())
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::caches::Cache;
+    use crate::opcodes::codes::{OpFalse, OpTrue};
+    use crate::{pay_to_script_hash_script, TxScriptEngine};
     use core::str::FromStr;
+    use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValues};
+    use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
+    use kaspa_consensus_core::subnets::SubnetworkId;
+    use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint, UtxoEntry};
     use rand::thread_rng;
     use secp256k1::KeyPair;
+    use sha2::Sha256;
+
     fn kp() -> [KeyPair; 3] {
         let kp1 = KeyPair::from_seckey_slice(
             secp256k1::SECP256K1,

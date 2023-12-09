@@ -1,5 +1,7 @@
+use crate::error::Error::Custom;
 use crate::imports::*;
 use crate::result::Result;
+use crate::runtime::account::{Receiver, Sender};
 use crate::runtime::{account::ScanNotifier, try_from_storage, Account, AccountId, ActiveAccountMap};
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
@@ -7,7 +9,7 @@ use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
 use crate::storage::{
-    self, make_filename, AccessContextT, AccountData, AccountKind, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo,
+    self, make_filename, AccessContextT, AccountData, AccountKind, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, HTLC,
 };
 use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
@@ -16,14 +18,15 @@ use futures::future::join_all;
 use futures::stream::StreamExt;
 use futures::{select, FutureExt, Stream};
 use kaspa_bip32::{Language, Mnemonic};
+use kaspa_hashes::Hash;
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
 use kaspa_rpc_core::notify::mode::NotificationMode;
+use kaspa_wallet_core::storage::account::HtlcRole;
 use kaspa_wallet_core::storage::MultiSig;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
-use std::ops::Not;
 use std::sync::Arc;
 use workflow_core::task::spawn;
 use workflow_log::log_error;
@@ -90,22 +93,6 @@ pub struct MultisigCreateArgs {
     pub minimum_signatures: u16,
 }
 
-pub enum Role {
-    Sender,
-    Receiver,
-}
-
-impl std::ops::Not for Role {
-    type Output = Role;
-
-    fn not(self) -> Self::Output {
-        match self {
-            Role::Sender => Role::Receiver,
-            Role::Receiver => Role::Sender,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct HtlcCreateArgs {
     pub prv_key_data_id: PrvKeyDataId,
@@ -113,6 +100,9 @@ pub struct HtlcCreateArgs {
     pub title: Option<String>,
     pub wallet_secret: Secret,
     pub second_party: String,
+    pub role: HtlcRole,
+    pub locktime: u64,
+    pub secret_hash: String,
 }
 
 #[derive(Clone)]
@@ -514,6 +504,7 @@ impl Wallet {
 
     pub async fn create_htlc_account(self: &Arc<Wallet>, args: HtlcCreateArgs) -> Result<Arc<dyn Account>> {
         let account_storage = self.inner.store.clone().as_account_store()?;
+        let account_index = account_storage.clone().len(Some(args.prv_key_data_id)).await? as u64;
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret));
 
         let settings = storage::Settings { is_visible: false, name: args.name, title: args.title };
@@ -531,21 +522,19 @@ impl Wallet {
             let xpub_prefix = kaspa_bip32::Prefix::XPUB;
             let creator_xpub = xpub_key.to_string(Some(xpub_prefix));
 
-            Arc::new(
-                runtime::MultiSig::try_new(
-                    self,
-                    settings,
-                    MultiSig::new(
-                        Arc::new(xpub_keys),
-                        Some(Arc::new(prv_key_data_ids)),
-                        Some(min_cosigner_index),
-                        args.minimum_signatures,
-                        false,
-                    ),
-                    None,
-                )
-                .await?,
-            )
+            let data = HTLC::new(
+                Arc::new(creator_xpub),
+                Arc::new(second_party),
+                account_index,
+                false,
+                args.role,
+                args.locktime,
+                Hash::from_str(&args.secret_hash).map_err(|_| Custom("hex conversion".to_string()))?,
+            );
+            match args.role {
+                HtlcRole::Receiver => Arc::new(runtime::HTLC::<Receiver>::try_new(args.prv_key_data_id, settings, self, data).await?),
+                HtlcRole::Sender => Arc::new(runtime::HTLC::<Sender>::try_new(args.prv_key_data_id, settings, self, data).await?),
+            }
         };
 
         let stored_account = account.as_storable()?;
