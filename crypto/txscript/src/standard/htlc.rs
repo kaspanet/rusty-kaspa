@@ -33,14 +33,20 @@ mod tests {
     use crate::caches::Cache;
     use crate::opcodes::codes::{OpFalse, OpTrue};
     use crate::{pay_to_script_hash_script, TxScriptEngine};
-    use core::str::FromStr;
-    use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValues};
-    use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
-    use kaspa_consensus_core::subnets::SubnetworkId;
-    use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint, UtxoEntry};
+    use kaspa_consensus_core::{
+        hashing::{
+            sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
+            sighash_type::SIG_HASH_ALL,
+        },
+        subnets::SubnetworkId,
+        tx::{
+            MutableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint, UtxoEntry, VerifiableTransaction,
+        },
+    };
     use rand::thread_rng;
     use secp256k1::KeyPair;
-    use sha2::Sha256;
+    use sha2::{Digest, Sha256};
+    use std::str::FromStr;
 
     fn kp() -> [KeyPair; 3] {
         let kp1 = KeyPair::from_seckey_slice(

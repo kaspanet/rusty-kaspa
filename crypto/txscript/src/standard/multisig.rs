@@ -70,7 +70,6 @@ pub fn multisig_redeem_script_ecdsa(pub_keys: impl Iterator<Item = impl Borrow<[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::opcodes::codes::*;
     use crate::{caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script, TxScriptEngine};
     use core::str::FromStr;
     use kaspa_consensus_core::{
@@ -83,7 +82,6 @@ mod tests {
     };
     use rand::thread_rng;
     use secp256k1::KeyPair;
-    use sha2::{Digest, Sha256};
     use std::{iter, iter::empty};
 
     struct Input {
