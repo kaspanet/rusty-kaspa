@@ -26,15 +26,16 @@ pub(crate) async fn create(
 
     let prv_key_data_args = PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), None);
     let (prv_key_data_id, mnemonic) = wallet.create_prv_key_data(prv_key_data_args).await?;
-    let second_party_xpub_key = term.ask(false, &format!("Enter extended public key: ")).await?;
-
+    term.writeln("Mnemonic Phrase: ");
+    term.writeln(mnemonic.phrase());
+    let second_party_address = term.ask(false, "Enter second party address: ").await?;
     wallet
         .create_htlc_account(HtlcCreateArgs {
             prv_key_data_id,
             name,
             title,
             wallet_secret,
-            second_party: second_party_xpub_key,
+            second_party_address,
             role,
             locktime,
             secret_hash,

@@ -1,13 +1,21 @@
+use core::str::FromStr;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
 
 use kaspa_addresses::Address;
-use kaspa_bip32::PrivateKey;
+use kaspa_bip32::{ExtendedPublicKey, PrivateKey};
+use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValues};
+use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::{sign::sign_with_multiple_v2, tx::SignableTransaction};
+use kaspa_txscript::htlc_redeem_script;
+use kaspa_txscript::opcodes::codes::OpFalse;
+use kaspa_txscript::script_builder::ScriptBuilder;
 
 use crate::result::Result;
+use crate::runtime::account::Sender;
+use crate::runtime::HTLC;
 use crate::{runtime::Account, secret::Secret, storage::PrvKeyData};
 
 pub trait SignerT: Send + Sync + 'static {
@@ -79,5 +87,57 @@ impl SignerT for KeydataSigner {
     fn try_sign(&self, mutable_tx: SignableTransaction, addresses: &[Address]) -> Result<SignableTransaction> {
         let keys_for_signing = addresses.iter().map(|address| *self.inner.keys.get(address).unwrap()).collect::<Vec<_>>();
         Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing))
+    }
+}
+
+pub(crate) struct HtlcSenderSigner {
+    account: Arc<HTLC<Sender>>,
+    keydata: PrvKeyData,
+}
+
+impl HtlcSenderSigner {
+    pub fn try_new(account: Arc<dyn Account>, keydata: PrvKeyData) -> Self {
+        let account = account.downcast_arc::<HTLC<Sender>>().unwrap(); //todo error
+        Self { account, keydata }
+    }
+}
+
+impl SignerT for HtlcSenderSigner {
+    fn try_sign(&self, mut tx: SignableTransaction, _addresses: &[Address]) -> Result<SignableTransaction> {
+        let prv_k = self.keydata.get_xprv(None)?;
+        let prv_k = prv_k.private_key();
+        let schnorr_key = secp256k1::KeyPair::from_secret_key(secp256k1::SECP256K1, prv_k);
+        let mut reused_values = SigHashReusedValues::new();
+
+        for i in 0..tx.tx.inputs.len() {
+            let sig_hash = calc_schnorr_signature_hash(&tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values); // todo index
+            let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+            let sig = schnorr_key.sign_schnorr(msg);
+            let mut signature = Vec::new();
+            signature.extend_from_slice(sig.as_ref().as_slice());
+            signature.push(SIG_HASH_ALL.to_u8());
+
+            let receiver = &self.account.second_party_address.payload;
+            let sender = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(&self.account.xpub_key).unwrap();
+
+            let script = htlc_redeem_script(
+                receiver.as_slice(),
+                sender.public_key.x_only_public_key().0.serialize().as_slice(),
+                &self.account.secret_hash.as_bytes(),
+                self.account.locktime,
+            )
+            .unwrap();
+            dbg!(faster_hex::hex_string(&script));
+
+            let mut builder = ScriptBuilder::new();
+            builder.add_data(&signature).unwrap();
+            builder.add_data(sender.public_key.x_only_public_key().0.serialize().as_slice()).unwrap();
+            builder.add_op(OpFalse).unwrap();
+            builder.add_data(&script).unwrap();
+
+            tx.tx.inputs[i].signature_script = builder.drain();
+        }
+        tx.tx.lock_time = self.account.locktime;
+        Ok(tx)
     }
 }

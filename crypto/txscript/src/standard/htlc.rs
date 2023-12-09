@@ -76,7 +76,7 @@ mod tests {
             receiver.x_only_public_key().0.serialize().as_slice(),
             sender.x_only_public_key().0.serialize().as_slice(),
             hash,
-            100,
+            1702311302000,
         )
         .unwrap();
 
@@ -88,20 +88,20 @@ mod tests {
             vec![TransactionInput {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script: vec![],
-                sequence: 101,
-                sig_op_count: 4,
+                sequence: 0,
+                sig_op_count: 2,
             }],
             vec![],
-            101,
+            1702311302000,
             SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             0,
             vec![],
         );
 
         let entries = vec![UtxoEntry {
-            amount: 12793000000000,
+            amount: 100000000000,
             script_public_key: pay_to_script_hash_script(&script),
-            block_daa_score: 36151168,
+            block_daa_score: 52251005,
             is_coinbase: false,
         }];
 

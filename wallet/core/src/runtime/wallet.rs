@@ -99,7 +99,7 @@ pub struct HtlcCreateArgs {
     pub name: Option<String>,
     pub title: Option<String>,
     pub wallet_secret: Secret,
-    pub second_party: String,
+    pub second_party_address: String,
     pub role: HtlcRole,
     pub locktime: u64,
     pub secret_hash: String,
@@ -508,7 +508,8 @@ impl Wallet {
         let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(args.wallet_secret));
 
         let settings = storage::Settings { is_visible: false, name: args.name, title: args.title };
-        let second_party = args.second_party;
+        let second_party_address =
+            Address::try_from(args.second_party_address.as_str()).map_err(|_| Error::Custom("invalid address".to_string()))?;
 
         let account: Arc<dyn Account> = {
             let prv_key_data = self
@@ -524,7 +525,7 @@ impl Wallet {
 
             let data = HTLC::new(
                 Arc::new(creator_xpub),
-                Arc::new(second_party),
+                Arc::new(second_party_address),
                 account_index,
                 false,
                 args.role,

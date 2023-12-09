@@ -89,7 +89,7 @@ pub struct HTLC {
     #[serde(default)]
     pub version: u16,
     pub xpub_key: Arc<String>,
-    pub second_party_xpub_key: Arc<String>,
+    pub second_party_address: Arc<Address>,
     pub account_index: u64,
     pub ecdsa: bool,
     pub role: HtlcRole,
@@ -100,14 +100,23 @@ pub struct HTLC {
 impl HTLC {
     pub fn new(
         xpub_key: Arc<String>,
-        second_party_xpub_key: Arc<String>,
+        second_party_xpub_key: Arc<Address>,
         account_index: u64,
         ecdsa: bool,
         role: HtlcRole,
         locktime: u64,
         secret_hash: Hash,
     ) -> Self {
-        Self { version: HTLC_ACCOUNT_VERSION, xpub_key, second_party_xpub_key, account_index, ecdsa, role, locktime, secret_hash }
+        Self {
+            version: HTLC_ACCOUNT_VERSION,
+            xpub_key,
+            second_party_address: second_party_xpub_key,
+            account_index,
+            ecdsa,
+            role,
+            locktime,
+            secret_hash,
+        }
     }
 }
 
