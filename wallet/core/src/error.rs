@@ -332,3 +332,9 @@ impl<T> From<DowncastError<T>> for Error {
         Error::DowncastError(e.to_string())
     }
 }
+
+impl<T> From<workflow_core::channel::SendError<T>> for Error {
+    fn from(e: workflow_core::channel::SendError<T>) -> Self {
+        Error::Custom(e.to_string())
+    }
+}
