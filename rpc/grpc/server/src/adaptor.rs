@@ -2,7 +2,8 @@ use crate::{connection_handler::ConnectionHandler, manager::Manager};
 use kaspa_core::debug;
 use kaspa_notify::notifier::Notifier;
 use kaspa_rpc_core::{api::rpc::DynRpcService, notify::connection::ChannelConnection, Notification, RpcResult};
-use kaspa_utils::{grpc::GrpcCounters, networking::NetAddress};
+use kaspa_utils::networking::NetAddress;
+use kaspa_utils_tower::counters::TowerConnectionCounters;
 use std::{ops::Deref, sync::Arc};
 use tokio::sync::{mpsc::channel as mpsc_channel, oneshot::Sender as OneshotSender};
 
@@ -35,7 +36,7 @@ impl Adaptor {
         manager: Manager,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
-        counters: Arc<GrpcCounters>,
+        counters: Arc<TowerConnectionCounters>,
     ) -> Arc<Self> {
         let (manager_sender, manager_receiver) = mpsc_channel(Self::manager_channel_size());
         let connection_handler = ConnectionHandler::new(manager_sender, core_service.clone(), core_notifier, counters);

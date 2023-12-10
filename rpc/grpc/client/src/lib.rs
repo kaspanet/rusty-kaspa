@@ -31,11 +31,10 @@ use kaspa_rpc_core::{
     notify::{collector::RpcCoreConverter, connection::ChannelConnection, mode::NotificationMode},
     Notification,
 };
-use kaspa_utils::{
-    channel::Channel,
-    grpc::GrpcCounters,
-    hyper::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer, ServiceBuilder},
-    triggers::DuplexTrigger,
+use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
+use kaspa_utils_tower::{
+    counters::TowerConnectionCounters,
+    middleware::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer, ServiceBuilder},
 };
 use regex::Regex;
 use std::{
@@ -83,7 +82,7 @@ impl GrpcClient {
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
         timeout_duration: Option<u64>,
-        counters: Arc<GrpcCounters>,
+        counters: Arc<TowerConnectionCounters>,
     ) -> Result<GrpcClient> {
         let schema = Regex::new(r"^grpc://").unwrap();
         if !schema.is_match(&url) {
@@ -369,7 +368,7 @@ struct Inner {
     override_handle_stop_notify: bool,
 
     // bandwidth counters
-    counters: Arc<GrpcCounters>,
+    counters: Arc<TowerConnectionCounters>,
 }
 
 impl Inner {
@@ -381,7 +380,7 @@ impl Inner {
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
         timeout_duration: u64,
-        counters: Arc<GrpcCounters>,
+        counters: Arc<TowerConnectionCounters>,
     ) -> Self {
         let resolver: DynResolver = match server_features.handle_message_id {
             true => Arc::new(IdResolver::new()),
@@ -416,7 +415,7 @@ impl Inner {
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
         timeout_duration: u64,
-        counters: Arc<GrpcCounters>,
+        counters: Arc<TowerConnectionCounters>,
     ) -> Result<Arc<Self>> {
         // Request channel
         let (request_sender, request_receiver) = async_channel::unbounded();
@@ -453,7 +452,7 @@ impl Inner {
         request_sender: KaspadRequestSender,
         request_receiver: KaspadRequestReceiver,
         request_timeout: u64,
-        counters: Arc<GrpcCounters>,
+        counters: Arc<TowerConnectionCounters>,
     ) -> Result<(Streaming<KaspadResponse>, ServerFeatures)> {
         // gRPC endpoint
         let channel =

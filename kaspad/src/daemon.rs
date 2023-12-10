@@ -11,7 +11,8 @@ use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_utils::{grpc::GrpcCounters, networking::ContextualNetAddress};
+use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
@@ -354,8 +355,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let wrpc_borsh_counters = Arc::new(WrpcServerCounters::default());
     let wrpc_json_counters = Arc::new(WrpcServerCounters::default());
     let tx_script_cache_counters = Arc::new(TxScriptCacheCounters::default());
-    let grpc_p2p_counters = Arc::new(GrpcCounters::default());
-    let grpc_service_counters = Arc::new(GrpcCounters::default());
+    let grpc_p2p_counters = Arc::new(TowerConnectionCounters::default());
+    let grpc_service_counters = Arc::new(TowerConnectionCounters::default());
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db_parallelism = num_cpus::get();

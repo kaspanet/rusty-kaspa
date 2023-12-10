@@ -5,7 +5,8 @@ use kaspa_core::{
     trace, warn,
 };
 use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_utils::{grpc::GrpcCounters, networking::NetAddress, triggers::SingleTrigger};
+use kaspa_utils::{networking::NetAddress, triggers::SingleTrigger};
+use kaspa_utils_tower::counters::TowerConnectionCounters;
 use std::sync::Arc;
 
 const GRPC_SERVICE: &str = "grpc-service";
@@ -15,11 +16,16 @@ pub struct GrpcService {
     core_service: Arc<RpcCoreService>,
     rpc_max_clients: usize,
     shutdown: SingleTrigger,
-    counters: Arc<GrpcCounters>,
+    counters: Arc<TowerConnectionCounters>,
 }
 
 impl GrpcService {
-    pub fn new(address: NetAddress, core_service: Arc<RpcCoreService>, rpc_max_clients: usize, counters: Arc<GrpcCounters>) -> Self {
+    pub fn new(
+        address: NetAddress,
+        core_service: Arc<RpcCoreService>,
+        rpc_max_clients: usize,
+        counters: Arc<TowerConnectionCounters>,
+    ) -> Self {
         Self { net_address: address, core_service, rpc_max_clients, shutdown: Default::default(), counters }
     }
 }

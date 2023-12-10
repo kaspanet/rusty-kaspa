@@ -19,10 +19,10 @@ use kaspa_rpc_core::{
     notify::{channel::NotificationChannel, connection::ChannelConnection},
     Notification, RpcResult,
 };
-use kaspa_utils::{
-    grpc::GrpcCounters,
-    hyper::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer},
-    networking::NetAddress,
+use kaspa_utils::networking::NetAddress;
+use kaspa_utils_tower::{
+    counters::TowerConnectionCounters,
+    middleware::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer},
 };
 use std::fmt::Debug;
 use std::{
@@ -68,7 +68,7 @@ pub struct ConnectionHandler {
     server_context: ServerContext,
     interface: Arc<Interface>,
     running: Arc<AtomicBool>,
-    counters: Arc<GrpcCounters>,
+    counters: Arc<TowerConnectionCounters>,
 }
 
 const GRPC_SERVER: &str = "grpc-server";
@@ -78,7 +78,7 @@ impl ConnectionHandler {
         manager_sender: MpscSender<ManagerEvent>,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
-        counters: Arc<GrpcCounters>,
+        counters: Arc<TowerConnectionCounters>,
     ) -> Self {
         // Prepare core objects
         let core_channel = NotificationChannel::default();

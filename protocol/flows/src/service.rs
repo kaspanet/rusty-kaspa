@@ -7,8 +7,8 @@ use kaspa_core::{
     trace,
 };
 use kaspa_p2p_lib::Adaptor;
-use kaspa_utils::grpc::GrpcCounters;
 use kaspa_utils::triggers::SingleTrigger;
+use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use crate::flow_context::FlowContext;
 
@@ -24,7 +24,7 @@ pub struct P2pService {
     dns_seeders: &'static [&'static str],
     default_port: u16,
     shutdown: SingleTrigger,
-    counters: Arc<GrpcCounters>,
+    counters: Arc<TowerConnectionCounters>,
 }
 
 impl P2pService {
@@ -37,7 +37,7 @@ impl P2pService {
         inbound_limit: usize,
         dns_seeders: &'static [&'static str],
         default_port: u16,
-        counters: Arc<GrpcCounters>,
+        counters: Arc<TowerConnectionCounters>,
     ) -> Self {
         Self {
             flow_context,

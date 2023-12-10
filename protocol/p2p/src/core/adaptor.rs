@@ -2,8 +2,8 @@ use crate::common::ProtocolError;
 use crate::core::hub::Hub;
 use crate::ConnectionError;
 use crate::{core::connection_handler::ConnectionHandler, Router};
-use kaspa_utils::grpc::GrpcCounters;
 use kaspa_utils::networking::NetAddress;
+use kaspa_utils_tower::counters::TowerConnectionCounters;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
@@ -46,7 +46,7 @@ impl Adaptor {
     }
 
     /// Creates a P2P adaptor with only client-side support. Typical Kaspa nodes should use `Adaptor::bidirectional`
-    pub fn client_only(hub: Hub, initializer: Arc<dyn ConnectionInitializer>, counters: Arc<GrpcCounters>) -> Arc<Self> {
+    pub fn client_only(hub: Hub, initializer: Arc<dyn ConnectionInitializer>, counters: Arc<TowerConnectionCounters>) -> Arc<Self> {
         let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
         let connection_handler = ConnectionHandler::new(hub_sender, initializer.clone(), counters);
         let adaptor = Arc::new(Adaptor::new(None, connection_handler, hub));
@@ -59,7 +59,7 @@ impl Adaptor {
         serve_address: NetAddress,
         hub: Hub,
         initializer: Arc<dyn ConnectionInitializer>,
-        counters: Arc<GrpcCounters>,
+        counters: Arc<TowerConnectionCounters>,
     ) -> Result<Arc<Self>, ConnectionError> {
         let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
         let connection_handler = ConnectionHandler::new(hub_sender, initializer.clone(), counters.clone());

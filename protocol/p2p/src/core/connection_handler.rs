@@ -6,9 +6,11 @@ use crate::pb::{
 use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
 use kaspa_core::{debug, info};
-use kaspa_utils::grpc::GrpcCounters;
-use kaspa_utils::hyper::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer, ServiceBuilder};
 use kaspa_utils::networking::NetAddress;
+use kaspa_utils_tower::{
+    counters::TowerConnectionCounters,
+    middleware::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer, ServiceBuilder},
+};
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -49,14 +51,14 @@ pub struct ConnectionHandler {
     /// Cloned on each new connection so that routers can communicate with a central hub
     hub_sender: MpscSender<HubEvent>,
     initializer: Arc<dyn ConnectionInitializer>,
-    counters: Arc<GrpcCounters>,
+    counters: Arc<TowerConnectionCounters>,
 }
 
 impl ConnectionHandler {
     pub(crate) fn new(
         hub_sender: MpscSender<HubEvent>,
         initializer: Arc<dyn ConnectionInitializer>,
-        counters: Arc<GrpcCounters>,
+        counters: Arc<TowerConnectionCounters>,
     ) -> Self {
         Self { hub_sender, initializer, counters }
     }
