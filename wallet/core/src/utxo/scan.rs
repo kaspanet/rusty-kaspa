@@ -91,37 +91,35 @@ impl Scan {
             }
             yield_executor().await;
 
-            let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
-            for utxo_ref in refs.iter() {
-                if let Some(address) = utxo_ref.utxo.address.as_ref() {
-                    if let Some(utxo_address_index) = address_manager.inner().address_to_index_map.get(address) {
-                        if last_address_index < *utxo_address_index {
-                            last_address_index = *utxo_address_index;
+            if !resp.is_empty() {
+                let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
+                for utxo_ref in refs.iter() {
+                    if let Some(address) = utxo_ref.utxo.address.as_ref() {
+                        if let Some(utxo_address_index) = address_manager.inner().address_to_index_map.get(address) {
+                            if last_address_index < *utxo_address_index {
+                                last_address_index = *utxo_address_index;
+                            }
+                        } else {
+                            panic!("Account::scan_address_manager() has received an unknown address: `{address}`");
                         }
-                    } else {
-                        panic!("Account::scan_address_manager() has received an unknown address: `{address}`");
                     }
                 }
-            }
-            yield_executor().await;
 
-            let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
-                // let entry_balance = r.as_ref().balance(self.current_daa_score);
-                let entry_balance = r.balance(self.current_daa_score);
-                balance.mature += entry_balance.mature;
-                balance.pending += entry_balance.pending;
-                balance.mature_utxo_count += entry_balance.mature_utxo_count;
-                balance.pending_utxo_count += entry_balance.pending_utxo_count;
-                balance.stasis_utxo_count += entry_balance.stasis_utxo_count;
-                balance
-            });
-            yield_executor().await;
+                let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
+                    let entry_balance = r.balance(self.current_daa_score);
+                    balance.mature += entry_balance.mature;
+                    balance.pending += entry_balance.pending;
+                    balance.mature_utxo_count += entry_balance.mature_utxo_count;
+                    balance.pending_utxo_count += entry_balance.pending_utxo_count;
+                    balance.stasis_utxo_count += entry_balance.stasis_utxo_count;
+                    balance
+                });
 
-            utxo_context.extend(refs, self.current_daa_score).await?;
+                utxo_context.extend_from_scan(refs, self.current_daa_score).await?;
 
-            if !balance.is_empty() {
                 self.balance.add(balance);
-            } else {
+            }
+            else {
                 match &extent {
                     ScanExtent::EmptyWindow => {
                         if cursor > last_address_index + window_size {
@@ -162,7 +160,7 @@ impl Scan {
         });
         yield_executor().await;
 
-        utxo_context.extend(refs, self.current_daa_score).await?;
+        utxo_context.extend_from_scan(refs, self.current_daa_score).await?;
 
         if !balance.is_empty() {
             self.balance.add(balance);
