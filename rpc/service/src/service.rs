@@ -105,9 +105,9 @@ pub struct RpcCoreService {
     // will be integrated into
     // metrics in the upcoming PR
     #[allow(dead_code)]
-    grpc_p2p_counters: Arc<TowerConnectionCounters>,
+    p2p_tower_counters: Arc<TowerConnectionCounters>,
     #[allow(dead_code)]
-    grpc_client_counters: Arc<TowerConnectionCounters>,
+    grpc_tower_counters: Arc<TowerConnectionCounters>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -127,8 +127,8 @@ impl RpcCoreService {
         wrpc_borsh_counters: Arc<WrpcServerCounters>,
         wrpc_json_counters: Arc<WrpcServerCounters>,
         perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
-        grpc_p2p_counters: Arc<TowerConnectionCounters>,
-        grpc_client_counters: Arc<TowerConnectionCounters>,
+        p2p_tower_counters: Arc<TowerConnectionCounters>,
+        grpc_tower_counters: Arc<TowerConnectionCounters>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -191,8 +191,8 @@ impl RpcCoreService {
             wrpc_json_counters,
             shutdown: SingleTrigger::default(),
             perf_monitor,
-            grpc_p2p_counters,
-            grpc_client_counters,
+            p2p_tower_counters,
+            grpc_tower_counters,
         }
     }
 
