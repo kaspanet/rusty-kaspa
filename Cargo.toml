@@ -51,7 +51,7 @@ members = [
     "utils",
     "rothschild",
     "metrics/perf_monitor",
-    "metrics/metrics",
+    "metrics/core",
 ]
 
 [workspace.package]
@@ -120,7 +120,7 @@ kaspa-wrpc-wasm = { version = "0.13.0", path = "rpc/wrpc/wasm" }
 kaspad = { version = "0.13.0", path = "kaspad" }
 kaspa-perf-monitor = { version = "0.13.0", path = "metrics/perf_monitor" }
 kaspa-wallet-macros = { version = "0.13.0", path = "wallet/macros" }
-kaspa-metrics = { version = "0.13.0", path = "metrics/metrics" }
+kaspa-metrics-core = { version = "0.13.0", path = "metrics/core" }
 
 # external
 aes = "0.8.3"
@@ -158,9 +158,7 @@ evpkdf = "0.2.0"
 faster-hex = "0.6.1" # TODO "0.8.1" - fails unit tests
 flate2 = "1.0.28"
 futures = { version = "0.3.29" }
-futures-util = { version = "0.3.29", default-features = false, features = [
-    "alloc",
-] }
+futures-util = { version = "0.3.29", default-features = false, features = [ "alloc", ] }
 getrandom = { version = "0.2.10", features = ["js"] }
 h2 = "0.3.21"
 heapless = "0.7.16"

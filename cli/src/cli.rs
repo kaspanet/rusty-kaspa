@@ -283,6 +283,7 @@ impl KaspaCli {
 
                         if let Ok(msg) = msg {
                             match *msg {
+                                Events::Error { message } => { terrorln!(this,"{message}"); },
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},
                                 Events::UtxoProcError { message } => {
@@ -362,7 +363,7 @@ impl KaspaCli {
                                         tprintln!(this, "{NOTIFY} DAA: {current_daa_score}");
                                     }
                                 },
-                                Events::Scan { .. } => { }
+                                Events::Discovery { .. } => { }
                                 Events::Reorg {
                                     record
                                 } => {
@@ -382,15 +383,15 @@ impl KaspaCli {
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
-                                Events::External {
-                                    record
-                                } => {
-                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
-                                        let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("external"),include_utxos).await;
-                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
-                                    }
-                                },
+                                // Events::External {
+                                //     record
+                                // } => {
+                                //     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                //         let include_utxos = this.flags.get(Track::Utxo);
+                                //         let tx = record.format_with_state(&this.wallet,Some("external"),include_utxos).await;
+                                //         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
+                                //     }
+                                // },
                                 Events::Pending {
                                     record
                                 } => {
@@ -409,24 +410,24 @@ impl KaspaCli {
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
-                                Events::Outgoing {
-                                    record
-                                } => {
-                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
-                                        let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
-                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
-                                    }
-                                },
-                                Events::Change {
-                                    record
-                                } => {
-                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
-                                        let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("change"),include_utxos).await;
-                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
-                                    }
-                                },
+                                // Events::Outgoing {
+                                //     record
+                                // } => {
+                                //     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                //         let include_utxos = this.flags.get(Track::Utxo);
+                                //         let tx = record.format_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
+                                //         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
+                                //     }
+                                // },
+                                // Events::Change {
+                                //     record
+                                // } => {
+                                //     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                //         let include_utxos = this.flags.get(Track::Utxo);
+                                //         let tx = record.format_with_state(&this.wallet,Some("change"),include_utxos).await;
+                                //         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
+                                //     }
+                                // },
                                 Events::Balance {
                                     balance,
                                     id,

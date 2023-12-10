@@ -118,7 +118,7 @@ pub enum Error {
     PrivateKeyAlreadyExists(String),
 
     #[error(transparent)]
-    MetricsError(kaspa_metrics::error::Error),
+    MetricsError(kaspa_metrics_core::error::Error),
 }
 
 impl Error {

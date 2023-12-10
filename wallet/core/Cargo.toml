@@ -78,9 +78,6 @@ workflow-wasm.workspace = true
 xxhash-rust.workspace = true
 zeroize.workspace = true
 
- # testing
- kaspa-consensus.workspace = true
-
 [dependencies.web-sys]
 workspace = true
 features = [

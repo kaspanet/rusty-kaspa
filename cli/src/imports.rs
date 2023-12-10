@@ -1,5 +1,6 @@
 pub use crate::cli::KaspaCli;
 pub use crate::error::Error;
+pub use crate::extensions::*;
 pub(crate) use crate::helpers;
 pub use crate::notifier::Notification;
 pub use crate::result::Result;
