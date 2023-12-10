@@ -1,9 +1,9 @@
-use crate::imports::*;
-use kaspa_bip32::PrivateKey;
-use kaspa_consensus_core::{sign::sign_with_multiple_v2, tx::SignableTransaction};
 use crate::error::Error;
+use crate::imports::*;
 use crate::result::Result;
 use crate::{runtime::Account, secret::Secret, storage::PrvKeyData};
+use kaspa_bip32::PrivateKey;
+use kaspa_consensus_core::{sign::sign_with_multiple_v2, tx::SignableTransaction};
 
 pub trait SignerT: Send + Sync + 'static {
     fn try_sign(&self, transaction: SignableTransaction, addresses: &[Address]) -> Result<SignableTransaction>;

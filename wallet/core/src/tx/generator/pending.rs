@@ -1,9 +1,9 @@
+use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
-use crate::error::Error;
 use crate::rpc::DynRpcApi;
 use crate::tx::{DataKind, Generator};
-use crate::utxo::UtxoEntryReference;
+use crate::utxo::{UtxoContext, UtxoEntryReference};
 use kaspa_consensus_core::sign::sign_with_multiple_v2;
 use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionId};
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
@@ -35,8 +35,6 @@ pub(crate) struct PendingTransactionInner {
     pub(crate) fees: u64,
     /// Indicates the type of the transaction
     pub(crate) kind: DataKind,
-    /// Signifies that the transaction is a part of a transfer
-    pub(crate) is_transfer: bool,
 }
 
 impl std::fmt::Debug for PendingTransaction {
@@ -98,13 +96,25 @@ impl PendingTransaction {
                 mass,
                 fees,
                 kind,
-                is_transfer: generator.is_transfer(),
+                // is_transfer: generator.is_transfer(),
             }),
         })
     }
 
     pub fn id(&self) -> TransactionId {
         self.inner.id
+    }
+
+    pub fn generator(&self) -> &Generator {
+        &self.inner.generator
+    }
+
+    pub fn source_utxo_context(&self) -> &Option<UtxoContext> {
+        self.inner.generator.source_utxo_context()
+    }
+
+    pub fn destination_utxo_context(&self) -> &Option<UtxoContext> {
+        self.inner.generator.destination_utxo_context()
     }
 
     /// Addresses used by the pending transaction
@@ -145,10 +155,6 @@ impl PendingTransaction {
         !self.inner.kind.is_final()
     }
 
-    pub fn is_transfer(&self) -> bool {
-        self.inner.is_transfer
-    }
-
     pub fn network_type(&self) -> NetworkType {
         self.inner.generator.network_type()
     }
@@ -172,7 +178,7 @@ impl PendingTransaction {
         let rpc_transaction: RpcTransaction = self.rpc_transaction();
 
         // if we are running under UtxoProcessor
-        if let Some(utxo_context) = self.inner.generator.utxo_context() {
+        if let Some(utxo_context) = self.inner.generator.source_utxo_context() {
             // lock UtxoProcessor notification ingest
             let _lock = utxo_context.processor().notification_lock().await;
 

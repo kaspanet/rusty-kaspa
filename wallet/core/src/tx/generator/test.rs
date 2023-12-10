@@ -17,7 +17,7 @@ use super::*;
 const LOGS: bool = false;
 
 #[derive(Clone)]
-struct Sompi(u64);
+pub(crate) struct Sompi(u64);
 
 #[derive(Clone)]
 struct Kaspa(f64);
@@ -126,7 +126,7 @@ struct Accumulator {
     list: Vec<PendingTransaction>,
 }
 
-struct Expected {
+pub(crate) struct Expected {
     is_final: bool,
     input_count: usize,
     aggregate_input_value: Sompi,
@@ -197,7 +197,7 @@ fn expect(pt: &PendingTransaction, expected: &Expected) {
     assert_eq!(tx.outputs.len(), expected.output_count, "output count");
 }
 
-struct Harness {
+pub(crate) struct Harness {
     generator: Generator,
     accumulator: RefCell<Accumulator>,
 }
@@ -251,7 +251,13 @@ impl Harness {
     }
 }
 
-fn generator<T, F>(network_type: NetworkType, head: &[f64], tail: &[f64], fees: Fees, outputs: &[(F, T)]) -> Result<Generator>
+pub(crate) fn generator<T, F>(
+    network_type: NetworkType,
+    head: &[f64],
+    tail: &[f64],
+    fees: Fees,
+    outputs: &[(F, T)],
+) -> Result<Generator>
 where
     T: Into<Sompi> + Clone,
     F: FnOnce(NetworkType) -> Address + Clone,
@@ -266,7 +272,7 @@ where
     make_generator(network_type, head, tail, fees, change_address, PaymentOutputs::from(outputs.as_slice()).into())
 }
 
-fn make_generator<F>(
+pub(crate) fn make_generator<F>(
     network_type: NetworkType,
     head: &[f64],
     tail: &[f64],
@@ -280,16 +286,16 @@ where
     let mut values = head.to_vec();
     values.extend(tail);
 
-    let utxo_entries: Vec<UtxoEntryReference> = values.into_iter().map(kaspa_to_sompi).map(UtxoEntryReference::fake).collect();
+    let utxo_entries: Vec<UtxoEntryReference> = values.into_iter().map(kaspa_to_sompi).map(UtxoEntryReference::simulated).collect();
     let multiplexer = None;
     let sig_op_count = 0;
     let minimum_signatures = 0;
     let utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static> = Box::new(utxo_entries.into_iter());
-    let utxo_context = None;
+    let source_utxo_context = None;
+    let destination_utxo_context = None;
     let final_priority_fee = fees;
     let final_transaction_payload = None;
     let change_address = change_address(network_type);
-    let is_transfer = false;
 
     let settings = GeneratorSettings {
         network_type,
@@ -298,17 +304,17 @@ where
         minimum_signatures,
         change_address,
         utxo_iterator,
-        utxo_context,
+        source_utxo_context,
+        destination_utxo_context,
         final_transaction_priority_fee: final_priority_fee,
         final_transaction_destination,
         final_transaction_payload,
-        is_transfer,
     };
 
     Generator::try_new(settings, None, None)
 }
 
-fn change_address(network_type: NetworkType) -> Address {
+pub(crate) fn change_address(network_type: NetworkType) -> Address {
     match network_type {
         NetworkType::Mainnet => Address::try_from("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j").unwrap(),
         NetworkType::Testnet => Address::try_from("kaspatest:qqz22l98sf8jun72rwh5rqe2tm8lhwtdxdmynrz4ypwak427qed5juktjt7ju").unwrap(),
@@ -316,7 +322,7 @@ fn change_address(network_type: NetworkType) -> Address {
     }
 }
 
-fn output_address(network_type: NetworkType) -> Address {
+pub(crate) fn output_address(network_type: NetworkType) -> Address {
     match network_type {
         NetworkType::Mainnet => Address::try_from("kaspa:qrd9efkvg3pg34sgp6ztwyv3r569qlc43wa5w8nfs302532dzj47knu04aftm").unwrap(),
         NetworkType::Testnet => Address::try_from("kaspatest:qqrewmx4gpuekvk8grenkvj2hp7xt0c35rxgq383f6gy223c4ud5s58ptm6er").unwrap(),

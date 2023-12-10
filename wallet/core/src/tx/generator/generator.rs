@@ -207,8 +207,10 @@ struct Inner {
     mass_calculator: MassCalculator,
     network_type: NetworkType,
 
-    // Utxo Context
-    utxo_context: Option<UtxoContext>,
+    // Source Utxo Context (Used for source UtxoEntry aggregation)
+    source_utxo_context: Option<UtxoContext>,
+    // Destination Utxo Context (Used only during transfer transactions)
+    destination_utxo_context: Option<UtxoContext>,
     // Event multiplexer
     multiplexer: Option<Multiplexer<Box<Events>>>,
     // typically a number of keys required to sign the transaction
@@ -237,8 +239,6 @@ struct Inner {
     final_transaction_payload_mass: u64,
     // execution context
     context: Mutex<Context>,
-    // transfer flag
-    is_transfer: bool,
 }
 
 ///
@@ -255,14 +255,14 @@ impl Generator {
             network_type,
             multiplexer,
             utxo_iterator,
-            utxo_context,
+            source_utxo_context: utxo_context,
             sig_op_count,
             minimum_signatures,
             change_address,
             final_transaction_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
-            is_transfer,
+            destination_utxo_context,
         } = settings;
 
         let mass_calculator = MassCalculator::new(&network_type.into());
@@ -336,7 +336,7 @@ impl Generator {
             signer,
             abortable: abortable.cloned(),
             mass_calculator,
-            utxo_context,
+            source_utxo_context: utxo_context,
             sig_op_count,
             minimum_signatures,
             change_address,
@@ -348,7 +348,7 @@ impl Generator {
             final_transaction_outputs_mass,
             final_transaction_payload,
             final_transaction_payload_mass,
-            is_transfer,
+            destination_utxo_context,
         };
         Ok(Self { inner: Arc::new(inner) })
     }
@@ -358,8 +358,13 @@ impl Generator {
     }
 
     /// The underlying [`UtxoContext`] (if available).
-    pub fn utxo_context(&self) -> &Option<UtxoContext> {
-        &self.inner.utxo_context
+    pub fn source_utxo_context(&self) -> &Option<UtxoContext> {
+        &self.inner.source_utxo_context
+    }
+
+    /// Signifies that the transaction is a transfer between accounts
+    pub fn destination_utxo_context(&self) -> &Option<UtxoContext> {
+        &self.inner.destination_utxo_context
     }
 
     /// Core [`Multiplexer<Events>`] (if available)
@@ -370,11 +375,6 @@ impl Generator {
     /// Mutable context used by the generator to track state
     fn context(&self) -> MutexGuard<Context> {
         self.inner.context.lock().unwrap()
-    }
-
-    /// Signifies that the transaction is a transfer between accounts
-    pub fn is_transfer(&self) -> bool {
-        self.inner.is_transfer
     }
 
     /// Returns the underlying instance of the [Signer](SignerT)
@@ -790,9 +790,11 @@ impl Generator {
 }
 
 /*
+//
 // this function is used for short-circuiting the transaction generation process
 // against the script engine. Until additional unit tests are developed, please
-// keep this here.
+// keep this here for reference.
+//
 fn script_engine_validator(generator : &Generator, tx: &Transaction, utxo_entry_references: &Vec<UtxoEntryReference>, addresses : &HashSet<Address>) -> Result<()> {
 
     use kaspa_consensus_core::tx::{PopulatedTransaction,VerifiableTransaction,MutableTransaction};

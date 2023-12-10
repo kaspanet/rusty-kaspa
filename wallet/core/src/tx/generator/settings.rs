@@ -16,7 +16,7 @@ pub struct GeneratorSettings {
     // Utxo iterator
     pub utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
     // Utxo Context
-    pub utxo_context: Option<UtxoContext>,
+    pub source_utxo_context: Option<UtxoContext>,
     // typically a number of keys required to sign the transaction
     pub sig_op_count: u8,
     // number of minimum signatures required to sign the transaction
@@ -30,7 +30,7 @@ pub struct GeneratorSettings {
     // payload
     pub final_transaction_payload: Option<Vec<u8>>,
     // transaction is a transfer between accounts
-    pub is_transfer: bool,
+    pub destination_utxo_context: Option<UtxoContext>,
 }
 
 impl GeneratorSettings {
@@ -55,12 +55,12 @@ impl GeneratorSettings {
             minimum_signatures,
             change_address,
             utxo_iterator: Box::new(utxo_iterator),
-            utxo_context: Some(account.utxo_context().clone()),
+            source_utxo_context: Some(account.utxo_context().clone()),
 
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
-            is_transfer: false,
+            destination_utxo_context: None,
         };
 
         Ok(settings)
@@ -86,12 +86,12 @@ impl GeneratorSettings {
             minimum_signatures,
             change_address,
             utxo_iterator: Box::new(utxo_iterator),
-            utxo_context: Some(utxo_context),
+            source_utxo_context: Some(utxo_context),
 
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
-            is_transfer: false,
+            destination_utxo_context: None,
         };
 
         Ok(settings)
@@ -116,19 +116,19 @@ impl GeneratorSettings {
             minimum_signatures,
             change_address,
             utxo_iterator: Box::new(utxo_iterator),
-            utxo_context: None,
+            source_utxo_context: None,
 
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
-            is_transfer: false,
+            destination_utxo_context: None,
         };
 
         Ok(settings)
     }
 
-    pub fn as_transfer(mut self) -> Self {
-        self.is_transfer = true;
+    pub fn utxo_context_transfer(mut self, destination_utxo_context: &UtxoContext) -> Self {
+        self.destination_utxo_context = Some(destination_utxo_context.clone());
         self
     }
 }

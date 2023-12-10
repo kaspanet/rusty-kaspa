@@ -16,4 +16,4 @@ pub use stream::*;
 pub use summary::*;
 
 #[cfg(test)]
-mod test;
+pub mod test;
