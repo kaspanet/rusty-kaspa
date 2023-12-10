@@ -1,22 +1,24 @@
 use crate::imports::*;
-use crate::runtime::Wallet;
+// use crate::runtime::Wallet;
 use crate::storage::Binding;
-use crate::tx::{PendingTransaction, PendingTransactionInner};
-use crate::utxo::{UtxoContext, UtxoEntryReference};
+use crate::tx::PendingTransactionInner;
+use crate::utxo::{Maturity, OutgoingTransaction, UtxoContext, UtxoEntryReference};
 use kaspa_addresses::Address;
-use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint};
+use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction};
+// use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint};
 use separator::Separatable;
 use serde::{Deserialize, Serialize};
 use workflow_core::time::{unixtime_as_millis_u64, unixtime_to_locale_string};
-use workflow_log::style;
+// use workflow_log::style;
 
 pub use kaspa_consensus_core::tx::TransactionId;
+use zeroize::Zeroize;
 
 const TRANSACTION_VERSION: u16 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Eq, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum TransactionType {
+#[serde(rename_all = "kebab-case")]
+pub enum TransactionKind {
     /// Incoming transaction
     Incoming,
     /// Transaction created by the runtime
@@ -30,61 +32,42 @@ pub enum TransactionType {
     /// Stasis transaction (caused by reorg during coinbase UTXO stasis)
     /// NOTE: These types of transactions should be ignored by clients.
     Stasis,
+    TransferIncoming,
+    TransferOutgoing,
+    Change,
 }
 
-impl TransactionType {
-    pub fn style(&self, s: &str) -> String {
-        match self {
-            TransactionType::Incoming => style(s).green().to_string(),
-            TransactionType::Outgoing => style(s).red().to_string(),
-            TransactionType::External => style(s).red().to_string(),
-            TransactionType::Batch => style(s).blue().to_string(),
-            TransactionType::Reorg => style(s).blue().to_string(),
-            TransactionType::Stasis => style(s).blue().to_string(),
-        }
-    }
-    pub fn style_with_sign(&self, s: &str, history: bool) -> String {
-        match self {
-            TransactionType::Incoming => style("+".to_string() + s).green().to_string(),
-            TransactionType::Outgoing => style("-".to_string() + s).red().to_string(),
-            TransactionType::External => style("-".to_string() + s).red().to_string(),
-            TransactionType::Batch => style("".to_string() + s).dim().to_string(),
-            TransactionType::Reorg => {
-                if history {
-                    style("".to_string() + s).dim()
-                } else {
-                    style("-".to_string() + s).red()
-                }
-            }
-            .to_string(),
-            TransactionType::Stasis => style("".to_string() + s).dim().to_string(),
-        }
-    }
-}
+impl TransactionKind {}
 
-impl TransactionType {
+impl TransactionKind {
     pub fn sign(&self) -> String {
         match self {
-            TransactionType::Incoming => "+",
-            TransactionType::Outgoing => "-",
-            TransactionType::External => "-",
-            TransactionType::Batch => "",
-            TransactionType::Reorg => "-",
-            TransactionType::Stasis => "-",
+            TransactionKind::Incoming => "+",
+            TransactionKind::Outgoing => "-",
+            TransactionKind::External => "-",
+            TransactionKind::Batch => "",
+            TransactionKind::Reorg => "-",
+            TransactionKind::Stasis => "",
+            TransactionKind::TransferIncoming => "",
+            TransactionKind::TransferOutgoing => "",
+            TransactionKind::Change => "",
         }
         .to_string()
     }
 }
 
-impl std::fmt::Display for TransactionType {
+impl std::fmt::Display for TransactionKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            TransactionType::Incoming => "incoming",
-            TransactionType::Outgoing => "outgoing",
-            TransactionType::External => "external",
-            TransactionType::Batch => "batch",
-            TransactionType::Reorg => "reorg",
-            TransactionType::Stasis => "stasis",
+            TransactionKind::Incoming => "incoming",
+            TransactionKind::Outgoing => "outgoing",
+            TransactionKind::External => "external",
+            TransactionKind::Batch => "batch",
+            TransactionKind::Reorg => "reorg",
+            TransactionKind::Stasis => "stasis",
+            TransactionKind::TransferIncoming => "transfer-incoming",
+            TransactionKind::TransferOutgoing => "transfer-outgoing",
+            TransactionKind::Change => "change",
         };
         write!(f, "{s}")
     }
@@ -103,8 +86,8 @@ pub struct UtxoRecord {
     pub is_coinbase: bool,
 }
 
-impl From<UtxoEntryReference> for UtxoRecord {
-    fn from(utxo: UtxoEntryReference) -> Self {
+impl From<&UtxoEntryReference> for UtxoRecord {
+    fn from(utxo: &UtxoEntryReference) -> Self {
         let UtxoEntryReference { utxo } = utxo;
         UtxoRecord {
             index: utxo.outpoint.get_index(),
@@ -123,10 +106,10 @@ pub enum TransactionMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(tag = "type", content = "transaction")]
-// the reason the struct is renamed lowercase and then
+// the reason the struct is renamed kebab-case and then
 // each field is renamed to camelCase is to force the
 // enum tags to be lower case.
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum TransactionData {
     Reorg {
         #[serde(rename = "utxoEntries")]
@@ -152,9 +135,7 @@ pub enum TransactionData {
         #[serde(rename = "value")]
         aggregate_input_value: u64,
     },
-    Outgoing {
-        #[serde(rename = "isFinal")]
-        is_final: bool,
+    Batch {
         fees: u64,
         #[serde(rename = "inputValue")]
         aggregate_input_value: u64,
@@ -167,23 +148,88 @@ pub enum TransactionData {
         change_value: u64,
         #[serde(rename = "acceptedDaaScore")]
         accepted_daa_score: Option<u64>,
+        #[serde(rename = "utxoEntries")]
+        #[serde(default)]
+        utxo_entries: Vec<UtxoRecord>,
+    },
+    Outgoing {
+        fees: u64,
+        #[serde(rename = "inputValue")]
+        aggregate_input_value: u64,
+        #[serde(rename = "outputValue")]
+        aggregate_output_value: u64,
+        transaction: Transaction,
+        #[serde(rename = "paymentValue")]
+        payment_value: Option<u64>,
+        #[serde(rename = "changeValue")]
+        change_value: u64,
+        #[serde(rename = "acceptedDaaScore")]
+        accepted_daa_score: Option<u64>,
+        #[serde(rename = "utxoEntries")]
+        #[serde(default)]
+        utxo_entries: Vec<UtxoRecord>,
+    },
+    TransferIncoming {
+        fees: u64,
+        #[serde(rename = "inputValue")]
+        aggregate_input_value: u64,
+        #[serde(rename = "outputValue")]
+        aggregate_output_value: u64,
+        transaction: Transaction,
+        #[serde(rename = "paymentValue")]
+        payment_value: Option<u64>,
+        #[serde(rename = "changeValue")]
+        change_value: u64,
+        #[serde(rename = "acceptedDaaScore")]
+        accepted_daa_score: Option<u64>,
+        #[serde(rename = "utxoEntries")]
+        utxo_entries: Vec<UtxoRecord>,
+    },
+    TransferOutgoing {
+        fees: u64,
+        #[serde(rename = "inputValue")]
+        aggregate_input_value: u64,
+        #[serde(rename = "outputValue")]
+        aggregate_output_value: u64,
+        transaction: Transaction,
+        #[serde(rename = "paymentValue")]
+        payment_value: Option<u64>,
+        #[serde(rename = "changeValue")]
+        change_value: u64,
+        #[serde(rename = "acceptedDaaScore")]
+        accepted_daa_score: Option<u64>,
+        #[serde(rename = "utxoEntries")]
+        utxo_entries: Vec<UtxoRecord>,
+    },
+    Change {
+        #[serde(rename = "inputValue")]
+        aggregate_input_value: u64,
+        #[serde(rename = "outputValue")]
+        aggregate_output_value: u64,
+        transaction: Transaction,
+        #[serde(rename = "paymentValue")]
+        payment_value: Option<u64>,
+        #[serde(rename = "changeValue")]
+        change_value: u64,
+        #[serde(rename = "acceptedDaaScore")]
+        accepted_daa_score: Option<u64>,
+        #[serde(rename = "utxoEntries")]
+        utxo_entries: Vec<UtxoRecord>,
     },
 }
 
 impl TransactionData {
-    pub fn transaction_type(&self) -> TransactionType {
+    pub fn kind(&self) -> TransactionKind {
         match self {
-            TransactionData::Reorg { .. } => TransactionType::Reorg,
-            TransactionData::Stasis { .. } => TransactionType::Stasis,
-            TransactionData::Incoming { .. } => TransactionType::Incoming,
-            TransactionData::External { .. } => TransactionType::External,
-            TransactionData::Outgoing { is_final, .. } => {
-                if *is_final {
-                    TransactionType::Outgoing
-                } else {
-                    TransactionType::Batch
-                }
-            }
+            TransactionData::Reorg { .. } => TransactionKind::Reorg,
+            TransactionData::Stasis { .. } => TransactionKind::Stasis,
+            TransactionData::Incoming { .. } => TransactionKind::Incoming,
+            TransactionData::External { .. } => TransactionKind::External,
+            TransactionData::Outgoing { .. } => TransactionKind::Outgoing,
+            TransactionData::Batch { .. } => TransactionKind::Batch,
+            TransactionData::TransferIncoming { .. } => TransactionKind::TransferIncoming,
+            TransactionData::TransferOutgoing { .. } => TransactionKind::TransferOutgoing,
+            TransactionData::Change { .. } => TransactionKind::Change,
         }
     }
 }
@@ -194,6 +240,9 @@ pub struct TransactionRecord {
     pub id: TransactionId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unixtime: Option<u64>,
+    // TODO - remove default
+    #[serde(default)]
+    pub value: u64,
     pub binding: Binding,
     #[serde(rename = "blockDaaScore")]
     pub block_daa_score: u64,
@@ -201,6 +250,8 @@ pub struct TransactionRecord {
     pub network_id: NetworkId,
     #[serde(rename = "data")]
     pub transaction_data: TransactionData,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<TransactionMetadata>,
 }
@@ -238,8 +289,23 @@ impl TransactionRecord {
         self.block_daa_score
     }
 
-    pub fn transaction_type(&self) -> TransactionType {
-        self.transaction_data.transaction_type()
+    pub fn maturity(&self, current_daa_score: u64) -> Maturity {
+        // TODO - refactor @ high BPS processing
+        let maturity = if self.is_coinbase() {
+            crate::utxo::UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst)
+        } else {
+            crate::utxo::UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst)
+        };
+
+        if current_daa_score < self.block_daa_score() + maturity {
+            Maturity::Pending
+        } else {
+            Maturity::Confirmed
+        }
+    }
+
+    pub fn kind(&self) -> TransactionKind {
+        self.transaction_data.kind()
     }
 
     pub fn network_id(&self) -> &NetworkId {
@@ -255,6 +321,18 @@ impl TransactionRecord {
 
     pub fn is_outgoing(&self) -> bool {
         matches!(&self.transaction_data, TransactionData::Outgoing { .. })
+    }
+
+    pub fn is_change(&self) -> bool {
+        matches!(&self.transaction_data, TransactionData::Change { .. })
+    }
+
+    pub fn is_batch(&self) -> bool {
+        matches!(&self.transaction_data, TransactionData::Batch { .. })
+    }
+
+    pub fn is_transfer(&self) -> bool {
+        matches!(&self.transaction_data, TransactionData::TransferIncoming { .. } | TransactionData::TransferOutgoing { .. })
     }
 
     pub fn transaction_data(&self) -> &TransactionData {
@@ -284,29 +362,48 @@ impl TransactionRecord {
             | TransactionData::Stasis { aggregate_input_value, .. }
             | TransactionData::Incoming { aggregate_input_value, .. }
             | TransactionData::External { aggregate_input_value, .. }
-            | TransactionData::Outgoing { aggregate_input_value, .. } => *aggregate_input_value,
+            | TransactionData::Outgoing { aggregate_input_value, .. }
+            | TransactionData::Batch { aggregate_input_value, .. }
+            | TransactionData::TransferIncoming { aggregate_input_value, .. }
+            | TransactionData::TransferOutgoing { aggregate_input_value, .. }
+            | TransactionData::Change { aggregate_input_value, .. } => *aggregate_input_value,
         }
+    }
+
+    pub fn value(&self) -> u64 {
+        self.value
     }
 }
 
 impl TransactionRecord {
-    pub fn new_incoming(
+    pub fn new_incoming(utxo_context: &UtxoContext, id: TransactionId, utxos: &[UtxoEntryReference]) -> Self {
+        Self::new_incoming_impl(utxo_context, TransactionKind::Incoming, id, utxos)
+    }
+
+    pub fn new_reorg(utxo_context: &UtxoContext, id: TransactionId, utxos: &[UtxoEntryReference]) -> Self {
+        Self::new_incoming_impl(utxo_context, TransactionKind::Reorg, id, utxos)
+    }
+    pub fn new_stasis(utxo_context: &UtxoContext, id: TransactionId, utxos: &[UtxoEntryReference]) -> Self {
+        Self::new_incoming_impl(utxo_context, TransactionKind::Stasis, id, utxos)
+    }
+
+    fn new_incoming_impl(
         utxo_context: &UtxoContext,
-        transaction_type: TransactionType,
+        transaction_type: TransactionKind,
         id: TransactionId,
-        utxos: Vec<UtxoEntryReference>,
+        utxos: &[UtxoEntryReference],
     ) -> Self {
         let binding = Binding::from(utxo_context.binding());
         let block_daa_score = utxos[0].utxo.entry.block_daa_score;
-        let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
+        let utxo_entries = utxos.iter().map(UtxoRecord::from).collect::<Vec<_>>();
         let aggregate_input_value = utxo_entries.iter().map(|utxo| utxo.amount).sum::<u64>();
 
         let unixtime = unixtime_as_millis_u64();
 
         let transaction_data = match transaction_type {
-            TransactionType::Incoming => TransactionData::Incoming { utxo_entries, aggregate_input_value },
-            TransactionType::Reorg => TransactionData::Reorg { utxo_entries, aggregate_input_value },
-            TransactionType::Stasis => TransactionData::Stasis { utxo_entries, aggregate_input_value },
+            TransactionKind::Incoming => TransactionData::Incoming { utxo_entries, aggregate_input_value },
+            TransactionKind::Reorg => TransactionData::Reorg { utxo_entries, aggregate_input_value },
+            TransactionKind::Stasis => TransactionData::Stasis { utxo_entries, aggregate_input_value },
             kind => panic!("TransactionRecord::new_incoming() - invalid transaction type: {kind:?}"),
         };
 
@@ -314,21 +411,23 @@ impl TransactionRecord {
             version: TRANSACTION_VERSION,
             id,
             unixtime: Some(unixtime),
+            value: aggregate_input_value,
             binding,
             transaction_data,
             block_daa_score,
             network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
             metadata: None,
+            note: None,
         }
     }
 
     /// Transaction that was not issued by this instance of the wallet
     /// but belongs to this address set. This is an "external" transaction
     /// that occurs during the lifetime of this wallet.
-    pub fn new_external(utxo_context: &UtxoContext, id: TransactionId, utxos: Vec<UtxoEntryReference>) -> Self {
+    pub fn new_external(utxo_context: &UtxoContext, id: TransactionId, utxos: &[UtxoEntryReference]) -> Self {
         let binding = Binding::from(utxo_context.binding());
         let block_daa_score = utxos[0].utxo.entry.block_daa_score;
-        let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
+        let utxo_entries = utxos.iter().map(UtxoRecord::from).collect::<Vec<_>>();
         let aggregate_input_value = utxo_entries.iter().map(|utxo| utxo.amount).sum::<u64>();
 
         let transaction_data = TransactionData::External { utxo_entries, aggregate_input_value };
@@ -338,71 +437,39 @@ impl TransactionRecord {
             version: TRANSACTION_VERSION,
             id,
             unixtime: Some(unixtime),
+            value: aggregate_input_value,
             binding,
             transaction_data,
             block_daa_score,
             network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
             metadata: None,
+            note: None,
         }
     }
 
-    /// Transaction that was detected during the address scan (wallet bootstrap period).
-    /// This transaction may have been previously observed by the wallet, but since then
-    /// the wallet has been restarted, or it may have occurred while the wallet was offline.
-    /// This transaction is treated as external, however, at the time of its creation
-    /// the wallet does not know the time at which the transaction has been created, as such
-    /// the unix time is set to `None`.  The client of UtxoContext should check the storage
-    /// to see if such transaction exists and if not, query the node RPC API for the transaction
-    /// timestamp based on it's DAA score.
-    ///
-    /// In the case of the UtxoContext producing such a transaction, it will broadcast it
-    /// as `Events::Scan` event, which will be picked up by the Wallet runtime (if present)
-    /// and the wallet will query the node RPC API for the transaction timestamp as well
-    /// as store the transaction in the storage subsystem.  If the wallet is not present
-    /// no action will be taken to obtain the transaction timestamp.
-    pub fn new_scanned(utxo_context: &UtxoContext, id: TransactionId, utxos: Vec<UtxoEntryReference>) -> Self {
-        let binding = Binding::from(utxo_context.binding());
-        let block_daa_score = utxos[0].utxo.entry.block_daa_score;
-        let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
-        let aggregate_input_value = utxo_entries.iter().map(|utxo| utxo.amount).sum::<u64>();
-
-        let transaction_data = TransactionData::External { utxo_entries, aggregate_input_value };
-
-        TransactionRecord {
-            version: TRANSACTION_VERSION,
-            id,
-            unixtime: None,
-            binding,
-            transaction_data,
-            block_daa_score,
-            network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
-            metadata: None,
-        }
-    }
-
-    pub fn new_outgoing(utxo_context: &UtxoContext, pending_tx: &PendingTransaction, accepted_daa_score: Option<u64>) -> Self {
+    pub fn new_outgoing(utxo_context: &UtxoContext, outgoing_tx: &OutgoingTransaction, accepted_daa_score: Option<u64>) -> Self {
         let binding = Binding::from(utxo_context.binding());
         let block_daa_score =
             utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
+
+        let utxo_entries = outgoing_tx.utxo_entries().into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
 
         let unixtime = unixtime_as_millis_u64();
 
         let PendingTransactionInner {
             signable_tx,
-            kind,
             fees,
             aggregate_input_value,
             aggregate_output_value,
             payment_value,
             change_output_value,
             ..
-        } = &*pending_tx.inner;
+        } = &*outgoing_tx.pending_transaction().inner;
 
         let transaction = signable_tx.lock().unwrap().tx.clone();
         let id = transaction.id();
 
         let transaction_data = TransactionData::Outgoing {
-            is_final: kind.is_final(),
             fees: *fees,
             aggregate_input_value: *aggregate_input_value,
             aggregate_output_value: *aggregate_output_value,
@@ -410,146 +477,235 @@ impl TransactionRecord {
             payment_value: *payment_value,
             change_value: *change_output_value,
             accepted_daa_score,
+            utxo_entries,
         };
 
         TransactionRecord {
             version: TRANSACTION_VERSION,
             id,
             unixtime: Some(unixtime),
+            value: payment_value.unwrap_or(*aggregate_input_value),
             binding,
             transaction_data,
             block_daa_score,
             network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
             metadata: None,
+            note: None,
         }
     }
 
-    pub async fn format(&self, wallet: &Arc<Wallet>, include_utxos: bool) -> Vec<String> {
-        self.format_with_args(wallet, None, None, include_utxos, false, None).await
-    }
+    pub fn new_batch(utxo_context: &UtxoContext, outgoing_tx: &OutgoingTransaction, accepted_daa_score: Option<u64>) -> Self {
+        let binding = Binding::from(utxo_context.binding());
+        let block_daa_score =
+            utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
 
-    pub async fn format_with_state(&self, wallet: &Arc<Wallet>, state: Option<&str>, include_utxos: bool) -> Vec<String> {
-        self.format_with_args(wallet, state, None, include_utxos, false, None).await
-    }
+        let utxo_entries = outgoing_tx.utxo_entries().into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
 
-    pub async fn format_with_args(
-        &self,
-        wallet: &Arc<Wallet>,
-        state: Option<&str>,
-        current_daa_score: Option<u64>,
-        include_utxos: bool,
-        history: bool,
-        account: Option<Arc<dyn runtime::Account>>,
-    ) -> Vec<String> {
-        let TransactionRecord { id, binding, block_daa_score, transaction_data, .. } = self;
+        let unixtime = unixtime_as_millis_u64();
 
-        let name = match binding {
-            Binding::Custom(id) => style(id.short()).cyan(),
-            Binding::Account(account_id) => {
-                let account = if let Some(account) = account {
-                    Some(account)
-                } else {
-                    wallet.get_account_by_id(account_id).await.ok().flatten()
-                };
+        let PendingTransactionInner {
+            signable_tx,
+            fees,
+            aggregate_input_value,
+            aggregate_output_value,
+            payment_value,
+            change_output_value,
+            ..
+        } = &*outgoing_tx.pending_transaction().inner;
 
-                if let Some(account) = account {
-                    style(account.name_with_id()).cyan()
-                } else {
-                    style(account_id.short() + " ??").magenta()
-                }
-            }
+        let transaction = signable_tx.lock().unwrap().tx.clone();
+        let id = transaction.id();
+
+        let transaction_data = TransactionData::Batch {
+            fees: *fees,
+            aggregate_input_value: *aggregate_input_value,
+            aggregate_output_value: *aggregate_output_value,
+            transaction,
+            payment_value: *payment_value,
+            change_value: *change_output_value,
+            accepted_daa_score,
+            utxo_entries,
         };
 
-        let transaction_type = transaction_data.transaction_type();
-        let kind = transaction_type.style(&transaction_type.to_string());
-
-        let maturity = current_daa_score
-            .map(|score| {
-                // TODO - refactor @ high BPS processing
-                let maturity = if self.is_coinbase() {
-                    crate::utxo::UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst)
-                } else {
-                    crate::utxo::UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst)
-                };
-
-                if score < self.block_daa_score() + maturity {
-                    style("pending").dim().to_string()
-                } else {
-                    style("confirmed").dim().to_string()
-                }
-            })
-            .unwrap_or_default();
-
-        let block_daa_score = block_daa_score.separated_string();
-        let state = state.unwrap_or(&maturity);
-        let mut lines = vec![format!("{name} {id} @{block_daa_score} DAA - {kind} {state}")];
-
-        let suffix = utils::kaspa_suffix(&self.network_id.network_type);
-
-        match transaction_data {
-            TransactionData::Reorg { utxo_entries, aggregate_input_value }
-            | TransactionData::Stasis { utxo_entries, aggregate_input_value }
-            | TransactionData::Incoming { utxo_entries, aggregate_input_value }
-            | TransactionData::External { utxo_entries, aggregate_input_value } => {
-                let aggregate_input_value =
-                    transaction_type.style_with_sign(utils::sompi_to_kaspa_string(*aggregate_input_value).as_str(), history);
-                lines.push(format!("{:>4}UTXOs: {}  Total: {}", "", utxo_entries.len(), aggregate_input_value));
-                if include_utxos {
-                    for utxo_entry in utxo_entries {
-                        let address =
-                            style(utxo_entry.address.as_ref().map(|addr| addr.to_string()).unwrap_or_else(|| "n/a".to_string()))
-                                .blue();
-                        let index = utxo_entry.index;
-                        let is_coinbase = if utxo_entry.is_coinbase {
-                            style(format!("coinbase utxo [{index}]")).dim()
-                        } else {
-                            style(format!("standard utxo [{index}]")).dim()
-                        };
-                        let amount =
-                            transaction_type.style_with_sign(utils::sompi_to_kaspa_string(utxo_entry.amount).as_str(), history);
-
-                        lines.push(format!("{:>4}{address}", ""));
-                        lines.push(format!("{:>4}{amount} {suffix} {is_coinbase}", ""));
-                    }
-                }
-            }
-            TransactionData::Outgoing { fees, aggregate_input_value, transaction, payment_value, change_value, .. } => {
-                if let Some(payment_value) = payment_value {
-                    lines.push(format!(
-                        "{:>4}Payment: {}  Used: {}  Fees: {}  Change: {}  UTXOs: [{}↠{}]",
-                        "",
-                        style(utils::sompi_to_kaspa_string(*payment_value)).red(),
-                        style(utils::sompi_to_kaspa_string(*aggregate_input_value)).blue(),
-                        style(utils::sompi_to_kaspa_string(*fees)).red(),
-                        style(utils::sompi_to_kaspa_string(*change_value)).green(),
-                        transaction.inputs.len(),
-                        transaction.outputs.len(),
-                    ));
-                } else {
-                    lines.push(format!(
-                        "{:>4}Sweep: {}  Fees: {}  Change: {}  UTXOs: [{}↠{}]",
-                        "",
-                        style(utils::sompi_to_kaspa_string(*aggregate_input_value)).blue(),
-                        style(utils::sompi_to_kaspa_string(*fees)).red(),
-                        style(utils::sompi_to_kaspa_string(*change_value)).green(),
-                        transaction.inputs.len(),
-                        transaction.outputs.len(),
-                    ));
-                }
-
-                if include_utxos {
-                    for input in transaction.inputs.iter() {
-                        let TransactionInput { previous_outpoint, signature_script: _, sequence, sig_op_count } = input;
-                        let TransactionOutpoint { transaction_id, index } = previous_outpoint;
-
-                        lines.push(format!("{:>4}{sequence:>2}: {transaction_id}:{index} SigOps: {sig_op_count}", ""));
-                        // lines.push(format!("{:>4}{:>2}  Sig Ops: {sig_op_count}", "", ""));
-                        // lines.push(format!("{:>4}{:>2}   Script: {}", "", "", signature_script.to_hex()));
-                    }
-                }
-            }
+        TransactionRecord {
+            version: TRANSACTION_VERSION,
+            id,
+            unixtime: Some(unixtime),
+            value: payment_value.unwrap_or(*aggregate_input_value),
+            binding,
+            transaction_data,
+            block_daa_score,
+            network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
+            metadata: None,
+            note: None,
         }
+    }
 
-        lines
+    pub fn new_transfer_incoming(
+        utxo_context: &UtxoContext,
+        outgoing_tx: &OutgoingTransaction,
+        accepted_daa_score: Option<u64>,
+        utxos: &[UtxoEntryReference],
+    ) -> Self {
+        let binding = Binding::from(utxo_context.binding());
+        let block_daa_score =
+            utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
+        let utxo_entries = utxos.iter().map(UtxoRecord::from).collect::<Vec<_>>();
+
+        let unixtime = unixtime_as_millis_u64();
+
+        let PendingTransactionInner {
+            signable_tx,
+            fees,
+            aggregate_input_value,
+            aggregate_output_value,
+            payment_value,
+            change_output_value,
+            ..
+        } = &*outgoing_tx.pending_transaction().inner;
+
+        let transaction = signable_tx.lock().unwrap().tx.clone();
+        let id = transaction.id();
+
+        let transaction_data = TransactionData::TransferIncoming {
+            fees: *fees,
+            aggregate_input_value: *aggregate_input_value,
+            aggregate_output_value: *aggregate_output_value,
+            transaction,
+            payment_value: *payment_value,
+            change_value: *change_output_value,
+            accepted_daa_score,
+            utxo_entries,
+        };
+
+        TransactionRecord {
+            version: TRANSACTION_VERSION,
+            id,
+            unixtime: Some(unixtime),
+            value: payment_value.unwrap_or(*aggregate_input_value),
+            binding,
+            transaction_data,
+            block_daa_score,
+            network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
+            metadata: None,
+            note: None,
+        }
+    }
+
+    pub fn new_transfer_outgoing(
+        utxo_context: &UtxoContext,
+        outgoing_tx: &OutgoingTransaction,
+        accepted_daa_score: Option<u64>,
+        utxos: &[UtxoEntryReference],
+    ) -> Self {
+        let binding = Binding::from(utxo_context.binding());
+        let block_daa_score =
+            utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
+        let utxo_entries = utxos.iter().map(UtxoRecord::from).collect::<Vec<_>>();
+
+        let unixtime = unixtime_as_millis_u64();
+
+        let PendingTransactionInner {
+            signable_tx,
+            fees,
+            aggregate_input_value,
+            aggregate_output_value,
+            payment_value,
+            change_output_value,
+            ..
+        } = &*outgoing_tx.pending_transaction().inner;
+
+        let transaction = signable_tx.lock().unwrap().tx.clone();
+        let id = transaction.id();
+
+        let transaction_data = TransactionData::TransferOutgoing {
+            fees: *fees,
+            aggregate_input_value: *aggregate_input_value,
+            aggregate_output_value: *aggregate_output_value,
+            transaction,
+            payment_value: *payment_value,
+            change_value: *change_output_value,
+            accepted_daa_score,
+            utxo_entries,
+        };
+
+        TransactionRecord {
+            version: TRANSACTION_VERSION,
+            id,
+            unixtime: Some(unixtime),
+            value: payment_value.unwrap_or(*aggregate_input_value),
+            binding,
+            transaction_data,
+            block_daa_score,
+            network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
+            metadata: None,
+            note: None,
+        }
+    }
+
+    pub fn new_change(
+        utxo_context: &UtxoContext,
+        outgoing_tx: &OutgoingTransaction,
+        accepted_daa_score: Option<u64>,
+        utxos: &[UtxoEntryReference],
+    ) -> Self {
+        let binding = Binding::from(utxo_context.binding());
+        let block_daa_score =
+            utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
+        let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
+
+        let unixtime = unixtime_as_millis_u64();
+
+        let PendingTransactionInner {
+            signable_tx,
+            aggregate_input_value,
+            aggregate_output_value,
+            payment_value,
+            change_output_value,
+            ..
+        } = &*outgoing_tx.pending_transaction().inner;
+
+        let transaction = signable_tx.lock().unwrap().tx.clone();
+        let id = transaction.id();
+
+        let transaction_data = TransactionData::Change {
+            aggregate_input_value: *aggregate_input_value,
+            aggregate_output_value: *aggregate_output_value,
+            transaction,
+            payment_value: *payment_value,
+            change_value: *change_output_value,
+            accepted_daa_score,
+            utxo_entries,
+        };
+
+        TransactionRecord {
+            version: TRANSACTION_VERSION,
+            id,
+            unixtime: Some(unixtime),
+            value: *change_output_value,
+            binding,
+            transaction_data,
+            block_daa_score,
+            network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
+            metadata: None,
+            note: None,
+        }
+    }
+}
+
+impl Zeroize for TransactionRecord {
+    fn zeroize(&mut self) {
+        // TODO - this trait is added due to the 
+        // Encryptable<TransactionRecord> requirement
+        // for T to be Zeroize.
+        // 
+        // This will be updated later
+        //
+        // self.id.zeroize();
+        // self.binding.zeroize();
+        // self.block_daa_score.zeroize();
+        // self.transaction_data.zeroize();
+        // self.network_id.zeroize();
+        // self.metadata.zeroize();
     }
 }

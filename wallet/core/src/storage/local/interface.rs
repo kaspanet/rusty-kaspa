@@ -1,5 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
+use crate::secret::Secret;
 use crate::storage::interface::AddressBookStore;
 use crate::storage::interface::CreateArgs;
 use crate::storage::interface::OpenArgs;
@@ -114,6 +115,34 @@ impl LocalStoreInner {
             Store::Storage(mut storage) => {
                 storage.rename_sync(filename.as_str())?;
                 *self.store.lock().unwrap() = Arc::new(Store::Storage(storage));
+                Ok(())
+            }
+        }
+    }
+
+    async fn change_secret(&self, ctx: &Arc<dyn AccessContextT>, new_secret: Secret) -> Result<()> {
+        let old_secret = ctx.wallet_secret().await;
+
+        match &*self.storage() {
+            Store::Resident => {
+                let mut cache = self.cache();
+                let old_prv_key_data: Decrypted<PrvKeyDataMap> = cache.prv_key_data.decrypt(&old_secret)?;
+                let new_prv_key_data = Decrypted::new(old_prv_key_data.unwrap()).encrypt(&new_secret)?;
+                cache.prv_key_data.replace(new_prv_key_data);
+
+                Ok(())
+            }
+            Store::Storage(ref storage) => {
+                let wallet = {
+                    let mut cache = self.cache();
+                    let old_prv_key_data: Decrypted<PrvKeyDataMap> = cache.prv_key_data.decrypt(&old_secret)?;
+                    let new_prv_key_data = Decrypted::new(old_prv_key_data.unwrap()).encrypt(&new_secret)?;
+                    cache.prv_key_data.replace(new_prv_key_data);
+
+                    Wallet::try_from((&*cache, &new_secret))?
+                };
+                wallet.try_store(storage).await?;
+                self.set_modified(false);
                 Ok(())
             }
         }
@@ -276,6 +305,13 @@ impl Interface for LocalStore {
         if let Some(filename) = filename {
             inner.rename(filename)?;
         }
+        Ok(())
+    }
+
+    /// change the secret of the currently open wallet
+    async fn change_secret(&self, ctx: &Arc<dyn AccessContextT>, new_secret: Secret) -> Result<()> {
+        let inner = self.inner.lock().unwrap().clone().ok_or(Error::WalletNotOpen)?;
+        inner.change_secret(ctx, new_secret).await?;
         Ok(())
     }
 

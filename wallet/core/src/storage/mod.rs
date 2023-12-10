@@ -23,7 +23,7 @@ pub use interface::{
 pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
 pub use local::interface::make_filename;
 pub use metadata::Metadata;
-pub use transaction::{TransactionId, TransactionMetadata, TransactionRecord, TransactionType};
+pub use transaction::{TransactionData, TransactionId, TransactionKind, TransactionMetadata, TransactionRecord};
 
 #[cfg(test)]
 mod tests {
@@ -38,7 +38,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_wallet_store_wallet_store_load() -> Result<()> {
-        // This test creates a fake instance of keydata, stored account
+        // This test creates a simulated instance of keydata, stored account
         // instance and a wallet instance that owns them.  It then tests
         // loading of account references and a wallet instance and confirms
         // that the serialized data is as expected.

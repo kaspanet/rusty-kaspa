@@ -1,7 +1,9 @@
+use crate::encryption::*;
 use crate::imports::*;
 use crate::result::Result;
+use crate::secret::Secret;
 use crate::storage::interface::{StorageStream, TransactionRangeResult};
-use crate::storage::{Binding, TransactionRecordStore, TransactionType};
+use crate::storage::{Binding, TransactionKind, TransactionRecordStore};
 use crate::storage::{TransactionMetadata, TransactionRecord};
 use kaspa_utils::hex::ToHex;
 use std::{
@@ -99,14 +101,10 @@ impl TransactionRecordStore for TransactionStore {
         Ok(Box::pin(TransactionRecordStream::try_new(self, binding, network_id).await?))
     }
 
-    // async fn transaction_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionRecord>> {
-    //     Ok(Box::pin(TransactionRecordStream::try_new(&self.transactions, binding, network_id).await?))
-    // }
-
     async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>> {
         let folder = self.make_folder(binding, network_id);
         let path = folder.join(id.to_hex());
-        Ok(Arc::new(fs::read_json::<TransactionRecord>(&path).await?))
+        Ok(Arc::new(read(&path, None).await?))
     }
 
     async fn load_multiple(
@@ -120,8 +118,14 @@ impl TransactionRecordStore for TransactionStore {
 
         for id in ids {
             let path = folder.join(&id.to_hex());
-            let tx: TransactionRecord = fs::read_json(&path).await?;
-            transactions.push(Arc::new(tx));
+            match read(&path, None).await {
+                Ok(tx) => {
+                    transactions.push(Arc::new(tx));
+                }
+                Err(err) => {
+                    log_error!("Error loading transaction {id}: {:?}", err);
+                }
+            }
         }
 
         Ok(transactions)
@@ -131,7 +135,7 @@ impl TransactionRecordStore for TransactionStore {
         &self,
         binding: &Binding,
         network_id: &NetworkId,
-        filter: Option<Vec<TransactionType>>,
+        filter: Option<Vec<TransactionKind>>,
         range: std::ops::Range<usize>,
     ) -> Result<TransactionRangeResult> {
         let folder = self.ensure_folder(binding, network_id).await?;
@@ -143,13 +147,20 @@ impl TransactionRecordStore for TransactionStore {
 
             for id in ids {
                 let path = folder.join(&id.to_hex());
-                let tx: TransactionRecord = fs::read_json(&path).await?;
-                if filter.contains(&tx.transaction_type()) {
-                    if located >= range.start && located < range.end {
-                        transactions.push(Arc::new(tx));
-                    }
 
-                    located += 1;
+                match read(&path, None).await {
+                    Ok(tx) => {
+                        if filter.contains(&tx.kind()) {
+                            if located >= range.start && located < range.end {
+                                transactions.push(Arc::new(tx));
+                            }
+
+                            located += 1;
+                        }
+                    }
+                    Err(err) => {
+                        log_error!("Error loading transaction {id}: {:?}", err);
+                    }
                 }
             }
 
@@ -159,8 +170,14 @@ impl TransactionRecordStore for TransactionStore {
 
             for id in iter {
                 let path = folder.join(&id.to_hex());
-                let tx: TransactionRecord = fs::read_json(&path).await?;
-                transactions.push(Arc::new(tx));
+                match read(&path, None).await {
+                    Ok(tx) => {
+                        transactions.push(Arc::new(tx));
+                    }
+                    Err(err) => {
+                        log_error!("Error loading transaction {id}: {:?}", err);
+                    }
+                }
             }
 
             ids.len()
@@ -173,7 +190,7 @@ impl TransactionRecordStore for TransactionStore {
         for tx in transaction_records {
             let folder = self.ensure_folder(tx.binding(), tx.network_id()).await?;
             let filename = folder.join(tx.id().to_hex());
-            fs::write_json(&filename, tx).await?;
+            write(&filename, tx, None).await?;
         }
 
         Ok(())
@@ -245,7 +262,7 @@ impl Stream for TransactionRecordStream {
         } else {
             let id = self.transactions.pop_front().unwrap();
             let path = self.folder.join(id.to_hex());
-            match fs::read_json_sync::<TransactionRecord>(&path) {
+            match read_sync(&path, None) {
                 Ok(transaction_data) => Poll::Ready(Some(Ok(Arc::new(transaction_data)))),
                 Err(err) => Poll::Ready(Some(Err(err.into()))),
             }
@@ -257,37 +274,22 @@ impl Stream for TransactionRecordStream {
     }
 }
 
-/*
-#[derive(Clone)]
-pub struct TransactionRecordStream {
-    store: Arc<TransactionStore>,
-    folder: PathBuf,
-    transactions: VecDeque<TransactionId>,
+async fn read(path: &Path, secret: Option<&Secret>) -> Result<TransactionRecord> {
+    let data = fs::read_json::<Encryptable<TransactionRecord>>(&path).await?;
+    Ok(data.decrypt(secret)?.unwrap())
 }
 
-impl TransactionRecordStream {
-    pub(crate) async fn try_new(store: &Arc<TransactionStore>, binding: &Binding, network_id: &NetworkId) -> Result<Self> {
-        let folder = store.make_folder(binding, network_id)?;
-        let transactions = store.enumerate(binding, network_id).await?;
-        Ok(Self { store: store.clone(), folder, transactions })
-    }
+fn read_sync(path: &Path, secret: Option<&Secret>) -> Result<TransactionRecord> {
+    let data = fs::read_json_sync::<Encryptable<TransactionRecord>>(&path)?;
+    Ok(data.decrypt(secret)?.unwrap())
 }
 
-impl Stream for TransactionRecordStream {
-    type Item = Result<Arc<TransactionRecord>>;
-
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if self.transactions.is_empty() {
-            Poll::Ready(None)
-        } else {
-            let id = self.transactions.pop_front().unwrap();
-            let filename = id.to_hex();
-            let path = self.folder.join(filename);
-            match fs::read_json::<TransactionRecord>(&path).await {
-                Ok(tx) => Poll::Ready(Some(Ok(Arc::new(tx)))),
-                Err(e) => Poll::Ready(Some(Err(e))),
-            }
-        }
-    }
+async fn write(path: &Path, record: &TransactionRecord, secret: Option<&Secret>) -> Result<()> {
+    let data = if let Some(secret) = secret {
+        Encryptable::from(record.clone()).into_encrypted(secret)?
+    } else {
+        Encryptable::from(record.clone())
+    };
+    fs::write_json(&path, &data).await?;
+    Ok(())
 }
-*/

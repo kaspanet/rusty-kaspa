@@ -1,7 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::interface::{StorageStream, TransactionRangeResult};
-use crate::storage::{Binding, TransactionRecordStore, TransactionType};
+use crate::storage::{Binding, TransactionKind, TransactionRecordStore};
 use crate::storage::{TransactionMetadata, TransactionRecord};
 
 pub struct Inner {
@@ -92,7 +92,7 @@ impl TransactionRecordStore for TransactionStore {
         &self,
         _binding: &Binding,
         _network_id: &NetworkId,
-        _filter: Option<Vec<TransactionType>>,
+        _filter: Option<Vec<TransactionKind>>,
         _range: std::ops::Range<usize>,
     ) -> Result<TransactionRangeResult> {
         let result = TransactionRangeResult { transactions: vec![], total: 0 };

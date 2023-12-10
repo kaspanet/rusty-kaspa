@@ -127,7 +127,7 @@ pub trait TransactionRecordStore: Send + Sync {
         &self,
         binding: &Binding,
         network_id: &NetworkId,
-        filter: Option<Vec<TransactionType>>,
+        filter: Option<Vec<TransactionKind>>,
         range: std::ops::Range<usize>,
     ) -> Result<TransactionRangeResult>;
 
@@ -186,6 +186,9 @@ pub trait Interface: Send + Sync + AnySync {
 
     /// rename the currently open wallet (title or the filename)
     async fn rename(&self, ctx: &Arc<dyn AccessContextT>, title: Option<&str>, filename: Option<&str>) -> Result<()>;
+
+    /// change the secret of the currently open wallet
+    async fn change_secret(&self, ctx: &Arc<dyn AccessContextT>, new_secret: Secret) -> Result<()>;
 
     /// checks if the wallet storage is present
     async fn exists(&self, name: Option<&str>) -> Result<bool>;
