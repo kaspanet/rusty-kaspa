@@ -722,10 +722,10 @@ pub struct BandwidthMetrics {
     pub borsh_bytes_rx: u64,
     pub json_bytes_tx: u64,
     pub json_bytes_rx: u64,
-    pub grpc_p2p_bytes_tx: u64,
-    pub grpc_p2p_bytes_rx: u64,
-    pub grpc_user_bytes_tx: u64,
-    pub grpc_user_bytes_rx: u64,
+    pub p2p_bytes_tx: u64,
+    pub p2p_bytes_rx: u64,
+    pub grpc_bytes_tx: u64,
+    pub grpc_bytes_rx: u64,
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]

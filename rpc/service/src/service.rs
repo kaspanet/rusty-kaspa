@@ -100,13 +100,7 @@ pub struct RpcCoreService {
     wrpc_json_counters: Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
-
-    // parking here for now
-    // will be integrated into
-    // metrics in the upcoming PR
-    #[allow(dead_code)]
     p2p_tower_counters: Arc<TowerConnectionCounters>,
-    #[allow(dead_code)]
     grpc_tower_counters: Arc<TowerConnectionCounters>,
 }
 
@@ -790,11 +784,10 @@ impl RpcApi for RpcCoreService {
             borsh_bytes_rx: self.wrpc_borsh_counters.rx_bytes.load(Ordering::Relaxed) as u64,
             json_bytes_tx: self.wrpc_json_counters.tx_bytes.load(Ordering::Relaxed) as u64,
             json_bytes_rx: self.wrpc_json_counters.rx_bytes.load(Ordering::Relaxed) as u64,
-            // TODO - pending merge with gRPC metrics
-            grpc_p2p_bytes_tx: 0,
-            grpc_p2p_bytes_rx: 0,
-            grpc_user_bytes_tx: 0,
-            grpc_user_bytes_rx: 0,
+            p2p_bytes_tx: self.p2p_tower_counters.bytes_tx.load(Ordering::Relaxed) as u64,
+            p2p_bytes_rx: self.p2p_tower_counters.bytes_rx.load(Ordering::Relaxed) as u64,
+            grpc_bytes_tx: self.grpc_tower_counters.bytes_tx.load(Ordering::Relaxed) as u64,
+            grpc_bytes_rx: self.grpc_tower_counters.bytes_rx.load(Ordering::Relaxed) as u64,
         });
 
         let consensus_metrics = if req.consensus_metrics {

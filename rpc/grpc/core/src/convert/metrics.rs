@@ -38,10 +38,10 @@ from!(item: &kaspa_rpc_core::BandwidthMetrics, protowire::BandwidthMetrics, {
         borsh_bytes_rx: item.borsh_bytes_rx,
         json_bytes_tx: item.json_bytes_tx,
         json_bytes_rx: item.json_bytes_rx,
-        grpc_p2p_bytes_tx: item.grpc_p2p_bytes_tx,
-        grpc_p2p_bytes_rx: item.grpc_p2p_bytes_rx,
-        grpc_user_bytes_tx: item.grpc_user_bytes_tx,
-        grpc_user_bytes_rx: item.grpc_user_bytes_rx,
+        grpc_p2p_bytes_tx: item.p2p_bytes_tx,
+        grpc_p2p_bytes_rx: item.p2p_bytes_rx,
+        grpc_user_bytes_tx: item.grpc_bytes_tx,
+        grpc_user_bytes_rx: item.grpc_bytes_rx,
     }
 });
 
@@ -102,10 +102,10 @@ try_from!(item: &protowire::BandwidthMetrics, kaspa_rpc_core::BandwidthMetrics, 
         borsh_bytes_rx: item.borsh_bytes_rx,
         json_bytes_tx: item.json_bytes_tx,
         json_bytes_rx: item.json_bytes_rx,
-        grpc_p2p_bytes_tx: item.grpc_p2p_bytes_tx,
-        grpc_p2p_bytes_rx: item.grpc_p2p_bytes_rx,
-        grpc_user_bytes_tx: item.grpc_user_bytes_tx,
-        grpc_user_bytes_rx: item.grpc_user_bytes_rx,
+        p2p_bytes_tx: item.grpc_p2p_bytes_tx,
+        p2p_bytes_rx: item.grpc_p2p_bytes_rx,
+        grpc_bytes_tx: item.grpc_user_bytes_tx,
+        grpc_bytes_rx: item.grpc_user_bytes_rx,
     }
 });
 
