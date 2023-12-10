@@ -99,9 +99,17 @@ impl Server {
             // Provider::GrpcClient
 
             log_info!("Routing wrpc://{peer} -> {grpc_proxy_address}");
-            let grpc_client = GrpcClient::connect(NotificationMode::Direct, grpc_proxy_address.to_owned(), false, None, true, None)
-                .await
-                .map_err(|e| WebSocketError::Other(e.to_string()))?;
+            let grpc_client = GrpcClient::connect(
+                NotificationMode::Direct,
+                grpc_proxy_address.to_owned(),
+                false,
+                None,
+                true,
+                None,
+                Default::default(),
+            )
+            .await
+            .map_err(|e| WebSocketError::Other(e.to_string()))?;
             // log_trace!("Creating proxy relay...");
             Some(Arc::new(grpc_client))
         } else {

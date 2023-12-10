@@ -3,7 +3,7 @@ use hyper::{
     body::{Bytes, HttpBody, SizeHint},
     HeaderMap,
 };
-use log::{debug, warn};
+use log::*;
 use pin_project_lite::pin_project;
 use std::{
     pin::Pin,
@@ -13,7 +13,9 @@ use std::{
     },
     task::{Context, Poll},
 };
-use tower_http::map_request_body::MapRequestBodyLayer;
+pub use tower::ServiceBuilder;
+pub use tower_http::map_request_body::MapRequestBodyLayer;
+pub use tower_http::map_response_body::MapResponseBodyLayer;
 
 pin_project! {
     pub struct CountBytesBody<B> {
@@ -31,7 +33,7 @@ impl<B> CountBytesBody<B> {
 
 impl<B> HttpBody for CountBytesBody<B>
 where
-    B: HttpBody<Data = Bytes>,
+    B: HttpBody<Data = Bytes> + Default,
 {
     type Data = B::Data;
     type Error = B::Error;
@@ -42,8 +44,8 @@ where
         match ready!(this.inner.poll_data(cx)) {
             Some(Ok(chunk)) => {
                 debug!("[SIZE MW] response body chunk size = {}", chunk.len());
-                let previous = counter.fetch_add(chunk.len(), Ordering::Relaxed);
-                debug!("[SIZE MW] total count: {}", previous);
+                let _previous = counter.fetch_add(chunk.len(), Ordering::Relaxed);
+                debug!("[SIZE MW] total count: {}", _previous);
 
                 Poll::Ready(Some(Ok(chunk)))
             }
@@ -64,6 +66,15 @@ where
     }
 }
 
+impl<B> Default for CountBytesBody<B>
+where
+    B: HttpBody<Data = Bytes> + Default,
+{
+    fn default() -> Self {
+        Self { inner: Default::default(), counter: Default::default() }
+    }
+}
+
 pub fn measure_request_body_size_layer<B1, B2, F>(
     bytes_sent_counter: Arc<AtomicUsize>,
     f: F,
@@ -79,18 +90,18 @@ where
         tokio::spawn(async move {
             while let Some(Ok(chunk)) = body.data().await {
                 debug!("[SIZE MW] request body chunk size = {}", chunk.len());
-                let previous = bytes_sent_counter.fetch_add(chunk.len(), Ordering::Relaxed);
-                debug!("[SIZE MW] total count: {}", previous);
-                if let Err(err) = tx.send_data(chunk).await {
-                    warn!("[SIZE MW] error sending data: {}", err)
-                    // error can occurs if only channel is already closed
+                let _previous = bytes_sent_counter.fetch_add(chunk.len(), Ordering::Relaxed);
+                debug!("[SIZE MW] total count: {}", _previous);
+                if let Err(_err) = tx.send_data(chunk).await {
+                    // error can occurs only if the channel is already closed
+                    debug!("[SIZE MW] error sending data: {}", _err)
                 }
             }
 
             if let Ok(Some(trailers)) = body.trailers().await {
-                if let Err(err) = tx.send_trailers(trailers).await {
-                    warn!("[SIZE MW] error sending trailers: {}", err)
-                    // error can occurs if only channel is already closed
+                if let Err(_err) = tx.send_trailers(trailers).await {
+                    // error can occurs only if the channel is already closed
+                    debug!("[SIZE MW] error sending trailers: {}", _err)
                 }
             }
         });

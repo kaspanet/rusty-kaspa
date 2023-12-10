@@ -20,6 +20,10 @@ use kaspa_rpc_core::{
     Notification, RpcResult,
 };
 use kaspa_utils::networking::NetAddress;
+use kaspa_utils_tower::{
+    counters::TowerConnectionCounters,
+    middleware::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer},
+};
 use std::fmt::Debug;
 use std::{
     pin::Pin,
@@ -64,6 +68,7 @@ pub struct ConnectionHandler {
     server_context: ServerContext,
     interface: Arc<Interface>,
     running: Arc<AtomicBool>,
+    counters: Arc<TowerConnectionCounters>,
 }
 
 const GRPC_SERVER: &str = "grpc-server";
@@ -73,6 +78,7 @@ impl ConnectionHandler {
         manager_sender: MpscSender<ManagerEvent>,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
+        counters: Arc<TowerConnectionCounters>,
     ) -> Self {
         // Prepare core objects
         let core_channel = NotificationChannel::default();
@@ -90,7 +96,7 @@ impl ConnectionHandler {
         let interface = Arc::new(Factory::new_interface(server_context.clone()));
         let running = Default::default();
 
-        Self { manager_sender, server_context, interface, running }
+        Self { manager_sender, server_context, interface, running, counters }
     }
 
     /// Launches a gRPC server listener loop
@@ -99,6 +105,9 @@ impl ConnectionHandler {
         let (signal_sender, signal_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
         info!("GRPC Server starting on: {}", serve_address);
+
+        let bytes_tx = self.counters.bytes_tx.clone();
+        let bytes_rx = self.counters.bytes_rx.clone();
 
         // Spawn server task
         let server_handle = tokio::spawn(async move {
@@ -113,6 +122,8 @@ impl ConnectionHandler {
             let serve_result = TonicServer::builder()
                 // .http2_keepalive_interval(Some(GRPC_KEEP_ALIVE_PING_INTERVAL))
                 // .http2_keepalive_timeout(Some(GRPC_KEEP_ALIVE_PING_TIMEOUT))
+                .layer(measure_request_body_size_layer(bytes_rx, |b| b))
+                .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, bytes_tx.clone())))
                 .add_service(protowire_server)
                 .serve_with_shutdown(
                     serve_address.into(),

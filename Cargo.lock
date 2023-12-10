@@ -2298,6 +2298,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-utils",
+ "kaspa-utils-tower",
  "log",
  "paste",
  "prost",
@@ -2358,6 +2359,7 @@ dependencies = [
  "kaspa-rpc-macros",
  "kaspa-rpc-service",
  "kaspa-utils",
+ "kaspa-utils-tower",
  "log",
  "once_cell",
  "parking_lot",
@@ -2598,6 +2600,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-p2p-lib",
  "kaspa-utils",
+ "kaspa-utils-tower",
  "log",
  "parking_lot",
  "rand 0.8.5",
@@ -2623,6 +2626,7 @@ dependencies = [
  "kaspa-math",
  "kaspa-mining-errors",
  "kaspa-utils",
+ "kaspa-utils-tower",
  "log",
  "parking_lot",
  "prost",
@@ -2731,6 +2735,7 @@ dependencies = [
  "kaspa-rpc-core",
  "kaspa-txscript",
  "kaspa-utils",
+ "kaspa-utils-tower",
  "kaspa-utxoindex",
  "kaspa-wrpc-core",
  "log",
@@ -2837,13 +2842,10 @@ dependencies = [
  "criterion",
  "event-listener 2.5.3",
  "faster-hex 0.6.1",
- "futures",
  "futures-util",
- "hyper",
  "ipnet",
  "itertools 0.11.0",
  "log",
- "pin-project-lite",
  "rand 0.8.5",
  "rlimit",
  "serde",
@@ -2851,10 +2853,22 @@ dependencies = [
  "smallvec",
  "thiserror",
  "tokio",
- "tower",
- "tower-http",
  "triggered",
  "uuid 1.5.0",
+]
+
+[[package]]
+name = "kaspa-utils-tower"
+version = "0.13.0"
+dependencies = [
+ "cfg-if 1.0.0",
+ "futures",
+ "hyper",
+ "log",
+ "pin-project-lite",
+ "tokio",
+ "tower",
+ "tower-http",
 ]
 
 [[package]]
@@ -3106,6 +3120,7 @@ dependencies = [
  "kaspa-rpc-service",
  "kaspa-txscript",
  "kaspa-utils",
+ "kaspa-utils-tower",
  "kaspa-utxoindex",
  "kaspa-wrpc-server",
  "log",
