@@ -1,7 +1,7 @@
 use kaspa_database::{
     prelude::DB,
+    prelude::{CachePolicy, StoreError, StoreResult},
     prelude::{CachedDbAccess, DirectDbWriter},
-    prelude::{StoreError, StoreResult},
     registry::DatabaseStorePrefixes,
 };
 use serde::{Deserialize, Serialize};
@@ -76,8 +76,8 @@ pub struct DbAddressesStore {
 }
 
 impl DbAddressesStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::Addresses.into()) }
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::Addresses.into()) }
     }
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(AddressKey, Entry), Box<dyn Error>>> + '_ {

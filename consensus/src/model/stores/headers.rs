@@ -2,8 +2,8 @@ use std::mem::size_of;
 use std::sync::Arc;
 
 use kaspa_consensus_core::{header::Header, BlockHasher, BlockLevel};
-use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
+use kaspa_database::prelude::{CachePolicy, DB};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -66,16 +66,20 @@ pub struct DbHeadersStore {
 }
 
 impl DbHeadersStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
         Self {
             db: Arc::clone(&db),
-            compact_headers_access: CachedDbAccess::new(Arc::clone(&db), cache_size, DatabaseStorePrefixes::HeadersCompact.into()),
-            headers_access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::Headers.into()),
+            compact_headers_access: CachedDbAccess::new(
+                Arc::clone(&db),
+                compact_cache_policy,
+                DatabaseStorePrefixes::HeadersCompact.into(),
+            ),
+            headers_access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::Headers.into()),
         }
     }
 
-    pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), cache_size)
+    pub fn clone_with_new_cache(&self, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
+        Self::new(Arc::clone(&self.db), cache_policy, compact_cache_policy)
     }
 
     pub fn has(&self, hash: Hash) -> StoreResult<bool> {

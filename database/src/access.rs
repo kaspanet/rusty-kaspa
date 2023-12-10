@@ -1,4 +1,4 @@
-use crate::{db::DB, errors::StoreError};
+use crate::{cache::CachePolicy, db::DB, errors::StoreError};
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use kaspa_utils::mem_size::MemSizeEstimator;
@@ -28,8 +28,8 @@ where
     TData: Clone + Send + Sync + MemSizeEstimator,
     S: BuildHasher + Default,
 {
-    pub fn new(db: Arc<DB>, cache_size: u64, prefix: Vec<u8>) -> Self {
-        Self { db, cache: Cache::new(cache_size), prefix }
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, prefix: Vec<u8>) -> Self {
+        Self { db, cache: Cache::new(cache_policy), prefix }
     }
 
     pub fn read_from_cache(&self, key: TKey) -> Option<TData>
@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn test_delete_all() {
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
-        let access = CachedDbAccess::<Hash, u64>::new(db.clone(), 2, vec![1, 2]);
+        let access = CachedDbAccess::<Hash, u64>::new(db.clone(), CachePolicy::Unit(2), vec![1, 2]);
 
         access.write_many(DirectDbWriter::new(&db), &mut (0..16).map(|i| (i.into(), 2))).unwrap();
         assert_eq!(16, access.iterator().count());

@@ -4,7 +4,9 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockHasher, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_database::{
-    prelude::{BatchDbWriter, Cache, CachedDbAccess, CachedDbItem, DbKey, DbSetAccess, DbWriter, DirectDbWriter, StoreError, DB},
+    prelude::{
+        BatchDbWriter, Cache, CachePolicy, CachedDbAccess, CachedDbItem, DbKey, DbSetAccess, DbWriter, DirectDbWriter, StoreError, DB,
+    },
     registry::{DatabaseStorePrefixes, SEPARATOR},
 };
 use kaspa_hashes::Hash;
@@ -177,33 +179,33 @@ pub struct DbReachabilityStore {
 }
 
 impl DbReachabilityStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self::with_prefix_end(db, cache_size, DatabaseStorePrefixes::Separator.into())
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy) -> Self {
+        Self::with_prefix_end(db, cache_policy, sets_cache_policy, DatabaseStorePrefixes::Separator.into())
     }
 
-    pub fn with_block_level(db: Arc<DB>, cache_size: u64, level: BlockLevel) -> Self {
+    pub fn with_block_level(db: Arc<DB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy, level: BlockLevel) -> Self {
         assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
-        Self::with_prefix_end(db, cache_size, level)
+        Self::with_prefix_end(db, cache_policy, sets_cache_policy, level)
     }
 
-    fn with_prefix_end(db: Arc<DB>, cache_size: u64, prefix_end: u8) -> Self {
+    fn with_prefix_end(db: Arc<DB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy, prefix_end: u8) -> Self {
         let store_prefix = DatabaseStorePrefixes::Reachability.into_iter().chain(once(prefix_end)).collect_vec();
         let children_prefix = DatabaseStorePrefixes::ReachabilityTreeChildren.into_iter().chain(once(prefix_end)).collect_vec();
         let fcs_prefix = DatabaseStorePrefixes::ReachabilityFutureCoveringSet.into_iter().chain(once(prefix_end)).collect_vec();
         let reindex_root_prefix = DatabaseStorePrefixes::ReachabilityReindexRoot.into_iter().chain(once(prefix_end)).collect_vec();
-        let access = CachedDbAccess::new(db.clone(), cache_size, store_prefix);
+        let access = CachedDbAccess::new(db.clone(), cache_policy, store_prefix);
         Self {
             db: db.clone(),
             access,
-            children_access: DbReachabilitySet::new(DbSetAccess::new(db.clone(), children_prefix), Cache::new(cache_size)),
-            fcs_access: DbReachabilitySet::new(DbSetAccess::new(db.clone(), fcs_prefix), Cache::new(cache_size)),
+            children_access: DbReachabilitySet::new(DbSetAccess::new(db.clone(), children_prefix), Cache::new(sets_cache_policy)),
+            fcs_access: DbReachabilitySet::new(DbSetAccess::new(db.clone(), fcs_prefix), Cache::new(sets_cache_policy)),
             reindex_root: CachedDbItem::new(db, reindex_root_prefix),
             prefix_end,
         }
     }
 
-    pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::with_prefix_end(Arc::clone(&self.db), cache_size, self.prefix_end)
+    pub fn clone_with_new_cache(&self, cache_policy: CachePolicy, sets_cache_policy: CachePolicy) -> Self {
+        Self::with_prefix_end(Arc::clone(&self.db), cache_policy, sets_cache_policy, self.prefix_end)
     }
 }
 

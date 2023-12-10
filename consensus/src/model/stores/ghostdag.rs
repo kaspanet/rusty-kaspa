@@ -2,9 +2,9 @@ use crate::processes::ghostdag::ordering::SortableBlock;
 use kaspa_consensus_core::trusted::ExternalGhostdagData;
 use kaspa_consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
-use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
+use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 
@@ -258,7 +258,7 @@ pub struct DbGhostdagStore {
 }
 
 impl DbGhostdagStore {
-    pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+    pub fn new(db: Arc<DB>, level: BlockLevel, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
         assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
         let prefix = DatabaseStorePrefixes::Ghostdag.into_iter().chain(lvl_bytes).collect_vec();
@@ -266,13 +266,13 @@ impl DbGhostdagStore {
         Self {
             db: Arc::clone(&db),
             level,
-            access: CachedDbAccess::new(db.clone(), cache_size, prefix),
-            compact_access: CachedDbAccess::new(db, cache_size, compact_prefix),
+            access: CachedDbAccess::new(db.clone(), cache_policy, prefix),
+            compact_access: CachedDbAccess::new(db, compact_cache_policy, compact_prefix),
         }
     }
 
-    pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), self.level, cache_size)
+    pub fn clone_with_new_cache(&self, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
+        Self::new(Arc::clone(&self.db), self.level, cache_policy, compact_cache_policy)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {

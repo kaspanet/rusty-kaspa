@@ -48,7 +48,7 @@ use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_core::{assert_match, info};
 use kaspa_database::create_temp_db;
-use kaspa_database::prelude::ConnBuilder;
+use kaspa_database::prelude::{CachePolicy, ConnBuilder};
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
@@ -114,8 +114,8 @@ fn reachability_stretch_test(use_attack_json: bool) {
 
     // Act
     let (_temp_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
-    let mut store = DbReachabilityStore::new(db.clone(), 100000);
-    let mut relations = DbRelationsStore::new(db, 0, 100000); // TODO: remove level
+    let mut store = DbReachabilityStore::new(db.clone(), CachePolicy::Unit(50_000), CachePolicy::Unit(50_000));
+    let mut relations = DbRelationsStore::new(db, 0, CachePolicy::Unit(100_000)); // TODO: remove level
     let mut builder = DagBuilder::new(&mut store, &mut relations);
 
     builder.init();
@@ -263,7 +263,7 @@ async fn ghostdag_test() {
         }
 
         // Clone with a new cache in order to verify correct writes to the DB itself
-        let ghostdag_store = consensus.ghostdag_store().clone_with_new_cache(10000);
+        let ghostdag_store = consensus.ghostdag_store().clone_with_new_cache(CachePolicy::Unit(10_000), CachePolicy::Unit(10_000));
 
         // Assert GHOSTDAG output data
         for block in test.blocks {
@@ -923,7 +923,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     // External storage for storing block bodies. This allows separating header and body processing phases
     let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
-    let external_block_store = DbBlockTransactionsStore::new(external_storage, config.perf.block_data_cache_size);
+    let external_block_store = DbBlockTransactionsStore::new(external_storage, CachePolicy::Unit(config.perf.block_data_cache_size));
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();

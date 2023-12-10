@@ -8,7 +8,9 @@ use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
 use kaspa_core::{debug, time::unix_now, warn};
 use kaspa_database::{
-    prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB},
+    prelude::{
+        BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB,
+    },
     registry::DatabaseStorePrefixes,
 };
 
@@ -81,7 +83,7 @@ impl MultiConsensusManagementStore {
     pub fn new(db: Arc<DB>) -> Self {
         let mut store = Self {
             db: db.clone(),
-            entries: CachedDbAccess::new(db.clone(), 16, DatabaseStorePrefixes::ConsensusEntries.into()),
+            entries: CachedDbAccess::new(db.clone(), CachePolicy::Unit(16), DatabaseStorePrefixes::ConsensusEntries.into()),
             metadata: CachedDbItem::new(db, DatabaseStorePrefixes::MultiConsensusMetadata.into()),
         };
         store.init();

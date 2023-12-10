@@ -23,7 +23,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::{debug, info, trace};
-use kaspa_database::prelude::{ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
@@ -388,14 +388,16 @@ impl PruningProofManager {
         let proof_pp = proof_pp_header.hash;
         let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
         let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
-        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 2 * self.pruning_proof_m)); // TODO: Think about cache size
+        let cache_policy = CachePolicy::Unit(2 * self.pruning_proof_m as usize);
+        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), cache_policy, cache_policy)); // TODO: Think about cache size
         let ghostdag_stores = (0..=self.max_block_level)
-            .map(|level| Arc::new(DbGhostdagStore::new(db.clone(), level, 2 * self.pruning_proof_m)))
+            .map(|level| Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, cache_policy)))
             .collect_vec();
-        let mut relations_stores =
-            (0..=self.max_block_level).map(|level| DbRelationsStore::new(db.clone(), level, 2 * self.pruning_proof_m)).collect_vec();
+        let mut relations_stores = (0..=self.max_block_level)
+            .map(|level| DbRelationsStore::new(db.clone(), level, CachePolicy::Unit(2 * self.pruning_proof_m as usize)))
+            .collect_vec();
         let reachability_stores = (0..=self.max_block_level)
-            .map(|level| Arc::new(RwLock::new(DbReachabilityStore::with_block_level(db.clone(), 2 * self.pruning_proof_m, level))))
+            .map(|level| Arc::new(RwLock::new(DbReachabilityStore::with_block_level(db.clone(), cache_policy, cache_policy, level))))
             .collect_vec();
 
         let reachability_services = (0..=self.max_block_level)

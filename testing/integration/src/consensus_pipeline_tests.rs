@@ -4,6 +4,7 @@ use kaspa_consensus::{
     processes::reachability::tests::StoreValidationExtensions,
 };
 use kaspa_consensus_core::{api::ConsensusApi, blockhash};
+use kaspa_database::prelude::CachePolicy;
 use kaspa_hashes::Hash;
 use rand_distr::{Distribution, Poisson};
 use std::cmp::min;
@@ -41,7 +42,7 @@ async fn test_concurrent_pipeline() {
     }
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = consensus.reachability_store().read().clone_with_new_cache(10000);
+    let store = consensus.reachability_store().read().clone_with_new_cache(CachePolicy::Unit(10_000), CachePolicy::Unit(10_000));
 
     // Assert intervals
     store.validate_intervals(blockhash::ORIGIN).unwrap();
@@ -113,7 +114,7 @@ async fn test_concurrent_pipeline_random() {
     }
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = consensus.reachability_store().read().clone_with_new_cache(10000);
+    let store = consensus.reachability_store().read().clone_with_new_cache(CachePolicy::Unit(10_000), CachePolicy::Unit(10_000));
 
     // Assert intervals
     store.validate_intervals(blockhash::ORIGIN).unwrap();

@@ -1,6 +1,6 @@
 use kaspa_database::{
+    prelude::{CachePolicy, StoreError, StoreResult},
     prelude::{CachedDbAccess, DirectDbWriter, DB},
-    prelude::{StoreError, StoreResult},
     registry::DatabaseStorePrefixes,
 };
 use serde::{Deserialize, Serialize};
@@ -72,8 +72,8 @@ pub struct DbBannedAddressesStore {
 }
 
 impl DbBannedAddressesStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::BannedAddresses.into()) }
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::BannedAddresses.into()) }
     }
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(IpAddr, ConnectionBanTimestamp), Box<dyn Error>>> + '_ {

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use kaspa_database::prelude::CachePolicy;
 use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem};
@@ -16,9 +17,9 @@ pub struct PruningUtxosetStores {
 }
 
 impl PruningUtxosetStores {
-    pub fn new(db: Arc<DB>, utxoset_cache_size: u64) -> Self {
+    pub fn new(db: Arc<DB>, utxoset_cache_policy: CachePolicy) -> Self {
         Self {
-            utxo_set: DbUtxoSetStore::new(db.clone(), utxoset_cache_size, DatabaseStorePrefixes::PruningUtxoset.into()),
+            utxo_set: DbUtxoSetStore::new(db.clone(), utxoset_cache_policy, DatabaseStorePrefixes::PruningUtxoset.into()),
             utxoset_position_access: CachedDbItem::new(db, DatabaseStorePrefixes::PruningUtxosetPosition.into()),
         }
     }
