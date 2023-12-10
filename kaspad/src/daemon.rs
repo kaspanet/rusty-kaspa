@@ -12,6 +12,7 @@ use kaspa_grpc_server::service::GrpcService;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
@@ -354,6 +355,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let wrpc_borsh_counters = Arc::new(WrpcServerCounters::default());
     let wrpc_json_counters = Arc::new(WrpcServerCounters::default());
     let tx_script_cache_counters = Arc::new(TxScriptCacheCounters::default());
+    let p2p_tower_counters = Arc::new(TowerConnectionCounters::default());
+    let grpc_tower_counters = Arc::new(TowerConnectionCounters::default());
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db_parallelism = num_cpus::get();
@@ -428,6 +431,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         args.inbound_limit,
         dns_seeders,
         config.default_p2p_port(),
+        p2p_tower_counters.clone(),
     ));
 
     let rpc_core_service = Arc::new(RpcCoreService::new(
@@ -443,8 +447,11 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         wrpc_borsh_counters.clone(),
         wrpc_json_counters.clone(),
         perf_monitor.clone(),
+        p2p_tower_counters.clone(),
+        grpc_tower_counters.clone(),
     ));
-    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients));
+    let grpc_service =
+        Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients, grpc_tower_counters));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
