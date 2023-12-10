@@ -20,6 +20,11 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn connect_call(self: Arc<Self>, request: ConnectRequest) -> Result<ConnectResponse>;
     async fn disconnect_call(self: Arc<Self>, request: DisconnectRequest) -> Result<DisconnectResponse>;
 
+    async fn ping(self: Arc<Self>, payload: Option<String>) -> Result<Option<String>> {
+        Ok(self.ping_call(PingRequest { payload }).await?.payload)
+    }
+    async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
+
     async fn wallet_enumerate(self: Arc<Self>) -> Result<Vec<WalletDescriptor>> {
         Ok(self.wallet_enumerate_call(WalletEnumerateRequest {}).await?.wallet_list)
     }
@@ -35,11 +40,6 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
 
     async fn wallet_create_call(self: Arc<Self>, request: WalletCreateRequest) -> Result<WalletCreateResponse>;
-
-    async fn ping(self: Arc<Self>, v: u32) -> Result<u32> {
-        Ok(self.ping_call(PingRequest { v }).await?.v)
-    }
-    async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
 
     async fn wallet_open(
         self: Arc<Self>,
@@ -72,6 +72,13 @@ pub trait WalletApi: Send + Sync + AnySync {
         Ok(())
     }
     async fn wallet_rename_call(self: Arc<Self>, request: WalletRenameRequest) -> Result<WalletRenameResponse>;
+
+    async fn wallet_change_secret(self: Arc<Self>, old_wallet_secret: Secret, new_wallet_secret: Secret) -> Result<()> {
+        let request = WalletChangeSecretRequest { old_wallet_secret, new_wallet_secret };
+        self.wallet_change_secret_call(request).await?;
+        Ok(())
+    }
+    async fn wallet_change_secret_call(self: Arc<Self>, request: WalletChangeSecretRequest) -> Result<WalletChangeSecretResponse>;
 
     async fn prv_key_data_enumerate(self: Arc<Self>) -> Result<Vec<Arc<PrvKeyDataInfo>>> {
         Ok(self.prv_key_data_enumerate_call(PrvKeyDataEnumerateRequest {}).await?.prv_key_data_list)

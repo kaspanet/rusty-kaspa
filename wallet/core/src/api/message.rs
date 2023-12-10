@@ -11,7 +11,7 @@ use crate::{
     runtime::{account::descriptor::AccountDescriptor, AccountCreateArgs, PrvKeyDataCreateArgs, WalletCreateArgs},
     secret::Secret,
     storage::{
-        AccountId, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, StorageDescriptor, TransactionRecord, TransactionType, WalletDescriptor,
+        AccountId, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, StorageDescriptor, TransactionKind, TransactionRecord, WalletDescriptor,
     },
     tx::{Fees, GeneratorSummary, PaymentDestination},
 };
@@ -20,13 +20,13 @@ use crate::{
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingRequest {
-    pub v: u32,
+    pub payload: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingResponse {
-    pub v: u32,
+    pub payload: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -130,6 +130,17 @@ pub struct WalletRenameResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletRenameFileResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletChangeSecretRequest {
+    pub old_wallet_secret: Secret,
+    pub new_wallet_secret: Secret,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletChangeSecretResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -319,7 +330,7 @@ pub struct AccountsEstimateResponse {
 pub struct TransactionDataGetRequest {
     pub account_id: AccountId,
     pub network_id: NetworkId,
-    pub filter: Option<Vec<TransactionType>>,
+    pub filter: Option<Vec<TransactionKind>>,
     pub start: u64,
     pub end: u64,
 }

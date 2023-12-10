@@ -8,7 +8,8 @@ use crate::storage::interface::{AccessContext, CreateArgs, OpenArgs, StorageDesc
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
 use crate::storage::{
-    self, AccessContextT, AccountKind, Binding, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, WalletDescriptor,
+    self, AccessContextT, AccountKind, Binding, Hint, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord,
+    WalletDescriptor,
 };
 use crate::tx::Fees;
 use crate::utxo::UtxoProcessor;
@@ -129,6 +130,11 @@ impl AccountCreateArgs {
     }
 }
 
+#[derive(Clone)]
+pub enum WalletBusMessage {
+    Discovery { record: TransactionRecord },
+}
+
 pub struct Inner {
     active_accounts: ActiveAccountMap,
     legacy_accounts: ActiveAccountMap,
@@ -139,6 +145,7 @@ pub struct Inner {
     settings: SettingsStore<WalletSettings>,
     utxo_processor: Arc<UtxoProcessor>,
     multiplexer: Multiplexer<Box<Events>>,
+    wallet_bus: Channel<WalletBusMessage>,
 }
 
 /// `Wallet` data structure
@@ -171,7 +178,9 @@ impl Wallet {
 
     pub fn try_with_rpc(rpc: Option<Rpc>, store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
         let multiplexer = Multiplexer::<Box<Events>>::new();
-        let utxo_processor = Arc::new(UtxoProcessor::new(rpc.clone(), network_id, Some(multiplexer.clone())));
+        let wallet_bus = Channel::unbounded();
+        let utxo_processor =
+            Arc::new(UtxoProcessor::new(rpc.clone(), network_id, Some(multiplexer.clone()), Some(wallet_bus.clone())));
 
         let wallet = Wallet {
             inner: Arc::new(Inner {
@@ -183,7 +192,8 @@ impl Wallet {
                 task_ctl: DuplexChannel::oneshot(),
                 selected_account: Mutex::new(None),
                 settings: SettingsStore::new_with_storage(Storage::default_settings_store()),
-                utxo_processor,
+                utxo_processor: utxo_processor.clone(),
+                wallet_bus,
             }),
         };
 
@@ -230,14 +240,13 @@ impl Wallet {
     }
 
     pub async fn reload(self: &Arc<Self>) -> Result<()> {
-
         if self.is_open() {
             // similar to reset(), but effectively reboots the wallet
 
             let accounts = self.active_accounts().collect();
             let account_descriptors = Some(accounts.iter().map(|account| account.descriptor()).collect::<Result<Vec<_>>>()?);
             let wallet_descriptor = self.store().descriptor();
-            
+
             let futures = accounts.iter().map(|account| account.clone().stop());
             join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
 
@@ -480,6 +489,10 @@ impl Wallet {
 
     pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
         &self.inner.multiplexer
+    }
+
+    pub(crate) fn wallet_bus(&self) -> &Channel<WalletBusMessage> {
+        &self.inner.wallet_bus
     }
 
     pub fn settings(&self) -> &SettingsStore<WalletSettings> {
@@ -803,55 +816,56 @@ impl Wallet {
         self.utxo_processor().is_connected()
     }
 
-    async fn handle_event(self: &Arc<Self>, event: Box<Events>) -> Result<()> {
-        match &*event {
-            Events::Change { .. } => {}
-            Events::Pending { record } | Events::Maturity { record } => {
-                // if transaction is outgoing, we record only its initial
-                // issuance below (next match: Events::Outgoing)
-                // There is no difference between pending and mature
-                // outgoing transactions (the transaction is the same, but
-                // the Pending event may be issued by the receipt of the
-                // change UTXOs)
-                // if !record.is_outgoing() {
-                self.store().as_transaction_record_store()?.store(&[record]).await?;
-                // }
-            }
+    pub(crate) async fn handle_discovery(&self, record: TransactionRecord) -> Result<()> {
+        let transaction_store = self.store().as_transaction_record_store()?;
 
-            Events::Reorg { record } | Events::External { record } | Events::Outgoing { record } => {
-                self.store().as_transaction_record_store()?.store(&[record]).await?;
-            }
-            Events::Scan { record } => {
-                if let Err(_err) =
-                    self.store().as_transaction_record_store()?.load_single(record.binding(), &self.network_id()?, record.id()).await
-                {
-                    // println!("Detected unknown transaction {} {err}", record.id());
+        // test
+        if let Err(_err) = transaction_store.load_single(record.binding(), &self.network_id()?, record.id()).await {
+            let transaction_daa_score = record.block_daa_score();
+            match self.rpc_api().get_daa_score_timestamp_estimate(vec![transaction_daa_score]).await {
+                Ok(timestamps) => {
+                    if let Some(timestamp) = timestamps.first() {
+                        let mut record = record.clone();
+                        record.set_unixtime(*timestamp);
 
-                    let transaction_daa_score = record.block_daa_score();
-                    match self.rpc_api().get_daa_score_timestamp_estimate(vec![transaction_daa_score]).await {
-                        Ok(timestamps) => {
-                            if let Some(timestamp) = timestamps.first() {
-                                let mut record = record.clone();
-                                record.set_unixtime(*timestamp);
-                                // this will be broadcasted to clients as well as
-                                // received by this function again (above ^^)
-                                // subsequently resulting in the storage of this
-                                // transaction record
-                                self.notify(Events::External { record }).await?;
-                            } else {
-                                log_error!("Wallet::handle_event() unable to obtain DAA to unixtime for DAA {transaction_daa_score}: timestamps is empty");
-                            }
-                            // let mut record = record.clone();
-                            // record.set_timestamp(timestamps[0]);
-                            // self.notify(Events::External { record : record.clone()}).await?;
-                        }
-                        Err(err) => {
-                            log_error!("Wallet::handle_event() unable to resolve DAA to unixtime: {}", err);
-                        }
+                        transaction_store.store(&[&record]).await?;
+
+                        self.notify(Events::Discovery { record }).await?;
+                    } else {
+                        self.notify(Events::Error {
+                            message: format!(
+                                "Unable to obtain DAA to unixtime for DAA {transaction_daa_score}, timestamp data is empty"
+                            ),
+                        })
+                        .await?;
                     }
-                    // if transactions is not found in transaction storage, re-publish it as external
+                }
+                Err(err) => {
+                    self.notify(Events::Error { message: format!("Unable to resolve DAA to unixtime: {err}") }).await?;
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    async fn handle_wallet_bus(self: &Arc<Self>, message: WalletBusMessage) -> Result<()> {
+        match message {
+            WalletBusMessage::Discovery { record } => {
+                self.handle_discovery(record).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_event(self: &Arc<Self>, event: Box<Events>) -> Result<()> {
+        match &*event {
+            Events::Pending { record } | Events::Maturity { record } | Events::Reorg { record } => {
+                if !record.is_change() {
+                    self.store().as_transaction_record_store()?.store(&[record]).await?;
+                }
+            }
+
             Events::SyncState { sync_state: _ } => {
                 // if sync_state.is_synced() && self.is_open() {
                 //     self.reload().await?;
@@ -868,6 +882,7 @@ impl Wallet {
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
         let events = self.multiplexer().channel();
+        let wallet_bus_receiver = self.wallet_bus().receiver.clone();
 
         spawn(async move {
             loop {
@@ -889,6 +904,20 @@ impl Wallet {
                             }
                         }
                     },
+
+                    msg = wallet_bus_receiver.recv().fuse() => {
+                        match msg {
+                            Ok(message) => {
+                                this.handle_wallet_bus(message).await.unwrap_or_else(|e| log_error!("Wallet::handle_wallet_bus() error: {}", e));
+                            },
+                            Err(err) => {
+                                log_error!("Wallet: error while receiving wallet bus message: {err}");
+                                log_error!("Suspending Wallet processing...");
+
+                                break;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1110,7 +1139,7 @@ impl Wallet {
 
         if self.is_connected() {
             if let Some(notifier) = notifier {
-                notifier(0, 0, None);
+                notifier(0, 0, 0, None);
             }
             account.clone().scan(Some(100), Some(5000)).await?;
         }
@@ -1324,9 +1353,12 @@ impl WalletApi for Wallet {
 
     // -------------------------------------------------------------------------------------
 
-    async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse> {
-        log_info!("Wallet received ping request '{}' (should be 1)...", request.v);
-        Ok(PingResponse { v: request.v + 1 })
+    async fn ping_call(self: Arc<Self>, mut request: PingRequest) -> Result<PingResponse> {
+        if let Some(payload) = request.payload.as_mut() {
+            payload.push_str(" ... response (pong)");
+        }
+        log_info!("Wallet received ping request '{:?}' ...", request.payload);
+        Ok(PingResponse { payload: request.payload })
     }
 
     async fn wallet_enumerate_call(self: Arc<Self>, _request: WalletEnumerateRequest) -> Result<WalletEnumerateResponse> {
@@ -1374,6 +1406,13 @@ impl WalletApi for Wallet {
         let WalletRenameRequest { wallet_secret, title, filename } = request;
         self.rename(title, filename, wallet_secret).await?;
         Ok(WalletRenameResponse {})
+    }
+
+    async fn wallet_change_secret_call(self: Arc<Self>, request: WalletChangeSecretRequest) -> Result<WalletChangeSecretResponse> {
+        let WalletChangeSecretRequest { old_wallet_secret, new_wallet_secret } = request;
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(old_wallet_secret.clone()));
+        self.store().change_secret(&ctx, new_wallet_secret).await?;
+        Ok(WalletChangeSecretResponse {})
     }
 
     async fn prv_key_data_enumerate_call(
