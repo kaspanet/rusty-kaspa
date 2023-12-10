@@ -62,7 +62,7 @@ impl Adaptor {
         counters: Arc<TowerConnectionCounters>,
     ) -> Result<Arc<Self>, ConnectionError> {
         let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
-        let connection_handler = ConnectionHandler::new(hub_sender, initializer.clone(), counters.clone());
+        let connection_handler = ConnectionHandler::new(hub_sender, initializer.clone(), counters);
         let server_termination = connection_handler.serve(serve_address)?;
         let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler, hub));
         adaptor.hub.clone().start_event_loop(hub_receiver, initializer);
