@@ -2833,7 +2833,6 @@ version = "0.13.0"
 dependencies = [
  "async-channel 2.0.0",
  "async-trait",
- "bincode",
  "borsh",
  "cfg-if 1.0.0",
  "criterion",
