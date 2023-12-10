@@ -10,9 +10,11 @@ use kaspa_hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
 use itertools::Itertools;
+use kaspa_utils::mem_size::{MemSize, MemSizeEstimator};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::iter::once;
+use std::mem::size_of;
 use std::{cell::RefCell, sync::Arc};
 
 /// Re-export for convenience
@@ -34,6 +36,17 @@ pub struct CompactGhostdagData {
     pub blue_work: BlueWorkType,
     pub selected_parent: Hash,
 }
+
+impl MemSizeEstimator for GhostdagData {
+    fn estimate_mem_size(&self) -> MemSize {
+        let mut bytes = size_of::<Self>();
+        bytes += (self.mergeset_blues.len() + self.mergeset_reds.len()) * size_of::<Hash>();
+        bytes += self.blues_anticone_sizes.len() * size_of::<(Hash, KType)>();
+        MemSize::BytesStatic { num_bytes: bytes }
+    }
+}
+
+impl MemSizeEstimator for CompactGhostdagData {}
 
 impl From<&GhostdagData> for CompactGhostdagData {
     fn from(value: &GhostdagData) -> Self {

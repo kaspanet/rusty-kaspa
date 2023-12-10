@@ -26,6 +26,8 @@ struct BlockDepthInfo {
     finality_point: Hash,
 }
 
+impl kaspa_utils::mem_size::MemSizeEstimator for BlockDepthInfo {}
+
 /// A DB + cache implementation of `DepthStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbDepthStore {

@@ -1,29 +1,57 @@
 use indexmap::IndexMap;
+use kaspa_utils::mem_size::MemSizeEstimator;
 use parking_lot::RwLock;
 use rand::Rng;
 use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 
-struct Inner<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync, S = RandomState> {
-    // We use IndexMap and not HashMap, because it makes it cheaper to remove a random element when the cache is full.
-    map: IndexMap<TKey, TData, S>,
-    _tracked_size: usize,
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CachePolicy {
+    Unit,
+    Tracked,
 }
 
-impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync, S: BuildHasher + Default> Inner<TKey, TData, S> {
-    pub fn new(size: u64) -> Self {
-        Self { map: IndexMap::with_capacity_and_hasher(size as usize, S::default()), _tracked_size: 0 }
+struct Inner<TKey, TData, S = RandomState>
+where
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Send + Sync + MemSizeEstimator,
+{
+    // We use IndexMap and not HashMap because it makes it cheaper to remove a random element when the cache is full.
+    map: IndexMap<TKey, TData, S>,
+    tracked_size: usize,
+}
+
+impl<TKey, TData, S> Inner<TKey, TData, S>
+where
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Send + Sync + MemSizeEstimator,
+    S: BuildHasher + Default,
+{
+    pub fn new(max_size: u64) -> Self {
+        // Use `size + 1` for not triggering a realloc if new element exactly overflows capacity
+        Self { map: IndexMap::with_capacity_and_hasher(max_size as usize + 1, S::default()), tracked_size: 0 }
     }
 }
 
 #[derive(Clone)]
-pub struct Cache<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync, S = RandomState> {
+pub struct Cache<TKey, TData, S = RandomState>
+where
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Send + Sync + MemSizeEstimator,
+{
     inner: Arc<RwLock<Inner<TKey, TData, S>>>,
-    size: usize,
+    max_size: usize,
+    policy: CachePolicy,
 }
 
-impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync, S: BuildHasher + Default> Cache<TKey, TData, S> {
+impl<TKey, TData, S> Cache<TKey, TData, S>
+where
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Send + Sync + MemSizeEstimator,
+    S: BuildHasher + Default,
+{
     pub fn new(size: u64) -> Self {
-        Self { inner: Arc::new(RwLock::new(Inner::new(size))), size: size as usize }
+        // TODO: policy and prealloc strategy
+        Self { inner: Arc::new(RwLock::new(Inner::new(size))), max_size: size as usize, policy: CachePolicy::Unit }
     }
 
     pub fn get(&self, key: &TKey) -> Option<TData> {
@@ -34,53 +62,90 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Syn
         self.inner.read().map.contains_key(key)
     }
 
+    fn insert_impl(&self, inner: &mut Inner<TKey, TData, S>, key: TKey, data: TData) {
+        match self.policy {
+            CachePolicy::Unit => {
+                if inner.map.len() == self.max_size {
+                    inner.map.swap_remove_index(rand::thread_rng().gen_range(0..self.max_size));
+                }
+                inner.map.insert(key, data);
+            }
+            CachePolicy::Tracked => {
+                let new_data_size = data.estimate_mem_size().agnostic_size();
+                inner.tracked_size += new_data_size;
+                if let Some(removed) = inner.map.insert(key, data) {
+                    // TODO: underflow
+                    inner.tracked_size -= removed.estimate_mem_size().agnostic_size();
+                }
+
+                while inner.tracked_size > self.max_size {
+                    if let Some((_, v)) = inner.map.swap_remove_index(rand::thread_rng().gen_range(0..inner.map.len())) {
+                        // TODO: underflow
+                        inner.tracked_size -= v.estimate_mem_size().agnostic_size();
+                    }
+                }
+            }
+        }
+    }
+
     pub fn insert(&self, key: TKey, data: TData) {
-        if self.size == 0 {
+        if self.max_size == 0 {
             return;
         }
+
         let mut write_guard = self.inner.write();
-        if write_guard.map.len() == self.size {
-            write_guard.map.swap_remove_index(rand::thread_rng().gen_range(0..self.size));
-        }
-        write_guard.map.insert(key, data);
+        self.insert_impl(&mut write_guard, key, data);
     }
 
     pub fn insert_many(&self, iter: &mut impl Iterator<Item = (TKey, TData)>) {
-        if self.size == 0 {
+        if self.max_size == 0 {
             return;
         }
         let mut write_guard = self.inner.write();
         for (key, data) in iter {
-            if write_guard.map.len() == self.size {
-                write_guard.map.swap_remove_index(rand::thread_rng().gen_range(0..self.size));
+            self.insert_impl(&mut write_guard, key, data);
+        }
+    }
+
+    fn remove_impl(&self, inner: &mut Inner<TKey, TData, S>, key: &TKey) -> Option<TData> {
+        match inner.map.swap_remove(key) {
+            Some(data) => {
+                // TODO: underflow
+                if self.policy == CachePolicy::Tracked {
+                    inner.tracked_size -= data.estimate_mem_size().agnostic_size();
+                }
+                Some(data)
             }
-            write_guard.map.insert(key, data);
+            None => None,
         }
     }
 
     pub fn remove(&self, key: &TKey) -> Option<TData> {
-        if self.size == 0 {
+        if self.max_size == 0 {
             return None;
         }
         let mut write_guard = self.inner.write();
-        write_guard.map.swap_remove(key)
+        self.remove_impl(&mut write_guard, key)
     }
 
     pub fn remove_many(&self, key_iter: &mut impl Iterator<Item = TKey>) {
-        if self.size == 0 {
+        if self.max_size == 0 {
             return;
         }
         let mut write_guard = self.inner.write();
         for key in key_iter {
-            write_guard.map.swap_remove(&key);
+            self.remove_impl(&mut write_guard, &key);
         }
     }
 
     pub fn remove_all(&self) {
-        if self.size == 0 {
+        if self.max_size == 0 {
             return;
         }
         let mut write_guard = self.inner.write();
-        write_guard.map.clear()
+        write_guard.map.clear();
+        if self.policy == CachePolicy::Tracked {
+            write_guard.tracked_size = 0;
+        }
     }
 }

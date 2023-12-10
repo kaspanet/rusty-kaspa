@@ -17,6 +17,8 @@ pub struct Entry {
     pub address: NetAddress,
 }
 
+impl kaspa_utils::mem_size::MemSizeEstimator for Entry {}
+
 pub trait AddressesStoreReader {
     fn get(&self, key: AddressKey) -> Result<Entry, StoreError>;
 }

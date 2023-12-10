@@ -10,6 +10,8 @@ use std::{error::Error, fmt::Display, sync::Arc};
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct ConnectionBanTimestamp(pub u64);
 
+impl kaspa_utils::mem_size::MemSizeEstimator for ConnectionBanTimestamp {}
+
 pub trait BannedAddressesStoreReader {
     fn get(&self, address: IpAddr) -> Result<ConnectionBanTimestamp, StoreError>;
 }

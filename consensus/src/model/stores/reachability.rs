@@ -26,6 +26,8 @@ pub(crate) struct ReachabilityData {
     pub height: u64,
 }
 
+impl kaspa_utils::mem_size::MemSizeEstimator for ReachabilityData {}
+
 impl ReachabilityData {
     pub fn new(parent: Hash, interval: Interval, height: u64) -> Self {
         Self { parent, interval, height }

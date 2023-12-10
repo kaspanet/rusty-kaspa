@@ -44,6 +44,8 @@ impl UtxoEntry {
     }
 }
 
+impl kaspa_utils::mem_size::MemSizeEstimator for UtxoEntry {}
+
 pub type TransactionIndexType = u32;
 
 /// Represents a Kaspa transaction outpoint

@@ -1,3 +1,4 @@
+use std::mem::size_of;
 use std::sync::Arc;
 
 use kaspa_consensus_core::{header::Header, BlockHasher, BlockLevel};
@@ -6,6 +7,7 @@ use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
+use kaspa_utils::mem_size::{MemSize, MemSizeEstimator};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +27,14 @@ pub struct HeaderWithBlockLevel {
     pub block_level: BlockLevel,
 }
 
+impl MemSizeEstimator for HeaderWithBlockLevel {
+    fn estimate_mem_size(&self) -> MemSize {
+        let inner_header_bytes =
+            size_of::<Header>() + self.header.parents_by_level.iter().map(|l| l.len()).sum::<usize>() * size_of::<Hash>();
+        MemSize::BytesStatic { num_bytes: inner_header_bytes + size_of::<Self>() }
+    }
+}
+
 pub trait HeaderStore: HeaderStoreReader {
     // This is append only
     fn insert(&self, hash: Hash, header: Arc<Header>, block_level: BlockLevel) -> Result<(), StoreError>;
@@ -38,6 +48,8 @@ pub struct CompactHeaderData {
     pub bits: u32,
     pub blue_score: u64,
 }
+
+impl MemSizeEstimator for CompactHeaderData {}
 
 impl From<&Header> for CompactHeaderData {
     fn from(header: &Header) -> Self {

@@ -167,6 +167,8 @@ impl FromHex for Hash {
     }
 }
 
+impl kaspa_utils::mem_size::MemSizeEstimator for Hash {}
+
 #[wasm_bindgen]
 impl Hash {
     #[wasm_bindgen(constructor)]

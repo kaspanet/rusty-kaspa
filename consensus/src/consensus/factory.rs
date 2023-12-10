@@ -25,6 +25,8 @@ pub struct ConsensusEntry {
     creation_timestamp: u64,
 }
 
+impl kaspa_utils::mem_size::MemSizeEstimator for ConsensusEntry {}
+
 impl ConsensusEntry {
     pub fn new(key: u64, directory_name: String, creation_timestamp: u64) -> Self {
         Self { key, directory_name, creation_timestamp }

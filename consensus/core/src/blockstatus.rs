@@ -20,6 +20,8 @@ pub enum BlockStatus {
     StatusHeaderOnly,
 }
 
+impl kaspa_utils::mem_size::MemSizeEstimator for BlockStatus {}
+
 impl BlockStatus {
     pub fn has_block_header(self) -> bool {
         matches!(

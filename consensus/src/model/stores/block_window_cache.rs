@@ -21,6 +21,8 @@ pub struct BlockWindowHeap {
     origin: WindowOrigin,
 }
 
+impl kaspa_utils::mem_size::MemSizeEstimator for BlockWindowHeap {}
+
 impl BlockWindowHeap {
     pub fn new(origin: WindowOrigin) -> Self {
         Self { blocks: Default::default(), origin }
