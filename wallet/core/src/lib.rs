@@ -32,3 +32,6 @@ pub use settings::{DefaultSettings, SettingsStore, SettingsStoreT, WalletSetting
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
+
+#[cfg(test)]
+pub mod tests;
