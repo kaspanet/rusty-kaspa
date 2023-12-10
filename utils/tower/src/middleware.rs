@@ -44,8 +44,8 @@ where
         match ready!(this.inner.poll_data(cx)) {
             Some(Ok(chunk)) => {
                 debug!("[SIZE MW] response body chunk size = {}", chunk.len());
-                let previous = counter.fetch_add(chunk.len(), Ordering::Relaxed);
-                debug!("[SIZE MW] total count: {}", previous);
+                let _previous = counter.fetch_add(chunk.len(), Ordering::Relaxed);
+                debug!("[SIZE MW] total count: {}", _previous);
 
                 Poll::Ready(Some(Ok(chunk)))
             }
@@ -84,15 +84,15 @@ where
                 let _previous = bytes_sent_counter.fetch_add(chunk.len(), Ordering::Relaxed);
                 debug!("[SIZE MW] total count: {}", _previous);
                 if let Err(_err) = tx.send_data(chunk).await {
+                    // error can occurs only if the channel is already closed
                     debug!("[SIZE MW] error sending data: {}", _err)
-                    // error can occurs if only channel is already closed
                 }
             }
 
             if let Ok(Some(trailers)) = body.trailers().await {
                 if let Err(_err) = tx.send_trailers(trailers).await {
+                    // error can occurs only if the channel is already closed
                     debug!("[SIZE MW] error sending trailers: {}", _err)
-                    // error can occurs if only channel is already closed
                 }
             }
         });
