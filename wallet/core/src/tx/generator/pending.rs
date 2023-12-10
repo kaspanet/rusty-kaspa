@@ -1,4 +1,3 @@
-use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
 use crate::rpc::DynRpcApi;
@@ -218,7 +217,7 @@ impl PendingTransaction {
 
     pub fn try_sign_with_keys(&self, privkeys: Vec<[u8; 32]>) -> Result<()> {
         let mutable_tx = self.inner.signable_tx.lock()?.clone();
-        let signed_tx = sign_with_multiple_v2(mutable_tx, privkeys).map_err(|tx| Error::PartiallySigned(tx))?;
+        let signed_tx = sign_with_multiple_v2(mutable_tx, privkeys).fully_signed()?;
         *self.inner.signable_tx.lock().unwrap() = signed_tx;
         Ok(())
     }

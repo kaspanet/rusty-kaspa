@@ -1,4 +1,3 @@
-use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
 use crate::{runtime::Account, secret::Secret, storage::PrvKeyData};
@@ -48,7 +47,7 @@ impl SignerT for Signer {
 
         let keys = self.inner.keys.lock().unwrap();
         let keys_for_signing = addresses.iter().map(|address| *keys.get(address).unwrap()).collect::<Vec<_>>();
-        Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing).map_err(|tx| Error::PartiallySigned(tx))?)
+        Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing).fully_signed()?)
     }
 }
 
@@ -72,6 +71,6 @@ impl KeydataSigner {
 impl SignerT for KeydataSigner {
     fn try_sign(&self, mutable_tx: SignableTransaction, addresses: &[Address]) -> Result<SignableTransaction> {
         let keys_for_signing = addresses.iter().map(|address| *self.inner.keys.get(address).unwrap()).collect::<Vec<_>>();
-        Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing).map_err(|tx| Error::PartiallySigned(tx))?)
+        Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing).fully_signed()?)
     }
 }

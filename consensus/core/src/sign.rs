@@ -17,6 +17,45 @@ pub enum Error {
 
     #[error("Secp256k1 -> {0}")]
     Secp256k1Error(#[from] secp256k1::Error),
+
+    #[error("The transaction is partially signed")]
+    PartiallySigned,
+
+    #[error("The transaction is fully signed")]
+    FullySigned,
+}
+
+/// A wrapper enum that represents the transaction signed state. A transaction
+/// contained by this enum can be either fully signed or partially signed.
+pub enum Signed {
+    Fully(SignableTransaction),
+    Partially(SignableTransaction),
+}
+
+impl Signed {
+    /// Returns the transaction if it is fully signed, otherwise returns an error
+    pub fn fully_signed(self) -> std::result::Result<SignableTransaction, Error> {
+        match self {
+            Signed::Fully(tx) => Ok(tx),
+            Signed::Partially(_) => Err(Error::PartiallySigned),
+        }
+    }
+
+    /// Returns the transaction if it is partially signed, otherwise returns an error
+    pub fn partially_signed(self) -> std::result::Result<SignableTransaction, Error> {
+        match self {
+            Signed::Fully(_) => Err(Error::FullySigned),
+            Signed::Partially(tx) => Ok(tx),
+        }
+    }
+
+    /// Returns the transaction regardless of whether it is fully or partially signed
+    pub fn unwrap(self) -> SignableTransaction {
+        match self {
+            Signed::Fully(tx) => tx,
+            Signed::Partially(tx) => tx,
+        }
+    }
 }
 
 /// Sign a transaction using schnorr
@@ -63,10 +102,8 @@ pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8
 
 /// TODO (aspect) - merge this with `v1` fn above or refactor wallet core to use the script engine.
 /// Sign a transaction using schnorr
-pub fn sign_with_multiple_v2(
-    mut mutable_tx: SignableTransaction,
-    privkeys: Vec<[u8; 32]>,
-) -> std::result::Result<SignableTransaction, SignableTransaction> {
+#[allow(clippy::result_large_err)]
+pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8; 32]>) -> Signed {
     let mut map = BTreeMap::new();
     for privkey in privkeys {
         let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
@@ -90,9 +127,9 @@ pub fn sign_with_multiple_v2(
         }
     }
     if additional_signatures_required {
-        Err(mutable_tx)
+        Signed::Partially(mutable_tx)
     } else {
-        Ok(mutable_tx)
+        Signed::Fully(mutable_tx)
     }
 }
 
