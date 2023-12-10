@@ -5,25 +5,31 @@ use crate::utxo::{UtxoContext, UtxoEntryReference};
 struct Inner {
     pub id: TransactionId,
     pub pending_transaction: PendingTransaction,
+    pub originating_context: UtxoContext,
+    pub destination_context: Option<UtxoContext>,
     #[allow(dead_code)]
     pub creation_daa_score: u64,
     pub acceptance_daa_score: AtomicU64,
-    pub context: UtxoContext,
 }
 
+/// A wrapper around [`PendingTransaction`] that adds additional context and
+/// convenience methods for handling within [`UtxoContext`].
 #[derive(Clone)]
 pub struct OutgoingTransaction {
     inner: Arc<Inner>,
 }
 
 impl OutgoingTransaction {
-    pub fn new(current_daa_score: u64, context: UtxoContext, pending_transaction: PendingTransaction) -> Self {
+    pub fn new(current_daa_score: u64, originating_context: UtxoContext, pending_transaction: PendingTransaction) -> Self {
+        let destination_context = pending_transaction.generator().destination_utxo_context().clone();
+
         let inner = Inner {
             id: pending_transaction.id(),
             pending_transaction,
+            originating_context,
+            destination_context,
             creation_daa_score: current_daa_score,
             acceptance_daa_score: AtomicU64::new(0),
-            context,
         };
 
         Self { inner: Arc::new(inner) }
@@ -61,14 +67,21 @@ impl OutgoingTransaction {
         self.inner.acceptance_daa_score.load(Ordering::Relaxed) != 0
     }
 
+    pub fn is_batch(&self) -> bool {
+        self.inner.pending_transaction.is_batch()
+    }
+
     pub fn utxo_entries(&self) -> &AHashSet<UtxoEntryReference> {
         self.inner.pending_transaction.utxo_entries()
     }
 
-    pub fn context(&self) -> &UtxoContext {
-        &self.inner.context
+    pub fn originating_context(&self) -> &UtxoContext {
+        &self.inner.originating_context
     }
-    // pub fn is_accepted
+
+    pub fn destination_context(&self) -> &Option<UtxoContext> {
+        &self.inner.destination_context
+    }
 }
 
 impl Eq for OutgoingTransaction {}
