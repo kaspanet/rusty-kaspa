@@ -123,5 +123,4 @@ impl DerivationCapableAccount for Bip32 {
     fn account_index(&self) -> u64 {
         self.account_index
     }
-
 }

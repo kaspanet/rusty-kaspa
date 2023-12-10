@@ -114,5 +114,4 @@ impl DerivationCapableAccount for MultiSig {
     fn account_index(&self) -> u64 {
         0
     }
-
 }

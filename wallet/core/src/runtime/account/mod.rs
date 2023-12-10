@@ -37,7 +37,7 @@ use super::AtomicBalance;
 pub const DEFAULT_AMOUNT_PADDING: usize = 19;
 
 pub type GenerationNotifier = Arc<dyn Fn(&PendingTransaction) + Send + Sync>;
-pub type ScanNotifier = Arc<dyn Fn(usize, u64, Option<TransactionId>) + Send + Sync>;
+pub type ScanNotifier = Arc<dyn Fn(usize, usize, u64, Option<TransactionId>) + Send + Sync>;
 
 pub struct Context {
     pub settings: Option<Settings>,
@@ -223,7 +223,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
     fn descriptor(&self) -> Result<descriptor::AccountDescriptor>;
 
     async fn scan(self: Arc<Self>, window_size: Option<usize>, extent: Option<u32>) -> Result<()> {
-
         self.utxo_context().clear().await?;
 
         let current_daa_score = self.wallet().current_daa_score().ok_or(Error::NotConnected)?;
@@ -402,7 +401,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
         let destination_address = destination_account.receive_address()?;
         let final_transaction_destination = PaymentDestination::from(PaymentOutput::new(destination_address, transfer_amount_sompi));
-        // let final_priority_fee = Fees::SenderPaysAll(0);
         let final_transaction_payload = None;
 
         let settings = GeneratorSettings::try_new_with_account(
@@ -411,7 +409,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
             priority_fee_sompi,
             final_transaction_payload,
         )?
-        .as_transfer();
+        .utxo_context_transfer(destination_account.utxo_context());
 
         let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
 
@@ -511,10 +509,11 @@ pub trait DerivationCapableAccount: Account {
         let mut index: usize = start;
         let mut last_notification = 0;
         let mut aggregate_balance = 0;
+        let mut aggregate_utxo_count = 0;
 
         let change_address = change_address_keypair[0].0.clone();
 
-        while index < extent {
+        while index < extent && !abortable.is_aborted() {
             let first = index as u32;
             let last = (index + window) as u32;
             index = last as usize;
@@ -542,6 +541,8 @@ pub trait DerivationCapableAccount: Account {
 
             let utxos = rpc.get_utxos_by_addresses(addresses.clone()).await?;
             let balance = utxos.iter().map(|utxo| utxo.utxo_entry.amount).sum::<u64>();
+            aggregate_utxo_count += utxos.len();
+
             if balance > 0 {
                 aggregate_balance += balance;
 
@@ -566,13 +567,13 @@ pub trait DerivationCapableAccount: Account {
                         transaction.try_sign_with_keys(keys.clone())?;
                         let id = transaction.try_submit(&rpc).await?;
                         if let Some(notifier) = notifier {
-                            notifier(index, balance, Some(id));
+                            notifier(index, aggregate_utxo_count, balance, Some(id));
                         }
                         yield_executor().await;
                     }
                 } else {
                     if let Some(notifier) = notifier {
-                        notifier(index, aggregate_balance, None);
+                        notifier(index, aggregate_utxo_count, aggregate_balance, None);
                     }
                     yield_executor().await;
                 }
@@ -581,7 +582,7 @@ pub trait DerivationCapableAccount: Account {
             if index > last_notification + 1_000 {
                 last_notification = index;
                 if let Some(notifier) = notifier {
-                    notifier(index, aggregate_balance, None);
+                    notifier(index, aggregate_utxo_count, aggregate_balance, None);
                 }
                 yield_executor().await;
             }
@@ -589,7 +590,7 @@ pub trait DerivationCapableAccount: Account {
 
         if index > last_notification {
             if let Some(notifier) = notifier {
-                notifier(index, aggregate_balance, None);
+                notifier(index, aggregate_utxo_count, aggregate_balance, None);
             }
         }
 

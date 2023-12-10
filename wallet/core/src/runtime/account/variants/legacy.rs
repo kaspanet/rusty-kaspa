@@ -157,5 +157,4 @@ impl DerivationCapableAccount for Legacy {
     fn account_index(&self) -> u64 {
         0
     }
-
 }

@@ -21,6 +21,12 @@ u8_try_from! {
     }
 }
 
+impl AccountKind {
+    pub fn is_derivation_capable(&self) -> bool {
+        matches!(self, AccountKind::Bip32 | AccountKind::Legacy)
+    }
+}
+
 impl std::fmt::Display for AccountKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
