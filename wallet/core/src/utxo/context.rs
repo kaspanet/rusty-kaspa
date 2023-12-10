@@ -3,11 +3,11 @@ use crate::events::Events;
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{AccountId, Balance};
-use crate::storage::{TransactionRecord, TransactionType};
+use crate::storage::TransactionRecord;
 use crate::tx::PendingTransaction;
 use crate::utxo::{
-    Maturity, PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference, UtxoEntryReferenceExtension,
-    UtxoProcessor,
+    Maturity, OutgoingTransaction, PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference,
+    UtxoEntryReferenceExtension, UtxoProcessor,
 };
 use kaspa_hashes::Hash;
 use sorted_insert::SortedInsertBinaryByKey;
@@ -74,77 +74,25 @@ impl std::fmt::Display for UtxoContextId {
     }
 }
 
-pub struct Consumed {
-    entry: UtxoEntryReference,
-    // timeout: Instant,
-    timeout_daa: Daa,
-}
-
-impl Consumed {
-    pub fn amount(&self) -> u64 {
-        self.entry.amount()
-    }
-}
-
-impl From<(UtxoEntryReference, &Daa)> for Consumed {
-    fn from((entry, timeout_daa): (UtxoEntryReference, &Daa)) -> Self {
-        Self { entry, timeout_daa: *timeout_daa }
-    }
-}
-
-impl From<(&UtxoEntryReference, &Daa)> for Consumed {
-    fn from((entry, timeout_daa): (&UtxoEntryReference, &Daa)) -> Self {
-        Self { entry: entry.clone(), timeout_daa: *timeout_daa }
-    }
-}
-
-// impl From<(UtxoEntryReference, &Instant)> for Consumed {
-//     fn from((entry, timeout, timeout_daa): (UtxoEntryReference, &Instant, &Daa)) -> Self {
-//         Self { entry, timeout: *timeout, timeout_daa: *timeout_daa }
-//     }
-// }
-
-// impl From<(&UtxoEntryReference, &Instant)> for Consumed {
-//     fn from((entry, timeout): (&UtxoEntryReference, &Instant)) -> Self {
-//         Self { entry: entry.clone(), timeout: *timeout }
-//     }
-// }
-
 pub enum UtxoEntryVariant {
     Mature(UtxoEntryReference),
     Pending(UtxoEntryReference),
     Stasis(UtxoEntryReference),
-    Consumed(UtxoEntryReference),
 }
 
 pub struct Context {
     /// Mature (Confirmed) UTXOs
     pub(crate) mature: Vec<UtxoEntryReference>,
     /// UTXOs that are pending confirmation
-    pub(crate) pending: HashMap<UtxoEntryId, UtxoEntryReference>,
+    pub(crate) pending: AHashMap<UtxoEntryId, UtxoEntryReference>,
     /// UTXOs that are in stasis (freshly minted coinbase transactions only)
-    pub(crate) stasis: HashMap<UtxoEntryId, UtxoEntryReference>,
-    /// UTXOs consumed by recently created outgoing transactions
-    pub(crate) consumed: HashMap<UtxoEntryId, Consumed>,
+    pub(crate) stasis: AHashMap<UtxoEntryId, UtxoEntryReference>,
     /// All UTXOs in possession of this context instance
-    pub(crate) map: HashMap<UtxoEntryId, UtxoEntryReference>,
+    pub(crate) map: AHashMap<UtxoEntryId, UtxoEntryReference>,
     /// Outgoing transactions that have not yet been confirmed.
     /// Confirmation occurs when the transaction UTXOs are
     /// removed from the context by the UTXO change notification.
-    outgoing: HashMap<TransactionId, PendingTransaction>,
-    /// Outgoing transactions that have been confirmed but are
-    /// still kept in the context for a certain period of time
-    /// to allow the UtxoContext to identify transactions
-    /// "to self". Sending transactions between addresses within
-    /// the same account results in `send->remove UTXO->add UTXO`
-    /// pattern. To detect this scenario we need to know about
-    /// the outgoing transaction for at least 1 DAA score
-    /// after the outgoing transaction acceptance. Sending
-    /// transactions between two different accounts results in
-    /// send+receive, however a transaction within the same
-    /// account can be either forbidden by pre-checking the
-    /// account address pool or detected. We choose the latter.
-    lingering: HashMap<TransactionId, PendingTransaction>,
+    pub(crate) outgoing: AHashMap<TransactionId, OutgoingTransaction>,
     /// Total balance of all UTXOs in this context (mature, pending)
     balance: Option<Balance>,
     /// Addresses monitored by this UTXO context
@@ -155,15 +103,12 @@ impl Default for Context {
     fn default() -> Self {
         Self {
             mature: vec![],
-            pending: HashMap::default(),
-            stasis: HashMap::default(),
-            consumed: HashMap::default(),
-            map: HashMap::default(),
-            outgoing: HashMap::default(),
-            lingering: HashMap::default(),
+            pending: AHashMap::default(),
+            stasis: AHashMap::default(),
+            map: AHashMap::default(),
+            outgoing: AHashMap::default(),
             balance: None,
             addresses: Arc::new(DashSet::new()),
-            // recovery_period: Duration::from_secs(crate::utxo::UTXO_RECOVERY_PERIOD_SECONDS.load(Ordering::Relaxed)),
         }
     }
 }
@@ -177,10 +122,8 @@ impl Context {
         self.map.clear();
         self.mature.clear();
         self.stasis.clear();
-        self.consumed.clear();
         self.pending.clear();
         self.outgoing.clear();
-        self.lingering.clear();
         self.addresses.clear();
         self.balance = None;
     }
@@ -191,35 +134,33 @@ struct Inner {
     binding: UtxoContextBinding,
     context: Mutex<Context>,
     processor: UtxoProcessor,
-    // /// Timeout for UTXO recovery
-    // recovery_period: Duration,
-    recovery_period: Daa,
 }
 
 impl Inner {
     pub fn new(processor: &UtxoProcessor, binding: UtxoContextBinding) -> Self {
-        Self {
-            id: binding.id(),
-            binding,
-            context: Mutex::new(Context::default()),
-            processor: processor.clone(),
-            recovery_period: Daa(crate::utxo::UTXO_RECOVERY_PERIOD_DAA.load(Ordering::Relaxed)),
-        }
+        Self { id: binding.id(), binding, context: Mutex::new(Context::default()), processor: processor.clone() }
     }
 
     pub fn new_with_mature_entries(processor: &UtxoProcessor, binding: UtxoContextBinding, mature: Vec<UtxoEntryReference>) -> Self {
         let context = Context::new_with_mature(mature);
-        Self {
-            id: binding.id(),
-            binding,
-            context: Mutex::new(context),
-            processor: processor.clone(),
-            recovery_period: Daa(crate::utxo::UTXO_RECOVERY_PERIOD_DAA.load(Ordering::Relaxed)),
-        }
+        Self { id: binding.id(), binding, context: Mutex::new(context), processor: processor.clone() }
     }
 }
 
-/// a collection of UTXO entries
+///
+///  UtxoContext is a data structure responsible for monitoring multiple addresses
+/// for transactions.  It scans the address set for existing UtxoEntry records, then
+/// monitors for transaction-related events in order to maintain a consistent view
+/// on that UtxoEntry set throughout its connection lifetime.
+///
+/// UtxoContext typically represents a single wallet account, but can monitor any set
+/// of addresses. When receiving transaction events, UtxoContext detects types of these
+/// events and emits corresponding notifications on the UtxoProcessor event multiplexer.
+///
+/// In addition to standard monitoring, UtxoContext works in conjunction with the
+/// TransactionGenerator to track outgoing transactions in an effort to segregate
+/// different types of UtxoEntry updates (regular incoming vs. change).
+///
 #[derive(Clone)]
 pub struct UtxoContext {
     inner: Arc<Inner>,
@@ -312,33 +253,37 @@ impl UtxoContext {
             let pending_utxo_entries = pending_tx.utxo_entries();
             context.mature.retain(|entry| !pending_utxo_entries.contains(entry));
 
-            let timeout_daa = Daa(current_daa_score + self.inner.recovery_period.0);
-            pending_utxo_entries.iter().for_each(|entry| {
-                context.consumed.insert(entry.id().clone(), (entry, &timeout_daa).into());
-            });
-
-            context.outgoing.insert(pending_tx.id(), pending_tx.clone());
+            let outgoing_transaction = OutgoingTransaction::new(current_daa_score, self.clone(), pending_tx.clone());
+            self.processor().register_outgoing_transaction(outgoing_transaction.clone());
+            context.outgoing.insert(outgoing_transaction.id(), outgoing_transaction);
         }
-
-        self.processor().register_recoverable_context(self);
 
         Ok(())
     }
 
     pub(crate) async fn notify_outgoing_transaction(&self, pending_tx: &PendingTransaction) -> Result<()> {
-        let record = TransactionRecord::new_outgoing(self, pending_tx);
-        self.processor().notify(Events::Outgoing { record }).await?;
+        let outgoing_tx = self.processor().outgoing().get(&pending_tx.id()).expect("outgoing transaction for notification");
+
+        if pending_tx.is_batch() {
+            let record = TransactionRecord::new_batch(self, &outgoing_tx, None);
+            self.processor().notify(Events::Pending { record }).await?;
+        } else {
+            let record = TransactionRecord::new_outgoing(self, &outgoing_tx, None);
+            self.processor().notify(Events::Pending { record }).await?;
+        }
         self.update_balance().await?;
         Ok(())
     }
 
+    /// Cancel outgoing transaction in case of a submission error. Removes [`OutgoingTransaction`] from the
+    /// [`UtxoProcessor`] and returns UtxoEntries from the outgoing transaction back to the mature pool.
     pub(crate) async fn cancel_outgoing_transaction(&self, pending_tx: &PendingTransaction) -> Result<()> {
-        let mut context = self.context();
-        let pending_utxo_entries = pending_tx.utxo_entries();
+        self.processor().cancel_outgoing_transaction(pending_tx.id());
 
-        context.outgoing.retain(|id, _| id != &pending_tx.id());
-        context.consumed.retain(|_, consumed| !pending_utxo_entries.contains(&consumed.entry));
-        pending_utxo_entries.iter().for_each(|entry| {
+        let mut context = self.context();
+
+        let outgoing_transaction = context.outgoing.remove(&pending_tx.id()).expect("outgoing transaction");
+        outgoing_transaction.utxo_entries().iter().for_each(|entry| {
             context.mature.push(entry.clone());
         });
 
@@ -367,7 +312,7 @@ impl UtxoContext {
                             .pending()
                             .insert(utxo_entry.id().clone(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
                     }
-                    Maturity::Mature => {
+                    Maturity::Confirmed => {
                         context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
                     }
                 }
@@ -379,12 +324,13 @@ impl UtxoContext {
         }
     }
 
-    pub async fn remove(&self, ids: Vec<UtxoEntryId>) -> Result<Vec<UtxoEntryVariant>> {
+    pub async fn remove(&self, utxos: Vec<UtxoEntryReference>) -> Result<Vec<UtxoEntryVariant>> {
         let mut context = self.context();
         let mut removed = vec![];
         let mut remove_mature_ids = vec![];
 
-        for id in ids.into_iter() {
+        for utxo in utxos.into_iter() {
+            let id = utxo.id();
             // remove from local map
             if context.map.remove(&id).is_some() {
                 if let Some(pending) = context.pending.remove(&id) {
@@ -401,21 +347,9 @@ impl UtxoContext {
                     remove_mature_ids.push(id);
                 }
             } else {
-                log_error!("Error: unable to remove utxo entry from local map (with context)");
+                log_error!("Error: UTXO not found in UtxoContext map!");
             }
         }
-
-        let remove_mature_ids = remove_mature_ids
-            .into_iter()
-            .filter(|id| {
-                if let Some(consumed) = context.consumed.remove(id) {
-                    removed.push(UtxoEntryVariant::Consumed(consumed.entry));
-                    false
-                } else {
-                    true
-                }
-            })
-            .collect::<Vec<_>>();
 
         context.mature.retain(|entry| {
             if remove_mature_ids.contains(&entry.id()) {
@@ -444,14 +378,12 @@ impl UtxoContext {
                 }
             }
 
-            let outgoing_transaction = self.consume_outgoing_transaction(&txid);
-            if let Some(transaction) = outgoing_transaction {
-                let record = TransactionRecord::new_outgoing(self, &transaction);
-                self.processor().notify(Events::Maturity { record }).await?;
-            } else {
-                let record = TransactionRecord::new_incoming(self, TransactionType::Incoming, txid, utxos);
-                self.processor().notify(Events::Maturity { record }).await?;
+            if self.context().outgoing.get(&txid).is_some() {
+                panic!("Error: promotion of the outgoing transaction!");
             }
+
+            let record = TransactionRecord::new_incoming(self, txid, &utxos);
+            self.processor().notify(Events::Maturity { record }).await?;
         }
 
         Ok(())
@@ -472,26 +404,20 @@ impl UtxoContext {
                 }
             }
 
-            let record = TransactionRecord::new_incoming(self, TransactionType::Incoming, txid, utxos);
+            let record = TransactionRecord::new_incoming(self, txid, &utxos);
             self.processor().notify(Events::Pending { record }).await?;
         }
 
         Ok(())
     }
 
-    /// Obtain a clone of the outgoing transaction with the given `txid` from the outgoing tx list.
-    fn get_outgoing_transaction(&self, txid: &TransactionId) -> Option<PendingTransaction> {
-        let context = self.context();
-        context.outgoing.get(txid).cloned()
-    }
-
-    /// Consume (remove) the outgoing transaction with the given `txid` from the outgoing tx list.
-    fn consume_outgoing_transaction(&self, txid: &TransactionId) -> Option<PendingTransaction> {
+    pub fn remove_outgoing_transaction(&self, txid: &TransactionId) -> Option<OutgoingTransaction> {
         let mut context = self.context();
         context.outgoing.remove(txid)
     }
 
-    pub async fn extend(&self, utxo_entries: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
+    pub async fn extend_from_scan(&self, utxo_entries: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
+
         let (pending, mature) = {
             let mut context = self.context();
 
@@ -515,7 +441,7 @@ impl UtxoContext {
                                 .pending()
                                 .insert(utxo_entry.id().clone(), PendingUtxoEntryReference::new(utxo_entry, self.clone()));
                         }
-                        Maturity::Mature => {
+                        Maturity::Confirmed => {
                             mature.push(utxo_entry.clone());
                             context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
                         }
@@ -528,56 +454,52 @@ impl UtxoContext {
             (pending, mature)
         };
 
+        // cascade discovery to the processor
+        // for unixtime resolution
+
         let pending = HashMap::group_from(pending.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
         for (id, utxos) in pending.into_iter() {
-            let record = TransactionRecord::new_external(self, id, utxos);
-            self.processor().notify(Events::Scan { record }).await?;
+            let record = TransactionRecord::new_external(self, id, &utxos);
+            self.processor().handle_discovery(record).await?;
         }
 
         let mature = HashMap::group_from(mature.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
         for (id, utxos) in mature.into_iter() {
-            let record = TransactionRecord::new_external(self, id, utxos);
-            self.processor().notify(Events::Scan { record }).await?;
+            let record = TransactionRecord::new_external(self, id, &utxos);
+            self.processor().handle_discovery(record).await?;
         }
-
-        // context.mature.sort();
 
         Ok(())
     }
 
-    /// recover UTXOs that went into `consumed` state but were never removed
-    /// from the set by the UtxoChanged notification.
-    pub fn recover(&self, current_daa_score: u64) -> bool {
-        let mut context = self.context();
-        if context.consumed.is_empty() {
-            return false;
-        }
-
-        // let now = Instant::now();
-        let mut removed = vec![];
-        context.consumed.retain(|_, consumed| {
-            if current_daa_score > consumed.timeout_daa.0 {
-                removed.push(consumed.entry.clone());
-                false
-            } else {
-                true
-            }
-        });
-
-        removed.into_iter().for_each(|entry| {
-            context.mature.sorted_insert_binary_asc_by_key(entry, |entry| entry.amount_as_ref());
-        });
-
-        context.consumed.is_not_empty()
-    }
-
     pub async fn calculate_balance(&self) -> Balance {
         let context = self.context();
-        let consumed: u64 = context.consumed.values().map(|e| e.entry.amount()).sum();
         let mature: u64 = context.mature.iter().map(|e| e.as_ref().entry.amount).sum();
         let pending: u64 = context.pending.values().map(|e| e.as_ref().entry.amount).sum();
-        // this will aggregate only transactions containing final payments (not compound transactions)
-        let outgoing = context.outgoing.values().filter_map(|tx| tx.payment_value().map(|value| value + tx.fees())).sum::<u64>(); //.collect::<Vec<_>>();
+
+        // this will aggregate only transactions containing
+        // the final payments (not compound transactions)
+        // and outgoing transactions that have not yet
+        // been accepted
+        let mut outgoing: u64 = 0;
+        let mut consumed: u64 = 0;
+        for tx in context.outgoing.values() {
+            if !tx.is_accepted() {
+                if let Some(payment_value) = tx.payment_value() {
+                    // final tx
+                    outgoing += tx.fees() + payment_value;
+                    consumed += tx.aggregate_input_value();
+                } else {
+                    // compound tx has no payment value
+                    // we skip them, accumulating only fees
+                    // as fees are the only component that will
+                    // reduce the final balance after the
+                    // compound process
+                    outgoing += tx.fees();
+                }
+            }
+        }
+
         Balance::new(
             (mature + consumed) - outgoing,
             pending,
@@ -591,14 +513,15 @@ impl UtxoContext {
     pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
         // add UTXOs to account set
 
-        // If SKIP_CHANGE_UTXO_PROMOTION is enabled, we consume outgoing transactions now
-        // otherwise the process is deferred to the promotion time.
-        let mut discarded_outgoing_transactions = HashSet::new();
+        let mut accepted_outgoing_transactions = AHashSet::new();
 
         let added = HashMap::group_from(utxos.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
         for (txid, utxos) in added.into_iter() {
-            let outgoing_transaction = self.get_outgoing_transaction(&txid);
-            let force_maturity_if_outgoing = outgoing_transaction.is_some(); // && self.inner.skip_change_utxo_promotion;
+            // get outgoing transaction from the processor in case the transaction
+            // originates from a different [`Account`] represented by a different [`UtxoContext`].
+            let outgoing_transaction = self.processor().outgoing().get(&txid);
+
+            let force_maturity_if_outgoing = outgoing_transaction.is_some();
             let is_coinbase_stasis =
                 utxos.first().map(|utxo| matches!(utxo.maturity(current_daa_score), Maturity::Stasis)).unwrap_or_default();
 
@@ -608,41 +531,77 @@ impl UtxoContext {
                 }
             }
 
-            if let Some(transaction) = outgoing_transaction {
-                discarded_outgoing_transactions.insert(txid);
-                let record = TransactionRecord::new_outgoing(self, &transaction);
-                self.processor().notify(Events::Change { record }).await?;
+            if let Some(outgoing_transaction) = outgoing_transaction {
+                accepted_outgoing_transactions.insert((*outgoing_transaction).clone());
+
+                if outgoing_transaction.is_batch() {
+                    let record = TransactionRecord::new_batch(self, &outgoing_transaction, Some(current_daa_score));
+                    self.processor().notify(Events::Maturity { record }).await?;
+                } else if outgoing_transaction.originating_context() == self {
+                    let record = TransactionRecord::new_change(self, &outgoing_transaction, Some(current_daa_score), &utxos);
+                    self.processor().notify(Events::Maturity { record }).await?;
+                } else {
+                    let record =
+                        TransactionRecord::new_transfer_incoming(self, &outgoing_transaction, Some(current_daa_score), &utxos);
+                    self.processor().notify(Events::Maturity { record }).await?;
+                }
             } else if !is_coinbase_stasis {
-                println!("**** NOT IN STASIS");
                 // do not notify if coinbase transaction is in stasis
-                let record = TransactionRecord::new_incoming(self, TransactionType::Incoming, txid, utxos);
+                let record = TransactionRecord::new_incoming(self, txid, &utxos);
                 self.processor().notify(Events::Pending { record }).await?;
             }
         }
 
-        for txid in discarded_outgoing_transactions.into_iter() {
-            self.consume_outgoing_transaction(&txid);
+        for outgoing_transaction in accepted_outgoing_transactions.into_iter() {
+            outgoing_transaction.tag_as_accepted_at_daa_score(current_daa_score);
         }
 
         Ok(())
     }
 
-    pub(crate) async fn handle_utxo_removed(&self, utxos: Vec<UtxoEntryReference>, _current_daa_score: u64) -> Result<()> {
+    pub(crate) async fn handle_utxo_removed(&self, mut utxos: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
         // remove UTXOs from account set
-        let utxo_ids: Vec<UtxoEntryId> = utxos.iter().map(|utxo| utxo.id()).collect();
-        let removed = self.remove(utxo_ids).await?;
+
+        let outgoing_transactions = self.processor().outgoing();
+        let mut accepted_outgoing_transactions = HashSet::<OutgoingTransaction>::new();
+
+        utxos.retain(|id| {
+            for outgoing_transaction in outgoing_transactions.iter() {
+                if outgoing_transaction.utxo_entries().contains(id) {
+                    accepted_outgoing_transactions.insert((*outgoing_transaction).clone());
+                    return false;
+                }
+            }
+            true
+        });
+
+        for accepted_outgoing_transaction in accepted_outgoing_transactions.into_iter() {
+            if accepted_outgoing_transaction.is_batch() {
+                let record = TransactionRecord::new_batch(self, &accepted_outgoing_transaction, Some(current_daa_score));
+                self.processor().notify(Events::Maturity { record }).await?;
+            } else if accepted_outgoing_transaction.destination_context().is_some() {
+                let record =
+                    TransactionRecord::new_transfer_outgoing(self, &accepted_outgoing_transaction, Some(current_daa_score), &utxos);
+                self.processor().notify(Events::Maturity { record }).await?;
+            } else {
+                let record = TransactionRecord::new_outgoing(self, &accepted_outgoing_transaction, Some(current_daa_score));
+                self.processor().notify(Events::Maturity { record }).await?;
+            }
+        }
+
+        if utxos.is_empty() {
+            return Ok(());
+        }
+
+        let removed = self.remove(utxos).await?;
 
         let mut mature = vec![];
-        let mut consumed = vec![];
         let mut pending = vec![];
         let mut stasis = vec![];
 
         removed.into_iter().for_each(|entry| match entry {
             UtxoEntryVariant::Mature(utxo) => {
                 mature.push(utxo);
-            }
-            UtxoEntryVariant::Consumed(utxo) => {
-                consumed.push(utxo);
             }
             UtxoEntryVariant::Pending(utxo) => {
                 pending.push(utxo);
@@ -657,17 +616,17 @@ impl UtxoContext {
         let stasis = HashMap::group_from(stasis.into_iter().map(|utxo| (utxo.transaction_id(), utxo)));
 
         for (txid, utxos) in mature.into_iter() {
-            let record = TransactionRecord::new_external(self, txid, utxos);
-            self.processor().notify(Events::External { record }).await?;
+            let record = TransactionRecord::new_external(self, txid, &utxos);
+            self.processor().notify(Events::Maturity { record }).await?;
         }
 
         for (txid, utxos) in pending.into_iter() {
-            let record = TransactionRecord::new_incoming(self, TransactionType::Reorg, txid, utxos);
+            let record = TransactionRecord::new_reorg(self, txid, &utxos);
             self.processor().notify(Events::Reorg { record }).await?;
         }
 
         for (txid, utxos) in stasis.into_iter() {
-            let record = TransactionRecord::new_incoming(self, TransactionType::Stasis, txid, utxos);
+            let record = TransactionRecord::new_stasis(self, txid, &utxos);
             self.processor().notify(Events::Stasis { record }).await?;
         }
 
@@ -718,7 +677,7 @@ impl UtxoContext {
                 .current_daa_score()
                 .expect("daa score or initialized UtxoProcessor are when invoking scan_and_register_addresses()")
         });
-        self.extend(refs, current_daa_score).await?;
+        self.extend_from_scan(refs, current_daa_score).await?;
         self.update_balance().await?;
         Ok(())
     }
