@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-metrics"
+name = "kaspa-metrics-core"
 version.workspace = true
 authors.workspace = true
 license.workspace = true

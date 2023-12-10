@@ -152,8 +152,8 @@ impl Metrics {
             data.node_borsh_bytes_rx = bandwidth_metrics.borsh_bytes_rx;
             data.node_json_bytes_tx = bandwidth_metrics.json_bytes_tx;
             data.node_json_bytes_rx = bandwidth_metrics.json_bytes_rx;
-            data.node_grpc_p2p_bytes_tx = bandwidth_metrics.grpc_p2p_bytes_tx;
-            data.node_grpc_p2p_bytes_rx = bandwidth_metrics.grpc_p2p_bytes_rx;
+            data.node_p2p_bytes_tx = bandwidth_metrics.grpc_p2p_bytes_tx;
+            data.node_p2p_bytes_rx = bandwidth_metrics.grpc_p2p_bytes_rx;
             data.node_grpc_user_bytes_tx = bandwidth_metrics.grpc_user_bytes_tx;
             data.node_grpc_user_bytes_rx = bandwidth_metrics.grpc_user_bytes_rx;
 

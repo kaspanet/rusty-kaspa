@@ -64,10 +64,10 @@ impl MetricGroup {
                 Metric::NodeBorshBytesTxPerSecond,
                 Metric::NodeBorshBytesRx,
                 Metric::NodeBorshBytesRxPerSecond,
-                Metric::NodeGrpcP2pBytesTx,
-                Metric::NodeGrpcP2pBytesTxPerSecond,
-                Metric::NodeGrpcP2pBytesRx,
-                Metric::NodeGrpcP2pBytesRxPerSecond,
+                Metric::NodeP2pBytesTx,
+                Metric::NodeP2pBytesTxPerSecond,
+                Metric::NodeP2pBytesRx,
+                Metric::NodeP2pBytesRxPerSecond,
                 Metric::NodeGrpcUserBytesTx,
                 Metric::NodeGrpcUserBytesTxPerSecond,
                 Metric::NodeGrpcUserBytesRx,
@@ -132,8 +132,8 @@ impl From<Metric> for MetricGroup {
             | Metric::NodeBorshBytesTx
             | Metric::NodeJsonBytesTx
             | Metric::NodeJsonBytesRx
-            | Metric::NodeGrpcP2pBytesTx
-            | Metric::NodeGrpcP2pBytesRx
+            | Metric::NodeP2pBytesTx
+            | Metric::NodeP2pBytesRx
             | Metric::NodeGrpcUserBytesTx
             | Metric::NodeGrpcUserBytesRx
             | Metric::NodeTotalBytesRx
@@ -142,8 +142,8 @@ impl From<Metric> for MetricGroup {
             | Metric::NodeBorshBytesTxPerSecond
             | Metric::NodeJsonBytesTxPerSecond
             | Metric::NodeJsonBytesRxPerSecond
-            | Metric::NodeGrpcP2pBytesTxPerSecond
-            | Metric::NodeGrpcP2pBytesRxPerSecond
+            | Metric::NodeP2pBytesTxPerSecond
+            | Metric::NodeP2pBytesRxPerSecond
             | Metric::NodeGrpcUserBytesTxPerSecond
             | Metric::NodeGrpcUserBytesRxPerSecond
             | Metric::NodeTotalBytesRxPerSecond
@@ -199,10 +199,10 @@ pub enum Metric {
     NodeTotalBytesTxPerSecond,
     NodeTotalBytesRxPerSecond,
 
-    NodeGrpcP2pBytesTx,
-    NodeGrpcP2pBytesRx,
-    NodeGrpcP2pBytesTxPerSecond,
-    NodeGrpcP2pBytesRxPerSecond,
+    NodeP2pBytesTx,
+    NodeP2pBytesRx,
+    NodeP2pBytesTxPerSecond,
+    NodeP2pBytesRxPerSecond,
 
     NodeBorshBytesTx,
     NodeBorshBytesRx,
@@ -261,8 +261,8 @@ impl Metric {
             | Metric::NodeBorshBytesRx
             | Metric::NodeJsonBytesTx
             | Metric::NodeJsonBytesRx
-            | Metric::NodeGrpcP2pBytesTx
-            | Metric::NodeGrpcP2pBytesRx
+            | Metric::NodeP2pBytesTx
+            | Metric::NodeP2pBytesRx
             | Metric::NodeGrpcUserBytesTx
             | Metric::NodeGrpcUserBytesRx
             | Metric::NodeTotalBytesTx
@@ -271,8 +271,8 @@ impl Metric {
             | Metric::NodeBorshBytesRxPerSecond
             | Metric::NodeJsonBytesTxPerSecond
             | Metric::NodeJsonBytesRxPerSecond
-            | Metric::NodeGrpcP2pBytesTxPerSecond
-            | Metric::NodeGrpcP2pBytesRxPerSecond
+            | Metric::NodeP2pBytesTxPerSecond
+            | Metric::NodeP2pBytesRxPerSecond
             | Metric::NodeGrpcUserBytesTxPerSecond
             | Metric::NodeGrpcUserBytesRxPerSecond
             | Metric::NodeTotalBytesTxPerSecond
@@ -310,16 +310,16 @@ impl Metric {
                 | Metric::NodeDiskIoWritePerSec
                 | Metric::NodeBorshBytesTx
                 | Metric::NodeBorshBytesRx
-                | Metric::NodeGrpcP2pBytesTx
-                | Metric::NodeGrpcP2pBytesRx
+                | Metric::NodeP2pBytesTx
+                | Metric::NodeP2pBytesRx
                 | Metric::NodeGrpcUserBytesTx
                 | Metric::NodeGrpcUserBytesRx
                 | Metric::NodeTotalBytesTx
                 | Metric::NodeTotalBytesRx
                 | Metric::NodeBorshBytesTxPerSecond
                 | Metric::NodeBorshBytesRxPerSecond
-                | Metric::NodeGrpcP2pBytesTxPerSecond
-                | Metric::NodeGrpcP2pBytesRxPerSecond
+                | Metric::NodeP2pBytesTxPerSecond
+                | Metric::NodeP2pBytesRxPerSecond
                 | Metric::NodeGrpcUserBytesTxPerSecond
                 | Metric::NodeGrpcUserBytesRxPerSecond
                 | Metric::NodeTotalBytesTxPerSecond
@@ -364,8 +364,8 @@ impl Metric {
             Metric::NodeBorshBytesRx => as_data_size(f, si),
             Metric::NodeJsonBytesTx => as_data_size(f, si),
             Metric::NodeJsonBytesRx => as_data_size(f, si),
-            Metric::NodeGrpcP2pBytesTx => as_data_size(f, si),
-            Metric::NodeGrpcP2pBytesRx => as_data_size(f, si),
+            Metric::NodeP2pBytesTx => as_data_size(f, si),
+            Metric::NodeP2pBytesRx => as_data_size(f, si),
             Metric::NodeGrpcUserBytesTx => as_data_size(f, si),
             Metric::NodeGrpcUserBytesRx => as_data_size(f, si),
             Metric::NodeTotalBytesTx => as_data_size(f, si),
@@ -375,8 +375,8 @@ impl Metric {
             Metric::NodeBorshBytesRxPerSecond => format!("{}/s", as_kb(f, si, short)),
             Metric::NodeJsonBytesTxPerSecond => format!("{}/s", as_kb(f, si, short)),
             Metric::NodeJsonBytesRxPerSecond => format!("{}/s", as_kb(f, si, short)),
-            Metric::NodeGrpcP2pBytesTxPerSecond => format!("{}/s", as_kb(f, si, short)),
-            Metric::NodeGrpcP2pBytesRxPerSecond => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeP2pBytesTxPerSecond => format!("{}/s", as_kb(f, si, short)),
+            Metric::NodeP2pBytesRxPerSecond => format!("{}/s", as_kb(f, si, short)),
             Metric::NodeGrpcUserBytesTxPerSecond => format!("{}/s", as_kb(f, si, short)),
             Metric::NodeGrpcUserBytesRxPerSecond => format!("{}/s", as_kb(f, si, short)),
             Metric::NodeTotalBytesTxPerSecond => format!("{}/s", as_kb(f, si, short)),
@@ -427,10 +427,10 @@ impl Metric {
             Metric::NodeBorshBytesRx => ("wRPC Borsh Rx", "Borsh Rx"),
             Metric::NodeJsonBytesTx => ("wRPC JSON Tx", "Json Tx"),
             Metric::NodeJsonBytesRx => ("wRPC JSON Rx", "Json Rx"),
-            Metric::NodeGrpcP2pBytesTx => ("gRPC p2p Tx", "p2p Tx"),
-            Metric::NodeGrpcP2pBytesRx => ("gRPC p2p Rx", "p2p Rx"),
-            Metric::NodeGrpcUserBytesTx => ("gRPC User Tx", "Grpc User Tx"),
-            Metric::NodeGrpcUserBytesRx => ("gRPC User Rx", "Grpc User Rx"),
+            Metric::NodeP2pBytesTx => ("p2p Tx", "p2p Tx"),
+            Metric::NodeP2pBytesRx => ("p2p Rx", "p2p Rx"),
+            Metric::NodeGrpcUserBytesTx => ("gRPC Tx", "gRPC Tx"),
+            Metric::NodeGrpcUserBytesRx => ("gRPC Rx", "gRPC Rx"),
             Metric::NodeTotalBytesTx => ("Total Tx", "Total Tx"),
             Metric::NodeTotalBytesRx => ("Total Rx", "Total Rx"),
             // --
@@ -438,10 +438,10 @@ impl Metric {
             Metric::NodeBorshBytesRxPerSecond => ("wRPC Borsh Rx/s", "Borsh Rx/s"),
             Metric::NodeJsonBytesTxPerSecond => ("wRPC JSON Tx/s", "JSON Tx/s"),
             Metric::NodeJsonBytesRxPerSecond => ("wRPC JSON Rx/s", "JSON Rx/s"),
-            Metric::NodeGrpcP2pBytesTxPerSecond => ("gRPC p2p Tx/s", "p2p Tx/s"),
-            Metric::NodeGrpcP2pBytesRxPerSecond => ("gRPC p2p Rx/s", "p2p Rx/s"),
-            Metric::NodeGrpcUserBytesTxPerSecond => ("gRPC User Tx/s", "gRPC Tx/s"),
-            Metric::NodeGrpcUserBytesRxPerSecond => ("gRPC User Rx/s", "gRPC Rx/s"),
+            Metric::NodeP2pBytesTxPerSecond => ("p2p Tx/s", "p2p Tx/s"),
+            Metric::NodeP2pBytesRxPerSecond => ("p2p Rx/s", "p2p Rx/s"),
+            Metric::NodeGrpcUserBytesTxPerSecond => ("gRPC Tx/s", "gRPC Tx/s"),
+            Metric::NodeGrpcUserBytesRxPerSecond => ("gRPC Rx/s", "gRPC Rx/s"),
             Metric::NodeTotalBytesTxPerSecond => ("Network Tx/s", "Net Tx/s"),
             Metric::NodeTotalBytesRxPerSecond => ("Network Rx/s", "Net Rx/s"),
             // --
@@ -495,8 +495,8 @@ pub struct MetricsData {
     pub node_borsh_bytes_rx: u64,
     pub node_json_bytes_tx: u64,
     pub node_json_bytes_rx: u64,
-    pub node_grpc_p2p_bytes_tx: u64,
-    pub node_grpc_p2p_bytes_rx: u64,
+    pub node_p2p_bytes_tx: u64,
+    pub node_p2p_bytes_rx: u64,
     pub node_grpc_user_bytes_tx: u64,
     pub node_grpc_user_bytes_rx: u64,
     pub node_total_bytes_tx: u64,
@@ -506,8 +506,8 @@ pub struct MetricsData {
     pub node_borsh_bytes_rx_per_second: u64,
     pub node_json_bytes_tx_per_second: u64,
     pub node_json_bytes_rx_per_second: u64,
-    pub node_grpc_p2p_bytes_tx_per_second: u64,
-    pub node_grpc_p2p_bytes_rx_per_second: u64,
+    pub node_p2p_bytes_tx_per_second: u64,
+    pub node_p2p_bytes_rx_per_second: u64,
     pub node_grpc_user_bytes_tx_per_second: u64,
     pub node_grpc_user_bytes_rx_per_second: u64,
     pub node_total_bytes_tx_per_second: u64,
@@ -568,8 +568,8 @@ pub struct MetricsSnapshot {
     pub node_borsh_bytes_rx: f64,
     pub node_json_bytes_tx: f64,
     pub node_json_bytes_rx: f64,
-    pub node_grpc_p2p_bytes_tx: f64,
-    pub node_grpc_p2p_bytes_rx: f64,
+    pub node_p2p_bytes_tx: f64,
+    pub node_p2p_bytes_rx: f64,
     pub node_grpc_user_bytes_tx: f64,
     pub node_grpc_user_bytes_rx: f64,
     pub node_total_bytes_tx: f64,
@@ -579,8 +579,8 @@ pub struct MetricsSnapshot {
     pub node_borsh_bytes_rx_per_second: f64,
     pub node_json_bytes_tx_per_second: f64,
     pub node_json_bytes_rx_per_second: f64,
-    pub node_grpc_p2p_bytes_tx_per_second: f64,
-    pub node_grpc_p2p_bytes_rx_per_second: f64,
+    pub node_p2p_bytes_tx_per_second: f64,
+    pub node_p2p_bytes_rx_per_second: f64,
     pub node_grpc_user_bytes_tx_per_second: f64,
     pub node_grpc_user_bytes_rx_per_second: f64,
     pub node_total_bytes_tx_per_second: f64,
@@ -631,8 +631,8 @@ impl MetricsSnapshot {
             Metric::NodeBorshBytesRx => self.node_borsh_bytes_rx,
             Metric::NodeJsonBytesTx => self.node_json_bytes_tx,
             Metric::NodeJsonBytesRx => self.node_json_bytes_rx,
-            Metric::NodeGrpcP2pBytesTx => self.node_grpc_p2p_bytes_tx,
-            Metric::NodeGrpcP2pBytesRx => self.node_grpc_p2p_bytes_rx,
+            Metric::NodeP2pBytesTx => self.node_p2p_bytes_tx,
+            Metric::NodeP2pBytesRx => self.node_p2p_bytes_rx,
             Metric::NodeGrpcUserBytesTx => self.node_grpc_user_bytes_tx,
             Metric::NodeGrpcUserBytesRx => self.node_grpc_user_bytes_rx,
             Metric::NodeTotalBytesTx => self.node_total_bytes_tx,
@@ -642,8 +642,8 @@ impl MetricsSnapshot {
             Metric::NodeBorshBytesRxPerSecond => self.node_borsh_bytes_rx_per_second,
             Metric::NodeJsonBytesTxPerSecond => self.node_json_bytes_tx_per_second,
             Metric::NodeJsonBytesRxPerSecond => self.node_json_bytes_rx_per_second,
-            Metric::NodeGrpcP2pBytesTxPerSecond => self.node_grpc_p2p_bytes_tx_per_second,
-            Metric::NodeGrpcP2pBytesRxPerSecond => self.node_grpc_p2p_bytes_rx_per_second,
+            Metric::NodeP2pBytesTxPerSecond => self.node_p2p_bytes_tx_per_second,
+            Metric::NodeP2pBytesRxPerSecond => self.node_p2p_bytes_rx_per_second,
             Metric::NodeGrpcUserBytesTxPerSecond => self.node_grpc_user_bytes_tx_per_second,
             Metric::NodeGrpcUserBytesRxPerSecond => self.node_grpc_user_bytes_rx_per_second,
             Metric::NodeTotalBytesTxPerSecond => self.node_total_bytes_tx_per_second,
@@ -694,8 +694,8 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
         let node_borsh_bytes_rx_per_second = per_sec(a.node_borsh_bytes_rx, b.node_borsh_bytes_rx, duration_millis);
         let node_json_bytes_tx_per_second = per_sec(a.node_json_bytes_tx, b.node_json_bytes_tx, duration_millis);
         let node_json_bytes_rx_per_second = per_sec(a.node_json_bytes_rx, b.node_json_bytes_rx, duration_millis);
-        let node_grpc_p2p_bytes_tx_per_second = per_sec(a.node_grpc_p2p_bytes_tx, b.node_grpc_p2p_bytes_tx, duration_millis);
-        let node_grpc_p2p_bytes_rx_per_second = per_sec(a.node_grpc_p2p_bytes_rx, b.node_grpc_p2p_bytes_rx, duration_millis);
+        let node_p2p_bytes_tx_per_second = per_sec(a.node_p2p_bytes_tx, b.node_p2p_bytes_tx, duration_millis);
+        let node_p2p_bytes_rx_per_second = per_sec(a.node_p2p_bytes_rx, b.node_p2p_bytes_rx, duration_millis);
         let node_grpc_user_bytes_tx_per_second = per_sec(a.node_grpc_user_bytes_tx, b.node_grpc_user_bytes_tx, duration_millis);
         let node_grpc_user_bytes_rx_per_second = per_sec(a.node_grpc_user_bytes_rx, b.node_grpc_user_bytes_rx, duration_millis);
         let node_total_bytes_tx_per_second = per_sec(a.node_total_bytes_tx, b.node_total_bytes_tx, duration_millis);
@@ -727,8 +727,8 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             node_borsh_bytes_rx: b.node_borsh_bytes_rx as f64,
             node_json_bytes_tx: b.node_json_bytes_tx as f64,
             node_json_bytes_rx: b.node_json_bytes_rx as f64,
-            node_grpc_p2p_bytes_tx: b.node_grpc_p2p_bytes_tx as f64,
-            node_grpc_p2p_bytes_rx: b.node_grpc_p2p_bytes_rx as f64,
+            node_p2p_bytes_tx: b.node_p2p_bytes_tx as f64,
+            node_p2p_bytes_rx: b.node_p2p_bytes_rx as f64,
             node_grpc_user_bytes_tx: b.node_grpc_user_bytes_tx as f64,
             node_grpc_user_bytes_rx: b.node_grpc_user_bytes_rx as f64,
             node_total_bytes_tx: b.node_total_bytes_tx as f64,
@@ -738,8 +738,8 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             node_borsh_bytes_rx_per_second,
             node_json_bytes_tx_per_second,
             node_json_bytes_rx_per_second,
-            node_grpc_p2p_bytes_tx_per_second,
-            node_grpc_p2p_bytes_rx_per_second,
+            node_p2p_bytes_tx_per_second,
+            node_p2p_bytes_rx_per_second,
             node_grpc_user_bytes_tx_per_second,
             node_grpc_user_bytes_rx_per_second,
             node_total_bytes_tx_per_second,
