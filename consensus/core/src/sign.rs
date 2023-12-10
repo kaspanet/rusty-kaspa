@@ -63,8 +63,10 @@ pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8
 
 /// TODO (aspect) - merge this with `v1` fn above or refactor wallet core to use the script engine.
 /// Sign a transaction using schnorr
-pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8; 32]>) -> std::result::Result<SignableTransaction,SignableTransaction> {
-
+pub fn sign_with_multiple_v2(
+    mut mutable_tx: SignableTransaction,
+    privkeys: Vec<[u8; 32]>,
+) -> std::result::Result<SignableTransaction, SignableTransaction> {
     let mut map = BTreeMap::new();
     for privkey in privkeys {
         let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
