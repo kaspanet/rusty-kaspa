@@ -24,8 +24,8 @@ kaspa-p2p-lib.workspace = true
 kaspa-perf-monitor.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-txscript.workspace = true
-kaspa-utils-tower.workspace = true
 kaspa-utils.workspace = true
+kaspa-utils-tower.workspace = true
 kaspa-utxoindex.workspace = true
 kaspa-wrpc-core.workspace = true
 
