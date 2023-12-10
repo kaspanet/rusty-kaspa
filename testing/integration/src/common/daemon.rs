@@ -77,9 +77,17 @@ impl Daemon {
     }
 
     pub async fn new_client(&self) -> GrpcClient {
-        GrpcClient::connect(NotificationMode::Direct, format!("grpc://localhost:{}", self.rpc_port), true, None, false, Some(500_000))
-            .await
-            .unwrap()
+        GrpcClient::connect(
+            NotificationMode::Direct,
+            format!("grpc://localhost:{}", self.rpc_port),
+            true,
+            None,
+            false,
+            Some(500_000),
+            Default::default(),
+        )
+        .await
+        .unwrap()
     }
 
     pub async fn new_client_pool<T: Send + 'static, F, R>(

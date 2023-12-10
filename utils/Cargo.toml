@@ -24,12 +24,6 @@ log.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rlimit.workspace = true
-futures.workspace = true
-tower-http.workspace = true
-tower.workspace = true
-hyper.workspace = true
-pin-project-lite.workspace = true
-tokio.workspace = true
 
 [dev-dependencies]
 bincode.workspace = true

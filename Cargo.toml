@@ -49,6 +49,7 @@ members = [
     "crypto/txscript/errors",
     "testing/integration",
     "utils",
+    "utils/tower",
     "rothschild",
     "metrics/perf_monitor",
 ]
@@ -106,6 +107,7 @@ kaspa-rpc-service = { version = "0.13.0", path = "rpc/service" }
 kaspa-txscript = { version = "0.13.0", path = "crypto/txscript" }
 kaspa-txscript-errors = { version = "0.13.0", path = "crypto/txscript/errors" }
 kaspa-utils = { version = "0.13.0", path = "utils" }
+kaspa-utils-tower = { version = "0.13.0", path = "utils/tower" }
 kaspa-utxoindex = { version = "0.13.0", path = "indexes/utxoindex" }
 kaspa-wallet = { version = "0.13.0", path = "wallet/native" }
 kaspa-cli = { version = "0.13.0", path = "cli" }
