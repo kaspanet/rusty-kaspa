@@ -23,14 +23,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::serde::from_value;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AddressDerivationMeta([u32; 2]);
-
-impl Default for AddressDerivationMeta {
-    fn default() -> Self {
-        Self([0, 0])
-    }
-}
 
 impl AddressDerivationMeta {
     pub fn new(receive: u32, change: u32) -> Self {

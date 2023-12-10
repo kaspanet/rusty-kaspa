@@ -242,8 +242,6 @@ pub enum Error {
     #[error("Legacy account is not initialized")]
     LegacyAccountNotInitialized,
 
-    #[error("The transaction is partially signed")]
-    PartiallySigned(SignableTransaction),
 }
 
 impl From<Aborted> for Error {

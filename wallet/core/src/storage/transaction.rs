@@ -652,7 +652,7 @@ impl TransactionRecord {
         let binding = Binding::from(utxo_context.binding());
         let block_daa_score =
             utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
-        let utxo_entries = utxos.into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
+        let utxo_entries = utxos.iter().map(UtxoRecord::from).collect::<Vec<_>>();
 
         let unixtime = unixtime_as_millis_u64();
 

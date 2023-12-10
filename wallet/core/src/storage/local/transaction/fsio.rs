@@ -264,7 +264,7 @@ impl Stream for TransactionRecordStream {
             let path = self.folder.join(id.to_hex());
             match read_sync(&path, None) {
                 Ok(transaction_data) => Poll::Ready(Some(Ok(Arc::new(transaction_data)))),
-                Err(err) => Poll::Ready(Some(Err(err.into()))),
+                Err(err) => Poll::Ready(Some(Err(err))),
             }
         }
     }
@@ -275,12 +275,12 @@ impl Stream for TransactionRecordStream {
 }
 
 async fn read(path: &Path, secret: Option<&Secret>) -> Result<TransactionRecord> {
-    let data = fs::read_json::<Encryptable<TransactionRecord>>(&path).await?;
+    let data = fs::read_json::<Encryptable<TransactionRecord>>(path).await?;
     Ok(data.decrypt(secret)?.unwrap())
 }
 
 fn read_sync(path: &Path, secret: Option<&Secret>) -> Result<TransactionRecord> {
-    let data = fs::read_json_sync::<Encryptable<TransactionRecord>>(&path)?;
+    let data = fs::read_json_sync::<Encryptable<TransactionRecord>>(path)?;
     Ok(data.decrypt(secret)?.unwrap())
 }
 
@@ -290,6 +290,6 @@ async fn write(path: &Path, record: &TransactionRecord, secret: Option<&Secret>)
     } else {
         Encryptable::from(record.clone())
     };
-    fs::write_json(&path, &data).await?;
+    fs::write_json(path, &data).await?;
     Ok(())
 }
