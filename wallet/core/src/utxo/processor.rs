@@ -11,10 +11,11 @@ use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::{Channel, DuplexChannel};
 use workflow_core::task::spawn;
 
-use crate::imports::*;
 use crate::result::Result;
-use crate::utxo::{Maturity, PendingUtxoEntryReference, UtxoContext, UtxoEntryId, UtxoEntryReference};
+use crate::runtime::wallet::WalletBusMessage;
+use crate::utxo::{Maturity, OutgoingTransaction, PendingUtxoEntryReference, UtxoContext, UtxoEntryId, UtxoEntryReference};
 use crate::{events::Events, runtime::SyncMonitor};
+use crate::{imports::*, storage::TransactionRecord};
 use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
@@ -22,17 +23,19 @@ use kaspa_rpc_core::{
 };
 use std::collections::HashMap;
 
+use super::UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA;
+
 pub struct Inner {
     /// Coinbase UTXOs in stasis
     stasis: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
     /// UTXOs pending maturity
     pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
+    /// Outgoing Transactions
+    outgoing: DashMap<TransactionId, OutgoingTransaction>,
+    outgoing_longevity_period: u64,
     /// Address to UtxoContext map (maps all addresses used by
     /// all UtxoContexts to their respective UtxoContexts)
     address_to_utxo_context_map: DashMap<Arc<Address>, UtxoContext>,
-    /// UtxoContexts that have recoverable UTXOs (UTXOs used in
-    /// outgoing transactions, that have not yet been confirmed)
-    recoverable_contexts: DashSet<UtxoContext>,
     // ---
     current_daa_score: Arc<AtomicU64>,
     network_id: Arc<Mutex<Option<NetworkId>>>,
@@ -44,16 +47,23 @@ pub struct Inner {
     notification_channel: Channel<Notification>,
     sync_proc: SyncMonitor,
     multiplexer: Multiplexer<Box<Events>>,
+    wallet_bus: Option<Channel<WalletBusMessage>>,
     notification_lock: AsyncMutex<()>,
 }
 
 impl Inner {
-    pub fn new(rpc: Option<Rpc>, network_id: Option<NetworkId>, multiplexer: Multiplexer<Box<Events>>) -> Self {
+    pub fn new(
+        rpc: Option<Rpc>,
+        network_id: Option<NetworkId>,
+        multiplexer: Multiplexer<Box<Events>>,
+        wallet_bus: Option<Channel<WalletBusMessage>>,
+    ) -> Self {
         Self {
             stasis: DashMap::new(),
             pending: DashMap::new(),
+            outgoing: DashMap::new(),
+            outgoing_longevity_period: UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::Relaxed),
             address_to_utxo_context_map: DashMap::new(),
-            recoverable_contexts: DashSet::new(),
             current_daa_score: Arc::new(AtomicU64::new(0)),
             network_id: Arc::new(Mutex::new(network_id)),
             rpc: Mutex::new(rpc.clone()),
@@ -64,6 +74,7 @@ impl Inner {
             notification_channel: Channel::<Notification>::unbounded(),
             sync_proc: SyncMonitor::new(rpc.clone(), &multiplexer),
             multiplexer,
+            wallet_bus,
             notification_lock: AsyncMutex::new(()),
         }
     }
@@ -75,9 +86,14 @@ pub struct UtxoProcessor {
 }
 
 impl UtxoProcessor {
-    pub fn new(rpc: Option<Rpc>, network_id: Option<NetworkId>, multiplexer: Option<Multiplexer<Box<Events>>>) -> Self {
+    pub fn new(
+        rpc: Option<Rpc>,
+        network_id: Option<NetworkId>,
+        multiplexer: Option<Multiplexer<Box<Events>>>,
+        wallet_bus: Option<Channel<WalletBusMessage>>,
+    ) -> Self {
         let multiplexer = multiplexer.unwrap_or_default();
-        UtxoProcessor { inner: Arc::new(Inner::new(rpc, network_id, multiplexer)) }
+        UtxoProcessor { inner: Arc::new(Inner::new(rpc, network_id, multiplexer, wallet_bus)) }
     }
 
     pub fn rpc_api(&self) -> Arc<DynRpcApi> {
@@ -100,6 +116,10 @@ impl UtxoProcessor {
         *self.inner.rpc.lock().unwrap() = rpc.clone();
         self.sync_proc().bind_rpc(rpc).await?;
         Ok(())
+    }
+
+    pub fn wallet_bus(&self) -> &Option<Channel<WalletBusMessage>> {
+        &self.inner.wallet_bus
     }
 
     pub fn has_rpc(&self) -> bool {
@@ -132,6 +152,10 @@ impl UtxoProcessor {
 
     pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
         &self.inner.pending
+    }
+
+    pub fn outgoing(&self) -> &DashMap<TransactionId, OutgoingTransaction> {
+        &self.inner.outgoing
     }
 
     pub fn stasis(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
@@ -207,7 +231,7 @@ impl UtxoProcessor {
         self.inner.current_daa_score.store(current_daa_score, Ordering::SeqCst);
         self.notify(Events::DAAScoreChange { current_daa_score }).await?;
         self.handle_pending(current_daa_score).await?;
-        self.handle_recoverable(current_daa_score).await?;
+        self.handle_outgoing(current_daa_score).await?;
         Ok(())
     }
 
@@ -217,7 +241,7 @@ impl UtxoProcessor {
             let mut mature_entries = vec![];
             let pending_entries = &self.inner.pending;
             pending_entries.retain(|_, pending_entry| match pending_entry.maturity(current_daa_score) {
-                Maturity::Mature => {
+                Maturity::Confirmed => {
                     mature_entries.push(pending_entry.clone());
                     false
                 }
@@ -230,7 +254,7 @@ impl UtxoProcessor {
             let stasis_entries = &self.inner.stasis;
             stasis_entries.retain(|_, stasis_entry| {
                 match stasis_entry.maturity(current_daa_score) {
-                    Maturity::Mature => {
+                    Maturity::Confirmed => {
                         mature_entries.push(stasis_entry.clone());
                         false
                     }
@@ -273,14 +297,61 @@ impl UtxoProcessor {
         Ok(())
     }
 
-    async fn handle_recoverable(&self, current_daa_score: u64) -> Result<()> {
-        self.inner.recoverable_contexts.retain(|context| context.recover(current_daa_score));
+    async fn handle_outgoing(&self, current_daa_score: u64) -> Result<()> {
+        let longevity = self.inner.outgoing_longevity_period;
+
+        self.inner.outgoing.retain(|_, outgoing| {
+            if outgoing.acceptance_daa_score() != 0 && (outgoing.acceptance_daa_score() + longevity) < current_daa_score {
+                outgoing.originating_context().remove_outgoing_transaction(&outgoing.id());
+                false
+            } else {
+                true
+            }
+        });
 
         Ok(())
     }
 
-    pub fn register_recoverable_context(&self, context: &UtxoContext) {
-        self.inner.recoverable_contexts.insert(context.clone());
+    pub fn register_outgoing_transaction(&self, outgoing_transaction: OutgoingTransaction) {
+        self.inner.outgoing.insert(outgoing_transaction.id(), outgoing_transaction);
+    }
+
+    pub fn cancel_outgoing_transaction(&self, transaction_id: TransactionId) {
+        self.inner.outgoing.remove(&transaction_id);
+    }
+
+    pub async fn handle_discovery(&self, record: TransactionRecord) -> Result<()> {
+        if let Some(wallet_bus) = self.wallet_bus() {
+            // if UtxoProcessor has an associated wallet_bus installed 
+            // by the wallet, cascade the discovery to the wallet so that
+            // it can check if the record exists in its storage and handle
+            // it in accordance to its policies.
+            wallet_bus.sender.send(WalletBusMessage::Discovery { record }).await?;
+        } else {
+            // otherwise we fetch the unixtime and broadcast the discovery event
+            let transaction_daa_score = record.block_daa_score();
+            match self.rpc_api().get_daa_score_timestamp_estimate(vec![transaction_daa_score]).await {
+                Ok(timestamps) => {
+                    if let Some(timestamp) = timestamps.first() {
+                        let mut record = record.clone();
+                        record.set_unixtime(*timestamp);
+                        self.notify(Events::Discovery { record }).await?;
+                    } else {
+                        self.notify(Events::Error {
+                            message: format!(
+                                "Unable to obtain DAA to unixtime for DAA {transaction_daa_score}, timestamp data is empty"
+                            ),
+                        })
+                        .await?;
+                    }
+                }
+                Err(err) => {
+                    self.notify(Events::Error { message: format!("Unable to resolve DAA to unixtime: {err}") }).await?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn handle_utxo_changed(&self, utxos: UtxosChangedNotification) -> Result<()> {
@@ -556,5 +627,20 @@ impl UtxoProcessor {
             self.inner.task_ctl.signal(()).await.expect("UtxoProcessor::stop_task() `signal` error");
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod mock {
+    use super::*;
+
+    impl UtxoProcessor {
+        pub fn mock_set_connected(&self, connected: bool) {
+            self.inner.is_connected.store(connected, Ordering::SeqCst);
+        }
+
+        // pub fn mock_set_daa_score(&self, connected : bool) {
+        //     self.inner.is_connected.store(connected, Ordering::SeqCst);
+        // }
     }
 }
