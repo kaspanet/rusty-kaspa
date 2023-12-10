@@ -113,7 +113,7 @@ impl Account {
                                     import_secret,
                                     wallet_secret,
                                     None,
-                                    Some(Arc::new(move |processed: usize, balance, txid| {
+                                    Some(Arc::new(move |processed: usize, _, balance, txid| {
                                         if let Some(txid) = txid {
                                             tprintln!(
                                                 ctx_,
@@ -253,7 +253,7 @@ impl Account {
                 window,
                 sweep,
                 &abortable,
-                Some(Arc::new(move |processed: usize, balance, txid| {
+                Some(Arc::new(move |processed: usize, _, balance, txid| {
                     if let Some(txid) = txid {
                         tprintln!(
                             ctx_,
