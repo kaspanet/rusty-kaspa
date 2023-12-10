@@ -25,6 +25,7 @@ kaspa-perf-monitor.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
+kaspa-utils-tower.workspace = true
 kaspa-utxoindex.workspace = true
 
 async-trait.workspace = true
