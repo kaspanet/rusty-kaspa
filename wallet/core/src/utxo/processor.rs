@@ -322,7 +322,7 @@ impl UtxoProcessor {
 
     pub async fn handle_discovery(&self, record: TransactionRecord) -> Result<()> {
         if let Some(wallet_bus) = self.wallet_bus() {
-            // if UtxoProcessor has an associated wallet_bus installed 
+            // if UtxoProcessor has an associated wallet_bus installed
             // by the wallet, cascade the discovery to the wallet so that
             // it can check if the record exists in its storage and handle
             // it in accordance to its policies.

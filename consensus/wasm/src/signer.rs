@@ -71,7 +71,7 @@ fn sign_transaction_impl(
 /// The resulting transaction may be partially signed if the supplied keys are not sufficient
 /// to sign all of its inputs.
 pub fn sign(mutable_tx: tx::SignableTransaction, privkeys: Vec<[u8; 32]>) -> Result<tx::SignableTransaction> {
-    Ok(sign_with_multiple_v2(mutable_tx, privkeys).unwrap_or_else(|mutable_tx|mutable_tx))
+    Ok(sign_with_multiple_v2(mutable_tx, privkeys).unwrap_or_else(|mutable_tx| mutable_tx))
 }
 
 #[wasm_bindgen(js_name=signScriptHash)]

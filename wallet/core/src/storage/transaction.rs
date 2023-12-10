@@ -695,10 +695,10 @@ impl TransactionRecord {
 
 impl Zeroize for TransactionRecord {
     fn zeroize(&mut self) {
-        // TODO - this trait is added due to the 
+        // TODO - this trait is added due to the
         // Encryptable<TransactionRecord> requirement
         // for T to be Zeroize.
-        // 
+        //
         // This will be updated later
         //
         // self.id.zeroize();

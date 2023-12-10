@@ -118,8 +118,7 @@ impl Scan {
                 utxo_context.extend_from_scan(refs, self.current_daa_score).await?;
 
                 self.balance.add(balance);
-            }
-            else {
+            } else {
                 match &extent {
                     ScanExtent::EmptyWindow => {
                         if cursor > last_address_index + window_size {

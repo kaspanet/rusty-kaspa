@@ -417,7 +417,6 @@ impl UtxoContext {
     }
 
     pub async fn extend_from_scan(&self, utxo_entries: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
-
         let (pending, mature) = {
             let mut context = self.context();
 
