@@ -74,7 +74,7 @@ pub trait ReachabilityStore: ReachabilityStoreReader {
     fn get_reindex_root(&self) -> Result<Hash, StoreError>;
 }
 
-/// Ordered DB set (manages a set per entry with cache and ordering).
+/// DB cached ordered `Set` access (manages a set per entry with cache and ordering).
 /// Used both for the tree children set and for the future covering set (per block)
 #[derive(Clone)]
 struct DbReachabilitySet {
@@ -314,6 +314,12 @@ impl ReachabilityStoreReader for DbReachabilityStore {
     }
 }
 
+/// Represents a staging set entry which was modified. The set can be either the tree children set or
+/// the future covering set of a block. This struct saves the full cached updated set, as well as tracks the exact
+/// changes that were made to it (additions/deletions). When committing the entry to the underlying DB store
+/// these changes are used in order to efficiently update the DB only about the actual changes (thus avoiding quadratic disk writes).
+/// Note that the cached set is still fully copied when reading/committing (in order to preserve order semantics). This too can be
+/// optimized but for now these mem-copies don't seem to be a bottleneck so we favor the simplicity
 struct StagingSetEntry {
     set: BlockHashes,        // The full cached (ordered) set
     additions: BlockHashSet, // additions diff
@@ -626,6 +632,8 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
     }
 }
 
+/// Used only by the (test-intended) memory store. Groups all reachability data including
+/// tree children and the future covering set unlike the DB store where they are decomposed
 #[derive(Clone, Serialize, Deserialize)]
 struct MemoryReachabilityData {
     pub children: BlockHashes,
