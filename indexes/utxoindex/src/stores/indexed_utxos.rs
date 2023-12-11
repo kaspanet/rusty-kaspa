@@ -254,7 +254,6 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
 
     /// Removes all entries in the cache and db, besides prefixes themselves.
     fn delete_all(&mut self) -> StoreResult<()> {
-        let mut writer = DirectDbWriter::new(&self.db);
-        self.access.delete_all(&mut writer)
+        self.access.delete_all(DirectDbWriter::new(&self.db))
     }
 }

@@ -41,7 +41,12 @@ impl<'a, T: ReachabilityStore + ?Sized> StoreBuilder<'a, T> {
     }
 
     pub fn add_block(&mut self, hash: Hash, parent: Hash) -> &mut Self {
-        let parent_height = if !parent.is_none() { self.store.append_child(parent, hash).unwrap() } else { 0 };
+        let parent_height = if !parent.is_none() {
+            self.store.append_child(parent, hash).unwrap();
+            self.store.get_height(parent).unwrap()
+        } else {
+            0
+        };
         self.store.insert(hash, parent, Interval::empty(), parent_height + 1).unwrap();
         self
     }
