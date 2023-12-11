@@ -10,6 +10,9 @@ pub trait DbWriter {
         K: AsRef<[u8]>,
         V: AsRef<[u8]>;
     fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error>;
+    fn delete_range<K>(&mut self, from: K, to: K) -> Result<(), rocksdb::Error>
+    where
+        K: AsRef<[u8]>;
 }
 
 /// A trait which is intentionally not implemented for the batch writer.
@@ -42,6 +45,15 @@ impl DbWriter for DirectDbWriter<'_> {
     fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error> {
         self.db.delete(key)
     }
+
+    fn delete_range<K>(&mut self, from: K, to: K) -> Result<(), rocksdb::Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        let mut batch = WriteBatch::default();
+        batch.delete_range(from, to);
+        self.db.write(batch)
+    }
 }
 
 impl DirectWriter for DirectDbWriter<'_> {}
@@ -70,6 +82,14 @@ impl DbWriter for BatchDbWriter<'_> {
         self.batch.delete(key);
         Ok(())
     }
+
+    fn delete_range<K>(&mut self, from: K, to: K) -> Result<(), rocksdb::Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        self.batch.delete_range(from, to);
+        Ok(())
+    }
 }
 
 impl<T: DbWriter> DbWriter for &mut T {
@@ -85,6 +105,14 @@ impl<T: DbWriter> DbWriter for &mut T {
     #[inline]
     fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error> {
         (*self).delete(key)
+    }
+
+    #[inline]
+    fn delete_range<K>(&mut self, from: K, to: K) -> Result<(), rocksdb::Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        (*self).delete_range(from, to)
     }
 }
 
@@ -104,6 +132,13 @@ impl DbWriter for MemoryWriter {
     }
 
     fn delete<K: AsRef<[u8]>>(&mut self, _key: K) -> Result<(), rocksdb::Error> {
+        Ok(())
+    }
+
+    fn delete_range<K>(&mut self, _from: K, _to: K) -> Result<(), rocksdb::Error>
+    where
+        K: AsRef<[u8]>,
+    {
         Ok(())
     }
 }

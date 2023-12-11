@@ -265,6 +265,7 @@ impl VirtualStateProcessor {
             .read()
             .get()
             .unwrap()
+            .read()
             .iter()
             .copied()
             .filter(|&h| self.reachability_service.is_dag_ancestor_of(finality_point, h))

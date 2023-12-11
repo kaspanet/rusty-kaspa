@@ -4,7 +4,7 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockHasher, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_database::{
-    prelude::{BatchDbWriter, CachedDbAccess, CachedDbItem, DbKey, DirectDbWriter, StoreError, DB},
+    prelude::{BatchDbWriter, Cache, CachedDbAccess, CachedDbItem, DbKey, DbSetAccess, DbWriter, DirectDbWriter, StoreError, DB},
     registry::{DatabaseStorePrefixes, SEPARATOR},
 };
 use kaspa_hashes::Hash;
@@ -13,20 +13,22 @@ use itertools::Itertools;
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
-use std::{collections::hash_map::Entry::Vacant, iter::once, sync::Arc};
+use std::{
+    collections::hash_map::Entry::{Occupied, Vacant},
+    iter::once,
+    sync::Arc,
+};
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct ReachabilityData {
-    pub children: BlockHashes,
+pub(crate) struct ReachabilityData {
     pub parent: Hash,
     pub interval: Interval,
     pub height: u64,
-    pub future_covering_set: BlockHashes,
 }
 
 impl ReachabilityData {
     pub fn new(parent: Hash, interval: Interval, height: u64) -> Self {
-        Self { children: Arc::new(vec![]), parent, interval, height, future_covering_set: Arc::new(vec![]) }
+        Self { parent, interval, height }
     }
 }
 
@@ -49,22 +51,125 @@ pub trait ReachabilityStore: ReachabilityStoreReader {
     fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError>;
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError>;
     fn set_interval(&mut self, hash: Hash, interval: Interval) -> Result<(), StoreError>;
-    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError>;
+    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<(), StoreError>;
     fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError>;
     fn set_parent(&mut self, hash: Hash, new_parent: Hash) -> Result<(), StoreError>;
-    fn replace_child(&mut self, hash: Hash, replaced_index: usize, replace_with: &[Hash]) -> Result<(), StoreError>;
-    fn replace_future_covering_item(&mut self, hash: Hash, replaced_index: usize, replace_with: &[Hash]) -> Result<(), StoreError>;
+    fn replace_child(
+        &mut self,
+        hash: Hash,
+        replaced_hash: Hash,
+        replaced_index: usize,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError>;
+    fn replace_future_covering_item(
+        &mut self,
+        hash: Hash,
+        replaced_hash: Hash,
+        replaced_index: usize,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError>;
     fn delete(&mut self, hash: Hash) -> Result<(), StoreError>;
     fn get_height(&self, hash: Hash) -> Result<u64, StoreError>;
     fn set_reindex_root(&mut self, root: Hash) -> Result<(), StoreError>;
     fn get_reindex_root(&self) -> Result<Hash, StoreError>;
 }
 
+/// DB cached ordered `Set` access (manages a set per entry with cache and ordering).
+/// Used both for the tree children set and for the future covering set (per block)
+#[derive(Clone)]
+struct DbReachabilitySet {
+    access: DbSetAccess<Hash, Hash>,
+    cache: Cache<Hash, BlockHashes>,
+}
+
+impl DbReachabilitySet {
+    fn new(set_access: DbSetAccess<Hash, Hash>, set_cache: Cache<Hash, BlockHashes>) -> Self {
+        Self { access: set_access, cache: set_cache }
+    }
+
+    fn append(&mut self, writer: impl DbWriter, hash: Hash, element: Hash) -> Result<(), StoreError> {
+        if let Some(mut entry) = self.cache.get(&hash) {
+            Arc::make_mut(&mut entry).push(element);
+            self.cache.insert(hash, entry);
+        }
+        self.access.write(writer, hash, element)?;
+        Ok(())
+    }
+
+    fn insert(&mut self, writer: impl DbWriter, hash: Hash, element: Hash, insertion_index: usize) -> Result<(), StoreError> {
+        if let Some(mut entry) = self.cache.get(&hash) {
+            Arc::make_mut(&mut entry).insert(insertion_index, element);
+            self.cache.insert(hash, entry);
+        }
+        self.access.write(writer, hash, element)?;
+        Ok(())
+    }
+
+    fn replace(
+        &mut self,
+        mut writer: impl DbWriter,
+        hash: Hash,
+        replaced_hash: Hash,
+        replaced_index: usize,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError> {
+        if let Some(mut entry) = self.cache.get(&hash) {
+            {
+                let removed_elements =
+                    Arc::make_mut(&mut entry).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
+                debug_assert_eq!(replaced_hash, removed_elements.exactly_one().unwrap());
+            }
+            self.cache.insert(hash, entry);
+        }
+        self.access.delete(&mut writer, hash, replaced_hash)?;
+        for added_element in replace_with.iter().copied() {
+            self.access.write(&mut writer, hash, added_element)?;
+        }
+        Ok(())
+    }
+
+    fn commit_staging_entry(&mut self, mut writer: impl DbWriter, hash: Hash, entry: StagingSetEntry) -> Result<(), StoreError> {
+        self.cache.insert(hash, entry.set);
+        for removed_element in entry.deletions {
+            self.access.delete(&mut writer, hash, removed_element)?;
+        }
+        for added_element in entry.additions {
+            self.access.write(&mut writer, hash, added_element)?;
+        }
+        Ok(())
+    }
+
+    fn delete(&mut self, writer: impl DbWriter, hash: Hash) -> Result<(), StoreError> {
+        self.cache.remove(&hash);
+        self.access.delete_bucket(writer, hash)
+    }
+
+    fn read<K, F>(&self, hash: Hash, f: F) -> Result<BlockHashes, StoreError>
+    where
+        F: FnMut(&Hash) -> K,
+        K: Ord,
+    {
+        if let Some(entry) = self.cache.get(&hash) {
+            return Ok(entry);
+        }
+
+        let mut set: Vec<Hash> = self.access.bucket_iterator(hash).collect::<Result<_, _>>()?;
+        // Apply the ordering rule before caching
+        set.sort_by_cached_key(f);
+        let set = BlockHashes::new(set);
+        self.cache.insert(hash, set.clone());
+
+        Ok(set)
+    }
+}
+
 /// A DB + cache implementation of `ReachabilityStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbReachabilityStore {
     db: Arc<DB>,
-    access: CachedDbAccess<Hash, Arc<ReachabilityData>, BlockHasher>,
+    access: CachedDbAccess<Hash, ReachabilityData, BlockHasher>, // Main access
+    children_access: DbReachabilitySet,                          // Tree children
+    fcs_access: DbReachabilitySet,                               // Future Covering Set
     reindex_root: CachedDbItem<Hash>,
     prefix_end: u8,
 }
@@ -81,10 +186,15 @@ impl DbReachabilityStore {
 
     fn with_prefix_end(db: Arc<DB>, cache_size: u64, prefix_end: u8) -> Self {
         let store_prefix = DatabaseStorePrefixes::Reachability.into_iter().chain(once(prefix_end)).collect_vec();
+        let children_prefix = DatabaseStorePrefixes::ReachabilityTreeChildren.into_iter().chain(once(prefix_end)).collect_vec();
+        let fcs_prefix = DatabaseStorePrefixes::ReachabilityFutureCoveringSet.into_iter().chain(once(prefix_end)).collect_vec();
         let reindex_root_prefix = DatabaseStorePrefixes::ReachabilityReindexRoot.into_iter().chain(once(prefix_end)).collect_vec();
+        let access = CachedDbAccess::new(db.clone(), cache_size, store_prefix);
         Self {
-            db: Arc::clone(&db),
-            access: CachedDbAccess::new(Arc::clone(&db), cache_size, store_prefix),
+            db: db.clone(),
+            access,
+            children_access: DbReachabilitySet::new(DbSetAccess::new(db.clone(), children_prefix), Cache::new(cache_size)),
+            fcs_access: DbReachabilitySet::new(DbSetAccess::new(db.clone(), fcs_prefix), Cache::new(cache_size)),
             reindex_root: CachedDbItem::new(db, reindex_root_prefix),
             prefix_end,
         }
@@ -97,9 +207,9 @@ impl DbReachabilityStore {
 
 impl ReachabilityStore for DbReachabilityStore {
     fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError> {
-        debug_assert!(!self.access.has(origin)?);
+        assert!(!self.access.has(origin)?);
 
-        let data = Arc::new(ReachabilityData::new(blockhash::NONE, capacity, 0));
+        let data = ReachabilityData::new(blockhash::NONE, capacity, 0);
         let mut batch = WriteBatch::default();
         self.access.write(BatchDbWriter::new(&mut batch), origin, data)?;
         self.reindex_root.write(BatchDbWriter::new(&mut batch), &origin)?;
@@ -112,56 +222,51 @@ impl ReachabilityStore for DbReachabilityStore {
         if self.access.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
-        let data = Arc::new(ReachabilityData::new(parent, interval, height));
+        let data = ReachabilityData::new(parent, interval, height);
         self.access.write(DirectDbWriter::new(&self.db), hash, data)?;
         Ok(())
     }
 
     fn set_interval(&mut self, hash: Hash, interval: Interval) -> Result<(), StoreError> {
         let mut data = self.access.read(hash)?;
-        Arc::make_mut(&mut data).interval = interval;
+        data.interval = interval;
         self.access.write(DirectDbWriter::new(&self.db), hash, data)?;
         Ok(())
     }
 
-    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError> {
-        let mut data = self.access.read(hash)?;
-        let height = data.height;
-        let mut_data = Arc::make_mut(&mut data);
-        Arc::make_mut(&mut mut_data.children).push(child);
-        self.access.write(DirectDbWriter::new(&self.db), hash, data)?;
-        Ok(height)
+    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<(), StoreError> {
+        self.children_access.append(DirectDbWriter::new(&self.db), hash, child)
     }
 
     fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError> {
-        let mut data = self.access.read(hash)?;
-        let mut_data = Arc::make_mut(&mut data);
-        Arc::make_mut(&mut mut_data.future_covering_set).insert(insertion_index, fci);
-        self.access.write(DirectDbWriter::new(&self.db), hash, data)?;
-        Ok(())
+        self.fcs_access.insert(DirectDbWriter::new(&self.db), hash, fci, insertion_index)
     }
 
     fn set_parent(&mut self, hash: Hash, new_parent: Hash) -> Result<(), StoreError> {
         let mut data = self.access.read(hash)?;
-        Arc::make_mut(&mut data).parent = new_parent;
+        data.parent = new_parent;
         self.access.write(DirectDbWriter::new(&self.db), hash, data)?;
         Ok(())
     }
 
-    fn replace_child(&mut self, hash: Hash, replaced_index: usize, replace_with: &[Hash]) -> Result<(), StoreError> {
-        let mut data = self.access.read(hash)?;
-        let mut_data = Arc::make_mut(&mut data);
-        Arc::make_mut(&mut mut_data.children).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
-        self.access.write(DirectDbWriter::new(&self.db), hash, data)?;
-        Ok(())
+    fn replace_child(
+        &mut self,
+        hash: Hash,
+        replaced_hash: Hash,
+        replaced_index: usize,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError> {
+        self.children_access.replace(DirectDbWriter::new(&self.db), hash, replaced_hash, replaced_index, replace_with)
     }
 
-    fn replace_future_covering_item(&mut self, hash: Hash, replaced_index: usize, replace_with: &[Hash]) -> Result<(), StoreError> {
-        let mut data = self.access.read(hash)?;
-        let mut_data = Arc::make_mut(&mut data);
-        Arc::make_mut(&mut mut_data.future_covering_set).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
-        self.access.write(DirectDbWriter::new(&self.db), hash, data)?;
-        Ok(())
+    fn replace_future_covering_item(
+        &mut self,
+        hash: Hash,
+        replaced_hash: Hash,
+        replaced_index: usize,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError> {
+        self.fcs_access.replace(DirectDbWriter::new(&self.db), hash, replaced_hash, replaced_index, replace_with)
     }
 
     fn delete(&mut self, hash: Hash) -> Result<(), StoreError> {
@@ -195,11 +300,13 @@ impl ReachabilityStoreReader for DbReachabilityStore {
     }
 
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        Ok(Arc::clone(&self.access.read(hash)?.children))
+        // Cached reachability sets are assumed to be ordered by interval in order to allow binary search over them
+        self.children_access.read(hash, |&h| self.access.read(h).unwrap().interval)
     }
 
     fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
-        Ok(Arc::clone(&self.access.read(hash)?.future_covering_set))
+        // Cached reachability sets are assumed to be ordered by interval in order to allow binary search over them
+        self.fcs_access.read(hash, |&h| self.access.read(h).unwrap().interval)
     }
 
     fn count(&self) -> Result<usize, StoreError> {
@@ -207,28 +314,101 @@ impl ReachabilityStoreReader for DbReachabilityStore {
     }
 }
 
+/// Represents a staging set entry which was modified. The set can be either the tree children set or
+/// the future covering set of a block. This struct saves the full cached updated set, as well as tracks the exact
+/// changes that were made to it (additions/deletions). When committing the entry to the underlying DB store
+/// these changes are used in order to efficiently update the DB only about the actual changes (thus avoiding quadratic disk writes).
+/// Note that the cached set is still fully copied when reading/committing (in order to preserve order semantics). This too can be
+/// optimized but for now these mem-copies don't seem to be a bottleneck so we favor the simplicity
+struct StagingSetEntry {
+    set: BlockHashes,        // The full cached (ordered) set
+    additions: BlockHashSet, // additions diff
+    deletions: BlockHashSet, // deletions diff
+}
+
+impl StagingSetEntry {
+    fn new(cached_set: BlockHashes) -> Self {
+        Self { set: cached_set, additions: Default::default(), deletions: Default::default() }
+    }
+
+    fn append(&mut self, element: Hash) {
+        Arc::make_mut(&mut self.set).push(element);
+        self.mark_addition(element);
+    }
+
+    fn insert(&mut self, element: Hash, insertion_index: usize) {
+        Arc::make_mut(&mut self.set).insert(insertion_index, element);
+        self.mark_addition(element);
+    }
+
+    fn replace(&mut self, replaced_hash: Hash, replaced_index: usize, replace_with: &[Hash]) {
+        Arc::make_mut(&mut self.set).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
+        self.mark_deletion(replaced_hash);
+        for added_element in replace_with.iter().copied() {
+            self.mark_addition(added_element);
+        }
+    }
+
+    fn mark_addition(&mut self, addition: Hash) {
+        if !self.deletions.remove(&addition) {
+            self.additions.insert(addition);
+        }
+    }
+
+    fn mark_deletion(&mut self, deletion: Hash) {
+        if !self.additions.remove(&deletion) {
+            self.deletions.insert(deletion);
+        }
+    }
+}
+
 pub struct StagingReachabilityStore<'a> {
     store_read: RwLockUpgradableReadGuard<'a, DbReachabilityStore>,
     staging_writes: BlockHashMap<ReachabilityData>,
+    staging_children: BlockHashMap<StagingSetEntry>,
+    staging_fcs: BlockHashMap<StagingSetEntry>,
     staging_deletions: BlockHashSet,
     staging_reindex_root: Option<Hash>,
 }
 
 impl<'a> StagingReachabilityStore<'a> {
     pub fn new(store_read: RwLockUpgradableReadGuard<'a, DbReachabilityStore>) -> Self {
-        Self { store_read, staging_writes: BlockHashMap::new(), staging_deletions: Default::default(), staging_reindex_root: None }
+        Self {
+            store_read,
+            staging_writes: Default::default(),
+            staging_children: Default::default(),
+            staging_fcs: Default::default(),
+            staging_deletions: Default::default(),
+            staging_reindex_root: None,
+        }
     }
 
     pub fn commit(self, batch: &mut WriteBatch) -> Result<RwLockWriteGuard<'a, DbReachabilityStore>, StoreError> {
         let mut store_write = RwLockUpgradableReadGuard::upgrade(self.store_read);
+        let mut writer = BatchDbWriter::new(batch);
+
         for (k, v) in self.staging_writes {
-            let data = Arc::new(v);
-            store_write.access.write(BatchDbWriter::new(batch), k, data)?
+            store_write.access.write(&mut writer, k, v)?
         }
+
+        for (k, v) in self.staging_children {
+            store_write.children_access.commit_staging_entry(&mut writer, k, v)?;
+        }
+
+        for (k, v) in self.staging_fcs {
+            store_write.fcs_access.commit_staging_entry(&mut writer, k, v)?;
+        }
+
         // Deletions always come after mutations
-        store_write.access.delete_many(BatchDbWriter::new(batch), &mut self.staging_deletions.iter().copied())?;
+        store_write.access.delete_many(&mut writer, &mut self.staging_deletions.iter().copied())?;
+
+        for fully_deleted in self.staging_deletions {
+            store_write.children_access.delete(&mut writer, fully_deleted)?;
+            store_write.fcs_access.delete(&mut writer, fully_deleted)?;
+        }
+
         if let Some(root) = self.staging_reindex_root {
-            store_write.reindex_root.write(BatchDbWriter::new(batch), &root)?;
+            store_write.reindex_root.write(&mut writer, &root)?;
         }
         Ok(store_write)
     }
@@ -270,36 +450,39 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
             return Ok(());
         }
 
-        let mut data = (*self.store_read.access.read(hash)?).clone();
+        let mut data = self.store_read.access.read(hash)?;
         data.interval = interval;
         self.staging_writes.insert(hash, data);
 
         Ok(())
     }
 
-    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError> {
-        if let Some(data) = self.staging_writes.get_mut(&hash) {
-            Arc::make_mut(&mut data.children).push(child);
-            return Ok(data.height);
+    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<(), StoreError> {
+        match self.staging_children.entry(hash) {
+            Occupied(mut e) => {
+                e.get_mut().append(child);
+            }
+            Vacant(e) => {
+                let mut set = StagingSetEntry::new(self.store_read.get_children(hash)?);
+                set.append(child);
+                e.insert(set);
+            }
         }
 
-        let mut data = (*self.store_read.access.read(hash)?).clone();
-        let height = data.height;
-        Arc::make_mut(&mut data.children).push(child);
-        self.staging_writes.insert(hash, data);
-
-        Ok(height)
+        Ok(())
     }
 
     fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError> {
-        if let Some(data) = self.staging_writes.get_mut(&hash) {
-            Arc::make_mut(&mut data.future_covering_set).insert(insertion_index, fci);
-            return Ok(());
+        match self.staging_fcs.entry(hash) {
+            Occupied(mut e) => {
+                e.get_mut().insert(fci, insertion_index);
+            }
+            Vacant(e) => {
+                let mut set = StagingSetEntry::new(self.store_read.get_future_covering_set(hash)?);
+                set.insert(fci, insertion_index);
+                e.insert(set);
+            }
         }
-
-        let mut data = (*self.store_read.access.read(hash)?).clone();
-        Arc::make_mut(&mut data.future_covering_set).insert(insertion_index, fci);
-        self.staging_writes.insert(hash, data);
 
         Ok(())
     }
@@ -310,35 +493,51 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
             return Ok(());
         }
 
-        let mut data = (*self.store_read.access.read(hash)?).clone();
+        let mut data = self.store_read.access.read(hash)?;
         data.parent = new_parent;
         self.staging_writes.insert(hash, data);
 
         Ok(())
     }
 
-    fn replace_child(&mut self, hash: Hash, replaced_index: usize, replace_with: &[Hash]) -> Result<(), StoreError> {
-        if let Some(data) = self.staging_writes.get_mut(&hash) {
-            Arc::make_mut(&mut data.children).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
-            return Ok(());
+    fn replace_child(
+        &mut self,
+        hash: Hash,
+        replaced_hash: Hash,
+        replaced_index: usize,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError> {
+        match self.staging_children.entry(hash) {
+            Occupied(mut e) => {
+                e.get_mut().replace(replaced_hash, replaced_index, replace_with);
+            }
+            Vacant(e) => {
+                let mut set = StagingSetEntry::new(self.store_read.get_children(hash)?);
+                set.replace(replaced_hash, replaced_index, replace_with);
+                e.insert(set);
+            }
         }
-
-        let mut data = (*self.store_read.access.read(hash)?).clone();
-        Arc::make_mut(&mut data.children).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
-        self.staging_writes.insert(hash, data);
 
         Ok(())
     }
 
-    fn replace_future_covering_item(&mut self, hash: Hash, replaced_index: usize, replace_with: &[Hash]) -> Result<(), StoreError> {
-        if let Some(data) = self.staging_writes.get_mut(&hash) {
-            Arc::make_mut(&mut data.future_covering_set).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
-            return Ok(());
+    fn replace_future_covering_item(
+        &mut self,
+        hash: Hash,
+        replaced_hash: Hash,
+        replaced_index: usize,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError> {
+        match self.staging_fcs.entry(hash) {
+            Occupied(mut e) => {
+                e.get_mut().replace(replaced_hash, replaced_index, replace_with);
+            }
+            Vacant(e) => {
+                let mut set = StagingSetEntry::new(self.store_read.get_future_covering_set(hash)?);
+                set.replace(replaced_hash, replaced_index, replace_with);
+                e.insert(set);
+            }
         }
-
-        let mut data = (*self.store_read.access.read(hash)?).clone();
-        Arc::make_mut(&mut data.future_covering_set).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
-        self.staging_writes.insert(hash, data);
 
         Ok(())
     }
@@ -400,8 +599,9 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
 
     fn get_children(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         self.check_not_in_deletions(hash)?;
-        if let Some(data) = self.staging_writes.get(&hash) {
-            Ok(BlockHashes::clone(&data.children))
+
+        if let Some(e) = self.staging_children.get(&hash) {
+            Ok(BlockHashes::clone(&e.set))
         } else {
             self.store_read.get_children(hash)
         }
@@ -409,8 +609,9 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
 
     fn get_future_covering_set(&self, hash: Hash) -> Result<BlockHashes, StoreError> {
         self.check_not_in_deletions(hash)?;
-        if let Some(data) = self.staging_writes.get(&hash) {
-            Ok(BlockHashes::clone(&data.future_covering_set))
+
+        if let Some(e) = self.staging_fcs.get(&hash) {
+            Ok(BlockHashes::clone(&e.set))
         } else {
             self.store_read.get_future_covering_set(hash)
         }
@@ -431,8 +632,25 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
     }
 }
 
+/// Used only by the (test-intended) memory store. Groups all reachability data including
+/// tree children and the future covering set unlike the DB store where they are decomposed
+#[derive(Clone, Serialize, Deserialize)]
+struct MemoryReachabilityData {
+    pub children: BlockHashes,
+    pub parent: Hash,
+    pub interval: Interval,
+    pub height: u64,
+    pub future_covering_set: BlockHashes,
+}
+
+impl MemoryReachabilityData {
+    pub fn new(parent: Hash, interval: Interval, height: u64) -> Self {
+        Self { children: Arc::new(vec![]), parent, interval, height, future_covering_set: Arc::new(vec![]) }
+    }
+}
+
 pub struct MemoryReachabilityStore {
-    map: BlockHashMap<ReachabilityData>,
+    map: BlockHashMap<MemoryReachabilityData>,
     reindex_root: Option<Hash>,
 }
 
@@ -447,14 +665,14 @@ impl MemoryReachabilityStore {
         Self { map: BlockHashMap::new(), reindex_root: None }
     }
 
-    fn get_data_mut(&mut self, hash: Hash) -> Result<&mut ReachabilityData, StoreError> {
+    fn get_data_mut(&mut self, hash: Hash) -> Result<&mut MemoryReachabilityData, StoreError> {
         match self.map.get_mut(&hash) {
             Some(data) => Ok(data),
             None => Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash))),
         }
     }
 
-    fn get_data(&self, hash: Hash) -> Result<&ReachabilityData, StoreError> {
+    fn get_data(&self, hash: Hash) -> Result<&MemoryReachabilityData, StoreError> {
         match self.map.get(&hash) {
             Some(data) => Ok(data),
             None => Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Reachability.as_ref(), hash))),
@@ -471,7 +689,7 @@ impl ReachabilityStore for MemoryReachabilityStore {
 
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError> {
         if let Vacant(e) = self.map.entry(hash) {
-            e.insert(ReachabilityData::new(parent, interval, height));
+            e.insert(MemoryReachabilityData::new(parent, interval, height));
             Ok(())
         } else {
             Err(StoreError::HashAlreadyExists(hash))
@@ -484,10 +702,10 @@ impl ReachabilityStore for MemoryReachabilityStore {
         Ok(())
     }
 
-    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError> {
+    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<(), StoreError> {
         let data = self.get_data_mut(hash)?;
         Arc::make_mut(&mut data.children).push(child);
-        Ok(data.height)
+        Ok(())
     }
 
     fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError> {
@@ -502,15 +720,30 @@ impl ReachabilityStore for MemoryReachabilityStore {
         Ok(())
     }
 
-    fn replace_child(&mut self, hash: Hash, replaced_index: usize, replace_with: &[Hash]) -> Result<(), StoreError> {
+    fn replace_child(
+        &mut self,
+        hash: Hash,
+        replaced_hash: Hash,
+        replaced_index: usize,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError> {
         let data = self.get_data_mut(hash)?;
-        Arc::make_mut(&mut data.children).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
+        let removed_hash = Arc::make_mut(&mut data.children).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
+        debug_assert_eq!(replaced_hash, removed_hash.exactly_one().unwrap());
         Ok(())
     }
 
-    fn replace_future_covering_item(&mut self, hash: Hash, replaced_index: usize, replace_with: &[Hash]) -> Result<(), StoreError> {
+    fn replace_future_covering_item(
+        &mut self,
+        hash: Hash,
+        replaced_hash: Hash,
+        replaced_index: usize,
+        replace_with: &[Hash],
+    ) -> Result<(), StoreError> {
         let data = self.get_data_mut(hash)?;
-        Arc::make_mut(&mut data.future_covering_set).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
+        let removed_hash =
+            Arc::make_mut(&mut data.future_covering_set).splice(replaced_index..replaced_index + 1, replace_with.iter().copied());
+        debug_assert_eq!(replaced_hash, removed_hash.exactly_one().unwrap());
         Ok(())
     }
 
@@ -572,7 +805,8 @@ mod tests {
         let (hash, parent) = (7.into(), 15.into());
         let interval = Interval::maximal();
         store.insert(hash, parent, interval, 5).unwrap();
-        let height = store.append_child(hash, 31.into()).unwrap();
+        store.append_child(hash, 31.into()).unwrap();
+        let height = store.get_height(hash).unwrap();
         assert_eq!(height, 5);
         let children = store.get_children(hash).unwrap();
         println!("{children:?}");

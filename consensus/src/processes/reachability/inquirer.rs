@@ -83,7 +83,7 @@ pub fn delete_block(store: &mut (impl ReachabilityStore + ?Sized), block: Hash, 
         }
     };
 
-    store.replace_child(parent, block_index, &children)?;
+    store.replace_child(parent, block, block_index, &children)?;
 
     for child in children.iter().copied() {
         store.set_parent(child, parent)?;
@@ -94,7 +94,7 @@ pub fn delete_block(store: &mut (impl ReachabilityStore + ?Sized), block: Hash, 
             SearchOutput::NotFound(_) => return Err(ReachabilityError::DataInconsistency),
             SearchOutput::Found(hash, i) => {
                 debug_assert_eq!(hash, block);
-                store.replace_future_covering_item(merged_block, i, &children)?;
+                store.replace_future_covering_item(merged_block, block, i, &children)?;
             }
         }
     }

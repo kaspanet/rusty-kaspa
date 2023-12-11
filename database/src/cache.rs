@@ -47,12 +47,12 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Syn
         }
     }
 
-    pub fn remove(&self, key: &TKey) {
+    pub fn remove(&self, key: &TKey) -> Option<TData> {
         if self.size == 0 {
-            return;
+            return None;
         }
         let mut write_guard = self.map.write();
-        write_guard.swap_remove(key);
+        write_guard.swap_remove(key)
     }
 
     pub fn remove_many(&self, key_iter: &mut impl Iterator<Item = TKey>) {

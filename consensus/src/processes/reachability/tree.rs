@@ -18,7 +18,8 @@ pub fn add_tree_block(
     // Get the remaining interval capacity
     let remaining = store.interval_remaining_after(parent)?;
     // Append the new child to `parent.children`
-    let parent_height = store.append_child(parent, new_block)?;
+    store.append_child(parent, new_block)?;
+    let parent_height = store.get_height(parent)?;
     if remaining.is_empty() {
         // Init with the empty interval.
         // Note: internal logic relies on interval being this specific interval
