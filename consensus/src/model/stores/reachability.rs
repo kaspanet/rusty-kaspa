@@ -51,7 +51,7 @@ pub trait ReachabilityStore: ReachabilityStoreReader {
     fn init(&mut self, origin: Hash, capacity: Interval) -> Result<(), StoreError>;
     fn insert(&mut self, hash: Hash, parent: Hash, interval: Interval, height: u64) -> Result<(), StoreError>;
     fn set_interval(&mut self, hash: Hash, interval: Interval) -> Result<(), StoreError>;
-    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError>;
+    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<(), StoreError>;
     fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError>;
     fn set_parent(&mut self, hash: Hash, new_parent: Hash) -> Result<(), StoreError>;
     fn replace_child(
@@ -234,9 +234,8 @@ impl ReachabilityStore for DbReachabilityStore {
         Ok(())
     }
 
-    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError> {
-        self.children_access.append(DirectDbWriter::new(&self.db), hash, child)?;
-        Ok(self.access.read(hash)?.height)
+    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<(), StoreError> {
+        self.children_access.append(DirectDbWriter::new(&self.db), hash, child)
     }
 
     fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError> {
@@ -452,7 +451,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
         Ok(())
     }
 
-    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError> {
+    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<(), StoreError> {
         match self.staging_children.entry(hash) {
             Occupied(mut e) => {
                 e.get_mut().append(child);
@@ -464,11 +463,7 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
             }
         }
 
-        if let Some(data) = self.staging_writes.get(&hash) {
-            Ok(data.height)
-        } else {
-            Ok(self.store_read.access.read(hash)?.height)
-        }
+        Ok(())
     }
 
     fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError> {
@@ -699,10 +694,10 @@ impl ReachabilityStore for MemoryReachabilityStore {
         Ok(())
     }
 
-    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<u64, StoreError> {
+    fn append_child(&mut self, hash: Hash, child: Hash) -> Result<(), StoreError> {
         let data = self.get_data_mut(hash)?;
         Arc::make_mut(&mut data.children).push(child);
-        Ok(data.height)
+        Ok(())
     }
 
     fn insert_future_covering_item(&mut self, hash: Hash, fci: Hash, insertion_index: usize) -> Result<(), StoreError> {
@@ -802,7 +797,8 @@ mod tests {
         let (hash, parent) = (7.into(), 15.into());
         let interval = Interval::maximal();
         store.insert(hash, parent, interval, 5).unwrap();
-        let height = store.append_child(hash, 31.into()).unwrap();
+        store.append_child(hash, 31.into()).unwrap();
+        let height = store.get_height(hash).unwrap();
         assert_eq!(height, 5);
         let children = store.get_children(hash).unwrap();
         println!("{children:?}");

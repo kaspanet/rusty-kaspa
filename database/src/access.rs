@@ -238,6 +238,7 @@ mod tests {
         assert_eq!(16, access.iterator().count());
         let mut batch = WriteBatch::default();
         access.delete_all(BatchDbWriter::new(&mut batch)).unwrap();
+        assert_eq!(16, access.iterator().count());
         db.write(batch).unwrap();
         assert_eq!(0, access.iterator().count());
     }
