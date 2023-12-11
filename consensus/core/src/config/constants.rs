@@ -121,7 +121,6 @@ pub mod perf {
     /// algorithm to encounter for blocks out of the selected chain.
     pub const DEFAULT_REINDEX_SLACK: u64 = 1 << 12;
 
-    const BASELINE_HEADERS_CACHE_SIZE_BYTES: usize = 1_000_000_000; // 1GB
     const BASELINE_HEADER_DATA_CACHE_SIZE: usize = 10_000;
     const BASELINE_BLOCK_DATA_CACHE_SIZE: usize = 200;
     const BASELINE_BLOCK_WINDOW_CACHE_SIZE: usize = 2000;
@@ -132,9 +131,6 @@ pub mod perf {
         //
         // Cache sizes
         //
-        /// Preferred cache size for headers store
-        pub headers_cache_size_bytes: usize,
-
         /// Preferred cache size for header-related data
         pub header_data_cache_size: usize,
 
@@ -162,7 +158,6 @@ pub mod perf {
     }
 
     pub const PERF_PARAMS: PerfParams = PerfParams {
-        headers_cache_size_bytes: BASELINE_HEADERS_CACHE_SIZE_BYTES,
         header_data_cache_size: BASELINE_HEADER_DATA_CACHE_SIZE,
         block_data_cache_size: BASELINE_BLOCK_DATA_CACHE_SIZE,
         utxo_set_cache_size: BASELINE_UTXOSET_CACHE_SIZE,

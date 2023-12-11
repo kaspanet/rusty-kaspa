@@ -81,14 +81,22 @@ impl ConsensusStorage {
             perf::bounded_cache_size(params.pruning_depth as usize, 100_000_000, size_of::<Hash>() + size_of::<BlockHashSet>()); // required only above the pruning point; 100MB budget; expected empty sets
         let statuses_cache_size =
             perf::bounded_cache_size(pruning_size_for_caches, 100_000_000, size_of::<Hash>() + size_of::<BlockStatus>());
-        let relations_cache_size = perf::bounded_cache_size(pruning_size_for_caches, 200_000_000, size_of::<Hash>());
-        let reachability_relations_cache_size = perf::bounded_cache_size(pruning_size_for_caches, 100_000_000, size_of::<Hash>());
         let reachability_data_cache_size =
             perf::bounded_cache_size(pruning_size_for_caches, 100_000_000, size_of::<ReachabilityData>());
-        let reachability_sets_cache_size = perf::bounded_cache_size(pruning_size_for_caches, 100_000_000, size_of::<Hash>());
-        let ghostdag_cache_size = perf::bounded_cache_size(pruning_size_for_caches, 200_000_000, 1);
+        let reachability_sets_cache_size = perf::bounded_cache_size(pruning_size_for_caches, 200_000_000, size_of::<Hash>());
         let ghostdag_compact_cache_size =
             perf::bounded_cache_size(pruning_size_for_caches, 50_000_000, size_of::<CompactGhostdagData>());
+
+        // Cache sizes which are tracked per unit
+        let relations_cache_size = 200_000_000 / size_of::<Hash>();
+        let reachability_relations_cache_size = 100_000_000 / size_of::<Hash>();
+        let transactions_cache_size = 4000usize; // Tracked units are txs
+
+        // Cache sizes represented and tracked as bytes
+        // TODO: unit approx for noise magnitude + higher block levels lower bound
+        let ghostdag_cache_bytes = 200_000_000usize; // 200MB
+        let headers_cache_bytes = 1_000_000_000usize; // 1GB
+        let utxo_diffs_cache_bytes = 200_000_000usize; // 200MB
 
         // Add stochastic noise to cache sizes to avoid predictable and equal sizes across all network nodes
         let noise = |size| size + rand::thread_rng().gen_range(0..16);
@@ -119,7 +127,7 @@ impl ConsensusStorage {
             (0..=params.max_block_level)
                 .map(|level| {
                     let cache_size =
-                        max(ghostdag_cache_size.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m as usize);
+                        max(ghostdag_cache_bytes.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m as usize);
                     let compact_cache_size =
                         max(ghostdag_compact_cache_size.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m as usize);
                     Arc::new(DbGhostdagStore::new(
@@ -135,7 +143,7 @@ impl ConsensusStorage {
         let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), CachePolicy::Unit(noise(daa_excluded_cache_size))));
         let headers_store = Arc::new(DbHeadersStore::new(
             db.clone(),
-            CachePolicy::Tracked(noise(perf_params.headers_cache_size_bytes)),
+            CachePolicy::Tracked(noise(headers_cache_bytes)),
             CachePolicy::Unit(noise(perf_params.header_data_cache_size)),
         ));
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), CachePolicy::Unit(noise(perf_params.header_data_cache_size))));
@@ -149,12 +157,9 @@ impl ConsensusStorage {
             Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), CachePolicy::Unit(noise(perf_params.utxo_set_cache_size)))));
 
         // Txs
-        let estimated_max_txs_per_block = 200;
-        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(
-            db.clone(),
-            CachePolicy::Tracked(noise(perf_params.block_data_cache_size * estimated_max_txs_per_block)), // Tracked units are txs
-        ));
-        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CachePolicy::Tracked(noise(50_000_000)))); // 50MB, tracked units are bytes
+        let block_transactions_store =
+            Arc::new(DbBlockTransactionsStore::new(db.clone(), CachePolicy::Tracked(noise(transactions_cache_size))));
+        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CachePolicy::Tracked(noise(utxo_diffs_cache_bytes))));
         let utxo_multisets_store =
             Arc::new(DbUtxoMultisetsStore::new(db.clone(), CachePolicy::Unit(noise(perf_params.block_data_cache_size))));
         let acceptance_data_store =
