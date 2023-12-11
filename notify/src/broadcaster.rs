@@ -7,6 +7,7 @@ use crate::events::EventType;
 use async_channel::{Receiver, Sender};
 use core::fmt::Debug;
 use derive_more::Deref;
+use futures::{future::FutureExt, select_biased};
 use kaspa_core::{debug, trace};
 use std::{
     collections::HashMap,
@@ -15,7 +16,6 @@ use std::{
         Arc,
     },
 };
-use tokio::select;
 use workflow_core::channel::Channel;
 
 type ConnectionSet<T> = HashMap<ListenerId, T>;
@@ -132,10 +132,8 @@ where
             // Create a store for closed connections to be removed from the plan
             let mut purge: Vec<ListenerId> = Vec::new();
             loop {
-                select! {
-                    biased; // always handle control messages first
-
-                    ctl = self.ctl.recv() => {
+                select_biased! {
+                    ctl = self.ctl.recv().fuse() => {
                         if let Ok(ctl) = ctl {
                             match ctl {
                                 Ctl::Register(subscription, id, connection) => {
@@ -145,10 +143,12 @@ where
                                     plan[event_type].remove(&id);
                                 },
                             }
+                        } else {
+                            break;
                         }
                     },
 
-                    notification = self.incoming.recv() => {
+                    notification = self.incoming.recv().fuse() => {
                         if let Ok(notification) = notification {
                             // Broadcast the notification...
                             let event = notification.event_type();
@@ -179,9 +179,6 @@ where
                             purge.drain(..).for_each(|id| { plan[event].remove(&id); });
 
                         } else {
-                            debug!("[Broadcaster-{}] notification stream ended", self.name);
-                            let _ = self.shutdown.drain();
-                            let _ = self.shutdown.try_send(());
                             break;
                         }
                     }
@@ -193,6 +190,9 @@ where
                     let _ = sync.try_send(());
                 }
             }
+            debug!("[Broadcaster-{}] notification stream ended", self.name);
+            let _ = self.shutdown.drain();
+            let _ = self.shutdown.try_send(());
         });
     }
 
