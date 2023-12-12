@@ -21,7 +21,7 @@ use kaspa_notify::{
     notifier::{DynNotify, Notifier},
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
-    subscription::{array::ArrayBuilder, Command, Mutation, SingleSubscription},
+    subscription::{array::ArrayBuilder, Command, Mutation, MutationPolicies, SingleSubscription, UtxosChangedMutationPolicy},
 };
 use kaspa_rpc_core::{
     api::rpc::RpcApi,
@@ -69,6 +69,7 @@ pub struct GrpcClient {
     /// In direct mode, a Collector relaying incoming notifications to any provided DynNotify
     collector: Option<Arc<GrpcClientCollector>>,
     subscriptions: Option<Arc<DirectSubscriptions>>,
+    policies: MutationPolicies,
     notification_mode: NotificationMode,
 }
 
@@ -97,12 +98,14 @@ impl GrpcClient {
         )
         .await?;
         let converter = Arc::new(RpcCoreConverter::new());
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
         let (notifier, collector, subscriptions) = match notification_mode {
             NotificationMode::MultiListeners => {
                 let enabled_events = EVENT_TYPE_ARRAY[..].into();
                 let collector = Arc::new(GrpcClientCollector::new(GRPC_CLIENT, inner.notification_channel_receiver(), converter));
                 let subscriber = Arc::new(Subscriber::new(GRPC_CLIENT, enabled_events, inner.clone(), 0));
-                let notifier: GrpcClientNotifier = Notifier::new(GRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], 10);
+                let notifier: GrpcClientNotifier =
+                    Notifier::new(GRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], 3, policies.clone());
                 (Some(Arc::new(notifier)), None, None)
             }
             NotificationMode::Direct => {
@@ -117,7 +120,7 @@ impl GrpcClient {
             inner.clone().spawn_connection_monitor(notifier.clone(), subscriptions.clone());
         }
 
-        Ok(Self { inner, notifier, collector, subscriptions, notification_mode })
+        Ok(Self { inner, notifier, collector, subscriptions, policies, notification_mode })
     }
 
     #[inline(always)]
@@ -255,7 +258,8 @@ impl RpcApi for GrpcClient {
             }
             NotificationMode::Direct => {
                 let event: EventType = (&scope).into();
-                self.subscriptions.as_ref().unwrap().lock().await[event].mutate(Mutation::new(Command::Start, scope.clone()));
+                self.subscriptions.as_ref().unwrap().lock().await[event]
+                    .mutate(Mutation::new(Command::Start, scope.clone()), self.policies.clone());
                 self.inner.start_notify_to_client(scope).await?;
             }
         }
@@ -271,7 +275,8 @@ impl RpcApi for GrpcClient {
                 }
                 NotificationMode::Direct => {
                     let event: EventType = (&scope).into();
-                    self.subscriptions.as_ref().unwrap().lock().await[event].mutate(Mutation::new(Command::Stop, scope.clone()));
+                    self.subscriptions.as_ref().unwrap().lock().await[event]
+                        .mutate(Mutation::new(Command::Stop, scope.clone()), self.policies.clone());
                     self.inner.stop_notify_to_client(scope).await?;
                 }
             }

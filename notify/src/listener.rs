@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 extern crate derive_more;
+use crate::subscription::MutationPolicies;
+
 use super::{
     connection::Connection,
     events::EventArray,
@@ -34,8 +36,8 @@ where
     ///
     /// Return Some mutations to be applied to a compounded state if any change occurred
     /// in the subscription state and None otherwise.
-    pub fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>> {
-        self.subscriptions[mutation.event_type()].mutate(mutation)
+    pub fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Option<Vec<Mutation>> {
+        self.subscriptions[mutation.event_type()].mutate(mutation, policies)
     }
 
     pub fn close(&self) {

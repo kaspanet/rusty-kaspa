@@ -5,7 +5,14 @@ use crate::{
     service::Options,
 };
 use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{connection::ChannelType, events::EVENT_TYPE_ARRAY, notifier::Notifier, scope::Scope, subscriber::Subscriber};
+use kaspa_notify::{
+    connection::ChannelType,
+    events::EVENT_TYPE_ARRAY,
+    notifier::Notifier,
+    scope::Scope,
+    subscriber::Subscriber,
+    subscription::{MutationPolicies, UtxosChangedMutationPolicy},
+};
 use kaspa_rpc_core::{
     api::rpc::{DynRpcService, RpcApi},
     notify::{channel::NotificationChannel, connection::ChannelConnection, mode::NotificationMode},
@@ -67,7 +74,9 @@ impl Server {
             let converter = Arc::new(WrpcServiceConverter::new());
             let collector = Arc::new(WrpcServiceCollector::new(WRPC_SERVER, notification_channel.receiver(), converter));
             let subscriber = Arc::new(Subscriber::new(WRPC_SERVER, enabled_events, service.notifier(), listener_id));
-            let wrpc_notifier = Arc::new(Notifier::new(WRPC_SERVER, enabled_events, vec![collector], vec![subscriber], tasks));
+            let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
+            let wrpc_notifier =
+                Arc::new(Notifier::new(WRPC_SERVER, enabled_events, vec![collector], vec![subscriber], tasks, policies));
             Some(RpcCore { service, wrpc_notifier })
         } else {
             None

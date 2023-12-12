@@ -6,7 +6,7 @@ use crate::{
     notifier::Notify,
     scope::Scope,
     subscriber::SubscriptionManager,
-    subscription::{array::ArrayBuilder, Command, Mutation, SingleSubscription},
+    subscription::{array::ArrayBuilder, Command, Mutation, MutationPolicies, SingleSubscription, UtxosChangedMutationPolicy},
 };
 use async_channel::Sender;
 use async_trait::async_trait;
@@ -86,6 +86,7 @@ where
 {
     sender: Sender<N>,
     subscriptions: RwLock<EventArray<SingleSubscription>>,
+    policies: MutationPolicies,
 }
 
 impl<N> Inner<N>
@@ -94,7 +95,8 @@ where
 {
     fn new(sender: Sender<N>) -> Self {
         let subscriptions = RwLock::new(ArrayBuilder::single());
-        Self { sender, subscriptions }
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
+        Self { sender, subscriptions, policies }
     }
 
     fn send(&self, notification: N) -> Result<()> {
@@ -109,7 +111,7 @@ where
     pub fn execute_subscribe_command(&self, scope: Scope, command: Command) -> Result<()> {
         let mutation = Mutation::new(command, scope);
         let mut subscriptions = self.subscriptions.write();
-        subscriptions[mutation.event_type()].mutate(mutation);
+        subscriptions[mutation.event_type()].mutate(mutation, self.policies.clone());
         Ok(())
     }
 

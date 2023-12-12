@@ -13,7 +13,13 @@ use kaspa_grpc_core::{
     },
     RPC_MAX_MESSAGE_SIZE,
 };
-use kaspa_notify::{connection::ChannelType, events::EVENT_TYPE_ARRAY, notifier::Notifier, subscriber::Subscriber};
+use kaspa_notify::{
+    connection::ChannelType,
+    events::EVENT_TYPE_ARRAY,
+    notifier::Notifier,
+    subscriber::Subscriber,
+    subscription::{MutationPolicies, UtxosChangedMutationPolicy},
+};
 use kaspa_rpc_core::{
     api::rpc::DynRpcService,
     notify::{channel::NotificationChannel, connection::ChannelConnection},
@@ -90,8 +96,9 @@ impl ConnectionHandler {
         let converter = Arc::new(GrpcServiceConverter::new());
         let collector = Arc::new(GrpcServiceCollector::new(GRPC_SERVER, core_channel.receiver(), converter));
         let subscriber = Arc::new(Subscriber::new(GRPC_SERVER, core_events, core_notifier, core_listener_id));
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
         let notifier: Arc<Notifier<Notification, Connection>> =
-            Arc::new(Notifier::new(GRPC_SERVER, core_events, vec![collector], vec![subscriber], 10));
+            Arc::new(Notifier::new(GRPC_SERVER, core_events, vec![collector], vec![subscriber], 10, policies));
         let server_context = ServerContext::new(core_service, notifier);
         let interface = Arc::new(Factory::new_interface(server_context.clone()));
         let running = Default::default();

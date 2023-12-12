@@ -2,6 +2,7 @@ use crate::error::Error;
 use crate::imports::*;
 use crate::parse::parse_host;
 use kaspa_consensus_core::network::NetworkType;
+use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_rpc_core::{
     api::ctl::RpcCtl,
     notify::collector::{RpcCoreCollector, RpcCoreConverter},
@@ -184,7 +185,8 @@ impl KaspaRpcClient {
             let converter = Arc::new(RpcCoreConverter::new());
             let collector = Arc::new(RpcCoreCollector::new(WRPC_CLIENT, inner.notification_channel_receiver(), converter));
             let subscriber = Arc::new(Subscriber::new(WRPC_CLIENT, enabled_events, inner.clone(), 0));
-            Some(Arc::new(Notifier::new(WRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], 3)))
+            let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
+            Some(Arc::new(Notifier::new(WRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], 3, policies)))
         } else {
             None
         };

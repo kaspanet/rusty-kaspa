@@ -35,6 +35,7 @@ use kaspa_index_core::{
 };
 use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
+use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_notify::{
     collector::DynCollector,
     connection::ChannelType,
@@ -178,7 +179,8 @@ impl RpcCoreService {
         let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
 
         // Create the rcp-core notifier
-        let notifier = Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1));
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
+        let notifier = Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, policies));
 
         Self {
             consensus_manager,

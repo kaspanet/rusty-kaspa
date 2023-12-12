@@ -4,6 +4,7 @@ use kaspa_notify::events::EVENT_TYPE_ARRAY;
 use kaspa_notify::listener::ListenerId;
 use kaspa_notify::notifier::{Notifier, Notify};
 use kaspa_notify::scope::Scope;
+use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_rpc_core::{api::rpc::RpcApi, *};
 use kaspa_rpc_core::{notify::connection::ChannelConnection, RpcResult};
 use std::sync::Arc;
@@ -47,8 +48,9 @@ impl RpcCoreMock {
 impl Default for RpcCoreMock {
     fn default() -> Self {
         let (sync_sender, sync_receiver) = unbounded();
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
         let core_notifier: Arc<RpcCoreNotifier> =
-            Arc::new(Notifier::with_sync("rpc-core", EVENT_TYPE_ARRAY[..].into(), vec![], vec![], 10, Some(sync_sender)));
+            Arc::new(Notifier::with_sync("rpc-core", EVENT_TYPE_ARRAY[..].into(), vec![], vec![], 10, policies, Some(sync_sender)));
         Self { core_notifier, _sync_receiver: sync_receiver }
     }
 }

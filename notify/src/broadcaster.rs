@@ -282,7 +282,7 @@ mod tests {
                 for (idx, mutation) in step.mutations.iter().enumerate() {
                     if let Some(ref mutation) = mutation {
                         let event = mutation.event_type();
-                        if self.listeners[idx].subscriptions[event].mutate(mutation.clone()).is_some() {
+                        if self.listeners[idx].subscriptions[event].mutate(mutation.clone(), Default::default()).is_some() {
                             let ctl = match mutation.active() {
                                 true => Ctl::Register(
                                     self.listeners[idx].subscriptions[event].clone_arc(),

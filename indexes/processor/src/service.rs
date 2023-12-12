@@ -10,7 +10,8 @@ use kaspa_index_core::notifier::IndexNotifier;
 use kaspa_notify::{
     connection::ChannelType,
     events::{EventSwitches, EventType},
-    scope::{PruningPointUtxoSetOverrideScope, Scope, UtxosChangedScope},
+    scope::{PruningPointUtxoSetOverrideScope, UtxosChangedScope},
+    subscription::{MutationPolicies, UtxosChangedMutationPolicy},
 };
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
@@ -38,14 +39,15 @@ impl IndexService {
         // No subscriber is defined here because the subscription are manually created during the construction and never changed after that.
         let events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
         let collector = Arc::new(Processor::new(utxoindex.clone(), consensus_notify_channel.receiver()));
-        let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], 1));
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
+        let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], 1, policies));
 
         // Manually subscribe to index-processor related event types
         consensus_notifier
-            .try_start_notify(consensus_notify_listener_id, Scope::UtxosChanged(UtxosChangedScope::default()))
+            .try_start_notify(consensus_notify_listener_id, UtxosChangedScope::default().into())
             .expect("the subscription always succeeds");
         consensus_notifier
-            .try_start_notify(consensus_notify_listener_id, Scope::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideScope {}))
+            .try_start_notify(consensus_notify_listener_id, PruningPointUtxoSetOverrideScope::default().into())
             .expect("the subscription always succeeds");
 
         Self { utxoindex, notifier, shutdown: SingleTrigger::default() }

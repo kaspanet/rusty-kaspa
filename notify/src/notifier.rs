@@ -1,4 +1,4 @@
-use crate::events::EVENT_TYPE_ARRAY;
+use crate::{events::EVENT_TYPE_ARRAY, subscription::MutationPolicies};
 
 use super::{
     broadcaster::Broadcaster,
@@ -81,8 +81,9 @@ where
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
         broadcasters: usize,
+        policies: MutationPolicies,
     ) -> Self {
-        Self::with_sync(name, enabled_events, collectors, subscribers, broadcasters, None)
+        Self::with_sync(name, enabled_events, collectors, subscribers, broadcasters, policies, None)
     }
 
     pub fn with_sync(
@@ -91,9 +92,10 @@ where
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
         broadcasters: usize,
+        policies: MutationPolicies,
         _sync: Option<Sender<()>>,
     ) -> Self {
-        Self { inner: Arc::new(Inner::new(name, enabled_events, collectors, subscribers, broadcasters, _sync)) }
+        Self { inner: Arc::new(Inner::new(name, enabled_events, collectors, subscribers, broadcasters, policies, _sync)) }
     }
 
     pub fn start(self: Arc<Self>) {
@@ -191,6 +193,9 @@ where
     /// Subscribers
     subscribers: Vec<Arc<Subscriber>>,
 
+    /// Mutation policies
+    policies: MutationPolicies,
+
     /// Name of the notifier, used in logs
     pub name: &'static str,
 
@@ -209,6 +214,7 @@ where
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
         broadcasters: usize,
+        policies: MutationPolicies,
         _sync: Option<Sender<()>>,
     ) -> Self {
         assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
@@ -225,6 +231,7 @@ where
             broadcasters,
             collectors,
             subscribers,
+            policies,
             name,
             _sync,
         }
@@ -309,9 +316,8 @@ where
         command: Command,
     ) -> Result<()> {
         let event: EventType = (&scope).into();
-        let mut subscriptions = self.subscriptions.lock();
         debug!("[Notifier {}] {command} notifying about {scope} to listener {id} - {}", self.name, listener.connection());
-        if let Some(mutations) = listener.mutate(Mutation::new(command, scope.clone())) {
+        if let Some(mutations) = listener.mutate(Mutation::new(command, scope.clone()), self.policies.clone()) {
             trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} involves mutations {mutations:?}", self.name);
             // Update broadcasters
             match listener.subscriptions[event].active() {
@@ -325,15 +331,7 @@ where
                     self.broadcasters.iter().try_for_each(|broadcaster| broadcaster.unregister(event, id))?;
                 }
             }
-            // Compound mutations
-            let mut compound_result = None;
-            for mutation in mutations {
-                compound_result = subscriptions[event].compound(mutation);
-            }
-            // Report to the parents
-            if let Some(mutation) = compound_result {
-                self.subscribers.iter().try_for_each(|x| x.mutate(mutation.clone()))?;
-            }
+            self.apply_mutations(event, mutations)?;
         } else {
             trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} is ignored (no mutation)", self.name);
             // In case we have a sync channel, report that the command was processed.
@@ -341,6 +339,20 @@ where
             if let Some(ref sync) = self._sync {
                 let _ = sync.try_send(());
             }
+        }
+        Ok(())
+    }
+
+    fn apply_mutations(&self, event: EventType, mutations: Vec<Mutation>) -> Result<()> {
+        let mut subscriptions = self.subscriptions.lock();
+        // Compound mutations
+        let mut compound_result = None;
+        for mutation in mutations {
+            compound_result = subscriptions[event].compound(mutation);
+        }
+        // Report to the parents
+        if let Some(mutation) = compound_result {
+            self.subscribers.iter().try_for_each(|x| x.mutate(mutation.clone()))?;
         }
         Ok(())
     }
@@ -742,6 +754,7 @@ mod tests {
                 vec![collector],
                 vec![subscriber],
                 1,
+                Default::default(),
                 Some(sync_sender),
             ));
             // Create the listeners

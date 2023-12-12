@@ -46,6 +46,27 @@ impl From<i32> for Command {
     }
 }
 
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub enum UtxosChangedMutationPolicy {
+    /// Mutation granularity defined at address level
+    #[default]
+    AddressSet,
+
+    /// Mutation granularity reduced to all or nothing
+    AllOrNothing,
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct MutationPolicies {
+    pub utxo_changed: UtxosChangedMutationPolicy,
+}
+
+impl MutationPolicies {
+    pub fn new(utxo_changed: UtxosChangedMutationPolicy) -> Self {
+        Self { utxo_changed }
+    }
+}
+
 /// A subscription mutation including a start/stop command and
 /// a notification scope.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -90,7 +111,7 @@ impl Eq for dyn Compounded {}
 pub type CompoundedSubscription = Box<dyn Compounded>;
 
 pub trait Single: Subscription + AsAny + DynHash + DynEq + SingleClone + Debug + Send + Sync {
-    fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>>;
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Option<Vec<Mutation>>;
 }
 
 impl Hash for dyn Single {

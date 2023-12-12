@@ -1,4 +1,4 @@
-use super::{Mutation, Single, Subscription};
+use super::{Mutation, MutationPolicies, Single, Subscription, UtxosChangedMutationPolicy};
 use crate::{
     address::UtxoAddress,
     events::EventType,
@@ -31,7 +31,7 @@ impl OverallSubscription {
 }
 
 impl Single for OverallSubscription {
-    fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>> {
+    fn mutate(&mut self, mutation: Mutation, _: MutationPolicies) -> Option<Vec<Mutation>> {
         assert_eq!(self.event_type(), mutation.event_type());
         if self.active != mutation.active() {
             self.active = mutation.active();
@@ -75,7 +75,7 @@ impl VirtualChainChangedSubscription {
 }
 
 impl Single for VirtualChainChangedSubscription {
-    fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>> {
+    fn mutate(&mut self, mutation: Mutation, _: MutationPolicies) -> Option<Vec<Mutation>> {
         assert_eq!(self.event_type(), mutation.event_type());
         if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
@@ -221,7 +221,7 @@ impl Hash for UtxosChangedSubscription {
 }
 
 impl Single for UtxosChangedSubscription {
-    fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>> {
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Option<Vec<Mutation>> {
         if let Scope::UtxosChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
             // by subscription state and by mutation
@@ -237,7 +237,12 @@ impl Single for UtxosChangedSubscription {
                     // Mutations Add(A) && All
                     self.active = true;
                     self.set_addresses(scope.addresses.clone());
-                    Some(vec![mutation])
+                    match policies.utxo_changed {
+                        UtxosChangedMutationPolicy::AddressSet => Some(vec![mutation]),
+                        UtxosChangedMutationPolicy::AllOrNothing => {
+                            Some(vec![Mutation::new(mutation.command, UtxosChangedScope::default().into())])
+                        }
+                    }
                 }
             } else if !self.addresses.is_empty() {
                 // State Selected(S)
@@ -247,7 +252,14 @@ impl Single for UtxosChangedSubscription {
                         self.active = false;
                         let removed = self.addresses.drain().map(|(_, x)| x.into()).collect();
                         self.addresses.shrink_to(0);
-                        Some(vec![Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed)))])
+                        match policies.utxo_changed {
+                            UtxosChangedMutationPolicy::AddressSet => {
+                                Some(vec![Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into())])
+                            }
+                            UtxosChangedMutationPolicy::AllOrNothing => {
+                                Some(vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())])
+                            }
+                        }
                     } else {
                         // Mutation Remove(R)
                         let removed: Vec<Address> = scope.addresses.iter().filter(|x| self.remove_address(x)).cloned().collect();
@@ -255,9 +267,15 @@ impl Single for UtxosChangedSubscription {
                         if self.addresses.is_empty() {
                             self.active = false;
                         }
-                        match removed.is_empty() {
-                            false => Some(vec![Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed)))]),
-                            true => None,
+                        match (removed.is_empty(), policies.utxo_changed, self.active) {
+                            (false, UtxosChangedMutationPolicy::AddressSet, _) => {
+                                Some(vec![Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into())])
+                            }
+                            (false, UtxosChangedMutationPolicy::AllOrNothing, false) => {
+                                Some(vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())])
+                            }
+                            (false, UtxosChangedMutationPolicy::AllOrNothing, true) => None,
+                            (true, _, _) => None,
                         }
                     }
                 } else {
@@ -265,18 +283,24 @@ impl Single for UtxosChangedSubscription {
                         // Mutation Add(A)
                         let added = scope.addresses.iter().filter(|x| self.insert_address(x)).cloned().collect::<Vec<_>>();
                         self.addresses.shrink_to(0);
-                        match added.is_empty() {
-                            false => Some(vec![Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::new(added)))]),
-                            true => None,
+                        match (added.is_empty(), policies.utxo_changed) {
+                            (false, UtxosChangedMutationPolicy::AddressSet) => {
+                                Some(vec![Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::new(added)))])
+                            }
+                            (false, UtxosChangedMutationPolicy::AllOrNothing) => None,
+                            (true, _) => None,
                         }
                     } else {
                         // Mutation All
                         let removed: Vec<Address> = self.addresses.drain().map(|(_, x)| x.into()).collect();
                         self.addresses.shrink_to(0);
-                        Some(vec![
-                            Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed))),
-                            Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::default())),
-                        ])
+                        match policies.utxo_changed {
+                            UtxosChangedMutationPolicy::AddressSet => Some(vec![
+                                Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::new(removed))),
+                                Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::default())),
+                            ]),
+                            UtxosChangedMutationPolicy::AllOrNothing => None,
+                        }
                     }
                 }
             } else {
@@ -286,7 +310,7 @@ impl Single for UtxosChangedSubscription {
                         // Mutation None
                         self.active = false;
                         self.addresses = Default::default();
-                        Some(vec![Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::default()))])
+                        Some(vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())])
                     } else {
                         // Mutation Remove(R)
                         None
@@ -298,7 +322,12 @@ impl Single for UtxosChangedSubscription {
                             self.insert_address(x);
                         });
                         self.addresses.shrink_to(0);
-                        Some(vec![mutation, Mutation::new(Command::Stop, Scope::UtxosChanged(UtxosChangedScope::default()))])
+                        match policies.utxo_changed {
+                            UtxosChangedMutationPolicy::AddressSet => {
+                                Some(vec![mutation, Mutation::new(Command::Stop, UtxosChangedScope::default().into())])
+                            }
+                            UtxosChangedMutationPolicy::AllOrNothing => None,
+                        }
                     } else {
                         // Mutation All
                         None
@@ -484,7 +513,7 @@ mod tests {
         fn run(&self) {
             for test in self.tests.iter() {
                 let mut new_state = test.state.clone_box();
-                let result = new_state.mutate(test.mutation.clone());
+                let result = new_state.mutate(test.mutation.clone(), Default::default());
                 assert_eq!(test.new_state.active(), new_state.active(), "Testing '{}': wrong new state activity", test.name);
                 assert_eq!(*test.new_state, *new_state, "Testing '{}': wrong new state", test.name);
                 assert_eq!(test.result, result, "Testing '{}': wrong result", test.name);
