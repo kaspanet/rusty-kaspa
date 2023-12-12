@@ -10,7 +10,7 @@ Your feedback, contributions, and issue reports will be integral to evolving thi
 ## Installation
   <details>
   <summary>Building on Linux</summary>
-  
+
   1. Install  general prerequisites
 
       ```bash
@@ -33,9 +33,10 @@ Your feedback, contributions, and issue reports will be integral to evolving thi
       lld lldb llvm-dev llvm-runtime \
       llvm python3-clang
       ```
-  3. Install the [rust toolchain](https://rustup.rs/)
+  3. Install the [rust toolchain](https://rustup.rs/):
      
      If you already have rust installed, update it by running: `rustup update` 
+  
   4. Install wasm-pack
       ```bash
       cargo install wasm-pack
