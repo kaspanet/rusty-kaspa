@@ -94,8 +94,8 @@ impl ConsensusStorage {
 
         // Cache sizes represented and tracked as bytes
         // TODO: unit approx for noise magnitude + higher block levels lower bound
-        let ghostdag_cache_bytes = 50_000_000usize;
-        let headers_cache_bytes = 50_000_000usize;
+        let ghostdag_cache_bytes = 100_000_000usize;
+        let headers_cache_bytes = 100_000_000usize;
         let utxo_diffs_cache_bytes = 50_000_000usize;
 
         // Add stochastic noise to cache sizes to avoid predictable and equal sizes across all network nodes
@@ -155,7 +155,7 @@ impl ConsensusStorage {
         let headers_store = Arc::new(DbHeadersStore::new(
             db.clone(),
             CachePolicy::Tracked(noise(headers_cache_bytes)),
-            CachePolicy::Unit(noise(perf_params.header_data_cache_size)),
+            CachePolicy::Unit(noise((3600 * params.bps() as usize).max(perf_params.header_data_cache_size))),
         ));
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), CachePolicy::Unit(noise(perf_params.header_data_cache_size))));
         let selected_chain_store =
