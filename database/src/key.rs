@@ -16,6 +16,17 @@ impl DbKey {
         Self { path: prefix.iter().chain(key.as_ref().iter()).copied().collect(), prefix_len: prefix.len() }
     }
 
+    pub fn new_with_bucket<TKey, TBucket>(prefix: &[u8], bucket: TBucket, key: TKey) -> Self
+    where
+        TKey: Clone + AsRef<[u8]>,
+        TBucket: Copy + AsRef<[u8]>,
+    {
+        let mut db_key = Self::prefix_only(prefix);
+        db_key.add_bucket(bucket);
+        db_key.add_key(key);
+        db_key
+    }
+
     pub fn prefix_only(prefix: &[u8]) -> Self {
         Self::new(prefix, [])
     }
@@ -27,6 +38,14 @@ impl DbKey {
     {
         self.path.extend(bucket.as_ref().iter().copied());
         self.prefix_len += bucket.as_ref().len();
+    }
+
+    pub fn add_key<TKey>(&mut self, key: TKey)
+    where
+        TKey: Clone + AsRef<[u8]>,
+    {
+        self.path.extend(key.as_ref().iter().copied());
+        self.prefix_len += key.as_ref().len();
     }
 
     pub fn prefix_len(&self) -> usize {
@@ -52,7 +71,13 @@ impl Display for DbKey {
                 pos += 1;
                 if self.prefix_len > 1 {
                     match prefix {
-                        Ghostdag | GhostdagCompact | RelationsParents | RelationsChildren | Reachability => {
+                        Ghostdag
+                        | GhostdagCompact
+                        | RelationsParents
+                        | RelationsChildren
+                        | Reachability
+                        | ReachabilityTreeChildren
+                        | ReachabilityFutureCoveringSet => {
                             if self.path[1] != SEPARATOR {
                                 // Expected to be a block level so we display as a number
                                 Display::fmt(&self.path[1], f)?;

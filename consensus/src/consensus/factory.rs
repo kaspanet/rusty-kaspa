@@ -40,7 +40,7 @@ pub enum ConsensusEntryType {
     New(ConsensusEntry),
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct MultiConsensusMetadata {
     current_consensus_key: Option<u64>,
     staging_consensus_key: Option<u64>,
@@ -52,6 +52,20 @@ pub struct MultiConsensusMetadata {
     props: HashMap<Vec<u8>, Vec<u8>>,
     /// The DB scheme version
     version: u32,
+}
+
+const LATEST_DB_VERSION: u32 = 2;
+impl Default for MultiConsensusMetadata {
+    fn default() -> Self {
+        Self {
+            current_consensus_key: Default::default(),
+            staging_consensus_key: Default::default(),
+            max_key_used: Default::default(),
+            is_archival_node: Default::default(),
+            props: Default::default(),
+            version: LATEST_DB_VERSION,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -78,6 +92,15 @@ impl MultiConsensusManagementStore {
             let metadata = MultiConsensusMetadata::default();
             self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
             self.db.write(batch).unwrap();
+        }
+    }
+
+    /// The directory name of the active consensus, if one exists. None otherwise
+    pub fn active_consensus_dir_name(&self) -> StoreResult<Option<String>> {
+        let metadata = self.metadata.read()?;
+        match metadata.current_consensus_key {
+            Some(key) => Ok(Some(self.entries.read(key.into()).unwrap().directory_name)),
+            None => Ok(None),
         }
     }
 
@@ -188,6 +211,14 @@ impl MultiConsensusManagementStore {
             metadata.is_archival_node = is_archival_node;
             let mut batch = WriteBatch::default();
             self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
+        }
+    }
+
+    pub fn should_upgrade(&self) -> StoreResult<bool> {
+        match self.metadata.read() {
+            Ok(data) => Ok(data.version != LATEST_DB_VERSION),
+            Err(StoreError::KeyNotFound(_)) => Ok(false),
+            Err(err) => Err(err),
         }
     }
 }

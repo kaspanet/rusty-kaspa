@@ -15,6 +15,7 @@ kaspa-rpc-core.workspace = true
 kaspa-rpc-macros.workspace = true
 kaspa-rpc-service.workspace = true
 kaspa-utils.workspace = true
+kaspa-utils-tower.workspace = true
 
 async-channel.workspace = true
 async-stream.workspace = true

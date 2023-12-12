@@ -312,8 +312,8 @@ impl Consensus {
         (async { brx.await.unwrap() }, async { vrx.await.unwrap() })
     }
 
-    pub fn body_tips(&self) -> Arc<BlockHashSet> {
-        self.body_tips_store.read().get().unwrap()
+    pub fn body_tips(&self) -> BlockHashSet {
+        self.body_tips_store.read().get().unwrap().read().clone()
     }
 
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
@@ -578,7 +578,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_tips(&self) -> Vec<Hash> {
-        self.body_tips().iter().copied().collect_vec()
+        self.body_tips_store.read().get().unwrap().read().iter().copied().collect_vec()
     }
 
     fn get_pruning_point_utxos(
@@ -759,8 +759,12 @@ impl ConsensusApi for Consensus {
         Ok((&*ghostdag).into())
     }
 
-    fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
-        self.services.relations_service.get_children(hash).unwrap_option()
+    fn get_block_children(&self, hash: Hash) -> Option<Vec<Hash>> {
+        self.services
+            .relations_service
+            .get_children(hash)
+            .unwrap_option()
+            .map(|children| children.read().iter().copied().collect_vec())
     }
 
     fn get_block_parents(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {

@@ -49,6 +49,7 @@ members = [
     "crypto/txscript/errors",
     "testing/integration",
     "utils",
+    "utils/tower",
     "rothschild",
     "metrics/perf_monitor",
 ]
@@ -106,6 +107,7 @@ kaspa-rpc-service = { version = "0.13.0", path = "rpc/service" }
 kaspa-txscript = { version = "0.13.0", path = "crypto/txscript" }
 kaspa-txscript-errors = { version = "0.13.0", path = "crypto/txscript/errors" }
 kaspa-utils = { version = "0.13.0", path = "utils" }
+kaspa-utils-tower = { version = "0.13.0", path = "utils/tower" }
 kaspa-utxoindex = { version = "0.13.0", path = "indexes/utxoindex" }
 kaspa-wallet = { version = "0.13.0", path = "wallet/native" }
 kaspa-cli = { version = "0.13.0", path = "cli" }
@@ -221,7 +223,7 @@ textwrap = "0.16.0"
 thiserror = "1.0.50"
 tokio = { version = "1.33.0", features = ["sync", "rt-multi-thread"] }
 tokio-stream = "0.1.14"
-tonic = { version = "0.10.2", features = ["tls", "gzip"] }
+tonic = { version = "0.10.2", features = ["tls", "gzip", "transport"] }
 tonic-build = { version = "0.10.2", features = ["prost"] }
 triggered = "0.1.2"
 uuid = { version = "1.5.0", features = ["v4", "fast-rng", "serde"] }
@@ -231,7 +233,10 @@ wasm-bindgen-test = "=0.3.37"
 web-sys = "=0.3.64"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
-
+pin-project-lite = "0.2.13"
+tower-http = { version = "0.4.4", features = ["map-response-body", "map-request-body"] }
+tower = "0.4.7"
+hyper = "0.14.27"
 # workflow dependencies that are not a part of core libraries
 
 # workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
