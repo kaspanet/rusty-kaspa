@@ -6,7 +6,7 @@ use crate::{
         block_window_cache::BlockWindowCacheStore,
         daa::DbDaaStore,
         depth::DbDepthStore,
-        ghostdag::{CompactGhostdagData, DbGhostdagStore},
+        ghostdag::{CompactGhostdagData, DbGhostdagStore, GhostdagData},
         headers::DbHeadersStore,
         headers_selected_tip::DbHeadersSelectedTipStore,
         past_pruning_points::DbPastPruningPointsStore,
@@ -27,7 +27,7 @@ use crate::{
 
 use itertools::Itertools;
 
-use kaspa_consensus_core::{blockstatus::BlockStatus, config::constants::perf, BlockHashSet};
+use kaspa_consensus_core::{blockstatus::BlockStatus, config::constants::perf, BlockHashSet, KType};
 use kaspa_database::{prelude::CachePolicy, registry::DatabaseStorePrefixes};
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -106,9 +106,15 @@ impl ConsensusStorage {
         let relations_stores = Arc::new(RwLock::new(
             (0..=params.max_block_level)
                 .map(|level| {
-                    let cache_size =
-                        max(relations_cache_size.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m as usize);
-                    DbRelationsStore::new(db.clone(), level, CachePolicy::Tracked(noise(cache_size)))
+                    // = size / 2^level
+                    let level_normalized_cache_size = relations_cache_size.checked_shr(level as u32).unwrap_or(0);
+                    let cache_policy =
+                        if level_normalized_cache_size > 2 * params.pruning_proof_m as usize * params.max_block_parents as usize {
+                            CachePolicy::Tracked(noise(level_normalized_cache_size))
+                        } else {
+                            CachePolicy::Unit(noise(2 * params.pruning_proof_m as usize))
+                        };
+                    DbRelationsStore::new(db.clone(), level, cache_policy)
                 })
                 .collect_vec(),
         ));
@@ -123,19 +129,24 @@ impl ConsensusStorage {
             DatabaseStorePrefixes::ReachabilityRelations.as_ref(),
             CachePolicy::Tracked(noise(reachability_relations_cache_size)),
         )));
+
+        let max_ghostdag_data_size = size_of::<GhostdagData>()
+            + params.mergeset_size_limit as usize * size_of::<Hash>()
+            + params.ghostdag_k as usize * size_of::<(Hash, KType)>();
+
         let ghostdag_stores = Arc::new(
             (0..=params.max_block_level)
                 .map(|level| {
-                    let cache_size =
-                        max(ghostdag_cache_bytes.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m as usize);
+                    // = size / 2^level
+                    let level_normalized_cache_bytes = ghostdag_cache_bytes.checked_shr(level as u32).unwrap_or(0);
+                    let cache_policy = if level_normalized_cache_bytes > 2 * params.pruning_proof_m as usize * max_ghostdag_data_size {
+                        CachePolicy::Tracked(noise(level_normalized_cache_bytes))
+                    } else {
+                        CachePolicy::Unit(noise(2 * params.pruning_proof_m as usize))
+                    };
                     let compact_cache_size =
                         max(ghostdag_compact_cache_size.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m as usize);
-                    Arc::new(DbGhostdagStore::new(
-                        db.clone(),
-                        level,
-                        CachePolicy::Tracked(noise(cache_size)),
-                        CachePolicy::Unit(noise(compact_cache_size)),
-                    ))
+                    Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, CachePolicy::Unit(noise(compact_cache_size))))
                 })
                 .collect_vec(),
         );
