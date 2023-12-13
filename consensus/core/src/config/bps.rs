@@ -58,6 +58,15 @@ impl<const BPS: u64> Bps<BPS> {
         let val = (Self::ghostdag_k() / 2) as u8;
         if val < 10 {
             10
+        } else if val > 16 {
+            // We currently limit the number of parents by 16 in order to preserve processing performance
+            // and to avoid number of parent references per network round from growing quadratically with
+            // BPS. As BPS might grow beyond 10 this will mean that blocks will reference less parents than
+            // the average number of DAG tips. Which means relying on randomness between network peers for ensuring
+            // that all tips are eventually merged. We conjecture that with high probability every block will
+            // be merged after a log number of rounds. For mainnet this requires an increase to the value of GHOSTDAG
+            // K accompanied by a short security analysis, or moving to the parameterless DAGKNIGHT.
+            16
         } else {
             val
         }
@@ -87,7 +96,7 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     pub const fn pruning_proof_m() -> u64 {
-        // No need to scale this constant with BPS since the important block levels (higher) remain logarithmically long
+        // No need to scale this constant with BPS since the important block levels (higher) remain logarithmically short
         PRUNING_PROOF_M
     }
 
