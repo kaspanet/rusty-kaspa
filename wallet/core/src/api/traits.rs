@@ -1,7 +1,8 @@
 use crate::api::message::*;
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::{AccountCreateArgs, AccountDescriptor, PrvKeyDataCreateArgs, WalletCreateArgs};
+use crate::runtime::wallet::AccountCreateArgs;
+use crate::runtime::{AccountDescriptor, WalletCreateArgs};
 use crate::secret::Secret;
 use crate::storage::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, WalletDescriptor};
 use crate::tx::GeneratorSummary;
@@ -25,6 +26,9 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
 
+    async fn batch_call(self: Arc<Self>, request: BatchRequest) -> Result<BatchResponse>;
+    async fn flush_call(self: Arc<Self>, request: FlushRequest) -> Result<FlushResponse>;
+
     async fn wallet_enumerate(self: Arc<Self>) -> Result<Vec<WalletDescriptor>> {
         Ok(self.wallet_enumerate_call(WalletEnumerateRequest {}).await?.wallet_list)
     }
@@ -32,11 +36,10 @@ pub trait WalletApi: Send + Sync + AnySync {
 
     async fn wallet_create(
         self: Arc<Self>,
+        wallet_secret: Secret,
         wallet_args: WalletCreateArgs,
-        prv_key_data_args: PrvKeyDataCreateArgs,
-        account_args: AccountCreateArgs,
     ) -> Result<WalletCreateResponse> {
-        self.wallet_create_call(WalletCreateRequest { wallet_args, prv_key_data_args, account_args }).await
+        self.wallet_create_call(WalletCreateRequest { wallet_secret, wallet_args }).await
     }
 
     async fn wallet_create_call(self: Arc<Self>, request: WalletCreateRequest) -> Result<WalletCreateResponse>;
@@ -72,6 +75,9 @@ pub trait WalletApi: Send + Sync + AnySync {
         Ok(())
     }
     async fn wallet_rename_call(self: Arc<Self>, request: WalletRenameRequest) -> Result<WalletRenameResponse>;
+
+    async fn wallet_export_call(self: Arc<Self>, request: WalletExportRequest) -> Result<WalletExportResponse>;
+    async fn wallet_import_call(self: Arc<Self>, request: WalletImportRequest) -> Result<WalletImportResponse>;
 
     async fn wallet_change_secret(self: Arc<Self>, old_wallet_secret: Secret, new_wallet_secret: Secret) -> Result<()> {
         let request = WalletChangeSecretRequest { old_wallet_secret, new_wallet_secret };
@@ -113,12 +119,14 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
     async fn accounts_enumerate_call(self: Arc<Self>, request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse>;
 
+    async fn accounts_discovery_call(self: Arc<Self>, request: AccountsDiscoveryRequest) -> Result<AccountsDiscoveryResponse>;
+
     async fn accounts_create(
         self: Arc<Self>,
-        prv_key_data_id: PrvKeyDataId,
-        account_args: AccountCreateArgs,
-    ) -> Result<AccountDescriptor> {
-        Ok(self.accounts_create_call(AccountsCreateRequest { prv_key_data_id, account_args }).await?.descriptor)
+        wallet_secret: Secret,
+        account_create_args: Vec<AccountCreateArgs>,
+    ) -> Result<Vec<AccountDescriptor>> {
+        Ok(self.accounts_create_call(AccountsCreateRequest { wallet_secret, account_create_args }).await?.account_descriptors)
     }
     async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse>;
     async fn accounts_import_call(self: Arc<Self>, request: AccountsImportRequest) -> Result<AccountsImportResponse>;
@@ -142,10 +150,6 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn accounts_send_call(self: Arc<Self>, request: AccountsSendRequest) -> Result<AccountsSendResponse>;
     async fn accounts_transfer_call(self: Arc<Self>, request: AccountsTransferRequest) -> Result<AccountsTransferResponse>;
 
-    // async fn account_estimate(self: Arc<Self>, request: AccountEstimateRequest) -> Result<AccountEstimateResponse> {
-
-    //     Ok(self.account_estimate_call(request).await?)
-    // }
     async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse>;
 
     async fn transaction_data_get_range(

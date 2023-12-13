@@ -77,15 +77,15 @@ where
         Ok(())
     }
 
-    pub fn store_multiple(&mut self, data: &[&Data]) -> Result<()> {
-        for data in data.iter() {
-            let id = data.id();
-            if self.map.get(id).is_some() {
-                self.map.remove(id);
-                self.vec.retain(|d| d.id() != id);
+    pub fn store_multiple(&mut self, data: Vec<Data>) -> Result<()> {
+        for data in data.into_iter() {
+            let id = data.id().clone();
+            if self.map.get(&id).is_some() {
+                self.map.remove(&id);
+                self.vec.retain(|d| d.id() != &id);
             }
 
-            let data = Arc::new((*data).clone());
+            let data = Arc::new(data);
             self.map.insert(id.clone(), data.clone());
             self.vec.push(data);
         }

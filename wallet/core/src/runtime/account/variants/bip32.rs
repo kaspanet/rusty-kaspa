@@ -46,14 +46,21 @@ impl Bip32 {
 
         Ok(Self {
             inner,
-            prv_key_data_id, //: prv_key_data_id.clone(),
-            account_index,   //: account_index,
-            xpub_keys,       //: data.xpub_keys.clone(),
+            prv_key_data_id,
+            account_index,
+            xpub_keys,
             ecdsa,
             bip39_passphrase: prv_key_data_info.requires_bip39_passphrase(),
             derivation,
         })
     }
+
+    pub fn get_address_range_for_scan(&self, range: std::ops::Range<u32>) -> Result<Vec<Address>> {
+        let receive_addresses = self.derivation.receive_address_manager().get_range_with_args(range.clone(), false)?;
+        let change_addresses = self.derivation.change_address_manager().get_range_with_args(range, false)?;
+        Ok(receive_addresses.into_iter().chain(change_addresses).collect::<Vec<_>>())
+    }
+
 }
 
 #[async_trait]

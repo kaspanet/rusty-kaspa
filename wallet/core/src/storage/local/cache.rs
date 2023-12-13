@@ -1,4 +1,3 @@
-use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::storage::local::wallet::Wallet;
@@ -17,9 +16,8 @@ pub struct Cache {
     pub address_book: Vec<AddressBookEntry>,
 }
 
-impl TryFrom<(Wallet, &Secret)> for Cache {
-    type Error = Error;
-    fn try_from((wallet, secret): (Wallet, &Secret)) -> Result<Self> {
+impl Cache {
+    pub fn from_wallet(wallet: Wallet, secret: &Secret) -> Result<Self> {
         let payload = wallet.payload(secret)?;
 
         let prv_key_data_info =
@@ -36,11 +34,8 @@ impl TryFrom<(Wallet, &Secret)> for Cache {
 
         Ok(Cache { wallet_title, user_hint, prv_key_data, prv_key_data_info, accounts, metadata, address_book })
     }
-}
 
-impl TryFrom<(Option<String>, Option<Hint>, Payload, &Secret)> for Cache {
-    type Error = Error;
-    fn try_from((wallet_title, user_hint, payload, secret): (Option<String>, Option<Hint>, Payload, &Secret)) -> Result<Self> {
+    pub fn from_payload(wallet_title: Option<String>, user_hint: Option<Hint>, payload: Payload, secret: &Secret) -> Result<Self> {
         let prv_key_data_info = payload.prv_key_data.iter().map(|pkdata| pkdata.into()).collect::<Vec<PrvKeyDataInfo>>().try_into()?;
 
         let prv_key_data_map = payload.prv_key_data.into_iter().map(|pkdata| (pkdata.id, pkdata)).collect::<HashMap<_, _>>();
@@ -52,17 +47,17 @@ impl TryFrom<(Option<String>, Option<Hint>, Payload, &Secret)> for Cache {
 
         Ok(Cache { wallet_title, user_hint, prv_key_data, prv_key_data_info, accounts, metadata, address_book })
     }
-}
 
-impl TryFrom<(&Cache, &Secret)> for Wallet {
-    type Error = Error;
-
-    fn try_from((cache, secret): (&Cache, &Secret)) -> Result<Self> {
-        let prv_key_data: Decrypted<PrvKeyDataMap> = cache.prv_key_data.decrypt(secret)?;
+    pub fn to_wallet(
+        &self,
+        transactions: Option<Encryptable<HashMap<AccountId, Vec<TransactionRecord>>>>,
+        secret: &Secret,
+    ) -> Result<Wallet> {
+        let prv_key_data: Decrypted<PrvKeyDataMap> = self.prv_key_data.decrypt(secret)?;
         let prv_key_data = prv_key_data.values().cloned().collect::<Vec<_>>();
-        let accounts: Vec<Account> = (&cache.accounts).try_into()?;
-        let metadata: Vec<Metadata> = (&cache.metadata).try_into()?;
-        let address_book = cache.address_book.clone();
+        let accounts: Vec<Account> = (&self.accounts).try_into()?;
+        let metadata: Vec<Metadata> = (&self.metadata).try_into()?;
+        let address_book = self.address_book.clone();
         let payload = Payload::new(prv_key_data, accounts, address_book);
         let payload = Decrypted::new(payload).encrypt(secret)?;
 
@@ -70,8 +65,9 @@ impl TryFrom<(&Cache, &Secret)> for Wallet {
             version: WALLET_VERSION,
             payload,
             metadata,
-            user_hint: cache.user_hint.clone(),
-            title: cache.wallet_title.clone(),
+            user_hint: self.user_hint.clone(),
+            title: self.wallet_title.clone(),
+            transactions,
         })
     }
 }

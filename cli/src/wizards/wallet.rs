@@ -1,9 +1,10 @@
 use crate::cli::KaspaCli;
 use crate::imports::*;
 use crate::result::Result;
-use kaspa_bip32::WordCount;
+use kaspa_bip32::{Language, Mnemonic, WordCount};
+use kaspa_wallet_core::runtime::wallet::AccountCreateArgsBip32;
 use kaspa_wallet_core::runtime::{PrvKeyDataCreateArgs, WalletCreateArgs};
-use kaspa_wallet_core::storage::{make_filename, AccessContextT, AccountKind, Hint};
+use kaspa_wallet_core::storage::{make_filename, Hint};
 
 pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_mnemonic: bool) -> Result<()> {
     let term = ctx.term();
@@ -111,26 +112,31 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
 
     let prv_key_data_args = if import_with_mnemonic {
         let words = crate::wizards::import::prompt_for_mnemonic(&term).await?;
-        PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone(), words.join(" ").try_into()?)
+        PrvKeyDataCreateArgs::new(None, payment_secret.clone(), words.join(" "))
     } else {
-        PrvKeyDataCreateArgs::new(None, wallet_secret.clone(), payment_secret.clone(), word_count.into())
+        PrvKeyDataCreateArgs::new(
+            None,
+            payment_secret.clone(),
+            Mnemonic::random(word_count, Language::default())?.phrase().to_string(),
+        )
     };
+
+    let mnemonic_phrase = prv_key_data_args.mnemonic.clone();
 
     let notifier = ctx.notifier().show(Notification::Processing).await;
 
     // suspend commits for multiple operations
     wallet.store().batch().await?;
 
-    let account_kind = AccountKind::Bip32;
-    let wallet_args = WalletCreateArgs::new(name.map(String::from), None, hint, wallet_secret.clone(), true);
-    let account_args = AccountCreateArgs::new(account_name, account_kind, wallet_secret.clone(), payment_secret);
-    let (_wallet_descriptor, storage_descriptor) = ctx.wallet().create_wallet(wallet_args).await?;
-    let (prv_key_data_id, mnemonic) = wallet.create_prv_key_data(prv_key_data_args).await?;
-    let account = wallet.create_bip32_account(prv_key_data_id, account_args).await?;
+    let wallet_args = WalletCreateArgs::new(name.map(String::from), None, hint, true);
+    let (_wallet_descriptor, storage_descriptor) = ctx.wallet().create_wallet(&wallet_secret, wallet_args).await?;
+    let prv_key_data_id = wallet.create_prv_key_data(&wallet_secret, prv_key_data_args).await?;
+
+    let account_args = AccountCreateArgsBip32::new(account_name, None);
+    let account = wallet.create_account_bip32(&wallet_secret, prv_key_data_id, payment_secret.as_ref(), account_args).await?;
 
     // flush data to storage
-    let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret.clone()));
-    wallet.store().flush(&access_ctx).await?;
+    wallet.store().flush(&wallet_secret).await?;
 
     notifier.hide();
 
@@ -155,7 +161,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
 
         // descriptor
 
-        ["", "Never share your mnemonic with anyone!", "---", "", "Your default wallet account mnemonic:", mnemonic.phrase()]
+        ["", "Never share your mnemonic with anyone!", "---", "", "Your default wallet account mnemonic:", mnemonic_phrase.as_str()]
             .into_iter()
             .for_each(|line| term.writeln(line));
     }
@@ -169,7 +175,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
     term.writeln(style(receive_address).blue().to_string());
     term.writeln("");
 
-    wallet.open(wallet_secret, name.map(String::from), WalletOpenArgs::default_with_legacy_accounts()).await?;
+    wallet.open(&wallet_secret, name.map(String::from), WalletOpenArgs::default_with_legacy_accounts()).await?;
     wallet.activate_accounts(None).await?;
 
     Ok(())

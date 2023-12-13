@@ -26,14 +26,14 @@ impl Account {
                     tprintln!(ctx, "usage: 'account name <name>' or 'account name remove'");
                     return Ok(());
                 } else {
-                    let (secret, _) = ctx.ask_wallet_secret(None).await?;
+                    let (wallet_secret, _) = ctx.ask_wallet_secret(None).await?;
                     let _ = ctx.notifier().show(Notification::Processing).await;
                     let account = ctx.select_account().await?;
                     let name = argv.remove(0);
                     if name == "remove" {
-                        account.rename(secret, None).await?;
+                        account.rename(&wallet_secret, None).await?;
                     } else {
-                        account.rename(secret, Some(name.as_str())).await?;
+                        account.rename(&wallet_secret, Some(name.as_str())).await?;
                     }
                 }
             }
@@ -109,9 +109,9 @@ impl Account {
                                 Secret::new(ctx.term().ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
                             let ctx_ = ctx.clone();
                             wallet
-                                .import_gen0_keydata(
-                                    import_secret,
-                                    wallet_secret,
+                                .import_legacy_keydata(
+                                    &import_secret,
+                                    &wallet_secret,
                                     None,
                                     Some(Arc::new(move |processed: usize, _, balance, txid| {
                                         if let Some(txid) = txid {

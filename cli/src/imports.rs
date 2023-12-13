@@ -14,8 +14,8 @@ pub use kaspa_consensus_core::network::{NetworkId, NetworkType};
 pub use kaspa_daemon::DaemonEvent;
 pub use kaspa_utils::hex::*;
 pub use kaspa_wallet_core::derivation::gen0::import::*;
-pub use kaspa_wallet_core::storage::interface::{AccessContext, Interface};
-pub use kaspa_wallet_core::storage::{AccessContextT, AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
+pub use kaspa_wallet_core::storage::interface::Interface;
+pub use kaspa_wallet_core::storage::{AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
 pub use kaspa_wallet_core::tx::PaymentOutputs;
 pub use kaspa_wallet_core::utils::*;
 pub use kaspa_wallet_core::{

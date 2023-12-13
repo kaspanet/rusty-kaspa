@@ -40,7 +40,7 @@ impl Legacy {
 
     pub async fn initialize_derivation(
         &self,
-        wallet_secret: Secret,
+        wallet_secret: &Secret,
         payment_secret: Option<&Secret>,
         index: Option<u32>,
     ) -> Result<()> {
@@ -135,8 +135,8 @@ impl Account for Legacy {
 
 #[async_trait]
 impl AsLegacyAccount for Legacy {
-    async fn create_private_context(&self, secret: Secret, payment_secret: Option<&Secret>, index: Option<u32>) -> Result<()> {
-        self.initialize_derivation(secret, payment_secret, index).await?;
+    async fn create_private_context(&self, wallet_secret: &Secret, payment_secret: Option<&Secret>, index: Option<u32>) -> Result<()> {
+        self.initialize_derivation(wallet_secret, payment_secret, index).await?;
         Ok(())
     }
 

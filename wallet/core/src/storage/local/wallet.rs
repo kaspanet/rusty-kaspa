@@ -3,7 +3,10 @@ use crate::result::Result;
 use crate::secret::Secret;
 use crate::storage::local::Payload;
 use crate::storage::local::Storage;
+use crate::storage::Encryptable;
+use crate::storage::TransactionRecord;
 use crate::storage::{Decrypted, Encrypted, Hint, Metadata, PrvKeyData, PrvKeyDataId};
+use runtime::AccountId;
 use serde_json::{from_str, from_value, Value};
 use workflow_store::fs;
 
@@ -20,6 +23,8 @@ pub struct Wallet {
     pub user_hint: Option<Hint>,
     pub payload: Encrypted,
     pub metadata: Vec<Metadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transactions: Option<Encryptable<HashMap<AccountId, Vec<TransactionRecord>>>>,
 }
 
 impl Wallet {
@@ -31,7 +36,7 @@ impl Wallet {
         metadata: Vec<Metadata>,
     ) -> Result<Self> {
         let payload = Decrypted::new(payload).encrypt(secret)?;
-        Ok(Self { version: WALLET_VERSION, title, payload, metadata, user_hint })
+        Ok(Self { version: WALLET_VERSION, title, payload, metadata, user_hint, transactions: None })
     }
 
     pub fn payload(&self, secret: &Secret) -> Result<Decrypted<Payload>> {

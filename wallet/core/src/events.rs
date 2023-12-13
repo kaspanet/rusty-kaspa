@@ -111,7 +111,7 @@ pub enum Events {
     },
     /// Account has been created
     AccountCreate {
-        account_descriptor: AccountDescriptor,
+        account_descriptors: Vec<AccountDescriptor>,
     },
     /// Account has been changed
     /// (emitted on new address generation)

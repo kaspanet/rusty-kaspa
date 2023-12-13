@@ -4,46 +4,10 @@ use crate::secret::Secret;
 use crate::storage::*;
 use async_trait::async_trait;
 use downcast::{downcast_sync, AnySync};
-use zeroize::Zeroize;
 
-/// AccessContextT is a trait that wraps a wallet secret
-/// (or possibly other parameters in the future)
-/// needed for accessing stored wallet data.
-#[async_trait]
-pub trait AccessContextT: Send + Sync {
-    async fn wallet_secret(&self) -> Secret;
-}
-
-/// AccessContext is a wrapper for wallet secret that implements
-/// the [`AccessContextT`] trait.
-#[derive(Clone)]
-pub struct AccessContext {
-    pub(crate) wallet_secret: Secret,
-}
-
-impl AccessContext {
-    pub fn new(wallet_secret: Secret) -> Self {
-        Self { wallet_secret }
-    }
-}
-
-#[async_trait]
-impl AccessContextT for AccessContext {
-    async fn wallet_secret(&self) -> Secret {
-        self.wallet_secret.clone()
-    }
-}
-
-impl Zeroize for AccessContext {
-    fn zeroize(&mut self) {
-        self.wallet_secret.zeroize()
-    }
-}
-
-impl Drop for AccessContext {
-    fn drop(&mut self) {
-        self.zeroize()
-    }
+#[derive(Debug, Clone)]
+pub struct WalletExportOptions {
+    pub include_transactions: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -86,9 +50,9 @@ pub type StorageStream<T> = Pin<Box<dyn Stream<Item = Result<T>> + Send>>;
 pub trait PrvKeyDataStore: Send + Sync {
     async fn iter(&self) -> Result<StorageStream<Arc<PrvKeyDataInfo>>>;
     async fn load_key_info(&self, id: &PrvKeyDataId) -> Result<Option<Arc<PrvKeyDataInfo>>>;
-    async fn load_key_data(&self, ctx: &Arc<dyn AccessContextT>, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>>;
-    async fn store(&self, ctx: &Arc<dyn AccessContextT>, data: PrvKeyData) -> Result<()>;
-    async fn remove(&self, ctx: &Arc<dyn AccessContextT>, id: &PrvKeyDataId) -> Result<()>;
+    async fn load_key_data(&self, wallet_secret: &Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>>;
+    async fn store(&self, wallet_secret: &Secret, data: PrvKeyData) -> Result<()>;
+    async fn remove(&self, wallet_secret: &Secret, id: &PrvKeyDataId) -> Result<()>;
 }
 
 #[async_trait]
@@ -99,9 +63,9 @@ pub trait AccountStore: Send + Sync {
     async fn load_single(&self, ids: &AccountId) -> Result<Option<(Arc<Account>, Option<Arc<Metadata>>)>>;
     async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<(Arc<Account>, Option<Arc<Metadata>>)>>;
     async fn store_single(&self, account: &Account, metadata: Option<&Metadata>) -> Result<()>;
-    async fn store_multiple(&self, data: &[(&Account, Option<&Metadata>)]) -> Result<()>;
+    async fn store_multiple(&self, data: Vec<(Account, Option<Metadata>)>) -> Result<()>;
     async fn remove(&self, id: &[&AccountId]) -> Result<()>;
-    async fn update_metadata(&self, metadata: &[&Metadata]) -> Result<()>;
+    async fn update_metadata(&self, metadata: Vec<Metadata>) -> Result<()>;
 }
 
 #[async_trait]
@@ -185,28 +149,28 @@ pub trait Interface: Send + Sync + AnySync {
     fn descriptor(&self) -> Option<WalletDescriptor>;
 
     /// rename the currently open wallet (title or the filename)
-    async fn rename(&self, ctx: &Arc<dyn AccessContextT>, title: Option<&str>, filename: Option<&str>) -> Result<()>;
+    async fn rename(&self, wallet_secret: &Secret, title: Option<&str>, filename: Option<&str>) -> Result<()>;
 
     /// change the secret of the currently open wallet
-    async fn change_secret(&self, ctx: &Arc<dyn AccessContextT>, new_secret: Secret) -> Result<()>;
+    async fn change_secret(&self, old_wallet_secret: &Secret, new_wallet_secret: &Secret) -> Result<()>;
 
     /// checks if the wallet storage is present
     async fn exists(&self, name: Option<&str>) -> Result<bool>;
 
     /// initialize wallet storage
-    async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<WalletDescriptor>;
+    async fn create(&self, wallet_secret: &Secret, args: CreateArgs) -> Result<WalletDescriptor>;
 
     /// establish an open state (load wallet data cache, connect to the database etc.)
-    async fn open(&self, ctx: &Arc<dyn AccessContextT>, args: OpenArgs) -> Result<()>;
+    async fn open(&self, wallet_secret: &Secret, args: OpenArgs) -> Result<()>;
 
     /// suspend commit operations until flush() is called
     async fn batch(&self) -> Result<()>;
 
     /// flush resumes commit operations previously suspended by `suspend()`
-    async fn flush(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()>;
+    async fn flush(&self, wallet_secret: &Secret) -> Result<()>;
 
     /// commit any changes changes to storage
-    async fn commit(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()>;
+    async fn commit(&self, wallet_secret: &Secret) -> Result<()>;
 
     /// stop the storage subsystem
     async fn close(&self) -> Result<()>;

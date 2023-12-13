@@ -19,9 +19,8 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
-use crate::storage::interface::AccessContext;
 use crate::storage::Metadata;
-use crate::storage::{self, AccessContextT, AccountData, PrvKeyData, PrvKeyDataId};
+use crate::storage::{self, AccountData, PrvKeyData, PrvKeyDataId};
 use crate::tx::PaymentOutput;
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, Signer};
 use crate::utxo::{UtxoContext, UtxoContextBinding};
@@ -161,7 +160,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         }
     }
 
-    async fn rename(&self, wallet_secret: Secret, name: Option<&str>) -> Result<()> {
+    async fn rename(&self, wallet_secret: &Secret, name: Option<&str>) -> Result<()> {
         {
             let mut context = self.context();
             if let Some(settings) = &mut context.settings {
@@ -174,8 +173,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         let account = self.as_storable()?;
         self.wallet().store().as_account_store()?.store_single(&account, None).await?;
 
-        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
-        self.wallet().store().commit(&ctx).await?;
+        self.wallet().store().commit(wallet_secret).await?;
         Ok(())
     }
 
@@ -207,12 +205,11 @@ pub trait Account: AnySync + Send + Sync + 'static {
     async fn prv_key_data(&self, wallet_secret: Secret) -> Result<PrvKeyData> {
         let prv_key_data_id = self.prv_key_data_id()?;
 
-        let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
         let keydata = self
             .wallet()
             .store()
             .as_prv_key_data_store()?
-            .load_key_data(&access_ctx, prv_key_data_id)
+            .load_key_data(&wallet_secret, prv_key_data_id)
             .await?
             .ok_or(Error::PrivateKeyNotFound(*prv_key_data_id))?;
         Ok(keydata)
@@ -460,13 +457,14 @@ downcast_sync!(dyn Account);
 
 #[async_trait]
 pub trait AsLegacyAccount: Account {
-    async fn create_private_context(&self, _secret: Secret, _payment_secret: Option<&Secret>, _index: Option<u32>) -> Result<()> {
-        Ok(())
-    }
+    async fn create_private_context(
+        &self,
+        _wallet_secret: &Secret,
+        _payment_secret: Option<&Secret>,
+        _index: Option<u32>,
+    ) -> Result<()>;
 
-    async fn clear_private_context(&self) -> Result<()> {
-        Ok(())
-    }
+    async fn clear_private_context(&self) -> Result<()>;
 }
 
 #[async_trait]
@@ -487,7 +485,7 @@ pub trait DerivationCapableAccount: Account {
         notifier: Option<ScanNotifier>,
     ) -> Result<()> {
         if let Ok(legacy_account) = self.clone().as_legacy_account() {
-            legacy_account.create_private_context(wallet_secret.clone(), payment_secret.as_ref(), None).await?;
+            legacy_account.create_private_context(&wallet_secret, payment_secret.as_ref(), None).await?;
         }
 
         let derivation = self.derivation();
@@ -607,7 +605,7 @@ pub trait DerivationCapableAccount: Account {
 
         let metadata = self.metadata()?.expect("derivation accounts must provide metadata");
         let store = self.wallet().store().as_account_store()?;
-        store.update_metadata(&[&metadata]).await?;
+        store.update_metadata(vec![metadata]).await?;
 
         self.wallet().notify(Events::AccountUpdate { account_descriptor: self.descriptor()? }).await?;
 
@@ -620,7 +618,7 @@ pub trait DerivationCapableAccount: Account {
 
         let metadata = self.metadata()?.expect("derivation accounts must provide metadata");
         let store = self.wallet().store().as_account_store()?;
-        store.update_metadata(&[&metadata]).await?;
+        store.update_metadata(vec![metadata]).await?;
 
         self.wallet().notify(Events::AccountUpdate { account_descriptor: self.descriptor()? }).await?;
 

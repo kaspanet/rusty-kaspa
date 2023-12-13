@@ -64,10 +64,10 @@ impl Wallet {
                     ctx.wallet().settings().get(WalletSettings::Wallet).clone()
                 };
 
-                let (secret, _) = ctx.ask_wallet_secret(None).await?;
+                let (wallet_secret, _) = ctx.ask_wallet_secret(None).await?;
                 let _ = ctx.notifier().show(Notification::Processing).await;
                 let args = WalletOpenArgs::default_with_legacy_accounts();
-                ctx.wallet().open(secret, name, args).await?;
+                ctx.wallet().open(&wallet_secret, name, args).await?;
                 ctx.wallet().activate_accounts(None).await?;
             }
             "close" => {

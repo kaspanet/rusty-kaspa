@@ -17,9 +17,7 @@ pub use address::AddressBookEntry;
 pub use binding::Binding;
 pub use hint::Hint;
 pub use id::IdT;
-pub use interface::{
-    AccessContextT, AccountStore, Interface, PrvKeyDataStore, StorageDescriptor, TransactionRecordStore, WalletDescriptor,
-};
+pub use interface::{AccountStore, Interface, PrvKeyDataStore, StorageDescriptor, TransactionRecordStore, WalletDescriptor};
 pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
 pub use local::interface::make_filename;
 pub use metadata::Metadata;

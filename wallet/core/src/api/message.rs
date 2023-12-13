@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use workflow_rpc::id::{Generator, Id64 as TaskId};
 
 use crate::{
-    runtime::{account::descriptor::AccountDescriptor, AccountCreateArgs, PrvKeyDataCreateArgs, WalletCreateArgs},
+    runtime::{account::descriptor::AccountDescriptor, wallet::AccountCreateArgs, PrvKeyDataCreateArgs, WalletCreateArgs},
     secret::Secret,
     storage::{
         AccountId, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, StorageDescriptor, TransactionKind, TransactionRecord, WalletDescriptor,
@@ -28,6 +28,24 @@ pub struct PingRequest {
 pub struct PingResponse {
     pub payload: Option<String>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlushRequest {
+    pub wallet_secret: Secret,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlushResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,18 +96,15 @@ pub struct WalletEnumerateResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletCreateRequest {
+    pub wallet_secret: Secret,
     pub wallet_args: WalletCreateArgs,
-    pub prv_key_data_args: PrvKeyDataCreateArgs,
-    pub account_args: AccountCreateArgs,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletCreateResponse {
-    pub mnemonic: String,
     pub storage_descriptor: StorageDescriptor,
     pub wallet_descriptor: WalletDescriptor,
-    pub account_descriptor: AccountDescriptor,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -144,6 +159,24 @@ pub struct WalletChangeSecretResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WalletExportRequest {
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletExportResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletImportRequest {
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletImportResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PrvKeyDataEnumerateRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -155,15 +188,14 @@ pub struct PrvKeyDataEnumerateResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrvKeyDataCreateRequest {
+    pub wallet_secret: Secret,
     pub prv_key_data_args: PrvKeyDataCreateArgs,
-    pub fetch_mnemonic: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrvKeyDataCreateResponse {
     pub prv_key_data_id: PrvKeyDataId,
-    pub mnemonic: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -211,15 +243,37 @@ pub struct AccountsRenameResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum AccountsDiscoveryKind {
+    Bip44,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsDiscoveryRequest {
+    pub discovery_kind: AccountsDiscoveryKind,
+    pub address_scan_extent: u32,
+    pub account_scan_extent: u32,
+    pub bip39_passphrase: Option<Secret>,
+    pub bip39_mnemonic: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsDiscoveryResponse {
+    pub last_account_index_found: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AccountsCreateRequest {
-    pub prv_key_data_id: PrvKeyDataId,
-    pub account_args: AccountCreateArgs,
+    pub wallet_secret: Secret,
+    pub account_create_args: Vec<AccountCreateArgs>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsCreateResponse {
-    pub descriptor: AccountDescriptor,
+    pub account_descriptors: Vec<AccountDescriptor>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

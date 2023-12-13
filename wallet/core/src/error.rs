@@ -152,7 +152,10 @@ pub enum Error {
     PrivateKeyNotFound(PrvKeyDataId),
 
     #[error("private key {0} already exists")]
-    PrivateKeyAlreadyExists(String),
+    PrivateKeyAlreadyExists(PrvKeyDataId),
+
+    #[error("account {0} already exists")]
+    AccountAlreadyExists(AccountId),
 
     #[error("xprv key is not supported for this key type")]
     XPrvSupport,

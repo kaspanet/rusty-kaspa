@@ -442,8 +442,8 @@ impl Metric {
             Metric::NodeP2pBytesRxPerSecond => ("p2p Rx/s", "p2p Rx/s"),
             Metric::NodeGrpcUserBytesTxPerSecond => ("gRPC Tx/s", "gRPC Tx/s"),
             Metric::NodeGrpcUserBytesRxPerSecond => ("gRPC Rx/s", "gRPC Rx/s"),
-            Metric::NodeTotalBytesTxPerSecond => ("Network Tx/s", "Net Tx/s"),
-            Metric::NodeTotalBytesRxPerSecond => ("Network Rx/s", "Net Rx/s"),
+            Metric::NodeTotalBytesTxPerSecond => ("Total Tx/s", "Total Tx/s"),
+            Metric::NodeTotalBytesRxPerSecond => ("Total Rx/s", "Total Rx/s"),
             // --
             Metric::NodeBlocksSubmittedCount => ("Submitted Blocks", "Blocks"),
             Metric::NodeHeadersProcessedCount => ("Processed Headers", "Headers"),
