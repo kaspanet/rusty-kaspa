@@ -58,15 +58,18 @@ impl<const BPS: u64> Bps<BPS> {
         let val = (Self::ghostdag_k() / 2) as u8;
         if val < 10 {
             10
+        // TODO (TEMP): uncomment when restarting TN11 or when implementing a TN11 HF
+        /*
         } else if val > 16 {
             // We currently limit the number of parents by 16 in order to preserve processing performance
-            // and to avoid number of parent references per network round from growing quadratically with
+            // and to prevent number of parent references per network round from growing quadratically with
             // BPS. As BPS might grow beyond 10 this will mean that blocks will reference less parents than
             // the average number of DAG tips. Which means relying on randomness between network peers for ensuring
             // that all tips are eventually merged. We conjecture that with high probability every block will
             // be merged after a log number of rounds. For mainnet this requires an increase to the value of GHOSTDAG
             // K accompanied by a short security analysis, or moving to the parameterless DAGKNIGHT.
             16
+         */
         } else {
             val
         }
@@ -74,6 +77,18 @@ impl<const BPS: u64> Bps<BPS> {
 
     pub const fn mergeset_size_limit() -> u64 {
         Self::ghostdag_k() as u64 * 10
+    }
+
+    /// Mergeset limit determines pruning depth which effects every header so we can't easily change this on the fly
+    ///
+    /// TODO (TEMP): rename to mergeset_size_limit when restarting TN11 or when implementing a TN11 HF
+    pub const fn _mergeset_size_limit() -> u64 {
+        let val = Self::ghostdag_k() as u64 * 2;
+        if val < 180 {
+            180
+        } else {
+            val
+        }
     }
 
     pub const fn merge_depth_bound() -> u64 {

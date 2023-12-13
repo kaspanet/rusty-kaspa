@@ -225,7 +225,7 @@ impl Params {
             // For testnets we consider the node to be synced if the sink timestamp is within a time range which
             // is overwhelmingly unlikely to pass without mined blocks even if net hashrate decreased dramatically.
             //
-            // This period is smaller than the above mainnet calculation in order to insure that an IBDing miner
+            // This period is smaller than the above mainnet calculation in order to ensure that an IBDing miner
             // with significant testnet hashrate does not overwhelm the network with deep side-DAGs.
             //
             // We use DAA duration as baseline and scale it down with BPS

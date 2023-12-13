@@ -176,8 +176,10 @@ impl VirtualStateProcessor {
             thread_pool,
 
             genesis: params.genesis.clone(),
-            max_block_parents: params.max_block_parents,
-            mergeset_size_limit: params.mergeset_size_limit,
+            // TODO (TEMP): remove TN11 bounds when restarting/HF TN11, see comments in bps.rs
+            // (changing these values here is a way to influence the mined templates w/o breaking consensus)
+            max_block_parents: params.max_block_parents.min(16),
+            mergeset_size_limit: params.mergeset_size_limit.min(248),
             pruning_depth: params.pruning_depth,
 
             db,
@@ -612,7 +614,7 @@ impl VirtualStateProcessor {
         // TODO: tests
 
         // Mergeset increasing might traverse DAG areas which are below the finality point and which theoretically
-        // can borderline with pruned data, hence we acquire the prune lock to insure data consistency. Note that
+        // can borderline with pruned data, hence we acquire the prune lock to ensure data consistency. Note that
         // the final selected mergeset can never be pruned (this is the essence of the prunality proof), however
         // we might touch such data prior to validating the bounded merge rule. All in all, this function is short
         // enough so we avoid making further optimizations

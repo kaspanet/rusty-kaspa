@@ -138,7 +138,7 @@ impl OrphanBlocksPool {
     }
 
     /// Iterate all orphans and remove blocks which are no longer orphans.
-    /// This is important for the overall health of the pool and for insuring that
+    /// This is important for the overall health of the pool and for ensuring that
     /// orphan blocks don't evict due to pool size limit while already processed
     /// blocks remain in it. Should be called following IBD.  
     pub async fn revalidate_orphans(&mut self, consensus: &ConsensusProxy) {
