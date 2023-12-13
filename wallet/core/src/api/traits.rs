@@ -34,11 +34,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
     async fn wallet_enumerate_call(self: Arc<Self>, request: WalletEnumerateRequest) -> Result<WalletEnumerateResponse>;
 
-    async fn wallet_create(
-        self: Arc<Self>,
-        wallet_secret: Secret,
-        wallet_args: WalletCreateArgs,
-    ) -> Result<WalletCreateResponse> {
+    async fn wallet_create(self: Arc<Self>, wallet_secret: Secret, wallet_args: WalletCreateArgs) -> Result<WalletCreateResponse> {
         self.wallet_create_call(WalletCreateRequest { wallet_secret, wallet_args }).await
     }
 

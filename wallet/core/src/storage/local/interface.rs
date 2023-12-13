@@ -121,7 +121,6 @@ impl LocalStoreInner {
     }
 
     async fn change_secret(&self, old_secret: &Secret, new_secret: &Secret) -> Result<()> {
-
         match &*self.storage() {
             Store::Resident => {
                 let mut cache = self.cache();

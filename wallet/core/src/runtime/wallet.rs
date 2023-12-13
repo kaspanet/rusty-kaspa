@@ -41,12 +41,7 @@ pub struct WalletCreateArgs {
 }
 
 impl WalletCreateArgs {
-    pub fn new(
-        title: Option<String>,
-        filename: Option<String>,
-        user_hint: Option<Hint>,
-        overwrite_wallet_storage: bool,
-    ) -> Self {
+    pub fn new(title: Option<String>, filename: Option<String>, user_hint: Option<Hint>, overwrite_wallet_storage: bool) -> Self {
         Self { title, filename, user_hint, overwrite_wallet_storage }
     }
 }
@@ -97,7 +92,6 @@ impl Zeroize for PrvKeyDataCreateArgs {
         self.mnemonic.zeroize();
     }
 }
-
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountCreateArgsBip32 {

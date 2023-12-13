@@ -60,7 +60,6 @@ impl Bip32 {
         let change_addresses = self.derivation.change_address_manager().get_range_with_args(range, false)?;
         Ok(receive_addresses.into_iter().chain(change_addresses).collect::<Vec<_>>())
     }
-
 }
 
 #[async_trait]

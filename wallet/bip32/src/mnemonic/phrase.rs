@@ -41,7 +41,6 @@ impl TryFrom<usize> for WordCount {
     }
 }
 
-
 /// BIP39 mnemonic phrases: sequences of words representing cryptographic keys.
 #[derive(Clone)]
 #[wasm_bindgen(inspectable)]
