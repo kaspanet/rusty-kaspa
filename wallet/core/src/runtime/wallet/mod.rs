@@ -501,39 +501,32 @@ impl Wallet {
         }
     }
 
-    pub async fn create_accounts(
+    pub async fn create_account(
         self: &Arc<Wallet>,
         wallet_secret: &Secret,
-        account_create_args_list: Vec<AccountCreateArgs>,
+        account_create_args: AccountCreateArgs,
         notify: bool,
-    ) -> Result<Vec<Arc<dyn Account>>> {
-        let mut accounts = Vec::new();
+    ) -> Result<Arc<dyn Account>> {
 
-        for account_create_args in account_create_args_list.into_iter() {
-            match account_create_args {
-                AccountCreateArgs::Bip32 { prv_key_data_args, account_args } => {
-                    let PrvKeyDataArgs { prv_key_data_id, payment_secret } = prv_key_data_args;
-                    accounts
-                        .push(self.create_account_bip32(wallet_secret, prv_key_data_id, payment_secret.as_ref(), account_args).await?);
-                }
-                AccountCreateArgs::Legacy { prv_key_data_id, account_name } => {
-                    accounts.push(self.create_account_legacy(wallet_secret, prv_key_data_id, account_name).await?);
-                }
-                AccountCreateArgs::Multisig { prv_key_data_args, additional_xpub_keys, name, minimum_signatures } => {
-                    accounts.push(
-                        self.create_account_multisig(wallet_secret, prv_key_data_args, additional_xpub_keys, name, minimum_signatures)
-                            .await?,
-                    );
-                }
+        let account = match account_create_args {
+            AccountCreateArgs::Bip32 { prv_key_data_args, account_args } => {
+                let PrvKeyDataArgs { prv_key_data_id, payment_secret } = prv_key_data_args;
+                self.create_account_bip32(wallet_secret, prv_key_data_id, payment_secret.as_ref(), account_args).await?
             }
-        }
+            AccountCreateArgs::Legacy { prv_key_data_id, account_name } => {
+                self.create_account_legacy(wallet_secret, prv_key_data_id, account_name).await?
+            }
+            AccountCreateArgs::Multisig { prv_key_data_args, additional_xpub_keys, name, minimum_signatures } => {
+                self.create_account_multisig(wallet_secret, prv_key_data_args, additional_xpub_keys, name, minimum_signatures).await?
+            }
+        };
 
         if notify {
-            let account_descriptors = accounts.iter().map(|account| account.descriptor()).collect::<Result<Vec<_>>>()?;
-            self.notify(Events::AccountCreate { account_descriptors }).await?;
+            let account_descriptor = account.descriptor()?;
+            self.notify(Events::AccountCreate { account_descriptor }).await?;
         }
 
-        Ok(accounts)
+        Ok(account)
     }
 
     pub async fn create_account_multisig(

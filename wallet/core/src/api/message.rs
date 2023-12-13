@@ -265,13 +265,13 @@ pub struct AccountsDiscoveryResponse {
 #[serde(rename_all = "camelCase")]
 pub struct AccountsCreateRequest {
     pub wallet_secret: Secret,
-    pub account_create_args: Vec<AccountCreateArgs>,
+    pub account_create_args: AccountCreateArgs,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsCreateResponse {
-    pub account_descriptors: Vec<AccountDescriptor>,
+    pub account_descriptor: AccountDescriptor,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

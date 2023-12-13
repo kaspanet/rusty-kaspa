@@ -2,7 +2,7 @@ use crate::api::message::*;
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::wallet::AccountCreateArgs;
-use crate::runtime::{AccountDescriptor, WalletCreateArgs};
+use crate::runtime::{AccountDescriptor, PrvKeyDataCreateArgs, WalletCreateArgs};
 use crate::secret::Secret;
 use crate::storage::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, WalletDescriptor};
 use crate::tx::GeneratorSummary;
@@ -87,7 +87,17 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
 
     async fn prv_key_data_enumerate_call(self: Arc<Self>, request: PrvKeyDataEnumerateRequest) -> Result<PrvKeyDataEnumerateResponse>;
+
+    async fn prv_key_data_create(
+        self: Arc<Self>,
+        wallet_secret: Secret,
+        prv_key_data_args: PrvKeyDataCreateArgs,
+    ) -> Result<PrvKeyDataId> {
+        let request = PrvKeyDataCreateRequest { wallet_secret, prv_key_data_args };
+        Ok(self.prv_key_data_create_call(request).await?.prv_key_data_id)
+    }
     async fn prv_key_data_create_call(self: Arc<Self>, request: PrvKeyDataCreateRequest) -> Result<PrvKeyDataCreateResponse>;
+
     async fn prv_key_data_remove_call(self: Arc<Self>, request: PrvKeyDataRemoveRequest) -> Result<PrvKeyDataRemoveResponse>;
 
     async fn prv_key_data_get(self: Arc<Self>, prv_key_data_id: PrvKeyDataId, wallet_secret: Secret) -> Result<PrvKeyData> {
@@ -120,9 +130,9 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn accounts_create(
         self: Arc<Self>,
         wallet_secret: Secret,
-        account_create_args: Vec<AccountCreateArgs>,
-    ) -> Result<Vec<AccountDescriptor>> {
-        Ok(self.accounts_create_call(AccountsCreateRequest { wallet_secret, account_create_args }).await?.account_descriptors)
+        account_create_args: AccountCreateArgs,
+    ) -> Result<AccountDescriptor> {
+        Ok(self.accounts_create_call(AccountsCreateRequest { wallet_secret, account_create_args }).await?.account_descriptor)
     }
     async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse>;
     async fn accounts_import_call(self: Arc<Self>, request: AccountsImportRequest) -> Result<AccountsImportResponse>;

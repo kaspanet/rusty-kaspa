@@ -191,10 +191,10 @@ impl WalletApi for super::Wallet {
     async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse> {
         let AccountsCreateRequest { wallet_secret, account_create_args } = request;
 
-        let accounts = self.create_accounts(&wallet_secret, account_create_args, true).await?;
-        let account_descriptors = accounts.iter().map(|account| account.descriptor()).collect::<Result<Vec<_>>>()?;
+        let account = self.create_account(&wallet_secret, account_create_args, true).await?;
+        let account_descriptor = account.descriptor()?;
 
-        Ok(AccountsCreateResponse { account_descriptors })
+        Ok(AccountsCreateResponse { account_descriptor })
     }
 
     async fn accounts_import_call(self: Arc<Self>, _request: AccountsImportRequest) -> Result<AccountsImportResponse> {
