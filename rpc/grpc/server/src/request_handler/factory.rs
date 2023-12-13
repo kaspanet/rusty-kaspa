@@ -27,7 +27,7 @@ impl Factory {
         Box::new(RequestHandler::new(rpc_op, incoming_route, server_context, interface, connection))
     }
 
-    pub fn new_interface(server_ctx: ServerContext, bps: u64) -> Interface {
+    pub fn new_interface(server_ctx: ServerContext, network_bps: u64) -> Interface {
         // The array as last argument in the macro call below must exactly match the full set of
         // KaspadPayloadOps variants.
         let mut interface = build_grpc_server_interface!(
@@ -128,7 +128,7 @@ impl Factory {
         interface.replace_method(KaspadPayloadOps::NotifyFinalityConflict, method);
 
         // Methods with special properties
-        let bps = bps as usize;
+        let bps = network_bps as usize;
         interface.replace_method_properties(KaspadPayloadOps::SubmitBlock, bps, 10.max(bps * 2), RoutingPolicy::DropIfFull);
 
         interface

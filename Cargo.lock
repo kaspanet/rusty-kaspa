@@ -2351,6 +2351,7 @@ dependencies = [
  "futures",
  "h2",
  "itertools 0.11.0",
+ "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-grpc-client",
  "kaspa-grpc-core",
