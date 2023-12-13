@@ -507,7 +507,6 @@ impl Wallet {
         account_create_args: AccountCreateArgs,
         notify: bool,
     ) -> Result<Arc<dyn Account>> {
-
         let account = match account_create_args {
             AccountCreateArgs::Bip32 { prv_key_data_args, account_args } => {
                 let PrvKeyDataArgs { prv_key_data_id, payment_secret } = prv_key_data_args;
