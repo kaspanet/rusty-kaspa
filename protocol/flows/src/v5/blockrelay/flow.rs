@@ -251,7 +251,10 @@ impl HandleRelayInvsFlow {
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::BlockLocator)?;
         let locator_hashes: Vec<Hash> = msg.try_into()?;
-        for h in locator_hashes {
+        // Locator hashes are sent from later to earlier, so it makes sense to query consensus in reverse. Technically
+        // with current syncer-side implementations (in both go-kaspa and this codebase) we could query only the last one,
+        // but we prefer not relying on such details for correctness
+        for h in locator_hashes.into_iter().rev() {
             if consensus.async_get_block_status(h).await.is_some_and(|s| s.has_block_body()) {
                 return Ok(true);
             }
