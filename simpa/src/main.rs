@@ -325,7 +325,7 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
     for (i, mut chunk) in iter.enumerate() {
         let current_joins = submit_chunk(src_consensus, dst_consensus, &mut chunk);
         let statuses = try_join_all(prev_joins).await.unwrap();
-        info!("Validated chunk {}", i);
+        trace!("Validated chunk {}", i);
         assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
         prev_joins = current_joins;
     }
