@@ -22,6 +22,9 @@ pub enum GrpcServerError {
     #[error("{0:?} handler is closed")]
     ClosedHandler(KaspadPayloadOps),
 
+    #[error("{0:?} route to handler is full")]
+    RouteIsFull(KaspadPayloadOps),
+
     #[error("client connection is closed")]
     ConnectionClosed,
 
