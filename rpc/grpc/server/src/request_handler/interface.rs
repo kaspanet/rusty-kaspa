@@ -1,4 +1,4 @@
-use super::method::{Method, MethodTrait};
+use super::method::{Method, MethodTrait, RoutingPolicy};
 use crate::{
     connection::Connection,
     connection_handler::ServerContext,
@@ -53,6 +53,15 @@ impl Interface {
     pub fn replace_method(&mut self, op: KaspadPayloadOps, method: Method<ServerContext, Connection, KaspadRequest, KaspadResponse>) {
         let method: Arc<dyn MethodTrait<ServerContext, Connection, KaspadRequest, KaspadResponse>> = Arc::new(method);
         let _ = self.methods.insert(op, method);
+    }
+
+    pub fn replace_method_properties(&mut self, op: KaspadPayloadOps, tasks: usize, queue_size: usize, routing_policy: RoutingPolicy) {
+        self.methods.entry(op).and_modify(|x| {
+            let method: Method<ServerContext, Connection, KaspadRequest, KaspadResponse> =
+                Method::with_properties(x.method_fn(), tasks, queue_size, routing_policy);
+            let method: Arc<dyn MethodTrait<ServerContext, Connection, KaspadRequest, KaspadResponse>> = Arc::new(method);
+            *x = method;
+        });
     }
 
     pub async fn call(
