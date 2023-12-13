@@ -41,59 +41,6 @@ impl TryFrom<usize> for WordCount {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[serde(rename_all = "kebab-case")]
-#[serde(tag = "type", content = "value")]
-pub enum MnemonicVariant {
-    Random(WordCount),
-    Phrase(String),
-}
-
-impl Zeroize for MnemonicVariant {
-    fn zeroize(&mut self) {
-        match self {
-            MnemonicVariant::Random(_) => {}
-            MnemonicVariant::Phrase(phrase) => phrase.zeroize(),
-        }
-    }
-}
-
-impl TryFrom<MnemonicVariant> for Mnemonic {
-    type Error = Error;
-    fn try_from(variant: MnemonicVariant) -> Result<Self> {
-        match variant {
-            MnemonicVariant::Random(word_count) => Mnemonic::random(word_count, Default::default()),
-            MnemonicVariant::Phrase(phrase) => Mnemonic::new(phrase, Default::default()),
-        }
-    }
-}
-
-impl TryFrom<usize> for MnemonicVariant {
-    type Error = Error;
-    fn try_from(word_count: usize) -> Result<Self> {
-        Ok(MnemonicVariant::Random(WordCount::try_from(word_count)?))
-    }
-}
-
-impl From<WordCount> for MnemonicVariant {
-    fn from(word_count: WordCount) -> Self {
-        MnemonicVariant::Random(word_count)
-    }
-}
-
-impl TryFrom<&str> for MnemonicVariant {
-    type Error = Error;
-    fn try_from(phrase: &str) -> Result<Self> {
-        Ok(MnemonicVariant::Phrase(phrase.to_string()))
-    }
-}
-
-impl TryFrom<String> for MnemonicVariant {
-    type Error = Error;
-    fn try_from(phrase: String) -> Result<Self> {
-        Ok(MnemonicVariant::Phrase(phrase))
-    }
-}
 
 /// BIP39 mnemonic phrases: sequences of words representing cryptographic keys.
 #[derive(Clone)]
