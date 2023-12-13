@@ -360,6 +360,10 @@ impl FlowContext {
         unorphaned_blocks
     }
 
+    pub async fn revalidate_orphans(&self, consensus: &ConsensusProxy) {
+        self.orphans_pool.write().await.revalidate_orphans(consensus).await
+    }
+
     /// Adds the rpc-submitted block to the DAG and propagates it to peers.
     pub async fn submit_rpc_block(&self, consensus: &ConsensusProxy, block: Block) -> Result<(), ProtocolError> {
         if block.transactions.is_empty() {
