@@ -1,3 +1,10 @@
+//!
+//! Messages used by the Wallet API.
+//!
+//! Each Wallet API `xxx_call()` method has a corresponding
+//! `XxxRequest` and `XxxResponse` message.
+//!
+
 use std::sync::Arc;
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -15,18 +22,17 @@ use crate::{
     },
     tx::{Fees, GeneratorSummary, PaymentDestination},
 };
-// use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingRequest {
-    pub payload: Option<String>,
+    pub payload: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingResponse {
-    pub payload: Option<String>,
+    pub payload: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -111,7 +117,7 @@ pub struct WalletCreateResponse {
 #[serde(rename_all = "camelCase")]
 pub struct WalletOpenRequest {
     pub wallet_secret: Secret,
-    pub wallet_name: Option<String>,
+    pub wallet_filename: Option<String>,
     pub account_descriptors: bool,
     pub legacy_accounts: Option<bool>,
 }
@@ -159,19 +165,29 @@ pub struct WalletChangeSecretResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WalletExportRequest {}
+pub struct WalletExportRequest {
+    pub wallet_secret: Secret,
+    pub include_transactions: bool,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WalletExportResponse {}
+pub struct WalletExportResponse {
+    pub wallet_data: String,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WalletImportRequest {}
+pub struct WalletImportRequest {
+    pub wallet_secret: Secret,
+    pub wallet_data: String,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WalletImportResponse {}
+pub struct WalletImportResponse {
+    pub wallet_descriptor: WalletDescriptor,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -291,6 +307,16 @@ pub struct AccountsActivateRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsActivateResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsDeactivateRequest {
+    pub account_ids: Option<Vec<AccountId>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsDeactivateResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]

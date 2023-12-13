@@ -175,6 +175,12 @@ pub trait Interface: Send + Sync + AnySync {
     /// stop the storage subsystem
     async fn close(&self) -> Result<()>;
 
+    /// export the wallet data
+    async fn wallet_export(&self, wallet_secret: &Secret, options: WalletExportOptions) -> Result<String>;
+
+    /// import the wallet data
+    async fn wallet_import(&self, wallet_secret: &Secret, data: &str) -> Result<WalletDescriptor>;
+
     // ~~~
 
     // phishing hint (user-created text string identifying authenticity of the wallet)

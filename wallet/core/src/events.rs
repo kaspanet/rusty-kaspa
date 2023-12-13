@@ -105,6 +105,10 @@ pub enum Events {
     AccountActivation {
         ids: Vec<runtime::AccountId>,
     },
+    /// Accounts have been deactivated
+    AccountDeactivation {
+        ids: Vec<runtime::AccountId>,
+    },
     /// Account selection change (`None` if no account is selected)
     AccountSelection {
         id: Option<runtime::AccountId>,

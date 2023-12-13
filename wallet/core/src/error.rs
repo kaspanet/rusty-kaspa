@@ -175,6 +175,9 @@ pub enum Error {
     #[error("Account not found: {0}")]
     AccountNotFound(AccountId),
 
+    #[error("Account not active: {0}")]
+    AccountNotActive(AccountId),
+
     #[error("Invalid account type (must be one of: bip32|multisig|legacy")]
     InvalidAccountKind,
 

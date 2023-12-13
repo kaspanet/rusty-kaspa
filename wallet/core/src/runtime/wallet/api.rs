@@ -1,3 +1,7 @@
+//!
+//! [`WalletApi`] trait implementation for [`Wallet`].
+//!
+
 use crate::api::{message::*, traits::WalletApi};
 use crate::imports::*;
 use crate::result::Result;
@@ -61,10 +65,7 @@ impl WalletApi for super::Wallet {
 
     // -------------------------------------------------------------------------------------
 
-    async fn ping_call(self: Arc<Self>, mut request: PingRequest) -> Result<PingResponse> {
-        if let Some(payload) = request.payload.as_mut() {
-            payload.push_str(" ... response (pong)");
-        }
+    async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse> {
         log_info!("Wallet received ping request '{:?}' ...", request.payload);
         Ok(PingResponse { payload: request.payload })
     }
@@ -94,9 +95,9 @@ impl WalletApi for super::Wallet {
     }
 
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
-        let WalletOpenRequest { wallet_secret, wallet_name, account_descriptors, legacy_accounts } = request;
+        let WalletOpenRequest { wallet_secret, wallet_filename, account_descriptors, legacy_accounts } = request;
         let args = WalletOpenArgs { account_descriptors, legacy_accounts: legacy_accounts.unwrap_or_default() };
-        let account_descriptors = self.open(&wallet_secret, wallet_name, args).await?;
+        let account_descriptors = self.open(&wallet_secret, wallet_filename, args).await?;
         Ok(WalletOpenResponse { account_descriptors })
     }
 
@@ -117,14 +118,21 @@ impl WalletApi for super::Wallet {
         Ok(WalletChangeSecretResponse {})
     }
 
-    async fn wallet_export_call(self: Arc<Self>, _request: WalletExportRequest) -> Result<WalletExportResponse> {
-        // TODO
-        Ok(WalletExportResponse {})
+    async fn wallet_export_call(self: Arc<Self>, request: WalletExportRequest) -> Result<WalletExportResponse> {
+        let WalletExportRequest { wallet_secret, include_transactions } = request;
+
+        let options = storage::WalletExportOptions { include_transactions };
+        let wallet_data = self.store().wallet_export(&wallet_secret, options).await?;
+
+        Ok(WalletExportResponse { wallet_data })
     }
 
-    async fn wallet_import_call(self: Arc<Self>, _request: WalletImportRequest) -> Result<WalletImportResponse> {
-        // TODO
-        Ok(WalletImportResponse {})
+    async fn wallet_import_call(self: Arc<Self>, request: WalletImportRequest) -> Result<WalletImportResponse> {
+        let WalletImportRequest { wallet_secret, wallet_data } = request;
+
+        let wallet_descriptor = self.store().wallet_import(&wallet_secret, &wallet_data).await?;
+
+        Ok(WalletImportResponse { wallet_descriptor })
     }
 
     async fn prv_key_data_enumerate_call(
@@ -176,6 +184,14 @@ impl WalletApi for super::Wallet {
         self.activate_accounts(account_ids.as_deref()).await?;
 
         Ok(AccountsActivateResponse {})
+    }
+
+    async fn accounts_deactivate_call(self: Arc<Self>, request: AccountsDeactivateRequest) -> Result<AccountsDeactivateResponse> {
+        let AccountsDeactivateRequest { account_ids } = request;
+
+        self.deactivate_accounts(account_ids.as_deref()).await?;
+
+        Ok(AccountsDeactivateResponse {})
     }
 
     async fn accounts_discovery_call(self: Arc<Self>, request: AccountsDiscoveryRequest) -> Result<AccountsDiscoveryResponse> {
@@ -270,10 +286,23 @@ impl WalletApi for super::Wallet {
 
         let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
 
-        let abortable = Abortable::new();
-        let generator_summary = account.estimate(destination, priority_fee_sompi, payload, &abortable).await?;
+        // Abort currently running async estimate for the same account if present. The estimate
+        // call can be invoked continuously by the client/UI. If the estimate call is
+        // invoked more than once for the same account, the previous estimate call should
+        // be aborted.  The [`Abortable`] is an [`AtomicBool`] that is periodically checked by the
+        // [`Generator`], resulting in the [`Generator`] halting the estimation process if it
+        // detects that the [`Abortable`] is set to `true`. This effectively halts the previously
+        // spawned async task that will return [`Error::Aborted`].
+        if let Some(abortable) = self.inner.estimation_abortables.lock().unwrap().get(&account_id) {
+            abortable.abort();
+        }
 
-        Ok(AccountsEstimateResponse { generator_summary })
+        let abortable = Abortable::new();
+        self.inner.estimation_abortables.lock().unwrap().insert(account_id, abortable.clone());
+        let result = account.estimate(destination, priority_fee_sompi, payload, &abortable).await;
+        self.inner.estimation_abortables.lock().unwrap().remove(&account_id);
+
+        Ok(AccountsEstimateResponse { generator_summary: result? })
     }
 
     async fn transaction_data_get_call(self: Arc<Self>, request: TransactionDataGetRequest) -> Result<TransactionDataGetResponse> {

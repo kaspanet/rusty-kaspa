@@ -1,3 +1,15 @@
+//!
+//! Server and Client transport wrappers that provide automatic
+//! serialization and deserialization of Wallet API method
+//! arguments and their return values.
+//!
+//! The serialization occurs using the underlying transport
+//! which can be either Borsh or Serde JSON. At compile time,
+//! the transport interface macro generates a unique `u64` id
+//! (hash) for each API method based on the method name.
+//! This id is then use to identify the method.
+//!
+
 use std::sync::Arc;
 
 use super::message::*;
@@ -64,6 +76,7 @@ impl WalletServer {
         AccountsCreate,
         AccountsImport,
         AccountsActivate,
+        AccountsDeactivate,
         AccountsGet,
         AccountsCreateNewAddress,
         AccountsSend,
@@ -119,6 +132,7 @@ impl WalletApi for WalletClient {
         AccountsCreate,
         AccountsImport,
         AccountsActivate,
+        AccountsDeactivate,
         AccountsGet,
         AccountsCreateNewAddress,
         AccountsSend,

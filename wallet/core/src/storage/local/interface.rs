@@ -1,12 +1,9 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::storage::interface::AddressBookStore;
-use crate::storage::interface::CreateArgs;
-use crate::storage::interface::OpenArgs;
-use crate::storage::interface::StorageDescriptor;
-use crate::storage::interface::StorageStream;
-use crate::storage::interface::WalletDescriptor;
+use crate::storage::interface::{
+    AddressBookStore, CreateArgs, OpenArgs, StorageDescriptor, StorageStream, WalletDescriptor, WalletExportOptions,
+};
 use crate::storage::local::cache::*;
 use crate::storage::local::streams::*;
 use crate::storage::local::transaction::*;
@@ -58,7 +55,7 @@ pub(crate) struct LocalStoreInner {
 }
 
 impl LocalStoreInner {
-    pub async fn try_create(wallet_secret: &Secret, folder: &str, args: CreateArgs, is_resident: bool) -> Result<Self> {
+    async fn try_create(wallet_secret: &Secret, folder: &str, args: CreateArgs, is_resident: bool) -> Result<Self> {
         let (store, wallet_title, filename) = if is_resident {
             (Store::Resident, Some("Resident Wallet".to_string()), "resident".to_string())
         } else {
@@ -86,7 +83,7 @@ impl LocalStoreInner {
         Ok(Self { cache, store: Mutex::new(Arc::new(store)), is_modified, transactions })
     }
 
-    pub async fn try_load(wallet_secret: &Secret, folder: &str, args: OpenArgs) -> Result<Self> {
+    async fn try_load(wallet_secret: &Secret, folder: &str, args: OpenArgs) -> Result<Self> {
         let filename = make_filename(&None, &args.filename);
         let storage = Storage::try_new_with_folder(folder, &format!("{filename}.wallet"))?;
 
@@ -101,6 +98,37 @@ impl LocalStoreInner {
         };
 
         Ok(Self { cache, store: Mutex::new(Arc::new(Store::Storage(storage))), is_modified, transactions })
+    }
+
+    async fn try_import(wallet_secret: &Secret, folder: &str, data: &str) -> Result<Self> {
+        let wallet: Wallet = serde_json::from_str(data)?;
+        // Try to decrypt the wallet payload with the provided
+        // secret. This will block import if the secret is
+        // not correct.
+        let _ = wallet.payload(wallet_secret)?;
+
+        let filename = make_filename(&wallet.title, &None);
+        let storage = Storage::try_new_with_folder(folder, &format!("{filename}.wallet"))?;
+        if storage.exists_sync()? {
+            return Err(Error::WalletAlreadyExists);
+        }
+
+        // let wallet = Wallet::try_load(&storage).await?;
+        let cache = Arc::new(Mutex::new(Cache::from_wallet(wallet, wallet_secret)?));
+        let is_modified = AtomicBool::new(false);
+
+        let transactions: Arc<dyn TransactionRecordStore> = if !is_web() {
+            Arc::new(fsio::TransactionStore::new(folder, &filename))
+        } else {
+            Arc::new(indexdb::TransactionStore::new(&filename))
+        };
+
+        Ok(Self { cache, store: Mutex::new(Arc::new(Store::Storage(storage))), is_modified, transactions })
+    }
+
+    async fn try_export(&self, wallet_secret: &Secret, _options: WalletExportOptions) -> Result<String> {
+        let wallet = self.cache().to_wallet(None, wallet_secret)?;
+        Ok(serde_json::to_string(&wallet)?)
     }
 
     fn storage(&self) -> Arc<Store> {
@@ -271,15 +299,23 @@ impl LocalStore {
         self.inner.lock().unwrap().as_ref().cloned().ok_or(Error::WalletNotOpen)
     }
 
-    #[allow(dead_code)]
-    pub async fn wallet_export(&self, wallet_secret: &Secret, _options: WalletExportOptions) -> Result<String> {
-        let wallet = self.inner()?.cache().to_wallet(None, wallet_secret)?;
-        Ok(serde_json::to_string(&wallet)?)
+    fn location(&self) -> Option<Arc<Location>> {
+        self.location.lock().unwrap().clone()
     }
 
-    // async fn wallet_import(&self, secret : Option<&Secret>, data : &str) -> Result<()> {
+    #[allow(dead_code)]
+    async fn wallet_export_impl(&self, wallet_secret: &Secret, _options: WalletExportOptions) -> Result<String> {
+        self.inner()?.try_export(wallet_secret, _options).await
+    }
 
-    // }
+    async fn wallet_import_impl(&self, wallet_secret: &Secret, data: &str) -> Result<WalletDescriptor> {
+        let location = self.location().expect("initialized wallet storage location");
+        let inner = LocalStoreInner::try_import(wallet_secret, &location.folder, data).await?;
+        inner.store(wallet_secret).await?;
+        let wallet_descriptor = inner.descriptor();
+        // self.inner.lock().unwrap().replace(Arc::new(inner));
+        Ok(wallet_descriptor)
+    }
 }
 
 #[async_trait]
@@ -332,7 +368,7 @@ impl Interface for LocalStore {
     }
 
     async fn create(&self, wallet_secret: &Secret, args: CreateArgs) -> Result<WalletDescriptor> {
-        let location = self.location.lock().unwrap().clone().unwrap();
+        let location = self.location().expect("initialized wallet storage location");
 
         let inner = Arc::new(LocalStoreInner::try_create(wallet_secret, &location.folder, args, self.is_resident).await?);
         let descriptor = inner.descriptor();
@@ -428,11 +464,14 @@ impl Interface for LocalStore {
         self.inner()?.cache().user_hint = user_hint;
         Ok(())
     }
-}
 
-pub struct WalletExportOptions {
-    #[allow(dead_code)]
-    include_transactions: bool,
+    async fn wallet_export(&self, wallet_secret: &Secret, options: WalletExportOptions) -> Result<String> {
+        self.wallet_export_impl(wallet_secret, options).await
+    }
+
+    async fn wallet_import(&self, wallet_secret: &Secret, data: &str) -> Result<WalletDescriptor> {
+        self.wallet_import_impl(wallet_secret, data).await
+    }
 }
 
 #[async_trait]

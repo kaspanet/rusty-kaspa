@@ -348,6 +348,7 @@ impl KaspaCli {
                                     this.term().refresh_prompt();
                                 },
                                 Events::PrvKeyDataCreate { .. } => { },
+                                Events::AccountDeactivation { .. } => { },
                                 Events::AccountActivation { .. } => {
                                     // list all accounts
                                     this.list().await.unwrap_or_else(|err|terrorln!(this, "{err}"));

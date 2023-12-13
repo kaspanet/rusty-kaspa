@@ -1,3 +1,7 @@
+//!
+//! Structs used as various arguments for internal wallet operations.
+//!
+
 use crate::imports::*;
 use crate::secret::Secret;
 use crate::storage::interface::CreateArgs;

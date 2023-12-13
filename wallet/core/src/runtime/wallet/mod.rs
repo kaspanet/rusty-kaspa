@@ -1,3 +1,7 @@
+//!
+//! [`Wallet`] - a Kaspa wallet runtime.
+//!
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{account::ScanNotifier, try_from_storage, Account, AccountDescriptor, AccountId, ActiveAccountMap};
@@ -13,6 +17,7 @@ use crate::{derivation::gen0, derivation::gen0::import::*, derivation::gen1, der
 use futures::future::join_all;
 use futures::stream::StreamExt;
 use futures::{select, FutureExt, Stream};
+use kaspa_bip32::Prefix as KeyPrefix;
 use kaspa_bip32::{Language, Mnemonic, WordCount};
 use kaspa_notify::{
     listener::ListenerId,
@@ -46,6 +51,7 @@ pub struct Inner {
     utxo_processor: Arc<UtxoProcessor>,
     multiplexer: Multiplexer<Box<Events>>,
     wallet_bus: Channel<WalletBusMessage>,
+    estimation_abortables: Mutex<HashMap<AccountId, Abortable>>,
 }
 
 /// `Wallet` data structure
@@ -94,6 +100,7 @@ impl Wallet {
                 settings: SettingsStore::new_with_storage(Storage::default_settings_store()),
                 utxo_processor: utxo_processor.clone(),
                 wallet_bus,
+                estimation_abortables: Mutex::new(HashMap::new()),
             }),
         };
 
@@ -334,6 +341,21 @@ impl Wallet {
         }
     }
 
+    pub async fn deactivate_accounts(self: &Arc<Wallet>, ids: Option<&[AccountId]>) -> Result<()> {
+        let (ids, futures) = if let Some(ids) = ids {
+            let accounts =
+                ids.iter().map(|id| self.active_accounts().get(id).ok_or(Error::AccountNotFound(*id))).collect::<Result<Vec<_>>>()?;
+            (ids.to_vec(), accounts.into_iter().map(|account| account.stop()).collect::<Vec<_>>())
+        } else {
+            self.active_accounts().collect().iter().map(|account| (account.id(), account.clone().stop())).unzip()
+        };
+
+        join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
+        self.notify(Events::AccountDeactivation { ids }).await?;
+
+        Ok(())
+    }
+
     // // /// Loads a wallet from storage. Accounts are activated by this call.
     // pub async fn open_and_activate(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
     //     let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
@@ -553,8 +575,7 @@ impl Wallet {
                     .await?
                     .ok_or_else(|| Error::PrivateKeyNotFound(prv_key_data_id))?;
                 let xpub_key = prv_key_data.create_xpub(payment_secret.as_ref(), AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
-                let xpub_prefix = kaspa_bip32::Prefix::XPUB;
-                generated_xpubs.push(xpub_key.to_string(Some(xpub_prefix)));
+                generated_xpubs.push(xpub_key.to_string(Some(KeyPrefix::XPUB)));
                 prv_key_data_ids.push(prv_key_data_id);
             }
 
@@ -627,8 +648,7 @@ impl Wallet {
         };
 
         let xpub_key = prv_key_data.create_xpub(payment_secret, AccountKind::Bip32, account_index).await?;
-        let xpub_prefix = kaspa_bip32::Prefix::XPUB;
-        let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(xpub_prefix))]);
+        let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(KeyPrefix::XPUB))]);
 
         let bip32 = storage::Bip32::new(account_index, xpub_keys, false);
 
@@ -729,13 +749,12 @@ impl Wallet {
 
         let wallet_descriptor = self.inner.store.create(wallet_secret, wallet_args.into()).await?;
         let storage_descriptor = self.inner.store.location()?;
-        let xpub_prefix = kaspa_bip32::Prefix::XPUB;
         let mnemonic = Mnemonic::random(mnemonic_phrase_word_count, Default::default())?;
         let account_index = 0;
         let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), payment_secret.as_ref()))?;
         let xpub_key =
             prv_key_data.create_xpub(payment_secret.as_ref(), account_kind.unwrap_or(AccountKind::Bip32), account_index).await?;
-        let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(xpub_prefix))]);
+        let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(KeyPrefix::XPUB))]);
 
         let bip32 = storage::Bip32::new(account_index, xpub_keys, false);
 
@@ -1249,8 +1268,7 @@ impl Wallet {
                 return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id));
             }
             let xpub_key = prv_key_data.create_xpub(payment_secret.as_ref(), AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
-            let xpub_prefix = kaspa_bip32::Prefix::XPUB;
-            generated_xpubs.push(xpub_key.to_string(Some(xpub_prefix)));
+            generated_xpubs.push(xpub_key.to_string(Some(KeyPrefix::XPUB)));
             prv_key_data_ids.push(prv_key_data.id);
             prv_key_data_store.store(wallet_secret, prv_key_data).await?;
         }
