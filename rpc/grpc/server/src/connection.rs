@@ -20,6 +20,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Display,
     net::SocketAddr,
+    ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -36,9 +37,6 @@ pub type GrpcNotifier = Notifier<Notification, Connection>;
 pub type GrpcSender = MpscSender<KaspadResponse>;
 pub type StatusResult<T> = Result<T, tonic::Status>;
 pub type ConnectionId = Uuid;
-
-type RequestSender = MpmcSender<KaspadRequest>;
-type RoutingMap = HashMap<KaspadPayloadOps, RequestSender>;
 
 #[derive(Debug, Default)]
 struct InnerMutableState {
@@ -87,6 +85,30 @@ impl Drop for Inner {
     }
 }
 
+type RequestSender = MpmcSender<KaspadRequest>;
+
+#[derive(Clone)]
+struct Route {
+    sender: RequestSender,
+    policy: RoutingPolicy,
+}
+
+impl Route {
+    fn new(sender: RequestSender, policy: RoutingPolicy) -> Self {
+        Self { sender, policy }
+    }
+}
+
+impl Deref for Route {
+    type Target = RequestSender;
+
+    fn deref(&self) -> &Self::Target {
+        &self.sender
+    }
+}
+
+type RoutingMap = HashMap<KaspadPayloadOps, Route>;
+
 struct Router {
     /// Routing map for mapping messages to RPC op handlers
     routing_map: RoutingMap,
@@ -103,7 +125,7 @@ impl Router {
         Self { routing_map: Default::default(), server_context, interface }
     }
 
-    fn subscribe(&mut self, connection: &Connection, rpc_op: KaspadPayloadOps) -> RequestSender {
+    fn subscribe(&mut self, connection: &Connection, rpc_op: KaspadPayloadOps) -> Route {
         match self.routing_map.entry(rpc_op) {
             Entry::Vacant(entry) => {
                 let method = self.interface.get_method(&rpc_op);
@@ -120,7 +142,8 @@ impl Router {
                     })
                     .collect_vec();
                 handlers.into_iter().for_each(|x| x.launch());
-                entry.insert(sender.clone());
+                let route = Route::new(sender, method.routing_policy());
+                entry.insert(route.clone());
                 match method.tasks() {
                     1 => {
                         trace!("GRPC, Connection::subscribe - {:?} route is registered, client:{:?}", rpc_op, connection.identity());
@@ -134,7 +157,7 @@ impl Router {
                         );
                     }
                 }
-                sender
+                route
             }
             Entry::Occupied(entry) => entry.get().clone(),
         }
@@ -146,15 +169,14 @@ impl Router {
             return Err(GrpcServerError::InvalidRequestPayload);
         }
         let rpc_op = request.payload.as_ref().unwrap().into();
-        let method = self.interface.get_method(&rpc_op);
-        let sender = self.routing_map.get(&rpc_op).cloned();
-        let sender = sender.unwrap_or_else(|| self.subscribe(connection, rpc_op));
-        match method.routing_policy() {
-            RoutingPolicy::Enqueue => match sender.send(request).await {
+        let route = self.routing_map.get(&rpc_op).cloned();
+        let route = route.unwrap_or_else(|| self.subscribe(connection, rpc_op));
+        match route.policy {
+            RoutingPolicy::Enqueue => match route.send(request).await {
                 Ok(_) => Ok(()),
                 Err(_) => Err(GrpcServerError::ClosedHandler(rpc_op)),
             },
-            RoutingPolicy::DropIfFull => match sender.try_send(request) {
+            RoutingPolicy::DropIfFull => match route.try_send(request) {
                 Ok(_) => Ok(()),
                 Err(MpmcTrySendError::Full(_)) => Err(GrpcServerError::RouteIsFull(rpc_op)),
                 Err(MpmcTrySendError::Closed(_)) => Err(GrpcServerError::ClosedHandler(rpc_op)),
