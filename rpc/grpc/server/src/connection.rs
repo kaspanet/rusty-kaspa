@@ -14,7 +14,7 @@ use kaspa_grpc_core::{
 use kaspa_notify::{
     connection::Connection as ConnectionT, error::Error as NotificationError, listener::ListenerId, notifier::Notifier,
 };
-use kaspa_rpc_core::Notification;
+use kaspa_rpc_core::{Notification, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
 use parking_lot::Mutex;
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -178,7 +178,16 @@ impl Router {
             },
             RoutingPolicy::DropIfFull => match route.try_send(request) {
                 Ok(_) => Ok(()),
-                Err(MpmcTrySendError::Full(_)) => Err(GrpcServerError::RouteIsFull(rpc_op)),
+                Err(MpmcTrySendError::Full(_)) => match rpc_op {
+                    KaspadPayloadOps::SubmitBlock => {
+                        let response = SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::RouteIsFull) };
+                        connection.enqueue(Ok(response).into()).await?;
+                        Ok(())
+                    }
+                    _ => {
+                        panic!("RPC op {:?} is lacking support for the DropIfFull routing policy", rpc_op);
+                    }
+                },
                 Err(MpmcTrySendError::Closed(_)) => Err(GrpcServerError::ClosedHandler(rpc_op)),
             },
         }

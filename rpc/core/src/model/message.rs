@@ -33,6 +33,7 @@ impl SubmitBlockRequest {
 pub enum SubmitBlockRejectReason {
     BlockInvalid = 1,
     IsInIBD = 2,
+    RouteIsFull = 3,
 }
 impl SubmitBlockRejectReason {
     fn as_str(&self) -> &'static str {
@@ -40,6 +41,7 @@ impl SubmitBlockRejectReason {
         match self {
             SubmitBlockRejectReason::BlockInvalid => "Block is invalid",
             SubmitBlockRejectReason::IsInIBD => "Node is in IBD",
+            SubmitBlockRejectReason::RouteIsFull => "Route is full",
         }
     }
 }

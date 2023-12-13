@@ -109,6 +109,7 @@ from!(item: &kaspa_rpc_core::SubmitBlockReport, RejectReason, {
         kaspa_rpc_core::SubmitBlockReport::Success => RejectReason::None,
         kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::BlockInvalid) => RejectReason::BlockInvalid,
         kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::IsInIBD) => RejectReason::IsInIbd,
+        kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::RouteIsFull) => RejectReason::RouteIsFull,
     }
 });
 
@@ -451,6 +452,7 @@ from!(item: RejectReason, kaspa_rpc_core::SubmitBlockReport, {
         RejectReason::None => kaspa_rpc_core::SubmitBlockReport::Success,
         RejectReason::BlockInvalid => kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::BlockInvalid),
         RejectReason::IsInIbd => kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::IsInIBD),
+        RejectReason::RouteIsFull => kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::RouteIsFull),
     }
 });
 
