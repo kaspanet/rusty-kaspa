@@ -80,7 +80,7 @@ use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender
 use itertools::Itertools;
 use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
-use rand::seq::SliceRandom;
+use rand::{seq::SliceRandom, Rng};
 use rayon::{
     prelude::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator},
     ThreadPool,
@@ -522,7 +522,9 @@ impl VirtualStateProcessor {
         drop(selected_chain_write);
     }
 
-    /// Returns the max number of tips to consider as virtual parents in a single virtual resolve operation
+    /// Returns the max number of tips to consider as virtual parents in a single virtual resolve operation.
+    ///
+    /// Guaranteed to be `>= self.max_block_parents`
     fn max_virtual_parent_candidates(&self) -> usize {
         // Limit to max_block_parents x 3 candidates. This way we avoid going over thousands of tips when the network isn't healthy.
         // There's no specific reason for a factor of 3, and its not a consensus rule, just an estimation for reducing the amount
@@ -574,11 +576,7 @@ impl VirtualStateProcessor {
                     let filtering_blue_work = self.ghostdag_primary_store.get_blue_work(filtering_root).unwrap_or_default();
                     return (
                         candidate,
-                        heap.into_sorted_iter()
-                            .take(self.max_virtual_parent_candidates())
-                            .take_while(|s| s.blue_work >= filtering_blue_work)
-                            .map(|s| s.hash)
-                            .collect(),
+                        heap.into_sorted_iter().take_while(|s| s.blue_work >= filtering_blue_work).map(|s| s.hash).collect(),
                     );
                 } else {
                     debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
@@ -620,10 +618,26 @@ impl VirtualStateProcessor {
         // enough so we avoid making further optimizations
         let _prune_guard = self.pruning_lock.blocking_read();
         let max_block_parents = self.max_block_parents as usize;
+        let max_candidates = self.max_virtual_parent_candidates();
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
-        if candidates.len() > max_block_parents / 2 {
-            // `make_contiguous` should be a no op since the deque was just built
+        if candidates.len() > max_candidates {
+            // make_contiguous should be a no op since the deque was just built
+            let slice = candidates.make_contiguous();
+
+            // Keep slice[..max_block_parents / 2] as is, choose max_candidates - max_block_parents / 2 in random
+            // from the remainder of the slice while swapping them to slice[max_block_parents / 2..max_candidates].
+            //
+            // Inspired by rand::partial_shuffle (which lacks the guarantee on chosen elements location).
+            for i in max_block_parents / 2..max_candidates {
+                let j = rand::thread_rng().gen_range(i..slice.len()); // i < max_candidates < slice.len()
+                slice.swap(i, j);
+            }
+
+            // Truncate the unchosen elements
+            candidates.truncate(max_candidates);
+        } else if candidates.len() > max_block_parents / 2 {
+            // Fallback to a simpler algo in this case
             candidates.make_contiguous()[max_block_parents / 2..].shuffle(&mut rand::thread_rng());
         }
 
