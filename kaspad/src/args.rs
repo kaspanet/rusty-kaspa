@@ -319,15 +319,6 @@ pub fn cli() -> Command {
                 .help("Interval in seconds for performance metrics collection."),
         )
         .arg(arg!(--"disable-upnp" "Disable upnp"))
-        .arg(
-            // This is a hidden argument that is meant to be ignored by rusty-kaspa
-            // It is intended for external applications that want to parse kaspad 
-            // args from command line in order to pass them to rusty-kaspa
-            Arg::new("daemon")  
-                .long("daemon")
-                .action(ArgAction::SetTrue)
-                .hide(true)
-        )
         ;
 
     #[cfg(feature = "devnet-prealloc")]
