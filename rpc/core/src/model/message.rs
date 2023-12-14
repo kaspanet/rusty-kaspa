@@ -28,7 +28,7 @@ impl SubmitBlockRequest {
     }
 }
 
-#[derive(Eq, PartialEq, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum SubmitBlockRejectReason {
     BlockInvalid = 1,
@@ -39,9 +39,9 @@ impl SubmitBlockRejectReason {
     fn as_str(&self) -> &'static str {
         // see app\appmessage\rpc_submit_block.go, line 35
         match self {
-            SubmitBlockRejectReason::BlockInvalid => "Block is invalid",
-            SubmitBlockRejectReason::IsInIBD => "Node is in IBD",
-            SubmitBlockRejectReason::RouteIsFull => "Route is full",
+            SubmitBlockRejectReason::BlockInvalid => "block is invalid",
+            SubmitBlockRejectReason::IsInIBD => "node is not synced",
+            SubmitBlockRejectReason::RouteIsFull => "route is full",
         }
     }
 }

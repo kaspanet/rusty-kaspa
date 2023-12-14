@@ -143,7 +143,6 @@ message SubmitBlockResponseMessage{
     NONE = 0;
     BLOCK_INVALID = 1;
     IS_IN_IBD = 2;
-    ROUTE_IS_FULL = 3;
   }
   RejectReason rejectReason = 1;
   RPCError error = 1000;
