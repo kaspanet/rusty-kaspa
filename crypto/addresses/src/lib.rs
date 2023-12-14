@@ -527,7 +527,7 @@ impl From<AddressList> for Vec<Address> {
 impl TryFrom<JsValue> for AddressList {
     type Error = AddressError;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        js_value.try_into()
+        js_value.as_ref().try_into()
     }
 }
 
