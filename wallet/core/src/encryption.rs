@@ -1,3 +1,7 @@
+//!
+//! Wallet data encryption module.
+//!
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
@@ -219,13 +223,13 @@ pub fn js_argon2_sha256iv_phash(data: JsValue, byte_length: usize) -> Result<Str
 }
 
 pub fn sha256_hash(data: &[u8]) -> Secret {
-    let mut sha256 = Sha256::new();
+    let mut sha256 = Sha256::default();
     sha256.update(data);
     Secret::new(sha256.finalize().to_vec())
 }
 
 pub fn sha256d_hash(data: &[u8]) -> Secret {
-    let mut sha256 = Sha256::new();
+    let mut sha256 = Sha256::default();
     sha256.update(data);
     sha256_hash(sha256.finalize().as_slice())
 }

@@ -405,7 +405,7 @@ pub struct AccountsEstimateResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TransactionDataGetRequest {
+pub struct TransactionsDataGetRequest {
     pub account_id: AccountId,
     pub network_id: NetworkId,
     pub filter: Option<Vec<TransactionKind>>,
@@ -413,7 +413,7 @@ pub struct TransactionDataGetRequest {
     pub end: u64,
 }
 
-impl TransactionDataGetRequest {
+impl TransactionsDataGetRequest {
     pub fn with_range(account_id: AccountId, network_id: NetworkId, range: std::ops::Range<u64>) -> Self {
         Self { account_id, network_id, filter: None, start: range.start, end: range.end }
     }
@@ -421,12 +421,38 @@ impl TransactionDataGetRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TransactionDataGetResponse {
+pub struct TransactionsDataGetResponse {
     pub account_id: AccountId,
     pub transactions: Vec<Arc<TransactionRecord>>,
     pub start: u64,
     pub total: u64,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionsReplaceNoteRequest {
+    pub account_id: AccountId,
+    pub network_id: NetworkId,
+    pub transaction_id: TransactionId,
+    pub note: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionsReplaceNoteResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionsReplaceMetadataRequest {
+    pub account_id: AccountId,
+    pub network_id: NetworkId,
+    pub transaction_id: TransactionId,
+    pub metadata: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionsReplaceMetadataResponse {}
 
 // #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 // #[serde(rename_all = "camelCase")]

@@ -260,7 +260,7 @@ impl TryFrom<JsValue> for UtxoEntries {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
         if !js_value.is_array() {
-            return Err("Data type spplied to UtxoEntries must be an Array".into());
+            return Err("Data type supplied to UtxoEntries must be an Array".into());
         }
 
         Ok(Self(Arc::new(js_value.try_into_utxo_entry_references()?)))

@@ -55,7 +55,7 @@ pub struct Resident {
     pub public_key: String,
 }
 
-/// [`Descriptor`] is a type that offers serializable representation of an account.
+/// [`AccountDescriptor`] is a type that offers serializable representation of an account.
 /// It is means for RPC or transports that do not allow for transport
 /// of the account data.
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

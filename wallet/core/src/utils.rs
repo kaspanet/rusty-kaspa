@@ -1,3 +1,7 @@
+//!
+//! Kaspa value formatting and parsing utilities.
+//!
+
 use crate::result::Result;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::constants::*;

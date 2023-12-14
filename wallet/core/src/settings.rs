@@ -1,3 +1,7 @@
+//!
+//! Multi-platform storage for wallet and application settings.
+//!
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::local::Storage;

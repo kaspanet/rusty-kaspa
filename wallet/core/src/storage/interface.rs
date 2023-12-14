@@ -106,7 +106,20 @@ pub trait TransactionRecordStore: Send + Sync {
     async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()>;
     async fn remove(&self, binding: &Binding, network_id: &NetworkId, ids: &[&TransactionId]) -> Result<()>;
 
-    async fn store_transaction_metadata(&self, id: TransactionId, metadata: TransactionMetadata) -> Result<()>;
+    async fn store_transaction_note(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        id: TransactionId,
+        note: Option<String>,
+    ) -> Result<()>;
+    async fn store_transaction_metadata(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        id: TransactionId,
+        metadata: Option<String>,
+    ) -> Result<()>;
 }
 
 #[derive(Debug)]

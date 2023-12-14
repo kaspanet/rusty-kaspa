@@ -1,3 +1,7 @@
+//!
+//! Secret container for sensitive data. Performs zeroization on drop.
+//!
+
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;

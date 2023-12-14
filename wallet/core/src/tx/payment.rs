@@ -93,7 +93,7 @@ impl From<PaymentOutputs> for PaymentDestination {
 #[wasm_bindgen]
 impl PaymentOutputs {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(output_array: JsValue) -> crate::Result<PaymentOutputs> {
+    pub fn constructor(output_array: JsValue) -> crate::result::Result<PaymentOutputs> {
         let mut outputs = vec![];
         let iterator = js_sys::try_iter(&output_array)?.ok_or("need to pass iterable JS values!")?;
         for x in iterator {

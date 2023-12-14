@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::result::Result;
 use async_trait::async_trait;
 use kaspa_bip32::ExtendedPublicKey;
 use std::{collections::HashMap, sync::Arc};

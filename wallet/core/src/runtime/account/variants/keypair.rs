@@ -48,6 +48,14 @@ impl Account for Keypair {
         self
     }
 
+    fn sig_op_count(&self) -> u8 {
+        1
+    }
+
+    fn minimum_signatures(&self) -> u16 {
+        1
+    }
+
     fn receive_address(&self) -> Result<Address> {
         let (xonly_public_key, _) = self.public_key.x_only_public_key();
         Ok(Address::new(self.inner().wallet.network_id()?.into(), Version::PubKey, &xonly_public_key.serialize()))

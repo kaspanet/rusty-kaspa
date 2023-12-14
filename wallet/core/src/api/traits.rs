@@ -4,7 +4,7 @@
 //! The wallet API is a high-level API that allows applications to perform
 //! wallet operations such as creating a wallet, opening a wallet, creating
 //! accounts, sending funds etc. The wallet API is an asynchronous trait that
-//! is implemented by the [`Wallet`] struct.
+//! is implemented by the [`runtime::Wallet`](crate::runtime::wallet::Wallet) struct.
 //!
 
 use crate::api::message::*;
@@ -18,12 +18,15 @@ use crate::tx::GeneratorSummary;
 use runtime::AccountId;
 use workflow_core::channel::Receiver;
 
+///
+///  API trait for interfacing with the Kaspa wallet subsystem.
+///
 #[async_trait]
 pub trait WalletApi: Send + Sync + AnySync {
     async fn register_notifications(self: Arc<Self>, channel: Receiver<WalletNotification>) -> Result<u64>;
     async fn unregister_notifications(self: Arc<Self>, channel_id: u64) -> Result<()>;
 
-    /// Wrapper around [`get_status_call()`].
+    /// Wrapper around [`get_status_call()`](Self::get_status_call).
     async fn get_status(self: Arc<Self>) -> Result<GetStatusResponse> {
         Ok(self.get_status_call(GetStatusRequest {}).await?)
     }
@@ -53,7 +56,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// Ping the wallet service. Accepts an optional `u64` value that is returned in the response.
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
 
-    /// Initiates the wallet storage batch mode. Must be followed by the `flush_call()`
+    /// Initiates the wallet storage batch mode. Must be followed by the [`flush_call()`](Self::flush_call)
     /// after the desired wallet operations have been executed.
     ///
     /// Batch mode allows user to perform multiple wallet operations without storing the
@@ -67,26 +70,28 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// the wallet is in the batch mode and it's data has been marked as dirty.
     async fn flush_call(self: Arc<Self>, request: FlushRequest) -> Result<FlushResponse>;
 
-    /// Wrapper around `wallet_enumerate_call()`.
+    /// Wrapper around [`wallet_enumerate_call()`](Self::wallet_enumerate_call).
     async fn wallet_enumerate(self: Arc<Self>) -> Result<Vec<WalletDescriptor>> {
         Ok(self.wallet_enumerate_call(WalletEnumerateRequest {}).await?.wallet_list)
     }
 
     /// Enumerates all wallets available in the storage. Returns `Vec<WalletDescriptor>`
     /// that can be subsequently used to perform wallet operations such as open the wallet.
+    /// See [`wallet_enumerate()`](Self::wallet_enumerate) for a convenience wrapper
+    /// around this call.
     async fn wallet_enumerate_call(self: Arc<Self>, request: WalletEnumerateRequest) -> Result<WalletEnumerateResponse>;
 
-    /// Wrapper around `wallet_create_call()`
+    /// Wrapper around [`wallet_create_call()`](Self::wallet_create_call)
     async fn wallet_create(self: Arc<Self>, wallet_secret: Secret, wallet_args: WalletCreateArgs) -> Result<WalletCreateResponse> {
         self.wallet_create_call(WalletCreateRequest { wallet_secret, wallet_args }).await
     }
 
-    /// Creates a new wallet. Returns `WalletCreateResponse` that contains `wallet_descriptor`
+    /// Creates a new wallet. Returns [`WalletCreateResponse`] that contains `wallet_descriptor`
     /// that can be used to subsequently open the wallet. After the wallet is created, it
     /// is considered to be in an `open` state.
     async fn wallet_create_call(self: Arc<Self>, request: WalletCreateRequest) -> Result<WalletCreateResponse>;
 
-    /// Wrapper around `wallet_open_call()`
+    /// Wrapper around [`wallet_open_call()`](Self::wallet_open_call)
     async fn wallet_open(
         self: Arc<Self>,
         wallet_secret: Secret,
@@ -116,9 +121,11 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// allowing the wallet to operate on legacy accounts. Legacy accounts were created by
     /// applications such as KDX and kaspanet.io web wallet using a deprecated derivation path
     /// and are considered deprecated. Legacy accounts should not be used in 3rd-party applications.
+    ///
+    /// See [`wallet_open`](Self::wallet_open) for a convenience wrapper around this call.
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse>;
 
-    /// Wrapper around `wallet_close_call()`
+    /// Wrapper around [`wallet_close_call()`](Self::wallet_close_call)
     async fn wallet_close(self: Arc<Self>) -> Result<()> {
         self.wallet_close_call(WalletCloseRequest {}).await?;
         Ok(())
@@ -126,7 +133,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// Close the currently open wallet
     async fn wallet_close_call(self: Arc<Self>, request: WalletCloseRequest) -> Result<WalletCloseResponse>;
 
-    /// Wrapper around `wallet_rename_call()`
+    /// Wrapper around [`wallet_rename_call()`](Self::wallet_rename_call)
     async fn wallet_rename(self: Arc<Self>, title: Option<&str>, filename: Option<&str>, wallet_secret: Secret) -> Result<()> {
         self.wallet_rename_call(WalletRenameRequest {
             title: title.map(String::from),
@@ -138,6 +145,8 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
     /// Change the wallet title or rename the file in which the wallet is stored.
     /// This call will produce an error if the destination filename already exists.
+    /// See [`wallet_rename`](Self::wallet_rename) for a convenience wrapper around
+    /// this call.
     async fn wallet_rename_call(self: Arc<Self>, request: WalletRenameRequest) -> Result<WalletRenameResponse>;
 
     /// Return a JSON string that contains raw wallet data. This is available only
@@ -150,7 +159,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// subsystem uses a custom storage backend.
     async fn wallet_import_call(self: Arc<Self>, request: WalletImportRequest) -> Result<WalletImportResponse>;
 
-    /// Wrapper around `wallet_change_secret_call()`
+    /// Wrapper around [`wallet_change_secret_call()`](Self::wallet_change_secret_call)
     async fn wallet_change_secret(self: Arc<Self>, old_wallet_secret: Secret, new_wallet_secret: Secret) -> Result<()> {
         let request = WalletChangeSecretRequest { old_wallet_secret, new_wallet_secret };
         self.wallet_change_secret_call(request).await?;
@@ -158,9 +167,11 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
 
     /// Change the wallet secret. This call will re-encrypt the wallet data using the new secret.
+    /// See [`wallet_change_secret`](Self::wallet_change_secret) for a convenience wrapper around
+    /// this call.
     async fn wallet_change_secret_call(self: Arc<Self>, request: WalletChangeSecretRequest) -> Result<WalletChangeSecretResponse>;
 
-    /// Wrapper around `prv_key_data_enumerate_call()`
+    /// Wrapper around [`prv_key_data_enumerate_call()`](Self::prv_key_data_enumerate_call)
     async fn prv_key_data_enumerate(self: Arc<Self>) -> Result<Vec<Arc<PrvKeyDataInfo>>> {
         Ok(self.prv_key_data_enumerate_call(PrvKeyDataEnumerateRequest {}).await?.prv_key_data_list)
     }
@@ -170,7 +181,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// of [`PrvKeyDataInfo`] structs that acts as private key descriptors.
     async fn prv_key_data_enumerate_call(self: Arc<Self>, request: PrvKeyDataEnumerateRequest) -> Result<PrvKeyDataEnumerateResponse>;
 
-    /// Wrapper around `prv_key_data_create_call()`
+    /// Wrapper around [`prv_key_data_create_call()`](Self::prv_key_data_create_call)
     async fn prv_key_data_create(
         self: Arc<Self>,
         wallet_secret: Secret,
@@ -184,12 +195,15 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// bip39 passphrase is also encrypted at runtime using the same passphrase. This is specific
     /// to this wallet implementation. To gain access to such mnemonic, the user must supply the
     /// bip39 passphrase.
+    ///
+    /// See [`prv_key_data_create`](Self::prv_key_data_create) for a convenience wrapper around
+    /// this call.
     async fn prv_key_data_create_call(self: Arc<Self>, request: PrvKeyDataCreateRequest) -> Result<PrvKeyDataCreateResponse>;
 
     /// Not implemented
     async fn prv_key_data_remove_call(self: Arc<Self>, request: PrvKeyDataRemoveRequest) -> Result<PrvKeyDataRemoveResponse>;
 
-    /// Wrapper around `prv_key_data_get_call()`
+    /// Wrapper around [`prv_key_data_get_call()`](Self::prv_key_data_get_call)
     async fn prv_key_data_get(self: Arc<Self>, prv_key_data_id: PrvKeyDataId, wallet_secret: Secret) -> Result<PrvKeyData> {
         Ok(self
             .prv_key_data_get_call(PrvKeyDataGetRequest { prv_key_data_id, wallet_secret })
@@ -197,18 +211,21 @@ pub trait WalletApi: Send + Sync + AnySync {
             .prv_key_data
             .ok_or(Error::PrivateKeyNotFound(prv_key_data_id))?)
     }
-    /// Obtain a private key data using it's [`PrvKeyDataId`].
+    /// Obtain a private key data using [`PrvKeyDataId`].
     async fn prv_key_data_get_call(self: Arc<Self>, request: PrvKeyDataGetRequest) -> Result<PrvKeyDataGetResponse>;
 
-    /// Wrapper around [`accounts_rename_call()`]
+    /// Wrapper around [`accounts_rename_call()`](Self::accounts_rename_call)
     async fn accounts_rename(self: Arc<Self>, account_id: AccountId, name: Option<String>, wallet_secret: Secret) -> Result<()> {
         self.accounts_rename_call(AccountsRenameRequest { account_id, name, wallet_secret }).await?;
         Ok(())
     }
     /// Change the account title.
+    ///
+    /// See [`accounts_rename`](Self::accounts_rename) for a convenience wrapper
+    /// around this call.
     async fn accounts_rename_call(self: Arc<Self>, request: AccountsRenameRequest) -> Result<AccountsRenameResponse>;
 
-    /// Wrapper around [`accounts_activate_call()`]
+    /// Wrapper around [`accounts_activate_call()`](Self::accounts_activate_call)
     async fn accounts_activate(self: Arc<Self>, account_ids: Option<Vec<runtime::AccountId>>) -> Result<AccountsActivateResponse> {
         self.accounts_activate_call(AccountsActivateRequest { account_ids }).await
     }
@@ -223,7 +240,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     ///
     async fn accounts_activate_call(self: Arc<Self>, request: AccountsActivateRequest) -> Result<AccountsActivateResponse>;
 
-    /// Wrapper around [`accounts_deactivate_call()`]
+    /// Wrapper around [`accounts_deactivate_call()`](Self::accounts_deactivate_call)
     async fn accounts_deactivate(self: Arc<Self>, account_ids: Option<Vec<runtime::AccountId>>) -> Result<AccountsDeactivateResponse> {
         self.accounts_deactivate_call(AccountsDeactivateRequest { account_ids }).await
     }
@@ -232,7 +249,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// is `None`, all currently active accounts will be deactivated.
     async fn accounts_deactivate_call(self: Arc<Self>, request: AccountsDeactivateRequest) -> Result<AccountsDeactivateResponse>;
 
-    /// Wrapper around [`accounts_enumerate_call()`]
+    /// Wrapper around [`accounts_enumerate_call()`](Self::accounts_enumerate_call)
     async fn accounts_enumerate(self: Arc<Self>) -> Result<Vec<AccountDescriptor>> {
         Ok(self.accounts_enumerate_call(AccountsEnumerateRequest {}).await?.descriptor_list)
     }
@@ -247,7 +264,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// considered as viable.
     async fn accounts_discovery_call(self: Arc<Self>, request: AccountsDiscoveryRequest) -> Result<AccountsDiscoveryResponse>;
 
-    /// Wrapper around [`accounts_create_call()`]
+    /// Wrapper around [`accounts_create_call()`](Self::accounts_create_call)
     async fn accounts_create(
         self: Arc<Self>,
         wallet_secret: Secret,
@@ -257,6 +274,9 @@ pub trait WalletApi: Send + Sync + AnySync {
     }
     /// Create a new account based on the [`AccountCreateArgs`] enum.
     /// Returns an [`AccountDescriptor`] for the newly created account.
+    ///
+    /// See [`accounts_create`](Self::accounts_create) for a convenience wrapper
+    /// around this call.
     async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse>;
 
     // - TODO
@@ -268,7 +288,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// Get an [`AccountDescriptor`] for a specific account id.
     async fn accounts_get_call(self: Arc<Self>, request: AccountsGetRequest) -> Result<AccountsGetResponse>;
 
-    /// Wrapper around [`accounts_create_new_address`]
+    /// Wrapper around [`accounts_create_new_address`](Self::accounts_create_new_address)
     async fn accounts_create_new_address(
         self: Arc<Self>,
         account_id: runtime::AccountId,
@@ -285,7 +305,7 @@ pub trait WalletApi: Send + Sync + AnySync {
         request: AccountsCreateNewAddressRequest,
     ) -> Result<AccountsCreateNewAddressResponse>;
 
-    /// Wrapper around [`accounts_send_call`]
+    /// Wrapper around [`Self::accounts_send_call()`](Self::accounts_send_call)
     async fn accounts_send(self: Arc<Self>, request: AccountsSendRequest) -> Result<GeneratorSummary> {
         Ok(self.accounts_send_call(request).await?.generator_summary)
     }
@@ -311,23 +331,48 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse>;
 
     /// Get a range of transaction records for a specific account id.
-    async fn transaction_data_get_range(
+    async fn transactions_data_get_range(
         self: Arc<Self>,
         account_id: runtime::AccountId,
         network_id: NetworkId,
         range: std::ops::Range<u64>,
-    ) -> Result<TransactionDataGetResponse> {
-        self.transaction_data_get_call(TransactionDataGetRequest::with_range(account_id, network_id, range)).await
+    ) -> Result<TransactionsDataGetResponse> {
+        self.transactions_data_get_call(TransactionsDataGetRequest::with_range(account_id, network_id, range)).await
     }
 
-    async fn transaction_data_get_call(self: Arc<Self>, request: TransactionDataGetRequest) -> Result<TransactionDataGetResponse>;
+    async fn transactions_data_get_call(self: Arc<Self>, request: TransactionsDataGetRequest) -> Result<TransactionsDataGetResponse>;
     // async fn transaction_get_call(self: Arc<Self>, request: TransactionGetRequest) -> Result<TransactionGetResponse>;
+
+    /// Replaces the note of a transaction with a new note. Note is meant
+    /// to explicitly store a user-supplied string. The note is treated
+    /// as a raw string without any assumptions about the note format.
+    ///
+    /// Supply [`Option::None`] in the `note` field to remove the note.
+    async fn transactions_replace_note_call(
+        self: Arc<Self>,
+        request: TransactionsReplaceNoteRequest,
+    ) -> Result<TransactionsReplaceNoteResponse>;
+
+    /// Replaces the metadata of a transaction with a new metadata.
+    /// Metadata is meant to store an application-specific data.
+    /// If used, the application and encode custom JSON data into the
+    /// metadata string. The metadata is treated as a raw string
+    /// without any assumptions about the metadata format.
+    ///
+    /// Supply [`Option::None`] in the `metadata` field to
+    /// remove the metadata.
+    async fn transactions_replace_metadata_call(
+        self: Arc<Self>,
+        request: TransactionsReplaceMetadataRequest,
+    ) -> Result<TransactionsReplaceMetadataResponse>;
+
     async fn address_book_enumerate_call(
         self: Arc<Self>,
         request: AddressBookEnumerateRequest,
     ) -> Result<AddressBookEnumerateResponse>;
 }
 
+/// alias for `Arc<dyn WalletApi + Send + Sync + 'static>`
 pub type DynWalletApi = Arc<dyn WalletApi + Send + Sync + 'static>;
 
 downcast_sync!(dyn WalletApi);

@@ -3,8 +3,8 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::storage::interface::{StorageStream, TransactionRangeResult};
+use crate::storage::TransactionRecord;
 use crate::storage::{Binding, TransactionKind, TransactionRecordStore};
-use crate::storage::{TransactionMetadata, TransactionRecord};
 use kaspa_utils::hex::ToHex;
 use std::{
     collections::VecDeque,
@@ -84,10 +84,6 @@ impl TransactionStore {
                 }
             }
         }
-    }
-
-    pub async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
-        Ok(())
     }
 }
 
@@ -206,7 +202,32 @@ impl TransactionRecordStore for TransactionStore {
         Ok(())
     }
 
-    async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
+    async fn store_transaction_note(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        id: TransactionId,
+        note: Option<String>,
+    ) -> Result<()> {
+        let folder = self.make_folder(binding, network_id);
+        let path = folder.join(id.to_hex());
+        let mut transaction = read(&path, None).await?;
+        transaction.note = note;
+        write(&path, &transaction, None).await?;
+        Ok(())
+    }
+    async fn store_transaction_metadata(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        id: TransactionId,
+        metadata: Option<String>,
+    ) -> Result<()> {
+        let folder = self.make_folder(binding, network_id);
+        let path = folder.join(id.to_hex());
+        let mut transaction = read(&path, None).await?;
+        transaction.metadata = metadata;
+        write(&path, &transaction, None).await?;
         Ok(())
     }
 }

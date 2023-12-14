@@ -10,7 +10,7 @@ use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
 use kaspa_wallet_core::rpc::DynRpcApi;
 use kaspa_wallet_core::runtime::{Account, BalanceStrings};
 use kaspa_wallet_core::storage::{IdT, PrvKeyDataInfo};
-use kaspa_wallet_core::{runtime::Wallet, Events};
+use kaspa_wallet_core::{events::Events, runtime::Wallet};
 use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::*;
 use workflow_core::time::Instant;

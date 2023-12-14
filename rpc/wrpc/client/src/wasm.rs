@@ -64,7 +64,8 @@ impl RpcClient {
 
     /// Connect to the Kaspa RPC server. This function starts a background
     /// task that connects and reconnects to the server if the connection
-    /// is terminated.  Use [`disconnect()`] to terminate the connection.
+    /// is terminated.  Use [`disconnect()`](Self::disconnect()) to
+    /// terminate the connection.
     pub async fn connect(&self, args: JsValue) -> Result<()> {
         let options: ConnectOptions = args.try_into()?;
 

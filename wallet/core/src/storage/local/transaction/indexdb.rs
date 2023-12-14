@@ -1,8 +1,8 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::interface::{StorageStream, TransactionRangeResult};
+use crate::storage::TransactionRecord;
 use crate::storage::{Binding, TransactionKind, TransactionRecordStore};
-use crate::storage::{TransactionMetadata, TransactionRecord};
 
 pub struct Inner {
     known_databases: HashMap<String, HashSet<String>>,
@@ -59,10 +59,6 @@ impl TransactionStore {
         }
         Ok(())
     }
-
-    pub async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
-        Ok(())
-    }
 }
 
 #[async_trait]
@@ -107,7 +103,22 @@ impl TransactionRecordStore for TransactionStore {
         Ok(())
     }
 
-    async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
+    async fn store_transaction_note(
+        &self,
+        _binding: &Binding,
+        _network_id: &NetworkId,
+        _id: TransactionId,
+        _note: Option<String>,
+    ) -> Result<()> {
+        Ok(())
+    }
+    async fn store_transaction_metadata(
+        &self,
+        _binding: &Binding,
+        _network_id: &NetworkId,
+        _id: TransactionId,
+        _metadata: Option<String>,
+    ) -> Result<()> {
         Ok(())
     }
 }

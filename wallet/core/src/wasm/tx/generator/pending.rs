@@ -65,7 +65,7 @@ impl PendingTransaction {
     }
 
     /// Sign transaction with supplied [`Array`] or [`PrivateKey`] or an array of
-    /// raw private key bytes (encoded as [`Uint8Array`] or as hex strings)
+    /// raw private key bytes (encoded as `Uint8Array` or as hex strings)
     pub fn sign(&self, js_value: JsValue) -> Result<()> {
         if let Ok(keys) = js_value.dyn_into::<Array>() {
             let keys =

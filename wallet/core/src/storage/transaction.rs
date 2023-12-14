@@ -100,11 +100,6 @@ impl From<&UtxoEntryReference> for UtxoRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub enum TransactionMetadata {
-    Custom(String),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(tag = "type", content = "transaction")]
 // the reason the struct is renamed kebab-case and then
 // each field is renamed to camelCase is to force the
@@ -253,7 +248,7 @@ pub struct TransactionRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<TransactionMetadata>,
+    pub metadata: Option<String>,
 }
 
 impl TransactionRecord {

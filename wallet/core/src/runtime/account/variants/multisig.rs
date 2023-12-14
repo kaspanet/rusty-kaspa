@@ -1,13 +1,13 @@
 #![allow(dead_code)]
 
+use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
+use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::account::descriptor::{self, AccountDescriptor};
 use crate::runtime::account::Inner;
 use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount};
 use crate::runtime::Wallet;
 use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
-use crate::AddressDerivationManager;
-use crate::{imports::*, AddressDerivationManagerTrait};
 
 pub struct MultiSig {
     inner: Arc<Inner>,
@@ -65,6 +65,15 @@ impl Account for MultiSig {
 
     fn as_dyn_arc(self: Arc<Self>) -> Arc<dyn Account> {
         self
+    }
+
+    fn sig_op_count(&self) -> u8 {
+        // TODO
+        1
+    }
+
+    fn minimum_signatures(&self) -> u16 {
+        self.minimum_signatures
     }
 
     fn receive_address(&self) -> Result<Address> {

@@ -1,4 +1,3 @@
-// use futures::future::join_all;
 use hmac::Mac;
 use kaspa_addresses::{Address, Prefix as AddressPrefix, Version as AddressVersion};
 use ripemd::Ripemd160;

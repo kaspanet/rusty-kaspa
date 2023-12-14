@@ -1,3 +1,7 @@
+//!
+//!  Module handling bip32 address derivation (bip32+bip44 and legacy accounts)
+//!
+
 pub mod gen0;
 pub mod gen1;
 pub mod traits;
@@ -8,19 +12,15 @@ use crate::derivation::gen0::{PubkeyDerivationManagerV0, WalletDerivationManager
 use crate::derivation::gen1::{PubkeyDerivationManager, WalletDerivationManager};
 use crate::error::Error;
 use crate::imports::*;
+use crate::result::Result;
 use crate::runtime;
 use crate::runtime::account::create_private_keys;
 use crate::runtime::AccountKind;
-use crate::Result;
-use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_txscript::{
     extract_script_pub_key_address, multisig_redeem_script, multisig_redeem_script_ecdsa, pay_to_script_hash_script,
 };
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard};
-use wasm_bindgen::prelude::*;
 use workflow_wasm::serde::from_value;
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

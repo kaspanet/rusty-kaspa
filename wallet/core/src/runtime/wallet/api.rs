@@ -305,8 +305,8 @@ impl WalletApi for super::Wallet {
         Ok(AccountsEstimateResponse { generator_summary: result? })
     }
 
-    async fn transaction_data_get_call(self: Arc<Self>, request: TransactionDataGetRequest) -> Result<TransactionDataGetResponse> {
-        let TransactionDataGetRequest { account_id, network_id, filter, start, end } = request;
+    async fn transactions_data_get_call(self: Arc<Self>, request: TransactionsDataGetRequest) -> Result<TransactionsDataGetResponse> {
+        let TransactionsDataGetRequest { account_id, network_id, filter, start, end } = request;
 
         if start > end {
             return Err(Error::InvalidRange(start, end));
@@ -317,7 +317,35 @@ impl WalletApi for super::Wallet {
         let TransactionRangeResult { transactions, total } =
             store.load_range(&binding, &network_id, filter, start as usize..end as usize).await?;
 
-        Ok(TransactionDataGetResponse { transactions, total, account_id, start })
+        Ok(TransactionsDataGetResponse { transactions, total, account_id, start })
+    }
+
+    async fn transactions_replace_note_call(
+        self: Arc<Self>,
+        request: TransactionsReplaceNoteRequest,
+    ) -> Result<TransactionsReplaceNoteResponse> {
+        let TransactionsReplaceNoteRequest { account_id, network_id, transaction_id, note } = request;
+
+        self.store()
+            .as_transaction_record_store()?
+            .store_transaction_note(&Binding::Account(account_id), &network_id, transaction_id, note)
+            .await?;
+
+        Ok(TransactionsReplaceNoteResponse {})
+    }
+
+    async fn transactions_replace_metadata_call(
+        self: Arc<Self>,
+        request: TransactionsReplaceMetadataRequest,
+    ) -> Result<TransactionsReplaceMetadataResponse> {
+        let TransactionsReplaceMetadataRequest { account_id, network_id, transaction_id, metadata } = request;
+
+        self.store()
+            .as_transaction_record_store()?
+            .store_transaction_metadata(&Binding::Account(account_id), &network_id, transaction_id, metadata)
+            .await?;
+
+        Ok(TransactionsReplaceMetadataResponse {})
     }
 
     async fn address_book_enumerate_call(

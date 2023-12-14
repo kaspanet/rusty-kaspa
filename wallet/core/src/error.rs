@@ -1,3 +1,7 @@
+//!
+//! Error types used by the wallet framework.
+//!
+
 use base64::DecodeError;
 use downcast::DowncastError;
 use kaspa_bip32::Error as BIP32Error;

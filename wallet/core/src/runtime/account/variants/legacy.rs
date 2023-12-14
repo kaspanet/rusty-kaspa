@@ -1,4 +1,5 @@
 use crate::derivation::AddressDerivationMeta;
+use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::account::descriptor::{self, AccountDescriptor};
@@ -6,8 +7,6 @@ use crate::runtime::account::{Account, AccountId, AccountKind, AsLegacyAccount, 
 use crate::runtime::Wallet;
 use crate::secret::Secret;
 use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
-use crate::AddressDerivationManager;
-use crate::AddressDerivationManagerTrait;
 use kaspa_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
 
 const CACHE_ADDRESS_OFFSET: u32 = 2048;
@@ -88,6 +87,14 @@ impl Account for Legacy {
 
     fn as_dyn_arc(self: Arc<Self>) -> Arc<dyn Account> {
         self
+    }
+
+    fn sig_op_count(&self) -> u8 {
+        1
+    }
+
+    fn minimum_signatures(&self) -> u16 {
+        1
     }
 
     fn receive_address(&self) -> Result<Address> {

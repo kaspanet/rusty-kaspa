@@ -82,7 +82,9 @@ impl WalletServer {
         AccountsSend,
         AccountsTransfer,
         AccountsEstimate,
-        TransactionDataGet,
+        TransactionsDataGet,
+        TransactionsReplaceNote,
+        TransactionsReplaceMetadata,
         AddressBookEnumerate,
     ]}
 }
@@ -138,7 +140,9 @@ impl WalletApi for WalletClient {
         AccountsSend,
         AccountsTransfer,
         AccountsEstimate,
-        TransactionDataGet,
+        TransactionsDataGet,
+        TransactionsReplaceNote,
+        TransactionsReplaceMetadata,
         AddressBookEnumerate,
     ]}
 }

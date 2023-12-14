@@ -19,6 +19,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
+use crate::storage::account::Settings;
 use crate::storage::Metadata;
 use crate::storage::{self, AccountData, PrvKeyData, PrvKeyDataId};
 use crate::tx::PaymentOutput;
@@ -26,8 +27,6 @@ use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDes
 use crate::utxo::{UtxoContext, UtxoContextBinding};
 use kaspa_bip32::PrivateKey;
 use kaspa_consensus_wasm::UtxoEntryReference;
-// use kaspa_notify::listener::ListenerId;
-use crate::storage::account::Settings;
 use separator::Separatable;
 use workflow_core::abortable::Abortable;
 
@@ -40,7 +39,6 @@ pub type ScanNotifier = Arc<dyn Fn(usize, usize, u64, Option<TransactionId>) + S
 
 pub struct Context {
     pub settings: Option<Settings>,
-    // pub listener_id: Option<ListenerId>,
 }
 
 impl Context {
@@ -64,22 +62,13 @@ impl Inner {
     pub fn new(wallet: &Arc<Wallet>, id: AccountId, settings: Option<storage::account::Settings>) -> Self {
         let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
 
-        // let context = Context { listener_id: None, settings };
         let context = Context { settings };
         Inner { context: Mutex::new(context), id, wallet: wallet.clone(), utxo_context: utxo_context.clone() }
     }
 
-    // pub fn settings(&self) -> Option<Settings> {
-    //     self.context.lock().unwrap().settings().clone()
-    // }
-
     pub fn context(&self) -> MutexGuard<Context> {
         self.context.lock().unwrap()
     }
-
-    // pub fn account_id(&self) -> &AccountId {
-    //     &self.id
-    // }
 }
 
 pub async fn try_from_storage(
@@ -270,13 +259,9 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Ok(())
     }
 
-    fn sig_op_count(&self) -> u8 {
-        1
-    }
+    fn sig_op_count(&self) -> u8;
 
-    fn minimum_signatures(&self) -> u16 {
-        1
-    }
+    fn minimum_signatures(&self) -> u16;
 
     fn receive_address(&self) -> Result<Address>;
 
@@ -342,7 +327,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Ok((generator.summary(), ids))
     }
 
-    /// Send funds to a [`PaymentDestination`] comprised of one or multiple [`PaymentOutputs`]
+    /// Send funds to a [`PaymentDestination`] comprised of one or multiple [`PaymentOutputs`](crate::tx::PaymentOutputs)
     /// or [`PaymentDestination::Change`] variant that will forward funds to the change address.
     async fn send(
         self: Arc<Self>,

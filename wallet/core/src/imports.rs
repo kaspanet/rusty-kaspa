@@ -1,4 +1,9 @@
-pub use crate::daa::Daa;
+//!
+//! This file contains most common imports that
+//! are used internally in the wallet core.
+//!
+
+// pub use crate::daa::Daa;
 pub use crate::error::Error;
 pub use crate::events::{Events, SyncState};
 pub use crate::rpc::Rpc;

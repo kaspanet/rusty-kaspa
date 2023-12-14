@@ -1,3 +1,7 @@
+//!
+//! Wallet data storage subsystem.
+//!
+
 pub use crate::encryption::{Decrypted, Encryptable, Encrypted};
 
 pub mod account;
@@ -23,7 +27,7 @@ pub use interface::{
 pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
 pub use local::interface::make_filename;
 pub use metadata::Metadata;
-pub use transaction::{TransactionData, TransactionId, TransactionKind, TransactionMetadata, TransactionRecord};
+pub use transaction::{TransactionData, TransactionId, TransactionKind, TransactionRecord};
 
 #[cfg(test)]
 mod tests {
