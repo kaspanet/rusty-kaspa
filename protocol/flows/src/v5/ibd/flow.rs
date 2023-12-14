@@ -129,7 +129,12 @@ impl IbdFlow {
 
         // Relay block might be in the antipast of syncer sink, thus
         // check its past for missing bodies as well.
-        self.sync_missing_block_bodies(&session, relay_block.hash()).await
+        self.sync_missing_block_bodies(&session, relay_block.hash()).await?;
+
+        // Following IBD we revalidate orphans since many of them might have been processed during the IBD
+        self.ctx.revalidate_orphans(&session).await;
+
+        Ok(())
     }
 
     async fn determine_ibd_type(

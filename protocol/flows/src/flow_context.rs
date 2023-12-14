@@ -59,6 +59,9 @@ const PROTOCOL_VERSION: u32 = 6;
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
 
+/// Orphans are kept as full blocks so we cannot hold too much of them in memory
+const MAX_ORPHANS_UPPER_BOUND: usize = 1024;
+
 /// The min time to wait before allowing another parallel request
 const REQUEST_SCOPE_WAIT_TIME: Duration = Duration::from_secs(1);
 
@@ -203,11 +206,11 @@ impl FlowContext {
     ) -> Self {
         let hub = Hub::new();
 
-        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (config.bps() as f64).log2().min(3.0) as u32;
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (config.bps() as f64).log2().ceil() as u32;
 
-        // The maximum amount of orphans allowed in the orphans pool. This number is an
-        // approximation of how many orphans there can possibly be on average.
-        let max_orphans = 2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k as usize;
+        // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
+        // of how many orphans there can possibly be on average bounded by an upper bound.
+        let max_orphans = (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k as usize).min(MAX_ORPHANS_UPPER_BOUND);
         Self {
             inner: Arc::new(FlowContextInner {
                 node_id: Uuid::new_v4().into(),
@@ -358,6 +361,10 @@ impl FlowContext {
             },
         }
         unorphaned_blocks
+    }
+
+    pub async fn revalidate_orphans(&self, consensus: &ConsensusProxy) {
+        self.orphans_pool.write().await.revalidate_orphans(consensus).await
     }
 
     /// Adds the rpc-submitted block to the DAG and propagates it to peers.

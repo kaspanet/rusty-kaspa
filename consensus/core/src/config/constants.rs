@@ -59,7 +59,7 @@ pub mod consensus {
     /// Minimal size of the difficulty window. Affects the DA algorithm only at the starting period of a new net
     pub const MIN_DIFFICULTY_WINDOW_LEN: usize = 10;
 
-    /// **Legacy** difficulty adjustment window size corresponding to ~46 minutes with 1 BPS
+    /// **Legacy** difficulty adjustment window size corresponding to ~44 minutes with 1 BPS
     pub const LEGACY_DIFFICULTY_WINDOW_SIZE: usize = 2641;
 
     /// **New** difficulty window duration expressed in time units (seconds).

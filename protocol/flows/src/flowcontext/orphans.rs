@@ -136,6 +136,27 @@ impl OrphanBlocksPool {
             }
         })
     }
+
+    /// Iterate all orphans and remove blocks which are no longer orphans.
+    /// This is important for the overall health of the pool and for ensuring that
+    /// orphan blocks don't evict due to pool size limit while already processed
+    /// blocks remain in it. Should be called following IBD.  
+    pub async fn revalidate_orphans(&mut self, consensus: &ConsensusProxy) {
+        let mut i = 0;
+        while i < self.orphans.len() {
+            if let Some((&h, _)) = self.orphans.get_index(i) {
+                if consensus.async_get_block_status(h).await.is_some_and(|s| s.is_invalid() || s.has_block_body()) {
+                    // If we swap removed do not advance i so that we revisit the new element moved
+                    // to i in the next iteration. Loop will progress because len is shorter now.
+                    self.orphans.swap_remove_index(i);
+                } else {
+                    i += 1;
+                }
+            } else {
+                i += 1;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -183,6 +204,8 @@ mod tests {
         let b = Block::from_precomputed_hash(9.into(), vec![]);
         let c = Block::from_precomputed_hash(10.into(), roots.clone());
         let d = Block::from_precomputed_hash(11.into(), vec![10.into()]);
+        let e = Block::from_precomputed_hash(12.into(), vec![10.into()]);
+        let f = Block::from_precomputed_hash(13.into(), vec![12.into()]);
 
         pool.add_orphan(c.clone());
         pool.add_orphan(d.clone());
@@ -192,11 +215,24 @@ mod tests {
         consensus.validate_and_insert_block(a.clone()).virtual_state_task.await.unwrap();
         consensus.validate_and_insert_block(b.clone()).virtual_state_task.await.unwrap();
 
+        // Test unorphaning
         let (blocks, _, virtual_state_tasks) = pool.unorphan_blocks(&consensus, 8.into()).await;
         try_join_all(virtual_state_tasks).await.unwrap();
         assert_eq!(blocks.into_iter().map(|b| b.hash()).collect::<HashSet<_>>(), HashSet::from([10.into(), 11.into()]));
         assert!(pool.orphans.is_empty());
 
-        drop((a, b, c, d));
+        // Test revalidation
+        pool.add_orphan(d.clone());
+        pool.add_orphan(e.clone());
+        pool.add_orphan(f.clone());
+        assert_eq!(pool.orphans.len(), 3);
+        pool.revalidate_orphans(&consensus).await;
+        assert_eq!(pool.orphans.len(), 2);
+        consensus.validate_and_insert_block(e.clone()).virtual_state_task.await.unwrap();
+        consensus.validate_and_insert_block(f.clone()).virtual_state_task.await.unwrap();
+        pool.revalidate_orphans(&consensus).await;
+        assert!(pool.orphans.is_empty());
+
+        drop((a, b, c, d, e, f));
     }
 }
