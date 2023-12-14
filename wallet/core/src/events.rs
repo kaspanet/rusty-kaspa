@@ -165,7 +165,7 @@ pub enum Events {
     Reorg {
         record: TransactionRecord,
     },
-    /// Coinbase statis UTXO has been removed (reorg)
+    /// Coinbase stasis UTXO has been removed (reorg)
     /// NOTE: These transactions should be ignored by clients.
     Stasis {
         record: TransactionRecord,
@@ -174,8 +174,26 @@ pub enum Events {
     Maturity {
         record: TransactionRecord,
     },
-    /// Emitted when a transaction has been created and broadcasted
-    /// by the Transaction [`Generator`](crate::tx::generator::Generator)
+    /// Emitted when a transaction has been discovered
+    /// during the UTXO scan. This event is generated
+    /// when a runtime [`Account`](crate::runtime::Account)
+    /// initiates address monitoring and performs
+    /// an initial scan of the UTXO set.
+    ///
+    /// This event is emitted when UTXOs are
+    /// registered with the UtxoContext using the
+    /// [`UtxoContext::extend_from_scan()`](crate::utxo::context::UtxoContext::extend_from_scan) method.
+    ///
+    /// NOTE: if using runtime [`Wallet`](crate::runtime::Wallet),
+    /// the wallet will not emit this event if it detects
+    /// that the transaction already exist in its transaction
+    /// record set. If it doesn't, the wallet will create
+    /// such record and emit this event only once. These
+    /// transactions will be subsequently available when
+    /// accessing the wallet's transaction record set.
+    /// (i.e. when using runtime Wallet, this event can be
+    /// ignored and transaction record can be accessed from
+    /// the transaction history instead).
     Discovery {
         record: TransactionRecord,
     },
